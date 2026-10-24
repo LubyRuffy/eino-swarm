@@ -152,7 +152,8 @@ func (e *Engine) EditThreadGoal(id, goal string) error {
 }
 
 func (e *Engine) steerGoalEdit(id, goal string) {
-	if err := e.Steer(id, goalUpdatedSteer(goal)); err != nil && !errors.Is(err, ErrIdle) {
+	// This generated notice carries the saved objective verbatim, not a new command.
+	if err := e.steerInput(id, UserInput{Text: goalUpdatedSteer(goal)}, false); err != nil && !errors.Is(err, ErrIdle) {
 		e.log.Warn("could not steer an updated standing objective", "thread", id, "err", err)
 	}
 }

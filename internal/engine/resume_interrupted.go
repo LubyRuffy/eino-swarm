@@ -194,7 +194,7 @@ func hasUserPrefix(msgs []adk.Message, prefix string) bool {
 
 func isEngineOnlyUser(content string) bool {
 	switch content {
-	case resumeCue, resumeWorkersCue, parkedWorkersCue:
+	case resumeCue, resumeWorkersCue, parkedWorkersCue, scheduleAnswerCorrectionCue:
 		return true
 	default:
 		return strings.HasPrefix(content, interruptedWorkersCueLead)

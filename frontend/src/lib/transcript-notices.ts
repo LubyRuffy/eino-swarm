@@ -77,6 +77,10 @@ export function modelRetryNotice(text?: string): string {
     switch (body?.reason) {
       case "scheduled_no_activity":
         return "Continuing the scheduled check."
+      case "schedule_claim_unverified":
+        return "Checking the schedule before reporting it as arranged."
+      case "workers_uncollected":
+        return "Collecting delegated work before completing this turn."
       case "context_overflow":
         return "The prompt exceeds the model window. Compressing and trying once."
       case "invalid_tool_json":

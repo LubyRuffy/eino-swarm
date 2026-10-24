@@ -63,7 +63,7 @@ func TestGoalToolScopeErrorsStayRecoverable(t *testing.T) {
 	if err := e.Store().DB().Exec("DELETE FROM threads WHERE id = ?", thread).Error; err != nil {
 		t.Fatal(err)
 	}
-	out, err := e.reportScheduleJSON(thread, turn, `{"keep":false}`)
+	out, err := e.reportOwnedTestScheduleJSON(thread, turn, `{"keep":false}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestGoalToolScopeErrorsStayRecoverable(t *testing.T) {
 
 func TestStoppingAnAlreadyConsumedWakeStillAllowsGoalCompletion(t *testing.T) {
 	e, thread, turn, _ := goalScheduledTurn(t, store.ScheduleCreatedManager, store.ScheduleThread, store.ScheduleDone)
-	out, err := e.reportScheduleJSON(thread, turn, `{"keep":false}`)
+	out, err := e.reportOwnedTestScheduleJSON(thread, turn, `{"keep":false}`)
 	if err != nil {
 		t.Fatal(err)
 	}

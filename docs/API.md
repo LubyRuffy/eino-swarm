@@ -223,7 +223,8 @@ Client startup metadata. During recovery, clients poll it until `startup` is `re
 `startup` is `restoring` while the serving process restores conversation state,
 then `ready`. `restore.completed/total` counts examined conversations. Optional
 `restore.failed` counts individual conversations that could not be restored;
-those failures remain explicit in their original-turn Trace and engine log.
+running and parked failures both count, with `engine_restore.phase: "failed"`
+and their original cause retained in the original-turn Trace and engine log.
 They do not terminate the serving engine or claim the failed workers resumed.
 Ready clients retain a static failure warning while other work remains usable. HTTP reads,
 event streams, presence, composer draft storage, read receipts and Stop remain
@@ -894,7 +895,8 @@ Body `{"ids": ["pj_a", "pj_b"]}`. Pins that order in the sidebar. Unknown ids ar
   "enabled": true,
   "memory": {"text": "…", "entries": ["…"], "chars": 412, "limit": 2200, "rev": "a1b2c3d4e5f6"},
   "skills": [{"name": "weekly-rollup", "description": "…", "updated_at": "…"}],
-  "needs_tidy": false
+  "needs_tidy": false,
+  "skill_stale_days": 90
 }}
 ```
 
@@ -907,6 +909,11 @@ agent fetches it with `skill_view`. A copied skill also carries `origin`
 body. That index is the project's memory, not a
 `SKILL.md` already in the workspace. `needs_tidy` is true when a same-subject
 family is still on disk. Opening this endpoint does not fold them.
+Project and library memory responses include `skill_stale_days`, the configured
+advisory threshold. Each skill also includes `views` (number) and
+`last_viewed_at` (UTC timestamp; zero time means never viewed). Agent
+`skill_view` increments usage; HTTP reads, list and copy calls do not. The
+prompt index omits these fields, and copies start at zero.
 
 ### `PUT /api/projects/:id/memory`
 
@@ -923,7 +930,20 @@ typed them (`400`).
 
 ### `POST /api/projects/:id/memory/tidy-skills` → `200`
 
-Curates the skill catalog on demand. Stem families fold first — the same
+Curates project memory on demand. Current notes accompany the live skill index;
+tidy-only `memory_reclassify` can promote a uniquely matched note to a skill or
+demote a short declarative skill to a note. Workers and post-turn reviewers do
+not receive this tool; the shared-library tidy does not receive notes or moves.
+Promote requires its body to equal the entire source note after whitespace
+normalization, without extra steps or assertions;
+demote requires an equivalent complete short body without Markdown step markers,
+within `entry_max` and the total note budget. Destination writes precede source
+deletions, not a multi-file transaction. Partial moves retain actual writes as
+create/add/delete changes; only complete moves use
+`action: promote` / `demote` with `target: skill_manage`. Retry may establish an
+already-present final state without new changes; it does not establish history.
+
+Curates the skill catalog as part of that pass. Stem families fold first — the same
 hygiene that runs after a finished turn — then the memory-reviewer reads the
 live index and merge / patch / delete by content. A `SKILL.md` edited in
 Finder, or a pile of uniquely named duplicates the filename heuristic cannot
@@ -931,19 +951,20 @@ see, is otherwise left as it was. Without `Accept: text/event-stream` the
 body is the outcome, once. With that header the same call is
 `text/event-stream`: `tidy` events (`phase` `scan` / `text` / `change`)
 while the model is writing, then one `done` event whose `data` is the JSON
-body below, or `error` if the fold failed after the stream had started.
+body below, including `report.err` for reviewer failures. An outer fold or final
+memory-view failure after streaming starts emits `error` instead of `done`.
 `text` is the assistant prose so far, not a delta. A disconnect does not
 abort the fold. Model calls
 and a quiet `memory_review` (`notify: off`) hang on the project's latest
 finished turn when there is one; without a turn the reviewer still runs
 against the default provider. Serializes with that project's in-flight
-reviewer so a click cannot fold while a review is still writing. Pre-stream
-refusals stay JSON: `409 idle` after shutdown, `404` for a project nobody has.
+reviewer so a click cannot fold while a review is still writing.
 
 ```json
 {"memory": { "dir": "…", "enabled": true, "memory": {…}, "skills": […], "needs_tidy": false },
  "report": {
    "scanned": 3, "before": 3, "after": 2, "families": 1, "unchanged": 1,
+   "promoted": 0, "demoted": 0, "stale_candidates": [],
    "created": ["weekly-rollup"],
    "deleted": ["weekly-rollup-notes", "weekly-rollup-send"],
    "patched": [],
@@ -956,7 +977,34 @@ refusals stay JSON: `409 idle` after shutdown, `404` for a project nobody has.
  "reviewed": true}
 ```
 
-`report` is what the Memory panel prints after a click: how many skills were scanned, which names were merged / deleted / created / patched, and the leftover count. `created` is the keeper when that name was not already a skill; merging into an existing keeper leaves `created` empty. `reviewed` is true when the reviewer ran (any non-empty catalog after the stem fold). `folded` is false and the name lists are empty when the model looked and kept the catalog. `changes` duplicates `report.changes` so a client that only read the first version still works. `report.err` is set when the model call failed after the stem fold already landed.
+`report.promoted` and `report.demoted` count completed moves. They do not count
+partial destination writes as completed moves, and existing count fields retain
+their skill-catalog meaning. `tidy` change events include those actions. No
+wire event kind or endpoint path changed. As before, when no prior conversation
+turn exists there is no turn Trace anchor.
+
+`report.stale_candidates` lists skill names whose last view (or content
+modification time when never viewed) reached `memory.skill_stale_days` before
+curation. The streamed scan and original-turn `memory_review` retain the same
+list. It is advisory input, not a list of automatic deletions.
+
+`report` is what the Memory panel prints after a click: how many skills were scanned, which names were merged / deleted / created / patched, and the leftover count. `created` is the keeper when that name was not already a skill; merging into an existing keeper leaves `created` empty. `reviewed` is true when the reviewer ran (any non-empty catalog or project notes after the stem fold). `folded` is false and the name lists are empty when the model looked and kept the catalog. `changes` duplicates `report.changes` so a client that only read the first version still works.
+
+`memory_reclassify` validation refusals are internal tool-result JSON with
+`success: false`; an unchanged refusal is feedback the reviewer may correct,
+not an HTTP failure or necessarily a `report.err`. If a move fails after saving
+changes, its tool result retains `changed: true` and the actual receipts, and
+the tidy wrapper stops the reviewer. Reviewer errors, including model errors
+and such partial tool failures, populate `report.err`. The endpoint still
+returns HTTP `200`, or SSE `done` with the same report, preserving saved changes.
+Clients must inspect `report.err`; successful transport is not successful curation.
+
+Errors outside the reviewer, such as fold setup/storage reads or the final
+memory-view read, use the normal JSON status/code mapping for non-streamed
+requests (`409` / `code: idle` after shutdown). Project lookup fails before a
+stream starts and remains JSON (`404` for a missing project). Once SSE headers
+are sent, outer fold/view errors emit an `error` event under HTTP `200`, with no
+`done` report; this differs from reviewer failures carried in `done.report.err`.
 
 ### `GET /api/projects/:id/skills/:name`
 
@@ -1083,8 +1131,12 @@ Rearming that continuation after a successful completion in the same turn is
 also refused. These are recoverable tool results, retained under the same turn
 in Trace, and do not cancel independent or human-created waits. Goal completion
 and its event commit together; storage errors leave both unchanged. Existing
-completed records retain their explicit recovery path: `reopen_goal` in that turn, or **Start** on the Done banner,
-clears it and pursuit continues. `goal_blocked` is true after `block_goal` or after a pursuing
+completed records retain their explicit recovery path: `reopen_goal` in that turn,
+`PATCH /api/threads/:id` with `goal_resume: true`, or the phone `resume_goal` RPC
+clears completion and pursuit continues. PC and phone hide the completed goal
+strip, including after reload/reopen, while retaining the stored objective,
+completion state and conversation history; the completed strip has no Start
+control. `goal_blocked` is true after `block_goal` or after a pursuing
 turn fails for a non-recoverable reason outside the isolated scheduled-check
 boundary (progress needs the human or an external change). A truncated
 tool-call JSON, a `429`, or a dropped stream retries inside the same turn twice;
@@ -1094,7 +1146,8 @@ interrupts a pursuing turn (the banner shows Paused, a line that this is
 not an error, and Start); `goal_idle`
 is true after an auto-continue finished with no counted tool activity
 (Start or a human message resumes). The objective text stays in
-every case so the banner can show it. `goal_block_reason` is the optional
+every case. The banner shows unfinished objectives and hides completed ones;
+setting a new objective resets completion and displays it again. `goal_block_reason` is the optional
 one-line reason from `block_goal`, or the public turn error when a pursuing
 turn dies before the manager can call it. `goal_started_at` is when the current
 objective was set (not edited). `plan_mode` is true while `/plan` is open.
@@ -1299,8 +1352,25 @@ or the CJK punctuation comma `、` a Slash key emits under Chinese
 punctuation);
 the rest is the objective, space optional so a glued CJK IME string still
 matches. That pins the standing objective and starts pursuit when idle, or
-steers the live turn. The stored `user_text` is the objective. Bare `/goal`
+steers the live turn. Command arguments are not parsed as another command: a
+leading goal may contain a literal `/goal` or `/plan` in its objective. The stored
+`user_text` is the complete objective. Bare `/goal`
 is `400`. `/goals …` is still an ordinary message.
+The standalone suffix `<objective> /goal` also sets the objective, using
+the preceding text; trailing whitespace is allowed. An explicit new goal
+replaces a completed objective and starts pursuit again. Normal messages
+retain the completed state. HTTP and paired-phone sends use the same engine
+command parser, including steering while a turn is running. An idle PC composer
+submits one complete command through the existing send endpoint; it does not
+PATCH a goal and then send its argument as a separate message. Goal commands
+use the existing steer endpoint, including a permitted goal update while an ask
+remains pending; they never submit that command as the answer. Plan entry uses
+the existing start-turn endpoint, so a newly busy or awaiting-answer target
+returns `409` and retains the draft. Busy goal edits and clearing keep their
+existing PATCH behavior.
+Goal commands accept text only. Images or files on a goal-command send are
+rejected before changing the objective, including while the conversation is
+running; clients must retain the original draft and attachments on that error.
 
 `from_event_seq`, when set, names a stored `user_message` to replace. That
 event and everything after it is deleted (later turns, their messages and
@@ -1395,13 +1465,17 @@ when that seq is not an unread steer on this turn.
 
 ### Follow-ups
 
-A follow-up is a message typed while a turn was already running. It waits for
-that turn to finish cleanly, then starts as the next turn. The live turn's own
+A follow-up is a message typed while a turn was already running. After that
+turn completes or fails, the oldest queued human message starts as a separate
+turn. This also applies to a failed scheduled check; dequeueing does not rewrite
+its error or run result, or rearm, cancel or unpause its future wake. A failure
+without queued human input does not
+authorize an automatic retry. The live turn's own
 user text is not queued: a leftover Enter or an IME restoring the committed
 string must not schedule the same request again. ⌘Enter (and Steer on a waiting
-row) injects into this turn and drops a queued copy of that text. Cancelled and failed
-turns leave the remaining queue in place. Steer on one of those leftover rows starts
-that text as the next turn; Stop still does not flush the rest by itself. Refresh, a crash, or quitting the app does not
+row) injects into this turn and drops a queued copy of that text. Stop, cancelled
+turns and engine restart leave the remaining queue in place. Steer on a leftover
+row starts that text as the next turn; Stop does not flush the rest by itself. Refresh, a crash, or quitting the app does not
 lose it: the rows live on the conversation and run after a leftover turn
 finishes. Editing a waiting row and submitting it moves that message to the
 back of the FIFO. Pasted images are not queued (the row is text-only) — they
@@ -1485,6 +1559,11 @@ another `swarm.manager_max_iterations` rounds; `false` ends it as `cancelled`
 with a short "stopped after N tool rounds" rather than eino's graph error.
 Steering while paused also continues. `409 idle` when the turn is not waiting.
 
+普通回合因未收取 worker 而重复提前结束时，也使用同一 `max_iterations`
+人工暂停。暂停保留同一 running turn 与原 worker 请求；`continue:true` 或
+人工 steer 只再授予一次收取纠正尝试，`false`／Stop 仍取消。重启恢复人工暂停，
+不能在没有新的人类继续指令时自动获得更多纠正额度。
+
 ```json
 {"continued": true}
 ```
@@ -1501,6 +1580,12 @@ and replayed tool calls. Display labels and submitted labels remain unchanged.
 `text` is Other for every unanswered question (composer Enter while waiting).
 `409 idle` when nothing is waiting; `409 ask_mismatch` when `call_id` is not
 the open questionnaire. The same ReAct turn continues after the tool result.
+
+An engine handoff retains an unanswered questionnaire under the original turn
+and `call_id`. A synthetic interrupted-tool `outcome_unknown` is not an answer.
+Legacy unknown receipts remain in Trace; recovery needs the matching unaccepted
+human-pause checkpoint. A real accepted answer takes precedence in either
+receipt/checkpoint order. Repeated answers do not create another model call.
 
 ```json
 {"answered": true}
@@ -1645,6 +1730,7 @@ shortening only the bounded detail text.
 | `agent_message` | a completed assistant message |
 | `tool_call` | `Text` is `name(args)`, paired by `tool_call_id` |
 | `tool_result` | the result, paired by `tool_call_id`. Newlines are kept so the UI can render a file body; clipped at 64k runes |
+| `ask_recovered` | the existing unanswered human wait is restored, not executed again; original `tool_call_id`, `text` is original `{"questions":[...]}`. A confirmed answer wins over duplicate recovery or unknown-result replay; private checkpoint history is excluded |
 | `tool_delta` | live tool output while a call still runs; `text` is the accumulated payload so far (for `exec`, `{stdout,stderr}` JSON), paired by `tool_call_id`. `seq` is 0, not stored. The model still receives one `tool_result` when the call finishes |
 | `tool_call_delta` | the model is still writing a tool call. `text` is `name(N)` where `N` is the argument size in runes so far, paired by `tool_call_id`. `seq` is 0, not stored. The call has not run; `tool_call` arrives when the stream ends and replaces this row |
 | `spawned` | a sub-agent started; `text` is its system prompt, `role` is its role, `agent_id` is its id. A slash-shaped role is stored as the job word (`-2`, `-3` when that word is taken), not the path. Older rows stored the role in `text` too. A later `spawn_agent` for that role reuses the same id: steering while running, a second `spawned` after it finished |
@@ -1665,11 +1751,11 @@ shortening only the bounded detail text.
 | `model_backoff` | a chat request is waiting for its shared upstream recovery cooldown. `agent_id` is the actual caller; `text` is JSON `{attempt,wait_ms}` (consecutive service failure generation and remaining cooldown at observation, with positive sub-millisecond waits recorded as `1`; `0` means waiting for an already active probe with unknown remaining time). This is neither a sent request nor a new retry allowance. Multiple waiters can record the same generation; only one probe is admitted after cooldown. A later failure can extend the wait. Stored in the same turn Trace and shown in the desktop Full log. |
 | `model_retry` | the manager hit a recoverable ChatModel failure and re-entered this turn. `text` is JSON `{attempt,cap,reason?}`. `reason` selects the transcript notice: `invalid_tool_json` (the model returned a tool call that was not valid JSON), `model_response_invalid` (the SDK cannot decode the model HTTP response or stream, including a wrong field type; the turn did not reach a tool), `rate_limited`, `model_unavailable` (HTTP 500/502/503/504/529), `model_transport` (dropped stream, connection reset, mid-stream read timeout), `model_idle` (silence after the first byte). Older rows omit `reason` and keep the generic retry line. `reason: "context_overflow"` is separate: the endpoint rejected the call because the prompt plus the requested output does not fit the window. That notice names the window, the turn compacts once, and a second rejection ends the turn with `the prompt plus the requested output exceeds this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry`. A repeating schedule that ends that way is paused. When the in-turn retries are exhausted, the turn error is the same class: `the model returned a tool call that was not valid JSON`, `the model service is rate limiting requests`, `the model service is unavailable`, `the model service returned a response that could not be decoded`, or `the connection to the model service dropped`. An exhausted idle timeout keeps the sentence that names how long the model sent no data. A trailing tool call whose arguments are not valid JSON is refused before the next model request and then dropped, so that payload is not sent and a `400 Unterminated string` cannot repeat. `reason: "scheduled_no_activity"` is the scheduled-check continuation, not a model failure |
 | `title` | the conversation was named; `text` is the new title, `agent_id` is `title-namer`. Not rendered in the transcript |
-| `session_memory` | the rolling session briefing was refreshed from the event log; `text` is JSON `{summary,through_seq}`. `agent_id` is `session-memory`. Not rendered in the transcript; compact and the reviewer read the thread fields. Post-turn refresh is background work: a queued follow-up starts as soon as the turn is `done`, and does not wait for this event |
+| `session_memory` | the rolling session briefing was refreshed from the event log; `text` is JSON `{summary,through_seq}`. `agent_id` is `session-memory`. Not rendered in the transcript; compact and the reviewer read the thread fields. Post-turn refresh is background work: a queued follow-up starts as soon as the turn is `done` or `error`, and does not wait for this event |
 | `goal` | the human set or cleared a standing objective; `text` is the objective (empty when cleared). Resets complete/blocked/capped |
 | `goal_complete` | the manager called `complete_goal`; auto-continue stops. `text` is JSON `{summary}`. `reopen_goal` in the same turn records `goal_resumed`, resets the auto-continue budget, and pursuit continues |
 | `goal_blocked` | the manager called `block_goal`, or a pursuing turn had a non-recoverable failure outside the isolated scheduled-check boundary. Auto-continue stops until the human resumes. `text` is JSON `{reason}` |
-| `goal_resumed` | `role: "human"` marks an explicit goal Start and resets worker watchdog recovery; manager `reopen_goal` does not reset it. The human started pursuit again after a block, a cap, an idle open goal, or a completed objective that finished too early — or the manager called `reopen_goal` after a mistaken `complete_goal`. Same Working-clock rule as `goal_continued` |
+| `goal_resumed` | `role: "human"` marks an explicit human goal-resume request and resets worker watchdog recovery; manager `reopen_goal` does not reset it. The human started pursuit again after a block, a cap, an idle open goal, or a completed objective that finished too early — or the manager called `reopen_goal` after a mistaken `complete_goal`. Same Working-clock rule as `goal_continued` |
 | `goal_continued` | the runtime started the next turn to keep pursuing an open objective. Not a `user_message`. Clients start the Working clock from this event's `created_at` (a `done` has just cleared `status.started_at`) |
 | `goal_capped` | consecutive auto-continues hit `swarm.goal_max_auto_turns` (`text` is JSON `{auto_turns,cap}`), or the human interrupted a pursuing turn (`text` is JSON `{reason:"interrupted"}`). A later human message or resume resets the budget |
 | `goal_idle` | an engine-started continuation finished with no counted tool activity (`text` is the notice). Auto-continue stops until a human message or resume; the objective stays open |
@@ -1689,6 +1775,42 @@ shortening only the bounded detail text.
 | `done` | the turn finished; `text` is the final answer. Empty / whitespace `text` hides chat bubbles only after `schedule_fired` when that turn did not already report findings. An armed `schedule`, `goal_continued`, compact, or other notice plus empty `done` stays visible. Non-empty `text` after a fire is findings and keeps the fired chip |
 | `error` | the turn failed; `err` explains |
 | `ready` | replay is complete (no `seq`, not stored) |
+
+`model_retry.reason: "schedule_claim_unverified"` is a bounded correction of
+an unsupported scheduling claim in the same turn. It does not mean the
+provider failed or that a wait was created. Its metadata remains in Trace;
+the transcript says the schedule is being checked. Candidate manager prose
+is held until the tool-free `schedule-answer-policy` call extracts claims
+and code verifies them against current persisted plans. A new-arrangement
+claim needs this turn's successful arrangement, and a cancelled or failed
+arrangement cannot support it. One correction is allowed; repeated unsupported
+claims or an unavailable check produce an explicit error. Restart preserves
+the original turn’s consumed allowance. Reading or saving its correction
+receipt must succeed before another corrective model request. Tool, reasoning and
+worker events continue live. The policy model is an interpreter, and the
+schedule database remains the source of scheduling facts. Exhaustion keeps
+its scheduling-admission error class even when the underlying diagnostic
+cause is a provider error; it cannot start another automatic goal turn.
+Paired-phone Earlier paging retains classified retry notices, including this
+reason, and skips unknown or malformed envelopes that paint no phone block.
+
+`model_retry.reason: "workers_uncollected"` 表示普通回合的完成答复被暂扣，
+等待主管收取或明确放弃仍未结清的子任务；这是生命周期纠正，不是 provider
+错误。`text` 为 `{attempt:1,cap:1,reason:"workers_uncollected",worker_ids:[...]}`，
+归属原 turn，PC 与手机显示正在收取子任务结果。一次自动纠正后仍提前结束，
+进入上述 Continue／Stop 暂停，不能发布 done 或为成功收尾取消这些 worker。
+有当前有效 goal／同对话 wake 的工作继续遵守既有停泊契约。
+
+生命周期 `tool_result.text` 的新成功回执附带 worker 执行 `generation`：
+`spawn_agent`／`resume_agent` 返回 `{agent_id,generation,...}`；`wait_agents`
+每个已知条目包含 `{agent_id,generation,status,...}`，只有实际返回的 done／failed
+结果结清该 generation，running／unknown 和 wait 超时不结清；`close_agent`
+返回 `{agent_id,generation,cancelled:true}`，或对已结束任务返回
+`{agent_id,generation,cancelled:false,already_finished:true}` 并明确放弃其结果。
+未知 ID 仍返回拒绝，不结清其他任务。回放只认 manager 的配对调用／回执及精确
+ID／generation；它不同于一次模型输出的 `message_id`，不新增 event 列。
+缺 generation 的旧 finished roster 保持 legacy 已结束兼容，不追溯要求收取；
+旧 running worker 仍须收取，新 `generation>0` 严格保留收取状态。
 
 Two rules the client depends on:
 
@@ -2132,16 +2254,22 @@ slot (`next_run_at` becomes the occurrence after the one that was pending);
 an interval resets from now. A delay one-shot is marked `done`. The
 composer wait banner hides while that conversation is working.
 
-A model response with no tool result or explicit `report_schedule` continues
-once in that same turn (`model_retry`, reason `scheduled_no_activity`). A
-second such response ends the turn and run as `error`, leaving the run unread;
-opening prose alone cannot become findings. Automatic fires use the same
-rule. Explicit empty findings remain quiet; a real tool result preserves the
-existing omitted-report fallback. No new run is created by this continuation.
+A nonempty text result may finish the check without any tool call or explicit
+`report_schedule`; it becomes findings and stays unread. Tool selection remains
+automatic, including recovery. A blank/whitespace final with neither a real
+tool result nor an explicit report continues once in the same turn
+(`model_retry`, reason `scheduled_no_activity`). A second empty response ends
+the turn and run as `error`, leaving the run unread, with
+`scheduled check ended without returning text, executing a tool or reporting its result`.
+Automatic fires use the same rule. Explicit empty findings remain quiet and
+take precedence over final text; a real tool result preserves the existing
+omitted-report fallback. Synthetic retry cleanup is not a tool result.
+No new run is created by this continuation. A text result ends this check;
+it does not establish that external effects occurred or complete a standing goal.
 
 A failed scheduled check can finish while its workers continue under an
 executable standing goal or an active same-thread wake. This applies to the
-evidence failure above and ordinary model failures, including a rejected
+empty-response failure above and ordinary model failures, including a rejected
 request or exhausted in-turn transient retries. The engine persists
 `workers_retained` before the terminal error and keeps the same registry,
 worker IDs and ongoing calls. The turn/run stay `error`, the run stays unread,
@@ -2290,6 +2418,15 @@ The same turn's event/Trace stream contains `restart_preparing`,
 `engine_restart_checkpoint` is versioned recovery data, hidden from ordinary
 conversation rendering; it is not a completed answer, tool result or worker
 creation. Unknown interrupted tools require verification of external effects.
+
+The named SSE / phone event `ask_recovered` restores one original unanswered
+questionnaire. Its `thread_id`, `turn_id`, manager identity and `tool_call_id`
+refer to the existing call; `text` is the original argument JSON
+`{"questions":[...]}`. It contains neither answers nor manager/worker history.
+It is persisted before broadcasting or entering the recovered wait. It does
+not represent a new tool execution or successful result. PC/phone live,
+reconnect and paged replay keep an already accepted answer authoritative over
+late unknown receipts and duplicate call/recovery events.
 
 An acknowledged user Stop is recorded as `user_stop_requested` before its
 cancellation is signalled. Restart must consume that intent rather than

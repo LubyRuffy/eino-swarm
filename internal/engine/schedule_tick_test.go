@@ -587,9 +587,10 @@ func TestStartSchedulerIsIdempotentAndShutdownStopsIt(t *testing.T) {
 
 func armDueWake(t *testing.T, e *Engine, clk *fakeClock, threadID string, everyS int) *store.Schedule {
 	t.Helper()
+	// Ticker and failure fixtures must not start an unrelated model request.
 	sch, err := e.CreateSchedule(ScheduleInput{
 		Kind: store.ScheduleThread, ThreadID: threadID,
-		Prompt: scheduleWaitPrompt, EveryS: everyS,
+		Title: "Scheduled work", Prompt: scheduleWaitPrompt, EveryS: everyS,
 		CreatedBy: store.ScheduleCreatedHuman,
 	})
 	if err != nil {

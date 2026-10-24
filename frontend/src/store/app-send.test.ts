@@ -12,6 +12,7 @@ const fake = vi.hoisted(() => ({
   failure: undefined as Error | undefined,
   steers: [] as string[],
   followups: [] as string[],
+  logs: {} as Record<string, SwarmEvent[]>,
 }))
 
 function thread(id: string): Thread {
@@ -33,7 +34,7 @@ vi.mock("@/lib/api", () => ({
   api: {
     thread: async (id: string) => ({ thread: thread(id), status: { running: false } }),
     turns: async () => [],
-    threadLog: async () => ({ events: [], has_more: false }),
+    threadLog: async (id: string) => ({ events: fake.logs[id] ?? [], has_more: false }),
     followups: async () => [],
     files: async () => ({ workspace: "", files: [] }),
     schedules: async () => ({ schedules: [], unread: 0 }),
@@ -86,6 +87,7 @@ beforeEach(async () => {
   fake.failure = undefined
   fake.steers.length = 0
   fake.followups.length = 0
+  fake.logs = {}
   useApp.setState({
     activeId: undefined, threads: [], status: { running: false },
     followups: [], schedules: [], error: undefined, meta: undefined,
@@ -216,6 +218,38 @@ describe("send acknowledgement ordering", () => {
     expect(useApp.getState().activeId).toBe("th_other")
     expect(useApp.getState().status.running).toBe(false)
     expect(useApp.getState().threads.find((row) => row.id === "th_other")?.running).toBe(false)
+  })
+
+  it.each(["live", "history"])("keeps an inactive goal target idle when its %s terminal beats an acknowledgement from another conversation", async (arrival) => {
+    await useApp.getState().openThread("th_other")
+    fake.onEvent?.({ ...event("user_message", 99, "tn_other"), thread_id: "th_other" })
+    fake.onEvent?.({ ...event("done", 100, "tn_other"), thread_id: "th_other" })
+    expect(useApp.getState().transcript.lastSeq).toBe(100)
+    const resolve = delayedAcknowledgement()
+    const sending = useApp.getState().setGoal("Inspect the existing work", "th_old")
+    await vi.waitFor(() => expect(fake.steers).toEqual(["th_old"]))
+    const completed = [event("user_message", 9), event("done", 10)]
+    if (arrival === "history") fake.logs.th_old = completed
+    await useApp.getState().openThread("th_old")
+    if (arrival === "live") for (const row of completed) fake.onEvent?.(row)
+    expect(useApp.getState().transcript.lastSeq).toBe(10)
+    expect(useApp.getState().transcript.turns.map((row) => row.status)).toEqual(["done"])
+    expect(useApp.getState().status.running).toBe(false)
+    resolve({ steered: true })
+    expect(await sending).toBe(true)
+    expect(useApp.getState().activeId).toBe("th_old")
+    expect(useApp.getState().status.running).toBe(false)
+    expect(useApp.getState().transcript.running).toBe(false)
+    expect(useApp.getState().threads.find((row) => row.id === "th_old")?.running).toBe(false)
+  })
+
+  it("uses the visible target's own sequence when its accepted live update has no new event yet", async () => {
+    fake.onEvent?.(event("user_message", 9, "tn_previous"))
+    fake.onEvent?.(event("done", 10, "tn_previous"))
+    fake.acknowledgement = Promise.resolve({ steered: true })
+    expect(await useApp.getState().setGoal("Inspect the current work")).toBe(true)
+    expect(useApp.getState().transcript.lastSeq).toBe(10)
+    expect(useApp.getState().status.running).toBe(true)
   })
 
   it("keeps failed-request feedback idle", async () => {

@@ -1,5 +1,6 @@
 // CI-only native UI helper. Never run outside a private VM case.
 #import <AppKit/AppKit.h>
+#import <CommonCrypto/CommonDigest.h>
 #import <ApplicationServices/ApplicationServices.h>
 #include <libproc.h>
 #include <sys/proc_info.h>
@@ -29,6 +30,17 @@ static id attr(AXUIElementRef item, CFStringRef key) {
     return AXUIElementCopyAttributeValue(item, key, &result) == kAXErrorSuccess ? CFBridgingRelease(result) : nil;
 }
 static NSString *string(id value) { return [value isKindOfClass:NSString.class] ? value : @""; }
+static BOOL realWindow(id candidate, pid_t expectedPID) {
+    if (!candidate || CFGetTypeID((__bridge CFTypeRef)candidate) != AXUIElementGetTypeID()) return NO;
+    AXUIElementRef window = (__bridge AXUIElementRef)candidate;
+    CFTypeRef role = NULL; pid_t owner = 0;
+    AXError roleError = AXUIElementCopyAttributeValue(window, kAXRoleAttribute, &role);
+    AXError pidError = AXUIElementGetPid(window, &owner);
+    BOOL valid = roleError == kAXErrorSuccess && role && CFGetTypeID(role) == CFStringGetTypeID()
+        && CFEqual(role, kAXWindowRole) && pidError == kAXErrorSuccess && owner == expectedPID;
+    if (role) CFRelease(role);
+    return valid;
+}
 static void collect(AXUIElementRef item, NSMutableArray *areas, NSMutableArray *buttons,
                     NSMutableString *text, NSUInteger *count, BOOL *web) {
     if (++*count > 20000 || text.length > 100000) return;
@@ -136,7 +148,381 @@ static void type(pid_t pid, NSString *value) {
         usleep(5000);
     }
 }
+static BOOL validPasteboardPayload(NSData *source, BOOL stored, NSData *actual,
+                                  NSInteger ownedCount, NSInteger observedCount) {
+    return source.length > 0 && stored && [actual isEqualToData:source]
+        && ownedCount >= 0 && observedCount == ownedCount;
+}
+static BOOL matchesPasteMenu(NSString *role, NSString *title, BOOL edit) {
+    return [role isEqual:edit ? @"AXMenuBarItem" : @"AXMenuItem"]
+        && [(edit ? @[@"Edit", @"编辑"] : @[@"Paste", @"粘贴"]) containsObject:title ?: @""];
+}
+static BOOL validPasteMenuTarget(NSUInteger matches, pid_t owner, pid_t target,
+                                id enabled, pid_t frontmost) {
+    return target > 0 && matches == 1 && owner == target && frontmost == target
+        && [enabled isKindOfClass:NSNumber.class] && [enabled boolValue];
+}
+static NSString *pasteDigest(NSData *data) {
+    if (!data) return @"unavailable";
+    unsigned char bytes[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(data.bytes, (CC_LONG)data.length, bytes);
+    NSMutableString *result = [NSMutableString string];
+    for (NSUInteger i = 0; i < sizeof(bytes); i++) [result appendFormat:@"%02x", bytes[i]];
+    return result;
+}
+static BOOL savePasteReceipt(NSDictionary *receipt) {
+    NSString *path = [env(@"ZWAI_NATIVE_EVIDENCE") stringByAppendingPathComponent:@"paste-transport-observation.json"];
+    NSData *data = [NSJSONSerialization dataWithJSONObject:receipt options:NSJSONWritingPrettyPrinted error:nil];
+    return data && [data writeToFile:path options:NSDataWritingAtomic error:nil];
+}
+static BOOL findPasteMenu(AXUIElementRef item, NSMutableArray *matches, NSUInteger depth, NSUInteger *visited) {
+    if (depth > 5 || ++*visited > 1000) return NO;
+    if (matches.count > 1) return YES;
+    if (matchesPasteMenu(string(attr(item, kAXRoleAttribute)), string(attr(item, kAXTitleAttribute)), NO))
+        [matches addObject:(__bridge id)item];
+    id children = attr(item, kAXChildrenAttribute);
+    if ([children isKindOfClass:NSArray.class]) for (id child in children)
+        if (!findPasteMenu((__bridge AXUIElementRef)child, matches, depth+1, visited)) return NO;
+    return YES;
+}
+static NSDictionary *requestNativePaste(AXUIElementRef app, pid_t pid, NSPasteboard *pasteboard,
+                                       NSData *source, NSInteger ownedCount) {
+    NSMutableArray *edits = [NSMutableArray array], *pastes = [NSMutableArray array];
+    id bar = attr(app, kAXMenuBarAttribute);
+    id children = bar ? attr((__bridge AXUIElementRef)bar, kAXChildrenAttribute) : nil;
+    if ([children isKindOfClass:NSArray.class]) for (id child in children)
+        if (matchesPasteMenu(string(attr((__bridge AXUIElementRef)child, kAXRoleAttribute)),
+                             string(attr((__bridge AXUIElementRef)child, kAXTitleAttribute)), YES)) [edits addObject:child];
+    pid_t editOwner = 0, pasteOwner = 0;
+    id editEnabled = edits.count == 1 ? attr((__bridge AXUIElementRef)edits[0], kAXEnabledAttribute) : nil;
+    if (edits.count == 1) AXUIElementGetPid((__bridge AXUIElementRef)edits[0], &editOwner);
+    AXError opened = kAXErrorFailure, pressed = kAXErrorFailure;
+    pid_t editFrontmost = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;
+    BOOL complete = NO; NSUInteger visited = 0;
+    if (validPasteMenuTarget(edits.count, editOwner, pid, editEnabled, editFrontmost)) {
+        opened = AXUIElementPerformAction((__bridge AXUIElementRef)edits[0], kAXPressAction);
+        if (opened == kAXErrorSuccess) complete = findPasteMenu((__bridge AXUIElementRef)edits[0], pastes, 0, &visited);
+    }
+    id pasteEnabled = pastes.count == 1 ? attr((__bridge AXUIElementRef)pastes[0], kAXEnabledAttribute) : nil;
+    if (pastes.count == 1) AXUIElementGetPid((__bridge AXUIElementRef)pastes[0], &pasteOwner);
+    NSData *actual = [pasteboard dataForType:NSPasteboardTypePNG];
+    NSInteger observedCount = pasteboard.changeCount;
+    BOOL unchanged = validPasteboardPayload(source, YES, actual, ownedCount, observedCount);
+    pid_t pasteFrontmost = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;
+    if (opened == kAXErrorSuccess && complete && unchanged
+        && validPasteMenuTarget(pastes.count, pasteOwner, pid, pasteEnabled, pasteFrontmost))
+        pressed = AXUIElementPerformAction((__bridge AXUIElementRef)pastes[0], kAXPressAction);
+    return @{@"edit_count": @(edits.count), @"edit_owner_pid": @(editOwner), @"edit_enabled": editEnabled ?: NSNull.null,
+             @"edit_open_error": @(opened), @"paste_count": @(pastes.count), @"paste_owner_pid": @(pasteOwner),
+             @"paste_enabled": pasteEnabled ?: NSNull.null, @"paste_press_error": @(pressed),
+             @"edit_frontmost_pid": @(editFrontmost), @"paste_frontmost_pid": @(pasteFrontmost),
+             @"menu_search_complete": @(complete), @"clipboard_unchanged_before_paste": @(unchanged),
+             @"change_count_before_paste": @(observedCount)};
+}
 static int fail(NSString *message) { fprintf(stderr, "%s\n", message.UTF8String); return 2; }
+static BOOL waitForActivation(NSRunningApplication *running, double deadline) {
+    for (;;) {
+        double remaining = deadline - NSProcessInfo.processInfo.systemUptime;
+        if (remaining <= 0) return NO;
+        // NSRunningApplication refreshes these properties on the main runloop.
+        [[NSRunLoop mainRunLoop] runMode:NSDefaultRunLoopMode
+                            beforeDate:[NSDate dateWithTimeIntervalSinceNow:MIN(.01, remaining)]];
+        if (NSProcessInfo.processInfo.systemUptime >= deadline) return NO;
+        if (running.active) return YES;
+    }
+}
+
+static BOOL activationCase(pid_t pid) {
+    // Only inspect the inherited marker, never publish the target environment.
+    int mib[] = {CTL_KERN, KERN_PROCARGS2, pid}; size_t size = 0;
+    if (sysctl(mib, 3, NULL, &size, NULL, 0) || size < sizeof(int)) return NO;
+    NSMutableData *data = [NSMutableData dataWithLength:size];
+    if (sysctl(mib, 3, data.mutableBytes, &size, NULL, 0) || size < sizeof(int) || size > data.length) return NO;
+    const char *cursor = (const char *)data.bytes + sizeof(int), *end = (const char *)data.bytes + size;
+    int argc = 0; memcpy(&argc, data.bytes, sizeof(argc));
+    if (argc <= 0) return NO;
+    size_t length = strnlen(cursor, end-cursor);
+    if (cursor+length == end) return NO;
+    cursor += length+1;
+    while (cursor < end && !*cursor) cursor++;
+    for (int index = 0; index < argc && cursor < end; index++) {
+        length = strnlen(cursor, end-cursor);
+        if (cursor+length == end) return NO;
+        cursor += length+1;
+    }
+    NSString *expected = [@"ZWAI_NATIVE_CASE_ID=" stringByAppendingString:env(@"ZWAI_NATIVE_CASE_ID")];
+    while (cursor < end) {
+        if (!*cursor) { cursor++; continue; }
+        length = strnlen(cursor, end-cursor);
+        if (cursor+length == end) return NO;
+        if ([expected isEqualToString:[[NSString alloc] initWithBytes:cursor length:length encoding:NSUTF8StringEncoding]]) return YES;
+        cursor += length+1;
+    }
+    return NO;
+}
+
+static NSString *activationCoreHash(NSString *path, double deadline) {
+    if (NSProcessInfo.processInfo.systemUptime >= deadline) return nil;
+    NSDictionary *before = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
+    if (![before[NSFileType] isEqual:NSFileTypeRegular] || ![before[NSFileSize] unsignedLongLongValue]
+        || [before[NSFileSize] unsignedLongLongValue] > UINT_MAX) return nil;
+    NSData *data = [NSData dataWithContentsOfFile:path options:NSDataReadingMappedIfSafe error:nil];
+    NSDictionary *after = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
+    if (!data || data.length != [before[NSFileSize] unsignedLongLongValue] || ![before isEqual:after]
+        || NSProcessInfo.processInfo.systemUptime >= deadline) return nil;
+    return pasteDigest(data);
+}
+
+static BOOL activationRecoveryProof(NSString *originalHash, NSString *actualHash,
+                                    NSString *bundle, NSString *original,
+                                    NSMutableDictionary *observed, double deadline) {
+    NSString *frozen = env(@"ZWAI_NATIVE_RECOVERY_IDENTITY");
+    if (!frozen.length) return [originalHash isEqual:actualHash];
+    observed[@"proof_stage"] = @"binding";
+    if (frozen.length > 8192 || NSProcessInfo.processInfo.systemUptime >= deadline) return NO;
+    id binding = [NSJSONSerialization JSONObjectWithData:[frozen dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+    NSSet *keys = [NSSet setWithArray:@[@"path", @"sha256", @"source_sha", @"version"]];
+    if (![binding isKindOfClass:NSDictionary.class] || ![[NSSet setWithArray:[binding allKeys]] isEqual:keys]) return NO;
+    NSString *path = string(binding[@"path"]), *pin = string(binding[@"sha256"]);
+    observed[@"proof_path"] = path; observed[@"proof_sha256"] = pin;
+    NSString *source = string(binding[@"source_sha"]), *version = string(binding[@"version"]);
+    NSRegularExpression *hex = [NSRegularExpression regularExpressionWithPattern:@"\\A[0-9a-f]{64}\\z" options:0 error:nil];
+    NSRegularExpression *commit = [NSRegularExpression regularExpressionWithPattern:@"\\A[0-9a-f]{40}\\z" options:0 error:nil];
+    NSRegularExpression *release = [NSRegularExpression regularExpressionWithPattern:@"\\A[0-9]+\\.[0-9]+\\.[0-9]+\\z" options:0 error:nil];
+    if (!path.isAbsolutePath
+        || [hex numberOfMatchesInString:pin options:0 range:NSMakeRange(0,pin.length)] != 1
+        || [commit numberOfMatchesInString:source options:0 range:NSMakeRange(0,source.length)] != 1
+        || [release numberOfMatchesInString:version options:0 range:NSMakeRange(0,version.length)] != 1) return NO;
+    NSDictionary *attributes = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
+    observed[@"proof_stage"] = @"bytes";
+    if (![attributes[NSFileType] isEqual:NSFileTypeRegular] || [attributes[NSFileSize] unsignedLongLongValue] > 32768) return NO;
+    NSData *data = [NSData dataWithContentsOfFile:path];
+    if (![pasteDigest(data) isEqual:pin] || NSProcessInfo.processInfo.systemUptime >= deadline) return NO;
+    id proof = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    observed[@"proof_stage"] = @"schema_and_origin";
+    keys = [NSSet setWithArray:@[@"schema", @"source_sha", @"version", @"original_core_sha256",
+        @"derived_core_sha256", @"derived_info_sha256", @"derived_icon_sha256", @"preparation_sha256"]];
+    if (![proof isKindOfClass:NSDictionary.class] || ![[NSSet setWithArray:[proof allKeys]] isEqual:keys]
+        || ![proof[@"schema"] isKindOfClass:NSNumber.class]
+        || CFGetTypeID((__bridge CFTypeRef)proof[@"schema"]) == CFBooleanGetTypeID()
+        || CFNumberIsFloatType((__bridge CFNumberRef)proof[@"schema"])
+        || ![proof[@"schema"] isEqual:@1] || ![source isEqual:proof[@"source_sha"]]
+        || ![version isEqual:proof[@"version"]] || ![originalHash isEqual:proof[@"original_core_sha256"]]) return NO;
+    for (NSString *key in @[@"original_core_sha256", @"derived_core_sha256", @"derived_info_sha256", @"derived_icon_sha256", @"preparation_sha256"]) {
+        NSString *value = string(proof[key]);
+        if ([hex numberOfMatchesInString:value options:0 range:NSMakeRange(0,value.length)] != 1) return NO;
+    }
+    observed[@"proof_stage"] = @"derived_identity";
+    if (![bundle isEqual:original] && (![actualHash isEqual:proof[@"derived_core_sha256"]]
+        || ![activationCoreHash([bundle stringByAppendingPathComponent:@"Contents/Info.plist"], deadline) isEqual:proof[@"derived_info_sha256"]]
+        || ![activationCoreHash([bundle stringByAppendingPathComponent:@"Contents/Resources/AppIcon.icns"], deadline) isEqual:proof[@"derived_icon_sha256"]])) return NO;
+    observed[@"proof_validated"] = @YES;
+    observed[@"proof_stage"] = @"confirmed";
+    return YES;
+}
+
+static NSString *activationBundle(NSDictionary *process, NSMutableDictionary *observed, double deadline) {
+    NSString *original = [env(@"ZWAI_NATIVE_APP") stringByResolvingSymlinksInPath];
+    NSString *root = original.stringByDeletingLastPathComponent;
+    NSString *executable = [process[@"executable"] stringByResolvingSymlinksInPath];
+    NSString *bundle = executable.stringByDeletingLastPathComponent.stringByDeletingLastPathComponent.stringByDeletingLastPathComponent;
+    observed[@"kernel_executable_raw"] = process[@"executable"] ?: NSNull.null;
+    observed[@"kernel_executable_resolved"] = executable ?: NSNull.null;
+    observed[@"expected_target_bundle"] = bundle ?: NSNull.null;
+    NSString *prefix = [@"zwai-native-" stringByAppendingFormat:@"%@-", env(@"ZWAI_NATIVE_CASE_ID")];
+    NSString *coreSuffix = @"Contents/MacOS/zwai";
+    if (![original.pathExtension isEqual:@"app"] || ![root.lastPathComponent hasPrefix:prefix]
+        || ![executable isEqual:[bundle stringByAppendingPathComponent:coreSuffix]]) return nil;
+    if (![bundle isEqual:original]) {
+        NSString *cache = [root stringByAppendingPathComponent:@"home/Library/Caches/zwai"];
+        NSString *folder = bundle.stringByDeletingLastPathComponent;
+        NSString *name = folder.lastPathComponent;
+        if (![bundle.lastPathComponent isEqual:@"zwai.app"] || ![folder.stringByDeletingLastPathComponent isEqual:cache]
+            || ![name hasPrefix:@"desktop-recovery-"] || name.length <= @"desktop-recovery-".length) return nil;
+        NSString *session = [NSString stringWithContentsOfFile:[folder stringByAppendingPathComponent:@"session"]
+                                                   encoding:NSUTF8StringEncoding error:nil];
+        if (session.length != 16 || [session rangeOfCharacterFromSet:
+            [[NSCharacterSet characterSetWithCharactersInString:@"0123456789abcdef"] invertedSet]].location != NSNotFound) return nil;
+    }
+    NSString *originalCore = [original stringByAppendingPathComponent:coreSuffix];
+    NSString *expectedHash = activationCoreHash(originalCore, deadline);
+    NSString *actualHash = [executable isEqual:originalCore] ? expectedHash : activationCoreHash(executable, deadline);
+    observed[@"original_core_sha256"] = expectedHash ?: NSNull.null;
+    observed[@"target_core_sha256"] = actualHash ?: NSNull.null;
+    return expectedHash && actualHash && activationRecoveryProof(expectedHash, actualHash, bundle, original, observed, deadline) ? bundle : nil;
+}
+
+static int activationRefused(NSMutableDictionary *observed, NSString *reason) {
+    observed[@"reason"] = reason;
+    NSData *data = [NSJSONSerialization dataWithJSONObject:@{@"activation_identity":observed} options:0 error:nil];
+    fprintf(stderr, "%s\n", [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding].UTF8String);
+    return fail(reason);
+}
+
+static AXError filePanelAttribute(AXUIElementRef item, CFStringRef key, id *value) {
+    CFTypeRef raw = NULL;
+    AXError status = AXUIElementCopyAttributeValue(item, key, &raw);
+    *value = raw ? CFBridgingRelease(raw) : nil;
+    return status;
+}
+static NSDictionary *filePanelSlot(id raw, NSString **failure) {
+    if (!raw) { *failure = @"native panel batch slot is nil"; return nil; }
+    if (CFGetTypeID((__bridge CFTypeRef)raw) == CFNullGetTypeID())
+        return @{@"source":@"batch_missing", @"value":NSNull.null, @"status":NSNull.null};
+    if (CFGetTypeID((__bridge CFTypeRef)raw) == AXValueGetTypeID()
+        && AXValueGetType((__bridge AXValueRef)raw) == kAXValueAXErrorType) {
+        AXError status = kAXErrorSuccess;
+        if (!AXValueGetValue((__bridge AXValueRef)raw, kAXValueAXErrorType, &status) || status == kAXErrorSuccess) {
+            *failure = @"native panel batch AXError wrapper could not be decoded or contains success"; return nil;
+        }
+        return @{@"source":@"attribute_error", @"value":NSNull.null, @"status":@(status)};
+    }
+    return @{@"source":@"value", @"value":raw, @"status":@(kAXErrorSuccess)};
+}
+static BOOL filePanelBatch(AXUIElementRef item, NSArray **values, NSString **failure) {
+    NSArray *keys = @[@"AXRole", @"AXTitle", @"AXDescription", @"AXValue", @"AXChildren"];
+    CFArrayRef result = NULL;
+    AXError status = AXUIElementCopyMultipleAttributeValues(item, (__bridge CFArrayRef)keys, 0, &result);
+    id raw = result ? CFBridgingRelease(result) : nil;
+    if (status != kAXErrorSuccess) {
+        *failure = [NSString stringWithFormat:@"native panel batch read failed: %d", status]; return NO;
+    }
+    if (![raw isKindOfClass:NSArray.class] || [raw count] != keys.count) {
+        *failure = @"native panel batch did not return exactly five attribute values"; return NO;
+    }
+    NSMutableArray *decoded = [NSMutableArray arrayWithCapacity:keys.count];
+    for (NSUInteger index = 0; index < keys.count; index++) {
+        NSDictionary *slot = filePanelSlot(raw[index], failure);
+        if (!slot) { *failure = [NSString stringWithFormat:@"%@: %@", keys[index], *failure]; return NO; }
+        [decoded addObject:slot];
+    }
+    *values = decoded; return YES;
+}
+static BOOL filePanelText(NSDictionary *slot, CFStringRef key, NSString **text, BOOL required,
+                          NSDictionary *context, NSUInteger *unknownReads, NSString **failure) {
+    id raw = slot[@"value"]; *text = nil;
+    // Batch CFNull carries no AXError. Preserve its provenance instead of
+    // inventing Unsupported/NoValue for an allowed absent attribute.
+    BOOL missing = [slot[@"source"] isEqual:@"batch_missing"];
+    AXError status = missing ? kAXErrorSuccess : [slot[@"status"] intValue];
+    if (missing || status == kAXErrorAttributeUnsupported || status == kAXErrorNoValue) { *text = @""; return YES; }
+    if (status == kAXErrorSuccess && [raw isKindOfClass:NSString.class]) { *text = raw; return YES; }
+    NSString *message = status != kAXErrorSuccess
+        ? [NSString stringWithFormat:@"native panel %@ read failed: %d", (__bridge NSString *)key, status]
+        : [NSString stringWithFormat:@"native panel %@ value is not text", (__bridge NSString *)key];
+    if (!required) ++*unknownReads;
+    if (required || *unknownReads <= 64) {
+        NSMutableDictionary *row = [context mutableCopy];
+        row[@"attribute"] = (__bridge NSString *)key; row[@"status"] = @(status);
+        row[@"source"] = slot[@"source"];
+        row[@"disposition"] = required ? @"required_failure" : @"unknown";
+        row[@"value_type"] = raw ? NSStringFromClass([raw class]) : @"nil";
+        row[@"primary_error"] = message;
+        row[@"monotonic"] = @(NSProcessInfo.processInfo.systemUptime);
+        NSData *data = [NSJSONSerialization dataWithJSONObject:row options:0 error:nil];
+        if (data) {
+            NSString *encoded = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+            fprintf(stderr, "ZWAI_PANEL_NODE_FAILURE %s\n", encoded.UTF8String); fflush(stderr);
+        }
+    }
+    if (required) { *failure = message; return NO; }
+    // Unknown auxiliary text supplies neither presence nor absence evidence.
+    // The caller still needs another successful filename witness and full graph.
+    return YES;
+}
+static BOOL filePanelVisit(AXUIElementRef item, NSUInteger *visits, NSString **failure) {
+    if (++*visits > 5000) { *failure = @"native panel exceeded 5000 visits"; return NO; }
+    if (!item || CFGetTypeID(item) != AXUIElementGetTypeID()) {
+        *failure = @"native panel node is not an AX element"; return NO;
+    }
+    return YES;
+}
+static BOOL scanFilePanel(AXUIElementRef item, NSString *name, NSMutableArray *opens, BOOL *found,
+                          CFMutableSetRef seen, NSUInteger *visits, NSUInteger depth, NSArray<NSNumber *> *nodePath, NSUInteger *unknownReads, NSString **failure) {
+    if (!filePanelVisit(item, visits, failure)) return NO;
+    if (CFSetContainsValue(seen, item)) return YES;
+    if (depth > 45) { *failure = @"native panel exceeded depth 45"; return NO; }
+    CFSetAddValue(seen, item);
+    NSArray *values = nil;
+    if (!filePanelBatch(item, &values, failure)) return NO;
+    NSDictionary *roleSlot = values[0]; id role = roleSlot[@"value"];
+    if (![roleSlot[@"status"] isEqual:@(kAXErrorSuccess)] || ![role isKindOfClass:NSString.class] || ![role length]) {
+        *failure = [NSString stringWithFormat:@"native panel role is unavailable or malformed: %@", roleSlot[@"status"]]; return NO;
+    }
+    NSMutableDictionary *context = [@{@"role":role, @"depth":@(depth), @"visits":@(*visits),
+        @"root_index":nodePath[0], @"child_index":nodePath.count > 1 ? nodePath.lastObject : NSNull.null,
+        @"node_path":nodePath, @"filename_found":@(*found), @"open_count":@(opens.count)} mutableCopy];
+    NSString *title = nil;
+    if ([role isEqual:@"AXButton"]) {
+        if (!filePanelText(values[1], kAXTitleAttribute, &title, YES, context, unknownReads, failure)) return NO;
+        if ([@[@"Open", @"打开"] containsObject:title]) [opens addObject:(__bridge id)item];
+    }
+    context[@"open_count"] = @(opens.count);
+    if (!*found) for (NSUInteger index = 1; index <= 3; index++) {
+        NSString *key = @[@"AXRole", @"AXTitle", @"AXDescription", @"AXValue", @"AXChildren"][index];
+        NSString *text = title && [key isEqual:@"AXTitle"] ? title : nil;
+        if (!text && !filePanelText(values[index], (__bridge CFStringRef)key, &text, NO, context, unknownReads, failure)) return NO;
+        if ([text containsString:name]) { *found = YES; break; }
+    }
+    NSDictionary *childrenSlot = values[4]; id children = childrenSlot[@"value"];
+    if ([childrenSlot[@"source"] isEqual:@"batch_missing"]) return YES;
+    AXError status = [childrenSlot[@"status"] intValue];
+    if (status == kAXErrorAttributeUnsupported || status == kAXErrorNoValue) return YES;
+    if (status != kAXErrorSuccess || ![children isKindOfClass:NSArray.class]) {
+        *failure = [NSString stringWithFormat:@"native panel children are unreadable or malformed: %d", status]; return NO;
+    }
+    NSUInteger childIndex = 0;
+    for (id child in children) {
+        NSArray *childPath = [nodePath arrayByAddingObject:@(childIndex++)];
+        if (!scanFilePanel((__bridge AXUIElementRef)child, name, opens, found, seen, visits, depth+1, childPath, unknownReads, failure)) return NO;
+    }
+    return YES;
+}
+
+static BOOL filePanelRoots(AXUIElementRef app, NSMutableArray *roots, NSUInteger *visits, NSString **failure) {
+    if (!filePanelVisit(app, visits, failure)) return NO;
+    id windows = nil;
+    AXError status = filePanelAttribute(app, kAXWindowsAttribute, &windows);
+    if (status != kAXErrorSuccess || ![windows isKindOfClass:NSArray.class]) {
+        *failure = [NSString stringWithFormat:@"native panel windows are unreadable or malformed: %d", status]; return NO;
+    }
+    for (id window in windows) {
+        AXUIElementRef element = (__bridge AXUIElementRef)window;
+        if (!filePanelVisit(element, visits, failure)) return NO;
+        id children = nil;
+        status = filePanelAttribute(element, kAXChildrenAttribute, &children);
+        if (status == kAXErrorAttributeUnsupported || status == kAXErrorNoValue) continue;
+        if (status != kAXErrorSuccess || ![children isKindOfClass:NSArray.class]) {
+            *failure = [NSString stringWithFormat:@"native panel window children are unreadable or malformed: %d", status]; return NO;
+        }
+        for (id child in children) {
+            AXUIElementRef candidate = (__bridge AXUIElementRef)child;
+            if (!filePanelVisit(candidate, visits, failure)) return NO;
+            id role = nil;
+            status = filePanelAttribute(candidate, kAXRoleAttribute, &role);
+            if (status != kAXErrorSuccess || ![role isKindOfClass:NSString.class] || ![role length]) {
+                *failure = [NSString stringWithFormat:@"native panel root role is unavailable or malformed: %d", status]; return NO;
+            }
+            if ([role isEqual:@"AXSheet"]) [roots addObject:child];
+        }
+    }
+    return YES;
+}
+
+// BEGIN PRIVATE CHOOSE TRACE
+static void chooseTrace(NSString *stage, NSDictionary *identityRow) {
+    static NSUInteger emitted = 0;
+    if (emitted++ >= 64) return;
+    NSMutableDictionary *row = [@{@"stage":stage, @"monotonic":@(NSProcessInfo.processInfo.systemUptime)} mutableCopy];
+    if (identityRow) row[@"identity"] = identityRow;
+    NSData *data = [NSJSONSerialization dataWithJSONObject:row options:0 error:nil];
+    NSString *encoded = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"{}";
+    fprintf(stderr, "ZWAI_CHOOSE %s\n", encoded.UTF8String);
+    fflush(stderr);
+}
+static void chooseExit(void) { @autoreleasepool { chooseTrace(@"process.exit.after_pool", nil); } }
+// END PRIVATE CHOOSE TRACE
+
 int main(int argc, const char **argv) { @autoreleasepool {
     if (argc < 3 || !guest() || !env(@"ZWAI_NATIVE_CASE_ID").length) return fail(@"guest case required");
     NSString *action = @(argv[1]); pid_t pid = atoi(argv[2]);
@@ -145,7 +531,62 @@ int main(int argc, const char **argv) { @autoreleasepool {
         puts([[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:row options:0 error:nil]
                                    encoding:NSUTF8StringEncoding].UTF8String); return 0;
     }
-    if (!bound(pid)) return fail([NSString stringWithFormat:@"case executable identity refused: target=%@ expected=%@", identity(pid), env(@"ZWAI_NATIVE_APP")]);
+    if (!bound(pid)) {
+        if ([action isEqual:@"activate"]) return activationRefused([@{
+            @"kernel_before":identity(pid) ?: NSNull.null, @"expected_original_bundle":env(@"ZWAI_NATIVE_APP"),
+            @"NS_registered":NSNull.null, @"NS_pid":NSNull.null, @"NS_bundle_raw":NSNull.null,
+            @"NS_bundle_resolved":NSNull.null} mutableCopy], @"case executable identity refused");
+        return fail([NSString stringWithFormat:@"case executable identity refused: target=%@ expected=%@", identity(pid), env(@"ZWAI_NATIVE_APP")]);
+    }
+    if ([action isEqual:@"activate"]) {
+        // Activating the already bound process does not require an AX window.
+        // Callers must read a fresh, positively validated window afterward.
+        double activationStarted = NSProcessInfo.processInfo.systemUptime;
+        double activationDeadline = activationStarted + 2;
+        NSDictionary *before = identity(pid);
+        NSMutableDictionary *observed = [@{@"kernel_before":before ?: NSNull.null,
+            @"expected_original_bundle":env(@"ZWAI_NATIVE_APP"), @"NS_registered":NSNull.null,
+            @"NS_pid":NSNull.null, @"NS_bundle_raw":NSNull.null, @"NS_bundle_resolved":NSNull.null} mutableCopy];
+        if (!before || !activationCase(pid)) return activationRefused(observed, @"native activation case marker refused");
+        NSString *bundle = activationBundle(before, observed, activationDeadline);
+        if (!bundle) return activationRefused(observed, @"native activation layout, core or deadline refused");
+        NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+        observed[@"NS_registered"] = @(running != nil); observed[@"NS_pid"] = running ? @(running.processIdentifier) : NSNull.null;
+        observed[@"NS_bundle_raw"] = running.bundleURL.path ?: NSNull.null;
+        observed[@"NS_bundle_resolved"] = [running.bundleURL.path stringByResolvingSymlinksInPath] ?: NSNull.null;
+        if (!running || running.processIdentifier != pid
+            || ![[running.bundleURL.path stringByResolvingSymlinksInPath] isEqual:bundle])
+            return activationRefused(observed, @"native activation process or bundle identity refused");
+        observed[@"kernel_before_request"] = identity(pid) ?: NSNull.null;
+        if (![before isEqual:observed[@"kernel_before_request"]] || !activationCase(pid))
+            return activationRefused(observed, @"native activation process changed before request");
+        if (NSProcessInfo.processInfo.systemUptime >= activationDeadline)
+            return activationRefused(observed, @"native activation identity check exhausted deadline");
+        BOOL requested = [running activateWithOptions:0];
+        BOOL activationReady = waitForActivation(running, activationDeadline);
+        observed[@"kernel_after"] = identity(pid) ?: NSNull.null;
+        observed[@"NS_pid_after"] = @(running.processIdentifier);
+        observed[@"NS_bundle_raw_after"] = running.bundleURL.path ?: NSNull.null;
+        observed[@"NS_bundle_resolved_after"] = [running.bundleURL.path stringByResolvingSymlinksInPath] ?: NSNull.null;
+        BOOL sameProcess = bound(pid) && [before isEqual:observed[@"kernel_after"]] && activationCase(pid)
+            && running.processIdentifier == pid && [[running.bundleURL.path stringByResolvingSymlinksInPath] isEqual:bundle];
+        double elapsed = NSProcessInfo.processInfo.systemUptime - activationStarted;
+        BOOL active = running.active;
+        pid_t frontmostPID = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;
+        activationReady = activationReady && sameProcess && elapsed < 2;
+        observed[@"reason"] = activationReady && active ? @"confirmed" : @"native activation or identity not confirmed";
+        NSDictionary *result = @{@"activation_only":@YES, @"activated":@(requested), @"active":@(active),
+            @"pid":@(pid), @"frontmost_pid":@(frontmostPID), @"activation_ready":@(activationReady),
+            @"activation_elapsed_seconds":@(elapsed), @"activation_identity":observed};
+        puts([[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:result options:0 error:nil]
+                                  encoding:NSUTF8StringEncoding].UTF8String);
+        if (!activationReady || !active) {
+            activationRefused(observed, observed[@"reason"]);
+            fprintf(stderr, "native activation not confirmed: activated=%s active=%s pid=%d frontmost_pid=%d elapsed=%.6f\n",
+                    requested ? "true" : "false", active ? "true" : "false", pid, frontmostPID, elapsed);
+        }
+        return activationReady && active ? 0 : 2;
+    }
     if (!AXIsProcessTrusted()) return fail(@"guest accessibility is unavailable to this helper");
     NSString *value = argc > 3 ? @(argv[3]) : @"";
     if ([action isEqual:@"image"]) {
@@ -167,19 +608,10 @@ int main(int argc, const char **argv) { @autoreleasepool {
                                    encoding:NSUTF8StringEncoding].UTF8String); return 0;
     }
     AXUIElementRef app = AXUIElementCreateApplication(pid);
+    if ([action isEqual:@"choose-file"]) { chooseTrace(@"entry", identity(getpid())); atexit(chooseExit); }
+    if ([action isEqual:@"choose-file"]) chooseTrace(@"windows.before", nil);
     id windows = attr(app, kAXWindowsAttribute);
-    if ([action isEqual:@"activate"]) {
-        if (![windows isKindOfClass:NSArray.class] || [windows count] != 1)
-            { CFRelease(app); return fail(@"one private case window required for activation"); }
-        NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
-        BOOL requested = [running activateWithOptions:0];
-        AXError raised = AXUIElementPerformAction((__bridge AXUIElementRef)windows[0], kAXRaiseAction);
-        usleep(200000);
-        printf("{\"activated\":%s,\"active\":%s,\"pid\":%d,\"frontmost_pid\":%d,\"raise_error\":%d}\n",
-               requested ? "true" : "false", running.active ? "true" : "false", pid,
-               NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier, raised);
-        CFRelease(app); return 0;
-    }
+    if ([action isEqual:@"choose-file"]) chooseTrace(@"windows.after", nil);
     if ([action isEqual:@"quit"]) {
         NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
         BOOL requested = [running terminate];
@@ -225,6 +657,7 @@ int main(int argc, const char **argv) { @autoreleasepool {
     }
     if ([action isEqual:@"choose-file"]) {
         NSString *root = [[env(@"ZWAI_NATIVE_WORKSPACE") stringByResolvingSymlinksInPath] stringByAppendingString:@"/"];
+        chooseTrace(@"panel.scan.before", nil);
         BOOL panel = NO;
         pid_t panelPID = pid;
         if ([windows isKindOfClass:NSArray.class]) for (id item in windows) {
@@ -239,12 +672,16 @@ int main(int argc, const char **argv) { @autoreleasepool {
                 }
             if ([string(attr(element, kAXSubroleAttribute)) isEqual:@"AXDialog"]) panel = YES;
         }
+        chooseTrace(@"panel.scan.after", nil);
         if (!panel || ![[value stringByResolvingSymlinksInPath] hasPrefix:root])
             { CFRelease(app); return fail(@"native attachment panel or case path refused"); }
         if (panelPID != pid && ![identity(panelPID)[@"executable"] containsString:@"openAndSavePanelService"])
             { CFRelease(app); return fail(@"case-owned attachment sheet has an unexpected input process"); }
         NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+        chooseTrace(@"activate.before", nil);
         [running activateWithOptions:0];
+        chooseTrace(@"activate.after", nil);
+        chooseTrace(@"focus.loop.before", nil);
         for (NSUInteger attempt = 0; attempt < 20; attempt++) {
             id focused = attr(app, kAXFocusedUIElementAttribute);
             NSString *role = focused ? string(attr((__bridge AXUIElementRef)focused, kAXRoleAttribute)) : @"";
@@ -252,52 +689,93 @@ int main(int argc, const char **argv) { @autoreleasepool {
             if (attempt == 19) { CFRelease(app); return fail(@"native attachment panel has not received input focus"); }
             usleep(50000);
         }
+        chooseTrace(@"focus.loop.after", nil);
+        chooseTrace(@"goto.shortcut.before", nil);
         if (!nestedSheet(app) && !focusedKey(pid, 5, kCGEventFlagMaskCommand | kCGEventFlagMaskShift))
             { CFRelease(app); return fail(@"private case is not the active guest input target"); }
+        chooseTrace(@"goto.shortcut.after", nil);
         NSMutableArray *fields = [NSMutableArray array];
+        chooseTrace(@"goto.fields.loop.before", nil);
         for (NSUInteger attempt = 0; attempt < 10 && !fields.count; attempt++) {
             usleep(100000);
             id go = nestedSheet(app);
             if (go) editable((__bridge AXUIElementRef)go, fields, 0);
         }
+        chooseTrace(@"goto.fields.loop.after", nil);
         // The actual path control must appear before any pathname is entered.
         // A sent shortcut alone is never a successful native selection.
         if (fields.count != 1) { CFRelease(app); return fail([NSString stringWithFormat:@"Go to Folder requires one actual path field; found %lu active=%d frontmost=%d panel=%d", fields.count, running.active, NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier, panelPID]); }
         AXUIElementRef field = (__bridge AXUIElementRef)fields[0];
+        chooseTrace(@"path.set.before", nil);
         if (AXUIElementSetAttributeValue(field, kAXValueAttribute, (__bridge CFStringRef)value)
             || ![string(attr(field, kAXValueAttribute)) isEqual:value])
             { CFRelease(app); return fail(@"native Go to Folder did not retain the exact case path"); }
+        chooseTrace(@"path.set.after", nil);
+        chooseTrace(@"path.confirm.before", nil);
         if (AXUIElementPerformAction(field, kAXConfirmAction))
             { CFRelease(app); return fail(@"native Go to Folder has no confirm action"); }
+        chooseTrace(@"path.confirm.after", nil);
         NSMutableArray *matches = [NSMutableArray array];
+        chooseTrace(@"path.matches.loop.before", nil);
         for (NSUInteger attempt = 0; attempt < 10 && !matches.count; attempt++) {
             id go = nestedSheet(app);
             if (go) openablePath((__bridge AXUIElementRef)go, value.lastPathComponent, matches, 0);
             if (!matches.count) usleep(100000);
         }
+        chooseTrace(@"path.matches.loop.after", nil);
+        chooseTrace(@"path.open.before", nil);
         if (matches.count != 1 || AXUIElementPerformAction((__bridge AXUIElementRef)matches[0], CFSTR("AXOpen")))
             { CFRelease(app); return fail(@"native Go to Folder has no unique exact-file AXOpen action"); }
+        chooseTrace(@"path.open.after", nil);
+        chooseTrace(@"path.commit.before", nil);
         if (AXUIElementSetAttributeValue(field, kAXFocusedAttribute, kCFBooleanTrue)
             || !focusedKey(pid, 36, 0))
             { CFRelease(app); return fail(@"native exact-path confirmation lost its guest input target"); }
+        chooseTrace(@"path.commit.after", nil);
+        chooseTrace(@"goto.close.loop.before", nil);
         for (NSUInteger attempt = 0; attempt < 15 && nestedSheet(app); attempt++) usleep(100000);
         if (nestedSheet(app)) { CFRelease(app); return fail(@"native Go to Folder did not commit the exact path"); }
-        NSMutableArray *areas = [NSMutableArray array], *buttons = [NSMutableArray array];
-        NSMutableString *panelText = [NSMutableString string]; NSUInteger count = 0; BOOL web = NO;
-        for (id sheet in sheets(attr(app, kAXWindowsAttribute))) collect((__bridge AXUIElementRef)sheet, areas, buttons, panelText, &count, &web);
-        if (![panelText containsString:value.lastPathComponent]) { CFRelease(app); return fail(@"native panel did not reach the exact selected filename"); }
+        chooseTrace(@"goto.close.loop.after", nil);
+        chooseTrace(@"panel.collect.before", nil);
         NSMutableArray *opens = [NSMutableArray array];
-        for (id button in buttons) if ([@[@"Open", @"打开"] containsObject:string(attr((__bridge AXUIElementRef)button, kAXTitleAttribute))]) [opens addObject:button];
+        BOOL filenameFound = NO, complete = YES; NSUInteger visits = 0, unknownReads = 0; NSString *scanFailure = nil;
+        NSMutableArray *roots = [NSMutableArray array];
+        complete = filePanelRoots(app, roots, &visits, &scanFailure);
+        CFMutableSetRef seen = CFSetCreateMutable(kCFAllocatorDefault, 0, &kCFTypeSetCallBacks);
+        if (complete) for (NSUInteger rootIndex = 0; rootIndex < roots.count; rootIndex++)
+            if (!scanFilePanel((__bridge AXUIElementRef)roots[rootIndex], value.lastPathComponent, opens,
+                               &filenameFound, seen, &visits, 0, @[@(rootIndex)], &unknownReads, &scanFailure)) { complete = NO; break; }
+        CFRelease(seen);
+        chooseTrace(@"panel.collect.after", nil);
+        if (unknownReads) {
+            fprintf(stderr, "ZWAI_PANEL_UNKNOWN_SUMMARY {\"unknown_reads\":%lu,\"retained_unknown_reads\":%lu}\n",
+                    unknownReads, MIN(unknownReads, (NSUInteger)64)); fflush(stderr);
+        }
+        if (!complete) { CFRelease(app); return fail(scanFailure); }
+        if (!filenameFound) { CFRelease(app); return fail(@"native panel did not reach the exact selected filename"); }
+        chooseTrace(@"panel.open.before", nil);
         if (opens.count != 1 || AXUIElementPerformAction((__bridge AXUIElementRef)opens[0], kAXPressAction))
             { CFRelease(app); return fail(@"native selected file has no unique Open action"); }
+        chooseTrace(@"panel.open.after", nil);
+        chooseTrace(@"panel.close.loop.before", nil);
         for (NSUInteger attempt = 0; attempt < 20 && sheets(attr(app, kAXWindowsAttribute)).count; attempt++) usleep(100000);
         if (sheets(attr(app, kAXWindowsAttribute)).count) { CFRelease(app); return fail(@"native Open did not close its attachment panel"); }
+        chooseTrace(@"panel.close.loop.after", nil);
+        chooseTrace(@"chosen.stdout.before", nil);
         printf("{\"chosen\":true,\"panel_pid\":%d,\"active\":%s,\"frontmost_pid\":%d}\n", panelPID,
                running.active ? "true" : "false", NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier);
-        CFRelease(app); return 0;
+        fflush(stdout);
+        chooseTrace(@"chosen.stdout.after", nil);
+        chooseTrace(@"release.before", nil);
+        CFRelease(app);
+        chooseTrace(@"release.after", nil);
+        chooseTrace(@"return.before_pool_drain", nil);
+        return 0;
     }
     if (![windows isKindOfClass:NSArray.class] || [windows count] != 1) { CFRelease(app); return fail(@"one case window required"); }
-    AXUIElementRef window = (__bridge AXUIElementRef)windows[0];
+    __attribute__((objc_precise_lifetime)) id windowOwner = windows[0];
+    if (!realWindow(windowOwner, pid)) { CFRelease(app); return fail(@"native AX window role or PID refused"); }
+    AXUIElementRef window = (__bridge AXUIElementRef)windowOwner;
     NSMutableArray *areas = [NSMutableArray array], *buttons = [NSMutableArray array];
     NSMutableString *text = [NSMutableString string]; NSUInteger count = 0; BOOL web = NO;
     collect(window, areas, buttons, text, &count, &web);
@@ -361,22 +839,55 @@ int main(int argc, const char **argv) { @autoreleasepool {
         result[@"pressed"] = value;
     } else if ([action isEqual:@"paste-file"]) {
         NSString *root = [[env(@"ZWAI_NATIVE_WORKSPACE") stringByResolvingSymlinksInPath] stringByAppendingString:@"/"];
-        if (areas.count != 1 || ![[value stringByResolvingSymlinksInPath] hasPrefix:root])
+        if (areas.count != 1 || ![[value stringByResolvingSymlinksInPath] hasPrefix:root]
+            || ![value.pathExtension.lowercaseString isEqual:@"png"])
             { CFRelease(app); return fail(@"case attachment path refused"); }
-        NSPasteboard *pasteboard = NSPasteboard.generalPasteboard; [pasteboard clearContents];
-        if ([value.pathExtension.lowercaseString isEqual:@"png"])
-            [pasteboard setData:[NSData dataWithContentsOfFile:value] forType:NSPasteboardTypePNG];
-        else [pasteboard writeObjects:@[[NSURL fileURLWithPath:value]]];
-        if (AXUIElementSetAttributeValue((__bridge AXUIElementRef)areas[0], kAXFocusedAttribute, kCFBooleanTrue))
-            { CFRelease(app); return fail(@"native image paste cannot focus its case composer"); }
+        NSData *source = [NSData dataWithContentsOfFile:value];
+        NSMutableDictionary *receipt = [@{@"case_id":env(@"ZWAI_NATIVE_CASE_ID"), @"pid":@(pid),
+            @"method":@"native-menu", @"source_length":@(source.length), @"source_sha256":pasteDigest(source)} mutableCopy];
+        if (!source.length) {
+            receipt[@"error"] = @"case PNG source is unavailable";
+            if (!savePasteReceipt(receipt)) fprintf(stderr, "WARN native paste evidence could not be retained\n");
+            CFRelease(app); return fail(@"case PNG source is unavailable");
+        }
+        NSString *failure = nil;
+        NSPasteboard *pasteboard = NSPasteboard.generalPasteboard;
+        [pasteboard clearContents];
+        BOOL stored = [pasteboard setData:source forType:NSPasteboardTypePNG];
+        NSInteger ownedCount = pasteboard.changeCount;
+        NSData *actual = [pasteboard dataForType:NSPasteboardTypePNG];
+        NSInteger observedCount = pasteboard.changeCount;
+        receipt[@"clipboard"] = @{@"set_data_success":@(stored), @"change_count":@(ownedCount),
+            @"png_length":@(actual.length), @"png_sha256":pasteDigest(actual), @"readback_count":@(observedCount)};
+        if (!validPasteboardPayload(source, stored, actual, ownedCount, observedCount))
+            failure = @"case PNG clipboard identity was not confirmed; no paste requested";
+        if (!failure) {
+            AXError focusError = AXUIElementSetAttributeValue((__bridge AXUIElementRef)areas[0], kAXFocusedAttribute, kCFBooleanTrue);
+            receipt[@"focus_set_error"] = @(focusError);
+            if (focusError) failure = @"native image paste cannot focus its case composer";
+        }
         BOOL focused = NO;
-        for (NSUInteger attempt = 0; attempt < 20; attempt++) {
+        for (NSUInteger attempt = 0; !failure && attempt < 20; attempt++) {
             id current = attr(app, kAXFocusedUIElementAttribute);
             if (current && CFEqual((__bridge CFTypeRef)current, (__bridge CFTypeRef)areas[0])) { focused = YES; break; }
             usleep(25000);
         }
-        if (!focused || !focusedKey(pid, 9, kCGEventFlagMaskCommand))
-            { CFRelease(app); return fail(@"native image paste lost its exact guest composer target"); }
+        if (!focused) failure = failure ?: @"native image paste lost its exact guest composer target";
+        receipt[@"focused_composer"] = @(focused);
+        if (!failure) {
+            NSDictionary *menu = requestNativePaste(app, pid, pasteboard, source, ownedCount);
+            receipt[@"menu"] = menu;
+            if ([menu[@"paste_press_error"] intValue] != kAXErrorSuccess)
+                failure = @"native Edit/Paste requires unique enabled menu items in the foreground case app";
+        }
+        if (failure) receipt[@"error"] = failure;
+        if (!savePasteReceipt(receipt)) {
+            if (failure) fprintf(stderr, "WARN native paste evidence could not be retained\n");
+            else { CFRelease(app); return fail(@"native paste evidence could not be retained"); }
+        }
+        if (failure) { CFRelease(app); return fail(failure); }
+        // This acknowledges one menu request. collect_draft independently waits for bytes and the saved UI.
+        result[@"paste_method"] = @"native-menu";
         result[@"pasted"] = @YES;
     } else if (![action isEqual:@"snapshot"]) { CFRelease(app); return fail(@"unsupported test action"); }
     puts([[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:result options:0 error:nil]

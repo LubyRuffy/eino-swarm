@@ -213,11 +213,19 @@ for _, a := range reg.Progress() {
 }
 ```
 
-**Poll `Progress`, never `Stats`.** `Stats` prunes the finished agents it counts
-so that a long-lived registry cannot grow without bound — which means a poll
-landing between a sub-agent finishing and `wait_agents` collecting it turns a
-completed agent into an unknown one, and the manager loses the result it just
-paid for (`TestPollingProgressKeepsAFinishedAgentsResult`).
+**Poll `Progress`, never `Stats`.** `Stats` prunes its disposable finished roster;
+`Progress` preserves the rows a live UI needs. Current uncollected results also
+remain reachable through the separate pending index, including after archive
+eviction, so an actual `wait_agents` call can still receive them.
+
+`Registry.PendingAgents()` is a non-consuming snapshot of current worker
+generations whose results remain unsettled, including finished workers. Each
+`PendingAgent` contains `AgentID`, `Role`, `Generation`, `Running` and optional
+`Err`. Actual terminal `wait_agents` results collect only the returned ID and
+generation; a timeout/running entry does not. Successful `close_agent` explicitly
+discards the result or requests cancellation for that generation. Spawn/resume
+receipts and known wait/close entries include additive JSON `generation`.
+The app engine uses this state for `C-019` ordinary-turn completion admission.
 
 ## Guarantees
 
@@ -246,7 +254,8 @@ paid for (`TestPollingProgressKeepsAFinishedAgentsResult`).
   pursuing turn when the model omitted `task`.
 - `close_agent` on a leftover finished worker returns
   `{"cancelled": false, "already_finished": true}` and leaves that result
-  alone. `cancelled: true` on those ids made a long `/goal` treat one close
+  intact while settling its collection obligation as an explicit discard.
+  It does not overwrite an earlier failure. `cancelled: true` on those ids made a long `/goal` treat one close
   as a canary and walk the rest of the roster (`TestCloseAlreadyFinishedIsNotCancelled`).
 - `resume_agent` continues a finished worker's conversation on the **same** id.
   `fork_context` is the manager's conversation, not a previous worker's findings.
@@ -277,7 +286,7 @@ paid for (`TestPollingProgressKeepsAFinishedAgentsResult`).
 | `ManagerMaxIterations` | the manager's ReAct cap when `RunConfig.MaxIterations` is unset; `<=0` keeps eino's own default |
 | `Registry.Close` | cancels everything and rejects further spawns; safe even for an agent whose cancel was not yet wired, because contexts are created synchronously inside `Spawn` |
 | `Registry.Cleanup` | kills whatever is still running at the end of a turn and reports how many |
-| bounded registry | finished handles are pruned by `Stats`, so a long session cannot grow the map without bound. Use `Progress` for reporting: it never prunes. Finished conversations stay in a separate archive (default 32) for `resume_agent`. |
+| bounded registry | finished handles are pruned by `Stats`; use `Progress` for reporting. Finished conversations stay in a separate archive (default 32) for `resume_agent`. Current uncollected generations are additionally retained until actual collection or explicit close, even when that archive evicts a row. |
 
 Set exported limit fields before starting workers. For a live registry use
 `SetAgentTimeout`, `SetMaxTurns` and `SetMaxConcurrent`. Timeout is captured
@@ -360,7 +369,12 @@ completion or a watchdog failure.
 
 `WorkerCheckpoint` keeps original task/instruction, structured history, unread
 inbox, timeout budget, confirmed completion and unknown in-flight tools.
-`RestoredWorker` accepts the corresponding history/inbox on restoration.
+It also preserves `Generation`, `Collected` and `CloseRequested` for the exact
+worker invocation. `RestoredWorker` and `FinishedWorker` accept those fields on
+restoration. A legacy finished record without generation identity remains
+historically finished without acquiring a retroactive collection obligation;
+legacy running work still needs collection, while a positive generation retains
+its exact collection/close state. A later resume starts a new generation.
 Recovery keeps the same ID and seals open tool calls with an
 `outcome_unknown` receipt: verify effects before deciding whether to repeat.
 `ManagerHistory()` and `ManagerInbox()` expose copies for the host's matching

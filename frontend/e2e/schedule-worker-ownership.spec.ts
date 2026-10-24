@@ -49,7 +49,7 @@ test("a failed scheduled check retains its owned worker and the next check colle
     }).toBe("error")
     expect(fixture.state().failedReplies).toBe(2)
     expect(failed!.events.filter((event) => event.kind === "model_retry")).toHaveLength(1)
-    expect(failed!.events.find((event) => event.kind === "error")?.err).toContain("scheduled check ended without executing a tool or reporting its result")
+    expect(failed!.events.find((event) => event.kind === "error")?.err).toContain("scheduled check ended without returning text, executing a tool or reporting its result")
     const failedSchedule = await (await request.get(`/api/schedules/${scheduleID}`)).json()
     expect(failedSchedule.runs[0]).toMatchObject({ status: "error", unread: true })
     // Save the adapter cancellation before assertions, so a regression proves
@@ -61,7 +61,7 @@ test("a failed scheduled check retains its owned worker and the next check colle
     expect(retention).toHaveLength(1)
     expect(JSON.parse(retention[0].text ?? "{}")).toMatchObject({ reason: "scheduled_check_failed", owner_kind: "thread_wake", owner_id: scheduleID, worker_ids: [workerID] })
     expect(retention[0].seq).toBeLessThan(failed!.events.find((event) => event.kind === "error")!.seq)
-    await expect(page.getByTestId("transcript")).toContainText("scheduled check ended without executing a tool or reporting its result")
+    await expect(page.getByTestId("transcript")).toContainText("scheduled check ended without returning text, executing a tool or reporting its result")
     await expect(page.getByTestId("status-badge")).toContainText("Waiting")
     await page.getByRole("tab", { name: /^Agents(?: \d+)?$/ }).click()
     const worker = page.getByTestId("agent-roster").locator(`[data-agent-id="${workerID}"]`)

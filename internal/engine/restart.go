@@ -53,6 +53,7 @@ type restartState struct {
 type restartCheckpoint struct {
 	Version        int                      `json:"version"`
 	Pause          string                   `json:"pause,omitempty"`
+	AskCallID      string                   `json:"ask_call_id,omitempty"`
 	CapUsed        int                      `json:"cap_used,omitempty"`
 	CapExtend      int                      `json:"cap_extend,omitempty"`
 	CapDecision    *bool                    `json:"cap_decision,omitempty"`
@@ -318,6 +319,7 @@ func (e *Engine) restartTargets(ctx context.Context) ([]*restartTarget, error) {
 			checkpoint: restartCheckpoint{Version: 1, HumanStopped: rt.userStopped}}
 		if rt.ask != nil {
 			target.checkpoint.Pause = "ask"
+			target.checkpoint.AskCallID = rt.ask.callID
 			rt.restartAskCallID = rt.ask.callID
 		}
 		target.checkpoint.Answer = rt.acceptedAsk
@@ -401,7 +403,7 @@ func (e *Engine) checkpointForTurn(turnID string, snapshots ...*restoreSnapshot)
 }
 
 func (e *Engine) skipRestartAskResult(ev store.Event) bool {
-	if ev.Kind != swarm.NotifyToolResult.String() || ev.ToolCallID == "" || !restartAskCancelled(ev) {
+	if ev.Kind != swarm.NotifyToolResult.String() || ev.ToolCallID == "" || !isManagerAgent(ev.AgentID) || !restartAskPlaceholder(ev) {
 		return false
 	}
 	e.mu.Lock()
@@ -411,8 +413,20 @@ func (e *Engine) skipRestartAskResult(ev store.Event) bool {
 		return false
 	}
 	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	return rt.abandoned && rt.restartAskCallID == ev.ToolCallID
+	owned := rt.abandoned && rt.turnID == ev.TurnID
+	callID := rt.restartAskCallID
+	rt.mu.Unlock()
+	if !owned || callID != "" && callID != ev.ToolCallID {
+		return false
+	}
+	// Runtime identity may precede the tool_call callback. Only a durable
+	// checkpoint and its original call authorize suppressing the placeholder.
+	events, err := e.store.ListTurnEvents(ev.TurnID)
+	if err != nil {
+		return false
+	}
+	call := checkpointAskCall(events)
+	return call != nil && call.ToolCallID == ev.ToolCallID
 }
 
 func restartAskCancelled(ev store.Event) bool {
@@ -456,6 +470,10 @@ func sameRestartMessage(first, second *schema.Message) bool {
 // Durable results can arrive after the snapshot. Keep them next to their
 // original call; a missing receipt must never conceal a later confirmed commit.
 func checkpointManagerMessages(checkpoint *restartCheckpoint, events []store.Event, checkpointIndex int) []adk.Message {
+	events = restartAskEvents(events)
+	if _, index := latestRestartCheckpoint(events); index >= 0 {
+		checkpointIndex = index
+	}
 	msgs := messagesWithoutSystem(checkpoint.ManagerHistory)
 	calls := map[string]bool{}
 	for _, msg := range msgs {
@@ -477,6 +495,9 @@ func checkpointManagerMessages(checkpoint *restartCheckpoint, events []store.Eve
 			calls[ev.ToolCallID] = true
 		case swarm.NotifyToolResult.String():
 			if !calls[ev.ToolCallID] {
+				continue
+			}
+			if restartAskPlaceholder(ev) && historyConfirmedAsk(msgs, ev.ToolCallID) {
 				continue
 			}
 			if processStopErr(ev.Err) {

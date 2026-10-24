@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -51,8 +52,9 @@ func TestRestartNeverStealsAnotherTurnsScheduleClaim(t *testing.T) {
 			_ = e.Store().Close()
 			restarted := newTestEngineAt(t, e.cfg.DataDir())
 			n, err := restarted.ResumeOrphanedTurns()
-			if err != nil || n != 0 || restarted.Status(thread).Running {
-				t.Fatalf("conflicting claim resumed: n=%d err=%v", n, err)
+			var failures *RestoreFailures
+			if !errors.As(err, &failures) || failures.Failed != 1 || !errors.Is(err, store.ErrScheduleRunConflict) || n != 0 || restarted.Status(thread).Running {
+				t.Fatalf("conflicting claim resumed or lost its classified failure: n=%d err=%v", n, err)
 			}
 			after, _ := restarted.Store().GetRun(turn.ScheduleRunID)
 			if after.TurnID != before.TurnID || after.ThreadID != before.ThreadID || after.Status != before.Status {
@@ -110,7 +112,8 @@ func TestGoalScheduledResumeNeedsAPersistedClaimIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	n, err := e.ResumeOrphanedTurns()
-	if err != nil || n != 0 || e.Status(thread).Running {
+	var failures *RestoreFailures
+	if !errors.As(err, &failures) || failures.Failed != 1 || n != 0 || e.Status(thread).Running {
 		t.Fatalf("goal schedule resumed without a persisted claim: n=%d err=%v", n, err)
 	}
 }

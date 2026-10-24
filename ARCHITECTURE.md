@@ -18,6 +18,21 @@ engine exits after the idle grace once no presence connection is held, the
 phone hub socket is down, and no turn is running. A host that is killed
 releases `engine.lock`; the next shell takes it and resumes orphaned turns.
 
+Goal and plan commands retain their complete argument through one engine
+dispatch. An idle PC composer submits the complete command through the existing
+send path; it does not first PATCH metadata and then resubmit the parsed
+argument. Leading commands own suffix command tokens inside their arguments.
+The store carries command intent through send: commands cannot become answers or
+queued prose. Goals use the existing steer endpoint; plan entry uses start-turn
+admission so a newly busy target refuses it. Busy goal updates and bare planning
+keep their existing metadata operations.
+
+Explicitly queued human follow-ups start in FIFO order after a turn completes
+or fails, independently of automatic goal continuation. A failed scheduled check
+keeps its failed turn/run and future wake; no queue means no new error-triggered
+turn. Stop, cancellation and restart do not auto-drain the queue. Terminal writes
+and finalization release their ownership before the next turn starts.
+
 Queued-message consumption is claimed by successful row removal: concurrent
 automatic dequeue and manual steering cannot both deliver the same row or
 discard a concurrent edit. PC queue actions coalesce pending clicks per
@@ -61,8 +76,15 @@ launcher's child; a competing loser is reaped when its single Acquire fails.
 history. `serveEngine` listens, publishes a `restoring` lease and serves HTTP,
 then owns synchronous `App.Restore`; the idle watcher counts recovery as active
 work. `Engine.Restore` builds one indexed checkpoint/event snapshot per conversation,
-passes it through the restored runtime bootstrap, and records `engine_restore`
-measurements on the original turn. Stop is serialized with each conversation's
+passes it through the restored runtime bootstrap, including both manager correction
+allowances, and records `engine_restore` measurements on the original turn. The
+filtered events retain `model_retry` and `max_iterations_continued` receipts across
+checkpoints. A new human cap continuation discards the startup snapshot before
+reading its new durable allowance receipt; later work does not reuse that snapshot. Running and parked recovery failures are
+aggregated as `RestoreFailures`, with failed Trace receipts and `restore.failed`;
+other conversations continue. The compatibility `ResumeOrphanedTurns` entry
+returns accepted resumptions together with the same typed aggregate, preserving
+per-conversation causes. Stop is serialized with each conversation's
 restoration. Only after recovery finishes does the scheduler start and metadata
 become `ready`. PC and phone show progress; work mutations are gated on both
 HTTP and encrypted RPC while reads, drafts, presence and Stop remain available.
@@ -153,6 +175,54 @@ flowchart LR
   Review --> Mem
   Review --> Bus
 ```
+
+## Manager scheduling reports
+
+Manager prose admission for scheduled-work claims lives in
+`internal/engine/schedule_answer.go` and `manager_answer_buffer.go`. A tool-free
+policy call extracts claims from candidate prose; code checks them against
+persisted schedule rows, current state and turn ownership before publishing
+the buffered text. Unsupported claims get one correction in the same turn;
+uncertainty is not scheduling success. Exhausting this gate is terminal even
+when the diagnostic cause is a model transport or decoding failure, so goal
+continuation cannot reset its correction budget. The same-turn allowance is
+restored from its durable correction event after restart; failed receipt reads
+or writes terminate admission before another corrective model request.
+Tools, reasoning and worker events
+continue on the original notification path. Policy calls and correction
+metadata are attributed to the original turn's Trace.
+
+## Ordinary turn completion
+
+`internal/engine/worker_completion.go` checks delegated work before admitted
+completion prose is published. `Registry.PendingAgents` includes both running
+workers and finished results that the manager has not collected. Actual
+`wait_agents` results and explicit `close_agent` decisions settle the exact
+worker generation; a timed-out wait or an old generation's result cannot settle
+a later resume. Closing finished work acknowledges discarding its result and
+retains `already_finished`, rather than reporting a new cancellation.
+The gate applies to a manager's natural completion. Exhausting a ReAct slice
+is not that attempt; resource limits and externally completed or blocked goals
+retain their existing termination boundary rather than gaining a collection pause.
+Human preemption and existing scheduled-check completion eligibility precede
+collection admission. An empty failed check keeps its original error/ownership
+semantics and cannot be converted into a worker-collection pause.
+
+Without a currently executable goal or active same-thread wake, an early final
+is withheld and receives one same-turn correction with the original worker IDs.
+`model_retry` reason `workers_uncollected` durably records the consumed allowance
+and IDs in the original Trace. A second early final uses the existing human
+Continue/Stop pause while the turn and worker requests remain live. Continue
+allows one further attempt; Stop or declining cancels. Checkpoints and event
+replay retain collection state, the allowance and an existing human pause across
+restart. Legacy finished rosters without generation identity remain historically
+finished; legacy running work still requires collection. Ownership is reread
+after scheduling policy verification, so removing
+the last owner during that request cannot authorize stale parking. This fresh
+check is the completion-gate decision point: an owner present then permits
+yielding; later explicit revocation retains the existing worker cancellation
+and finalization boundary, without rolling back published prose. Valid goal
+and wake parking continues under the existing ownership rules.
 
 ## Composer durability and renderer recovery
 
@@ -370,7 +440,8 @@ worker before closing SQLite.
    `from_event_seq`, which interrupts, truncates from that `user_message`,
    and starts again at that position. Ordinary Enter while running **queues a
    follow-up** (`POST /api/threads/:id/followups`) that starts as the next turn
-   after a clean finish. Clicking a waiting row deletes it and loads the
+   after completion or failure. Stop, cancellation and restart keep it queued.
+   Clicking a waiting row deletes it and loads the
    text into the composer; Enter while the turn is still running enqueues a
    new follow-up at the back. `PATCH …/followups/:fid` still rewrites one row
    in place for other clients. **Steer** / ⌘Enter injects into the current turn
@@ -530,13 +601,16 @@ worker before closing SQLite.
    check error. Another scheduled fire or explicit user action collects the
    same workers. Interrupt, absent ownership, context-window exhaustion and
    the worker-watchdog failure limit retain their stop/cleanup boundaries.
-   Before a successful scheduled turn returns from `runManager`, durable
-   tool-result/report events in that turn are checked (`schedule_completion.go`).
-   With no evidence, the transcript is preserved and the same registry/turn
-   continues once with a generic completion cue. A second empty completion
-   returns an error for `finishScheduledRun`; it cannot archive as quiet or
-   turn an acknowledgement into findings. Model-error cleanup results are
-   excluded. Ordinary turns and explicit quiet reports retain their behavior.
+   Before a scheduled turn returns from `runManager`, its current final text
+   and durable tool-result/report events are checked (`schedule_completion.go`).
+   Automatic tool selection allows a nonempty text result to finish without
+   tools through the existing findings fallback. Only a blank final with no
+   real tool result or report preserves the transcript and continues once
+   in the same registry/turn; a second empty response remains an error.
+   Model-error cleanup results are excluded. Explicit quiet reports retain
+   precedence over final text. Ending a check does not prove external work
+   or replace the standing goal completion boundary. Ordinary turns also obey
+   the worker-collection admission boundary described above.
 3. The manager's system prompt is generated per turn from the live toolset, the
    workspace path, the concurrency limits, and a snapshot of the host
    (OS, architecture, kernel, shell, date, timezone, user, home).    It is
@@ -745,9 +819,11 @@ worker before closing SQLite.
    if it actually needs the briefing, and emits `compacted` `phase: "start"`
    so the chrome can say so. Steering that arrived after the
    manager's last model call is not dropped — it starts a follow-up turn, and
-   takes that slot ahead of anything waiting in the follow-up table. A clean
-   `done` then pops the oldest queued follow-up and starts it; Stop and errors
-   leave those rows where they are until Steer on one row starts that text.
+   takes that slot ahead of anything waiting in the follow-up table when the
+   existing continuation rules allow it. `done` or `error` then pops the oldest
+   explicitly queued human follow-up and starts it; a failed scheduled check
+   does not otherwise start an automatic continuation. Stop, cancellation and
+   restart leave those rows waiting until an authorized later turn or Steer.
    `worker_lifecycle_facts.go` separately derives worker counts from the full
    persisted history, scoped to at most the four newest turns being summarized.
    Its `persisted_worker_lifecycle` JSON rows lead the bounded input and the
@@ -764,8 +840,8 @@ worker before closing SQLite.
    available for future turns and diagnostics.
 7. **Startup resume.** A turn is `running` until it finishes, errors, or the
    user stops it. A crash, a kill, or quitting the app leaves that row running.
-   The next `app.New` calls `Engine.ResumeOrphanedTurns`: every leftover turn
-   is launched again on the same id, with a `resumed` event on the timeline,
+   The next serving engine listens before owned `App.Restore` invokes
+   `Engine.Restore`: eligible leftover turns continue on the same id, with a `resumed` event on the timeline,
    feeding replay from stored messages plus any manager answers that only
    made it onto the event log (those are written into `messages` on replay, so
    a second crash does not depend on scanning events). Sub-agents that were
@@ -803,8 +879,8 @@ worker before closing SQLite.
    `report_schedule` `next_in_s`, refuse until `resume_agent` on those ids or
    a newer spawn has started. A shorter id is a different agent;
    `wait_agents` `unknown` is not a reason to keep the timer. Follow-ups
-   waiting in `followups` stay queued and run after the leftover turn finishes
-   cleanly. Unread `[steer]` messages stay in the leftover turn (a dangling
+   waiting in `followups` stay queued during restart and run after the resumed
+   leftover turn completes or fails. Unread `[steer]` messages stay in the leftover turn (a dangling
    `wait_agents` is completed; any other unfinished tool call is dropped; the
    steer is not). A user **Stop**
    (`cancelled`) is not resumed.
@@ -812,6 +888,19 @@ worker before closing SQLite.
    `schedule_continue` that cannot restart, or that is dropped as superseded,
    still closes the bound schedule run (`error`) so `HasRunningRun` cannot
    stick a wait that will never fire again.
+Skill usage lives beside each `SKILL.md` in `usage.json`, under the Store lock.
+Only agent `ViewSkill` updates it; API reads and copies use `ReadSkill`. The
+sidecar keeps content timestamps and digests stable. Tidy snapshots stale
+candidates before inspection and records the names in the report, streamed scan
+and original-turn memory review, without deleting by age.
+
+Notes and skills differ by loading: notes are short declarations whose absence
+would misdirect work and are injected each turn; skills contain the methods
+needed to accomplish work and load through `skill_view`. Workflow-local
+constraints belong in skill preconditions; descriptions state when to use a
+skill. An exact existing skill-name pointer may remain in notes if it does not
+restate the body. This changes no Markdown format or event kind.
+
 8. **Review** (`F-420`, `C-025`): with memory and auto-review enabled, a
    successful turn starts a single streaming `adk.ChatModelAgent` from the stored
    event log, even when the manager already used a memory tool. Compacted ADK
@@ -918,11 +1007,21 @@ worker before closing SQLite.
    Successful-turn reviews, or successful turns with auto-review off, still fold
    leftover skill families. A standalone successful turn writes procedures only
    into the shared library. Manual **Review now** selects the most recent
-   successful turn. Catalog tidy remains its separate live-catalog flow with
-   direct skill tools and no notes. `POST /api/projects/:id/memory/tidy-skills`
+   successful turn. Requested project tidy receives current notes and live skill catalog, with
+   `CatalogTools` plus tidy-only `ReclassifyTools`; turn reviewers and workers
+   never receive the latter. Promote requires its body to equal the complete source note after
+   whitespace normalization, without extra steps or assertions. Demote requires a short body
+   without Markdown step markers and a whitespace-equivalent note, within both
+   budgets. Similarity cannot authorize source deletion. The destination is
+   saved first; partial failures emit actual create/add/delete changes, not a
+   completed move. State-idempotent retries do not prove historical provenance.
+   Shared-library tidy receives skill tools only, with no notes or move tools. `POST /api/projects/:id/memory/tidy-skills`
    folds stems before model curation; `Accept: text/event-stream` reports the
    scan, streamed prose and actual writes, then the same result as JSON with
-   created/deleted/patched/unchanged counts and `reviewed` when the model ran.
+   created/deleted/patched/unchanged counts, promoted/demoted counts, stale
+   candidate names and `reviewed` when the model ran (skills or project notes).
+   A project without a prior turn retains the existing no-Trace-anchor behavior;
+   this flow does not fabricate conversation history to supply one.
    The Memory panel keeps each tidy card with its own project; switching away
    and back preserves in-flight progress or the finished result. An earlier
    memory read cannot replace the completed catalog with stale content. Opening
@@ -1465,6 +1564,12 @@ the same turn's Trace. It is not rendered as a chat message or a new worker.
 visible phases. Recovery retains worker identities, finished results and
 human question/iteration-cap pauses. Unknown external effects must be
 verified before a tool is repeated; no generic exactly-once guarantee is made.
+An unanswered human ask is not an external effect: the engine suppresses its
+own handoff placeholder and narrowly recovers legacy unknown receipts from a
+matching unaccepted checkpoint. A durable `ask_recovered` event carries only
+the original call identity and questions to PC/phone projections; the private
+checkpoint and raw historical unknown receipt stay intact. Confirmed answers
+take precedence, and recovery persistence failure cannot start the manager.
 The full process replacement is exercised by
 `cmd/zwai/engine_restart_acceptance_test.go` using real processes and a keyless
 loopback model fixture.

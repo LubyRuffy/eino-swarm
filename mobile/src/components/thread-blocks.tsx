@@ -222,6 +222,10 @@ function localizeNotice(text: string): string {
       return t("notice.modelRetryTransport")
     case "The model service stopped sending data. Retrying.":
       return t("notice.modelRetryIdle")
+    case "Checking the schedule before reporting it as arranged.":
+      return t("notice.scheduleClaimCheck")
+    case "Collecting delegated work before completing this turn.":
+      return t("notice.workerCollection")
     case "the model request failed because a tool call was not valid JSON":
     case "the model returned a tool call that was not valid JSON":
       return t("notice.invalidToolJSON")

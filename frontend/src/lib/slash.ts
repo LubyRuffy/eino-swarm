@@ -107,9 +107,15 @@ export function filterSlashCommands(
 }
 
 export function parseSlashSubmit(text: string): SlashSubmit | null {
+  const leading = parseSlashFrom(text.trimStart())
+  if (leading) return leading
   const start = lastTriggeredSlashIndex(text)
   if (start < 0) return null
-  return parseSlashFrom(text.slice(start))
+  const command = parseSlashFrom(text.slice(start))
+  if (command?.id === "goal" && !command.arg) {
+    return { ...command, arg: text.slice(0, start).trim() }
+  }
+  return command
 }
 
 /** Codex `parse_slash_name` stops at whitespace. We stop at the first rune
@@ -131,6 +137,8 @@ export function splitSlash(
 function parseSlashFrom(slice: string): SlashSubmit | null {
   const parsed = splitSlash(slice)
   if (!parsed) return null
+  // A filename or directory named after a command is still a path.
+  if (/^[.\/\\]/.test(slice.trimStart().slice(1 + parsed.name.length))) return null
   const found = SLASH_COMMANDS.find((c) => c.name === parsed.name)
   if (!found) return null
   return { id: found.id, arg: parsed.arg }
@@ -140,6 +148,8 @@ function lastTriggeredSlashIndex(text: string): number {
   for (let i = text.length - 1; i >= 0; i -= 1) {
     if (!isSlashRune(text[i])) continue
     if (!isSlashTriggerBefore(i === 0 ? undefined : text[i - 1])) continue
+    if (/[\\/]\S*$/.test(text.slice(0, i))) continue
+    if (literalCommandPosition(text, i)) continue
     return i
   }
   return -1
@@ -154,8 +164,42 @@ function isSlashRune(ch: string | undefined): boolean {
 function isSlashTriggerBefore(ch: string | undefined): boolean {
   if (ch == null || ch === "") return true
   if (/\s/.test(ch)) return true
-  if (/[A-Za-z0-9_\-/:.]/.test(ch)) return false
+  if (/[A-Za-z0-9_\-/:.\\([\]]/.test(ch)) return false
   return true
+}
+
+/** A marker in quoted evidence or code is data, including an unfinished span. */
+function literalCommandPosition(text: string, pos: number): boolean {
+  const lineStart = text.lastIndexOf("\n", pos - 1) + 1
+  if (text.slice(lineStart, pos).trimStart().startsWith(">")) return true
+  let quote = ""
+  let code = ""
+  for (let i = 0; i < pos; i += 1) {
+    const ch = text[i] as string
+    if (ch === "\\") { i += 1; continue }
+    if (code) {
+      if (ch === code[0]) {
+        let end = i + 1
+        while (end < pos && text[end] === ch) end += 1
+        if (end - i === code.length) code = ""
+        i = end - 1
+      }
+      continue
+    }
+    if (quote) { if (ch === quote) quote = ""; continue }
+    if (ch === "`" || ch === "~") {
+      let end = i + 1
+      while (end < pos && text[end] === ch) end += 1
+      if (ch === "`" || end - i >= 3) code = text.slice(i, end)
+      i = end - 1
+    } else if (ch === '"') quote = ch
+    else if (ch === "'" && !/[\p{L}\p{N}]/u.test(text[i - 1] ?? "")) quote = ch
+    else if (ch === "“") quote = "”"
+    else if (ch === "‘") quote = "’"
+    else if (ch === "「") quote = "」"
+    else if (ch === "『") quote = "』"
+  }
+  return Boolean(quote || code)
 }
 
 function slashPrefixLength(text: string): number {

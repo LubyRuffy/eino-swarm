@@ -37,22 +37,39 @@ describe("GoalBanner", () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it("marks a completed objective", () => {
-    render(<GoalBanner goal="keep going" complete onClear={vi.fn()} />)
-    expect(screen.getByTestId("goal-banner").textContent).toContain("Done")
-    expect(screen.queryByTestId("goal-start")).toBeNull()
+  it.each([false, true])("hides a completed objective even while running=%s", (running) => {
+    const onClear = vi.fn()
+    const { container } = render(
+      <GoalBanner goal="keep going" complete running={running} onResume={vi.fn()} onClear={onClear} />,
+    )
+    expect(container).toBeEmptyDOMElement()
+    expect(onClear).not.toHaveBeenCalled()
   })
 
-  it("can restart a completed objective", () => {
-    const onResume = vi.fn()
-    render(
-      <GoalBanner goal="keep going" complete onResume={onResume} onClear={vi.fn()} />,
-    )
-    expect(screen.getByTestId("goal-banner").textContent).toContain("Done")
-    expect(screen.getByTestId("goal-reason").textContent).toMatch(/too early/)
-    expect(screen.getByTestId("goal-reason").textContent).toMatch(/Start/)
-    fireEvent.click(screen.getByRole("button", { name: "Start goal" }))
-    expect(onResume).toHaveBeenCalled()
+  it("removes the pin on completion and shows it for a later open goal", () => {
+    const onClear = vi.fn()
+    const { rerender } = render(<GoalBanner goal="keep going" onClear={onClear} />)
+    expect(screen.getByTestId("goal-banner")).toBeInTheDocument()
+    rerender(<GoalBanner goal="keep going" complete onClear={onClear} />)
+    expect(screen.queryByTestId("goal-banner")).toBeNull()
+    rerender(<GoalBanner goal="another objective" onClear={onClear} />)
+    expect(screen.getByTestId("goal-banner")).toHaveTextContent("another objective")
+    expect(screen.getByTestId("goal-banner")).toHaveTextContent("Pursuing")
+    expect(onClear).not.toHaveBeenCalled()
+  })
+
+  it("discards an unfinished edit on completion before a later goal opens", () => {
+    const onEdit = vi.fn()
+    const onClear = vi.fn()
+    const { rerender } = render(<GoalBanner goal="keep going" onEdit={onEdit} onClear={onClear} />)
+    fireEvent.click(screen.getByTestId("goal-text"))
+    fireEvent.change(screen.getByTestId("goal-edit"), { target: { value: "unsaved edit" } })
+    rerender(<GoalBanner goal="keep going" complete onEdit={onEdit} onClear={onClear} />)
+    rerender(<GoalBanner goal="another objective" onEdit={onEdit} onClear={onClear} />)
+    expect(screen.queryByTestId("goal-edit")).toBeNull()
+    expect(screen.getByTestId("goal-text")).toHaveTextContent("another objective")
+    expect(onEdit).not.toHaveBeenCalled()
+    expect(onClear).not.toHaveBeenCalled()
   })
 
   it("marks a capped objective", () => {

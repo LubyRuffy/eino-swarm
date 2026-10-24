@@ -75,6 +75,14 @@ func (m *autoCompact) BeforeModelRewriteState(ctx context.Context,
 	if state == nil || ctx.Err() != nil {
 		return ctx, state, nil
 	}
+	for _, message := range state.Messages {
+		if message != nil && message.Extra[pendingScheduleAnswerKey] != nil {
+			nextState := *state
+			nextState.Messages = withoutPendingManagerProse(state.Messages)
+			state = &nextState
+			break
+		}
+	}
 	tokens := promptTokenCount(state.Messages)
 	threshold := m.engine.compactThreshold(m.threadID)
 	if tokens > threshold {

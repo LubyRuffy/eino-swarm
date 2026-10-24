@@ -203,8 +203,8 @@ schedule_task only when the human asked for an independent recurring job, or
 after ask_user confirms the spec — never from a scheduled or auto-continued
 turn.
 
-On a scheduled turn: do the check, then report_schedule. Empty findings
-archives the run. Cancel when the wait is over. If still open, keep the short
+On a scheduled turn: do the check and return the result as text, or call report_schedule.
+Empty findings in report_schedule archive the run. Cancel when the wait is over. If still open, keep the short
 interval or recadence shorter — do not stretch.
 A sub-agent the previous process stopped is not running and is not writing.
 resume_agent that exact id or spawn a replacement before schedule_wake or

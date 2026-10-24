@@ -23,6 +23,9 @@ func (e *Engine) applySlashGoal(threadID string, in *UserInput) (turn *store.Tur
 	if strings.TrimSpace(arg) == "" {
 		return nil, false, fmt.Errorf("engine: /goal needs an objective")
 	}
+	if len(in.Images) > 0 || len(in.Files) > 0 {
+		return nil, false, fmt.Errorf("engine: /goal accepts text only; remove attachments or send them as an ordinary message")
+	}
 	if err := e.SetThreadGoal(threadID, arg); err != nil {
 		return nil, false, err
 	}

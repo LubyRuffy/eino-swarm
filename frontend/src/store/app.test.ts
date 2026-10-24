@@ -740,3 +740,22 @@ describe("sidebar running", () => {
     expect(useApp.getState().meta?.clients).toHaveLength(2)
   })
 })
+
+it("derives live ask status from recovered cards and never reopens an accepted answer", async () => {
+  await useApp.getState().boot()
+  await useApp.getState().openThread("th_old")
+  useApp.setState({ status: { running: true, turn_id: "turn" } })
+  const args = JSON.stringify({ questions: [{ id: "path", prompt: "Choose a path", options: [{ id: "one", label: "First" }, { id: "two", label: "Second" }] }] })
+  const base = { thread_id: "th_old", turn_id: "turn", agent_id: "manager", tool_call_id: "ask-original", created_at: "2026-10-23T12:00:00Z" }
+  for (const event of [
+    { ...base, kind: "tool_call", seq: 2, text: `ask_user(${args})` },
+    { ...base, kind: "tool_result", seq: 3, text: '{"outcome":"unknown"}' },
+  ]) fake.onEvent?.(event)
+  expect(useApp.getState().status.awaiting_answer).toBe(false)
+  fake.onEvent?.({ ...base, kind: "ask_recovered", seq: 5, text: args })
+  expect(useApp.getState().status.awaiting_answer).toBe(true)
+  fake.onEvent?.({ ...base, kind: "tool_result", seq: 6, text: '{"answers":{"path":{"answers":["First"]}}}' })
+  fake.onEvent?.({ ...base, kind: "tool_call", seq: 7, text: `ask_user(${args})` })
+  expect(useApp.getState().status.awaiting_answer).toBe(false)
+  expect(useApp.getState().threads.find((t) => t.id === "th_old")?.awaiting_answer).toBe(false)
+})

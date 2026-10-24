@@ -12,6 +12,13 @@ const fake = vi.hoisted(() => ({
   steers: [] as Array<{ id: string; text: string }>,
   compacts: [] as string[],
   goalText: "",
+  steerFailure: undefined as Error | undefined,
+  acknowledgement: undefined as Promise<{ steered: boolean }> | undefined,
+  threadGate: undefined as Promise<void> | undefined,
+  probedThreads: [] as string[],
+  followups: [] as string[],
+  answers: [] as Array<{ id: string; text: string }>,
+  threadStatuses: [] as Array<{ running: boolean; awaiting_answer?: boolean }>,
 }))
 
 vi.mock("@/lib/api", () => {
@@ -40,10 +47,11 @@ vi.mock("@/lib/api", () => {
       models: async () => ({ models: [], default: "default", mock: true }),
       threads: async () => [thread("th_old")],
       projects: async () => [],
-      thread: async (id: string) => ({
-        thread: thread(id),
-        status: { running: false },
-      }),
+      thread: async (id: string) => {
+        fake.probedThreads.push(id)
+        await fake.threadGate
+        return { thread: thread(id), status: fake.threadStatuses.shift() ?? { running: false } }
+      },
       turns: async () => [],
       threadLog: async () => ({ events: [], has_more: false }),
       agentLog: async () => ({ events: [] }),
@@ -74,7 +82,16 @@ vi.mock("@/lib/api", () => {
       },
       steer: async (id: string, text: string) => {
         fake.steers.push({ id, text })
-        return { steered: true }
+        if (fake.steerFailure) throw fake.steerFailure
+        return fake.acknowledgement ?? { steered: true }
+      },
+      enqueueFollowup: async (id: string, text: string) => {
+        fake.followups.push(text)
+        return { id: "fu_1", thread_id: id, seq: 1, text, created_at: "" }
+      },
+      answerTurn: async (id: string, body: { text: string }) => {
+        fake.answers.push({ id, text: body.text })
+        return { answered: true }
       },
       compactThread: async (id: string) => {
         fake.compacts.push(id)
@@ -107,6 +124,13 @@ beforeEach(() => {
   fake.steers.length = 0
   fake.compacts.length = 0
   fake.goalText = ""
+  fake.steerFailure = undefined
+  fake.acknowledgement = undefined
+  fake.threadGate = undefined
+  fake.probedThreads.length = 0
+  fake.followups.length = 0
+  fake.answers.length = 0
+  fake.threadStatuses.length = 0
   useApp.setState({
     threads: [],
     activeId: undefined,
@@ -132,13 +156,113 @@ beforeEach(() => {
 })
 
 describe("goal and compact", () => {
-  it("patches the standing objective onto the open conversation", async () => {
+  it("starts pursuit with one goal command and receives the standing objective from the stream", async () => {
     await useApp.getState().boot()
     await useApp.getState().openThread("th_old")
-    await useApp.getState().setGoal("keep going")
-    expect(fake.goals).toEqual([{ id: "th_old", goal: "keep going" }])
+    expect(await useApp.getState().setGoal("keep going")).toBe(true)
+    expect(fake.goals).toEqual([])
+    expect(fake.steers).toEqual([{ id: "th_old", text: "/goal keep going" }])
+    fake.onEvent?.({
+      kind: "goal", seq: 50, thread_id: "th_old", turn_id: "tn_1",
+      agent_id: "manager", text: "keep going", created_at: new Date().toISOString(),
+    })
     expect(useApp.getState().threads[0]?.goal).toBe("keep going")
-    expect(fake.steers).toEqual([{ id: "th_old", text: "keep going" }])
+    expect(useApp.getState().status.running).toBe(true)
+  })
+
+  it.each(["Inspect assigned /goal", "校验当前目标\n保留末尾 /goal"])("keeps a command literal in the objective for one server interpretation: %s", async (objective) => {
+    // Sending only the parsed argument lets the engine consume its last /goal again.
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
+    expect(await useApp.getState().setGoal(objective)).toBe(true)
+    expect(fake.steers).toEqual([{ id: "th_old", text: `/goal ${objective}` }])
+    expect(fake.goals).toEqual([])
+  })
+
+  it("keeps an explicitly captured goal target when another conversation is selected", async () => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_other")
+    expect(await useApp.getState().setGoal("Inspect assigned /goal", "th_old")).toBe(true)
+    expect(fake.steers).toEqual([{ id: "th_old", text: "/goal Inspect assigned /goal" }])
+    expect(fake.goals).toEqual([])
+    expect(useApp.getState().activeId).toBe("th_other")
+    expect(useApp.getState().status.running).toBe(false)
+  })
+
+  it("waits for the goal send acknowledgement and keeps navigation ownership", async () => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
+    let acknowledge!: (reply: { steered: boolean }) => void
+    fake.acknowledgement = new Promise((resolve) => { acknowledge = resolve })
+    let accepted = false
+    const sending = useApp.getState().setGoal("Inspect assigned /goal").then((result) => { accepted = result })
+    await vi.waitFor(() => expect(fake.steers).toHaveLength(1))
+    expect(accepted).toBe(false)
+    await useApp.getState().openThread("th_other")
+    acknowledge({ steered: true })
+    await sending
+    expect(accepted).toBe(true)
+    expect(fake.goals).toEqual([])
+    expect(useApp.getState().activeId).toBe("th_other")
+    expect(useApp.getState().status.running).toBe(false)
+  })
+
+  it("steers the goal command when a turn starts during the captured target's metadata read", async () => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_other")
+    let releaseProbe!: () => void
+    fake.threadGate = new Promise((resolve) => { releaseProbe = resolve })
+    const sending = useApp.getState().setGoal("Inspect raced /goal", "th_old")
+    await vi.waitFor(() => expect(fake.probedThreads.at(-1)).toBe("th_old"))
+    // A live update/navigation can expose the target's new turn while its old snapshot arrives.
+    useApp.setState({ activeId: "th_old", status: { running: true }, followups: [] })
+    releaseProbe()
+    expect(await sending).toBe(true)
+    expect(fake.steers).toEqual([{ id: "th_old", text: "/goal Inspect raced /goal" }])
+    expect(fake.goals).toEqual([])
+    expect(fake.followups).toEqual([])
+  })
+
+  it("returns false without a partial goal patch when the send acknowledgement fails", async () => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
+    fake.steerFailure = new Error("goal send was not acknowledged")
+    expect(await useApp.getState().setGoal("Inspect assigned /goal")).toBe(false)
+    expect(fake.goals).toEqual([])
+    expect(useApp.getState().error).toBe("goal send was not acknowledged")
+    expect(useApp.getState().status.running).toBe(false)
+  })
+
+  it("keeps the goal command out of an ask that appears in the target's second metadata snapshot", async () => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_other")
+    fake.probedThreads.length = 0
+    fake.threadStatuses.push({ running: false }, { running: true, awaiting_answer: true })
+    expect(await useApp.getState().setGoal("Inspect pending /goal", "th_old")).toBe(true)
+    expect(fake.answers).toEqual([])
+    expect(fake.followups).toEqual([])
+    expect(fake.steers).toEqual([{ id: "th_old", text: "/goal Inspect pending /goal" }])
+    expect(fake.probedThreads).toEqual(["th_old", "th_old"])
+    expect(useApp.getState().activeId).toBe("th_other")
+    expect(useApp.getState().status.running).toBe(false)
+  })
+
+  it("starts a new human goal after an earlier objective completed", async () => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
+    fake.onEvent?.({
+      kind: "goal_complete", seq: 50, thread_id: "th_old", turn_id: "tn_old",
+      agent_id: "manager", text: "{}", created_at: new Date().toISOString(),
+    })
+    expect(useApp.getState().threads[0]?.goal_complete).toBe(true)
+    expect(await useApp.getState().setGoal("Inspect assigned /goal")).toBe(true)
+    expect(fake.goals).toEqual([])
+    expect(fake.steers).toEqual([{ id: "th_old", text: "/goal Inspect assigned /goal" }])
+    fake.onEvent?.({
+      kind: "goal", seq: 51, thread_id: "th_old", turn_id: "tn_new",
+      agent_id: "manager", text: "Inspect assigned /goal", created_at: new Date().toISOString(),
+    })
+    expect(useApp.getState().threads[0]).toMatchObject({ goal: "Inspect assigned /goal", goal_complete: false })
     expect(useApp.getState().status.running).toBe(true)
   })
 

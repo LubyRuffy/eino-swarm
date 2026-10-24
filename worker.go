@@ -41,7 +41,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 	h.handoff.task, h.handoff.instruction = task, instruction
 	initial := restoredWorkerMessages(task, workerReplayHistory(h.handoff.restoreHistory, instruction))
 	h.handoff.restoreHistory = nil
-	if h.handoff.cancelled {
+	if h.handoff.cancelled || h.closeRequested {
 		cancel()
 	}
 	done := h.done

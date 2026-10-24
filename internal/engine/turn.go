@@ -11,6 +11,7 @@ import (
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
+	"github.com/LubyRuffy/eino-swarm/internal/slash"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/LubyRuffy/eino-swarm/internal/tools"
 	"github.com/LubyRuffy/eino-swarm/internal/workerstate"
@@ -289,15 +290,23 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 	}
 
 	rt := e.runtimeFor(threadID)
-	if turn, done, err := e.applySlashGoal(threadID, &in); err != nil {
-		return nil, err
-	} else if done {
-		return turn, nil
+	// Decide from the original input: a command's argument is never another
+	// command, and a leading /plan owns any trailing /goal in its argument.
+	_, goalCommand := slash.Lookup(in.Text, "goal")
+	_, planCommand := slash.Lookup(in.Text, "plan")
+	if !planCommand {
+		if turn, done, err := e.applySlashGoal(threadID, &in); err != nil {
+			return nil, err
+		} else if done {
+			return turn, nil
+		}
 	}
-	if turn, done, err := e.applySlashPlan(threadID, &in); err != nil {
-		return nil, err
-	} else if done {
-		return turn, nil
+	if planCommand || !goalCommand {
+		if turn, done, err := e.applySlashPlan(threadID, &in); err != nil {
+			return nil, err
+		} else if done {
+			return turn, nil
+		}
 	}
 	th, err = e.store.GetThread(threadID)
 	if err != nil {
@@ -471,6 +480,10 @@ func (e *Engine) Steer(threadID, text string) error {
 }
 
 func (e *Engine) SteerInput(threadID string, in UserInput) error {
+	return e.steerInput(threadID, in, true)
+}
+
+func (e *Engine) steerInput(threadID string, in UserInput, interpretSlash bool) error {
 	if _, err := e.store.GetThread(threadID); err != nil {
 		return err
 	}
@@ -485,6 +498,13 @@ func (e *Engine) SteerInput(threadID string, in UserInput) error {
 	rt.mu.Unlock()
 	if !running || reg == nil {
 		return ErrIdle
+	}
+	if interpretSlash {
+		if _, planCommand := slash.Lookup(in.Text, "plan"); !planCommand {
+			if _, done, err := e.applySlashGoal(threadID, &in); done || err != nil {
+				return err
+			}
+		}
 	}
 	text, files, err := e.hydrateUserInput(threadID, in, "engine: nothing to steer with")
 	if err != nil {
@@ -558,6 +578,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 		}
 	}()
 
+	var resumeErr error
 	if resumed {
 		if !e.turnHasKind(turn.ID, KindUser, snapshots...) && !e.turnHasKind(turn.ID, KindGoalContinued, snapshots...) &&
 			!e.turnHasKind(turn.ID, KindScheduleFired, snapshots...) {
@@ -573,7 +594,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 			}
 		}
 		e.closeOrphanedToolCalls(turn, snapshots...)
-		messages = rt.resolveOrphanedAsk(ctx, turn, messages, snapshots...)
+		messages, resumeErr = rt.resolveOrphanedAsk(ctx, turn, messages, snapshots...)
 		kind, notice := KindResumed, resumeNotice
 		if e.checkpointForTurn(turn.ID, snapshots...) != nil {
 			kind, notice = KindRestartResumed, "Saved task progress restored; continuing."
@@ -601,7 +622,11 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	// turn look like it was still working.
 	beat, stopBeat := context.WithCancel(ctx)
 	go rt.heartbeat(beat, turn.ID, reg, time.Now(), e.cfg.SwarmSnapshot().ProgressInterval())
-	res, runErr := rt.runManager(ctx, turn, reg, acc, toolset, pc, messages)
+	var res swarm.RunResult
+	runErr := resumeErr
+	if runErr == nil {
+		res, runErr = rt.runManager(ctx, turn, reg, acc, toolset, pc, messages, snapshots...)
+	}
 	stopBeat()
 	acc.flushAll()
 	finishUnlock, _ = rt.lockFinish(context.Background())
@@ -689,15 +714,19 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	// rather than sit there looking stuck. Compact still waits on the
 	// same gate if the next Generate actually needs the briefing.
 	e.scheduleSessionAndReview(rt.threadID, turn, status, pc, res.Final)
+	pursue := !(turn.ScheduleContinue && status == store.TurnError) && shouldPursueAfterTurn(status, runErr, rt.pursuingOpenGoal())
 	started := false
-	if !(turn.ScheduleContinue && status == store.TurnError) && shouldPursueAfterTurn(status, runErr, rt.pursuingOpenGoal()) {
+	if pursue {
 		started = rt.runLateSteerMessages(store.TurnDone, leftover)
-		if !started {
-			started = rt.flushFollowup(store.TurnDone)
-		}
-		if !started {
-			rt.continueGoal(store.TurnDone)
-		}
+	}
+	// A failed check must stay failed, but it does not revoke the user's
+	// separate request to run a queued message next. Automatic goal retries
+	// and unread late steers retain their existing eligibility above.
+	if !started && (pursue || status == store.TurnError) {
+		started = rt.flushFollowup(status)
+	}
+	if !started && pursue {
+		rt.continueGoal(store.TurnDone)
 	}
 }
 

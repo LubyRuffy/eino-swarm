@@ -1,4 +1,6 @@
+import { restartAskHistory } from "./mock-ask-restart"
 import { generationHistory } from "./mock-generation"
+import { scriptedTurn, type Step } from "./mock-turn"
 import {
   OpAnswer,
   OpCancelWait,
@@ -94,6 +96,7 @@ type MockThread = {
   askUser: boolean
   minutesAgo: number
   goal?: string
+  goalComplete?: boolean
   providerID?: string
   model?: string
   reasoning?: string
@@ -103,43 +106,10 @@ type MockThread = {
   followups?: FollowupView[]
 }
 
-type Step = { kind: string; messageID?: string; text?: string; callID?: string; err?: string; agentID?: string; role?: string; at?: string; sourceThreadID?: string; sourceTurnID?: string }
-
 const projects: ProjectView[] = [
   { id: "p-platform", name: "Platform" },
   { id: "p-notes", name: "Field notes" },
 ]
-
-/** A turn the phone can replay: a thought, work, then an answer. Generic on
- *  purpose — this is a rendering fixture, not a task the product knows. */
-function scriptedTurn(prompt: string): Step[] {
-  return [
-    { kind: "user_message", text: prompt },
-    { kind: "reasoning_delta", text: "Reading the current shape before touching it." },
-    { kind: "reasoning", text: "Reading the current shape before touching it." },
-    { kind: "tool_call", text: `read({"file_path":"src/lib/layout.ts"})`, callID: "" },
-    { kind: "tool_result", text: "42 lines", callID: "" },
-    { kind: "tool_call", text: `exec({"command":"npm test -- layout"})`, callID: "" },
-    { kind: "tool_result", text: "12 passed", callID: "" },
-    { kind: "delta", text: "Here is what changed" },
-    {
-      kind: "agent_message",
-      text: [
-        "Here is what changed:",
-        "",
-        "- the column keeps its width on a narrow screen",
-        "- the tail stays pinned while older rows page in",
-        "",
-        "```chart",
-        '{"type":"bar","title":"Counts","x":"item","y":"n","unit":"n","data":[{"item":"a","n":1},{"item":"b","n":3}]}',
-        "```",
-        "",
-        "Run `npm test` to see it green.",
-      ].join("\n"),
-    },
-    { kind: "done" },
-  ]
-}
 
 function threadSeed(): MockThread[] {
   return [
@@ -259,7 +229,13 @@ export class MockHost {
   constructor(readonly tickMs = mockTickMs()) {
     const live = this.find("t-live")
     if (live) {
-      if (new URLSearchParams(location.search).get("history") === "generation-interruption") {
+      if (new URLSearchParams(location.search).get("history") === "restart-ask") {
+        live.askUser = true
+        this.seed(live, restartAskHistory(), true)
+      } else if (new URLSearchParams(location.search).get("history") === "goal-complete") {
+        live.goal = "Verify current work"
+        this.seed(live, [{ kind: "goal", text: live.goal }], false)
+      } else if (new URLSearchParams(location.search).get("history") === "generation-interruption") {
         this.seed(live, generationHistory(), true)
       } else if (new URLSearchParams(location.search).get("history") === "stopped-workers") {
         this.seed(live, stopReplayStart(), true)
@@ -576,6 +552,7 @@ export class MockHost {
       ...(this.legacyCompletion ? {} : { unread: (th.completedSeq ?? 0) > (th.readSeq ?? 0), completed_seq: th.completedSeq ?? 0 }),
       goal: th.goal,
       goal_on: Boolean(th.goal),
+      goal_complete: th.goalComplete,
       waiting: th.waiting,
       wake: th.waiting
         ? { id: "w-" + th.id, next_run_at: new Date(Date.now() + 9 * 60_000).toISOString() }
@@ -624,6 +601,9 @@ export class MockHost {
     th.waiting = false
     th.minutesAgo = 0
     const steps = scriptedTurn(prompt)
+    if (th.goal && new URLSearchParams(location.search).get("history") === "goal-complete") {
+      steps.splice(-1, 0, { kind: "goal_complete", text: JSON.stringify({ summary: "Current evidence verified." }) })
+    }
     steps.forEach((step, i) => {
       this.later(() => {
         // The turn is already over when `done` goes out, and the frame
@@ -658,7 +638,8 @@ export class MockHost {
       return "PC rejected the answer"
     }
     th.askUser = false
-    this.push(th, { kind: "tool_result", callID: "ask-fixture", text: JSON.stringify({ answers }) })
+    const original = [...th.events].reverse().find((ev) => ev.kind === "tool_call" && ev.tool_call_id === "ask-fixture")
+    this.push(th, { kind: "tool_result", turnID: original?.turn_id, callID: "ask-fixture", text: JSON.stringify({ answers }) })
     this.push(th, { kind: "agent_message", text: "The answer was received." })
     this.settle(th)
     this.push(th, { kind: "done" })
@@ -695,6 +676,7 @@ export class MockHost {
   }
 
   private event(th: MockThread, step: Step): RemoteEvent {
+    if (step.kind === "goal_complete") th.goalComplete = true
     // A delta is live-only on the wire, so it never takes a sequence number.
     const streamed = step.kind === "delta" || step.kind === "reasoning_delta"
     if (!streamed) this.seq += 1
@@ -712,6 +694,7 @@ export class MockHost {
     }
     return {
       thread_id: th.id,
+      turn_id: step.turnID,
       seq: streamed ? 0 : this.seq,
       kind: step.kind,
       message_id: step.messageID,

@@ -940,12 +940,13 @@ describe("Composer slash commands", () => {
     expect(onResumeGoal).toHaveBeenCalled()
   })
 
-  it("starts a completed standing objective from the banner", () => {
+  it("removes a completed standing objective from the composer", () => {
     const onResumeGoal = vi.fn()
     renderComposer({ goal: "keep going", goalComplete: true, onResumeGoal })
-    expect(screen.getByTestId("goal-reason").textContent).toMatch(/too early/)
-    fireEvent.click(screen.getByRole("button", { name: "Start goal" }))
-    expect(onResumeGoal).toHaveBeenCalled()
+    expect(screen.queryByTestId("goal-banner")).toBeNull()
+    expect(screen.queryByRole("button", { name: "Start goal" })).toBeNull()
+    expect(screen.getByTestId("composer-input")).toBeEnabled()
+    expect(onResumeGoal).not.toHaveBeenCalled()
   })
 
   it("writes /plan into the box after picking from the menu", () => {

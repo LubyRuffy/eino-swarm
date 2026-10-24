@@ -103,7 +103,7 @@ in this database: notes and skills are files, so a person can read and fix them
 | `model` | text | the name this conversation sends; empty follows the provider's default so a Settings change applies until someone picks in the composer |
 | `reasoning_effort` | text | this conversation's thinking level (``, `low`, `medium`, `high`); empty means the model's own default. Switchable in the composer, applied from the next turn |
 | `goal` | text | standing objective from `/goal`. Empty means none. Injected into later turns until changed or cleared |
-| `goal_complete` | bool | true after successful `complete_goal`. Completion fields and the `goal_complete` event commit atomically. A scheduled tool call whose own manager-created thread wake remains active returns `goal_schedule_conflict` without changing either. The text stays so the banner can show it; auto-continue stops. `reopen_goal` or **Start** on the Done banner clears it, resets `goal_auto_turns`, and pursuit continues |
+| `goal_complete` | bool | true after successful `complete_goal`. Completion fields and the `goal_complete` event commit atomically. A scheduled tool call whose own manager-created thread wake remains active returns `goal_schedule_conflict` without changing either. The text and completion state stay stored while PC/phone hide the completed goal strip; auto-continue stops and history remains. `reopen_goal`, `goal_resume: true`, or the `resume_goal` RPC clears completion, resets `goal_auto_turns`, and pursuit continues |
 | `goal_blocked` | bool | true after `block_goal`, or after a pursuing turn has a non-recoverable failure outside the isolated scheduled-check boundary. Ordinary scheduled model/evidence failures do not set this field. Auto-continue stops until the human resumes or sends a message |
 | `goal_block_reason` | text | optional one-line reason from `block_goal`, or the public turn error when a pursuing turn dies before the manager can call it |
 | `goal_started_at` | time | when the current objective was set (not edited). Nil when there is no goal |
@@ -159,6 +159,27 @@ writes them into this table so the next force-quit does not depend on the
 event scan. An answer already stored for that turn — including below
 `compact_through_seq` — is not rewritten; that would mint a new seq and
 undo `/compact`.
+Candidate manager prose is withheld while scheduling-success claims are
+checked. Admission rechecks the matched schedules and the running turn in one
+transaction, then writes its `agent_message` events and assistant replay rows
+together before broadcasting. A cancelled/retargeted schedule or ended turn
+cannot admit a late success answer. `schedule_report` findings pass the same
+fact check; admitting a report does not create an assistant replay message.
+Unadmitted prose is excluded from compaction inputs. The interpretation call
+is attributed to `schedule-answer-policy`; a bounded correction uses the
+existing `model_retry` event with `reason: "schedule_claim_unverified"`.
+No new table or column is introduced (Issue #103, `C-009`, `C-012`).
+
+普通回合的 worker 收取状态也不新增表或列。生命周期工具的成功回执在既有
+`tool_result.text` 中保存精确 `agent_id` 与 worker 执行 `generation`；manager
+的配对 `wait_agents` 终态条目及成功 `close_agent` 决定该 generation 已收取或
+明确放弃，wait 超时、unknown、孤立／异 caller／旧 generation 回执不结清。
+提前完成的主管候选正文同样不能进入保存回答、压缩输入或后续模型输入。
+原 turn 的 manager `model_retry` 事件保存
+`{attempt:1,cap:1,reason:"workers_uncollected",worker_ids:[...]}`；消费一次纠正后
+再提前结束，保留 running turn 和原 worker，在既有 `max_iterations` 等待人工。
+`max_iterations_continued` 是授予一次新尝试的人类继续依据；重启读取相同事件
+恢复额度，读写失败不得重置额度或授予新的请求（`C-019`、`C-027`）。
 `/compact` is a second, optional fold: older
 of those replay messages become a briefing on the thread (`compact_summary`),
 copied from `session_memory` when that briefing exists;
@@ -167,9 +188,10 @@ columns are written mid-turn when a manager call would exceed
 the compact trigger (after older replayable tool results are cleared). Compacted
 answers are not unfolded from the event log, even when later messages of
 the same turn are still live. Worker identity is **not** in this table: it
-lives on `spawned` / `finished` events. After a fold, synthetic
-`spawn_agent` pairs are re-injected from those events so the next Generate
-still has the ids. The in-flight ReAct tail stays in ADK state; that is
+lives on `spawned` / `finished` events and their paired lifecycle tool receipts.
+After a fold, a System runtime-worker roster supplies their IDs and current
+states; historical workers are not fabricated assistant `spawn_agent` calls or
+new creation receipts. The in-flight ReAct tail stays in ADK state; that is
 not roster data.
 
 Model generation lifecycle uses existing `events` rows, without another table.
@@ -213,7 +235,8 @@ timeline before `resumed` (`err` is `the previous process stopped`) so a
 killed process does not leave the call looking live. A dangling
 `wait_agents` is closed as a timed-out wait snapshot of those ids, not as a
 stopped exec, so the manager can wait again on the live workers. Follow-ups in
-`followups` stay queued until that leftover turn finishes cleanly. Unread
+`followups` stay queued during restart until that resumed leftover turn completes
+or fails. Unread
 `[steer]` rows stay on the leftover turn unless they were retracted
 (`steer_retracted` plus `DeleteMessageByEventSeq`). An edit before the
 manager reads one rewrites that message's `content` and appends
@@ -350,7 +373,7 @@ exists is saved alongside the old one rather than overwriting it.
 ## `followups` — messages waiting for the current turn
 
 Typed while a turn is already running. They are **not** steering: the manager
-does not see them until this turn finishes cleanly and the engine starts the
+does not see them until this turn completes or fails and the engine starts the
 oldest one as the next turn. The live turn's user text is not stored as a
 follow-up. Submitting an edit of a waiting row assigns a
 new `seq` at the back of that FIFO. **Steer** on a row (or ⌘Enter on a new draft)
@@ -359,9 +382,11 @@ drops a queued copy of the same words.
 **Interrupt** on the unread-steer pin aborts the current manager tool so those
 steers drain on this turn; **Delete** retracts one unread `steer` (event stays,
 the `[steer]` message is dropped).
-Cancelled and failed turns leave the queue alone. A crash, a kill, or quitting
+Cancelled turns leave the queue alone; an error starts the next queued human
+message without changing the failed turn or schedule run. A crash, a kill, or quitting
 the app also leaves the rows: they are not in-memory, so the next start still
-lists them and flushes them after the leftover turn finishes cleanly. Deleting the conversation
+lists them and flushes them after the resumed leftover turn completes or fails.
+Deleting the conversation
 deletes leftover rows. A consumer owns delivery only after its DELETE affects one row.
 Automatic dequeue reselects the FIFO head after losing that claim to another
 consumer or a concurrent edit; reading a row alone does not authorize delivery.
@@ -511,6 +536,21 @@ unconfirmed; that child may not have attempted acquisition yet. It is not an
 additional persisted lease record or permission to attach without validated
 metadata.
 
+Each skill directory may also contain `usage.json` with `views` (int64) and
+`last_viewed_at` (UTC RFC3339 timestamp; zero time means never viewed). Only a
+successful agent `skill_view` increments it, under the Store lock with atomic
+replacement. Missing or corrupt optional usage reads as zero; the next view
+repairs it. Listing, HTTP reading and copying do not count as views. Merges
+sum usage and preserve the latest view, deletion removes the directory, and
+copies start at zero; updating a copy retains its own usage. If a source
+deletion fails, the keeper retains usage no longer held by readable sources,
+including a source whose files were partially removed, allowing an ordinary
+failed merge to retry without double counting. Copy refuses an occupied
+destination directory even when it contains only an orphaned usage sidecar. A simultaneous
+restoration failure is returned with the deletion error; process interruption
+is not a cross-directory transaction. This sidecar is
+excluded from SKILL.md modification time and content-digest comparisons.
+
 `MEMORY.md` and `SKILL.md` are plain files, written atomically through a
 temporary file and a rename, so a crash mid-write leaves the old version rather
 than half of the new one. `PLAN.md` is the `/plan` draft for that conversation:
@@ -528,7 +568,10 @@ original project, so copying that copy does not start following a project
 that never changed the text. Agent writes to `MEMORY.md`
 are also capped per paragraph (`memory.entry_max`); a create that collides with
 an existing skill (same subject, shared name stem, or a copied procedure) is
-refused; a note that restates a skill's summary or steps is refused. After a
+refused; a note that restates a skill's summary or steps is refused. A pointer
+that names an existing skill exactly without restating its body can remain in
+notes; an unknown name does not grant this exception. The plain paragraph
+format of `MEMORY.md` is unchanged. After a
 successful turn, leftover families are folded into one `SKILL.md` under the
 shared stem. A hand edit of those files does not fold until the next turn, or
 until `POST /api/projects/:id/memory/tidy-skills` (stems fold first, then the
@@ -544,6 +587,16 @@ failures leave the official notes unchanged. Existing Markdown paragraphs and
 human-authored notes remain readable without a migration or mandatory provenance
 backfill. Direct external file writers do not participate in that in-process
 lock.
+
+Requested project tidy additionally moves existing content between notes and
+skills. Promote requires body and source-note text to be equivalent after whitespace
+normalization, with no extra steps or assertions; demote requires a short body without Markdown step markers and
+a whitespace-equivalent note under both budgets. Text overlap alone cannot
+authorize deleting source content. The destination is saved first, then the
+source is removed; partial failure may leave duplicates. Actual partial writes
+are create/add/delete changes; a completed move is promote/demote. A retry
+reporting no change establishes the already-present final state, not historical
+source provenance. Shared-library tidy and post-turn review do not move notes.
 
 Skills keep immediate file writes, including merge/delete; they are not part of
 the notes commit. A later refusal must not hide an earlier actual skill write.
@@ -566,8 +619,9 @@ matter or event kind are introduced. See [Memory reviews](API.md#memory-reviews)
 **Memory lives here, never in your working directory.** A project pointed at a
 repository must not leave files in it, and a memory that was in the repository
 would arrive in a commit, a diff and a code review. `skill_view` reads this
-tree only — the manager and sub-agents both have it; only the manager (and
-the post-turn reviewer) can write. A `SKILL.md` already in the workspace is a
+tree only — the manager and sub-agents both have it. The manager and
+post-turn reviewer can write under their tool boundaries; a user-requested
+project tidy can additionally reclassify existing content. Workers cannot write. A `SKILL.md` already in the workspace is a
 file; the agent `read`s it rather than opening it as a recorded skill.
 
 ## `search_docs` / `thread_fts` — keyword index
@@ -685,6 +739,17 @@ original `id` and `role`, current invocation `task`, original-task
 `summary`, and `in_flight` tools (`name`, `call_id`, `arguments`). After recovery,
 `task` can be a resumption cue; the original assignment remains in `instruction`
 and its retained conversation history.
+
+worker 还保留可选 `generation`、`collected` 与 `close_requested`，对应公开
+checkpoint／restore 结构的 `Generation`、`Collected`、`CloseRequested`。
+`generation` 绑定一次 worker 执行，resume 开始新值，区别于一次模型输出的
+`message_id`。`collected` 表示真实终态结果已交给 manager，或 manager 明确
+关闭已结束任务而放弃结果；`close_requested` 表示对该 generation 请求取消。
+二者不伪造 worker 成功，不覆盖已观察的失败。运行与已完成未收取的结果均保留
+到结清，Stats／历史归档淘汰不能丢弃它们。缺 generation 身份的旧 finished
+checkpoint／roster 按 legacy 已结束兼容，不追加追溯收取义务；旧 running 仍待
+收取，新 `generation>0` 保留精确状态。冷回放只从同 manager 配对工具回执恢复，
+不能凭旧 ID 或正文推断收取；人工 Continue 暂停仍由同一 checkpoint 保存。
 
 The latest valid checkpoint supplies recovery state; confirmed lifecycle
 events remain authoritative for subsequent completed work. Summaries are

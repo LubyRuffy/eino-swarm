@@ -29,6 +29,13 @@ func TestIndependentManagersDiscoverAndNegotiate(t *testing.T) {
 		}
 	}
 	ra, rb := e.runtimeFor(a.ID), e.runtimeFor(b.ID)
+	turn := &store.Turn{ID: "sender-turn", ThreadID: a.ID}
+	peerTurn := &store.Turn{ID: "peer-turn", ThreadID: b.ID}
+	for _, row := range []*store.Turn{turn, peerTurn} {
+		if err := e.Store().CreateTurn(row); err != nil {
+			t.Fatal(err)
+		}
+	}
 	peerRegistry := swarm.NewRegistry()
 	t.Cleanup(peerRegistry.Close)
 	rb.occupy(peerRegistry, func() {}, "peer-turn", make(chan struct{}))
@@ -59,9 +66,8 @@ func TestIndependentManagersDiscoverAndNegotiate(t *testing.T) {
 	}}
 	reg := e.newTurnRegistry(func(string, string) model.BaseChatModel { return cm }, set, nil)
 	t.Cleanup(reg.Close)
-	turn := &store.Turn{ID: "sender-turn", ThreadID: a.ID}
 	acc := newAccumulator(e, a.ID, turn.ID, 0)
-	_, err = ra.runManager(context.Background(), turn, reg, acc, set, nil, []adk.Message{schema.UserMessage("coordinate this task")})
+	_, err = ra.runOwnedTestManager(context.Background(), turn, reg, acc, set, nil, []adk.Message{schema.UserMessage("coordinate this task")})
 	acc.flushAll()
 	if err != nil {
 		t.Fatalf("manager cannot discover/communicate with an independent task: %v", err)
@@ -86,7 +92,7 @@ func TestIndependentManagersDiscoverAndNegotiate(t *testing.T) {
 	regB := e.newTurnRegistry(func(string, string) model.BaseChatModel { return cmB }, setB, nil)
 	t.Cleanup(regB.Close)
 	accB := newAccumulator(e, b.ID, "peer-turn", 0)
-	_, err = rb.runManager(context.Background(), &store.Turn{ID: "peer-turn", ThreadID: b.ID}, regB, accB, setB, nil, []adk.Message{schema.UserMessage("coordinate this task")})
+	_, err = rb.runOwnedTestManager(context.Background(), peerTurn, regB, accB, setB, nil, []adk.Message{schema.UserMessage("coordinate this task")})
 	accB.flushAll()
 	if err != nil {
 		t.Fatalf("receiver cannot negotiate: %v", err)

@@ -131,30 +131,32 @@ def cleanup_complete(root):
     return True
 
 
-def execute(args, action):
+def execute(args, action, *, admission=None):
+    """Run admission under driver ownership; it must raise to refuse receipt writes."""
     root = args.evidence.resolve()
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock = (root / "driver.lock").open("a+")
     try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError as error:
-        lock.close()
-        raise RuntimeError("a campaign driver already owns this evidence directory") from error
-    write_json(root / "owner.json", dict(launch_id=args.launch_id, process=identity(os.getpid()), started_at=time.time()))
-    code = 2
-    try:
-        interrupted(root, args.launch_id)
-        code = action(args)
-        return code
-    except KeyboardInterrupt:
-        code = 130
-        raise
-    finally:
         try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise RuntimeError("a campaign driver already owns this evidence directory") from error
+        if admission is not None:
+            admission(args)
+        write_json(root / "owner.json", dict(launch_id=args.launch_id, process=identity(os.getpid()), started_at=time.time()))
+        code = 2
+        try:
+            interrupted(root, args.launch_id)
+            code = action(args)
+            return code
+        except KeyboardInterrupt:
+            code = 130
+            raise
+        finally:
             write_json(root / "driver-exit.json", dict(launch_id=args.launch_id, exit_code=code,
                        cleanup_complete=cleanup_complete(root), finished_at=time.time()))
-        finally:
-            lock.close()
+    finally:
+        lock.close()
 
 
 def launch(args, script):

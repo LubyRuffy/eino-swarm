@@ -2,7 +2,7 @@ import { createServer, type ServerResponse } from "node:http"
 
 type Call = { function: { name: string; arguments: string } }
 type Message = { role: string; content?: string; tool_calls?: Call[] }
-type Input = { messages: Message[]; tools?: { function: { name: string } }[] }
+type Input = { messages: Message[]; tools?: { function: { name: string } }[]; stream?: boolean }
 
 // Exercise contradictory lifecycle calls through the real keyless HTTP adapter.
 // The script is task agnostic; it never performs work outside the test engine.
@@ -25,6 +25,12 @@ export async function startGoalScheduleFixture(automatic: boolean) {
       try {
         if (incoming.headers.authorization) throw new Error("The fixture must be keyless")
         const input = JSON.parse(body) as Input
+        if (input.messages[0]?.role === "system" && input.messages[0].content?.startsWith("## Schedule answer claims")) {
+          if (input.stream || input.messages.length !== 2 || input.tools?.length) throw new Error("Answer classification must remain a separate tool-free request")
+          response.writeHead(200, { "Content-Type": "application/json" })
+          response.end(JSON.stringify({ choices: [{ index: 0, message: { role: "assistant", content: JSON.stringify({ claims: [] }) }, finish_reason: "stop" }] }))
+          return
+        }
         if (input.messages[0]?.role === "system" && input.messages[0].content?.startsWith("## Thread wake authorization classification")) {
           if (input.messages.length !== 2 || input.tools?.length) throw new Error("Policy classification must remain a separate tool-free request")
           response.writeHead(200, { "Content-Type": "application/json" })

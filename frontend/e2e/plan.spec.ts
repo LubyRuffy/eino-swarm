@@ -86,3 +86,38 @@ test("a choice without an option id survives reload and resumes the same turn", 
   await expect(statusBadge(page)).toContainText("Idle")
   await page.screenshot({ path: info.outputPath("missing-option-id-settled.png"), animations: "disabled" })
 })
+
+
+test("a plan objective keeps its literal goal marker without activating a goal", async ({ page, request }, info) => {
+  await freshConversation(page)
+  const threadID = await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute("data-id")
+  expect(threadID).toBeTruthy()
+  const objective = "Inspect the assigned operation /goal"
+  const sent = page.waitForRequest((request) => request.method() === "POST"
+    && new URL(request.url()).pathname === `/api/threads/${threadID}/turns`)
+  await composer(page).fill(`/plan ${objective}`)
+  await composer(page).press("Enter")
+  expect((await sent).postDataJSON()).toEqual({ text: `/plan ${objective}` })
+  await expect(page.getByTestId("plan-banner")).toContainText("Planning")
+  await expect(page.getByTestId("goal-banner")).toHaveCount(0)
+  await expect(statusBadge(page)).toContainText("Your turn", { timeout: 30_000 })
+  await expect(page.getByTestId("user-message")).toHaveText(objective)
+  const { thread } = await (await request.get(`/api/threads/${threadID}`)).json()
+  expect(thread).toMatchObject({ goal: "", plan_mode: true })
+  const { turns } = await (await request.get(`/api/threads/${threadID}/turns`)).json()
+  expect(turns).toHaveLength(1)
+  expect(turns[0]).toMatchObject({ user_text: objective })
+
+  await page.getByTestId("ask-option-safer").click()
+  await page.getByTestId("ask-submit").click()
+  await waitForIdle(page)
+  await reloadOpenConversation(page)
+  await expect(page.getByTestId("plan-banner")).toContainText("Planning")
+  await expect(page.getByTestId("goal-banner")).toHaveCount(0)
+  await expect(page.getByTestId("user-message")).toHaveText(objective)
+  const replayed = await (await request.get(`/api/threads/${threadID}`)).json()
+  expect(replayed.thread).toMatchObject({ goal: "", plan_mode: true })
+  const trace = await (await request.get(`/api/trace/${turns[0].id}`)).json()
+  expect(trace.events.some((event: { kind: string }) => event.kind === "goal" || event.kind === "goal_complete")).toBe(false)
+  await page.screenshot({ path: info.outputPath("plan-retains-literal-goal.png"), animations: "disabled" })
+})

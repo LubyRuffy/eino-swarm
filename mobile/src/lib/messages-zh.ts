@@ -191,13 +191,16 @@ export const zh: Record<MessageKey, string> = {
   "notice.modelRetryResponse": "模型服务返回的响应无法解析，正在重试。",
   "notice.modelServiceResponse": "模型服务返回的响应无法解析。",
   "notice.modelRetryIdle": "模型服务停止发送数据，正在重试。",
+  "notice.scheduleClaimCheck": "正在核对调度记录，确认后再报告已安排。",
+  "notice.workerCollection": "正在收取子任务结果，收取后才能完成本回合。",
   "notice.invalidToolJSON": "模型返回的工具调用不是合法 JSON。",
   "notice.modelServiceRateLimited": "模型服务正在限流。",
   "notice.modelServiceUnavailable": "模型服务不可用。",
   "notice.modelServiceTransport": "与模型服务的连接中断。",
 
+  "notice.goalCompleted": "目标已完成。",
+
   "goal.pursuing": "进行中",
-  "goal.done": "已完成",
   "goal.paused": "已暂停",
   "goal.blocked": "已卡住",
   "goal.failedTurn": "上一轮失败了。",
@@ -205,7 +208,6 @@ export const zh: Record<MessageKey, string> = {
   "goal.waitHint": "已挂起，等下次检查。不是出错。下面的等待条可以立即运行或取消。",
   "goal.capHint": "自动续跑已暂停，不是出错。点「开始目标」继续。",
   "goal.idleHint": "上一轮续跑没有实质进展。点「开始目标」继续。",
-  "goal.completeHint": "如果是提前结案，点「开始目标」继续。",
 
   "schedule.waiting": "等待中",
   "schedule.nextCheck": "下次检查 {time}",

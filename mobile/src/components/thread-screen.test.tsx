@@ -415,7 +415,7 @@ describe("ThreadScreen", () => {
     expect(onResumeGoal).toHaveBeenCalled()
   })
 
-  it("shows Done and Blocked without a live wait", () => {
+  it("hides completed goals and keeps blocked goals without a live wait", () => {
     const { rerender } = render(
       <ThreadScreen
         detail={{
@@ -435,7 +435,8 @@ describe("ThreadScreen", () => {
         onResumeGoal={vi.fn()}
       />,
     )
-    expect(screen.getByTestId("goal-banner")).toHaveTextContent("Done")
+    expect(screen.queryByTestId("goal-banner")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Start goal" })).not.toBeInTheDocument()
     rerender(
       <ThreadScreen
         detail={{

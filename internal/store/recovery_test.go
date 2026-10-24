@@ -89,3 +89,34 @@ func TestLatestRecoveryEventPropagatesDecodeFailure(t *testing.T) {
 		t.Fatal("corrupt event columns were silently accepted")
 	}
 }
+
+// Correction allowances belong to the turn, so a checkpoint cannot hide an
+// older retry or reorder the later human receipt that renews its allowance.
+func TestRecoveryRetainsCorrectionAndHumanContinuationReceiptsAcrossCheckpoint(t *testing.T) {
+	s := open(t)
+	for _, event := range []Event{
+		{ThreadID: "history", TurnID: "original", Kind: "model_retry", AgentID: "manager", Text: `{"reason":"workers_uncollected"}`},
+		{ThreadID: "history", TurnID: "original", Kind: "model_retry", AgentID: "manager", Text: `{"reason":"schedule_claim_unverified"}`},
+		{ThreadID: "history", TurnID: "original", Kind: "engine_restart_checkpoint", Text: `{"version":1}`},
+		{ThreadID: "history", TurnID: "original", Kind: "max_iterations_continued", AgentID: "manager"},
+		{ThreadID: "history", TurnID: "original", Kind: "model_retry", AgentID: "manager", Text: `{"reason":"workers_uncollected"}`},
+		{ThreadID: "other", TurnID: "other", Kind: "model_retry", AgentID: "manager"},
+	} {
+		if err := s.AppendEvent(&event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	events, err := s.ListRecoveryEvents(context.Background(), "history", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []int64{1, 2, 4, 5}
+	if len(events) != len(want) {
+		t.Fatalf("correction receipts=%+v, want seqs %v", events, want)
+	}
+	for i, seq := range want {
+		if events[i].Seq != seq || events[i].ThreadID != "history" || events[i].TurnID != "original" {
+			t.Fatalf("receipt order or identity changed: %+v", events)
+		}
+	}
+}

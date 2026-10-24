@@ -59,6 +59,7 @@ const wireKinds: EventKind[] = [
   "tool_call",
   "builtin_tool",
   "tool_result",
+  "ask_recovered",
   "tool_delta",
   "tool_call_delta",
   "steer",
@@ -209,4 +210,13 @@ it("delivers interrupted and recovered generations through the actual named SSE 
   expect(onEvent.mock.calls.map(([event]) => [event.kind, event.message_id])).toEqual([
     ["generation_interrupted", "output"], ["generation_recovered", "output"],
   ])
+})
+
+it("delivers checkpoint-verified ask recovery through its actual named SSE listener", () => {
+  const onEvent = vi.fn()
+  subscribeEvents("thread", { onEvent })
+  const recovery = { kind: "ask_recovered", seq: 5, thread_id: "thread", turn_id: "turn", agent_id: "manager", tool_call_id: "original", text: '{"questions":[]}' }
+  FakeEventSource.last.deliver("ask_recovered", recovery)
+  expect(onEvent).toHaveBeenCalledTimes(1)
+  expect(onEvent).toHaveBeenCalledWith(recovery)
 })

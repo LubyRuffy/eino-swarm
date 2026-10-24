@@ -40,7 +40,7 @@ export function formatGoalAge(from: Date, now = new Date()): string {
   return parts.join(" ")
 }
 
-/** The standing objective for this conversation, when one is set. */
+/** Keep unfinished objectives actionable; completion belongs in the history. */
 export function GoalBanner({
   goal,
   complete,
@@ -90,6 +90,13 @@ export function GoalBanner({
   }, [goal, editing])
 
   useEffect(() => {
+    if (complete) {
+      open.current = false
+      setEditing(false)
+    }
+  }, [complete])
+
+  useEffect(() => {
     if (editing) areaRef.current?.focus()
   }, [editing])
 
@@ -99,22 +106,18 @@ export function GoalBanner({
     return () => window.clearInterval(id)
   }, [startedAt, complete])
 
-  if (!goal.trim()) return null
+  if (!goal.trim() || complete) return null
 
   const held = Boolean(capped || idle)
-  const state = complete
-    ? t("goal.done")
-    : blocked
-      ? t("goal.blocked")
-      : held
-        ? t("goal.paused")
-        : t("goal.pursuing")
+  const state = blocked
+    ? t("goal.blocked")
+    : held
+      ? t("goal.paused")
+      : t("goal.pursuing")
   // Codex: Play is resume, not "the last turn ended". An active goal
   // between auto-continue sessions stays Pursuing with no control.
-  // Done used to hide Play, so a mistaken complete_goal had no one-click
-  // undo. Start reopens that case the same way a cap does.
   const canStart =
-    !running && Boolean(onResume) && Boolean(capped || blocked || idle || complete)
+    !running && Boolean(onResume) && Boolean(capped || blocked || idle)
   const started = startedAt ? new Date(startedAt) : null
   const age =
     started && !Number.isNaN(started.getTime())
@@ -123,13 +126,11 @@ export function GoalBanner({
 
   const reason = blocked && (blockReason?.trim() || turnError?.trim())
     ? displayGoalBlockReason(blockReason ?? "", turnError, t)
-    : complete && !running
-      ? t("goal.completeHint")
-      : held && !running
-        ? idle && !capped
-          ? t("goal.idleHint")
-          : t("goal.capHint")
-        : ""
+    : held && !running
+      ? idle && !capped
+        ? t("goal.idleHint")
+        : t("goal.capHint")
+      : ""
 
   const save = async () => {
     if (!open.current || disabled || pending.current) return

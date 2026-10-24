@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -29,6 +30,8 @@ const resumeCue = "The previous process stopped before this request finished. Co
 
 // ResumeOrphanedTurns continues every turn left running by a crash or a
 // process exit. A user Interrupt is recorded as cancelled and is not resumed.
+// Independent conversations continue after a failure; the result counts accepted
+// resumptions and reports every failed conversation through RestoreFailures.
 func (e *Engine) ResumeOrphanedTurns() (int, error) {
 	turns, err := e.store.ListRunningTurns()
 	if err != nil {
@@ -47,6 +50,7 @@ func (e *Engine) ResumeOrphanedTurns() (int, error) {
 		})
 	}
 	n := 0
+	var failures []error
 	for i := range resume {
 		e.restoreMu.Lock()
 		snapshot, err := e.loadRestoreSnapshot(context.Background(), resume[i].ThreadID)
@@ -57,10 +61,12 @@ func (e *Engine) ResumeOrphanedTurns() (int, error) {
 		e.restoreMu.Unlock()
 		n += count
 		if err != nil {
-			return n, err
+			failures = append(failures, fmt.Errorf("restore conversation %s: %w", resume[i].ThreadID, err))
 		}
 	}
-
+	if len(failures) > 0 {
+		return n, &RestoreFailures{Failed: len(failures), Err: errors.Join(failures...)}
+	}
 	return n, nil
 }
 
@@ -100,7 +106,7 @@ func (e *Engine) resumeOrphanedTurn(ctx context.Context, t store.Turn, snapshot 
 			Err: err.Error(),
 		})
 		e.blockOpenGoalOnTurnError(t.ThreadID)
-		return 0, nil
+		return 0, err
 	}
 	return 1, nil
 }
@@ -294,21 +300,28 @@ type orphanedToolCall struct {
 }
 
 func orphanedToolCalls(events []store.Event) []orphanedToolCall {
-	open := make(map[string]orphanedToolCall)
-	order := make([]string, 0)
+	events = restartAskEvents(events)
+	type callKey struct{ agent, id string }
+	open := make(map[callKey]orphanedToolCall)
+	order := make([]callKey, 0)
 	for _, ev := range events {
 		id := strings.TrimSpace(ev.ToolCallID)
 		if id == "" {
 			continue
 		}
+		agent := ev.AgentID
+		if isManagerAgent(agent) {
+			agent = swarm.DefaultManagerID
+		}
+		key := callKey{agent: agent, id: id}
 		switch ev.Kind {
 		case swarm.NotifyToolCall.String():
-			if _, ok := open[id]; !ok {
-				order = append(order, id)
+			if _, ok := open[key]; !ok {
+				order = append(order, key)
 			}
-			open[id] = orphanedToolCall{AgentID: ev.AgentID, Role: ev.Role, ToolCallID: id, Text: ev.Text}
+			open[key] = orphanedToolCall{AgentID: ev.AgentID, Role: ev.Role, ToolCallID: id, Text: ev.Text}
 		case swarm.NotifyToolResult.String():
-			delete(open, id)
+			delete(open, key)
 		}
 	}
 	out := make([]orphanedToolCall, 0, len(open))

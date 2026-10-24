@@ -1,5 +1,62 @@
 # Testing
 
+## Chat Completions reasoning fields (`F-170`, `F-230`, `C-009`)
+
+`internal/provider/reasoning_fields_test.go` runs both Generate and Stream through
+the configured Eino/SDK HTTP adapter against a keyless loopback fixture. It covers
+`reasoning_content`, newer vLLM `reasoning`, absent/empty/null fields and legacy
+precedence without duplication. A stream gate withholds the answer until the
+consumer receives the reasoning-only delta. Tool arguments, finish reason,
+reasoning usage and one original call record must survive unchanged.
+These cases pass on the existing adapter; they guard dependency upgrades rather
+than introduce another parser. PC E2E checks live thought, original-turn Trace
+and reload; phone E2E checks direct chat thought and reload for both fields.
+The PC fixture also serves the existing separate `schedule-answer-policy`
+classification: only its exact tool-free, non-streaming protocol and the known
+scripted assistant candidate receive an empty claim list. Unknown or malformed
+requests fail closed. Manager and policy requests each occur once in the
+original-turn Trace; full fixture requests and policy results are retained,
+and reloading must not add either request.
+No real model, provider credentials or native desktop launch is involved.
+
+```bash
+go test -race ./internal/provider -run TestChatReasoningFieldsSurviveGenerateAndLiveStream -count=1
+ZWAI_E2E_REASONING_FIELDS=1 ZWAI_E2E_PORT=14879 ZWAI_E2E_DATA_DIR=.e2e-data-reasoning \
+  npm --prefix frontend run e2e -- reasoning-fields.spec.ts --output /absolute/unique-pc-reasoning-output
+(cd mobile && ZWAI_MOBILE_E2E_PORT=14874 npm run e2e -- direct-chat-reasoning.spec.ts --output /absolute/unique-phone-reasoning-output)
+```
+
+The PC Playwright suite holds one acknowledged, suite-owned TUI presence through
+`frontend/e2e/engine-presence.ts`, across browser and failed-worker replacement.
+Its handshake is bounded and teardown releases the stream; this does not alter
+production idle shutdown or replace its dedicated lifecycle tests. Startup
+schedule fixtures declare `kind: "standalone"` explicitly. A refused fixture
+request and later idle process exit are separate failures with separate evidence.
+
+## Queued human work after errors (`F-130`, `C-002`, `C-009`)
+
+`internal/engine/followup_after_error_test.go` exercises the actual Engine,
+Registry and offline HTTP model boundary. Queue while the first request is
+running, exhaust the real first-byte reconnect for a scheduled check, and assert
+independent human turns consume FIFO once while the original error, schedule run,
+unread result and future wake stay intact. Cover ordinary errors, an empty queue,
+Stop, restart and competing manual delivery. Do not broaden automatic goal retry
+to make an explicit queue pass, or initialize a fixture as already failed.
+`frontend/e2e/api-error.spec.ts` exercises the real composer, loopback model,
+queue and reload path with `ZWAI_E2E_MODEL_API_ERROR=1`; each execution owns a
+separate port, data directory and output directory.
+
+The encrypted loopback relay fixture in `internal/remote/followup_relay_test.go`
+waits for the relay's actual host presence before consuming its one-use offer.
+A successful WebSocket upgrade alone does not establish that presence; the wait
+is bounded by the fixture context. Repeated real RPC cases cover this setup.
+
+`internal/engine/restore_failures_test.go` drives `Engine.Restore` and the
+compatibility `ResumeOrphanedTurns` through a real missing-provider failure
+before a healthy offline conversation. Both must return typed failure causes,
+retain the original turn error, and continue healthy recovery; the startup
+entry also records `engine_restore.phase=failed` rather than a success receipt.
+
 ## Long-conversation opening (`F-120`, `F-130`, `C-003`, `C-008`)
 
 Replay regressions use the real Store with tool bodies much larger than retained
@@ -44,7 +101,134 @@ ZWAI_E2E_PORT=18996 ZWAI_E2E_DATA_DIR=.e2e-data-open-tail \
 make docs-check
 ```
 
+## Ordinary completion collects delegated work (F-130 / C-019 / C-012)
+
+`internal/engine/ordinary_worker_completion_test.go` 使用真实 Registry／ADK／
+loopback HTTP：原 worker 请求保持运行，主管提前给出 final，候选正文必须在
+live、保存回答和下次模型输入中缺席；纠正后真实 `wait_agents` 收到同一 worker
+当前 generation 的结果，才允许正常完成，不能靠取消 worker 或新建替代者通过。
+`settlement_http_test.go` 验证查询／Stats 归档之后仍能真实收取已完成结果。
+`internal/engine/worker_completion_replay_test.go` 验证配对调用、worker ID 与 generation，
+旧 generation、wait 超时、unknown、错误调用者及孤立回执均不能消耗当前结果。
+
+`internal/engine/worker_completion_budget_test.go` 验证原 turn 的持久化纠正额度及存储失败边界。
+首次 `model_retry` reason 为 `workers_uncollected`，携带 `worker_ids`；再次
+提前 final 进入人工 Continue／Stop 暂停，保持同一 running turn 和 worker 请求。
+Continue 只增加一次尝试；Stop／拒绝取消，重启保持原收取状态、额度和人工暂停。
+门禁针对主管自然完成；`goal_session_test.go` 的外部 Complete／Block 中途终止与
+ReAct 切片耗尽沿原边界收尾，不能因为这类结束新增收取确认卡。
+有当前有效 goal／wake 时保留原停泊行为，policy 请求期间撤销最后 owner 后必须
+重新执行收取门禁。显式关闭已结束的 worker 可以放弃结果，但回执仍须是
+`already_finished:true,cancelled:false`；未知 ID 不得结清任何 worker。
+`settlement_test.go` 覆盖旧 finished 无 generation 身份的兼容、旧 running 的
+收取义务，以及新 generation 的精确状态、resume、显式 close 与归档淘汰。
+
+```bash
+go test -race -timeout 5m . -run 'TestActualWaitCollectsACompletedWorkerAfterStatsPrunesIt'
+go test -race -timeout 5m ./internal/engine -run 'TestOrdinaryTurn|TestWorkerCollection'
+# 独立端口、数据及输出目录；真实 named SSE、worker HTTP、Trace 和刷新历史。
+cd frontend
+ZWAI_E2E_WORKER_COMPLETION=1 ZWAI_E2E_PORT=8990 ZWAI_E2E_DATA_DIR=/tmp/zwai-collection-e2e npx playwright test --output=/tmp/zwai-collection-output
+```
+
+真实桌面验收继续使用 `ci-macOS` 独立 case 和当前源码／包哈希；普通请求须在
+没有 goal／wake 的会话完成真实 spawn／wait／最终答复，保留原 worker 身份、
+Trace、窗口截图及完整 cleanup。正常离线脚本的窗口验收不能替代提前 final 的
+故障分支回归；生产源码变化后须重新绑定候选，不能复用旧包证据。
+
+## Trailing goals and verified scheduling reports (F-150 / C-009 / C-012)
+
+Issue #103 starts from a completed objective and no active thread wake.
+Shared fixtures in `internal/slash/testdata/trailing-goal.json` cover ASCII,
+CJK/IME slash, whitespace, multiline objectives and literal paths, quotations
+and code, including CJK paths ending in `/goal`. Go and PC parsers use the
+same cases. `frontend/src/components/app/composer-trailing-goal.test.tsx` checks
+Send/Enter, idle/running admission, menu completion and literal drafts. Leading
+commands retain their whole argument even when it ends with `/goal`; UI/HTTP
+regressions check that a second interpretation cannot rewrite the objective.
+`frontend/src/store/app-goal.test.ts` and `app-plan.test.ts` check one complete
+command send, acknowledged failure and fixed conversation ownership, including
+a running turn or pending ask arriving after the initial idle observation.
+Explicit command intent bypasses ordinary question answers and queues; plan
+start-turn admission must refuse a newly busy target while a goal update may
+retain its pending ask. Bare plan and busy
+metadata operations keep their existing behavior.
+`frontend/e2e/command-admission.spec.ts` controls actual durable draft and HTTP
+admission across idle-to-ask/busy transitions, preserves the original question
+and turn, and checks that a rejected plan survives reload. Late send ACK tests in
+`frontend/src/store/app-send.test.ts` use only the target conversation's event
+sequence across navigation and live/history terminal delivery.
+`frontend/e2e/plan.spec.ts`
+checks that a literal goal suffix remains the plan argument at the real UI/API
+boundary. `internal/engine/slash_command_once_http_test.go` checks the real
+Engine/Registry/loopback model input for leading command ownership, internal
+continuations and a busy raw steer without resetting its original goal.
+Engine and paired-phone tests
+exercise actual sends and steering so a successful parse alone cannot accept
+goal activation, and program-generated goal updates are not parsed recursively.
+
+`internal/engine/schedule_answer_http_test.go` uses the real Registry and
+loopback model adapter to check missing, denied, failed, historical and
+cancelled scheduling evidence. It checks both live events and persisted
+replay: unsupported scheduling prose must not become an answer. Correction
+is bounded to the original turn, and its policy calls remain attributed there.
+The classifier extracts claims only; deterministic schedule checks must reject
+unsupported scope, current state, cadence or new-arrangement attribution.
+No external model is used in regression tests.
+`internal/engine/schedule_answer_retry_test.go` returns a malformed real
+policy HTTP response and proves that its retained diagnostic cause cannot
+restart the standing goal or reset the same-turn correction budget.
+`internal/engine/schedule_answer_restart_test.go` holds the real corrective
+model request across PrepareRestart and cold resume of the same turn. The
+persisted correction allowance stays consumed; event writes and budget reads
+that fail prevent another model attempt instead of resetting the allowance.
+
+`frontend/src/lib/schedule-claim-notice.test.ts` and
+`mobile/src/lib/transcript-schedule-claim.test.ts` check the correction notice
+and Chinese display without exposing internal JSON or claiming a wait exists.
+`internal/remote/schedule_answer_paging_test.go` exercises actual phone
+Earlier requests for all visible retry reasons and invisible/invalid envelopes,
+so a correction-only page is retained without trapping paging on an empty row.
+`internal/engine/schedule_answer_responses_test.go` checks the real Responses
+adapter: rejected prose is absent from raw `responses_output` replay while
+function calls and encrypted reasoning survive. Stop admission tests hold the
+actual lock ordering after `user_stop_requested` commits; the answer cannot
+publish during that gap. Store tests check the same-turn stop receipt, exact
+schedule snapshots and rollback of answer events plus replay messages.
+
+Goal commands are text-only. `internal/remote/slash_goal_attachment_test.go`
+and `internal/engine/slash_attachment_test.go` reject mixed image/file inputs
+before goal mutation, including busy sends and steering.
+`mobile/src/components/composer-goal-refusal.test.tsx` checks that a refused
+send preserves the original draft and decodable PNG/file bytes for correction
+and resubmission through the actual phone client.
+
+The PC and phone trailing-goal E2E specs exercise a completed objective followed
+by a new suffix command. The scheduling admission browser regression runs with:
+
+```bash
+cd frontend
+ZWAI_E2E_SCHEDULE_ANSWER=1 ZWAI_E2E_PORT=19306 ZWAI_E2E_DATA_DIR=.e2e-data-answer npm run e2e -- --output=/tmp/zwai-answer-e2e
+```
+
+`frontend/e2e/schedule-answer.spec.ts` blocks history reads until the actual
+named `model_retry` SSE subscription paints the notice, then releases a real
+successful `schedule_wake` call. It verifies the saved schedule, paired tool
+receipt, Trace and reload without the rejected prose. Each concurrent run
+must choose its own port, data directory and output directory.
+
+Native acceptance uses an identified candidate in an isolated `ci-macOS`
+case; Web E2E or successful SSH access does not accept the native window.
+
 ## Generation interruption and recovery (Issue #95 / C-035)
+
+`TestInterruptCancelsButKeepsWork` uses the real loopback HTTP adapter with
+a first chunk delayed beyond the former 120ms test assumption. It waits for
+this turn's nonempty live reasoning delta while that generation remains open,
+checks that the same thought is not yet stored, then interrupts it. The stored
+thought must retain the live `message_id` and exact text, and a later turn must
+still complete. A fixed startup sleep or an already-persisted event cannot
+establish this partial-output retention boundary.
 
 The generation and worker lifetimes are independent. `generation_test.go`
 checks per-output identity for cancellation, deadline, transport failure and
@@ -264,6 +448,14 @@ read-only request and matching response; old `ready.json` and cross-host wall
 clock subtraction cannot prove that channel current or expired. Classification
 always retains `native_acceptance=pending`.
 
+An already enabled guest Screen Sharing service can provide a separate operator
+recovery path through a pinned SSH tunnel when host desktop automation is
+unavailable. Use normal existing-account authentication, recheck the expected
+console user, VM identity and current unlocked state, and reap only the owned
+tunnel afterward. This does not authorize enabling a service or changing TCC
+or lock policy. It is not implemented by the access CLI; SSH or authentication
+success alone still cannot accept guest unlock or native-window behavior.
+
 `tools/native_macos_access_guest.py` exposes `inspect`, `renew-dhcp` and
 `hold-maintenance`. Each checks Darwin, the ci-macOS hostname, expected UID,
 hypervisor and the explicitly selected Ethernet MAC before use. `inspect` reads
@@ -421,6 +613,143 @@ visits, including empty nodes and repeated edges, toward its 5000-visit bound;
 new nodes beyond depth 45 still fail. A genuine limit stops traversal and fails
 the case rather than accepting an incomplete set of controls.
 
+Smoke snapshot/fill/Send and resilience snapshot/fill/press/select-thread
+validate a nonempty candidate's actual AX element type, `AXWindow` role and
+owner PID before raising or traversing that window or requesting input. Its
+strong lifetime covers the entire action. A proxy,
+unknown read/type or wrong PID is a refusal, including during snapshot; no
+window mutation is permitted before this boundary. The smoke helper's empty
+window snapshot still reports not ready and cannot permit fill or Send.
+Engine/API presence can precede `NSRunningApplication` registration. After the
+kernel case guard, only `snapshot` may return `registration_pending:true` and
+`ready:false` for a missing native application or unavailable same-PID bundle
+URL/path. This returns before activation or AX access. `bundle` and
+`requested_bundle` then echo the requested target; `case_verified:false` and
+`bundle_verified:false` explicitly withhold native identity acceptance.
+The existing `wait_window` polls within its original shared deadline and runs
+the strict window assertions only when ready. Fill/Send, a wrong NS PID or a
+nonempty wrong bundle remain immediate nonzero refusals. Regress these branches
+through the actual C main, plus pending-to-window, deadline exhaustion and
+identity-error/cancellation propagation through the actual Python caller.
+The resilience helper's application-only `activate` command uses only
+`NSRunningApplication`, without AX window lookup or raise. Its activation-only
+result is not a window receipt: subsequent snapshot/input still requires a
+fresh positively identified window and actual pixels. The file-panel path has
+its own independent scan and acceptance rules below.
+
+Recovery activation keeps the original `ZWAI_NATIVE_APP` case anchor rather
+than replacing it with a caller-supplied successor path. The helper derives the
+bundle from the kernel executable, accepts the original or the same case's
+home/Library/Caches/zwai/desktop-recovery-*/zwai.app with its 16-hex session
+file, and hashes both actual core files before requesting activation. With no
+proof, their full SHA-256 values must match. Product `WriteMacApp` rewrites
+Info/icon and re-signs its copy, so equal raw core bytes are not a general
+recovery invariant. Never replace the original anchor or learn an expected
+digest from the target being accepted. Prepare a proof through the actual
+writer and signing system before the timed round:
+
+```bash
+python3 tools/native_macos_recovery_identity.py build --checkout "$CLEAN_SOURCE" --source "$SOURCE_SHA" --output "$NEW_BUILD_DIR"
+python3 tools/native_macos_recovery_identity.py prepare --writer "$NEW_BUILD_DIR/recovery-identity-writer.test" --binding "$NEW_BUILD_DIR/writer-binding.json" --original "$ORIGINAL_CORE" --original-sha256 "$ORIGINAL_SHA256" --source "$SOURCE_SHA" --version "$VERSION" --output "$NEW_PROOF_DIR"
+```
+
+The build checks tracked and untracked desktop-package/module inputs before
+and after compilation, disables external Go overlays/workspaces and requires a
+new output outside the checkout. Its Go overlay calls actual `WriteMacApp`
+with the real embedded icon; it does not copy the writer implementation or
+launch an App. Prepare on the target signing system: strict/all-architecture
+verify the frozen original, retain the writer's actual codesign argv/exit/raw
+output (its production best-effort error is insufficient), verify two derived
+copies and require identical full bytes. Compare every pre-signature code/data
+and load-command byte, normalizing only the measured signature datasize and
+linkedit virtual/file size fields, with strict tail/segment constraints.
+
+Proof preparation attempts each available raw stream and exit/timeout receipt
+even if another receipt write fails. A failed command retains its real exit
+and raw streams as a `CalledProcessError` cause; a timeout propagates the
+original `TimeoutExpired` object, partial streams and any existing cause. Secondary storage errors
+are retained in an `evidence_errors` exception attribute and stderr JSON with
+only artifact filename, operation, error type and errno. This works on the
+guest's Python 3.9; a broken stderr cannot replace the primary failure.
+Missing timeout streams remain missing. A successful
+command with unavailable mandatory evidence still refuses preparation. The
+recovery-identity tests exercise real child exit 7 and timeout paths while
+controlling only receipt I/O, including independent stdout/stderr/status
+failures and partial retention. A real CLI subprocess checks that safe
+secondary details reach parent-captured stderr without losing the actual Git
+failure; system-Python 3.9 and current-Python regressions remain separate from
+App or guest UI acceptance.
+
+The prepare command prints a binding object. Freeze its absolute `path`, full
+`sha256`, `source_sha` and `version` as the JSON environment value
+`ZWAI_NATIVE_RECOVERY_IDENTITY` in the isolated case capsule. Schema 1 proof
+binds the original and derived full core hashes, derived Info/icon hashes and
+the preparation receipt hash. The helper reads and hashes the actual proof;
+unknown/extra schema fields, missing bytes, wrong pin/origin/source/version,
+metadata changes and a different full target hash refuse. A present bad proof
+also refuses when core hashes happen to match; no fallback or subprocess is
+added to activation. Only proof path/hash/stage and sampled identity are logged.
+The inherited case marker, NS PID/resolved bundle,
+and kernel birth/executable before and after the request must agree; unknown
+registration and nonempty wrong identities refuse. Layout/hash checks share
+the original two-second deadline, with no new loop or fallback. Structured
+`activation_identity` diagnostics retain actual/expected paths, hashes and the
+sampled reason without reading the recovery spec or its handshake token.
+`tools/test_native_macos_successor_identity.py` runs the entire real helper main
+with kernel/NS/clock seams and real temporary files. Its actual product-writer
+regression uses real signed Mach-O page-size and Info-version variants, broken
+original signatures, and code/data/signature/metadata mutations. The companion
+`tools/test_native_macos_recovery_identity.py` checks full-payload normalization,
+dirty/untracked build inputs, raw failures and timeout streams, deterministic
+writer/signature validation and CLI binding. Original/same-core success,
+cross-case/layout/core/NS refusal, malformed process arguments and PID reuse
+remain covered. The existing activation tests
+still exercise one-request/runloop/deadline and AX-free behavior. These tests
+accept QA targeting only: an earlier uncaptured NS refusal stays unknown, and
+a separately observed 30-second product replacement failure remains pending
+until its own real window and timing evidence passes (`C-034`, Issue #108).
+The earlier raw-equality review missed the actual writer's signing side effect;
+retain its software-green/native-red history rather than describing it as a
+product failure or accepted native recovery.
+
+When an action requests activation, it does so at most once; the guarded window
+actions raise only the validated case window. Activation waits refresh
+`NSRunningApplication.active` through short main-runloop slices. A single
+two-second monotonic deadline starts before activation; each slice is at most
+10 ms and no longer than the remaining budget. At least one refresh precedes
+the `active` check, including cached true; a refresh crossing the deadline fails.
+There is no fixed activation sleep, repeated activation within the invocation or automatic Send retry.
+The resilience caller still verifies its actual frontmost PID independently.
+Its existing polling and shared 30-second replacement deadline are unchanged;
+the helper's activation wait cannot reset that deadline.
+
+The smoke helper retains the same collected window/draft/Send predicates on
+activation or fill/Send guard failure, with `activation_requested`,
+`activation_ready`, `activation_elapsed_seconds` and `press_attempted`.
+An attempted AXPress that returns an error stays `press_attempted=true`; it is
+not retried. The resilience activate action retains requested/active/frontmost
+PID/activation-only status/elapsed in stdout and, on failure, stderr because its
+caller uses stderr for nonzero exits. Those fields reuse one sample; no AX raise
+success is inferred from application activation.
+
+On macOS, run the headless helper regression with:
+
+```bash
+python3 -m unittest discover -s tools -p 'test_native_macos_activation.py'
+```
+
+It compiles actual Objective-C wait and caller/action logic with OS/clock seams,
+covering delayed cached false, stale true, deadline expiry, one activation and
+zero/one Press. It also compiles both complete helpers against the real SDK and
+runs their no-target refusal before window/input calls. These checks do not
+exercise the real collector or accept a guest window. The separate native
+diagnostic observed cached false becoming true after a main-runloop iteration;
+the reverse transition is a seam regression inferred from the API's caching
+semantics, not a claimed native reproduction. Neither result establishes the
+cause of an earlier failed Send. Record QA helper source/build hashes separately
+from the unchanged application ZIP/source; fresh native acceptance remains
+required for the changed harness.
+
 The runner's default `--budget 60` counts guest checks, isolated copy/preparation,
 launch, scenario, cleanup and receipt writing. `--timeout` remains the scenario's
 upper limit, further capped by the remaining round budget after reserving cleanup
@@ -519,6 +848,15 @@ workspace bytes, draft/Send checks, visible-result requirements and PNG pixel
 completeness. Offline checks and helper compilation do not prove guest
 Accessibility access or native rendering.
 
+A native helper's `submitted=true` or successful `AXPress` confirms only that
+its action was posted; its returned AX tree may precede that action. For queued
+messages, send once, await the exact durable follow-up ID/thread/text prefix
+and an empty composer, then send the next message. Keep those acknowledgement
+observations inside the existing case deadline; reject duplicate or foreign
+rows and never resend an unacknowledged message. Preserve the initial failure.
+The real HTTP queue checks in `frontend/e2e/api-error.spec.ts` show the durable
+boundary; a helper return or immediate single GET cannot replace it.
+
 ## Desktop renderer resilience (F-115 / C-034)
 
 Incident evidence and the upstream-cause uncertainty are recorded in
@@ -568,7 +906,14 @@ effect, and its next HTTP stream stays open with heartbeats until a driver
 handshake. Per-kind requests, the actual spawn receipt, cancellation and release
 are retained separately from engine Trace. A fixture request is not proof of a
 worker identity or task completion: the campaign must independently compare the
-engine's turn/worker events before and after recovery. Unit tests use real HTTP.
+engine's turn/worker events before and after recovery. Worker-fixture tests use real HTTP.
+The native future wake has an explicit purpose/case title: the background-start
+regression checks the actual API request and frozen row against controlled I/O;
+the validator requires the API row's `title_auto` to be boolean `false` before
+freezing it, rejecting missing or coerced values. Those test rows are validator
+inputs; the server's explicit-title → `TitleAuto=false` semantics are covered by
+`internal/engine/schedule_title_test.go`, not inferred from a fake response.
+Final native acceptance must retain the actual schedule receipt as well.
 The identified development baseline retained both workers through native
 Quit/reopen, as recorded in the investigation; formal-installer integration
 remains pending until observed for its exact package.
@@ -581,6 +926,23 @@ worker with one spawn. This is adapter evidence, not native acceptance.
 Multimodal manager messages read the fixed scheduled-check wrapper from text
 parts only; image parts cannot select that protocol. Real HTTP regressions cover
 both ordinary and scheduled multimodal input without a second spawn.
+
+Schedule-answer admission calls the same thread model separately from the
+manager and worker streams. The fixture recognizes the exact System protocol
+from `internal/engine/schedule_answer.go`, with two System/User string messages,
+non-streaming Generate, no tools and `tool_choice: "none"`. Its User JSON must
+contain only nonempty `messages` and RFC3339 `now`. Only the fixture's three
+fixed manager answers (checkpoint complete, independently owned operation
+active, existing operation complete) receive `{"claims":[]}`. Unknown or mixed
+candidates and malformed protocol requests return HTTP 400. Human text and
+quoted protocol text do not select this branch; it neither consumes a worker
+request nor changes a spawn receipt or held stream.
+`tools/test_native_macos_schedule_answer.py` constructs requests from the actual
+Go prompt and tests this boundary over real loopback HTTP, including a held
+worker. Run it with
+`PYTHONPATH=tools python3 -m unittest tools/test_native_macos_schedule_answer.py tools/test_native_macos_resilience_worker.py`.
+These protocol tests do not accept the native application or erase a prior
+case's classification failure (Issue #106).
 
 The final Issue #94 combined-source browser run passed 164 default cases (15
 existing opt-in skips), plus ten related opt-in cases: interrupted generations,
@@ -633,6 +995,18 @@ checks ZIP/plist/API version and clean embedded Git revision; a claimed or unkno
 stage is not passed and cannot be blindly repeated. Use the driver's detached
 launch/cancel commands for a campaign longer than its control-channel lifetime;
 retain campaign PID/birth identity and wait for cancellation cleanup.
+The internal `control.execute(args, action, *, admission=None)` API can run an
+explicit admission check while holding that campaign’s actual `driver.lock`,
+before replacing owner/exit receipts. The callback must raise an exception to
+refuse; its return value is ignored. Only callers supplying the callback gain
+its refusal policy; default full6 launch/resume behavior is unchanged.
+`tools/test_native_macos_driver_admission.py` synchronizes two real owned
+processes at the victim’s execute call frame: an older driver completes before
+lock acquisition, and the callback must preserve its exact owner/terminal or
+broken links without publishing a case. Independent file descriptors prove
+lock ownership during admission and release after refusal; default returns,
+interrupts, busy locks and real owner/terminal EISDIR failures are also checked.
+These are HOST metadata/ownership tests, not native behavior acceptance.
 The frozen manifest includes the package, source, executable, runner, native
 helper and all scenario-module hashes. Stages recheck these inputs and their
 whole-case budgets, including cleanup; a zero scenario exit with an exceeded
@@ -658,6 +1032,83 @@ a fresh public birth/executable match before `terminate`/`wait`. Both use only
 `caffeinate`; that does not establish whether its environment was inherited.
 Attachment setup waits for the same case/PID's actual AX sheet/dialog before
 issuing one file-selection action.
+The eight-second `choose-file` adapter saves completed argv, exit status and
+captured text streams to `native-result.json` before parsing. A timeout saves
+the original binary stdout/stderr as base64, including absent-versus-empty
+stream flags, in `native-timeout.json`, then rethrows the same exception.
+Final cleanup snapshots cannot overwrite this choose-only receipt. Evidence
+I/O preserves an existing action failure and rejects an otherwise successful
+result; it never retries the native input. Run
+`python3 -m unittest discover -s tools -p 'test_native_macos_choose_evidence.py'`
+for actual adapter and final-retain boundary regressions, including a real
+owned child producing binary streams before timeout. These headless tests do
+not accept an attachment panel or explain a historical unobserved AX stall.
+The final panel scan requests a fixed Role/Title/Description/Value/Children array
+with options zero in one `AXUIElementCopyMultipleAttributeValues` call per
+distinct scanned node. Outer root enumeration keeps its independent complete
+reads. A top-level error, non-array or array length other than five refuses;
+there is no individual-read fallback. Successful batches can still contain
+attribute errors: only typed AXValue AXError wrappers that decode a nonzero error
+are interpreted as errors. Negative NSNumber values remain ordinary values;
+malformed error wrappers and a wrapped success code refuse, including in unused
+prefetched auxiliary slots. CFNull is a separate
+`batch_missing`, never a fabricated NoValue/Unsupported error. Missing Role
+refuses; missing Children is a leaf; missing Button Title creates no Open
+candidate, preserving the existing explicit Unsupported/NoValue boundaries.
+
+The scanner consumes auxiliary title/description/value text until it obtains a
+successful string containing the generated fixture basename. After that it
+still requests the fixed batch but stops consuming unrelated text. Role,
+children and every button title remain required to exclude a second distinct
+Open; the first match alone cannot authorize Press. Roots and traversal share
+5000 visits, count repeated edges and use `CFEqual` graph identity; a new node
+beyond depth 45, an incomplete required read or a malformed required value fails.
+Consumed auxiliary attribute errors and non-string values remain unknowns with
+their original state, never a filename witness or an absence conclusion. Another
+successful witness may satisfy filename presence while the complete graph still
+proves one distinct Open. Missing witnesses, later second Open and required
+failures forbid Press. The witness does not bind the selected row: actual
+original bytes, MIME/dimensions and saved draft ACK remain separate acceptance
+checks. No filename-with-newline matching contract is claimed for this fixture.
+Fixed auxiliary prefetch and CFNull representation are Changed QA semantics,
+not the same query sequence or an atomic snapshot.
+`test_native_macos_attachment_scan.py` and `test_native_macos_panel_batch.py`
+compile actual decoder/scanner functions and their actual caller with OS seams.
+Run the batch suite with
+`python3 -m unittest discover -s tools -p 'test_native_macos_panel_batch.py'`.
+They cover top-level and per-slot batch errors,
+CFNull and malformed wrappers, unknowns before/after a successful witness,
+non-string-only failure, button-title/children failures, late duplicates, cycles
+and the unchanged visit/depth limits. The first64 auxiliary unknown records
+retain cached role/path/depth/visits and witness/Open count; one summary retains
+the total, and a later required failure is always recorded. No attribute-name
+discovery query, error reread, input retry or eight-second extension is added.
+Client API call counts and instrumented actual-function coverage are headless
+evidence, not provider-internal IPC counts or guest elapsed time. The graph stays
+O(N), and no arbitrary 5000-node eight-second performance guarantee is implied.
+Private 91f5 retained 7733 short completed reads approaching its eight-second
+deadline; this supports cumulative traversal cost for that case, not permanent
+deadlock or historical timeout causes. Private 016618 returned NoValue for both
+panel and host DefaultButton, so that observation did not authorize a shortcut.
+Private b2e17a diagnosed an AXOutline Value Failure; b837's unrecorded node and
+historical5008 timeout remain unknown. Original failure receipts remain unchanged.
+Run it with the same unittest command pattern. The complete helper still needs
+SDK compilation and a fresh guest attachment path. At most 64 choose-only
+stderr JSON stages retain public helper identity and monotonic boundaries,
+including the region containing both sheet lookup and recursive inspection;
+that region timing does not identify an individual blocked AX call.
+Draft collection keeps its last existing API/native observations in memory and
+writes a fixed diagnostic file on success, failure or handled cancellation.
+It retains individual predicates, attachment byte hashes/metadata and text/value
+lengths/hashes, without copying draft prose or the native transcript. There are
+no added native/API reads, paste retries, polling file writes or sleeps; the
+deadline and exact text/attachment-byte assertions stay unchanged. Evidence
+write failure cannot replace an existing exception and prevents an otherwise
+successful check from passing. SIGKILL or VM loss may prevent the final write.
+A later successful case cannot explain an earlier timeout whose final observation
+was not captured; retain both results and mark the earlier cause unknown. These
+diagnostics belong to the isolated case's generated fixture, outside disposable
+state; they never inspect a user's real draft.
 
 Verify native control in its actual guest responsibility chain. In the Issue 94
 recovery, pinned SSH worked but the helper launched through SSH lacked guest
@@ -665,7 +1116,10 @@ Accessibility access; the same helper launched through the existing guest
 Terminal session could observe and operate the private window. The isolated
 Terminal bootstrap used the shared native-case lock and changed no TCC policy.
 SSH success alone does not establish native UI control, and host lock state does
-not determine guest availability.
+not determine guest availability. For already authorized acceptance, try that
+evidenced existing Terminal responsibility chain before asking the user to
+change settings; retain the case lock, exact guest/candidate and current helper
+result. Guest administrator membership does not prove native privacy trust.
 
 All stages use the unchanged installer. `native_macos_resilience_fault.py` admits
 a renderer/GPU stall only after fresh before-Quit, after-Quit, before-reopen and
@@ -676,6 +1130,53 @@ executable and signature checks bind each target; the bounded stall records its
 identity durably before stopping it and resumes only that identity. These
 lifecycle observations support case attribution, not proof of every possible
 IPC relationship. They do not reproduce the host's exact vendor defect.
+
+Selected system services use `codesign --verify --strict --ignore-resources
+--all-architectures -R '=anchor apple and identifier "<exact service identifier>"'
+<selected-executable>`, still within the original two-second timeout. The leading
+`=` selects requirement source; its absence means a requirement filename.
+`anchor apple` is Apple's own code, not `anchor apple generic`. Only the existing
+system path/name allowlist and unchanged complete-cohort proof can select this
+command. It verifies executable code and the exact Apple identity; resource
+contents and the whole bundle are explicitly **not** validated. This is the
+defined system-code gate, not a retry that ignores an earlier verification
+failure. The selected guest's obsolete resource envelope error, also seen
+without strict mode, is retained separately and does not prove system damage.
+Formal App packages retain their existing `codesign --verify --deep --strict`.
+See the local `codesign(1)` requirements and `--ignore-resources` sections and
+[Apple's requirement language](https://developer.apple.com/library/archive/documentation/Security/Conceptual/CodeSigningGuide/RequirementLang/RequirementLang.html).
+
+`renderer-fault-signatures.jsonl` preserves each attempted command, case, exact
+PID/birth/executable, shell, return code or timeout, elapsed time and raw stdout /
+stderr as base64. JSON null distinguishes an absent stream from empty bytes.
+It records `resources_validated:false` and `whole_bundle_validated:false`.
+No command failure, timeout or missing receipt can append an admitted target or
+reach `_pause` / SIGSTOP. A write failure preserves the original command error
+as the raised exception, with the write error as its cause; a successful command
+without durable evidence fails closed. Fresh cohort and kernel identity checks
+still follow verification, and the target receipt must be durable before STOP.
+`tools/test_native_macos_signature_admission.py` crosses the actual stall caller
+for these refusals and runs the real read-only macOS CLI on `/usr/bin/true`, a
+private code-page-corrupted copy and own linker-signed headless code. None of
+those binaries is executed and no system file is changed. Existing actual
+owned-child resume and scenario-SIGKILL cleanup tests remain required. These
+tests prove QA admission boundaries, not native renderer recovery (Issue #107).
+
+Each `verify_draft` invocation writes its own `draft-restore-<sequence>-<id>.json`
+at normal, error or handled-cancellation exit. It keeps only the first unmet
+observation and the last observation: existing engine/lease/candidate/native
+and API predicates distinguish false, error and not-read. A first-false poll
+does not itself fail a case. Types, lengths, hashes and equality flags retain
+the observed boundary without copying draft text, quotes or filenames; native
+text-mode stream summaries are explicitly decoded text, not original bytes.
+No extra API/AX call, navigation, retry or deadline is added. Malformed summary
+fields cannot pre-empt the original business checks. Receipt or WARN failures
+preserve an existing primary exception/cause; success without its mandatory
+receipt refuses. Hard kill or guest loss may prevent the final in-memory
+observation from being written. `tools/test_native_macos_restore_observation.py`
+crosses the real module wrappers, loopback API and native adapter seams,
+including malformed API fields, unchanged call order and cancellation/write
+failures. These are QA evidence tests, not native recovery acceptance.
 
 The exhaustion stage removes execute permission only from this ready session's
 unused private recovery copy, then stalls its attributed renderer. It requires
@@ -702,9 +1203,29 @@ The baseline uses a real native Quit, verifies no shell revival, then reopens th
 same package and selects the original conversation through native controls.
 Running and parked workers retain their original engine/turn/worker identities
 and must produce their actual completion/collection receipts. A binary file uses
-the native file picker; a PNG uses native clipboard paste. Reloaded original
+the native file picker; a PNG uses one native **Edit → Paste** menu action.
+The guest helper checks the clipboard write result, original PNG readback bytes
+and unchanged ownership counter, focuses the exact composer, then requires
+unique enabled Edit/Paste menu items with the expected roles, same PID and
+foreground app before each public AXPress. It rechecks the clipboard before
+Paste and retains `paste-transport-observation.json` on success or refusal.
+No keyboard fallback, fixed paste delay or second Paste is attempted. A helper
+success acknowledges the menu request, not DOM delivery or durable storage:
+the existing full API snapshot, original bytes, native values and saved-label
+conditions still decide whether draft collection passed. The earlier keyboard
+transport timeouts remain failures of unknown cause; a later menu success does
+not establish a product keyboard or WebKit fix. Reloaded original
 bytes and the decoded 3-by-2 image dimensions are checked independently of the
 visible attachment chips.
+
+`python3 -m unittest tools/test_native_macos_paste.py -v` compiles a temporary
+Objective-C translation unit that renames `main` and includes the real helper.
+Its headless entry calls only the actual pure clipboard/menu predicates using
+in-memory Foundation values (27 positive/negative checks); it never calls the
+helper entry, NSApplication, NSWorkspace, AX or a pasteboard. Linking AppKit is
+not native acceptance. The thin AX/clipboard wrappers require fresh isolated
+ci-macOS evidence bound to the changed helper hash; no host GUI/clipboard test
+or earlier private helper result substitutes for that run.
 The guest may lock independently of the host. During this incident, guest AX
 reported no secure input field, while the user's subsequently authorized direct
 UTM control could wake the existing guest window and complete its normal login.
@@ -714,6 +1235,56 @@ application acceptance. Baseline and soak hold a finite, case-owned display/idle
 assertion; sleep/wake releases it before actual sleep and restores it afterward.
 Cleanup must also reap that exact assertion process without changing the guest's
 lock-screen security policy.
+
+A ready observation is a point in time. If an already authorized guest relocks
+while control returns to the model, keep the guest input actor's exit/cleanup,
+a fresh session check and guarded launch in one bounded invocation. Distinguish
+that actor from the finite power owner: waiting for the short wake assertion to
+expire before the scenario owns its assertions leaves a handoff gap. Retained
+WindowServer timer UUIDs were armed before the new case's power child existed
+and later fired during that case despite its valid assertions. A nearby event
+or an old unbound child PID alone does not establish that event's owner.
+
+A recovery bridge must be registered in the actual runner's original process
+list under its held case lock and incomplete-cleanup latch before recovery.
+Keep it alive until a fresh same-birth, direct scenario child acknowledges all
+three power assertions; a file's existence, partial JSON or one assertion is
+insufficient. Terminate and reap the bridge on takeover; original cleanup owns
+all failure, timeout and cancellation paths. A surviving bridge retains the
+refusal latch. Regress this through actual `run_case`, `ProcessScope`, its
+three-argument preparation-failure fallback, `stop_owned` and lock publication,
+including malformed/wrong-owner ACKs and interruption. These are recovery
+controls, not a new standalone runner mode or an application acceptance result.
+They must share the existing whole-round/work/cleanup deadlines and may not add
+a pulse loop or change lock-screen settings.
+
+A direct `Popen` child can retain its PID/birth while its executable changes
+from the spawning interpreter to the requested image. Wait for that owned
+transition within the existing deadline before freezing full identity; unknown,
+wrong birth, unexpected image, early exit and expiry remain refusals. Exercise
+the actual kernel identity reader through a headless exec boundary. Keep helper
+executable modes through the whole launch chain, including the actual
+LaunchServices/Terminal `.command` entry, and check them before triggering it.
+A source file passed to an explicit interpreter need not be executable. Regress
+the same entry bytes at 0644 refusing before any trigger/claim and at the
+intended executable mode passing preflight. Helper-only checks and matching
+hashes cannot rule out a transfer-created PermissionError or a never-started
+entry; inspect that boundary before waiting for a native-case timeout.
+
+Preserve the new observation frame without another approval delay for the same
+identified target and action. A wake image or a power handoff does not establish
+lasting unlock. Credential input still requires the actual guest login state;
+a refused preflight that never launched is distinct from a failed native case.
+
+An owned `caffeinate` process or even current `UserIsActive`, display-idle and
+system-idle assertions do not establish continued guest unlock. A real case
+recorded those three assertions with 49 seconds remaining while WindowServer's
+dim timer led to a loginwindow DisplayDim lock. Retain the case's PID/birth/poll,
+exact owned assertion block and bounded session-event timeline; do not infer a
+five-second default when `-t` is present, or attribute the lock to a nearby
+capture without causal evidence. Missing lock flags remain unknown. Programmatic
+events remain synthetic input; neither posting them nor an activity counter
+replaces the original window/action and cleanup checks.
 
 `native_macos_resilience_soak.py` persists an initial identity, fsynced per-tick
 results and a final summary. Each tick checks the original engine and running/
@@ -830,13 +1401,23 @@ snapshot construction.
 `internal/engine/restore_bench_test.go` reuses that fixture and times actual
 `Engine.Restore` through both its return and receipt of the restored worker's
 unchanged 1,120,000-byte history by the offline loopback HTTP model adapter.
-Three repetitions on the same date and machine, under concurrent local
-build/test load, measured **485.068 ms/op**, **28,912,989 B/op**, **8,601 allocs/op**.
+On the 2026-10-24 integrated-source run with `GOMAXPROCS=4`, one repetition
+measured **203.468 ms/op**, **51,397,968 B/op**, **9,706 allocs/op**; the
+corresponding race run measured **3.075371 s/op**, **55,968,792 B/op**,
+**10,337 allocs/op**. Both met the unchanged 10-second model-input budget.
+The earlier 485.068 ms observation used the separate startup branch, before
+integration exposed two full-turn budget reads; it does not describe this source.
 The assertions retain thread `large`, turn `original-turn`, worker
 `original-worker` and role `inspector`, observe its durable `generation_started`
 and actual HTTP input, and reject another worker identity or tool-call replay.
 Both recovery query counters must be one (latest checkpoint and filtered event
 scan), with zero unfiltered full-event reads through the model-input boundary.
+Count unfiltered `turn_id` reads as well as `seq` scans: ignoring the former
+hid two reads of roughly 108 MB of tool history each.
+`restore_budget_snapshot_test.go` and `internal/store/recovery_test.go` preserve
+both correction allowances, checkpoint ordering and turn/manager identity; an
+actual HTTP model request follows the new durable human Continue receipt. The
+startup snapshot cannot substitute for that later receipt.
 
 The actual-recovery fixture disables auto-title and memory, never starts the
 scheduler, and blocks model responses. Setup and cleanup are outside the timer:
@@ -965,12 +1546,40 @@ failure details and their recovery-settings links. Run them with
 
 ## Automatic restart handoff (F-110 / C-027)
 
+Issue #101 regressions must use the real manager Registry middleware: directly
+calling `AskUserTool` does not run the handoff unknown-result conversion.
+`internal/server/restart_ask_http_test.go` drives a loopback provider, HTTP
+restart, a new engine on the same persisted data, named SSE recovery, the
+original human answer and duplicate refusal. The replacement cannot call its
+manager before that answer. `cmd/zwai/engine_restart_ask_acceptance_test.go`
+also replaces actual executable processes. It records and checks the 30-second
+handoff/listen target as soon as the replacement lease appears, then separately
+waits at most 10 seconds for metadata `startup=ready` and the same running turn's
+human pause before answering. Original turn/call identity, manager call counts
+and the single confirmed result remain required. Legacy tests retain
+both result/checkpoint orderings and accepted-answer precedence; ordinary
+external-tool unknown outcomes remain unknown. PC/phone reducers and their
+actual history/live adapters must retain confirmed answers and only re-open
+an uncertain ask on the explicit recovery event. Checkpoint content stays on
+the host; `ask_recovered` carries only the original public questions.
+
+```bash
+go test -race -count=1 -timeout 8m ./cmd/zwai -run '^TestRestartRealProcessPreservesTheOriginalUnansweredAsk$'
+```
+
 `handoff_test.go` and `internal/engine/restart_test.go` cover shared deadlines,
 worker/tool admission, structured histories and unread inboxes, real completion
 versus handoff, watchdog budgets, active/parked workers, human pauses and
 checkpoint failures. `internal/engine/restart_parked_test.go` proves actual
 worker execution after restart while the manager remains completed and its
-future wake stays unchanged. `internal/remote/restart_test.go` prevents private
+future wake stays unchanged. Lifecycle helpers `mustCreateWake` and `armDueWake`,
+and the parked-restart fault fixture, create explicitly titled waits. Fixtures
+that replace the provider pool, register/remove database callbacks or close
+storage must not also start unrelated asynchronous title work. Helper assertions
+keep `TitleAuto=false`; automatic schedule-title tests use `CreateSchedule`
+directly. This isolates fault injection without changing runtime title generation
+or weakening race checks.
+`internal/remote/restart_test.go` prevents private
 checkpoint bodies leaving the PC. `internal/server/restart_http_test.go` covers idempotent
 HTTP acknowledgement, readable status, same-origin refusal and admission errors.
 `TestRestartStorageFailureKeepsDiagnosticsAndCanRetry` registers its private
@@ -1011,7 +1620,15 @@ status write failures into a real completed run. Replacement must report the
 missing durable completion instead of accepting an idle runtime as ready.
 `internal/engine/restart_answer_replay_test.go` sends real answers before the
 waiter arms and across a new question, then checks cold-replayed tool results
-and model input. `internal/engine/restart_inbox_replay_test.go` checks unread
+and model input. `TestRestartCheckpointRetainsAnAcceptedAnswerBeforeTheWaiterReadsIt`
+also holds the real loopback model response after receiving the recovered
+call/result pair. While that turn remains running, it checks the accepted
+answer's checkpoint, matching durable tool result and exact adapter input;
+waiting for the whole turn to finish would test a different boundary. The
+barrier in `internal/engine/restart_answer_barrier_test.go` releases on cleanup
+or request cancellation. Run this target with
+`go test -race -count=1 ./internal/engine -run '^TestRestartCheckpointRetainsAnAcceptedAnswerBeforeTheWaiterReadsIt$'`.
+`internal/engine/restart_inbox_replay_test.go` checks unread
 messages, distinct steering sequences and peer roles survive exactly once.
 `internal/app/restart_parked_failure_test.go` opens real saved checkpoints with
 a missing provider or exhausted watchdog; startup must report failure without
@@ -1139,6 +1756,43 @@ cd frontend && ZWAI_E2E_WORKER_ROSTER=1 npm run e2e
 Concurrent runs follow the [E2E isolation rules](#end-to-end-tests).
 
 ## Memory review provenance and commit (F-420 / C-025 / C-012)
+
+`internal/memory/reclassify_test.go` checks source-preserving moves, negation /
+numeric / condition changes, complete-text demotion, destination conflicts,
+capacity, failure after saving the target, partial deletion receipts and
+idempotent/concurrent retry. `internal/engine/review_reclassify_test.go` runs
+the actual offline reviewer/tool graph and checks post-turn tool isolation;
+`internal/server/memory_reclassify_test.go` checks HTTP report and original-turn
+Trace. `cmd/zwai/cli_trace_memory_test.go` runs the real CLI over stored
+review outcomes, preserving partial writes and candidates alongside errors.
+The offline script uses explicit step markers, not a semantic classifier.
+`frontend/e2e/memory-boundary.spec.ts` checks both languages, usage / thresholds
+and the requested tidy UI. Each test pins and restores server-side locale as
+well as its private browser storage; localStorage alone cannot override config.
+`frontend/src/lib/review-diagnostics.test.ts` distinguishes committed note and
+completed move receipts from a skill-only partial promotion while retaining
+post-turn note summaries. `frontend/e2e/memory-tidy-partial.spec.ts` makes only
+its owned skill parent read-only under an ordinary POSIX user, then runs the
+real offline model/tool/SSE path: the note survives source cleanup failure,
+Memory lists the saved write without a completed demotion, and the original
+turn's English/Chinese Trace does not claim that note was unsaved. The fixture
+restores permissions before deleting its project; Windows/root runs skip it.
+
+`internal/memory/skill_usage_test.go` checks concurrent successful views under
+`-race`, worker tool usage, immutable content identity, corrupt sidecars, merge
+counts, deletion/copy and exact stale boundaries.
+`internal/memory/skill_copy_collision_test.go` preserves the distinction between
+a filesystem file collision and an occupied skill directory.
+`internal/server/skill_usage_copy_test.go` exercises real copy HTTP routes;
+`internal/engine/review_stale_test.go` checks advisory candidates in model input,
+streamed scan, report and original-turn Trace.
+
+Boundary regressions in `internal/memory/prompt_test.go` cover manager, worker,
+reviewer, tidy and library instructions, including generic wording and negative
+assertions. Store tests distinguish an existing-name pointer from copied steps
+and ensure an unknown name cannot bypass overlap checks. Frontend i18n tests
+check the extracted memory catalogs and both panel descriptions. Run
+`go test -race ./internal/memory` and `cd frontend && npm run lint && npm test`.
 
 The scripted offline reviewer submits one complete batch. Tests assert real
 memory files and stored outcomes, not agreement with the old reviewer's answer:
@@ -1306,6 +1960,94 @@ With no extension filters, Go regressions require `AllowsOtherFileTypes=true`
 and `CanChooseFiles=false`; native acceptance must also confirm that the folder
 confirmation button is enabled and fills the path. Option assertions alone do
 not replace that native check.
+
+## Goal resume notices (F-150 / C-003 / C-012)
+
+`frontend/src/lib/goal-notice.test.ts` checks the display projection for an
+idle human resume followed by its new continuation turn, including hidden
+metadata, typed memory-review feedback between them and a resume still waiting
+for that turn. It preserves
+later automatic continuations, independent resumes, manager reopen actions and
+the original blocks; equal wording is not event identity. Input, substantive
+manager activity, ordinary notices and ordinary errors prevent unrelated notices
+from being paired. Typed review feedback, including a review failure, keeps its
+original visibility and ordering without splitting the resume pair.
+`frontend/src/components/app/transcript-goal-notice.test.tsx` renders the real
+transcript and retains both original events for Trace.
+`frontend/src/store/goal-notice-history.test.ts` covers both history/live arrival
+orders, repeated replay, page and agent-log overlap, rewind and reconstruction,
+and actual worker/quiet-metadata or typed review events between the two manager
+notices.
+Do not assume the persisted resume and continuation events are contiguous:
+`internal/engine/goal.go` records the human resume before starting the turn,
+`internal/engine/turn.go` records continuation in the asynchronous runtime, and
+the previous turn's review goroutine in `internal/engine/review.go` can publish
+its result between them. Regress changed/error and `notify=on` payloads through
+the real reducer, component display, history/SSE overlap and pagination; assert
+one restore notice while the feedback, raw blocks and both Trace receipts remain.
+An ordinary notice with similar text is still a pairing boundary. The fix does
+not reorder stored events or add wire correlation fields.
+The primary case in `frontend/e2e/goal-resume-notice.spec.ts` exercises the explicit goal-resume API with
+the offline provider after completion hides the goal strip, checks one new turn
+and one visible notice per restore,
+and reads both original turns' Trace events. Reload and a history-page split
+between a stored resume/continuation pair retain the same notice count and
+unchanged stored events; the visible Full log retains its continuation notice.
+Additional changed/failed-review cases use controlled `/log` responses to check
+browser replay, reload and pagination with the feedback still visible. These
+are history-response fixtures, not claims of server execution or newly persisted
+Trace; the primary case separately verifies the real restore and stored events.
+
+```bash
+cd frontend && npm test -- src/lib/goal-notice.test.ts src/components/app/transcript-goal-notice.test.tsx src/store/goal-notice-history.test.ts
+cd frontend && ZWAI_E2E_PORT=18996 ZWAI_E2E_DATA_DIR=.e2e-data-goal-resume npm run e2e -- e2e/goal-resume-notice.spec.ts --output /absolute/unique-goal-resume-output
+```
+
+These browser checks do not replace acceptance in the actual desktop window.
+`tools/native_goal_resume_notice.py` runs through `tools/native_macos_case.py`
+with an identified candidate and prepared AX helpers in `ci-macOS`. It checks
+the native Start action, one visible notice, both original turns' Trace events
+and close/reopen without another turn, retaining window evidence and cleanup
+receipts outside the isolated case data. Its assertion regressions are in
+`tools/test_native_goal_resume_notice.py`.
+The initial completed objective is fixture setup through normal local
+`POST /api/threads` and `POST /api/threads/:id/turns` with `/goal` text, inside
+that case's private conversation workspace. It waits for the accepted first
+turn's real offline model calls, paired `complete_goal` result, goal completion
+and manager finish; `goal-notice-fixture.json` and
+`goal-notice-fixture-trace.json` retain those identities and receipts. After
+reload, the native window opens Conversations, selects that conversation and
+clicks Start once. After reopen it selects the title directly from the restored
+conversation list.
+Each control is observed as uniquely available and enabled before one press;
+missing controls wait within the same deadline, ambiguous controls or failed
+presses fail without retry. `goal-notice-availability-last.json` retains the
+requested label, match count and raw snapshot. The scenario never resumes
+through the API or inserts lifecycle events.
+Native acceptance covers this Start action, the expanded visible notice,
+Trace retention and close/reopen. Initial slash typing is covered by the browser
+E2E above, so this case does not depend on unrelated system input candidates.
+Prepare its narrow `tools/native_goal_resume_notice_ax.m` helper before the case
+with `python3 tools/native_goal_resume_notice.py --prepare-session-ax /absolute/private/native-goal-session-ax`.
+The helper reads the completed session's actual `AXExpanded` state; the scenario
+expands folded work and confirms it is expanded before counting notices.
+An older visible resume notice cannot stand in for that check. The helper's
+source and binary hashes must match its preparation receipt.
+On initial launch and reopen, a read-only `startup` observation distinguishes
+an unregistered application from a registered wrong bundle. Only a null bundle
+with `registered=false` may wait within the original case deadline; each attempt
+rechecks the actual executable/case PID and keeps `goal-notice-startup-NNN.json`.
+A wrong nonempty bundle or helper failure is fatal. This wait neither opens a
+window nor relaxes the later Accessibility, session and screenshot assertions.
+The generic helper's single-window, exact-draft and Send safety checks are
+unchanged; this dedicated case has no composer/Escape workaround. Its
+45-second scenario cap is unchanged.
+Before each screenshot, `reveal-notice` selects the unique localized UI receipt,
+uses `AXScrollToVisible` when needed, and checks its whole frame against the
+window and ancestor scroll viewports. The scenario independently rejects
+missing, nonfinite, empty or offscreen geometry before taking a screenshot;
+`01-resumed.viewport.json` and `02-reopened.viewport.json` retain that evidence.
+An AX node count alone cannot accept a notice outside the captured viewport.
 
 ## Late review turn boundaries (F-120 / F-130 / C-003)
 
@@ -1859,7 +2601,10 @@ with no project stays out of Recents.
 `mobile/src/lib/inbox-preview.test.ts` pulls findings and drops the tool name.
 `mobile/src/components/host-chrome.test.tsx` is why the menu prints the package version.
 `mobile/src/components/thread-screen.test.tsx` is why an empty earlier page does not immediately ask again, why Interrupt is only on a queued follow-up and names the queue head, and why a standing `/goal` is
-Pursuing / Done / Blocked / Paused with Start, a parked wait is Waiting
+Pursuing / Blocked / Paused with Start only while unfinished, a completed goal
+hides its strip without clearing stored state. `mobile/src/lib/transcript-goal.test.ts`
+retains a localized completion notice from the JSON `goal_complete` payload.
+A parked wait is Waiting
 with Run now / Cancel wait rather than a silent Send box, a long
 objective stays one truncated line so that chrome cannot cover the composer,
 and Earlier sits outside the scroller so a live-edge tail can still page.
@@ -2199,10 +2944,16 @@ nothing to surface archives (`quiet`, unread cleared, `turn.quiet`; a
 standalone fire leaves Recents) while an omitted report after actual tool
 execution with an answer is `findings` and stays in the sidebar, and why a crashed or cancelled
 scheduled turn marks the run `error` so `HasRunningRun` cannot stick.
-`internal/engine/schedule_completion_test.go` covers acknowledgement recovery
-in the original turn, two empty/acknowledgement responses failing visibly,
-ordinary chat remaining unchanged, and event-based evidence independent of
-answer length or language. Synthetic model-retry cleanup is not tool work.
+`internal/engine/schedule_completion_test.go` covers text-only scheduled results
+without forced tools or retries, two genuinely empty responses failing visibly,
+ordinary chat remaining unchanged, and explicit reports/actual tool results.
+Synthetic model-retry cleanup is not tool work.
+`internal/engine/schedule_completion_http_test.go` crosses the real Registry,
+ADK and loopback HTTP adapter: Run now and automatic fires accept text-only
+results in one request, blank recovery can end with text in the same run,
+requests keep automatic tool selection, explicit quiet reports keep precedence,
+and wholly empty output and Stop retain their bounded failure/cancellation.
+No external model is called.
 The desktop notice reducer and localization tests distinguish this continuation
 from a genuine model error while preserving older retry envelopes.
 `frontend/src/lib/schedule-view.test.ts` and
@@ -2215,10 +2966,13 @@ for paused/completed/cancelled rows instead of stale next-run times.
 checks its paused label and removal after completion, reloads the conversation,
 and opens its retained Completed history (`F-150` / `C-009`).
 
-`frontend/e2e/schedules.spec.ts` drives Run now through the real UI and Trace
-with `ZWAI_MOCK_SCHEDULE_ACK=once` (the E2E server default); `always` reproduces
-the visible error path with `ZWAI_MOCK_SCHEDULE_ACK=always npm run e2e -- schedules.spec.ts -g "Run now handles"` (use an isolated E2E port/data dir). These knobs only
-affect the offline provider on scheduled checks.
+`frontend/e2e/schedules.spec.ts` drives Run now and automatic fires through the
+real UI and Trace with text-only offline responses. Both
+`ZWAI_MOCK_SCHEDULE_ACK=once` (the E2E server default) and `always` now finish
+without tools or retry; these knobs only affect the offline scheduled provider.
+Use separate ports, data and output directories for concurrent runs. The
+worker-ownership E2E failure fixture returns a genuinely empty response so it
+continues testing failed-check retention without rejecting valid text.
 `TestCreateScheduleUsesFrozenCapWhenTickerIsLive` is why inbox create
 (and resume/patch, and a standalone claim's default provider) reads the
 same snapshot the ticker froze, not a later `e.cfg.Swarm` write;
@@ -2400,8 +3154,9 @@ tool results are in the transcript the next slice reads;
 confirm card;
 `internal/engine/goal_reopen_test.go` is why a mistaken `complete_goal`
 can be undone in-turn (`reopen_goal`, which also resets `goal_auto_turns` so
-a complete at the cap does not immediately recap) and later from **Start**
-(`ResumeThreadGoal` no longer rejects a completed objective);
+a complete at the cap does not immediately recap) and later through the explicit
+resume API (`ResumeThreadGoal` accepts a completed objective). Completed goal
+strips no longer offer Start; this engine recovery contract remains available;
 `internal/engine/goal_schedule_completion_test.go` covers the narrower scheduled
 tool conflict: a manager-owned current wake cannot both continue and complete
 the goal, either tool order must agree, the last check can finish, and independent
@@ -2409,8 +3164,9 @@ waits remain valid. Database failure checks must leave completion state and its
 Trace event together. The keyless loopback HTTP fixture in
 `frontend/e2e/goal-schedule.spec.ts` exercises Run now and automatic fires through
 the real tool graph, checks the recoverable `goal_schedule_conflict`, then ends
-the wait and completes the goal. It verifies Waiting/Open and Idle/Done after
-reload, preserving screenshots and Trace JSON. Run separately with
+the wait and completes the goal. It verifies Waiting/Open, then Idle with the
+completed goal strip hidden and the completion notice retained after reload,
+preserving screenshots and Trace JSON. Run separately with
 `cd frontend && ZWAI_E2E_GOAL_SCHEDULE=1 npm run e2e`; this is Web behavior evidence,
 not a substitute for required native-window acceptance.
 `internal/engine/goal_schedule_start_test.go` controls the actual binding/write
@@ -2811,8 +3567,8 @@ Several things are tested here, some as pure logic and some in jsdom:
   to a turn still above the tail pages until that user row exists, and
   joins an in-flight sentinel page instead of bailing.
 - **`src/store/app-goal.test.ts`**: `/goal` pursuing until `complete_goal` or
-  `block_goal` (edit and resume from the banner, including Start after a
-  mistaken complete); setting a standing
+  `block_goal` (edit and resume actions, including explicit API resume after a
+  mistaken complete; completed banner visibility is tested separately); setting a standing
   objective while idle starts that turn; setting one during a run does not
   queue a second turn; `/compact` landing on the
   open conversation, with the hint hidden at 0% (and a compact with nothing
@@ -3015,10 +3771,13 @@ Several things are tested here, some as pure logic and some in jsdom:
   Whitespace stays Stop. A `/goal` or `/plan` prompt that still needs its
   argument keeps Send disabled beside Stop; once the argument is there,
   Stop leaves. While `awaiting_answer` the placeholder is the Other prompt.
-- **`src/components/app/goal-banner.tsx`**: Pursuing / Blocked / Paused / Done,
-  Start when Paused, Blocked, or Done (not while Pursuing between sessions),
+- **`src/components/app/transcript-session.test.tsx`**: a completed goal notice
+  stays outside the collapsed goal session whether it arrives before or after
+  the final answer, so hiding the composer strip leaves completion visible.
+- **`src/components/app/goal-banner.tsx`**: Pursuing / Blocked / Paused,
+  no strip once complete, including a live transition from an open goal, Start
+  when Paused or Blocked (not while Pursuing between sessions),
   a Paused/idle reason line that this is not an error and Start resumes,
-  a Done reason line if the close was early,
   icon Start with an accessible name (Codex-density pin above the composer),
   inline edit that saves on blur and cancels on Escape, and
   elapsed time from `goal_started_at`. A failed-turn sentinel is localized
@@ -3432,6 +4191,13 @@ ZWAI_E2E_PORT=18860 ZWAI_E2E_DATA_DIR=.e2e-data-default npm run e2e -- --output=
 ZWAI_E2E_PORT=18861 ZWAI_E2E_DATA_DIR=.e2e-data-ownership ZWAI_E2E_SCHEDULE_WORKER_OWNERSHIP=1 npm run e2e -- --output=test-results/ownership --retries=0
 ```
 
+Vite preview serves its build directory directly. Do not run `npm run build`
+against that directory during a phone E2E run: Vite removes `dist/index.html`
+before writing the new bundle, so navigation can reach an empty document before
+the application mounts. Separate concurrent source/build copies as well, or run
+the build and browser suite serially. Preserve startup evidence before blaming
+an absent UI element on its business logic.
+
 Keep the first failure log and its available artifacts. Inspect whether a
 failure is a business assertion or an artifact/teardown error such as `ENOENT`
 for a trace, network file or ZIP; do not relabel an assertion failure as an
@@ -3455,15 +4221,16 @@ long enough for Steer; unit tests leave it unset.
 | `e2e/agent-roster.spec.ts` | Agents opens on last update, newest first; Name flips between Z to A and A to Z and the rows follow the label; Created flips between oldest and newest |
 | `e2e/worker-roster-history.spec.ts` | opt-in loopback model adapter: a later turn queries an existing finished worker, emits no new spawn call/event, survives reload and exposes its Trace |
 | `e2e/work-fold.spec.ts` | user-mode work folded behind one live ticker (`work-fold` with the spinner, not every finished fold); click expands the thought box and click again collapses it |
-| `e2e/conversation.spec.ts` | a full swarm turn, user-mode work folded behind one live ticker (`work-fold` + `swap-line` + `MarqueeText` shimmer or left-to-right scroll), a live status line marked as sweeping while the turn runs, opening a sub-agent (back control beside the scroller, not sticky on it; system prompt from the chrome; log at the live edge; a collapsed `write` opens to the file body, not `Updated file`), a generated sidebar title from the opening message (not the raw request, not a transcript row), a chart in the scripted answer with Chart/Table tabs (reload returns to the home page with nothing selected; reopening the row replays the chart), scrolling up mid-stream leaving the viewport put and a jump-to-latest control returning to the live edge (developer view, so spawn rows exist to overflow), switching conversations landing at the latest turn rather than the top of the history (latest jump-rail tick current), context carried across turns, jumping to an earlier user message from the left rail (latest tick current while idle at the live edge), Enter while `wait_agents` is pending queuing a follow-up until the turn finishes, the corner button swapping from Stop to Send once that draft is typed and the click queueing without leaving Working, **Steer** on that queued row injecting and emptying the tray, **Steer** after Stop starting that leftover row as the next user turn, pulling a queued row into the composer and Enter queueing that edit at the back of the FIFO, a pencil on unread steering doing the same, **Steer** (⌘Enter while `wait_agents` is pending) pinning unread steering under the working line with Interrupt and Delete, retracting an unread steer so the turn stays Working, Interrupt aborting the current tool without cancelling the turn, **Stop** while a tool is in flight leaving no spinner next to the interrupted banner, hovering a user request or the last finished answer fading in the reserved event clock without a layout jump, copying or editing a sent message in place so Send restarts from that bubble and clears everything below, file upload appearing in the Files panel with the user bubble naming `uploads/brief.txt`, collapsing a workspace directory in Files and filtering to a nested file, dropping a file and an image onto the composer (overlay, then a workspace chip vs a vision thumb), the turn id on the Trace summary with the event log folded until Full log, an IME-confirming Enter leaving the draft in the box, the manager tool-round cap pausing for Continue/Stop instead of dumping eino's iteration error, and switching the catalog model from a grouped searchable picker (Refresh models / Edit providers) so a reload still sends that name, and the composer context ring plus Trace usage after a turn (reload keeps the ring; the snapshot never lands as a transcript row), `/` listing goal, plan and compact without a 0% hint on an empty chat, pinning a standing objective, starting it from the banner without a human message, editing it in place, compacting without rewriting user bubbles (an icon opens the briefing), auto-compacting at a low token budget with a visible compressed notice and the same briefing icon, a scripted run with a goal finishing as Done, and a one-round ReAct slice leaving a standing objective running until Done instead of pausing it as two Worked-for sessions, `/plan` (`e2e/plan.spec.ts`) showing a Planning banner and an `ask_user` dialog that spans the conversation column (**Your answer needed**, still `border-ask`, no ring or ping on the card; **Your turn** on the title bar with a pinging `ask-mark`; a numbered choice then Submit continues the same turn), then Implement remounting work and leaving planning |
+| `e2e/conversation.spec.ts` | a full swarm turn, user-mode work folded behind one live ticker (`work-fold` + `swap-line` + `MarqueeText` shimmer or left-to-right scroll), a live status line marked as sweeping while the turn runs, opening a sub-agent (back control beside the scroller, not sticky on it; system prompt from the chrome; log at the live edge; a collapsed `write` opens to the file body, not `Updated file`), a generated sidebar title from the opening message (not the raw request, not a transcript row), a chart in the scripted answer with Chart/Table tabs (reload returns to the home page with nothing selected; reopening the row replays the chart), scrolling up mid-stream leaving the viewport put and a jump-to-latest control returning to the live edge (developer view, so spawn rows exist to overflow), switching conversations landing at the latest turn rather than the top of the history (latest jump-rail tick current), context carried across turns, jumping to an earlier user message from the left rail (latest tick current while idle at the live edge), Enter while `wait_agents` is pending queuing a follow-up until the turn finishes, the corner button swapping from Stop to Send once that draft is typed and the click queueing without leaving Working, **Steer** on that queued row injecting and emptying the tray, **Steer** after Stop starting that leftover row as the next user turn, pulling a queued row into the composer and Enter queueing that edit at the back of the FIFO, a pencil on unread steering doing the same, **Steer** (⌘Enter while `wait_agents` is pending) pinning unread steering under the working line with Interrupt and Delete, retracting an unread steer so the turn stays Working, Interrupt aborting the current tool without cancelling the turn, **Stop** while a tool is in flight leaving no spinner next to the interrupted banner, hovering a user request or the last finished answer fading in the reserved event clock without a layout jump, copying or editing a sent message in place so Send restarts from that bubble and clears everything below, file upload appearing in the Files panel with the user bubble naming `uploads/brief.txt`, collapsing a workspace directory in Files and filtering to a nested file, dropping a file and an image onto the composer (overlay, then a workspace chip vs a vision thumb), the turn id on the Trace summary with the event log folded until Full log, an IME-confirming Enter leaving the draft in the box, the manager tool-round cap pausing for Continue/Stop instead of dumping eino's iteration error, and switching the catalog model from a grouped searchable picker (Refresh models / Edit providers) so a reload still sends that name, and the composer context ring plus Trace usage after a turn (reload keeps the ring; the snapshot never lands as a transcript row), `/` listing goal, plan and compact without a 0% hint on an empty chat, pinning a standing objective, starting it from the banner without a human message, editing it in place, compacting without rewriting user bubbles (an icon opens the briefing), auto-compacting at a low token budget with a visible compressed notice and the same briefing icon, a scripted run hiding its completed goal strip while preserving the completion notice, and a one-round ReAct slice leaving a standing objective running until completion instead of pausing it as two Worked-for sessions, `/plan` (`e2e/plan.spec.ts`) showing a Planning banner and an `ask_user` dialog that spans the conversation column (**Your answer needed**, still `border-ask`, no ring or ping on the card; **Your turn** on the title bar with a pinging `ask-mark`; a numbered choice then Submit continues the same turn), then Implement remounting work and leaving planning |
 | `e2e/quotes.spec.ts` | quoting selected transcript text into the next send as an editable composer annotation (count chip at rest, hover for the snippet, not `<selected_text>` tags in the bubble), and Add to chat still landing while a turn is streaming (user-mode work fold, not the inner thought box) |
 | `e2e/skill-copy.spec.ts` | a skill copied from one project into another stays on its own file: the copy names where it came from, **Update** brings a later source change across, **Cancel** keeps a local edit when both sides changed, **Replace with source** then takes the source text, and the source file does not gain the local edit |
 | `e2e/library-skills.spec.ts` | a conversation outside a project adds a skill under Shared skills (no Notes); the test identifies that skill from this turn's `memory_review` trace even when other reviews write at the same time, then Copy puts it into a project whose origin says it came from the shared skill library |
 | `e2e/projects.spec.ts` | a project created from the sidebar, a conversation started from the project row that says so with the project name prefixing the title on one line, the review named in the transcript without opening a tab, **View skills** on the project menu opening the Memory tab with that skill expanded and in view (body inside its card, not over Files), the notes in the panel without a reload, the review in the same Full log as the turn, a second conversation starting with the first one's memory, a hand-edited note surviving a reload (Save notes absent until the draft changes), a deleted project taking its conversations with it after a confirm, the Memory tab not leaving a blank Agents pane above the notes or clipping Skills off the window or painting inactive Files beside Memory, Review now saying when there is nothing to review, Tidy skills saying when the catalog is empty (counts, no fake model review) and asking the model when a skill is already there (scan/review, then a reviewed report with a non-zero scanned count), hovering a project row revealing a new-conversation control that starts one in that project rather than Conversations (the folder is not pressed; the open topic is `aria-current`; the folder glyph is open when expanded and closed when collapsed; a running conversation's progress sits in that same icon column; topic names sit under the project name; there is no drag-grip glyph), pinning a project topic to the top across reload, dragging a project pinning that order across reload, a sixth topic in the folder sitting behind **Show more** until it is opened, and a running conversation keeping its sidebar progress after switching to a new conversation (an explicit folder collapse keeps a clipped breathe-dot on the glyph, not a smear) |
 | `e2e/markdown.spec.ts` | the scripted answer paints a tagged `go` fence (Copy code + syntax colour), `$n$` as KaTeX, a GFM table that stays inside the conversation column (not under the side panel), and a heading rendered as a heading while the turn is still Working |
-| `e2e/goal-resume.spec.ts` | `/goal` on the mock provider reaches Done, then **Start** on the banner reopens pursuit (Working) |
+| `e2e/goal-resume.spec.ts` | `/goal` on the mock provider completes, hides its composer strip and retains the history completion notice without clearing persisted goal/completion fields; reload and reopening keep that state, and setting a new goal displays the strip again |
 | `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled page in the main column (New task opens the right drawer, Task only — the inbox name is generated — Repeat → On an interval, Every (seconds) 60, Add wait; Agents/Files/Trace rail hidden; Expand fills the page (`data-expanded`) then Collapse restores the list), click the row to open the editor, Run now, Escape back to the conversation, unread / Open findings landing on the minted conversation whose title matches that generated name, with a `Scheduled check.` chip and no user bubble of the protocol wrapper; REST create then click-to-edit title/prompt/cadence and Save; a REST `kind=thread` wake on the open conversation showing the composer banner with Run now and Cancel wait, a breathing wait clock on the sidebar row and **Waiting** on the title bar, Cancel wait removing the chip and returning Idle, Run now starting Working, hiding the wait banner, a `Scheduled check.` chip, then Waiting again with the clock once the check finishes. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
 | `e2e/remote.spec.ts` | Settings → Phone: Hub URL, no Host Token field, Event text on the phone, Events on the phone, Keep this computer awake, Bound phones empty copy, Show pairing QR, no QR pixels while the hub is unset; the failure toasts over the sheet in viewport (× dismisses it). A stubbed binding paints the reported model and last-connected, not a bare fingerprint. A binding that appears on a later list read while the QR stays up is painted without leaving Phone. |
+| `mobile/e2e/goal-completion.spec.ts` | English/Chinese phone path starts with a visible unfinished goal, sends a turn that completes it, hides the composer goal strip and shows one localized completion notice; leaving and reopening the conversation preserves both |
 | `mobile/e2e/scan.spec.ts` | Capacitor shell Scan QR opens a live viewfinder (four corners, a beam whose `scan-beam` animation is running, a fake-camera preview); junk paste errors; a syntactically valid URI uses the same bind path; a saved ticket shows host chips and Connecting, not the scan form; Add a PC is a sheet |
 | `e2e/clients.spec.ts` | a long local agent session opens on the live reply, **Earlier** loads the lines above it, and that reply stays on screen |
 | `e2e/output-budget.spec.ts` | an output-budget error in the transcript links to Settings → Swarm, focuses Max completion tokens, and shows Retry only after that sheet closes |
@@ -3593,6 +4360,17 @@ checks the actual submit/steer bounds and sends long input from PC follow-up,
 New chat, and direct model chat with long model names. It runs on Chromium
 and iPhone WebKit; install both with `cd mobile && npx playwright install chromium webkit`
 before `npm run e2e`. JSDOM cannot prove WebKit focus zoom.
+`mobile/e2e/ask-answer.spec.ts` also checks the actual Other textarea font size
+before typing and retaining a rejected answer. The Issue #104 regression first
+observed 14 CSS px against the existing 16px focus boundary. Use
+`IOS_LAYOUT_QUERY='/?mock=1&ask=1&askfail=1&tick=0'` and
+`mobile/e2e/ios-ask-viewport.swift` in an isolated English native fixture for
+`testAskChoicesRetainAnswerAndNativeViewportAcrossFocusAndRetry`. It records
+actual App/main/Back bounds and PNG/AX evidence while focused, after keyboard
+Done, after rejection and after successful retry; functional assertions alone
+cannot accept layout. Keep the original cropped screenshots. Main-composer
+acceptance does not cover a separate Ask editor, and browser CSS checks do not
+replace this packaged native case. User pinch zoom remains enabled.
 `mobile/e2e/ios-wait-layout.swift` drives the packaged Capacitor app: open a
 parked wait, type, dismiss the keyboard, then check that Back is hittable at
 its original vertical position and Run now remains inside the screen.
@@ -3836,7 +4614,7 @@ from about 152 ms to 1.4 ms. These are development measurements, not a promise
 for every filesystem or model-running CPU load. Inspect a real native Mac
 window separately before recording native acceptance.
 
-## Native Mac acceptance recovery (`F-430`, `C-010`)
+## Native Mac acceptance recovery (`F-430`, `C-010`, `C-031`)
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tools.test_audit_macos_acceptance -v
@@ -3858,6 +4636,18 @@ unaccepted. Passed observations require real window/behavior references and exac
 version/source SHA/ZIP/hash/guest identity. Invalid JSON, unsupported credential
 fields and non-boolean flags are rejected without printing private input values.
 `make docs-check` discovers this regression with the existing Python tests.
+
+The optional `native_window.ssh_helper_permission_denied` and
+`native_window.trusted_guest_terminal_available` booleans describe this
+recovery's observed control paths, not requested permissions. A ready guest,
+nonempty evidence and matching guest/four-field candidate are all required
+before both true flags yield pending /
+`inspect_native_window_via_guest_terminal`. The regression first observed the
+old CLI reject these flags, then covers the action through the CLI and pure
+decision function, all false/missing combinations, every mismatched identity
+field, absent evidence, strict boolean types, unchanged input and precedence
+of unknown state and already completed exact-package acceptance. Existing
+observations without these optional fields retain their behavior.
 
 These tests exercise a pure JSON decision function and CLI with temporary files;
 they do not operate UTM, SSH, UI, login or an app. The caller must inspect the

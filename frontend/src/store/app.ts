@@ -128,7 +128,7 @@ export interface AppState extends ScheduleSlice {
   renameThread: (id: string, title: string) => Promise<void>
   deleteThread: (id: string) => Promise<void>
   reorderThreads: (ids: string[]) => Promise<void>
-  send: (text: string, images?: SendImage[], opts?: { steer?: boolean; files?: string[]; fromEventSeq?: number; threadId?: string }) => Promise<boolean>
+  send: (text: string, images?: SendImage[], opts?: { steer?: boolean; command?: "goal" | "plan"; files?: string[]; fromEventSeq?: number; threadId?: string }) => Promise<boolean>
   setGoal: (text: string, threadId?: string) => Promise<boolean>
   setPlan: (text: string, threadId?: string) => Promise<boolean>
   savePlan: (text: string) => Promise<void>
@@ -547,7 +547,7 @@ export const useApp = create<AppState>((set, get) => ({
       // A live question is not a follow-up: Enter is Other for every
       // unanswered prompt. Queueing here would wait for a turn that cannot
       // finish until this answer lands.
-      if (status.awaiting_answer) {
+      if (!opts?.command && status.awaiting_answer) {
         if (images?.length || opts?.files?.length) {
           set({ error: "Attachments cannot be sent as an answer to a pending question. Answer the question with text first; the draft was kept." })
           return false
@@ -559,6 +559,7 @@ export const useApp = create<AppState>((set, get) => ({
       // Pasted images have nowhere to wait: the follow-up row is text. They
       // inject now rather than being dropped on the floor.
       const queue =
+        !opts?.command &&
         !opts?.steer &&
         status.running &&
         !(images && images.length > 0) &&
@@ -576,7 +577,7 @@ export const useApp = create<AppState>((set, get) => ({
           if (!(e instanceof ApiError && e.code === "idle")) throw e
         }
       }
-      if (opts?.steer && id === get().activeId) {
+      if (!opts?.command && opts?.steer && id === get().activeId) {
         const kept = dropMatchingFollowups(get().followups, text)
         if (kept.length !== get().followups.length) {
           const dropped = get().followups.filter((f) => !kept.includes(f))
@@ -587,8 +588,12 @@ export const useApp = create<AppState>((set, get) => ({
           )
         }
       }
-      const sentSeq = get().transcript.lastSeq
-      const accepted = await api.steer(id, text, images, opts?.files)
+      // Event sequences belong to one conversation, including after navigation.
+      const sentSeq = get().activeId === id ? get().transcript.lastSeq : 0
+      // Plan entry must reject a newly busy target, while goals may update its live turn.
+      const accepted = opts?.command === "plan"
+        ? { steered: false, turn: await api.startTurn(id, text, images, opts?.files) }
+        : await api.steer(id, text, images, opts?.files)
       set((s) => {
         // The acknowledgement may arrive after this turn's terminal event.
         if (s.activeId !== id || (!s.status.running &&
@@ -619,16 +624,17 @@ export const useApp = create<AppState>((set, get) => ({
     }
     try {
       const running = id === get().activeId ? get().status.running : (await api.thread(id)).status.running
+      if (text.trim() && !running) {
+        // Let the engine interpret the command once, preserving command literals
+        // inside its argument. Steer also handles a turn starting during this send.
+        set({ error: undefined })
+        return await get().send(`/goal ${text}`, undefined, { threadId: id, command: "goal" })
+      }
       const updated = await api.patchThread(id, { goal: text })
       set((s) => ({
         threads: s.threads.map((t) => (t.id === id ? { ...t, ...updated } : t)),
         error: undefined,
       }))
-      // Codex / Cursor: `/goal <objective>` is the first unit of work, not a
-      // pin that waits for another Enter. A live turn is steered by the
-      // engine; starting a second one here would 409 or queue the objective.
-      const objective = updated.goal?.trim() || text.trim()
-      if (objective && !running) return await get().send(objective, undefined, { threadId: id })
       return true
     } catch (e) {
       set({ error: message(e) })

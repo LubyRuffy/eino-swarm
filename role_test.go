@@ -100,14 +100,17 @@ func spawnJob(t *testing.T, spawnT tool.InvokableTool, role, task string) string
 	if err != nil {
 		t.Fatal(err)
 	}
-	var got map[string]string
-	if json.Unmarshal([]byte(out), &got) != nil || got["agent_id"] == "" {
+	var got struct {
+		AgentID     string `json:"agent_id"`
+		ResumedFrom string `json:"resumed_from"`
+	}
+	if json.Unmarshal([]byte(out), &got) != nil || got.AgentID == "" {
 		t.Fatalf("spawn %q: %s", role, out)
 	}
-	if got["resumed_from"] != "" {
-		t.Fatalf("path role resumed %s instead of starting: %s", got["resumed_from"], out)
+	if got.ResumedFrom != "" {
+		t.Fatalf("path role resumed %s instead of starting: %s", got.ResumedFrom, out)
 	}
-	return got["agent_id"]
+	return got.AgentID
 }
 
 func roleOf(h *Handle, ok bool) string {

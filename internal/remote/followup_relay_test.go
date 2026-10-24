@@ -36,7 +36,8 @@ type followupRelayHandler struct {
 func newFollowupRelay(t *testing.T, e *engine.Engine) *followupRelay {
 	t.Helper()
 	mem := pstore.NewMemory()
-	srv := httptest.NewServer(relay.New(mem).Handler())
+	hub := relay.New(mem)
+	srv := httptest.NewServer(hub.Handler())
 	t.Cleanup(srv.Close)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -118,6 +119,15 @@ func newFollowupRelay(t *testing.T, e *engine.Engine) *followupRelay {
 	offer, err := protocol.Parse(uri)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Dial returns after the WebSocket handshake, before the relay necessarily
+	// publishes presence. Redeem consumes the one-use offer even when offline.
+	for !hub.PeerOnline(hostID.Public()) {
+		select {
+		case <-ctx.Done():
+			t.Fatal("relay did not publish host presence:", ctx.Err())
+		case <-time.After(time.Millisecond):
+		}
 	}
 	ticket, public, session, err := client.RedeemOffer(ctx, offer, deviceID)
 	if err != nil {

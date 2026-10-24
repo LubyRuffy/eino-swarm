@@ -66,8 +66,17 @@ E2E suite.
 
 ## Testing rules
 
+- Memory reclassification deletes a source only after preserving its full text
+  (whitespace normalization is allowed); token overlap cannot prove that negation,
+  numbers or conditions survived. Regress partial filesystem deletion and report
+  actual writes even when the move fails. Skill usage is separate from content
+  identity and never enters the prompt index. E2E language fixtures must restore
+  server locale as well as browser storage.
+
 - Concurrent Playwright runs must each own a separate server port, data
-  directory and `--output` directory. Preserve the first failure and identify
+  directory and `--output` directory. A Vite preview also owns its built `dist`:
+  never rebuild that directory while it is serving a case; concurrent builds
+  need separate source/build copies. Preserve the first failure and identify
   whether it came from a business assertion or artifact/teardown handling;
   shared trace/network/ZIP `ENOENT` errors require an isolated rerun with its
   own evidence. A retry turning green alone does not establish the cause or
@@ -99,6 +108,14 @@ E2E suite.
   cannot accept a collector that silently drops them. Persist exact target
   identity before a stall; regress scenario SIGKILL through the runner's actual
   resume/exit cleanup. Corrupt or broken-link receipts must fail closed.
+  System WebContent/GPU fault admission verifies only the already-selected
+  allowlisted executable: strict code validation, all architectures and inline
+  `=anchor apple and identifier "<exact service identifier>"`. Resource omission
+  is explicit, never a fallback or App bundle acceptance. Keep raw signature
+  stdout/stderr, command, target and status durable on success, failure and
+  timeout; unknown results or failed evidence cannot append a target or signal.
+  Regress real CLI syntax, wrong identity and a privately corrupted code page.
+  Distribution App verification remains deep and strict with resources.
   Regress changed lifecycle adapters through the actual main harness module.
   A fake namespace that invents its missing methods cannot prove module wiring;
   exercise every real caller, including setup and cleanup, before freezing it.
@@ -116,6 +133,79 @@ E2E suite.
   and total timings including cleanup. Build/first transfer and deliberately
   long recovery tests have separate measured scope and explicit budgets. Do not
   replace behavior checks with shorter timeouts or abandon cleanup at expiry.
+- Native activation is requested once per helper action invocation. Refresh `NSRunningApplication` on the
+  main runloop before trusting `active`, even when its cached value is true.
+  A nonempty window candidate must have the actual AX element type, `AXWindow`
+  role and expected owner PID before raise, traversal or window input; retain
+  its strong lifetime through the action. Regress proxy, unknown and wrong-PID
+  candidates through both actual helpers, with no window action on refusal.
+  Engine presence can precede native application registration. After the kernel
+  case guard, only a snapshot may report registration pending for an absent
+  `NSRunningApplication` or unavailable bundle path. It performs no activation
+  or AX access and does not verify that requested bundle. Keep the existing
+  shared window deadline; fill/Send, wrong native PID and a nonempty wrong
+  bundle remain immediate refusals. Regress the real main and window caller.
+  The resilience helper's application-only activate command does no AX lookup
+  or raise; callers still require a fresh real-window and pixel observation.
+  Keep `ZWAI_NATIVE_APP` as the original case anchor when a recovery shell
+  replaces its PID. Derive the activation bundle from the actual kernel
+  executable: accept only that original bundle or this case's exact private
+  home/Library/Caches/zwai/desktop-recovery-*/zwai.app layout, with its session
+  marker and verified original/derived core identities. Actual `WriteMacApp`
+  rewrites metadata and re-signs the copy; equal raw hashes are not a general
+  successor contract. For different bytes, prepare a pinned proof independently
+  through the real writer on the target signing system, never from the runtime
+  target. Strictly verify the original and both derived signatures, compare two
+  outputs and every non-signature byte, normalizing only the three measured
+  signature/linkedit length fields. Freeze source/version, original/derived
+  full hashes and metadata; a present malformed proof never falls back to raw
+  equality. Regress the actual writer with real signed page/Info variants,
+  damaged code, dirty/untracked writer inputs and the entire real helper main.
+  Verify the inherited case marker,
+  NS PID/resolved bundle and unchanged kernel birth/executable around the one
+  request. Hashing shares the existing two-second deadline. Regress the actual
+  helper main against real private files; wrong layout/core/NS identity or PID
+  reuse must refuse without AX/input. Record sampled identities and reason,
+  never credentials. A QA identity fix does not accept product recovery timing.
+  One monotonic deadline covers activation, raise and short runloop slices;
+  expiration cannot allocate another wait or retry Send. Regress actual
+  Objective-C callers with OS/clock seams, including stale true/false and an
+  activation that consumes the deadline. Keep real SDK/main-entry refusal checks
+  separate from those seams and from guest window/collector acceptance. Failed
+  activation and fill/Send guards retain their sampled predicates and Press
+  attempt state; a caller that drops stdout must still retain key failure fields.
+  Existing caller polling keeps its original shared deadline; this helper wait
+  cannot reset the replacement budget.
+- Native file-selection diagnostics retain the first choose-file timeout's raw
+  streams and original exception before final cleanup. Later snapshot failures
+  cannot overwrite them. Preserve completed helper streams before parsing;
+  missing success evidence fails the case, while evidence I/O cannot replace an
+  existing action failure. Keep the eight-second adapter deadline and never
+  repeat an input to repair a missing acknowledgement.
+  File-panel inspection requests Role/Title/Description/Value/Children in one
+  fixed-order, options-zero batch per distinct scanned node. Validate the top
+  status and array type/exact length. Decode every returned slot's error-wrapper
+  structure, including unused prefetched auxiliary slots; decode only correctly
+  typed AXValue AXError wrappers, never negative numbers. CFNull is a separate
+  batch-missing result, not an invented NoValue error: Role missing refuses,
+  Children missing is a leaf and Button Title missing creates no Open candidate,
+  preserving the existing explicit Unsupported/NoValue boundaries. Malformed
+  error wrappers and incomplete required reads refuse; never fall back to
+  individual reads. Roots keep their complete independent enumeration.
+  A filename witness stops auxiliary text consumption, although fixed batches
+  still request those attributes. Continue proving one distinct Open across the
+  complete supplied AX graph. Roots, role/children and every button title keep
+  their required read and type checks; unreadable, malformed or over-budget
+  graphs cannot prove uniqueness. Consumed auxiliary text errors and non-string
+  values are unknown,
+  never absence or a filename witness. Retain their original status and cached
+  node context; only another successful string witness plus the complete unique
+  Open proof permits Press. Regress partial batch errors, CFNull and malformed
+  wrappers, unknowns before/after a witness, a hidden second Open, missing
+  witnesses and required failures through the actual caller.
+  Bound auxiliary error records without dropping a later required failure;
+  Query-count savings do not prove provider-internal IPC count, atomic snapshots,
+  native elapsed time or a past timeout cause. The full graph remains O(N).
 - New or changed Go functions need unit tests in the same package, covering more
   than 90% of the new statements. Current per-package coverage is listed in
   [docs/TESTING.md](docs/TESTING.md); do not regress it.
@@ -128,6 +218,11 @@ E2E suite.
 - Image acceptance must use a decodable fixture and verify dimensions, MIME
   and unchanged bytes after save/reload. Magic bytes and an img src alone
   cannot prove that the selected image reached the visual-input path.
+- Lifecycle-only schedule fixtures use explicit titles. Before fault injection
+  replaces provider state, registers/removes database callbacks or closes storage,
+  unrelated background title tasks must be absent or joined. Keep automatic-title
+  tests on the real untitled schedule API and assert lifecycle helper waits have
+  `TitleAuto=false`; a repeated green race run alone does not prove isolation.
 - Run with `-race`. The engine, the event bus and the HTTP server run
   concurrently, and every serious bug found here so far has been an ordering bug.
 - Local startup must not wait for optional phone-hub registration. Keep remote
@@ -188,6 +283,17 @@ E2E suite.
   checks, live/history/roster replay, restart, same-ID collection, Stop and
   revocation of the last owner. Keep resource-budget and watchdog termination
   separate, and do not turn a failed check into an immediate goal retry.
+- An ordinary turn without executable goal/wake ownership cannot finish with
+  running workers or finished results it has not collected. Bind actual
+  `wait_agents` results and explicit `close_agent` decisions to the current
+  worker generation; timeout, unknown IDs and old-generation receipts do not
+  settle it. Closing an already-finished worker may discard its result but
+  must retain `already_finished`, never fabricate cancellation. Withhold early
+  completion prose, allow one durably counted correction, then keep the same
+  turn/workers paused for human Continue or Stop. Continue grants one further
+  attempt; restart preserves both collection state and the consumed allowance.
+  Regress actual HTTP workers, completed-uncollected results, resume, archive,
+  restart, owner revocation, storage failure and live/history/Trace output.
 - A parked registry's conversation-wide cleanup recording/publication attempt
   must finish before another registry can be taken or occupied. Serialize that
   attempt with the runtime claim; cancel/close the detached registry outside
@@ -207,6 +313,13 @@ E2E suite.
   pauses and Stop, storage failure, and tool results arriving after shutdown.
   Unknown external effects require verification before retry; a model summary
   or process launch is not proof of handoff or recovery.
+- Unanswered ask recovery must cross the real Registry middleware and HTTP/
+  process replacement boundary. A direct `AskUserTool` call misses handoff's
+  synthetic unknown result. Recover a legacy placeholder only from the matching
+  unaccepted human-pause checkpoint; real answers win in either arrival order.
+  Preserve the original turn/call identity, raw unknown receipt and private
+  checkpoint. Test named `ask_recovered` delivery, PC/phone replay and duplicate
+  answer refusal; a restored form is not a new call or an accepted answer.
 - A cleanup event is not a worker completion receipt. Regress Stop and replay
   with unfinished workers shown as stopped, actual finished workers retained,
   and no model-failure retry banner for human interruption. Cleanup does not
@@ -290,8 +403,43 @@ E2E suite.
   Execute the reported next action during the current recovery. A failed
   control channel alone is not a reason to leave authorized acceptance waiting:
   try another available isolated native control path and record its actual
-  result. Routine recovery already authorized by the user needs no second
-  approval. Preserve passed evidence for its exact source and package; a later
+  result. If an SSH-launched helper is denied native permissions while an
+  existing authorized guest Terminal control path is evidenced as usable,
+  execute that path before asking the user to change settings. Keep the
+  native-case lock, exact target/candidate and fresh helper receipts; guest
+  administrator status does not establish Accessibility or Screen Recording
+  trust. Routine recovery already authorized by the user needs no second
+  approval. If the guest relocks during model/tool handoffs, chain the guest
+  input actor's exit/cleanup, a fresh session check and guarded case launch in
+  one bounded invocation. Keep finite power ownership continuous through that
+  handoff: register any bridge in the original case's process list under its
+  held exclusion lock and incomplete-cleanup latch, before recovery or launch.
+  Release/reap it only after the actual scenario child's fresh same-birth three
+  assertions acknowledge takeover, or through original failure cleanup. Regress
+  the actual runner's preparation-failure fallback, malformed/partial/wrong-owner
+  acknowledgements, cancellation and false cleanup latch; fixture-only methods
+  cannot prove this wiring. Keep the existing whole-round/work/cleanup budgets.
+  A direct child's PID/birth can precede its expected executable after spawn;
+  bind that transition within the same deadline before freezing its full
+  identity. Regress a real headless exec, not only a mocked identity reader.
+  Preserve executable modes through the entire launch chain, including a
+  LaunchServices/Terminal `.command` entry, and check each actual executable
+  before triggering that entry. Source read by an explicit interpreter does
+  not need an executable bit. Regress unchanged bytes at mode 0644 refusing
+  before any trigger and the intended executable mode passing preflight.
+  Checking helper binaries alone or matching byte hashes misses this boundary;
+  a missing entry claim must not become an unexamined wait for native timeout.
+  For the already identified, authorized target, retain the new observation
+  frame without adding an approval delay. A wake frame or power handoff is not
+  continuing login proof; input still needs the actual guest login state, and
+  lock-screen settings stay unchanged.
+  A live owned `caffeinate` process, active power assertions or an active App
+  do not prove that the guest remains unlocked. Preserve missing lock flags as
+  unknown. If a case locks, retain its exact child birth/poll and assertion
+  observations plus the bounded session-event timeline before choosing another
+  action; a timed assertion is not the default five-second untimed assertion.
+  Synthetic input is not physical keyboard/mouse evidence.
+  Preserve passed evidence for its exact source and package; a later
   main change requires checking the affected inputs, not erasing that evidence.
 - Repeated ci-macOS access failures need fresh route/interface, guest MAC/link/IP/
   default-route and SSH-service evidence. A saved IP, UTM started state or old
@@ -347,6 +495,21 @@ E2E suite.
   Do not repair this feedback loop by matching a user's words or business data.
 - Never test against a network or a real model. Use the scripted offline
   provider, and keep its script generic.
+- Native worker fixtures must distinguish the engine's exact System policy
+  protocol from manager and worker requests. Schedule-answer classification is
+  non-streaming, tool-free and two-message; only the fixture's own fixed known
+  candidates may receive empty claims. Unknown candidates or malformed policy
+  requests fail closed. Regress actual loopback HTTP, quoted/user protocol
+  spoofing and an already-held worker without changing its spawn or request
+  counters; never approve arbitrary prose to make a native case pass.
+- Regress a new explicit goal after a completed one through the real PC and
+  paired-phone send paths, including a standalone trailing `/goal`. The
+  original objective text must reach the model, and the completed flag must
+  be cleared before work starts. A resumed worker or an assistant's promise
+  of a future check is not a successful schedule receipt: verify the exact
+  turn's persisted schedule and its current state before publishing that
+  success claim. Failed, denied, cancelled and historical schedules must not
+  become a new armed wait through prose or replay.
 - Memory quality tests must not treat prior notes, old reviewer output, or model
   agreement as truth. Freeze source evidence and follow-up checks before comparing
   final facts, missed explicit corrections, conflicts and task behavior. Optional
@@ -447,10 +610,14 @@ E2E suite.
   Late-steer continuation accepts only User-role messages. Regress late
   completion/cancellation, restart read cursors and storage failure.
 
-- Scheduled completion needs a tool result or explicit report in the same turn.
-  Prose alone is not evidence that the check ran. Keep one bounded same-turn
-  continuation and regress both Run now and automatic fires, including quiet
-  reports and model-retry cleanup; never classify completion by answer length.
+- Scheduled checks retain automatic tool selection and may end with a nonempty
+  text result without tools. Do not require a tool call to accept that result.
+  Only an empty/whitespace final with no actual tool result or explicit report
+  gets one bounded same-turn continuation. Regress Run now and automatic fires,
+  text-only results, empty recovery, explicit quiet reports and synthetic retry
+  cleanup through the real model adapter. Text is a delivered response, not
+  proof of external work or standing-goal completion; do not classify its
+  meaning by keywords, similarity, language or a length threshold.
 
 - Lifecycle argument errors are recoverable feedback. Do not let one model reply flood history with repeated rejected spawns: validate complete streamed arguments, keep a counted representative refusal and preserve every valid call. Refused spawns are not worker creation or cleanup; regress trace pairing and same-turn repair.
 

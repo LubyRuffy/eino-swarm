@@ -93,7 +93,8 @@ test("Stop keeps unfinished workers stopped after a reload", async ({ page }) =>
   const started = await accepted
   expect(started.ok()).toBe(true)
   const { turn } = await started.json()
-  await expect(page.getByText(/Waiting for/)).toBeVisible({ timeout: 30_000 })
+  await page.getByRole("tab", { name: "Agents" }).click()
+  await expect(page.getByTestId("agent-roster").getByText("Active (2)", { exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Stop", exact: true }).click()
   await waitForIdle(page)
   // Idle can precede the cancelled model calls' finished receipts. Wait for

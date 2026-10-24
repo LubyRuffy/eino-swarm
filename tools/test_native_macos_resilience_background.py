@@ -6,6 +6,7 @@ import json
 import tempfile
 import signal
 import copy
+import hashlib
 import plistlib
 from types import SimpleNamespace
 from unittest import mock
@@ -16,6 +17,52 @@ SPEC.loader.exec_module(background)
 
 
 class BackgroundTests(unittest.TestCase):
+    def test_start_names_the_parked_wait_for_its_case_before_freezing_ownership(self):
+        for case_id in ("case-a", "case-b"):
+            with self.subTest(case_id=case_id), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                schedule, requests, states = {}, [], {}
+                for kind in ("running", "parked"):
+                    marker = root / kind
+                    marker.write_bytes(kind.encode())
+                    states[kind] = dict(self.state, worker_id="worker-" + kind, marker=str(marker))
+                fixture = SimpleNamespace(models=dict(running="running"), status=lambda: states)
+                context = dict(evidence=root, workspace=root, case_id=case_id, fixture=fixture,
+                               thread_id="thread-running", origin="http://127.0.0.1:12345")
+
+                def api(origin, path, method="GET", payload=None):
+                    requests.append((path, method, copy.deepcopy(payload)))
+                    if method == "PATCH":
+                        return {}
+                    if path == "/api/threads" and method == "POST":
+                        return dict(thread=dict(id="thread-parked"))
+                    if path == "/api/schedules" and method == "POST":
+                        schedule.update(payload, id="wake-a", status="active", title_auto=False,
+                                        next_run_at="2026-10-24T00:00:00Z")
+                        return dict(schedule=copy.deepcopy(schedule))
+                    if path.endswith("/steer"):
+                        return dict(turn=dict(id="turn-" + path.split("/")[-2].removeprefix("thread-")))
+                    if path.startswith("/api/threads/"):
+                        kind = path.rsplit("-", 1)[-1]
+                        return dict(status=dict(workers=1, running=kind == "running",
+                                                waiting=kind == "parked", turn_id="turn-" + kind))
+                    if path.startswith("/api/trace/"):
+                        kind = path.rsplit("-", 1)[-1]
+                        return dict(events=[dict(kind="spawned", agent_id="worker-" + kind, seq=1)])
+                    if path == "/api/schedules/wake-a":
+                        return dict(schedule=copy.deepcopy(schedule))
+                    self.fail("unexpected API request: " + path)
+
+                harness = SimpleNamespace(api=api, wait_for=lambda check, _: check(), Deadline=lambda value: value,
+                    atomic_json=lambda path, value: path.write_text(json.dumps(value)),
+                    sha256=lambda path: hashlib.sha256(path.read_bytes()).hexdigest())
+                before = background.start(context, harness, 10)
+                sent = next(payload for path, method, payload in requests if path == "/api/schedules" and method == "POST")
+                self.assertEqual(sent.get("title"), "Native recovery parked worker " + case_id)
+                self.assertEqual(before["parked"]["schedule"], schedule)
+                saved = json.loads((root / "background-before.json").read_text())
+                self.assertEqual(saved["parked"]["schedule"]["title"], sent["title"])
+
     def test_actual_resource_collector_keeps_additional_webkit_clients_for_the_strict_selector(self):
         from test_native_macos_resilience_fault import SelectorTests, fault
         fixture = SelectorTests()
@@ -136,7 +183,7 @@ class BackgroundTests(unittest.TestCase):
 
     def test_schedule_identity_cadence_and_next_fire_are_independently_frozen(self):
         row = dict(id="wake-a", kind="thread", thread_id="thread-a", status="active", every_s=86400,
-                   next_run_at="2026-10-23T05:00:00Z", created_by="human", cron="", max_runs=0)
+                   next_run_at="2026-10-23T05:00:00Z", created_by="human", title_auto=False, cron="", max_runs=0)
         expected = dict(thread_id="thread-a", wake_id="wake-a")
         frozen = background.validate_schedule(expected, row)
         self.assertEqual(frozen, row)
@@ -146,6 +193,16 @@ class BackgroundTests(unittest.TestCase):
                       dict(provider_id="external"), dict(until_at="2026-10-23T03:00:00Z")]:
             with self.subTest(patch=patch), self.assertRaises(RuntimeError):
                 background.validate_schedule(dict(expected, schedule=frozen), dict(row, **patch))
+
+    def test_initial_wait_rejects_automatic_or_unproven_title_ownership(self):
+        row = dict(id="wake-a", kind="thread", thread_id="thread-a", status="active",
+                   every_s=86400, next_run_at="2026-10-23T05:00:00Z")
+        expected = dict(thread_id="thread-a", wake_id="wake-a")
+        background.validate_schedule(expected, dict(row, title_auto=False))
+        for ownership in ({}, dict(title_auto=True), dict(title_auto=0),
+                          dict(title_auto="false"), dict(title_auto=None)):
+            with self.subTest(ownership=ownership), self.assertRaises(RuntimeError):
+                background.validate_schedule(expected, dict(row, **ownership))
 
     def test_completion_requires_actual_wait_receipt_and_original_worker_finish(self):
         expected = dict(worker_id="worker-a", thread_id="thread-a", turn_id="turn-a")
@@ -229,7 +286,8 @@ class BackgroundTests(unittest.TestCase):
                                 spawn_seq=1, marker_sha256="a" * 64, worker_requests=2)
                 if kind == "parked":
                     expected.update(wake_id="wake-a", schedule=dict(id="wake-a", kind="thread", thread_id=expected["thread_id"],
-                        status="active", every_s=86400, next_run_at="2026-10-23T05:00:00Z", created_by="human", cron="", max_runs=0))
+                        status="active", every_s=86400, next_run_at="2026-10-23T05:00:00Z", created_by="human",
+                        title_auto=False, cron="", max_runs=0))
                 before[kind] = expected
                 fixture[kind] = dict(self.state, spawn_calls=1, released=True, stream_active=False)
                 original = dict(turn=dict(id=expected["turn_id"], thread_id=expected["thread_id"], status="done"), events=[

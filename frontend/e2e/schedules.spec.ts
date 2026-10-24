@@ -1,4 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test"
+import { writeFile } from "node:fs/promises"
+import { reloadOpenConversation } from "./session"
 
 /** Every spec starts on its own conversation, so one failing run cannot leave
  *  state that breaks the next. */
@@ -344,52 +346,66 @@ test("inbox editor patches title, prompt, and cadence", async ({ page, request }
   }
 })
 
-test("Run now handles an unperformed check without false success", async ({ page, request }) => {
-  const fails = process.env.ZWAI_MOCK_SCHEDULE_ACK === "always"
-  const created = await request.post("/api/schedules", { data: {
-    kind: "standalone", title: "Completion evidence", prompt: "Check the current state.", every_s: 3600,
-  } })
-  expect(created.status()).toBe(201)
-  const { schedule } = await created.json()
-  try {
-    await page.goto("/")
-    await openInbox(page)
-    const row = page.getByTestId("schedule-row").filter({ hasText: "Completion evidence" })
-    await row.getByTestId("schedule-row-toggle").click()
-    await page.getByRole("button", { name: "Run now", exact: true }).click()
-    let completed: { id: string; turn_id: string; thread_id: string; status: string; summary: string } | undefined
-    await expect.poll(async () => {
+for (const trigger of ["Run now", "Automatic fire"] as const) {
+  test(`${trigger} accepts a text result without inventing tool activity`, async ({ page, request }, info) => {
+    const created = await request.post("/api/schedules", { data: {
+      kind: "standalone", title: "Completion evidence", prompt: "Check the current state.",
+      ...(trigger === "Run now" ? { every_s: 3600 } : { delay_s: 30 }),
+    } })
+    expect(created.status()).toBe(201)
+    const { schedule } = await created.json()
+    try {
+      await page.goto("/")
+      await openInbox(page)
+      const row = page.getByTestId("schedule-row").filter({ hasText: "Completion evidence" })
+      await row.getByTestId("schedule-row-toggle").click()
+      let acceptedTurnID = ""
+      if (trigger === "Run now") {
+        const accepted = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === `/api/schedules/${schedule.id}/run`)
+        await page.getByRole("button", { name: "Run now", exact: true }).click()
+        acceptedTurnID = (await (await accepted).json()).turn.id
+      }
+      let completed: { id: string; turn_id: string; thread_id: string; status: string; summary: string } | undefined
+      await expect.poll(async () => {
+        const body = await (await request.get(`/api/schedules/${schedule.id}`)).json()
+        completed = body.runs[0]
+        return completed?.status
+      }, { timeout: 60_000 }).toBe("findings")
       const body = await (await request.get(`/api/schedules/${schedule.id}`)).json()
-      completed = body.runs[0]
-      return completed?.status
-    }).toBe(fails ? "error" : "findings")
-    expect(completed?.summary).toBe(fails ? "scheduled check ended without executing a tool or reporting its result" : "something changed")
-    const body = await (await request.get(`/api/schedules/${schedule.id}`)).json()
-    expect(body.runs).toHaveLength(1)
-    await page.getByRole("button", { name: "Open findings", exact: true }).click()
-    const transcript = page.getByTestId("transcript")
-    await expect(transcript).toContainText("Checking the current state.")
-    if (fails) {
-      await expect(transcript).toContainText("scheduled check ended without executing a tool or reporting its result")
-    } else {
-      const report = transcript.getByRole("button", { name: /^report_schedule/ }).last()
-      await expect(report).toHaveAttribute("aria-expanded", "false")
-      await report.click()
-      await expect(report).toHaveAttribute("aria-expanded", "true")
-      await expect(transcript).toContainText("something changed")
+      expect(body.runs).toHaveLength(1)
+      if (acceptedTurnID) expect(completed!.turn_id).toBe(acceptedTurnID)
+      const trace = await (await request.get(`/api/trace/${completed!.turn_id}`)).json()
+      expect(trace.turn).toMatchObject({
+        id: completed!.turn_id, thread_id: completed!.thread_id,
+        schedule_run_id: completed!.id, status: "done", final: completed!.summary,
+      })
+      expect(trace.turn.final.trim()).not.toBe("")
+      const turns = await (await request.get(`/api/threads/${completed!.thread_id}/turns`)).json()
+      expect(turns.turns).toHaveLength(1)
+      const events = trace.events as Array<{ kind: string; turn_id: string; thread_id: string; agent_id?: string }>
+      expect(events.every(ev => ev.turn_id === completed!.turn_id && ev.thread_id === completed!.thread_id)).toBe(true)
+      expect(events.filter(ev => ["model_retry", "tool_call", "tool_result", "schedule_report", "spawned", "error"].includes(ev.kind))).toHaveLength(0)
+      expect(events.filter(ev => ev.kind === "agent_message" && ev.agent_id === "manager")).toHaveLength(1)
+      expect(trace.llm_calls.filter((call: { agent_id: string }) => call.agent_id === "manager")).toHaveLength(1)
+      await page.getByRole("button", { name: "Open findings", exact: true }).click()
+      const transcript = page.getByTestId("transcript")
+      await expect(transcript).toContainText(trace.turn.final)
+      await expect(transcript.getByTestId("assistant-message")).toHaveCount(1)
+      await expect(transcript).not.toContainText("scheduled check ended without")
+      await expect(transcript).not.toContainText("Continuing the scheduled check.")
+      await expect(transcript).not.toContainText("Retrying after a model error.")
+      await expect(transcript.getByRole("button", { name: /^report_schedule/ })).toHaveCount(0)
+      await page.screenshot({ path: info.outputPath("text-result.png"), animations: "disabled" })
+      await reloadOpenConversation(page)
+      await expect(transcript.getByTestId("assistant-message")).toHaveCount(1)
+      await expect(transcript).toContainText(trace.turn.final)
+      await expect(transcript).not.toContainText("scheduled check ended without")
+      await writeFile(info.outputPath("text-result-evidence.json"), JSON.stringify({ schedule, completed, trace, turns }, null, 2), { mode: 0o600 })
+    } finally {
+      expect((await request.delete(`/api/schedules/${schedule.id}`)).ok()).toBe(true)
     }
-    await expect(transcript).toContainText("Continuing the scheduled check.")
-    await expect(transcript).not.toContainText("Retrying after a model error.")
-    await expect(transcript).not.toContainText("The last response ended before")
-    const trace = await (await request.get(`/api/trace/${completed!.turn_id}`)).json()
-    const events = trace.events as Array<{ kind: string; text?: string }>
-    expect(events.filter(ev => ev.kind === "model_retry")).toHaveLength(1)
-    expect(events.some(ev => ev.kind === "schedule_report")).toBe(!fails)
-    expect(events.some(ev => ev.kind === "error")).toBe(fails)
-  } finally {
-    await request.delete(`/api/schedules/${schedule.id}`)
-  }
-})
+  })
+}
 
 test("conversation rail opens the wait bound to this chat", async ({ page, request }) => {
   await freshConversation(page)

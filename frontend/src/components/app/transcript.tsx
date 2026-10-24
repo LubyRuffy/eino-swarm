@@ -66,6 +66,7 @@ import type { AgentState, Block, Pulse, TranscriptState } from "@/lib/transcript
 import { MANAGER_ID, liveWorkers, splitQueuedSteers } from "@/lib/transcript"
 import { useApp } from "@/store/app"
 import { turnSlices } from "@/lib/turn-boundary"
+import { visibleGoalNotices } from "@/lib/goal-notice"
 
 const EMPTY_BLOCKS: Block[] = []
 
@@ -103,7 +104,7 @@ export function Transcript({
   const manager = state.agents[MANAGER_ID]
   const endRef = useRef<HTMLDivElement>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
-  const blocks = manager?.blocks ?? EMPTY_BLOCKS
+  const blocks = useMemo(() => visibleGoalNotices(manager?.blocks ?? EMPTY_BLOCKS), [manager?.blocks])
   const apiTurns = useApp((s) => s.turns)
   const navItems = useMemo(
     () => resolveTurnNavItems(blocks, apiTurns),

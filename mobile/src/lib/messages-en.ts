@@ -193,13 +193,16 @@ export const en = {
   "notice.modelRetryResponse": "The model service returned a response that could not be decoded. Retrying.",
   "notice.modelServiceResponse": "the model service returned a response that could not be decoded",
   "notice.modelRetryIdle": "The model service stopped sending data. Retrying.",
+  "notice.scheduleClaimCheck": "Checking the schedule before reporting it as arranged.",
+  "notice.workerCollection": "Collecting delegated work before completing this turn.",
   "notice.invalidToolJSON": "the model returned a tool call that was not valid JSON",
   "notice.modelServiceRateLimited": "the model service is rate limiting requests",
   "notice.modelServiceUnavailable": "the model service is unavailable",
   "notice.modelServiceTransport": "the connection to the model service dropped",
 
+  "notice.goalCompleted": "Standing objective completed.",
+
   "goal.pursuing": "Pursuing",
-  "goal.done": "Done",
   "goal.paused": "Paused",
   "goal.blocked": "Blocked",
   "goal.failedTurn": "The last turn failed.",
@@ -210,7 +213,6 @@ export const en = {
     "Auto-continue paused. This is not an error. Press Start to keep going.",
   "goal.idleHint":
     "Auto-continue paused: the last continuation made no progress. Press Start to keep going.",
-  "goal.completeHint": "If this finished too early, press Start to keep going.",
 
   "schedule.waiting": "Waiting",
   "schedule.nextCheck": "Next check {time}",

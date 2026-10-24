@@ -100,37 +100,41 @@ type FoldMerge struct {
 // the names that were merged, deleted, or created. A finished turn still
 // only records Changes; the panel needs the rest so a click is not a shrug.
 type FoldReport struct {
-	Scanned   int         `json:"scanned"`
-	Before    int         `json:"before"`
-	After     int         `json:"after"`
-	Families  int         `json:"families"`
-	Unchanged int         `json:"unchanged"`
-	Created   []string    `json:"created"`
-	Deleted   []string    `json:"deleted"`
-	Patched   []string    `json:"patched"`
-	Merged    []FoldMerge `json:"merged"`
-	Changes   []Change    `json:"changes"`
-	Reviewed  bool        `json:"reviewed"`
-	Err       string      `json:"err,omitempty"`
+	Promoted        int         `json:"promoted"`
+	Demoted         int         `json:"demoted"`
+	StaleCandidates []string    `json:"stale_candidates"`
+	Scanned         int         `json:"scanned"`
+	Before          int         `json:"before"`
+	After           int         `json:"after"`
+	Families        int         `json:"families"`
+	Unchanged       int         `json:"unchanged"`
+	Created         []string    `json:"created"`
+	Deleted         []string    `json:"deleted"`
+	Patched         []string    `json:"patched"`
+	Merged          []FoldMerge `json:"merged"`
+	Changes         []Change    `json:"changes"`
+	Reviewed        bool        `json:"reviewed"`
+	Err             string      `json:"err,omitempty"`
 }
 
 // Folded is true when the catalog changed: a merge, a delete, a create, or
 // a rewrite. A model that looked and left everything is not a fold.
 func (r FoldReport) Folded() bool {
-	return len(r.Merged) > 0 || len(r.Deleted) > 0 || len(r.Created) > 0 || len(r.Patched) > 0
+	return len(r.Changes) > 0 || r.Promoted > 0 || r.Demoted > 0 || len(r.Merged) > 0 || len(r.Deleted) > 0 || len(r.Created) > 0 || len(r.Patched) > 0
 }
 
 func emptyFoldReport(scanned int) FoldReport {
 	return FoldReport{
-		Scanned:   scanned,
-		Before:    scanned,
-		After:     scanned,
-		Unchanged: scanned,
-		Created:   []string{},
-		Deleted:   []string{},
-		Patched:   []string{},
-		Merged:    []FoldMerge{},
-		Changes:   []Change{},
+		StaleCandidates: []string{},
+		Scanned:         scanned,
+		Before:          scanned,
+		After:           scanned,
+		Unchanged:       scanned,
+		Created:         []string{},
+		Deleted:         []string{},
+		Patched:         []string{},
+		Merged:          []FoldMerge{},
+		Changes:         []Change{},
 	}
 }
 
@@ -170,6 +174,10 @@ func ComposeTidyReport(before, after []string, families int, changes []Change) F
 			continue
 		}
 		switch c.Action {
+		case "promote":
+			report.Promoted++
+		case "demote":
+			report.Demoted++
 		case "merge":
 			dropped := splitDroppedNames(c.Text)
 			_, keepWasThere := beforeSet[c.Name]
@@ -188,6 +196,11 @@ func ComposeTidyReport(before, after []string, families int, changes []Change) F
 	report.Deleted = sortedSetNames(deleted)
 	report.Patched = sortedSetNames(patched)
 	touched := map[string]struct{}{}
+	for _, c := range changes {
+		if c.Target == ToolSkillManage && (c.Action == "promote" || c.Action == "demote") {
+			touched[c.Name] = struct{}{}
+		}
+	}
 	for n := range created {
 		touched[n] = struct{}{}
 	}
@@ -313,10 +326,8 @@ func (s *Store) foldOneFamilyLocked(fam []Skill) (FoldMerge, Change, error) {
 		return FoldMerge{}, Change{}, err
 	}
 	dropped := droppedNames(names, keep)
-	for _, n := range dropped {
-		if err := s.deleteSkillLocked(n); err != nil && err != ErrNoMatch {
-			return FoldMerge{}, Change{}, err
-		}
+	if _, err := s.finishSkillMergeLocked(keep, fam, dropped); err != nil {
+		return FoldMerge{}, Change{}, err
 	}
 	if dropped == nil {
 		dropped = []string{}
@@ -396,14 +407,13 @@ func (s *Store) MergeSkills(keep string, sources []string, description, body str
 	if err != nil {
 		return Skill{}, nil, err
 	}
-	deleted := make([]string, 0, len(from))
-	for _, name := range from {
-		if err := s.deleteSkillLocked(name); err != nil && err != ErrNoMatch {
-			return Skill{}, nil, err
-		}
-		deleted = append(deleted, name)
+	usage, err := s.finishSkillMergeLocked(keep, members, from)
+	if err != nil {
+		return Skill{}, nil, err
 	}
-	return skill, deleted, nil
+	skill.Views = usage.Views
+	skill.LastViewedAt = usage.LastViewedAt
+	return skill, from, nil
 }
 
 func (s *Store) loadAllSkills() ([]Skill, error) {

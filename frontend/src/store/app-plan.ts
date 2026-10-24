@@ -21,7 +21,7 @@ type PlanHost = {
   status: ThreadStatus
   threads: Thread[]
   newThread: (projectId?: string) => Promise<string | undefined>
-  send: (text: string, images?: undefined, opts?: { threadId?: string }) => Promise<boolean | void>
+  send: (text: string, images?: undefined, opts?: { threadId?: string; command?: "goal" | "plan" }) => Promise<boolean | void>
 }
 
 type SetPlan = (
@@ -57,10 +57,14 @@ export function planAskActions(
       }
       try {
         const running = id === get().activeId ? get().status.running : (await api.thread(id)).status.running
+        const arg = text.trim()
+        if (arg && !running) {
+          // Preserve the command through transport so its argument is not dispatched again.
+          set({ error: undefined })
+          return (await get().send(`/plan ${arg}`, undefined, { threadId: id, command: "plan" })) !== false
+        }
         const updated = await api.patchThread(id, { plan_mode: true })
         patchThreads(id, updated)
-        const arg = text.trim()
-        if (arg && !running) return (await get().send(arg, undefined, { threadId: id })) !== false
         return true
       } catch (e) {
         set({ error: deps.fail(e) })

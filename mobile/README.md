@@ -82,12 +82,20 @@ The `schedule` event is still **A wait is armed.** in the transcript; the live
 wait is the banner (next check, **Run now**, **Cancel wait**).
 Each finished PC turn leaves a divider stamped with its host completion time,
 including scheduled checks whose automatic input is hidden on the phone.
-`schedule_report` stays on the `report_schedule` chip. A standing
-`/goal` is Pursuing / Done / Blocked / Paused, not a muted strip that
-vanishes on complete. The objective is one truncated line (the full text
-stays on the PC); a novel cannot cover Run now or the composer. Send,
+`schedule_report` stays on the `report_schedule` chip.
+An unfinished `/goal` shows Pursuing / Blocked / Paused; paused or blocked
+objectives retain Start. Completion removes the goal strip immediately and
+keeps it hidden after reopening; the stored objective, completion state and
+conversation history remain on the PC. A localized completion notice stays in
+the phone transcript, including for the JSON `goal_complete` payload. A new
+`/goal` displays the strip again.
+The objective is one truncated line (the full text stays on the PC); a novel
+cannot cover Run now or the composer. Send,
 follow-up, steer, stop, ask, `/goal` and `/plan` land on the PC engine; the
-other window sees them live. **Outputs** in a paired conversation lists that
+other window sees them live. Sending `<objective> /goal` activates that
+objective through the PC's shared command parser, including after the old
+objective completed. The suffix is not sent to the model as task text.
+**Outputs** in a paired conversation lists that
 PC conversation's workspace, including uploads and generated files. It opens
 with the first-level files and folders visible and every folder collapsed;
 tap a folder to reveal its next level, or search across collapsed paths. Open a
@@ -112,7 +120,7 @@ sends (Shift+Enter is a newline, and an IME candidate list is never a
 send), and the round button stays off until there is something to send.
 While a turn is live the box also offers steer, and says a plain send is
 queued after this turn.
-Message and quote editors use 16px text (`C-017`). On iOS, focusing and
+Message, quote and Ask Other editors use 16px text (`C-017`). On iOS, focusing and
 dismissing the keyboard must leave the header in its safe area and the wait
 actions and Send/Follow-up/Steer inside the screen, including long drafts;
 no horizontal dragging is needed to submit. Smaller editable text used to leave the WebView
@@ -122,8 +130,10 @@ promotes the oldest waiting message into the current turn, then interrupts
 the current manager step so it can read that message sooner; later messages
 remain queued. Stop also leaves waiting rows in place. The selected row's
 Steer action starts it as a new turn when the PC is idle; the other rows stay
-queued while that turn runs. A later clean finish continues the FIFO, whereas
-a second Stop leaves the remaining rows waiting.
+queued while that turn runs. A later completion or failure continues the FIFO, whereas
+a second Stop leaves the remaining rows waiting. This queue runs on the paired PC;
+completion/error recovery requires the updated PC engine, not a new phone app.
+A failed scheduled check keeps its failed result and future wake.
 Select text in the PC conversation and tap **Add to chat** near the selection,
 below the system Copy/Select menu when there is room, to attach it to
 the next message. The quote appears above the box and can be read, edited, or removed before
@@ -171,7 +181,10 @@ the same composer as a PC thread. Tap its model button to choose from an
 in-app, provider-grouped list; long names wrap, and Back closes the list.
 The reply streams. The thought is the
 same live row as a PC thread: the latest line while it is arriving, the
-full text when the row is opened. Discover uses the platform HTTP stack so
+full text when the row is opened. Chat Completions accepts both legacy
+`reasoning_content` and newer vLLM `reasoning` in streamed deltas and JSON replies.
+A nonempty legacy field wins; empty or null legacy values fall back to the new
+field. No additional setting is needed. Discover uses the platform HTTP stack so
 the webview origin is not the caller. The completion is read as it arrives
 (`StreamBody` on the device) because that stack returns a POST body in one
 piece. An image is vision; a text file is sent as text. A responses front

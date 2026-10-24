@@ -34,7 +34,7 @@ describe("parseGoalReason", () => {
 })
 
 describe("applyGoalDetail", () => {
-  it("keeps the banner on after complete so Done is not a disappearing strip", () => {
+  it("retains the objective and completion state for history and explicit reopening", () => {
     let d = applyGoalDetail(
       { id: "t1", title: "one" },
       { kind: "goal", text: "keep going", created_at: "2026-09-21T00:00:00Z" },

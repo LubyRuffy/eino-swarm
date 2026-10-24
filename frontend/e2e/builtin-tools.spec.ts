@@ -7,12 +7,20 @@ import { composer, freshConversation, reloadOpenConversation, waitForIdle } from
 test("Responses cloud search keeps citations and its own Trace after reload", async ({ page, request }, info) => {
   test.skip(process.env.ZWAI_E2E_BUILTIN_TOOLS !== "1", "requires the opt-in keyless loopback Responses endpoint")
   const attempts: { path?: string; body: Record<string, unknown> }[] = []
+  const policyAttempts: { path?: string; body: Record<string, unknown> }[] = []
   const cloud = { type: "web_search_call", id: "cloud-search", status: "completed", action: { type: "search", query: "public reference" } }
   const message = { type: "message", id: "cloud-answer", role: "assistant", content: [{ type: "output_text", text: "Reference located.", annotations: [{ type: "url_citation", url: "https://example.com/reference", title: "Reference source", start_index: 0, end_index: 9 }] }] }
   const endpoint = createServer(async (incoming, response) => {
     const chunks: Buffer[] = []
     for await (const chunk of incoming) chunks.push(Buffer.from(chunk))
     const body = JSON.parse(Buffer.concat(chunks).toString()) as Record<string, unknown>
+    const input = body.input as { role?: string; content?: { text?: string }[] }[]
+    if (input[0]?.role === "system" && input[0].content?.some((part) => part.text?.startsWith("## Schedule answer claims"))) {
+      policyAttempts.push({ path: incoming.url, body })
+      response.writeHead(200, { "Content-Type": "application/json" })
+      response.end(JSON.stringify({ id: "claim-response", status: "completed", output: [{ type: "message", id: "claim-answer", role: "assistant", content: [{ type: "output_text", text: JSON.stringify({ claims: [] }) }] }] }))
+      return
+    }
     attempts.push({ path: incoming.url, body })
     response.writeHead(200, { "Content-Type": "text/event-stream" })
     const send = (event: unknown) => response.write(`data: ${JSON.stringify(event)}\n\n`)
@@ -51,7 +59,13 @@ test("Responses cloud search keeps citations and its own Trace after reload", as
     expect(tools.some((tool) => tool.type === "function")).toBe(true)
     const trace = await (await request.get(`/api/trace/${turn.id}`)).json()
     expect(trace.turn.status).toBe("done")
-    expect(trace.llm_calls).toHaveLength(1)
+    expect(trace.llm_calls.filter((call: { agent_id: string }) => call.agent_id === "manager")).toHaveLength(1)
+    expect(trace.llm_calls.filter((call: { agent_id: string }) => call.agent_id === "schedule-answer-policy")).toHaveLength(1)
+    expect(policyAttempts).toHaveLength(1)
+    expect(policyAttempts[0].path).toBe("/responses")
+    expect(policyAttempts[0].body).toMatchObject({ tool_choice: "none", stream: false })
+    expect(policyAttempts[0].body.input).toHaveLength(2)
+    expect((policyAttempts[0].body.tools as { type: string }[]).some((tool) => tool.type === "function")).toBe(false)
     const receipts = trace.events.filter((event: { kind: string }) => event.kind === "builtin_tool")
     const completed = receipts.filter((event: { text: string }) => JSON.parse(event.text).status === "completed")
     expect(completed).toHaveLength(1)
@@ -69,7 +83,8 @@ test("Responses cloud search keeps citations and its own Trace after reload", as
     await page.getByTestId("trace-log-toggle").click()
     await expect(page.getByTestId("trace-log")).toContainText("web_search")
     expect(attempts).toHaveLength(1)
-    await writeFile(info.outputPath("builtin-tools-trace.json"), JSON.stringify({ trace, attempts }, null, 2))
+    expect(policyAttempts).toHaveLength(1)
+    await writeFile(info.outputPath("builtin-tools-trace.json"), JSON.stringify({ trace, attempts, policyAttempts }, null, 2))
   } finally {
     await new Promise<void>((resolve, reject) => {
       endpoint.close((error) => error ? reject(error) : resolve())

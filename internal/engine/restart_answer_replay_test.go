@@ -234,10 +234,14 @@ func newRestartReplayEngine(t *testing.T) (*Engine, *restartReplayEndpoint) {
 		var request struct {
 			Messages []restartReplayMessage `json:"messages"`
 			Stream   bool                   `json:"stream"`
+			Tools    []json.RawMessage      `json:"tools"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Error(err)
 			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if len(request.Messages) > 0 && replyNoScheduleClaimsFixture(t, w, request.Messages[0].Content, request.Stream, len(request.Tools)) {
 			return
 		}
 		f.mu.Lock()

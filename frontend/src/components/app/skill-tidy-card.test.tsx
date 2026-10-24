@@ -60,7 +60,7 @@ describe("Skill tidy card", () => {
     const { rerender } = render(<SkillTidyCard tidying skillCount={3} />)
     rerender(<SkillTidyCard tidying={false} skillCount={2} report={folded} />)
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument()
-    expect(screen.getByText(/Skills curated/)).toBeInTheDocument()
+    expect(screen.getByText(/Memory curated/)).toBeInTheDocument()
     expect(screen.getByTestId("tidy-summary")).toHaveTextContent(
       "Deleted 2, created 1, merged 1, updated 0.",
     )
@@ -88,17 +88,61 @@ describe("Skill tidy card", () => {
         report={{ ...emptyTidyReport(2), reviewed: true }}
       />,
     )
-    expect(screen.getByText(/nothing to merge/i)).toBeInTheDocument()
+    expect(screen.getByText(/nothing to change/i)).toBeInTheDocument()
     expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/2 scanned/)
     expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/0 merged/)
     expect(screen.queryByText("Merged")).not.toBeInTheDocument()
+  })
+
+  it("keeps the actual zero-skill scan when a promoted skill arrives before the response", () => {
+    render(<SkillTidyCard tidying skillCount={1} live={{ scanned: 0, text: "", changes: [] }} />)
+    expect(screen.getByText("Scanning 0 skills")).toBeInTheDocument()
+    expect(screen.queryByText("Scanning 1 skills")).not.toBeInTheDocument()
+  })
+
+  it("keeps partial saved writes visible beside the actual tidy failure", () => {
+    render(<SkillTidyCard tidying={false} skillCount={1} report={{
+      ...emptyTidyReport(1), err: "source skill removal failed", changes: [{ target: "memory", action: "add", text: "saved fact" }],
+    }} />)
+    expect(screen.getByTestId("tidy-status")).toHaveTextContent("source skill removal failed")
+    expect(screen.getByText("Saved changes")).toBeInTheDocument()
+    expect(screen.getByText("Added note")).toBeInTheDocument()
+    expect(screen.getByTestId("tidy-stats")).toHaveTextContent("0 demoted")
+  })
+
+  it("names a committed note when demotion has not yet removed the skill", () => {
+    render(<SkillTidyCard tidying skillCount={1} live={{ text: "", changes: [{ action: "add", name: "" }] }} />)
+    expect(screen.getByTestId("tidy-stream")).toHaveTextContent("Added note")
+    expect(screen.getByTestId("tidy-stream")).not.toHaveTextContent("Updated add")
+  })
+
+  it("names live reclassification writes and reports both completed counts", () => {
+    const view = render(<SkillTidyCard tidying skillCount={1} live={{ text: "", changes: [
+      { action: "promote", name: "procedural-note" }, { action: "demote", name: "durable-fact" },
+    ] }} />)
+    expect(screen.getByTestId("tidy-stream")).toHaveTextContent("Promoted note to skill procedural-note")
+    expect(screen.getByTestId("tidy-stream")).toHaveTextContent("Demoted skill durable-fact to note")
+    view.rerender(<SkillTidyCard tidying={false} skillCount={1} report={{ ...emptyTidyReport(1), reviewed: true, promoted: 1, demoted: 1 }} />)
+    expect(screen.getByTestId("tidy-stats")).toHaveTextContent("1 promoted")
+    expect(screen.getByTestId("tidy-stats")).toHaveTextContent("1 demoted")
+    expect(screen.getByText("Promoted 1 notes to skills, demoted 1 skills to notes.")).toBeInTheDocument()
+  })
+
+  it("lists stale candidates even when the model kept every skill", () => {
+    render(<SkillTidyCard tidying={false} skillCount={1} report={{
+      ...emptyTidyReport(1), reviewed: true, stale_candidates: ["older-procedure"],
+    }} />)
+    expect(screen.getByText("Stale candidates reviewed")).toBeInTheDocument()
+    expect(screen.getByText("older-procedure")).toBeInTheDocument()
+    expect(screen.getByText(/nothing to change/i)).toBeInTheDocument()
+    expect(screen.getByTestId("tidy-stats")).toHaveTextContent("0 deleted")
   })
 
   it("does not pretend the model ran on an empty catalog", () => {
     render(
       <SkillTidyCard tidying={false} skillCount={0} report={emptyTidyReport(0)} />,
     )
-    expect(screen.getByText(/No skills to curate/)).toBeInTheDocument()
+    expect(screen.getByText(/No memory to curate/)).toBeInTheDocument()
   })
 
   it("keeps a failed tidy visible", () => {

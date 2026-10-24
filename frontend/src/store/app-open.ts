@@ -1,4 +1,5 @@
 import { api } from "@/lib/api"
+import { askStatusFromTranscript } from "@/lib/transcript-ask"
 import { deskDest, listDestForThread, setDeskDest } from "@/lib/desk-nav"
 import { LIBRARY_ID } from "@/lib/library"
 import { subscribeEvents } from "@/lib/stream"
@@ -56,7 +57,7 @@ export async function loadOpenedThread(
       const stale = contextAdvanced || rewound
       const unchangedStatus = !liveStatus && !rewound &&
         s.status.running === baseline.status.running && s.status.turn_id === baseline.status.turn_id
-      const effectiveStatus = unchangedStatus ? { ...status, waiting: s.status.waiting ?? status.waiting } : s.status
+      const effectiveStatus = askStatusFromTranscript(s.transcript, unchangedStatus ? { ...status, waiting: s.status.waiting ?? status.waiting } : s.status)
       const merged = mergeOpenedThread(thread, s.threads.find((row) => row.id === id), originalThread, stale)
       return {
         status: effectiveStatus,
@@ -107,14 +108,17 @@ export async function loadOpenedThread(
       onReady: ({ status: live }) => {
         if (!current()) return
         if (live) liveStatus = true
-        set((s) => ({
-          loaded: true,
-          connected: true,
-          status: live ? { ...live, waiting: live.waiting ?? s.status.waiting } : s.status,
-          transcript: live ? { ...s.transcript, running: live.running } : s.transcript,
-          historyHasMore: since > 0 ? s.historyHasMore : false,
-          threads: live ? setThreadRunning(s.threads, id, Boolean(live.running), Boolean(live.awaiting_answer)) : s.threads,
-        }))
+        set((s) => {
+          const effective = live ? askStatusFromTranscript(s.transcript, { ...live, waiting: live.waiting ?? s.status.waiting }) : s.status
+          return {
+            loaded: true,
+            connected: true,
+            status: effective,
+            transcript: live ? { ...s.transcript, running: live.running } : s.transcript,
+            historyHasMore: since > 0 ? s.historyHasMore : false,
+            threads: live ? setThreadRunning(s.threads, id, Boolean(live.running), Boolean(effective.awaiting_answer)) : s.threads,
+          }
+        })
         void get().refreshFiles()
       },
       onClose: (reason) => {
@@ -138,7 +142,7 @@ function changesReplay(event: SwarmEvent): boolean {
 function changesStatus(event: SwarmEvent): boolean {
   return event.kind === "user_message" || event.kind === "resumed" || event.kind === "done" ||
     event.kind === "error" || event.kind === "max_iterations" || event.kind === "max_iterations_continued" ||
-    event.kind === "tool_call" || event.kind === "tool_result" || event.kind === "compacted" ||
+    event.kind === "tool_call" || event.kind === "tool_result" || event.kind === "ask_recovered" || event.kind === "compacted" ||
     event.kind === "goal_resumed" || event.kind === "goal_continued" || event.kind === "plan_implemented" ||
     event.kind === "schedule" || event.kind === "schedule_fired" || event.kind === "schedule_cancelled"
 }

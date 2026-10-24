@@ -500,7 +500,7 @@ func (rt *runtime) pendingAskQuestions(callID string) []AskQuestion {
 
 func orphanedAskCall(events []store.Event) *orphanedToolCall {
 	for _, c := range orphanedToolCalls(events) {
-		if isAskUserToolText(c.Text) {
+		if isManagerAgent(c.AgentID) && isAskUserToolText(c.Text) {
 			got := c
 			return &got
 		}
@@ -508,17 +508,20 @@ func orphanedAskCall(events []store.Event) *orphanedToolCall {
 	return nil
 }
 
-func (rt *runtime) resolveOrphanedAsk(ctx context.Context, turn *store.Turn, messages []adk.Message, snapshots ...*restoreSnapshot) []adk.Message {
+func (rt *runtime) resolveOrphanedAsk(ctx context.Context, turn *store.Turn, messages []adk.Message, snapshots ...*restoreSnapshot) ([]adk.Message, error) {
 	if rt == nil || turn == nil {
-		return messages
+		return messages, nil
 	}
 	events, err := rt.engine.restoreTurnEvents(turn.ID, snapshots...)
 	if err != nil {
-		return messages
+		return messages, err
+	}
+	if err := restartAskRecoveryError(events); err != nil {
+		return messages, err
 	}
 	open := orphanedAskCall(events)
 	if open == nil {
-		return messages
+		return messages, nil
 	}
 	_, args := splitToolCallText(open.Text)
 	questions, perr := ParseAskArguments(args)
@@ -528,10 +531,19 @@ func (rt *runtime) resolveOrphanedAsk(ctx context.Context, turn *store.Turn, mes
 			Kind: swarm.NotifyToolResult.String(), AgentID: open.AgentID, Role: open.Role,
 			ToolCallID: open.ToolCallID, Text: resumeToolStopped, Err: resumeToolStopped,
 		})
-		return messages
+		return messages, nil
+	}
+	name, args := splitToolCallText(open.Text)
+	if !hasAssistantToolCall(messages, open.ToolCallID) {
+		messages = append(messages, schema.AssistantMessage("", []schema.ToolCall{{
+			ID:       open.ToolCallID,
+			Function: schema.FunctionCall{Name: name, Arguments: args},
+		}}))
 	}
 	waitCtx := ctx
 	if rt.reg != nil {
+		// A second replacement may checkpoint this wait before any model call.
+		rt.reg.SetHistory(messages)
 		var stop func()
 		waitCtx, stop = rt.reg.WithEpoch(ctx)
 		defer stop()
@@ -542,6 +554,11 @@ func (rt *runtime) resolveOrphanedAsk(ctx context.Context, turn *store.Turn, mes
 	if checkpoint != nil && checkpoint.Answer != nil && checkpoint.Answer.CallID == open.ToolCallID {
 		answers = checkpoint.Answer.Answers
 	} else {
+		if recovered := checkpointAskCall(events); recovered != nil && recovered.ToolCallID == open.ToolCallID {
+			if err := rt.engine.recordRecoveredAsk(turn, open); err != nil {
+				return messages, err
+			}
+		}
 		answers, werr = rt.waitAsk(waitCtx, questions)
 	}
 	body := FormatAskResult(answers)
@@ -558,16 +575,9 @@ func (rt *runtime) resolveOrphanedAsk(ctx context.Context, turn *store.Turn, mes
 		Kind: swarm.NotifyToolResult.String(), AgentID: agent, Role: open.Role,
 		ToolCallID: open.ToolCallID, Text: body,
 	})
-	name, args := splitToolCallText(open.Text)
-	if !hasAssistantToolCall(messages, open.ToolCallID) {
-		messages = append(messages, schema.AssistantMessage("", []schema.ToolCall{{
-			ID:       open.ToolCallID,
-			Function: schema.FunctionCall{Name: name, Arguments: args},
-		}}))
-	}
 	return stitchManagerToolResults(messages, []store.Event{{
 		ToolCallID: open.ToolCallID, Text: body,
-	}})
+	}}), nil
 }
 
 func hasAssistantToolCall(msgs []adk.Message, callID string) bool {

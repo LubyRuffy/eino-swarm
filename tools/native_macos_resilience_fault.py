@@ -5,6 +5,7 @@ absence of arbitrary IPC clients. A runner cleanup hook must survive scenario
 SIGKILL and call cleanup_case before removing the private case directory.
 """
 from contextlib import contextmanager
+import base64
 import copy
 import ctypes
 import errno
@@ -25,6 +26,7 @@ import time
 TARGETS = "renderer-fault-targets.jsonl"
 CLEANUP = "renderer-fault-cleanup.jsonl"
 COPIES = "renderer-fault-copies.jsonl"
+SIGNATURES = "renderer-fault-signatures.jsonl"
 MAX_SECONDS = 90
 MAX_TARGETS = 3
 NAMES = {"gpu": "com.apple.WebKit.GPU", "renderer": "com.apple.WebKit.WebContent"}
@@ -413,12 +415,49 @@ def _pause(expected, identity, seconds):
             resume()
 
 
+def _raw_signature_output(value):
+    if value is None:
+        return None
+    return base64.b64encode(value.encode() if isinstance(value, str) else value).decode("ascii")
+
+
+def _verify_system_executable(selected, evidence):
+    _validated_target(selected, selected["case_id"], selected["private_app"])
+    command = ["/usr/bin/codesign", "--verify", "--strict", "--ignore-resources", "--all-architectures",
+               "-R", '=anchor apple and identifier "' + NAMES[selected["kind"]] + '"', selected["target"]["executable"]]
+    # These system XPC targets need code and exact Apple identity validation.
+    # Resource omission is explicit; it never validates a distribution bundle.
+    row = dict(schema=1, case_id=selected["case_id"], private_app=selected["private_app"],
+               kind=selected["kind"], target=copy.deepcopy(selected["target"]), shell=copy.deepcopy(selected["shell"]),
+               scope="system_executable_code_and_apple_identity", resources_validated=False, whole_bundle_validated=False,
+               command=command, timeout_seconds=2, recorded_at=time.time(), status="unavailable", returncode=None)
+    started, failure, captured = time.monotonic(), None, None
+    try:
+        captured = subprocess.run(command, check=True, capture_output=True, timeout=2)
+        row.update(status="passed", returncode=captured.returncode)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as error:
+        failure, captured = error, error
+        row.update(status="timeout" if isinstance(error, subprocess.TimeoutExpired) else "failed",
+                   returncode=getattr(error, "returncode", None), error_type=type(error).__name__)
+    row.update(elapsed_seconds=time.monotonic() - started,
+               stdout_base64=_raw_signature_output(getattr(captured, "stdout", None)),
+               stderr_base64=_raw_signature_output(getattr(captured, "stderr", None)))
+    try:
+        _append(Path(evidence) / SIGNATURES, row)
+    except Exception as write_error:
+        if failure is not None:
+            raise failure from write_error
+        raise
+    if failure is not None:
+        raise failure
+    return row
+
+
 @contextmanager
 def stall(boundaries, kind, *, case_id, private_app, evidence, snapshot, seconds):
     require_guest()
     selected = select_target(boundaries, snapshot(), kind, case_id=case_id, private_app=private_app)
-    subprocess.run(["/usr/bin/codesign", "--verify", "--strict", "-R", "anchor apple", selected["target"]["executable"]],
-                   check=True, capture_output=True, timeout=2)
+    _verify_system_executable(selected, evidence)
     current = select_target(boundaries, snapshot(), kind, case_id=case_id, private_app=private_app)
     if any(current[key] != selected[key] for key in ("target", "shell", "private_app", "case_id", "kind")):
         raise RuntimeError("fault target changed during signature verification")

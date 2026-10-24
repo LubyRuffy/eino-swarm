@@ -30,34 +30,30 @@ export function GoalBanner({
     const id = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(id)
   }, [detail.goal_started_at, state])
-  if (!state || !(detail.goal ?? "").trim()) return null
+  if (!state || state === "done" || !(detail.goal ?? "").trim()) return null
   const started = detail.goal_started_at ? new Date(detail.goal_started_at) : null
   const age =
     started && !Number.isNaN(started.getTime())
       ? formatGoalAge(started, new Date(now))
       : ""
   const held = state === "paused"
-  const canStart = !running && Boolean(onResume) && (held || state === "blocked" || state === "done")
+  const canStart = !running && Boolean(onResume) && (held || state === "blocked")
   const label =
-    state === "done"
-      ? t("goal.done")
-      : state === "blocked"
-        ? t("goal.blocked")
-        : held
-          ? t("goal.paused")
-          : t("goal.pursuing")
+    state === "blocked"
+      ? t("goal.blocked")
+      : held
+        ? t("goal.paused")
+        : t("goal.pursuing")
   const reason =
     state === "blocked"
       ? displayBlock(detail.goal_block_reason)
-      : state === "done" && !running
-        ? t("goal.completeHint")
-        : held && !running
-          ? detail.goal_idle && !detail.goal_capped
-            ? t("goal.idleHint")
-            : t("goal.capHint")
-          : waiting && !running
-            ? t("goal.waitHint")
-            : ""
+      : held && !running
+        ? detail.goal_idle && !detail.goal_capped
+          ? t("goal.idleHint")
+          : t("goal.capHint")
+        : waiting && !running
+          ? t("goal.waitHint")
+          : ""
 
   return (
     <div data-testid="goal-banner" className="min-w-0 shrink-0 overflow-hidden border-b border-border bg-card px-3 py-2">

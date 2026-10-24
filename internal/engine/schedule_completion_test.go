@@ -51,43 +51,50 @@ func TestRunNowWithoutWorkOrReportFailsAfterOneContinuation(t *testing.T) {
 	}
 }
 
-// The retry preserves the opening answer and performs/report the check in
-// the original turn; a second schedule run would duplicate side effects.
-func TestScheduledAcknowledgementContinuesTheSameTurn(t *testing.T) {
-	t.Setenv("ZWAI_MOCK_SCHEDULE_ACK", "once")
-	e := newTestEngine(t)
-	clk := newScheduleClock()
-	e.now = clk.Now
-	th, _ := e.CreateThread("", "", "")
-	sch := armDueWake(t, e, clk, th.ID, 60)
-	turn, err := e.RunScheduleNow(sch.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := waitForTurn(t, e, turn.ID)
-	run := waitForScheduleRun(t, e, turn.ScheduleRunID)
-	if got.Status != store.TurnDone || run.Status != store.ScheduleRunFindings || !run.Unread {
-		t.Fatalf("continued check=%+v run=%+v", got, run)
-	}
-	events, _ := e.Store().ListTurnEvents(turn.ID)
-	opening, retry, report := -1, -1, -1
-	for i, ev := range events {
-		if ev.Kind == "agent_message" && strings.Contains(ev.Text, "Checking the current state.") {
-			opening = i
-		}
-		if ev.Kind == KindModelRetry {
-			retry = i
-		}
-		if ev.Kind == KindScheduleReport {
-			report = i
-		}
-	}
-	if opening < 0 || retry <= opening || report <= retry {
-		t.Fatalf("opening/retry/report order=%d/%d/%d events=%+v", opening, retry, report, events)
-	}
-	turns, _ := e.Store().ListTurns(th.ID)
-	if len(turns) != 1 {
-		t.Fatalf("turns=%d, want one", len(turns))
+// A free-form final answer cannot be classified as an acknowledgement by its
+// wording. The model's terminal text must remain a valid completion channel.
+func TestScheduledTextReplyCompletesWithoutSemanticClassification(t *testing.T) {
+	for _, mode := range []string{"once", "always"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("ZWAI_MOCK_SCHEDULE_ACK", mode)
+			e := newTestEngine(t)
+			clk := newScheduleClock()
+			e.now = clk.Now
+			th, _ := e.CreateThread("", "", "")
+			sch := armDueWake(t, e, clk, th.ID, 60)
+			turn, err := e.RunScheduleNow(sch.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := waitForTurn(t, e, turn.ID)
+			run := waitForScheduleRun(t, e, turn.ScheduleRunID)
+			if got.Status != store.TurnDone || run.Status != store.ScheduleRunFindings || !run.Unread || strings.TrimSpace(got.Final) == "" || run.Summary != got.Final {
+				t.Fatalf("text result must finish normally: turn=%+v run=%+v", got, run)
+			}
+			events, _ := e.Store().ListTurnEvents(turn.ID)
+			for _, event := range events {
+				if event.Kind == KindModelRetry || event.Kind == KindScheduleReport || event.Kind == swarm.NotifyToolResult.String() {
+					t.Fatalf("terminal text caused extra activity: %+v", event)
+				}
+			}
+			calls, err := e.Store().ListLLMCalls(turn.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			managers := 0
+			for _, call := range calls {
+				if call.AgentID == swarm.DefaultManagerID {
+					managers++
+				}
+			}
+			if managers != 1 {
+				t.Fatalf("terminal text manager calls=%d, want one; calls=%+v", managers, calls)
+			}
+			turns, _ := e.Store().ListTurns(th.ID)
+			if len(turns) != 1 {
+				t.Fatalf("turns=%d, want one", len(turns))
+			}
+		})
 	}
 }
 
@@ -160,28 +167,6 @@ func TestScheduledChecksReuseTheWorkerRegistryAcrossWakes(t *testing.T) {
 	}
 }
 
-func TestRepeatedScheduledAcknowledgementFailsVisibly(t *testing.T) {
-	t.Setenv("ZWAI_MOCK_SCHEDULE_ACK", "always")
-	e := newTestEngine(t)
-	clk := newScheduleClock()
-	e.now = clk.Now
-	th, _ := e.CreateThread("", "", "")
-	sch := armDueWake(t, e, clk, th.ID, 60)
-	turn, err := e.RunScheduleNow(sch.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := waitForTurn(t, e, turn.ID)
-	run := waitForScheduleRun(t, e, turn.ScheduleRunID)
-	if got.Status != store.TurnError || run.Status != store.ScheduleRunError || !run.Unread {
-		t.Fatalf("acknowledgement must not be findings: turn=%+v run=%+v", got, run)
-	}
-	calls, _ := e.Store().ListLLMCalls(turn.ID)
-	if len(calls) != 2 {
-		t.Fatalf("calls=%d, want two", len(calls))
-	}
-}
-
 func TestOrdinaryTurnDoesNotRequireScheduledEvidence(t *testing.T) {
 	provider.SetMockScheduleSilent(true)
 	t.Cleanup(func() { provider.SetMockScheduleSilent(false) })
@@ -207,23 +192,27 @@ func TestOrdinaryTurnDoesNotRequireScheduledEvidence(t *testing.T) {
 	}
 }
 
-func TestScheduledWorkRecordedUsesEventsNotProse(t *testing.T) {
+func TestScheduledOutputRecordedAcceptsTextWithoutClassifyingItsMeaning(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		events []store.Event
+		final  string
 		want   bool
 	}{
-		{"none", nil, false},
-		{"opening", []store.Event{{Kind: "agent_message", Text: "Checking the current state."}}, false},
-		{"long answer", []store.Event{{Kind: "agent_message", Text: strings.Repeat("answer ", 200)}}, false},
-		{"quiet report", []store.Event{{Kind: KindScheduleReport, Text: `{"findings":""}`}}, true},
-		{"tool", []store.Event{{Kind: "tool_result", AgentID: "worker", Text: "ok"}}, true},
-		{"failed tool", []store.Event{{Kind: "tool_result", Err: "permission denied"}}, true},
-		{"retry cleanup", []store.Event{{Kind: "tool_result", Text: modelRetryToolResult, Err: modelRetryToolResult}}, false},
-		{"real tool with matching text", []store.Event{{Kind: "tool_result", Text: modelRetryToolResult}}, true},
+		{"none", nil, "", false},
+		{"whitespace", nil, " \n\t\u3000", false},
+		{"short English", nil, "OK", true},
+		{"short Chinese", nil, "好", true},
+		{"long text", nil, strings.Repeat("The recorded result is available. ", 200), true},
+		{"historical text is not the current final", []store.Event{{Kind: "agent_message", Text: "Earlier output."}}, "", false},
+		{"quiet report", []store.Event{{Kind: KindScheduleReport, Text: `{"findings":""}`}}, "", true},
+		{"tool", []store.Event{{Kind: "tool_result", AgentID: "worker", Text: "ok"}}, "", true},
+		{"failed tool", []store.Event{{Kind: "tool_result", Err: "permission denied"}}, "", true},
+		{"retry cleanup", []store.Event{{Kind: "tool_result", Text: modelRetryToolResult, Err: modelRetryToolResult}}, "", false},
+		{"real tool with matching text", []store.Event{{Kind: "tool_result", Text: modelRetryToolResult}}, "", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := scheduledWorkRecorded(tc.events); got != tc.want {
+			if got := scheduledOutputRecorded(tc.events, tc.final); got != tc.want {
 				t.Fatalf("got=%v want=%v", got, tc.want)
 			}
 		})

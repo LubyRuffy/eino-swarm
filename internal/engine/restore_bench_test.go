@@ -109,6 +109,8 @@ func benchmarkRestoreToGeneration(b *testing.B) {
 	var mu sync.Mutex
 	observing, checkpoints, scans, fullScans := true, 0, 0, 0
 	var generations []store.Event
+	var requests []string
+	var restoreStarted time.Time
 	workerInput := make(chan struct{})
 	invalidInput := make(chan error, 2)
 	expectedHistory := strings.Repeat("history", 160000)
@@ -117,28 +119,54 @@ func benchmarkRestoreToGeneration(b *testing.B) {
 		var input struct {
 			Model    string `json:"model"`
 			Messages []struct {
+				Role    string          `json:"role"`
 				Content json.RawMessage `json:"content"`
 			} `json:"messages"`
 		}
 		if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+			mu.Lock()
+			requests = append(requests, fmt.Sprintf("elapsed=%s method=%s path=%s decode_error=%v", time.Since(restoreStarted), request.Method, request.URL.Path, err))
+			mu.Unlock()
 			select {
 			case invalidInput <- err:
 			default:
 			}
 			return
 		}
-		for _, message := range input.Messages {
+		var summaries []string
+		matched := false
+		for i, message := range input.Messages {
 			var content string
-			if json.Unmarshal(message.Content, &content) == nil && content == expectedHistory {
-				if input.Model != "offline-restore" {
-					select {
-					case invalidInput <- fmt.Errorf("unexpected model %q", input.Model):
-					default:
-					}
-					return
+			if json.Unmarshal(message.Content, &content) == nil {
+				exact := content == expectedHistory
+				summaries = append(summaries, fmt.Sprintf("%d:role=%s string_bytes=%d raw_bytes=%d exact_history=%t", i, message.Role, len(content), len(message.Content), exact))
+				matched = matched || exact
+			} else {
+				var parts []struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
 				}
-				inputOnce.Do(func() { mu.Lock(); observing = false; mu.Unlock(); close(workerInput) })
+				if err := json.Unmarshal(message.Content, &parts); err == nil {
+					for part, value := range parts {
+						summaries = append(summaries, fmt.Sprintf("%d:role=%s part=%d type=%s text_bytes=%d exact_history=%t", i, message.Role, part, value.Type, len(value.Text), value.Text == expectedHistory))
+					}
+				} else {
+					summaries = append(summaries, fmt.Sprintf("%d:role=%s non_string_raw_bytes=%d", i, message.Role, len(message.Content)))
+				}
 			}
+		}
+		mu.Lock()
+		requests = append(requests, fmt.Sprintf("elapsed=%s method=%s path=%s model=%q messages=%d exact_string_history=%t [%s]", time.Since(restoreStarted), request.Method, request.URL.Path, input.Model, len(input.Messages), matched, strings.Join(summaries, "; ")))
+		mu.Unlock()
+		if matched {
+			if input.Model != "offline-restore" {
+				select {
+				case invalidInput <- fmt.Errorf("unexpected model %q", input.Model):
+				default:
+				}
+				return
+			}
+			inputOnce.Do(func() { mu.Lock(); observing = false; mu.Unlock(); close(workerInput) })
 		}
 		// No model output is returned. Neither manager nor worker can execute a
 		// tool while the benchmark joins the worker, then shuts down its manager.
@@ -162,7 +190,9 @@ func benchmarkRestoreToGeneration(b *testing.B) {
 	if err := st.CreateTurn(&store.Turn{ID: restoreBenchTurn, ThreadID: restoreBenchThread, ProviderID: cfg.Models.Default, UserText: "continue the unfinished work"}); err != nil {
 		b.Fatal(err)
 	}
+	seedStarted := time.Now()
 	checkpointBytes, tail := seedRestoreBenchmark(b, st)
+	b.Logf("fixture seeded elapsed=%s events=%d checkpoint_bytes=%d expected_history_bytes=%d", time.Since(seedStarted), tail, checkpointBytes, len(expectedHistory))
 	e := New(cfg, st, provider.New(cfg), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	defer e.Shutdown()
 	e.BeginRestore() // Deliberately never FinishRestore/StartScheduler.
@@ -182,7 +212,7 @@ func benchmarkRestoreToGeneration(b *testing.B) {
 		if strings.Contains(sql, "AND (kind IN") {
 			scans++
 		}
-		if strings.Contains(sql, "seq >") && !strings.Contains(sql, "kind") {
+		if !strings.Contains(sql, "kind") && (strings.Contains(sql, "seq >") || strings.Contains(sql, "turn_id =")) {
 			fullScans++
 		}
 	}
@@ -203,18 +233,52 @@ func benchmarkRestoreToGeneration(b *testing.B) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	var restoreElapsed time.Duration
+	logDiagnostic := func(phase string) {
+		b.Helper()
+		b.StopTimer()
+		mu.Lock()
+		observations := append([]string(nil), requests...)
+		gotCheckpoints, gotScans, gotFull := checkpoints, scans, fullScans
+		elapsed := time.Since(restoreStarted)
+		mu.Unlock()
+		b.Logf("restore diagnostic phase=%s elapsed=%s restore_return_elapsed=%s status=%+v checkpoint_queries=%d recovery_scans=%d full_scans=%d http_requests=%d", phase, elapsed, restoreElapsed, e.Status(restoreBenchThread), gotCheckpoints, gotScans, gotFull, len(observations))
+		for _, observation := range observations {
+			b.Logf("offline HTTP %s", observation)
+		}
+		events, err := st.ListEvents(restoreBenchThread, tail, 0)
+		if err != nil {
+			b.Logf("read durable diagnostic events: %v", err)
+			return
+		}
+		for _, event := range events {
+			errText := event.Err
+			if len(errText) > 256 {
+				errText = errText[:256] + "..."
+			}
+			b.Logf("durable event seq=%d kind=%s agent=%s role=%s message=%s text_bytes=%d error=%q", event.Seq, event.Kind, event.AgentID, event.Role, event.MessageID, len(event.Text), errText)
+		}
+	}
+	mu.Lock()
+	restoreStarted = time.Now()
+	mu.Unlock()
 	b.StartTimer()
 	if err := e.Restore(ctx, nil); err != nil {
+		logDiagnostic("restore_error")
 		b.Fatal(err)
 	}
+	restoreElapsed = time.Since(restoreStarted)
 	select {
 	case <-workerInput:
 	case err := <-invalidInput:
+		logDiagnostic("invalid_http_input")
 		b.Fatal("offline model input was invalid: ", err)
 	case <-ctx.Done():
+		logDiagnostic("worker_input_timeout")
 		b.Fatal("restoration never delivered the original worker input: ", ctx.Err())
 	}
 	b.StopTimer()
+	logDiagnostic("worker_input_received")
 	rt := e.runtimeFor(restoreBenchThread)
 	rt.mu.Lock()
 	reg := rt.reg

@@ -14,9 +14,11 @@ import (
 // disk until something asks for it, which is what keeps a hundred skills from
 // costing a hundred procedures' worth of tokens on every turn.
 type SkillInfo struct {
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Views        int64     `json:"views"`
+	LastViewedAt time.Time `json:"last_viewed_at"`
 	// Origin is set when this file was copied from another project. It is not
 	// part of the procedure: skill_view does not return it, and the prompt
 	// index does not list it.
@@ -92,6 +94,9 @@ func (s *Store) readSkill(name string) (Skill, error) {
 	if info, statErr := os.Stat(s.skillPath(name)); statErr == nil {
 		skill.UpdatedAt = info.ModTime().UTC()
 	}
+	usage := s.readSkillUsage(name)
+	skill.Views = usage.Views
+	skill.LastViewedAt = usage.LastViewedAt
 	return skill, nil
 }
 
@@ -234,11 +239,37 @@ func (s *Store) noteRestatesASkill(note string) error {
 		if err != nil {
 			continue
 		}
+		// A reminder may name the on-demand skill and its entry condition.
+		// The exception never allows copying the skill's execution into notes.
+		if noteReferencesSkill(note, skill.Name) {
+			if noteCopiesSkillBody(note, skill.Body) {
+				return &NoteSkillOverlapError{Name: skill.Name, Description: skill.Description}
+			}
+			if !noteCoveredBy(note, skill.Body) {
+				continue
+			}
+		}
 		if noteOverlapsSkill(note, skill) {
 			return &NoteSkillOverlapError{Name: skill.Name, Description: skill.Description}
 		}
 	}
 	return nil
+}
+
+func noteCopiesSkillBody(note, body string) bool {
+	body = strings.Join(strings.Fields(strings.ToLower(body)), " ")
+	return body != "" && strings.Contains(strings.Join(strings.Fields(strings.ToLower(note)), " "), body)
+}
+
+func noteReferencesSkill(note, name string) bool {
+	for _, token := range strings.FieldsFunc(note, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-')
+	}) {
+		if token == name {
+			return true
+		}
+	}
+	return false
 }
 
 // ValidSkillName reports whether name can be a directory under the skills

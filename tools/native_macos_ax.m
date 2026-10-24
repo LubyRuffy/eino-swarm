@@ -17,6 +17,17 @@ static NSString *text(AXUIElementRef element, CFStringRef key) {
     id value = attribute(element, key);
     return [value isKindOfClass:NSString.class] ? value : @"";
 }
+static BOOL realWindow(id candidate, pid_t expectedPID) {
+    if (!candidate || CFGetTypeID((__bridge CFTypeRef)candidate) != AXUIElementGetTypeID()) return NO;
+    AXUIElementRef window = (__bridge AXUIElementRef)candidate;
+    CFTypeRef role = NULL; pid_t owner = 0;
+    AXError roleError = AXUIElementCopyAttributeValue(window, kAXRoleAttribute, &role);
+    AXError pidError = AXUIElementGetPid(window, &owner);
+    BOOL valid = roleError == kAXErrorSuccess && role && CFGetTypeID(role) == CFStringGetTypeID()
+        && CFEqual(role, kAXWindowRole) && pidError == kAXErrorSuccess && owner == expectedPID;
+    if (role) CFRelease(role);
+    return valid;
+}
 static NSArray *children(AXUIElementRef element) {
     id value = attribute(element, kAXChildrenAttribute);
     return [value isKindOfClass:NSArray.class] ? value : @[];
@@ -39,6 +50,9 @@ static void emit(id value) {
     fwrite(data.bytes, 1, data.length, stdout); fputc('\n', stdout);
 }
 static int fail(NSString *message) { emit(@{@"error": message}); return 2; }
+static int failSnapshot(AXUIElementRef app, NSMutableDictionary *result, NSString *message) {
+    result[@"error"] = message; emit(result); CFRelease(app); return 2;
+}
 
 static BOOL ownsCase(pid_t pid, NSString *caseID) {
     // Only the one inherited marker is compared; no other environment is exposed.
@@ -146,6 +160,18 @@ static CGEventRef keyboard(CGEventSourceRef source, bool down, UniChar character
     return event;
 }
 
+static BOOL waitForActivation(NSRunningApplication *running, double deadline) {
+    for (;;) {
+        double remaining = deadline - NSProcessInfo.processInfo.systemUptime;
+        if (remaining <= 0) return NO;
+        // NSRunningApplication refreshes these properties on the main runloop.
+        [[NSRunLoop mainRunLoop] runMode:NSDefaultRunLoopMode
+                            beforeDate:[NSDate dateWithTimeIntervalSinceNow:MIN(.01, remaining)]];
+        if (NSProcessInfo.processInfo.systemUptime >= deadline) return NO;
+        if (running.active) return YES;
+    }
+}
+
 int main(int argc, const char **argv) { @autoreleasepool {
     int virtualized = 0; size_t size = sizeof(virtualized);
     if (sysctlbyname("kern.hv_vmm_present", &virtualized, &size, NULL, 0) || virtualized != 1)
@@ -158,7 +184,23 @@ int main(int argc, const char **argv) { @autoreleasepool {
     if (!validOrigin(origin)) return fail(@"native origin must be numeric loopback HTTP without a path");
     if (!caseID.length || !ownsCase(pid, caseID)) return fail(@"native target case identity mismatch");
     NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
-    if (!running || ![[running.bundleURL.path stringByResolvingSymlinksInPath] isEqual:bundle])
+    if (running && running.processIdentifier != pid)
+        return fail(@"native target process identity mismatch");
+    NSString *registeredBundle = running.bundleURL.path;
+    if (!running || !registeredBundle.length) {
+        if (![action isEqual:@"snapshot"])
+            return fail(@"native target bundle identity mismatch");
+        // A process and its engine can precede native application registration.
+        // Only the caller's existing snapshot deadline may wait for this state.
+        emit(@{@"pid": @(pid), @"case_id": caseID, @"origin": origin,
+            @"bundle": bundle, @"requested_bundle": bundle,
+            @"case_verified": @NO, @"bundle_verified": @NO, @"ready": @NO,
+            @"registration_pending": @YES,
+            @"registration_state": running ? @"bundle_unavailable" : @"not_registered",
+            @"window_count": @0, @"windows": @[], @"tree": @[]});
+        return 0;
+    }
+    if (![[registeredBundle stringByResolvingSymlinksInPath] isEqual:bundle])
         return fail(@"native target bundle identity mismatch");
     if (!AXIsProcessTrusted()) return fail(@"guest Accessibility permission must already be granted");
     if (!CGPreflightScreenCaptureAccess()) return fail(@"guest Screen Recording permission must already be granted");
@@ -167,11 +209,19 @@ int main(int argc, const char **argv) { @autoreleasepool {
     AXUIElementSetAttributeValue(app, CFSTR("AXEnhancedUserInterface"), kCFBooleanTrue);
     AXUIElementSetAttributeValue(app, CFSTR("AXManualAccessibility"), kCFBooleanTrue);
     NSArray *windows = attribute(app, kAXWindowsAttribute) ?: @[];
-    if (windows.count > 1) { CFRelease(app); return fail(@"native target has multiple AX windows"); }
-    AXUIElementRef window = windows.count ? (__bridge AXUIElementRef)windows[0] : NULL;
+    if (![windows isKindOfClass:NSArray.class] || windows.count > 1)
+        { CFRelease(app); return fail(@"native target has malformed or multiple AX windows"); }
+    __attribute__((objc_precise_lifetime)) id windowOwner = windows.count ? windows[0] : nil;
+    if (windowOwner && !realWindow(windowOwner, pid))
+        { CFRelease(app); return fail(@"native AX window role or PID refused"); }
+    AXUIElementRef window = (__bridge AXUIElementRef)windowOwner;
     if (window && [attribute(window, CFSTR("AXSheets")) count]) { CFRelease(app); return fail(@"native target has a modal sheet"); }
-    [running activateWithOptions:0];
+    double activationStarted = NSProcessInfo.processInfo.systemUptime;
+    double activationDeadline = activationStarted + 2;
+    BOOL activationRequested = [running activateWithOptions:0];
     if (window) AXUIElementPerformAction(window, kAXRaiseAction);
+    BOOL activationReady = waitForActivation(running, activationDeadline);
+    double activationElapsed = NSProcessInfo.processInfo.systemUptime - activationStarted;
     CGRect bounds = window ? frame(window) : CGRectZero;
     NSMutableArray *tree = [NSMutableArray array], *areas = [NSMutableArray array], *sends = [NSMutableArray array];
     NSMutableArray *urls = [NSMutableArray array], *cg = [NSMutableArray array], *values = [NSMutableArray array];
@@ -189,18 +239,23 @@ int main(int argc, const char **argv) { @autoreleasepool {
     BOOL sendEnabled = sends.count == 1 && [attribute((__bridge AXUIElementRef)sends[0], kAXEnabledAttribute) boolValue];
     BOOL frontmost = running.active;
     BOOL hasWebArea = urls.count > 0;
-    BOOL ready = frontmost && bounds.size.width > 0 && bounds.size.height > 0 &&
+    BOOL ready = activationReady && frontmost && bounds.size.width > 0 && bounds.size.height > 0 &&
         windows.count == 1 && cg.count == 1 && hasWebArea && areas.count == 1;
     NSMutableDictionary *result = [@{@"pid": @(pid), @"bundle": bundle, @"origin": origin,
-        @"case_verified": @YES, @"ready": @(ready), @"title": window ? text(window, kAXTitleAttribute) : @"",
+        @"case_verified": @YES, @"ready": @(ready), @"activation_ready": @(activationReady),
+        @"activation_requested": @(activationRequested),
+        @"activation_elapsed_seconds": @(activationElapsed),
+        @"press_attempted": @NO, @"title": window ? text(window, kAXTitleAttribute) : @"",
         @"frontmost": @(frontmost), @"has_web_area": @(hasWebArea), @"web_urls": urls,
         @"textareas": @(areas.count), @"area_values": values, @"send_count": @(sends.count),
         @"send_enabled": @(sendEnabled), @"rect": @[@(bounds.origin.x), @(bounds.origin.y), @(bounds.size.width), @(bounds.size.height)],
         @"window_count": @(windows.count), @"windows": cg, @"screen_capture_allowed": @YES,
         @"expected_visible": @(visible), @"tree": tree} mutableCopy];
     if (cg.count == 1) { result[@"window_id"] = cg[0][@"id"]; result[@"window_owner_pid"] = @(pid); }
+    if (!activationReady) return failSnapshot(app, result, @"native activation did not become active before its deadline");
     if ([action isEqual:@"fill"]) {
-        if (!ready || ![values isEqual:@[@""]]) { CFRelease(app); return fail(@"fill requires one empty native composer"); }
+        if (!ready || ![values isEqual:@[@""]])
+            return failSnapshot(app, result, @"fill requires one empty native composer");
         AXError error = AXUIElementSetAttributeValue((__bridge AXUIElementRef)areas[0], kAXFocusedAttribute, kCFBooleanTrue);
         if (error != kAXErrorSuccess) { CFRelease(app); return fail(@"native composer focus failed"); }
         CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStatePrivate);
@@ -214,9 +269,11 @@ int main(int argc, const char **argv) { @autoreleasepool {
         CFRelease(source); result[@"filled"] = @YES;
     } else if ([action isEqual:@"send"]) {
         // Recheck at the mutation boundary; an earlier inspect is only a snapshot.
-        if (!ready || ![values isEqual:@[value]] || !sendEnabled) { CFRelease(app); return fail(@"Send requires the exact draft and one enabled button"); }
+        if (!ready || ![values isEqual:@[value]] || !sendEnabled)
+            return failSnapshot(app, result, @"Send requires the exact draft and one enabled button");
+        result[@"press_attempted"] = @YES;
         AXError error = AXUIElementPerformAction((__bridge AXUIElementRef)sends[0], kAXPressAction);
-        if (error != kAXErrorSuccess) { CFRelease(app); return fail(@"native Send action failed"); }
+        if (error != kAXErrorSuccess) return failSnapshot(app, result, @"native Send action failed");
         result[@"submitted"] = @YES;
     } else if (![action isEqual:@"snapshot"]) { CFRelease(app); return fail(@"unsupported native action"); }
     emit(result); CFRelease(app); return 0;

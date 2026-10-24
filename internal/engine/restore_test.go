@@ -67,7 +67,7 @@ func TestRestoreSharesOneCheckpointAndEventReadWithResumedBootstrap(t *testing.T
 		if strings.Contains(sql, "AND (kind IN") {
 			eventReads++
 		}
-		if strings.Contains(sql, "seq >") && !strings.Contains(sql, "kind") {
+		if !strings.Contains(sql, "kind") && (strings.Contains(sql, "seq >") || strings.Contains(sql, "turn_id =")) {
 			fullReads++
 		}
 	}
@@ -428,13 +428,13 @@ func TestOrphanedAskRecoveryKeepsUnusableInputOutOfTheWaiter(t *testing.T) {
 	th, _ := e.CreateThread("", "", "")
 	turn := plantUnfinishedTurn(t, e, th.ID, "continue existing work")
 	messages := []adk.Message{schema.UserMessage("retained input")}
-	if got := (*runtime)(nil).resolveOrphanedAsk(context.Background(), turn, messages); len(got) != 1 {
-		t.Fatal("nil recovery discarded input")
+	if got, err := (*runtime)(nil).resolveOrphanedAsk(context.Background(), turn, messages); err != nil || len(got) != 1 {
+		t.Fatalf("nil recovery changed input: messages=%v err=%v", got, err)
 	}
 	rt := e.runtimeFor(th.ID)
 	snapshot := &restoreSnapshot{events: []store.Event{{ThreadID: th.ID, TurnID: turn.ID, Kind: "tool_call", ToolCallID: "invalid-ask", Text: "ask_user(invalid-json)"}}}
-	if got := rt.resolveOrphanedAsk(context.Background(), turn, messages, snapshot); len(got) != 1 {
-		t.Fatal("invalid question changed retained input")
+	if got, err := rt.resolveOrphanedAsk(context.Background(), turn, messages, snapshot); err != nil || len(got) != 1 {
+		t.Fatalf("invalid question changed retained input: messages=%v err=%v", got, err)
 	}
 	events, _ := e.store.ListTurnEvents(turn.ID)
 	if len(events) != 1 || events[0].Kind != "tool_result" || events[0].ToolCallID != "invalid-ask" || events[0].Err != resumeToolStopped {
@@ -443,8 +443,8 @@ func TestOrphanedAskRecoveryKeepsUnusableInputOutOfTheWaiter(t *testing.T) {
 	if err := e.store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if got := rt.resolveOrphanedAsk(context.Background(), turn, messages); len(got) != 1 {
-		t.Fatal("unreadable recovery discarded input")
+	if got, err := rt.resolveOrphanedAsk(context.Background(), turn, messages); err == nil || len(got) != 1 {
+		t.Fatalf("unreadable recovery must retain input and report its error: messages=%v err=%v", got, err)
 	}
 }
 

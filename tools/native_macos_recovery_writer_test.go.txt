@@ -1,0 +1,136 @@
+//go:build darwin
+
+package desktop
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+)
+
+func TestNativeRecoveryIdentityWriter(t *testing.T) {
+	source := os.Getenv("ZWAI_RECOVERY_ORIGINAL")
+	evidence := os.Getenv("ZWAI_RECOVERY_EVIDENCE")
+	if !filepath.IsAbs(source) || !filepath.IsAbs(evidence) {
+		t.Fatal("explicit absolute original/evidence required")
+	}
+	original, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(original)
+	originalHash := hex.EncodeToString(sum[:])
+	if originalHash != os.Getenv("ZWAI_RECOVERY_ORIGINAL_SHA256") {
+		t.Fatal("original candidate core identity refused")
+	}
+	if err := os.Mkdir(evidence, 0700); err != nil {
+		t.Fatal(err)
+	}
+	rows := []map[string]any{}
+	hash := func(data []byte) string { value := sha256.Sum256(data); return hex.EncodeToString(value[:]) }
+	save := func(name string, data []byte) {
+		if err := os.WriteFile(filepath.Join(evidence, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer func() {
+		after, readErr := os.ReadFile(source)
+		result := map[string]any{"original_sha256": originalHash, "original_unchanged": readErr == nil && hash(after) == originalHash, "rows": rows, "scope": "actual Q WriteMacApp only; no App/runtime/UI launched"}
+		data, _ := json.MarshalIndent(result, "", "  ")
+		save("actual-Q-WriteMacApp-result.json", append(data, '\n'))
+	}()
+	parent := t.TempDir()
+	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'" }
+	basePATH := os.Getenv("PATH")
+	for index, version := range []string{os.Getenv("ZWAI_RECOVERY_VERSION"), os.Getenv("ZWAI_RECOVERY_VERSION")} {
+		label := fmt.Sprintf("copy%d", index+1)
+		private := filepath.Join(parent, label)
+		if err := os.Mkdir(private, 0700); err != nil {
+			t.Fatal(err)
+		}
+		toolDir := filepath.Join(private, "tools")
+		if err := os.Mkdir(toolDir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		prefix := filepath.Join(evidence, label+"-codesign")
+		proxy := "#!/bin/sh\nprintf '%s\\0' \"$@\" > " + quote(prefix+".argv") + "\n/usr/bin/codesign \"$@\" > " + quote(prefix+".stdout") + " 2> " + quote(prefix+".stderr") + "\nrc=$?\nprintf '%s\\n' \"$rc\" > " + quote(prefix+".exit") + "\nexit \"$rc\"\n"
+		if err := os.WriteFile(filepath.Join(toolDir, "codesign"), []byte(proxy), 0700); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", toolDir+string(os.PathListSeparator)+basePATH)
+		bundle := filepath.Join(private, "zwai.app")
+		writerErr := WriteMacApp(source, bundle, version)
+		row := map[string]any{"version_input": version, "writer_error": fmt.Sprint(writerErr)}
+		rows = append(rows, row)
+		if writerErr != nil {
+			t.Fatal(writerErr)
+		}
+		core := filepath.Join(bundle, "Contents", "MacOS", "zwai")
+		data, err := os.ReadFile(core)
+		if err != nil {
+			t.Fatal(err)
+		}
+		row["core_sha256"], row["core_bytes"] = hash(data), len(data)
+		save(label+"-core", data)
+		for _, relative := range []string{"Info.plist", "Resources/AppIcon.icns"} {
+			data, err := os.ReadFile(filepath.Join(bundle, "Contents", relative))
+			if err != nil {
+				t.Fatal(err)
+			}
+			name := strings.ReplaceAll(relative, "/", "-")
+			save(label+"-"+name, data)
+			row[name+"_sha256"] = hash(data)
+		}
+		rawArgs, err := os.ReadFile(prefix + ".argv")
+		if err != nil {
+			t.Fatal("codesign was not observed:", err)
+		}
+		fields := bytes.Split(bytes.TrimSuffix(rawArgs, []byte{0}), []byte{0})
+		args := []string{}
+		for _, arg := range fields {
+			args = append(args, string(arg))
+		}
+		row["actual_codesign_argv"] = args
+		expected := []string{"--force", "--sign", "-", "--identifier", "app.zwai.desktop", core}
+		if strings.Join(args, "\x00") != strings.Join(expected, "\x00") {
+			t.Fatal("writer codesign argv changed")
+		}
+		rawExit, err := os.ReadFile(prefix + ".exit")
+		if err != nil {
+			t.Fatal(err)
+		}
+		code, err := strconv.Atoi(strings.TrimSpace(string(rawExit)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		row["codesign_exit"] = code
+		for _, mode := range []string{"verify", "display"} {
+			args := []string{"--verify", "--strict", "--all-architectures", core}
+			if mode == "display" {
+				args = []string{"--display", "--verbose=6", core}
+			}
+			command := exec.Command("/usr/bin/codesign", args...)
+			var out, errors bytes.Buffer
+			command.Stdout = &out
+			command.Stderr = &errors
+			err := command.Run()
+			save(label+"-"+mode+".stdout", out.Bytes())
+			save(label+"-"+mode+".stderr", errors.Bytes())
+			row[mode+"_error"] = fmt.Sprint(err)
+			if err != nil {
+				t.Fatal(mode, err)
+			}
+		}
+		if code != 0 {
+			t.Fatal("actual writer ignored codesign failure:", code)
+		}
+	}
+}

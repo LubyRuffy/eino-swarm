@@ -13,6 +13,16 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-170`, `F-230`, `C-009`: document and regress the existing Chat Completions
+  compatibility with legacy `reasoning_content` and newer vLLM `reasoning` in
+  JSON replies and live deltas. Offline adapter and PC/phone UI tests preserve
+  empty/null fallback, legacy precedence, thoughts, history and Trace without
+  adding a duplicate parser or changing runtime behavior.
+
+- `F-420`, `C-025`, `C-012`: requested project memory tidy can promote notes to skills and demote short declarative skills to notes, with source-preserving checks, budget validation, partial-write receipts and original-turn Trace. Project controls now say **Tidy memory**; shared-library tidy remains skills-only (Issue #99).
+
+- `F-420`, `C-025`: record agent skill views in a separate usage sidecar, expose usage and configurable `memory.skill_stale_days` in Settings and Memory, and retain advisory stale candidates in tidy results and original-turn Trace. Merges sum usage; copies start unused (Issue #99).
+
 - `F-115`, `C-034`, `C-012`: macOS windows validate actual painted probe pixels,
   attempt one reload, then perform bounded attach-only window replacement with
   the original engine and durable per-turn diagnostics. Sleep/focus grace,
@@ -49,12 +59,88 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-110`, `C-001`, `C-027`: running and parked startup recovery failures now
+  both produce failed Trace receipts and a typed `RestoreFailures` aggregate,
+  while independent conversations continue. `ResumeOrphanedTurns` returns its
+  accepted count together with aggregate causes instead of hiding handled errors
+  behind a nil error; callers must inspect both results.
+
+- `F-150`, `C-009`: completing a standing objective immediately removes its
+  composer goal strip on desktop/Web and paired phones, including after reload
+  or reopening the conversation. Stored goals, completion state, results and
+  history remain, including a localized phone completion notice from the
+  lifecycle event. Desktop completion notices stay outside collapsed goal
+  sessions regardless of their order with the final answer. Unfinished paused,
+  blocked and waiting goals retain their controls. Completed strips no longer
+  offer Start; explicit recovery APIs and the manager's `reopen_goal` remain
+  available.
+
+- `F-130`, `C-002`, `C-009`: explicitly queued human messages now start as
+  independent FIFO turns after an ordinary error or failed scheduled check.
+  Original failures and future wakes remain intact; an empty queue, Stop,
+  cancellation and restart do not trigger an extra turn (Issue #86).
+
+- `F-430`, `C-031`: add an opt-in native QA campaign admission callback under
+  the actual driver lock, before owner/exit receipts can be replaced. Checks
+  refuse by raising an exception; callback return values do not decide admission. Refusal
+  preserves earlier records; busy, admission, owner-write and action/exit paths
+  close their own lock. Two-process races and real filesystem failures regress
+  this internal boundary; default full6 launch/resume policy is unchanged
+  (Issue #94).
+
+- `F-430`, `C-031`: native QA file-panel traversal requests a fixed five-attribute
+  batch per distinct scanned node, retaining complete graph/unique Open checks
+  and the existing visit, depth and eight-second bounds. Top-level success does
+  not hide per-attribute errors; typed AXError wrappers and CFNull missing values
+  remain separate, with no individual-read fallback. Filename discovery stops
+  consuming auxiliary text while fixed batches still request it. Query strategy
+  changes do not prove native speed, historical timeout causes or attachment
+  acceptance; original bytes and durable draft ACK remain required (Issue #94).
+
+- `F-430`, `C-031`: require positive AX element type, `AXWindow` role and owner
+  PID before native QA window actions, with explicit object lifetime and real
+  helper counterexamples. Resilience application-only activation performs no AX
+  lookup or raise; later window/pixel acceptance remains mandatory. Empty smoke
+  snapshots retain their not-ready result, action deadlines and file-panel
+  acceptance stay independent. Snapshot alone can report native registration
+  pending after the kernel case guard, without native activation or AX access;
+  wrong PID/bundle and mutation before registration remain refusals. The
+  existing window deadline also bounds this startup phase. This changes QA tools, not the frozen App or
+  earlier acceptance records (Issue #105).
+  Recovery rules retain current session/owned-assertion evidence and separate
+  input-actor cleanup from finite power-owner takeover under the original case
+  lock, deadlines and failure cleanup. Active assertions do not prove continuing
+  guest unlock; these rules do not accept the application or add a runner mode.
+  Recovery checks also distinguish a direct child's bounded exec transition
+  from PID/birth ownership and verify transferred helper executable modes.
+
+- `F-430`, `C-031`: change native QA file-panel acceptance to separate a complete
+  roots/role/children/button-title graph from auxiliary filename text. Failed or
+  non-string auxiliary reads remain recorded unknowns with their original AX
+  status; another successful filename witness and exactly one distinct Open are
+  still required before Press. Required read/type failures, missing witnesses,
+  ambiguity and traversal/deadline limits still reject. Bound cached-node error
+  evidence without hiding later required failures; final original bytes and saved
+  draft ACK remain mandatory. This changes QA acceptance, not the App or the
+  historical b837/5008 results (Issue #94).
+
+- `F-430`, `C-010`: allocate source batch `0.1.37` for accepted Issues #101 and #103 after the cumulative first-parent commit threshold. Mobile package metadata shares that batch version; TestFlight marketing version stays on its successful train. Each installer retains independent native acceptance and publication gates; allocation does not claim upload or delivery.
+
+- `F-130`, `F-330`, `C-019`, `C-002`, `C-027`: ordinary turns without current goal/wake ownership must collect every worker's current generation with `wait_agents`, or explicitly discard it with `close_agent`, before publishing completion. An early final receives one durable same-turn correction; repetition pauses for human Continue/Stop while preserving the original workers. Continue grants one further attempt, and restart retains collection state, correction allowance and human pauses. Finished close receipts remain `already_finished`, rather than fabricated cancellation (Issue #103).
+
+- `F-420`, `C-025`: unify notes/skills classification by permanent versus on-demand loading, applicability-focused descriptions and workflow-local constraints; clarify both Memory panel descriptions and split memory translations (Issue #99).
 - `F-110`, `F-220`, `C-001`, `C-027`: publish a reachable restoring engine before task recovery, expose progress on PC and phone, and reject new work until recovery precedes scheduling. Share indexed recovery snapshots and retain per-turn restore timing in Trace.
 
 - `F-430`, `C-010`: prepare numeric candidate `0.1.36` with matching mobile
   package metadata before the exact-source Mac installer acceptance. This is a
   local acceptance candidate; native gates and publication remain pending, and
   no tag, installer upload or TestFlight delivery is implied.
+- `F-150`, `C-009`: scheduled checks and Run now accept a nonempty text result
+  without calling a tool or `report_schedule`, preserving automatic tool
+  selection. Only a wholly empty response with no real tool result or explicit
+  report receives one same-turn continuation before a visible error. Explicit
+  quiet reports keep precedence; ending a check does not complete its standing
+  goal or verify external work.
 
 - `F-130`, `F-170`, `F-330`, `C-009`, `C-019`: new worker lifetimes default to one hour in the library and app. Existing positive configured values, active deadlines and the three-failure watchdog budget retain their meaning. Live registries have synchronized `SetAgentTimeout` and `SetMaxTurns` setters for subsequent worker execution (Issue #82).
 
@@ -95,6 +181,68 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-110`, `F-130`, `C-002`, `C-027`: reuse the startup recovery snapshot
+  for both manager correction allowances instead of loading the full turn log
+  twice before worker restoration. Preserve retry and human-continuation receipts
+  across checkpoints; a new human Continue reads its new durable receipt.
+  Recovery regressions count unfiltered reads by turn as well as thread and
+  retain the original 10-second model-input budget and complete worker history.
+
+- `F-130`, `F-150`, `C-002`, `C-009`, `C-033`: preserve full goal and plan
+  arguments through one command dispatch, including literal command tokens in
+  the argument. Idle PC actions send one complete command, retaining draft ACKs
+  and conversation ownership when work starts concurrently or begins awaiting
+  an answer. Commands cannot be consumed as question answers or queued prose;
+  plan entry refuses a busy target and keeps its draft. Busy metadata and
+  bare planning keep their existing behavior. Trailing goal parsing also keeps
+  CJK paths literal, with shared Go/PC regression cases.
+
+- `F-430`, `C-031`, `C-034`: native draft-recovery checks retain the first
+  unmet and last observed predicates per check, without extra API/AX calls or
+  copied draft content. Diagnostic failures preserve the original exception;
+  successful checks refuse missing mandatory evidence. This does not backfill
+  earlier native timeouts or accept renderer recovery (Issue #94).
+
+- `F-430`, `C-031`: offline recovery-proof preparation preserves the original
+  command exit or timeout when evidence storage fails, attempts remaining
+  receipts, and records safe secondary storage details. Successful commands
+  still refuse incomplete evidence; no retry or native acceptance is added
+  (Issue #94).
+
+- `F-430`, `C-031`, `C-034`: native QA activation derives the original or
+  case-owned recovery bundle from the kernel executable. Preserve the original
+  anchor, marker, NS identity, unchanged process birth and two-second budget.
+  Actual `WriteMacApp` re-signs its copy; the first raw-hash equality review
+  missed this product transformation. Different bytes now require an independently
+  prepared, pinned actual-writer/signature proof covering full core/metadata
+  hashes and all non-signature payload bytes. Regress real signed page/Info
+  variants and refuse damaged origins, proofs and targets. Preserve the earlier
+  native failure and independent product replacement timeout (Issue #108).
+
+- `F-430`, `C-031`: native renderer/GPU fault QA uses an inline requirement
+  with Apple's own anchor and the exact selected service identifier. Its
+  two-second strict, all-architecture system-code check explicitly excludes
+  resources; distribution App deep/strict verification is unchanged. Signature
+  command/output/status evidence is durable before admission, including failures
+  and timeouts; failed checks or evidence cannot signal a target. Real CLI,
+  wrong-identity and privately corrupted-code regressions cover this boundary
+  without rewriting prior native failures (Issue #107).
+
+- `F-430`, `C-031`: native worker QA handles the engine's separate schedule-answer
+  policy over keyless loopback HTTP. Exact protocol and known fixture manager
+  candidates return empty claims; unknown or malformed requests fail closed
+  without consuming or releasing workers. Real HTTP regressions retain the
+  original misclassification failure. Recovery rules also require executable
+  metadata checks across the actual launch entry before a trigger, preserving
+  a never-started entry as a transport failure. App code and installer identity
+  are unchanged (Issue #106).
+
+- `F-130`, `F-222`, `C-002`, `C-003`, `C-012`, `C-027`: engine replacement
+  preserves the original unanswered human question instead of treating a
+  handoff unknown-outcome receipt as its answer. Matching legacy checkpoints
+  restore the wait; confirmed answers remain authoritative in both replay
+  orders. Durable `ask_recovered` events restore PC/phone forms without
+  fabricating another call or exposing private checkpoint histories (Issue #101).
 - `F-110`, `C-001`: explicitly disable PC goal controls and focused-editor keyboard/blur saves during engine restoration. A goal edit waits for its actual acknowledgement; refusals retain the current conversation's text and never automatically retry. Late acknowledgements cannot close another conversation's editor. Recovery UI regression now includes an actual page reload and restoration of the original saved-draft scope.
 
 - `F-110`, `C-027`: clarify the existing failed-handoff boundary: retain frozen
@@ -113,6 +261,67 @@ co-working app built on it. The library API is unchanged except where noted
   their previous behavior. Late responses cannot replace a newer transcript
   or another conversation's running state. Existing databases acquire replay
   indexes automatically when opened; API payloads and pagination are unchanged.
+
+- `F-150`, `C-009`, `C-012`: a trailing `/goal` activates its preceding objective across PC, HTTP and paired-phone sends and steering, including after an older goal completed. Scheduling success claims now require verification against persisted, currently effective plans before manager prose is published; unsupported claims receive one bounded same-turn correction, then a visible failure. Tool and worker activity remain live (Issue #103).
+
+- `F-430`, `C-031`: native attachment QA retains completed helper output and
+  the first file-selection timeout's binary streams without allowing cleanup
+  snapshots to overwrite it. Missing success evidence fails the case; existing
+  action failures retain their cause and the eight-second input is not retried.
+  File-panel inspection omits unrelated text after finding the fixture filename
+  while retaining complete, bounded graph and unique-Open validation. Failed
+  AX reads cannot disappear from the panel roots. Bounded helper stage logs
+  preserve new timing evidence without assigning a historical timeout cause.
+
+- `F-430`, `C-031`: native QA helpers refresh activation state through bounded
+  main-runloop slices after one activate/raise request per helper action invocation,
+  with one monotonic deadline. Failed activation and fill/Send guards retain sampled predicates and
+  Press attempt state; resilience activation failures retain key fields in
+  stderr. This changes the QA harness, not the application package, and does not
+  establish the cause of historical Send failures or accept pending native gates.
+
+- `F-220`, `C-017`: Ask Other now uses the phone's 16px editable text size so
+  iOS focus does not leave the answer, navigation and retry result enlarged
+  and horizontally clipped. Browser font and packaged iOS viewport regressions
+  cover focus, keyboard dismissal, rejection and successful retry (Issue #104).
+
+- `F-115`, `C-034`: native QA requests PNG paste once through the public
+  Edit/Paste menu, validating original clipboard bytes, ownership and exact
+  enabled foreground menu targets. A transport receipt never replaces the
+  unchanged durable-draft/UI acknowledgement checks. Earlier keyboard-input
+  timeouts retain their unknown cause; this is not a product keyboard or
+  system WebKit fix. Headless tests exercise the actual pure helper guards.
+
+- Tests (`F-110`, `C-027`): verify restart retention of an acknowledged answer
+  through its checkpoint, durable tool result and actual model input while the
+  response is held. Remove the unrelated whole-turn completion wait without
+  extending its deadline or changing runtime behavior (Issue #77).
+
+- `F-110`, `C-027`: isolate lifecycle schedule fixtures from asynchronous
+  naming, preventing fixture-owned provider-pool and database-callback races
+  under `-race`; native resilience waits also use case-owned explicit titles
+  and require the actual schedule row's boolean `title_auto=false` before
+  freezing it. Automatic-title behavior remains covered through its real API.
+
+- `F-150`, `C-003`, `C-012`: a human goal resume followed by its new continuation turn shows one notice in desktop/Web chat. Late typed memory-review feedback keeps its own row without splitting that resume pair. Later continuations and independent or manager resumes retain their notices; original `goal_resumed` and `goal_continued` events remain available in Trace (Issue #96).
+
+- `F-115`, `C-034`: retain the last actual draft-save predicates and summaries
+  of existing native observations on isolated Mac check exit. A timeout keeps its
+  original failure status; later successful cases do not establish its cause.
+
+- `F-420`, `C-025`: clarify existing tidy API failure semantics: internal tool refusals, reviewer errors in HTTP 200 / SSE `done` with saved receipts, and outer fold/view errors through normal JSON mapping or SSE `error`. Documentation only; runtime behavior is unchanged (Issue #99).
+
+- Tests: synchronize interrupted-output retention with a real live partial HTTP stream instead of assuming the manager produced text within 120ms. Keep the stream open until Stop, verify the identical text and output identity after persistence, and retain delayed-start and next-turn coverage without changing runtime behavior.
+
+- `F-430`, `C-031`: native acceptance recovery now selects the existing authorized guest Terminal control path when current exact-target evidence shows SSH helper permission denial and that path is usable. Unknown-state observation and completed acceptance retain priority; the offline audit neither grants privacy permissions nor operates the VM.
+
+- `F-420`, `F-160`, `C-025`: failed tidy Trace summaries use committed note and completed move receipts, preserving saved destination notes instead of claiming they were not saved; a skill-only partial promotion retains the uncommitted-note warning (Issue #99).
+
+- `F-420`, `C-025`: keep ordinary file collisions classified as filesystem rejections while refusing occupied skill directories, including orphaned usage sidecars (Issue #99).
+
+- `F-420`, `F-160`, `C-012`, `C-025`: retain partial memory writes and stale candidate payloads beside storage errors in `zwai trace --full`, so a failed tidy remains reconstructable (Issue #99).
+
+- `F-420`, `C-025`: allow notes pointing to an existing skill without restating its body; unknown names do not bypass duplicate checks (Issue #99).
 
 - `F-110`, `F-115`, `C-034`: checkout re-exec bundles are immutable per executable
   hash and atomically published under a cross-process lock; preparing another

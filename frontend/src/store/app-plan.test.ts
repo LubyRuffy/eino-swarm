@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { emptyTranscript } from "@/lib/transcript"
+import { ApiError } from "@/lib/api"
+import type { Turn } from "@/lib/types"
 import { useApp } from "@/store/app"
 import { useProjects } from "@/store/projects"
 
@@ -10,9 +12,26 @@ const fake = vi.hoisted(() => ({
   answers: [] as Array<Record<string, unknown>>,
   implements: [] as string[],
   steers: [] as Array<{ id: string; text: string }>,
+  starts: [] as Array<{ id: string; text: string }>,
+  deletedFollowups: [] as string[],
+  queued: [] as string[],
   planMode: false,
   planMarkdown: "",
+  startFailure: undefined as Error | undefined,
+  patchFailure: undefined as Error | undefined,
+  acknowledgement: undefined as Promise<Turn> | undefined,
+  threadGate: undefined as Promise<void> | undefined,
+  probedThreads: [] as string[],
+  threadStatuses: [] as Array<{ running: boolean; awaiting_answer?: boolean }>,
 }))
+
+function startedPlan(): Turn {
+  return {
+    id: "tn_plan", thread_id: "th_old", seq: 1, status: "running", user_text: "",
+    final: "", provider_id: "default", model: "offline", duration_ms: 0,
+    started_at: "2026-01-01T00:00:00.000Z",
+  }
+}
 
 vi.mock("@/lib/api", () => {
   const thread = (id: string) => ({
@@ -41,10 +60,11 @@ vi.mock("@/lib/api", () => {
       models: async () => ({ models: [], default: "default", mock: true }),
       threads: async () => [thread("th_old")],
       projects: async () => [],
-      thread: async (id: string) => ({
-        thread: thread(id),
-        status: { running: false },
-      }),
+      thread: async (id: string) => {
+        fake.probedThreads.push(id)
+        await fake.threadGate
+        return { thread: thread(id), status: fake.threadStatuses.shift() ?? { running: false } }
+      },
       turns: async () => [],
       threadLog: async () => ({ events: [], has_more: false }),
       agentLog: async () => ({ events: [] }),
@@ -53,6 +73,7 @@ vi.mock("@/lib/api", () => {
       schedules: async () => ({ schedules: [], unread: 0 }),
       patchThread: async (id: string, patch: Record<string, unknown>) => {
         fake.patches.push({ id, ...patch })
+        if (fake.patchFailure) throw fake.patchFailure
         if (patch.plan_mode !== undefined) fake.planMode = Boolean(patch.plan_mode)
         if (typeof patch.plan_markdown === "string") fake.planMarkdown = patch.plan_markdown
         return { ...thread(id), ...patch }
@@ -60,6 +81,16 @@ vi.mock("@/lib/api", () => {
       steer: async (id: string, text: string) => {
         fake.steers.push({ id, text })
         return { steered: true }
+      },
+      startTurn: async (id: string, text: string) => {
+        fake.starts.push({ id, text })
+        if (fake.startFailure) throw fake.startFailure
+        return fake.acknowledgement ?? startedPlan()
+      },
+      deleteFollowup: async (_id: string, followup: string) => { fake.deletedFollowups.push(followup) },
+      enqueueFollowup: async (id: string, text: string) => {
+        fake.queued.push(text)
+        return { id: "fu_new", thread_id: id, seq: 1, text, created_at: "" }
       },
       answerTurn: async (id: string, body: Record<string, unknown>) => {
         fake.answers.push({ id, ...body })
@@ -107,8 +138,17 @@ beforeEach(() => {
   fake.answers.length = 0
   fake.implements.length = 0
   fake.steers.length = 0
+  fake.starts.length = 0
+  fake.deletedFollowups.length = 0
+  fake.queued.length = 0
   fake.planMode = false
   fake.planMarkdown = ""
+  fake.startFailure = undefined
+  fake.patchFailure = undefined
+  fake.acknowledgement = undefined
+  fake.threadGate = undefined
+  fake.probedThreads.length = 0
+  fake.threadStatuses.length = 0
   useApp.setState({
     threads: [],
     activeId: undefined,
@@ -138,10 +178,141 @@ describe("plan and ask store", () => {
   it("enters plan mode and starts the task when idle", async () => {
     await useApp.getState().boot()
     await useApp.getState().openThread("th_old")
-    await useApp.getState().setPlan("inspect then change")
-    expect(fake.patches).toEqual([{ id: "th_old", plan_mode: true }])
-    expect(fake.steers).toEqual([{ id: "th_old", text: "inspect then change" }])
+    expect(await useApp.getState().setPlan("inspect then change")).toBe(true)
+    expect(fake.patches).toEqual([])
+    expect(fake.starts).toEqual([{ id: "th_old", text: "/plan inspect then change" }])
+    expect(fake.steers).toEqual([])
+    fake.onEvent?.({
+      kind: "plan", seq: 1, thread_id: "th_old", turn_id: "tn_1",
+      agent_id: "manager", created_at: new Date().toISOString(),
+    })
     expect(useApp.getState().threads[0]?.plan_mode).toBe(true)
+  })
+
+  it.each(["Inspect assigned /goal", "/goal Inspect assigned", "  检查目标\n保留 /goal  "])("keeps command literals inside a single plan command: %s", async (text) => {
+    // Re-sending only the argument lets goal dispatch steal a planning request.
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
+    expect(await useApp.getState().setPlan(text)).toBe(true)
+    expect(fake.patches).toEqual([])
+    expect(fake.starts).toEqual([{ id: "th_old", text: `/plan ${text.trim()}` }])
+    expect(fake.steers).toEqual([])
+  })
+
+  it("keeps an explicitly captured plan target after another conversation is selected", async () => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_other")
+    expect(await useApp.getState().setPlan("Inspect assigned /goal", "th_old")).toBe(true)
+    expect(fake.starts).toEqual([{ id: "th_old", text: "/plan Inspect assigned /goal" }])
+    expect(fake.steers).toEqual([])
+    expect(fake.patches).toEqual([])
+    expect(useApp.getState().activeId).toBe("th_other")
+    expect(useApp.getState().status.running).toBe(false)
+  })
+
+  it("waits for plan acceptance without marking a later selected conversation running", async () => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
+    let acknowledge!: (reply: Turn) => void
+    fake.acknowledgement = new Promise((resolve) => { acknowledge = resolve })
+    let accepted = false
+    const sending = useApp.getState().setPlan("Inspect acknowledged /goal").then((result) => { accepted = result })
+    await vi.waitFor(() => expect(fake.starts).toHaveLength(1))
+    expect(accepted).toBe(false)
+    await useApp.getState().openThread("th_other")
+    acknowledge(startedPlan())
+    await sending
+    expect(accepted).toBe(true)
+    expect(fake.patches).toEqual([])
+    expect(useApp.getState().activeId).toBe("th_other")
+    expect(useApp.getState().status.running).toBe(false)
+  })
+
+  it("returns false without partially entering plan mode when send acknowledgement fails", async () => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
+    fake.startFailure = new Error("plan send was not acknowledged")
+    expect(await useApp.getState().setPlan("Inspect rejected /goal")).toBe(false)
+    expect(fake.patches).toEqual([])
+    expect(useApp.getState().threads[0]?.plan_mode).toBe(false)
+    expect(useApp.getState().status.running).toBe(false)
+    expect(useApp.getState().error).toBe("plan send was not acknowledged")
+  })
+
+  it("refuses a plan when a turn starts during metadata lookup without consuming a matching follow-up", async () => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_other")
+    let releaseProbe!: () => void
+    fake.threadGate = new Promise((resolve) => { releaseProbe = resolve })
+    fake.startFailure = new ApiError("conversation is running", 409, "busy")
+    const sending = useApp.getState().setPlan("Inspect raced /goal", "th_old")
+    await vi.waitFor(() => expect(fake.probedThreads.at(-1)).toBe("th_old"))
+    const followups = [{ id: "fu_kept", thread_id: "th_old", seq: 1, text: "/plan Inspect raced /goal", created_at: "" }]
+    useApp.setState({ activeId: "th_old", status: { running: true }, followups })
+    releaseProbe()
+    expect(await sending).toBe(false)
+    expect(fake.starts).toEqual([{ id: "th_old", text: "/plan Inspect raced /goal" }])
+    expect(fake.steers).toEqual([])
+    expect(fake.answers).toEqual([])
+    expect(fake.queued).toEqual([])
+    expect(fake.deletedFollowups).toEqual([])
+    expect(useApp.getState().followups).toEqual(followups)
+    expect(useApp.getState().error).toBe("conversation is running")
+  })
+
+  it("refuses the plan without answering an ask in the target's second metadata snapshot", async () => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_other")
+    fake.probedThreads.length = 0
+    fake.threadStatuses.push({ running: false }, { running: true, awaiting_answer: true })
+    fake.startFailure = new ApiError("conversation is running", 409, "busy")
+    expect(await useApp.getState().setPlan("Inspect pending /goal", "th_old")).toBe(false)
+    expect(fake.answers).toEqual([])
+    expect(fake.steers).toEqual([])
+    expect(fake.starts).toEqual([{ id: "th_old", text: "/plan Inspect pending /goal" }])
+    expect(fake.probedThreads).toEqual(["th_old", "th_old"])
+    expect(useApp.getState().activeId).toBe("th_other")
+    expect(useApp.getState().status.running).toBe(false)
+  })
+
+  it("keeps the plan idle when its terminal stream event beats the normalized start acknowledgement", async () => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
+    let acknowledge!: (reply: Turn) => void
+    fake.acknowledgement = new Promise((resolve) => { acknowledge = resolve })
+    const sending = useApp.getState().setPlan("Inspect completed /goal")
+    await vi.waitFor(() => expect(fake.starts).toHaveLength(1))
+    const at = "2026-01-01T00:00:00.010Z"
+    fake.onEvent?.({ kind: "user_message", seq: 1, thread_id: "th_old", turn_id: "tn_plan", agent_id: "manager", text: "Inspect completed /goal", created_at: at })
+    fake.onEvent?.({ kind: "done", seq: 2, thread_id: "th_old", turn_id: "tn_plan", agent_id: "manager", created_at: at })
+    expect(useApp.getState().status.running).toBe(false)
+    acknowledge(startedPlan())
+    expect(await sending).toBe(true)
+    expect(useApp.getState().status).toMatchObject({ running: false, turn_id: "tn_plan" })
+    expect(useApp.getState().transcript.turns.map((turn) => turn.status)).toEqual(["done"])
+    expect(fake.steers).toEqual([])
+  })
+
+  it.each(["", " \n"])("keeps a bare plan command as an idle mode patch: %j", async (text) => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
+    expect(await useApp.getState().setPlan(text)).toBe(true)
+    expect(fake.patches).toEqual([{ id: "th_old", plan_mode: true }])
+    expect(fake.steers).toEqual([])
+    expect(useApp.getState().threads[0]?.plan_mode).toBe(true)
+    expect(useApp.getState().status.running).toBe(false)
+  })
+
+  it("keeps the existing plan mode refusal when a turn is already running", async () => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
+    useApp.setState({ status: { running: true } })
+    fake.patchFailure = new Error("conversation is running")
+    expect(await useApp.getState().setPlan("Inspect busy /goal")).toBe(false)
+    expect(fake.patches).toEqual([{ id: "th_old", plan_mode: true }])
+    expect(fake.steers).toEqual([])
+    expect(useApp.getState().error).toBe("conversation is running")
+    expect(useApp.getState().status.running).toBe(true)
   })
 
   it("saves an edited plan body", async () => {

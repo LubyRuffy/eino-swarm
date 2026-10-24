@@ -1,12 +1,14 @@
-import type { AgentState, Block } from "./transcript"
+import { ASK_TOOL } from "./transcript-ask"
+import type { AgentState, Block, TranscriptState } from "./transcript"
 
 /** The in-flight tool or question this call id belongs to. The returned
  *  block is a copy already written back onto the agent, so the caller can
  *  mutate it. */
-export function findToolBlock(agent: AgentState, callId?: string): Block | undefined {
+export function findToolBlock(agent: AgentState, callId?: string, turnId?: string): Block | undefined {
   const blocks = agent.blocks
   for (let i = blocks.length - 1; i >= 0; i--) {
     const b = blocks[i]
+    if (turnId && b.turnId !== turnId) continue
     if (b.kind === "question" && b.question) {
       if (callId && b.question.callId === callId) {
         const copy = { ...b, question: { ...b.question } }
@@ -48,4 +50,17 @@ export function splitToolCall(raw: string): { name: string; args: string } {
 export function summarise(text: string, max = 80): string {
   const line = text.trim().replace(/\s+/g, " ")
   return line.length > max ? `${line.slice(0, max - 1)}…` : line
+}
+
+/** The tool a result belongs to, looked up by call id after the reducer has
+ *  paired them. Used to refresh the Memory panel the moment a write lands,
+ *  rather than waiting for the review that may never come (memory off). */
+export function toolNameOf(state: TranscriptState, callId?: string): string | undefined {
+  if (!callId) return undefined
+  for (const id of state.agentOrder) {
+    for (const b of state.agents[id]?.blocks ?? []) {
+      if (b.kind === "question" && b.question?.callId === callId) return ASK_TOOL
+      if (b.kind === "tool" && b.tool?.callId === callId) return b.tool.name
+    }
+  }
 }

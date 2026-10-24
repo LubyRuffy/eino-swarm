@@ -7,6 +7,7 @@ public native UI and operating-system diagnostics. Each fault requires fresh
 private-app ownership proof and a verified bounded cleanup receipt.
 """
 import argparse
+import base64
 from datetime import datetime, timedelta
 from contextlib import contextmanager
 import fcntl
@@ -439,8 +440,33 @@ def native(context, action="snapshot", value=""):
         raise RuntimeError("native action lost its private case ownership")
     if action == "press" and context.get("native_language") == "zh":
         value = {"Send": "发送", "Attach files": "附加文件", "Conversations": "对话", "New conversation": "新对话"}.get(value, value)
-    result = subprocess.run([context["helper"], action, str(context["app_pid"]), value],
-                            capture_output=True, text=True, timeout=8)
+    try:
+        result = subprocess.run([context["helper"], action, str(context["app_pid"]), value],
+                                capture_output=True, text=True, timeout=8)
+    except subprocess.TimeoutExpired as error:
+        fault_phases.observe_restore_native(context, action, error=error)
+        if action != "choose-file":
+            raise
+        try:
+            streams = {name: base64.b64encode(raw if isinstance(raw, bytes) else (raw or "").encode()).decode()
+                       for name, raw in (("stdout_base64", error.stdout), ("stderr_base64", error.stderr))}
+            atomic_json(context["evidence"] / "native-timeout.json", dict(streams,
+                        type=type(error).__name__, action=action, case_id=context["case_id"],
+                        requested_argv=[context["helper"], action, str(context["app_pid"]), value],
+                        exception_argv=error.cmd, timeout_seconds=error.timeout,
+                        stdout_is_none=error.stdout is None, stderr_is_none=error.stderr is None))
+        except (OSError, TypeError, ValueError):
+            pass
+        raise
+    fault_phases.observe_restore_native(context, action, result=result)
+    if action == "choose-file":
+        try:
+            atomic_json(context["evidence"] / "native-result.json", dict(
+                        case_id=context["case_id"], action=action, argv=result.args,
+                        returncode=result.returncode, stdout=result.stdout, stderr=result.stderr))
+        except OSError:
+            if not result.returncode:
+                raise
     if result.returncode:
         raise OSError("native " + action + ": " + result.stderr.strip()[:1000])
     row = json.loads(result.stdout)
@@ -527,27 +553,7 @@ def context_for(manifest, timeout):
 
 
 def current_shell(context):
-    meta = api(context["origin"], "/api/meta")
-    if meta.get("data_dir") != str(context["data"]) or meta.get("mock") is not context.get("expected_mock", True):
-        raise RuntimeError("case engine changed identity")
-    lease = read_json(context["data"] / "engine.json")
-    if lease["pid"] != context["engine_pid"] or lease["url"] != context["origin"]:
-        raise RuntimeError("UI recovery replaced the engine")
-    desktops = [row for row in meta.get("clients", []) if row.get("surface") == "desktop"]
-    # Old and new presence leases can overlap briefly during a bounded handoff.
-    for row in reversed(desktops):
-        argv, marker = runner.process_identity(row["pid"])
-        if marker == context["case_id"] and argv and Path(argv[0]).is_relative_to(context["app"].parent):
-            context["app_pid"] = row["pid"]
-            try:
-                if context.get("activated_pid") != row["pid"]:
-                    native(context, "activate")
-                    context["activated_pid"] = row["pid"]
-                if native(context).get("textareas") == 1:
-                    return row["pid"]
-            except (OSError, subprocess.SubprocessError):
-                pass
-    return None
+    return fault_phases.current_shell(context, sys.modules[__name__])
 
 
 def turn_rows(context):
@@ -648,6 +654,7 @@ def draft_snapshot(context):
     key = urllib.parse.quote("thread:" + context["thread_id"], safe="")
     path = "/api/composer/drafts/" + key
     draft = api(context["origin"], path)["draft"]
+    fault_phases.observe_restore_api(context, draft)
     files = []
     for item in draft.get("files", []):
         request = urllib.request.Request(context["origin"] + path + "/files/" + item["id"])
@@ -689,39 +696,92 @@ def collect_draft(context, timeout):
     if native(context, "choose-file", str(binary)).get("chosen") is not True:
         raise RuntimeError("native file selection was not confirmed")
     wait_for(lambda: any(item["sha256"] == sha256(binary) for item in draft_snapshot(context)["files"]), Deadline(timeout))
-    atomic_json(context["evidence"] / "draft-file-selection.json", draft_snapshot(context))
-    native(context, "paste-file", str(image))
-    expected = {sha256(binary): "file", sha256(image): "image"}
+    selected = draft_snapshot(context)
+    atomic_json(context["evidence"] / "draft-file-selection.json", selected)
+    def text_identity(value):
+        if not isinstance(value, str):
+            return dict(type=type(value).__name__)
+        return dict(length=len(value),
+                    sha256=hashlib.sha256(value.encode("utf-8", "surrogatepass")).hexdigest())
+    def api_observation(row):
+        files = [dict(kind=item.get("kind"), mime=str(item.get("mime", ""))[:128], size=item.get("size"),
+                      sha256=item.get("sha256")) for item in row["files"][:2]]
+        return dict(text=text_identity(row["text"]), state=row["state"], file_count=len(row["files"]),
+                    quote_count=len(row.get("quotes", [])), files=files)
+    def native_observation(row):
+        values = row.get("values", [])
+        return dict(case_id=row.get("case_id"), pid=row.get("pid"), value_count=len(values),
+                    values=[text_identity(value) for value in values[:2]], pasted=row.get("pasted"),
+                    saved_label=any(label in row.get("text", "") for label in ("Draft saved", "草稿已保存")))
+    observation = dict(case_id=context["case_id"], stage="paste", api=api_observation(selected), native=None,
+                       api_refreshed=False, native_for_api=False, predicates={})
+    pasted = None
     def saved():
-        row = draft_snapshot(context)
-        if (row["text"] != text or row["state"] != "editing" or len(row["files"]) != 2
-                or {item["sha256"]: item["kind"] for item in row["files"]} != expected):
-            return None
-        if native(context).get("values") != [text]:
-            return None
-        return row
-    row = wait_for(saved, Deadline(timeout))
-    # Metadata alone is insufficient; the UI must also acknowledge the durable
-    # save before the rendering process is interrupted.
-    wait_for(lambda: any(label in native(context).get("text", "") for label in ("Draft saved", "草稿已保存")), Deadline(timeout))
+        observation.update(stage="saved", api_refreshed=False, native_for_api=False)
+        try:
+            row = draft_snapshot(context)
+            observation.update(api=api_observation(row), api_refreshed=True)
+            checks = dict(text=row["text"] == text, state=row["state"] == "editing",
+                          file_count=len(row["files"]) == 2,
+                          file_hash_kinds={item["sha256"]: item["kind"] for item in row["files"]} == expected,
+                          native_values=None, saved_acknowledged=None)
+            observation["predicates"] = checks
+            observation.pop("observation_error", None)
+            if not all(checks[name] for name in ("text", "state", "file_count", "file_hash_kinds")):
+                return None
+            actual = native(context)
+            observation.update(native=native_observation(actual), native_for_api=True)
+            checks["native_values"] = actual.get("values") == [text]
+            return row if checks["native_values"] else None
+        except Exception as error:
+            observation["observation_error"] = dict(type=type(error).__name__)
+            raise
+    def acknowledged():
+        observation["stage"] = "acknowledgement"
+        try:
+            actual = native(context)
+            observation.update(native=native_observation(actual), native_for_api=True)
+            observation.pop("observation_error", None)
+            matched = any(label in actual.get("text", "") for label in ("Draft saved", "草稿已保存"))
+            observation["predicates"]["saved_acknowledged"] = matched
+            return matched
+        except Exception as error:
+            observation["observation_error"] = dict(type=type(error).__name__)
+            raise
+    def flush():
+        if pasted is not None:
+            atomic_json(context["evidence"] / "draft-image-paste.json", pasted)
+        atomic_json(context["evidence"] / "draft-collection-last.json", observation)
+    try:
+        pasted = native_observation(native(context, "paste-file", str(image)))
+        expected = {sha256(binary): "file", sha256(image): "image"}
+        observation["expected_hash_kinds"] = expected
+        row = wait_for(saved, Deadline(timeout))
+        # Retain existing reads in memory and flush after the check exits;
+        # add no native input/reads, polling I/O or sleeps.
+        wait_for(acknowledged, Deadline(timeout))
+    except BaseException as error:
+        observation["error"] = dict(type=type(error).__name__, stage=observation["stage"])
+        try:
+            flush()
+        except OSError as write_error:
+            try:
+                print("WARN draft_collection_evidence_write_failed " + json.dumps(dict(case_id=context["case_id"],
+                      stage=observation["stage"], error_type=type(write_error).__name__)), file=sys.stderr)
+            except OSError:
+                pass
+        raise
+    try:
+        flush()
+    except OSError as write_error:
+        raise RuntimeError("native draft collection evidence could not be retained") from write_error
     atomic_json(context["evidence"] / "draft-before.json", row)
     return row
 
 
 def verify_draft(context, expected, timeout):
-    def restored():
-        if not current_shell(context):
-            return None
-        row = native(context)
-        if row.get("values") != [expected["text"]]:
-            return None
-        saved = draft_snapshot(context)
-        if saved != expected:
-            raise RuntimeError("recovery changed unsent text, quotes, metadata or attachment bytes")
-        if not all(item["name"] in row.get("text", "") for item in expected["files"]):
-            return None
-        return saved
-    return wait_for(restored, Deadline(timeout))
+    return fault_phases.verify_draft(context, expected, timeout, sys.modules[__name__])
+
 
 
 

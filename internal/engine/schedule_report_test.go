@@ -389,7 +389,8 @@ func TestResumeCannotRestartClosesTheScheduleRun(t *testing.T) {
 	turn := plantScheduledLeftover(t, e, th, run.ID, "")
 
 	n, err := e.ResumeOrphanedTurns()
-	if err != nil {
+	var failures *RestoreFailures
+	if !errors.As(err, &failures) || failures.Failed != 1 {
 		t.Fatalf("ResumeOrphanedTurns: %v", err)
 	}
 	if n != 0 {

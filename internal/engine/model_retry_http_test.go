@@ -124,7 +124,7 @@ func TestToolJSONGuardRecoveryKeepsSteerAndWorkerState(t *testing.T) {
 	set := buildTestToolset(t, e, thread.ID)
 	messages := append(toolJSONReplay(`{"path":"`), schema.UserMessage("[steer] Preserve this human correction."))
 	acc := newAccumulator(e, thread.ID, turn.ID, 0)
-	_, err = e.runtimeFor(thread.ID).runManager(ctx, turn, reg, acc, set, nil, messages)
+	_, err = e.runtimeFor(thread.ID).runOwnedTestManager(ctx, turn, reg, acc, set, nil, messages)
 	requests := wire.snapshot()
 	if err != nil || len(requests) != 1 {
 		t.Fatalf("one rejected replay must recover with one clean HTTP call: requests=%d err=%v", len(requests), err)

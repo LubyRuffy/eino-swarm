@@ -125,13 +125,14 @@ class SelectorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             evidence = Path(temporary)
             with mock.patch.object(fault, "require_guest"), mock.patch.object(fault.time, "time", return_value=self.now), \
-                    mock.patch.object(fault.subprocess, "run") as verify, \
+                    mock.patch.object(fault.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"", b"")) as verify, \
                     mock.patch.object(fault, "process_identity", side_effect=lambda pid: self.current["shell"] if pid == 200 else None), \
                     mock.patch.object(fault, "_pause", side_effect=inspect_receipt):
                 with fault.stall(self.boundaries, "gpu", case_id=self.case, private_app=self.app,
                                  evidence=evidence, snapshot=lambda: self.current, seconds=1) as receipt:
                     self.assertTrue(receipt["state"]["stopped"])
-                self.assertEqual(verify.call_args.args[0], ["/usr/bin/codesign", "--verify", "--strict", "-R", "anchor apple", self.paths["gpu"]])
+                self.assertEqual(verify.call_args.args[0], ["/usr/bin/codesign", "--verify", "--strict", "--ignore-resources",
+                    "--all-architectures", "-R", '=anchor apple and identifier "com.apple.WebKit.GPU"', self.paths["gpu"]])
             (evidence / fault.TARGETS).unlink()
             with mock.patch.object(fault, "require_guest"), mock.patch.object(fault.time, "time", return_value=self.now), \
                     mock.patch.object(fault.subprocess, "run", side_effect=subprocess.CalledProcessError(1, "codesign")), \

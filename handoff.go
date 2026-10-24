@@ -35,6 +35,9 @@ type WorkerToolCheckpoint struct {
 // summary. History and Inbox retain the worker's actual input, not a rewritten
 // task reconstructed from its summary.
 type WorkerCheckpoint struct {
+	Generation      int                    `json:"generation,omitempty"`
+	Collected       bool                   `json:"collected,omitempty"`
+	CloseRequested  bool                   `json:"close_requested,omitempty"`
 	ID              string                 `json:"id"`
 	Role            string                 `json:"role"`
 	Task            string                 `json:"task"`
@@ -81,9 +84,15 @@ func (r *Registry) BeginHandoff() {
 func (r *Registry) PrepareRestart(ctx context.Context) []WorkerCheckpoint {
 	r.BeginHandoff()
 	r.mu.Lock()
-	handles := make([]*Handle, 0, len(r.agents))
-	for _, h := range r.agents {
-		handles = append(handles, h)
+	handles := make([]*Handle, 0, len(r.agents)+len(r.pending))
+	seen := map[*Handle]bool{}
+	for _, pool := range []map[string]*Handle{r.agents, r.pending} {
+		for _, h := range pool {
+			if !seen[h] {
+				handles = append(handles, h)
+				seen[h] = true
+			}
+		}
 	}
 	r.mu.Unlock()
 	for _, h := range handles {
@@ -107,9 +116,15 @@ func (r *Registry) SnapshotWorkers() []WorkerCheckpoint {
 	for id, p := range r.past {
 		workers[id] = cloneWorkerCheckpoint(p.checkpoint)
 	}
-	handles := make([]*Handle, 0, len(r.agents))
-	for _, h := range r.agents {
-		handles = append(handles, h)
+	handles := make([]*Handle, 0, len(r.agents)+len(r.pending))
+	seen := map[*Handle]bool{}
+	for _, pool := range []map[string]*Handle{r.agents, r.pending} {
+		for _, h := range pool {
+			if !seen[h] {
+				handles = append(handles, h)
+				seen[h] = true
+			}
+		}
 	}
 	r.mu.Unlock()
 	for _, h := range handles {
@@ -167,6 +182,7 @@ func (h *Handle) stopForHandoff() {
 
 func (h *Handle) checkpointLocked() WorkerCheckpoint {
 	w := WorkerCheckpoint{ID: h.ID, Role: h.Role, Task: h.handoff.task,
+		Generation: h.gen, Collected: h.collected, CloseRequested: h.closeRequested,
 		Instruction: h.handoff.instruction, History: cloneMessages(h.history),
 		Inbox:           append(append([]string(nil), h.undelivered...), h.inbox...),
 		TimeoutFailures: h.timeoutFailures, Summary: h.handoff.summary,

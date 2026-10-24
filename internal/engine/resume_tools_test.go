@@ -15,7 +15,7 @@ func TestOrphanedToolCallsSkipsCallsThatAlreadyHaveAResult(t *testing.T) {
 		{Kind: swarm.NotifyToolResult.String(), ToolCallID: "c1", Text: "ok"},
 		{Kind: swarm.NotifyToolCall.String(), AgentID: swarm.DefaultManagerID, ToolCallID: "c2", Role: "manager"},
 		{Kind: swarm.NotifyToolCall.String(), AgentID: "worker-1", ToolCallID: "c3", Role: "worker"},
-		{Kind: swarm.NotifyToolResult.String(), ToolCallID: "c3", Text: "done"},
+		{Kind: swarm.NotifyToolResult.String(), AgentID: "worker-1", ToolCallID: "c3", Text: "done"},
 	})
 	if len(open) != 1 || open[0].ToolCallID != "c2" || open[0].AgentID != swarm.DefaultManagerID {
 		t.Fatalf("open=%+v", open)

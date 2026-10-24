@@ -172,6 +172,20 @@ describe("splitSessionBlocks", () => {
 })
 
 describe("goal session fold", () => {
+  it.each([false, true])("keeps completion visible outside folded work (before answer=%s)", (beforeAnswer) => {
+    const state = sessionState()
+    const blocks = state.agents.manager.blocks
+    blocks.splice(beforeAnswer ? 0 : blocks.length, 0,
+      block({ id: "complete", kind: "notice", text: "Standing objective completed.", seq: beforeAnswer ? 1 : 3 }),
+    )
+    render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+    const row = screen.getByTestId("goal-session")
+    expect(row).toHaveAttribute("aria-expanded", "false")
+    expect(screen.getByText("Standing objective completed.")).toBeVisible()
+    fireEvent.click(row)
+    expect(screen.getAllByText("Standing objective completed.")).toHaveLength(1)
+  })
+
   it("collapses a finished session behind Worked for", () => {
     render(<Transcript state={sessionState()} loaded onSelectAgent={() => {}} />)
     const row = screen.getByTestId("goal-session")

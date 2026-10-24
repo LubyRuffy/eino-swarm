@@ -88,12 +88,13 @@ func (e *Engine) restoreFollowup(f *store.Followup) {
 	}
 }
 
-// flushFollowup starts the oldest waiting message as the next turn. Only a
-// clean finish does this: Stop and errors leave the queue where it is.
+// flushFollowup starts the oldest waiting message as the next turn after a
+// completed or failed turn, handing off to explicitly queued human work.
+// Stop, cancellation and restart leave the queue where it is.
 // A late steer that already claimed the next turn gets ErrBusy; the row
 // goes back to the front so it runs after that one.
 func (rt *runtime) flushFollowup(status string) bool {
-	if status != store.TurnDone || rt.engine.restarting() {
+	if (status != store.TurnDone && status != store.TurnError) || rt.engine.restarting() {
 		return false
 	}
 	item, err := rt.engine.store.PopFollowup(rt.threadID)

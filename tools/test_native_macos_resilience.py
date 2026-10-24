@@ -295,6 +295,138 @@ class ResilienceTests(unittest.TestCase):
         self.assertEqual(len(row["files"]),2)
         self.assertEqual(resilience.read_json(self.root/"attachment-panel-ready.json")["rows"][0]["AXRole"],"AXSheet")
 
+    def test_collection_retains_last_existing_observation_without_extra_input_or_reads(self):
+        import copy
+        for mode in ("success", "ack_transient", "text", "state", "count", "hash", "kind", "native", "api_error", "native_error", "ack", "ack_error", "interrupt", "paste_error"):
+            with self.subTest(mode=mode):
+                root=self.root/mode;root.mkdir()
+                context=dict(case_id="a"*32,app_pid=7,workspace=root,evidence=root)
+                state=dict(text="",files=[],pasted=False,reads=0,snapshots=0)
+                actions=[];problem=OSError("isolated "+mode+" observation failed")
+                def native(ctx,action="snapshot",value=""):
+                    actions.append(action)
+                    if action=="fill":state["text"]=value
+                    if action=="dialogs":return dict(case_id=ctx["case_id"],pid=7,rows=[dict(AXRole="AXSheet")])
+                    if action=="choose-file":
+                        state["files"].append(dict(id="binary",name=Path(value).name,kind="file",mime="application/octet-stream",size=275,sha256=resilience.sha256(Path(value))))
+                        return dict(chosen=True)
+                    if action=="paste-file":
+                        if mode=="paste_error":raise problem
+                        state["pasted"]=True
+                        state["files"].append(dict(id="image",name=Path(value).name,kind="image",mime="image/png",size=78,sha256=resilience.sha256(Path(value))))
+                        return dict(pasted=True,pid=7,case_id=ctx["case_id"])
+                    if action=="snapshot":
+                        state["snapshots"]+=1
+                        if mode=="native_error" or (mode=="ack_error" and state["snapshots"]>1) or (mode=="ack_transient" and state["snapshots"]==2):raise problem
+                    return dict(values=["changed" if mode=="native" else state["text"]],text="" if mode=="ack" else "Draft saved")
+                def draft(ctx):
+                    row=dict(text=state["text"],quotes=[],files=copy.deepcopy(state["files"]),state="editing")
+                    if state["pasted"]:
+                        state["reads"]+=1
+                        if mode=="api_error":raise problem
+                        if mode=="text":row["text"]="changed"
+                        if mode=="state":row["state"]="sending"
+                        if mode in ("count","interrupt"):row["files"]=row["files"][:1]
+                        if mode=="hash":row["files"][1]["sha256"]="different"
+                        if mode=="kind":row["files"][1]["kind"]="file"
+                    return row
+                clock=[0.0];interrupted=KeyboardInterrupt("private interruption")
+                def sleep(seconds):
+                    if mode=="interrupt":raise interrupted
+                    clock[0]+=seconds
+                with mock.patch.object(resilience,"native",side_effect=native),mock.patch.object(resilience,"draft_snapshot",side_effect=draft), \
+                        mock.patch.object(resilience.time,"monotonic",side_effect=lambda:clock[0]), \
+                        mock.patch.object(resilience.time,"sleep",side_effect=sleep), \
+                        mock.patch.object(resilience,"atomic_json",wraps=resilience.atomic_json) as writes:
+                    if mode in ("success","ack_transient"):
+                        row=resilience.collect_draft(context,1)
+                        self.assertEqual(len(row["files"]),2)
+                    elif mode=="interrupt":
+                        with self.assertRaises(KeyboardInterrupt) as caught:resilience.collect_draft(context,1)
+                        self.assertIs(caught.exception,interrupted)
+                    elif mode=="paste_error":
+                        with self.assertRaises(OSError) as caught:resilience.collect_draft(context,1)
+                        self.assertIs(caught.exception,problem)
+                    else:
+                        with self.assertRaises(TimeoutError) as caught:resilience.collect_draft(context,1)
+                        if mode in ("api_error","native_error","ack_error"):self.assertIs(caught.exception.__cause__,problem)
+                self.assertEqual(actions[:5],["fill","press","dialogs","choose-file","paste-file"])
+                self.assertEqual(actions.count("paste-file"),1)
+                self.assertEqual(actions[5:],["snapshot"]*state["snapshots"])
+                if mode in ("text","state","count","hash","kind","api_error","interrupt","paste_error"):
+                    self.assertEqual(state["snapshots"],0)
+                elif mode in ("success","ack_transient"):self.assertEqual(state["snapshots"],3 if mode=="ack_transient" else 2)
+                elif mode in ("ack","ack_error"):self.assertGreater(state["snapshots"],1);self.assertEqual(state["reads"],1)
+                else:self.assertEqual(state["snapshots"],state["reads"])
+                observed=resilience.read_json(root/"draft-collection-last.json")
+                self.assertEqual(observed["case_id"],context["case_id"])
+                self.assertEqual(observed["api"]["text"]["sha256"],resilience.hashlib.sha256(("changed" if mode=="text" else state["text"]).encode()).hexdigest())
+                if mode in ("success","ack_transient"):
+                    self.assertNotIn("observation_error",observed)
+                    self.assertTrue(all(observed["predicates"].values()))
+                    self.assertNotIn("error",observed)
+                else:
+                    self.assertEqual(observed["error"]["type"],"OSError" if mode=="paste_error" else "KeyboardInterrupt" if mode=="interrupt" else "TimeoutError")
+                    self.assertEqual(observed["error"]["stage"],"paste" if mode=="paste_error" else "acknowledgement" if mode in ("ack","ack_error") else "saved")
+                if mode in ("api_error","native_error","ack_error"):
+                    self.assertEqual(observed["observation_error"],dict(type="OSError"))
+                if mode in ("text","state","count","hash","kind"):
+                    key={"text":"text","state":"state","count":"file_count","hash":"file_hash_kinds","kind":"file_hash_kinds"}[mode]
+                    self.assertFalse(observed["predicates"][key]);self.assertIsNone(observed["native"])
+                if mode=="native":self.assertFalse(observed["predicates"]["native_values"])
+                if mode=="ack":self.assertFalse(observed["predicates"]["saved_acknowledged"])
+                if mode in ("api_error","interrupt"):self.assertEqual(observed["api"]["file_count"],1)
+                if mode!="paste_error":
+                    self.assertTrue(resilience.read_json(root/"draft-image-paste.json")["pasted"])
+                self.assertEqual(sorted(path.name for path in root.glob("draft-collection*")),["draft-collection-last.json"])
+                self.assertLess((root/"draft-collection-last.json").stat().st_size,4096)
+                self.assertNotIn("Unsent recovery input",(root/"draft-collection-last.json").read_text())
+                self.assertNotIn("changed",(root/"draft-collection-last.json").read_text())
+                self.assertEqual(sum(Path(call.args[0]).name=="draft-collection-last.json" for call in writes.call_args_list),1)
+
+    def test_collection_write_failure_keeps_original_exception_and_success_fails_closed(self):
+        import io
+        from itertools import product
+        class UnwritableStderr(io.StringIO):
+            def write(self,value):raise OSError("private stderr detail")
+        original_write=resilience.atomic_json
+        for kind,target,broken_warning in product(("success", "timeout", "api", "interrupt"),
+                ("draft-image-paste.json", "draft-collection-last.json"),(False,True)):
+            with self.subTest(kind=kind,target=target,broken_warning=broken_warning):
+                root=self.root/(kind+target+str(broken_warning));root.mkdir()
+                context=dict(case_id="a"*32,app_pid=7,workspace=root,evidence=root)
+                state=dict(text="",files=[],waits=0);failed=[];stderr=UnwritableStderr() if broken_warning else io.StringIO()
+                problem={"timeout":TimeoutError,"api":OSError,"interrupt":KeyboardInterrupt}.get(kind,RuntimeError)("private business detail")
+                cause=ValueError("original upstream cause");problem.__cause__=cause
+                write_error=OSError("private write detail")
+                def native(ctx,action="snapshot",value=""):
+                    if action=="fill":state["text"]=value
+                    if action=="dialogs":return dict(case_id=ctx["case_id"],pid=7,rows=[dict(AXRole="AXSheet")])
+                    if action in ("choose-file","paste-file"):
+                        state["files"].append(dict(kind="file" if action=="choose-file" else "image",sha256=resilience.sha256(Path(value))))
+                        return dict(chosen=True,pasted=True)
+                    return dict(values=[state["text"]],text="Draft saved")
+                def draft(ctx):return dict(text=state["text"],state="editing",files=list(state["files"]))
+                def wait(check,deadline):
+                    state["waits"]+=1;value=check()
+                    if state["waits"]==3 and kind!="success":raise problem
+                    return value
+                def write(path,value):
+                    if Path(path).name==target:failed.append(path);raise write_error
+                    return original_write(path,value)
+                with mock.patch.object(resilience,"native",side_effect=native),mock.patch.object(resilience,"draft_snapshot",side_effect=draft), \
+                        mock.patch.object(resilience,"wait_for",side_effect=wait),mock.patch.object(resilience,"atomic_json",side_effect=write), \
+                        mock.patch.object(resilience.sys,"stderr",stderr):
+                    if kind=="success":
+                        with self.assertRaisesRegex(RuntimeError,"evidence") as caught:resilience.collect_draft(context,5)
+                        self.assertIs(caught.exception.__cause__,write_error)
+                    else:
+                        with self.assertRaises(type(problem)) as caught:resilience.collect_draft(context,5)
+                        self.assertIs(caught.exception,problem);self.assertIs(caught.exception.__cause__,cause)
+                        if not broken_warning:self.assertIn("WARN draft_collection_evidence_write_failed",stderr.getvalue())
+                self.assertEqual(len(failed),1)
+                self.assertNotIn("private business detail",stderr.getvalue());self.assertNotIn("private write detail",stderr.getvalue())
+
     def test_native_attachment_send_matches_uploaded_bytes_notice_and_actual_vision_input(self):
         import hashlib
         binary, image = b"unchanged attachment", resilience.fixture_png()

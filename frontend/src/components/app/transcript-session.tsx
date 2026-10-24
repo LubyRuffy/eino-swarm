@@ -123,9 +123,8 @@ export function GoalSessionTurn({
   )
 }
 
-/** User / steer stay visible. A cap / idle / block notice after the work
- *  stays visible too: folding it behind Worked-for made a budget pause look
- *  like the turn crashed. */
+/** User / steer and goal completion stay visible when the work folds.
+ *  A cap / idle / block notice after the work also stays actionable. */
 export function splitSessionBlocks(blocks: Block[]): {
   leading: Block[]
   work: Block[]
@@ -140,7 +139,7 @@ export function splitSessionBlocks(blocks: Block[]): {
   const trailing: Block[] = []
   const work: Block[] = []
   for (const b of rest) {
-    if (b.kind === "notice" && isArmedWaitNotice(b.text)) trailing.push(b)
+    if (b.kind === "notice" && (isArmedWaitNotice(b.text) || b.text?.trim() === "Standing objective completed.")) trailing.push(b)
     else work.push(b)
   }
   const holds: Block[] = []

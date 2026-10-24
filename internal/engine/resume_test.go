@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -254,7 +255,8 @@ func TestResumeOrphanedTurnsClosesATurnItCannotRestart(t *testing.T) {
 	turn := plantUnfinishedTurn(t, e, th.ID, "")
 
 	n, err := e.ResumeOrphanedTurns()
-	if err != nil {
+	var failures *RestoreFailures
+	if !errors.As(err, &failures) || failures.Failed != 1 {
 		t.Fatalf("ResumeOrphanedTurns: %v", err)
 	}
 	if n != 0 {
@@ -296,7 +298,8 @@ func TestResumeOrphanedTurnsClosesATurnWithNoProvider(t *testing.T) {
 	}
 
 	n, err := e.ResumeOrphanedTurns()
-	if err != nil {
+	var failures *RestoreFailures
+	if !errors.As(err, &failures) || failures.Failed != 1 {
 		t.Fatal(err)
 	}
 	if n != 0 {
@@ -347,7 +350,8 @@ func TestResumeOrphanedTurnsClosesATurnWhoseConversationIsGone(t *testing.T) {
 		t.Fatal(err)
 	}
 	n, err := e.ResumeOrphanedTurns()
-	if err != nil {
+	var failures *RestoreFailures
+	if !errors.As(err, &failures) || failures.Failed != 1 {
 		t.Fatal(err)
 	}
 	if n != 0 {
@@ -513,7 +517,16 @@ func TestReplayHistoryIncludesOnScreenAnswerBeforeTurnEnds(t *testing.T) {
 	if _, err := e.StartTurn(th.ID, "a request still being answered"); err != nil {
 		t.Fatal(err)
 	}
-	answer := waitLive(t, sub, swarm.NotifyAgentMessage.String(), 15*time.Second)
+	// Worker activity remains live while the manager's prose is admitted.
+	// Only a manager answer belongs in the manager's replay at this boundary.
+	deadline := time.Now().Add(15 * time.Second)
+	var answer store.Event
+	for {
+		answer = waitLive(t, sub, swarm.NotifyAgentMessage.String(), time.Until(deadline))
+		if isManagerAgent(answer.AgentID) {
+			break
+		}
+	}
 	if strings.TrimSpace(answer.Text) == "" {
 		t.Fatal("the live answer was empty")
 	}
