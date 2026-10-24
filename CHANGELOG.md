@@ -59,6 +59,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430`, `C-010`: align the phone package and derived development iOS settings
+  with the allocated, unpublished `0.1.38` source batch. TestFlight archives keep
+  their independently selected marketing version; publication remains gated.
+
 - `F-110`, `C-001`, `C-027`: running and parked startup recovery failures now
   both produce failed Trace receipts and a typed `RestoreFailures` aggregate,
   while independent conversations continue. `ResumeOrphanedTurns` returns its
