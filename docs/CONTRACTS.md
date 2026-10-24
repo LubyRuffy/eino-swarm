@@ -411,6 +411,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
   - 已授权的恢复须区分登录输入 actor 与有限防休眠 owner：前者在 App 动作前退出，后者在原 case 锁和未清理 latch 下登记到原进程清单，直至实际 scenario 直属子进程的新鲜同 birth 三类断言确认接管，再终止并回收；任何失败由原清理接管，仍存活则不得发布 cleanup true。经真实 runner 的准备失败三参 fallback、坏／部分／异主 ACK、取消和 false latch 回归，不新增时限、脉冲或系统设置。此规则不代表额外公共 CLI 模式或应用验收通过。
   - 自有防休眠进程、有效 power assertions 或 App active 均不能证明来宾持续未锁；缺失锁定字段仍为 unknown。运行中锁定保留同例 PID／birth／poll、精确自有断言及有界会话事件时间线，不将合成输入称为物理键鼠，不以邻近事件推断锁因或放宽原窗口／行为／清理验收。来源：Issue #105 原生复验。
   - `cleanup.json` 记录用例身份、清理完成状态、剩余进程和数据删除结果。日志、断言、截图及版本/源码/安装包证据保留在临时数据外。
+  - 内部 campaign `execute(args, action, *, admission=None)` 的可选 admission 在真实取得该证据目录的 `driver.lock` 后、首次写 owner 前运行；检查失败以抛出异常拒绝，返回值不作为准入判定；拒绝时不调用 action、不写 owner／driver-exit，并关闭本次锁。需要旧 claim／owner／terminal 拒绝策略的调用方必须在该持锁 hook 内重核；锁前检查不能证明 once。默认未传 hook 的 full6 launch／resume 策略不变。busy、admission 拒绝／中断、owner 写失败、action／terminal 失败均关闭自身锁，保留原返回／异常语义，不操作其他进程。证据：`tools/native_macos_resilience_control.py`、`tools/test_native_macos_driver_admission.py`、`tools/test_native_macos_resilience_control.py`；变更类型：Added，QA 内部准入 API；来源：Issue #94。
   - 日常 native 回归在来宾和候选就绪后以整轮 60 秒为成功预算，包含准备、启动、行为断言、证据及清理；runner 的 `--budget` 默认 60 秒，场景 `--timeout` 不能另起一个脱离总预算的时钟。耗尽场景可用预算后不得再启动进程。总耗时越界不能返回成功，但必须继续清理并保留超时和清理结果。
   - 冷构建、首次传输和刻意长时恢复另列耗时与显式预算，不冒充一分钟回归。复用已准备候选不允许复用用例数据。快速场景必须保留原生窗口内容、截图及真实离线 worker/tool/Trace 断言；只有 HTTP 或进程证据时不得验收原生行为。
   - 快速场景的 AX helper 在候选准备阶段编译并记录源码、构建参数及二进制哈希，计时场景拒绝缺失／过期收据，不以冷编译延长周期。输入前核对本例 PID 和 WebView origin／desktop shell／PID，输入完整读回且唯一 Send 可用后才发送；截图必须来自本例 PID 的窗口。

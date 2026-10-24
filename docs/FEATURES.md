@@ -286,6 +286,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
+- 原生 campaign 控制模块为内部调用方提供可选持锁 admission：真实取得本 campaign 的 `driver.lock` 后、首次写 owner 前运行；检查失败必须抛出异常，返回值不参与准入判定，拒绝不调用场景或改写 owner／terminal，所有退出路径关闭本次锁。旧记录拒绝策略只约束显式使用该 hook 的调用方，默认 full6 launch／resume 行为不变。关联契约：`C-031`；实现／验证：`tools/native_macos_resilience_control.py`、`tools/test_native_macos_driver_admission.py`、`tools/test_native_macos_resilience_control.py`；来源：Issue #94。
+
 - 原生恢复的每次 `verify_draft` 草稿恢复检查保留首个不成立观察和最后观察，区分 false、未知错误及未读取；只记录原调用已有值的类型、摘要和匹配判定，不复制正文或增加输入／请求。退出采证不得覆盖原异常，成功缺必要收据仍拒绝。关联契约：`C-031`、`C-034`；实现／验证：`tools/native_macos_resilience.py`、`tools/native_macos_resilience_phases.py`、`tools/test_native_macos_restore_observation.py`；来源：Issue #94。
 
 - 离线恢复 proof 准备逐项尝试保留原命令输出与退出／超时收据；写证失败不能覆盖原退出／超时，次级失败仅以文件名、操作、错误类型和 errno 留在异常属性与 stderr JSON 中，stderr 再失败仍保首因。命令成功但必要证据写入失败仍拒绝，不生成 proof。关联契约：`C-031`；实现／验证：`tools/native_macos_recovery_identity.py`、`tools/test_native_macos_recovery_identity.py`；来源：Issue #94。

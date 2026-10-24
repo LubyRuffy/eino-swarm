@@ -58,6 +58,14 @@ co-working app built on it. The library API is unchanged except where noted
   Original failures and future wakes remain intact; an empty queue, Stop,
   cancellation and restart do not trigger an extra turn (Issue #86).
 
+- `F-430`, `C-031`: add an opt-in native QA campaign admission callback under
+  the actual driver lock, before owner/exit receipts can be replaced. Checks
+  refuse by raising an exception; callback return values do not decide admission. Refusal
+  preserves earlier records; busy, admission, owner-write and action/exit paths
+  close their own lock. Two-process races and real filesystem failures regress
+  this internal boundary; default full6 launch/resume policy is unchanged
+  (Issue #94).
+
 - `F-430`, `C-031`: native QA file-panel traversal requests a fixed five-attribute
   batch per distinct scanned node, retaining complete graph/unique Open checks
   and the existing visit, depth and eight-second bounds. Top-level success does

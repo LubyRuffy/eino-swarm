@@ -782,6 +782,15 @@ workspace bytes, draft/Send checks, visible-result requirements and PNG pixel
 completeness. Offline checks and helper compilation do not prove guest
 Accessibility access or native rendering.
 
+A native helper's `submitted=true` or successful `AXPress` confirms only that
+its action was posted; its returned AX tree may precede that action. For queued
+messages, send once, await the exact durable follow-up ID/thread/text prefix
+and an empty composer, then send the next message. Keep those acknowledgement
+observations inside the existing case deadline; reject duplicate or foreign
+rows and never resend an unacknowledged message. Preserve the initial failure.
+The real HTTP queue checks in `frontend/e2e/api-error.spec.ts` show the durable
+boundary; a helper return or immediate single GET cannot replace it.
+
 ## Desktop renderer resilience (F-115 / C-034)
 
 Incident evidence and the upstream-cause uncertainty are recorded in
@@ -920,6 +929,18 @@ checks ZIP/plist/API version and clean embedded Git revision; a claimed or unkno
 stage is not passed and cannot be blindly repeated. Use the driver's detached
 launch/cancel commands for a campaign longer than its control-channel lifetime;
 retain campaign PID/birth identity and wait for cancellation cleanup.
+The internal `control.execute(args, action, *, admission=None)` API can run an
+explicit admission check while holding that campaign’s actual `driver.lock`,
+before replacing owner/exit receipts. The callback must raise an exception to
+refuse; its return value is ignored. Only callers supplying the callback gain
+its refusal policy; default full6 launch/resume behavior is unchanged.
+`tools/test_native_macos_driver_admission.py` synchronizes two real owned
+processes at the victim’s execute call frame: an older driver completes before
+lock acquisition, and the callback must preserve its exact owner/terminal or
+broken links without publishing a case. Independent file descriptors prove
+lock ownership during admission and release after refusal; default returns,
+interrupts, busy locks and real owner/terminal EISDIR failures are also checked.
+These are HOST metadata/ownership tests, not native behavior acceptance.
 The frozen manifest includes the package, source, executable, runner, native
 helper and all scenario-module hashes. Stages recheck these inputs and their
 whole-case budgets, including cleanup; a zero scenario exit with an exceeded
