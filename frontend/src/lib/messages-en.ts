@@ -7,6 +7,8 @@ import { agentFailureEn } from "./messages-agent-failure-en"
  *  Agent replies and protocol markers (quoted-send wrappers) stay English. */
 export const en = {
   ...draftEN,
+  "startup.failed": "{failed} conversations could not be restored. Check Trace or logs.",
+  "startup.restoring": "Restoring unfinished tasks {completed}/{total}",
   ...generationEn,
   "image.pasted": "Pasted image",
   "image.enlarge": "Enlarge {name}",

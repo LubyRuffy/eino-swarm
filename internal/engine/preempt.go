@@ -308,11 +308,11 @@ func retractedSteerCaptionsFrom(events []store.Event) map[string]struct{} {
 	return out
 }
 
-func (e *Engine) unreadSteerMessages(turn *store.Turn) []*schema.Message {
+func (e *Engine) unreadSteerMessages(turn *store.Turn, snapshots ...*restoreSnapshot) []*schema.Message {
 	if e == nil || turn == nil {
 		return nil
 	}
-	events, err := e.store.ListTurnEvents(turn.ID)
+	events, err := e.restoreTurnEvents(turn.ID, snapshots...)
 	if err != nil {
 		return nil
 	}

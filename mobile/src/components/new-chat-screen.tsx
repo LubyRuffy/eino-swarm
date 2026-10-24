@@ -25,6 +25,7 @@ export function NewChatScreen({
   refreshBusy,
   refreshError,
   pending,
+  restoring,
   onSelectHost,
   onBack,
   onStart,
@@ -42,6 +43,7 @@ export function NewChatScreen({
   refreshBusy?: boolean
   refreshError?: string
   pending?: boolean
+  restoring?: boolean
   onSelectHost: (fingerprint: string) => void
   onBack: () => void
   onStart: (text: string, projectId: string, extra?: ComposerExtra) => void
@@ -102,7 +104,7 @@ export function NewChatScreen({
       <Composer
         label={t("home.newMessage")}
         sendLabel={t("home.start")}
-        disabled={!connected}
+        disabled={!connected || restoring}
         pending={pending}
         hint={connecting ? t("scan.connecting") : undefined}
         models={models}

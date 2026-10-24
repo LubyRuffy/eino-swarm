@@ -477,3 +477,32 @@ describe("activeWake", () => {
     ).toEqual(new Set(["th_old", "th_listed"]))
   })
 })
+
+
+describe("engine restoration schedule admission", () => {
+  it("does not mutate schedules or paint Run now working while restoration is pending", async () => {
+    useApp.setState({ meta: { startup: "restoring" } as import("@/lib/types").Meta })
+    const state = useApp.getState()
+    await state.createSchedule({ prompt: "Perform an independent check.", every_s: 60 })
+    await state.patchSchedule("sch_1", { status: "paused" })
+    await state.deleteSchedule("sch_1")
+    await state.runScheduleNow("sch_1")
+    expect(fake.created).toEqual([])
+    expect(fake.patched).toEqual([])
+    expect(fake.deleted).toEqual([])
+    expect(fake.ran).toEqual([])
+    expect(useApp.getState().status.running).toBe(false)
+    useApp.setState({ meta: undefined })
+  })
+})
+
+
+it("returns an explicit schedule creation acknowledgement and retains a refused draft", async () => {
+  const action = useApp.getState().createSchedule
+  const body = { prompt: "Inspect the operation.", every_s: 60 }
+  expect(await action(body)).toBe(true)
+  useApp.setState({ meta: { startup: "restoring" } as import("@/lib/types").Meta })
+  expect(await action(body)).toBe(false)
+  expect(fake.created).toHaveLength(1)
+  useApp.setState({ meta: undefined })
+})

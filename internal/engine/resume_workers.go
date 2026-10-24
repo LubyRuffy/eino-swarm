@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -51,11 +52,11 @@ func (rt *runtime) takeWorkerRestore() ([]swarm.RestoredWorker, []swarm.Finished
 	return running, finished
 }
 
-func (e *Engine) workersFromTurn(turn *store.Turn) ([]swarm.RestoredWorker, []swarm.FinishedWorker) {
+func (e *Engine) workersFromTurn(turn *store.Turn, snapshots ...*restoreSnapshot) ([]swarm.RestoredWorker, []swarm.FinishedWorker) {
 	if turn == nil {
 		return nil, nil
 	}
-	events, err := e.store.ListTurnEvents(turn.ID)
+	events, err := e.restoreTurnEvents(turn.ID, snapshots...)
 	if err != nil {
 		return nil, nil
 	}
@@ -66,21 +67,23 @@ func (e *Engine) workersFromTurn(turn *store.Turn) ([]swarm.RestoredWorker, []sw
 // results, and a new registry after a process death has none of the ids.
 // Conversation events still know who was live. A /goal continuation that
 // only looked at the new empty turn made wait_agents report unknown.
-func (e *Engine) workersFromThread(threadID string) ([]swarm.RestoredWorker, []swarm.FinishedWorker) {
-	running, finished, _ := e.readWorkersFromThread(threadID)
+func (e *Engine) workersFromThread(threadID string, snapshots ...*restoreSnapshot) ([]swarm.RestoredWorker, []swarm.FinishedWorker) {
+	running, finished, _ := e.readWorkersFromThread(threadID, snapshots...)
 	return running, finished
 }
 
-func (e *Engine) readWorkersFromThread(threadID string) ([]swarm.RestoredWorker, []swarm.FinishedWorker, error) {
+func (e *Engine) readWorkersFromThread(threadID string, snapshots ...*restoreSnapshot) ([]swarm.RestoredWorker, []swarm.FinishedWorker, error) {
 	if e == nil || e.store == nil || strings.TrimSpace(threadID) == "" {
 		return nil, nil, nil
 	}
-	events, err := e.store.ListEvents(threadID, 0, 0)
+	if s := firstRestore(snapshots); s != nil && s.threadID == threadID {
+		return s.running, s.finished, nil
+	}
+	s, err := e.loadRestoreSnapshot(context.Background(), threadID)
 	if err != nil {
 		return nil, nil, err
 	}
-	running, finished := orphanedWorkers(events)
-	return running, finished, nil
+	return s.running, s.finished, nil
 }
 
 // attachLeftoverWorkers plants leftover ids on a fresh registry and, when
@@ -137,7 +140,12 @@ type workerSlot struct {
 	inbox                          []string
 }
 
-func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, finished []swarm.FinishedWorker) {
+func orphanedWorkers(events []store.Event) ([]swarm.RestoredWorker, []swarm.FinishedWorker) {
+	checkpoint, index := latestRestartCheckpoint(events)
+	return orphanedWorkersFromCheckpoint(events, checkpoint, index)
+}
+
+func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartCheckpoint, index int) (running []swarm.RestoredWorker, finished []swarm.FinishedWorker) {
 	byID := map[string]*workerSlot{}
 	order := make([]string, 0)
 	note := func(id string) *workerSlot {
@@ -149,7 +157,7 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 		}
 		return s
 	}
-	if checkpoint, index := latestRestartCheckpoint(events); checkpoint != nil {
+	if checkpoint != nil {
 		for _, w := range checkpoint.Workers {
 			s := note(w.ID)
 			s.role, s.instruction, s.spawned, s.running = w.Role, w.Instruction, true, !w.Finished
@@ -305,22 +313,25 @@ func isSteerUser(m adk.Message) bool {
 	return m != nil && m.Role == schema.User && strings.HasPrefix(userMessageText(m), "[steer]")
 }
 
-func (e *Engine) resumeConversation(turn *store.Turn) ([]adk.Message, error) {
-	prior, err := e.replayHistorySkipping(turn.ThreadID, turn.ID)
+func (e *Engine) resumeConversation(turn *store.Turn, snapshots ...*restoreSnapshot) ([]adk.Message, error) {
+	events, err := e.restoreTurnEvents(turn.ID, snapshots...)
 	if err != nil {
 		return nil, err
 	}
-	live, err := e.thisTurnMessages(turn)
-	if err != nil {
-		return nil, err
-	}
-	if events, err := e.store.ListTurnEvents(turn.ID); err == nil {
-		if checkpoint, index := latestRestartCheckpoint(events); checkpoint != nil && len(checkpoint.ManagerHistory) > 0 {
-			prior = nil
-			live = checkpointManagerMessages(checkpoint, events, index)
+	var prior, live []adk.Message
+	if checkpoint, index := checkpointFromRestoreEvents(events, snapshots); checkpoint != nil && len(checkpoint.ManagerHistory) > 0 {
+		live = checkpointManagerMessages(checkpoint, events, index)
+	} else {
+		prior, err = e.replayHistorySkipping(turn.ThreadID, turn.ID)
+		if err != nil {
+			return nil, err
+		}
+		live, err = e.thisTurnMessages(turn, snapshots...)
+		if err != nil {
+			return nil, err
 		}
 	}
-	running, finished := e.workersFromThread(turn.ThreadID)
+	running, finished := e.workersFromThread(turn.ThreadID, snapshots...)
 	live = sealTrailingIncompleteToolCalls(live, running, finished)
 	combined := append(prior, live...)
 	text := strings.TrimSpace(turn.UserText)
@@ -331,7 +342,7 @@ func (e *Engine) resumeConversation(turn *store.Turn) ([]adk.Message, error) {
 	// not look like newly executed spawn calls after a restart.
 	combined = appendWorkerRoster(combined, running, finished)
 	msgs := resumeMessages(combined, text)
-	if events, err := e.store.ListTurnEvents(turn.ID); err == nil {
+	if events, err := e.restoreTurnEvents(turn.ID, snapshots...); err == nil {
 		for _, call := range orphanedToolCalls(events) {
 			name := toolCallName(call.Text)
 			if name != waitAgentsToolName && name != ToolAskUser {
@@ -342,7 +353,7 @@ func (e *Engine) resumeConversation(turn *store.Turn) ([]adk.Message, error) {
 	if len(running) > 0 && !hasUserContent(msgs, resumeWorkersCue) {
 		msgs = append(msgs, schema.UserMessage(resumeWorkersCue))
 	}
-	return e.appendInterruptedWorkerCue(turn.ThreadID, msgs), nil
+	return e.appendInterruptedWorkerCue(turn.ThreadID, msgs, snapshots...), nil
 }
 
 func hasUserContent(msgs []adk.Message, text string) bool {
@@ -354,7 +365,7 @@ func hasUserContent(msgs []adk.Message, text string) bool {
 	return false
 }
 
-func (e *Engine) thisTurnMessages(turn *store.Turn) ([]adk.Message, error) {
+func (e *Engine) thisTurnMessages(turn *store.Turn, snapshots ...*restoreSnapshot) ([]adk.Message, error) {
 	rows, err := e.store.ListMessages(turn.ThreadID)
 	if err != nil {
 		return nil, err
@@ -363,7 +374,7 @@ func (e *Engine) thisTurnMessages(turn *store.Turn) ([]adk.Message, error) {
 	out := make([]adk.Message, 0, len(rows))
 	seen := map[string]struct{}{}
 	hasTools := false
-	events, evErr := e.store.ListTurnEvents(turn.ID)
+	events, evErr := e.restoreTurnEvents(turn.ID, snapshots...)
 	retracted := retractedSteerSeqs(events)
 	captions := retractedSteerCaptionsFrom(events)
 	for _, r := range rows {

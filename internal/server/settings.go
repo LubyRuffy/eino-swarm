@@ -19,21 +19,24 @@ type fileEntryAlias = engine.FileEntry
 // whether setup is still needed, which shell it is in, and what this build can
 // do.
 type metaView struct {
-	Version         string             `json:"version"`
-	Mode            string             `json:"mode"`
-	Mock            bool               `json:"mock"`
-	Configured      bool               `json:"configured"`
-	DefaultProvider string             `json:"default_provider"`
-	ReasoningLevels []string           `json:"reasoning_levels"`
-	DataDir         string             `json:"data_dir"`
-	Capabilities    map[string]bool    `json:"capabilities"`
-	Swarm           config.SwarmConfig `json:"swarm"`
-	Locale          string             `json:"locale"`
-	UI              config.UIConfig    `json:"ui"`
-	Clients         []PresenceClient   `json:"clients"`
+	Startup         string                 `json:"startup"`
+	Restore         engine.RestoreProgress `json:"restore"`
+	Version         string                 `json:"version"`
+	Mode            string                 `json:"mode"`
+	Mock            bool                   `json:"mock"`
+	Configured      bool                   `json:"configured"`
+	DefaultProvider string                 `json:"default_provider"`
+	ReasoningLevels []string               `json:"reasoning_levels"`
+	DataDir         string                 `json:"data_dir"`
+	Capabilities    map[string]bool        `json:"capabilities"`
+	Swarm           config.SwarmConfig     `json:"swarm"`
+	Locale          string                 `json:"locale"`
+	UI              config.UIConfig        `json:"ui"`
+	Clients         []PresenceClient       `json:"clients"`
 }
 
 func (s *Server) getMeta(c *gin.Context) {
+	startup, progress := s.engine.StartupStatus()
 	cfg := s.engine.Config().Snapshot()
 	pool := s.engine.Providers()
 	clients := s.Clients()
@@ -41,6 +44,7 @@ func (s *Server) getMeta(c *gin.Context) {
 		clients = []PresenceClient{}
 	}
 	c.JSON(http.StatusOK, metaView{
+		Startup: startup, Restore: progress,
 		Version:         s.opts.Version,
 		Mode:            s.opts.Mode,
 		Mock:            pool.IsMock(),

@@ -44,6 +44,7 @@ export type CompactBlock = {
 }
 
 export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlock[] {
+  if (ev.kind === "engine_restore") return blocks
   if (ev.kind === "resumed" || ev.kind === "restart_resumed") {
     const owners = [...new Set(blocks.map((b) => b.agentId))]
     let next = blocks.slice()

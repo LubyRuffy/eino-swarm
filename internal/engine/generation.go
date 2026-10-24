@@ -155,7 +155,7 @@ func (a *accumulator) generation(n swarm.Notification) {
 
 // A missing terminal receipt proves an unfinished generation, but a vanished
 // process cannot tell us whether it crashed, was killed or lost power.
-func (e *Engine) interruptOrphanedGenerations(threadID string, handoff bool) {
+func (e *Engine) interruptOrphanedGenerations(threadID string, handoff bool, snapshots ...*restoreSnapshot) {
 	e.generations.Lock()
 	defer e.generations.Unlock()
 	log := e.generationLog(threadID)
@@ -163,7 +163,7 @@ func (e *Engine) interruptOrphanedGenerations(threadID string, handoff bool) {
 		return
 	}
 	for _, origin := range log.open {
-		body := e.generationExitCause(origin, "pending", handoff)
+		body := e.generationExitCause(origin, "pending", handoff, snapshots...)
 		origin.ID, origin.Seq = 0, 0
 		origin.Kind, origin.Text = "generation_interrupted", generationBody(body)
 		if e.recordGeneration(&origin) {
@@ -190,7 +190,7 @@ func (e *Engine) recordGeneration(ev *store.Event) bool {
 
 // Stop and unavailable ownership are not pending recovery. Keep the original
 // output's cause when a planned restart was recorded before restoration failed.
-func (e *Engine) stopOrphanedGenerations(threadID string, human bool) {
+func (e *Engine) stopOrphanedGenerations(threadID string, human bool, snapshots ...*restoreSnapshot) {
 	e.generations.Lock()
 	defer e.generations.Unlock()
 	log := e.generationLog(threadID)
@@ -198,7 +198,7 @@ func (e *Engine) stopOrphanedGenerations(threadID string, human bool) {
 		return
 	}
 	for _, origin := range log.open {
-		body := e.generationExitCause(origin, "none", true)
+		body := e.generationExitCause(origin, "none", true, snapshots...)
 		if human {
 			body.Reason, body.Detail = "cancelled", "Generation stopped after a recorded human interruption."
 		}
@@ -222,9 +222,15 @@ func (e *Engine) stopOrphanedGenerations(threadID string, human bool) {
 	}
 }
 
-func (e *Engine) generationExitCause(origin store.Event, recovery string, handoff bool) swarm.GenerationInterruption {
+func (e *Engine) generationExitCause(origin store.Event, recovery string, handoff bool, snapshots ...*restoreSnapshot) swarm.GenerationInterruption {
 	body := swarm.GenerationInterruption{Reason: "process_exit", Detail: "The previous process exited; the specific cause was not recorded.", Recovery: recovery}
 	if handoff {
+		if s := firstRestore(snapshots); s != nil {
+			if s.checkpointEvent != nil && s.checkpointEvent.Seq > origin.Seq {
+				body.Reason, body.Detail = "engine_restart", "Generation stopped during the recorded engine restart handoff."
+			}
+			return body
+		}
 		checkpoints, err := e.store.ListEventsOfKind(origin.ThreadID, KindRestartCheckpoint, origin.Seq, 1)
 		if err == nil && len(checkpoints) > 0 {
 			body.Reason, body.Detail = "engine_restart", "Generation stopped during the recorded engine restart handoff."

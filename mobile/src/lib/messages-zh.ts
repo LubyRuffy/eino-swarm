@@ -2,6 +2,8 @@ import { generationZh } from "./messages-generation"
 import type { MessageKey } from "./messages-en"
 
 export const zh: Record<MessageKey, string> = {
+  "startup.failed": "有 {failed} 个会话恢复失败，请查看 Trace 或日志。",
+  "startup.restoring": "正在恢复未完成任务 {completed}/{total}",
   ...generationZh,
   "pcTimeouts.title": "电脑超时",
   "pcTimeouts.scope": "仅此电脑。首包等待与流空闲等待独立计时。保存后用于新的模型调用和新的子 Agent；不会修改运行中任务或恢复已暂停任务。",

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 
+import { EngineStartupBanner } from "@/components/app/engine-startup"
 import { DesktopUpdateBanner } from "@/components/app/desktop-update"
 import {
   AppHeader,
@@ -387,6 +388,7 @@ function AppShell() {
           />
 
         <main className="flex min-w-0 flex-1 flex-col">
+          <EngineStartupBanner />
           <DesktopUpdateBanner />
           <ConfiguredBanner onConfigure={() => openSettings("models")} />
           <ErrorBanner />
@@ -755,6 +757,8 @@ function AppComposer({
       onUpload={upload}
       onRefreshModels={() => refreshCatalogs()}
       onEditProviders={onEditProviders}
+      restoring={meta?.startup === "restoring"}
+      canStopWhileRestoring={Boolean(activeId) && !locked}
       disabled={locked || creatingThread}
       prefill={prefill}
       prefillToken={prefillToken}

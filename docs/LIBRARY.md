@@ -343,6 +343,12 @@ go test -race ./...
 
 ## Bounded process handoff
 
+`Registry.HandoffProgress()` returns `Total`, `Settled` and sorted `Pending`
+worker IDs/roles without copying histories or consuming inboxes. Archived workers
+count once. Settled means execution finished or its handoff stop was requested;
+it does not mean task completion or a durable checkpoint. Use `SnapshotWorkers`
+and durable storage for checkpoint acknowledgement (`C-027`).
+
 `Registry.BeginHandoff()` freezes new worker creation/resumption and tool
 admission. `SnapshotWorkers()` makes non-consuming copies of all live and
 retained finished workers. Persist that deterministic snapshot before waiting

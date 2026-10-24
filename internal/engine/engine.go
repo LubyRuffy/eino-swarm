@@ -49,11 +49,14 @@ type Engine struct {
 	pool           *provider.Pool
 	log            *slog.Logger
 
-	mu       sync.Mutex
-	runtimes map[string]*runtime
-	subs     map[string]map[int]*subscriber
-	nextSub  int
-	restart  restartState
+	mu               sync.Mutex
+	runtimes         map[string]*runtime
+	subs             map[string]map[int]*subscriber
+	nextSub          int
+	restart          restartState
+	startupRestoring bool
+	restoreProgress  RestoreProgress
+	restoreMu        sync.Mutex
 
 	// recordMu keeps a stored event's sequence number and its delivery in the
 	// same order. See record.

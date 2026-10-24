@@ -1,3 +1,4 @@
+import { notifyEngineRestoring } from "./engine-startup"
 import { desktopProcessID } from "./shell"
 import { readLocalePref, resolveLocale, t } from "./i18n"
 
@@ -105,6 +106,7 @@ async function streamTidyAt(
     } catch {
       // a non-JSON refusal is still a refusal
     }
+    notifyEngineRestoring(code)
     throw new ApiError(message, res.status, code, details)
   }
   let done: TidySkillsResult | undefined
@@ -199,6 +201,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         message = t(locale, "api.recordNotFound", { method: init?.method ?? "GET", route })
       }
     }
+    notifyEngineRestoring(code)
     throw new ApiError(message, res.status, code, details)
   }
   if (res.status === 204) return undefined as T

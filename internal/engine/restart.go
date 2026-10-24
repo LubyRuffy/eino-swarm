@@ -34,6 +34,7 @@ type RestartStatus struct {
 	Stage               string `json:"stage"`
 	Threads             int    `json:"threads"`
 	Workers             int    `json:"workers"`
+	Settled             int    `json:"settled"`
 	Checkpointed        int    `json:"checkpointed"`
 	ThreadsCheckpointed int    `json:"threads_checkpointed"`
 	Ready               bool   `json:"ready"`
@@ -78,6 +79,14 @@ type restartTarget struct {
 
 // beginAdmission orders new work against the first restart request.
 func (e *Engine) beginAdmission() (func(), error) {
+	if err := e.RequireReady(); err != nil {
+		return nil, err
+	}
+	return e.beginLifecycleAdmission()
+}
+
+// beginLifecycleAdmission keeps Stop and internal recovery available during startup.
+func (e *Engine) beginLifecycleAdmission() (func(), error) {
 	e.mu.Lock()
 	if e.restart.freezing {
 		e.mu.Unlock()
@@ -104,8 +113,13 @@ func (e *Engine) restarting() bool {
 
 func (e *Engine) GetRestartStatus() RestartStatus {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.restart.status
+	status := e.restart.status
+	targets := append([]*restartTarget(nil), e.restart.targets...)
+	e.mu.Unlock()
+	if status.Stage == "summarizing" {
+		status.Settled = restartSummaryProgress(targets)
+	}
+	return status
 }
 
 // PrepareRestart shares one deadline across every conversation. Disconnecting
@@ -156,6 +170,7 @@ func (e *Engine) PrepareRestart(ctx context.Context) (RestartStatus, error) {
 }
 
 func (e *Engine) prepareRestart(ctx context.Context, drained <-chan struct{}, retry bool) {
+	started := time.Now()
 	var failure error
 	defer func() {
 		if failure != nil {
@@ -225,7 +240,9 @@ func (e *Engine) prepareRestart(ctx context.Context, drained <-chan struct{}, re
 				target.checkpoint.Workers = target.reg.PrepareRestart(workerCtx)
 			}(target)
 		}
-		wg.Wait()
+		summariesDone := make(chan struct{})
+		go func() { wg.Wait(); close(summariesDone) }()
+		e.observeRestartSummaries(targets, summariesDone, started.Add(deadline.Sub(started)/2))
 		for _, target := range targets {
 			select {
 			case <-target.idle:
@@ -263,6 +280,7 @@ func (e *Engine) prepareRestart(ctx context.Context, drained <-chan struct{}, re
 		e.mu.Unlock()
 	}
 	e.mu.Lock()
+	e.restart.status.Settled = e.restart.status.Workers
 	e.restart.status.Stage, e.restart.status.Ready = "ready", true
 	e.mu.Unlock()
 }
@@ -367,7 +385,13 @@ func latestRestartCheckpoint(events []store.Event) (*restartCheckpoint, int) {
 	return nil, -1
 }
 
-func (e *Engine) checkpointForTurn(turnID string) *restartCheckpoint {
+func (e *Engine) checkpointForTurn(turnID string, snapshots ...*restoreSnapshot) *restartCheckpoint {
+	if s := firstRestore(snapshots); s != nil {
+		if s.checkpointEvent != nil && s.checkpointEvent.TurnID == turnID {
+			return s.checkpoint
+		}
+		return nil
+	}
 	events, err := e.store.ListTurnEvents(turnID)
 	if err != nil {
 		return nil
@@ -480,8 +504,8 @@ func checkpointManagerMessages(checkpoint *restartCheckpoint, events []store.Eve
 
 // A client may have received the authoritative terminal event before the
 // process wrote the turn row. Recovery converges that row without executing it.
-func (e *Engine) convergeTerminalTurn(turn *store.Turn) (bool, error) {
-	events, err := e.store.ListTurnEvents(turn.ID)
+func (e *Engine) convergeTerminalTurn(turn *store.Turn, snapshots ...*restoreSnapshot) (bool, error) {
+	events, err := e.restoreTurnEvents(turn.ID, snapshots...)
 	if err != nil {
 		return false, err
 	}

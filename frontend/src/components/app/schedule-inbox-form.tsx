@@ -75,6 +75,7 @@ export function ScheduleInboxForm({
   projectId,
   runsIn,
   readOnly = false,
+  disabled = false,
   canSubmit,
   submitLabel,
   extraActions,
@@ -93,6 +94,7 @@ export function ScheduleInboxForm({
   projectId: string
   runsIn: string
   readOnly?: boolean
+  disabled?: boolean
   canSubmit?: boolean
   submitLabel?: string
   extraActions?: ReactNode
@@ -112,12 +114,12 @@ export function ScheduleInboxForm({
       : cadence === "cron"
         ? t("schedule.cron")
         : t("schedule.delay")
-  const fieldsLocked = readOnly
+  const fieldsLocked = readOnly || disabled
   const selectWidth = expanded ? "max-w-[22rem]" : "max-w-[13rem]"
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    if (readOnly || canSubmit === false) return
+    if (readOnly || disabled || canSubmit === false) return
     const body: ScheduleCreate = {
       prompt: prompt.trim(),
       ...cadenceCreateFields(cadence, cadenceValue),
@@ -235,7 +237,7 @@ export function ScheduleInboxForm({
             <Button
               type="submit"
               className={extraActions ? "ml-auto" : undefined}
-              disabled={canSubmit === false}
+              disabled={disabled || canSubmit === false}
             >
               {submitLabel ?? t("schedule.create")}
             </Button>

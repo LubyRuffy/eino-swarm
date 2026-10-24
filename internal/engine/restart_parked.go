@@ -16,6 +16,9 @@ import (
 // worker, or a restart handoff owns work. A future wake alone owns no execution.
 func (e *Engine) ActiveWork() int {
 	n := 0
+	if state, _ := e.StartupStatus(); state == "restoring" {
+		n++
+	}
 	for _, rt := range e.snapshotRuntimes() {
 		if st := rt.status(); st.Running || st.Workers > 0 {
 			n++
@@ -31,7 +34,7 @@ func (e *Engine) ActiveWork() int {
 // a future wake. It retains that completed turn and its trace, without firing
 // the wake or granting another manager turn across a human stop/pause.
 func (e *Engine) ResumeParkedWorkers() (int, error) {
-	done, err := e.beginAdmission()
+	done, err := e.beginLifecycleAdmission()
 	if err != nil {
 		return 0, err
 	}
@@ -63,24 +66,31 @@ func (e *Engine) ResumeParkedWorkers() (int, error) {
 }
 
 func (e *Engine) resumeParkedThread(th *store.Thread) (int, error) {
+	return e.resumeParkedThreadContext(context.Background(), th, nil)
+}
+
+func (e *Engine) resumeParkedThreadContext(ctx context.Context, th *store.Thread, snapshot *restoreSnapshot) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	turns, err := e.store.ListTurns(th.ID)
 	if err != nil || len(turns) == 0 {
 		return 0, err
 	}
 	turn := &turns[len(turns)-1]
-	retained := e.retainedWorkerIDs(turn)
+	retained := e.retainedWorkerIDs(turn, snapshot)
 	if turn.Status != store.TurnDone && len(retained) == 0 {
 		return 0, nil
 	}
-	checkpoint := e.checkpointForTurn(turn.ID)
-	if checkpoint == nil || checkpoint.HumanStopped || checkpoint.Pause != "" || e.turnHasKind(turn.ID, KindUserStopRequested) {
+	checkpoint := e.checkpointForTurn(turn.ID, snapshot)
+	if checkpoint == nil || checkpoint.HumanStopped || checkpoint.Pause != "" || e.turnHasKind(turn.ID, KindUserStopRequested, snapshot) {
 		return 0, nil
 	}
 	rt := e.runtimeFor(th.ID)
 	if _, owner := rt.workerOwner(); owner == "" {
 		return 0, nil
 	}
-	running, finished, err := e.readWorkersFromThread(th.ID)
+	running, finished, err := e.readWorkersFromThread(th.ID, snapshot)
 	if err != nil || len(running) == 0 {
 		return 0, err
 	}
@@ -112,7 +122,7 @@ func (e *Engine) resumeParkedThread(th *store.Thread) (int, error) {
 	for _, msg := range checkpoint.ManagerInbox {
 		reg.SteerManagerMessage(msg)
 	}
-	e.interruptOrphanedGenerations(th.ID, true)
+	e.interruptOrphanedGenerations(th.ID, true, snapshot)
 	attachHostNotify(reg, newAccumulator(e, th.ID, turn.ID, e.cfg.SwarmSnapshot().DeltaCoalesce()))
 	workerTools := append(append([]tool.BaseTool(nil), reg.SubAgentTools...), reg.SendTool())
 	for _, w := range finished {

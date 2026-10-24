@@ -508,11 +508,11 @@ func orphanedAskCall(events []store.Event) *orphanedToolCall {
 	return nil
 }
 
-func (rt *runtime) resolveOrphanedAsk(ctx context.Context, turn *store.Turn, messages []adk.Message) []adk.Message {
+func (rt *runtime) resolveOrphanedAsk(ctx context.Context, turn *store.Turn, messages []adk.Message, snapshots ...*restoreSnapshot) []adk.Message {
 	if rt == nil || turn == nil {
 		return messages
 	}
-	events, err := rt.engine.store.ListTurnEvents(turn.ID)
+	events, err := rt.engine.restoreTurnEvents(turn.ID, snapshots...)
 	if err != nil {
 		return messages
 	}
@@ -538,7 +538,7 @@ func (rt *runtime) resolveOrphanedAsk(ctx context.Context, turn *store.Turn, mes
 	}
 	var answers AskAnswers
 	var werr error
-	checkpoint := rt.engine.checkpointForTurn(turn.ID)
+	checkpoint := rt.engine.checkpointForTurn(turn.ID, snapshots...)
 	if checkpoint != nil && checkpoint.Answer != nil && checkpoint.Answer.CallID == open.ToolCallID {
 		answers = checkpoint.Answer.Answers
 	} else {

@@ -136,8 +136,9 @@ E2E suite.
   before scheduling rather than moving it into an unowned goroutine.
   Regress a real child taking longer than 15s to publish its lease, blocked
   registration with a responsive local API, current-attempt logs and exit
-  status, and cancellation that reaps only the launcher's own child. Cold-start
-  readiness must not extend the separate `C-027` 30s replacement deadline.
+  status, and cancellation that reaps only the launcher's own child. The `C-027` 30s handoff/listen target excludes restoration. After irreversible
+  ACK and stopping the old engine, a launch deadline cannot kill the sole
+  replacement; explicit human cancellation still reaps only its owned child.
   Cancel during successful and failed metadata probes; neither a late ready URL
   nor a discovery error may override the caller's cancellation.
 - A reported checkout-launch failure needs the reported command exercised in
@@ -195,7 +196,13 @@ E2E suite.
   and finalization with storage blocked before cleanup so an old receipt
   cannot mark a new worker stopped.
 - Engine replacement follows `C-027`: freeze new work, durably checkpoint every
-  active or parked registry, then stop and restore within one launch deadline.
+  active or parked registry, then stop and publish the replacement listener within
+  the handoff target. Serve `restoring` before owned, cancellable recovery; count
+  recovery in ActiveWork, reject new mutations on HTTP and phone RPC, and start
+  scheduling only afterwards. Do not terminate the sole replacement on the old
+  launch deadline after acknowledged handoff. Regress restoration exceeding 30s,
+  durable Stop before runtime occupation, a shared per-conversation snapshot and
+  one indexed checkpoint read; Trace diagnostics cannot claim restored on error.
   Regress real process replacement, original turn/worker identities, human
   pauses and Stop, storage failure, and tool results arriving after shutdown.
   Unknown external effects require verification before retry; a model summary

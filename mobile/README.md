@@ -436,3 +436,13 @@ conversation streaming, scheduled waits and sending remain available. Zero
 is a supported PC's initial watermark, so its first visible completion still
 receives an acknowledgement. A host that advertises completion support but
 rejects a read still shows the actual error and retains unread state.
+
+### PC startup recovery
+
+The paired phone polls the read-only `meta` RPC for `startup` and `restore`
+conversation progress. While `restoring`, it displays the PC recovery banner,
+retains unsent input and prevents new work until `ready`. Optional `restore.failed`
+keeps a static failure warning after recovery, with other work still usable. The PC independently
+rejects work mutations with `code: restoring`; a rejected Run now never marks
+the thread running. Stop and saved-history reads remain available. Internal
+`engine_restore` events advance replay cursors without rendering diagnostic JSON.

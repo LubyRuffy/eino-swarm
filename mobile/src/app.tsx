@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { EngineStartupBanner } from "@/components/engine-startup"
+import { useEngineStartup } from "@/lib/use-engine-startup"
+import { runPhoneAction } from "@/lib/phone-action"
 import { AddHostSheet } from "@/components/add-host-sheet"
 import type { ComposerExtra } from "@/components/composer"
 import { ChatSurface } from "@/components/chat-surface"
@@ -54,7 +57,6 @@ import { pickResumeThread, detailFromListing, rosterFingerprint } from "@/lib/re
 import {
   applyPush,
   emptyView,
-  markRunning,
   openView,
   prependOlder,
   type PhoneView,
@@ -109,6 +111,8 @@ export function App() {
   const [loadingGroup, setLoadingGroup] = useState("")
   const [loadingMore, setLoadingMore] = useState(false)
   const { models, levels, catalogBusy, refreshModels, refreshBusy, refreshError } = useModelCatalog(link)
+  const startup = useEngineStartup(link)
+  const restoring = startup?.startup === "restoring"
   const [composerPending, setComposerPending] = useState(false)
   const [view, setView] = useState<PhoneView>(emptyView())
   const [loadingOlder, setLoadingOlder] = useState(false)
@@ -758,13 +762,14 @@ export function App() {
     />
   ) : null
 
-  const banner = (
+  const banner = (<>
+    <EngineStartupBanner startup={startup} />
     <LinkBanner
       reconnecting={reconnecting}
       error={error}
       onRetry={() => void recover(true)}
     />
-  )
+  </>)
 
   if (composing && surface !== "chat") {
     return (
@@ -788,6 +793,7 @@ export function App() {
             onRefreshModels={refreshModels}
             refreshBusy={refreshBusy}
             refreshError={refreshError}
+            restoring={restoring}
             pending={composerPending}
             onSelectHost={selectHost}
             onBack={() => {
@@ -823,6 +829,7 @@ export function App() {
             hasMore={view.hasMore}
             loadingOlder={loadingOlder}
             caughtUp={view.caughtUp}
+            restoring={restoring}
             composerPending={composerPending}
             models={models}
             reasoningLevels={levels}
@@ -847,31 +854,9 @@ export function App() {
             onAnswer={(text) => answerPhoneQuestion(turnDeps, detail.id, { text })}
             onAnswerStructured={(callId, answers) =>
               answerPhoneQuestion(turnDeps, detail.id, { call_id: callId, answers })}
-            onRunNow={async () => {
-              try {
-                await link.rpc({ op: OpRunNow, thread_id: detail.id })
-                commitView(markRunning(viewRef.current))
-              } catch (e) {
-                fail(e)
-              }
-            }}
-            onCancelWait={async () => {
-              try {
-                await link.rpc({ op: OpCancelWait, thread_id: detail.id })
-                const r = await link.rpc({ op: OpOpen, thread_id: detail.id })
-                if (r.detail) commitView({ ...viewRef.current, detail: r.detail })
-              } catch (e) {
-                fail(e)
-              }
-            }}
-            onResumeGoal={async () => {
-              try {
-                await link.rpc({ op: OpResumeGoal, thread_id: detail.id })
-                commitView(markRunning(viewRef.current))
-              } catch (e) {
-                fail(e)
-              }
-            }}
+            onRunNow={() => void runPhoneAction(turnDeps, OpRunNow, detail.id)}
+            onCancelWait={() => void runPhoneAction(turnDeps, OpCancelWait, detail.id)}
+            onResumeGoal={() => void runPhoneAction(turnDeps, OpResumeGoal, detail.id)}
           />
         </div>
         {sheet}

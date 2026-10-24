@@ -59,7 +59,10 @@ directory lock uses the same readiness limit and checks its published build
 before attaching. Phone-hub registration runs in the background; a slow hub
 does not block the local window. Local initialization/restoration phases log
 `phase` and `duration_ms` in `engine.log`: `database_ready`,
-`unfinished_runs_restored`, then `local_handlers_ready`.
+`local_handlers_ready`, then `unfinished_runs_restored`. The listener is published
+with `startup=restoring` before recovery; the window can attach and show progress.
+The scheduler starts only after recovery. Slow recovery does not consume the
+30-second handoff/listen target.
 
 If this launcher's child has published its lease but a metadata probe is
 temporarily unanswered, startup keeps waiting within the same total deadline.
@@ -69,16 +72,23 @@ an immediate error, and the competing process is preserved.
 
 If this launch fails, the error retains its child's exit status and only log
 output appended during this attempt. Historical model errors are not used as
-its cause. Cancellation or timeout stops and reaps this launcher's child;
+its cause. Explicit cancellation stops and reaps this launcher's child; ordinary cold-start
+timeout also does. After handoff ACK and stopping the old engine, the launcher
+continues waiting beyond that handoff deadline. If the replacement is still alive
+after the cold wait, it reports a pending startup with the PID and log path and
+leaves the process running;
 a competing process that owns the directory remains untouched. Cancellation
 during a metadata probe remains authoritative over a late success or failure.
 
 Opening a **different build** (another version, or a replacement executable)
-automatically hands off and replaces the old engine, with one **30s budget**
+automatically hands off and replaces the old engine, with a **30s handoff/listen target**
 starting after frontend preparation and covering handoff, old-process exit and
 the new listener. No terminal answer
 is required. Up to 20s is reserved for saving progress and workers' best-effort
-summaries; the remaining time is for replacement and recovery. The new engine
+summaries; the remaining time targets process exit and the new listener. Recovery runs
+after publishing the listener and does not consume that target. Once the old
+engine has acknowledged handoff and is being stopped, deadline expiry cannot
+kill the sole replacement. The new engine
 continues unfinished tasks under the original turn and worker IDs. Finished
 workers stay finished; human questions and iteration-cap pauses still wait
 for the human.

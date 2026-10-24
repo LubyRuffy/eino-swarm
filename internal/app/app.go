@@ -48,6 +48,8 @@ type Options struct {
 	Assets fs.FS
 	// NoAssets serves the API only, which is what the handler tests want.
 	NoAssets bool
+	// DeferRestore lets the engine publish its listener before recovery.
+	DeferRestore bool
 }
 
 // App is an assembled, not-yet-listening process.
@@ -61,7 +63,12 @@ type App struct {
 	Search *search.Service
 	Logger *slog.Logger
 
-	addr string
+	addr      string
+	restoreMu sync.Mutex
+	restored  bool
+
+	startupCtx  context.Context
+	startupStop context.CancelFunc
 
 	// Serve can bind lazily while another goroutine asks for the URL or shuts
 	// the process down, so the listener and the server are behind a lock.
@@ -100,29 +107,7 @@ func New(opts Options) (*App, error) {
 	idx := search.New(st, pool, cfg, logger)
 	eng.SetThreadIndex(idx)
 	idx.Start()
-	// A previous process that was killed (or quit) leaves turns marked
-	// running. Continue them here: a crash is not a user Stop.
-	if n, err := eng.ResumeOrphanedTurns(); err != nil {
-		logger.Warn("could not resume turns left over from a previous run", "err", err)
-	} else if n > 0 {
-		logger.Info("resumed turns left over from a previous run", "count", n)
-	}
-	if n, err := eng.ResumeParkedWorkers(); err != nil {
-		logger.Warn("could not resume parked workers from a previous run", "err", err)
-	} else if n > 0 {
-		logger.Info("resumed parked workers from a previous run", "count", n)
-	}
-	// A future wake is not evidence those sub-agents survived the quit.
-	// Pull it due before the scheduler's first tick, or the tick waits
-	// out a timer that is polling corpses.
-	if n, err := eng.PullInterruptedWorkerWakes(); err != nil {
-		logger.Warn("could not pull waits sitting on sub-agents the previous process stopped", "err", err)
-	} else if n > 0 {
-		logger.Info("pulled waits sitting on sub-agents the previous process stopped", "count", n)
-	}
-	eng.StartScheduler()
-	logger.Info("engine startup", "phase", "unfinished_runs_restored", "duration_ms", time.Since(phaseStarted).Milliseconds())
-	phaseStarted = time.Now()
+	eng.BeginRestore()
 
 	assets := opts.Assets
 	if assets == nil && !opts.NoAssets {
@@ -155,10 +140,19 @@ func New(opts Options) (*App, error) {
 	srv.SetRemote(host)
 	srv.SetSearch(idx)
 	logger.Info("engine startup", "phase", "local_handlers_ready", "duration_ms", time.Since(phaseStarted).Milliseconds())
-	return &App{
+	startupCtx, startupStop := context.WithCancel(context.Background())
+	a := &App{
 		Config: cfg, Store: st, Pool: pool, Engine: eng, Server: srv,
 		Remote: host, Search: idx, Logger: logger, addr: addr,
-	}, nil
+		startupCtx: startupCtx, startupStop: startupStop,
+	}
+	if !opts.DeferRestore {
+		if err := a.Restore(context.Background()); err != nil {
+			a.Shutdown(context.Background())
+			return nil, err
+		}
+	}
+	return a, nil
 }
 
 func desktopUpdater(cfg *config.Config, opts Options) *update.Service {
@@ -239,6 +233,11 @@ func (a *App) Serve() error {
 // Shutdown stops accepting requests, abandons in-memory runs (the turns stay
 // unfinished so the next start can continue them) and closes the database.
 func (a *App) Shutdown(ctx context.Context) {
+	if a.startupStop != nil {
+		a.startupStop()
+	}
+	a.restoreMu.Lock()
+	defer a.restoreMu.Unlock()
 	a.mu.Lock()
 	srv := a.http
 	stop := a.httpStop

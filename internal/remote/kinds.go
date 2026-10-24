@@ -12,6 +12,7 @@ var PushKinds = []string{
 	"generation_interrupted",
 	"generation_recovered",
 	"desktop_recovery",
+	"engine_restore",
 	"delta",
 	"turn",
 	"spawned",

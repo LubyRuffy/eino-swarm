@@ -143,11 +143,14 @@ func interruptedWakeBlock(dead []stoppedWorker) string {
 	return "these sub-agents are not running (" + strings.Join(ids, ", ") + "). The previous process stopped them. resume_agent those exact ids or spawn replacements before arming a wait. A wake does not keep a stopped sub-agent working."
 }
 
-func (e *Engine) processStoppedOn(threadID string) ([]stoppedWorker, error) {
+func (e *Engine) processStoppedOn(threadID string, snapshots ...*restoreSnapshot) ([]stoppedWorker, error) {
 	if e == nil || e.store == nil || strings.TrimSpace(threadID) == "" {
 		return nil, nil
 	}
-	events, err := e.store.ListEvents(threadID, 0, 0)
+	if s := firstRestore(snapshots); s != nil && s.threadID == threadID {
+		return processStoppedWorkers(s.events), nil
+	}
+	events, err := e.store.ListRosterEvents(threadID)
 	if err != nil {
 		return nil, err
 	}
@@ -162,8 +165,8 @@ func (e *Engine) interruptedWakeRefusal(threadID string) (string, error) {
 	return interruptedWakeBlock(dead), nil
 }
 
-func (e *Engine) appendInterruptedWorkerCue(threadID string, msgs []adk.Message) []adk.Message {
-	dead, err := e.processStoppedOn(threadID)
+func (e *Engine) appendInterruptedWorkerCue(threadID string, msgs []adk.Message, snapshots ...*restoreSnapshot) []adk.Message {
+	dead, err := e.processStoppedOn(threadID, snapshots...)
 	if err != nil || len(dead) == 0 {
 		return msgs
 	}

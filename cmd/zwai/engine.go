@@ -50,11 +50,13 @@ func runEngine(args []string) error {
 }
 
 type engineOpts struct {
-	DataDir string
-	Addr    string
-	Mock    bool
-	Watch   lease.Watcher
-	Ready   func(url string)
+	DataDir   string
+	Addr      string
+	Mock      bool
+	Watch     lease.Watcher
+	Ready     func(url string)
+	Restore   func(context.Context, *app.App) error
+	Recovered func(url string)
 }
 
 // serveEngine is the long-lived process. It holds the data-dir lock, serves
@@ -77,11 +79,12 @@ func serveEngine(ctx context.Context, opts engineOpts) error {
 		addr = "127.0.0.1:0"
 	}
 	a, err := assembleApp(app.Options{
-		DataDir: dir,
-		Addr:    addr,
-		Mock:    opts.Mock,
-		Mode:    server.ModeEngine,
-		Version: version,
+		DataDir:      dir,
+		Addr:         addr,
+		Mock:         opts.Mock,
+		Mode:         server.ModeEngine,
+		Version:      version,
+		DeferRestore: true,
 	})
 	if err != nil {
 		return err
@@ -92,15 +95,18 @@ func serveEngine(ctx context.Context, opts engineOpts) error {
 		return err
 	}
 	build := lease.ThisBuild(version)
-	if err := lease.Publish(dir, lease.Record{
+	record := lease.Record{
 		PID: os.Getpid(), URL: url, Mock: opts.Mock, StartedAt: time.Now().UTC(),
-		Version: build.Version, Dev: build.Dev, Ino: build.Ino,
-	}); err != nil {
+		Version: build.Version, Dev: build.Dev, Ino: build.Ino, Startup: "restoring",
+	}
+	if err := lease.Publish(dir, record); err != nil {
 		shut(a)
 		return err
 	}
+	runCtx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
 	errCh := make(chan error, 1)
-	go func() { errCh <- a.Serve() }()
+	go func() { errCh <- a.Serve(); cancelRun() }()
 
 	if opts.Ready != nil {
 		opts.Ready(url)
@@ -114,10 +120,32 @@ func serveEngine(ctx context.Context, opts engineOpts) error {
 	}
 	started := time.Now()
 	watch.StopIfIdle = a.Server.TryIdleShutdown
-	watch.Run(ctx, started, func() (int, bool, int) {
-		phone := a.Remote != nil && a.Remote.Status().Online
-		return len(a.Server.Clients()), phone, a.Engine.ActiveWork()
-	})
+	watchDone := make(chan struct{})
+	go func() {
+		defer close(watchDone)
+		watch.Run(runCtx, started, func() (int, bool, int) {
+			phone := a.Remote != nil && a.Remote.Status().Online
+			return len(a.Server.Clients()), phone, a.Engine.ActiveWork()
+		})
+		cancelRun()
+	}()
+	restore := opts.Restore
+	if restore == nil {
+		restore = func(ctx context.Context, a *app.App) error { return a.Restore(ctx) }
+	}
+	restoreErr := restore(runCtx, a)
+	if restoreErr == nil {
+		record.Startup = "ready"
+		restoreErr = lease.Publish(dir, record)
+		if restoreErr == nil && opts.Recovered != nil {
+			opts.Recovered(url)
+		}
+	}
+	if restoreErr != nil {
+		cancelRun()
+	}
+	<-watchDone
+
 	shut(a)
 	select {
 	case err := <-errCh:
@@ -125,6 +153,9 @@ func serveEngine(ctx context.Context, opts engineOpts) error {
 			return err
 		}
 	case <-time.After(shutdownGrace):
+	}
+	if restoreErr != nil && ctx.Err() == nil {
+		return fmt.Errorf("engine recovery: %w", restoreErr)
 	}
 	return nil
 }
@@ -149,7 +180,8 @@ func ensureEngineRecord(dataDir, addr string, mock bool) (lease.Record, error) {
 		return lease.Record{}, err
 	}
 	dir := cfg.DataDir()
-	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	signalOwner, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx := context.WithValue(signalOwner, engineStartupPolicyKey{}, engineStartupPolicy{owner: signalOwner})
 	defer stopSignals()
 	// Prepare checkout assets while the old engine can still serve its clients.
 	// Package installation must not consume its bounded handoff/recovery window.
@@ -159,7 +191,7 @@ func ensureEngineRecord(dataDir, addr string, mock bool) (lease.Record, error) {
 	started := time.Now()
 	restarting := false
 	for {
-		if err := ctx.Err(); err != nil {
+		if err := engineContextError(ctx); err != nil {
 			return lease.Record{}, fmt.Errorf("engine launch stopped: %w", err)
 		}
 		rec, err := lease.Discover(dir, mock)
@@ -195,6 +227,10 @@ func ensureEngineRecord(dataDir, addr string, mock bool) (lease.Record, error) {
 				if _, discErr := lease.Discover(dir, mock); !errors.Is(discErr, lease.ErrNotRunning) {
 					return lease.Record{}, err
 				}
+			} else {
+				// The acknowledged holder has exited. Its handoff deadline
+				// cannot own and terminate the only replacement process.
+				ctx = context.WithValue(signalOwner, engineStartupPolicyKey{}, engineStartupPolicy{owner: signalOwner, forwardOnly: true})
 			}
 			continue
 		case errors.Is(err, lease.ErrMockMismatch), errors.Is(err, lease.ErrUnreachable):
@@ -253,12 +289,12 @@ func startInProcessEngineContext(parent context.Context, dir, addr string, mock 
 	go func() {
 		errCh <- serveEngine(ctx, engineOpts{
 			DataDir: dir, Addr: addr, Mock: mock,
-			Ready: func(url string) { ready <- url },
+			Recovered: func(url string) { ready <- url },
 		})
 	}()
 	select {
 	case url := <-ready:
-		activeEngineStop = cancel
+		activeEngineStop = func() { cancel(); <-errCh }
 		return url, nil
 	case err := <-errCh:
 		cancel()

@@ -13,11 +13,13 @@ const FAILED_TURN_BLOCK = "the last turn failed"
 export function GoalBanner({
   detail,
   running,
+  disabled,
   waiting,
   onResume,
 }: {
   detail: ThreadDetail
   running?: boolean
+  disabled?: boolean
   waiting?: boolean
   onResume?: () => void
 }) {
@@ -87,6 +89,7 @@ export function GoalBanner({
             variant="outline"
             className="h-8 shrink-0 px-2 text-xs"
             aria-label={t("goal.start")}
+            disabled={disabled}
             onClick={onResume}
           >
             <Play className="size-3.5" />
@@ -108,11 +111,13 @@ function displayBlock(reason?: string): string {
 export function ScheduleBanner({
   detail,
   running,
+  disabled,
   onRunNow,
   onCancel,
 }: {
   detail: ThreadDetail
   running?: boolean
+  disabled?: boolean
   onRunNow?: () => void
   onCancel?: () => void
 }) {
@@ -143,6 +148,7 @@ export function ScheduleBanner({
               variant="outline"
               className="h-8 px-2 text-xs"
               aria-label={t("schedule.runNow")}
+              disabled={disabled}
               onClick={onRunNow}
             >
               <Play className="size-3.5" />
@@ -155,6 +161,7 @@ export function ScheduleBanner({
               variant="ghost"
               className="h-8 px-2 text-xs"
               aria-label={t("schedule.cancel")}
+              disabled={disabled}
               onClick={onCancel}
             >
               {t("schedule.cancel")}

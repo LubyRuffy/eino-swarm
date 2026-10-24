@@ -218,9 +218,9 @@ func TestEnsureEnginePreservesAHolderWhenItsTurnStateCannotBeRead(t *testing.T) 
 
 // The restart budget also bounds an older engine that ignores SIGTERM.
 func TestEnsureEngineAutomaticallyStopsAHolderThatIgnoresSIGTERM(t *testing.T) {
-	t.Cleanup(stopTestEngine)
 	t.Setenv("ZWAI_LEASE_IGNORE_STOP", "1")
 	dir := t.TempDir()
+	t.Cleanup(stopTestEngine)
 	holder := startLeaseHolder(t, dir)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/engine/restart" {

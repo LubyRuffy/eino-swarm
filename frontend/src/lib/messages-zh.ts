@@ -8,6 +8,8 @@ import type { en } from "./messages-en"
 /** Chinese UI chrome. Every key in messages-en.ts must have a string here. */
 export const zh: { [K in keyof typeof en]: string } = {
   ...draftZH,
+  "startup.failed": "有 {failed} 个会话恢复失败，请查看 Trace 或日志。",
+  "startup.restoring": "正在恢复未完成任务 {completed}/{total}",
   ...generationZh,
   "image.pasted": "粘贴的图片",
   "image.enlarge": "放大 {name}",

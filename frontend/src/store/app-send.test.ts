@@ -88,7 +88,7 @@ beforeEach(async () => {
   fake.followups.length = 0
   useApp.setState({
     activeId: undefined, threads: [], status: { running: false },
-    followups: [], schedules: [], error: undefined,
+    followups: [], schedules: [], error: undefined, meta: undefined,
   })
   useProjects.setState({
     selectedId: undefined, memory: undefined, memoryProjectId: undefined,
@@ -223,5 +223,16 @@ describe("send acknowledgement ordering", () => {
     await useApp.getState().send("perform a check")
     expect(useApp.getState().status.running).toBe(false)
     expect(useApp.getState().error).toBe("the request was not accepted")
+  })
+})
+
+
+describe("engine restoration admission", () => {
+  it.each([false, true])("keeps a pending draft without sending or queueing while restoring (steer %s)", async (steer) => {
+    useApp.setState({ meta: { startup: "restoring", restore: { completed: 1, total: 3 } } as import("@/lib/types").Meta })
+    expect(await useApp.getState().send("retained draft", undefined, { steer })).toBe(false)
+    expect(fake.steers).toEqual([])
+    expect(fake.followups).toEqual([])
+    expect(useApp.getState().status.running).toBe(false)
   })
 })

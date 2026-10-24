@@ -43,6 +43,7 @@ var (
 type Record struct {
 	PID       int       `json:"pid"`
 	URL       string    `json:"url"`
+	Startup   string    `json:"startup,omitempty"`
 	Mock      bool      `json:"mock"`
 	StartedAt time.Time `json:"started_at"`
 	Version   string    `json:"version,omitempty"`

@@ -1093,3 +1093,13 @@ appear in the same turn's Trace; web sources remain clickable in answers.
 See [configuration](docs/CONFIG.md#provider-cloud-tools) for supported tool types,
 parameters, YAML and limits. Paired phone sessions using the PC inherit its
 provider configuration; independent phone direct chat has its own configuration.
+
+### Engine recovery at startup
+
+The desktop/Web window can attach while unfinished work is restoring. PC and
+phone show recovery progress and keep saved history available; new work waits
+until recovery ends. Individual recovery failures leave a visible failure count
+and the original Trace while other work stays usable. Stop remains available and is persisted before that
+conversation can resume. The scheduler starts after recovery. A replacement
+that has already accepted handoff is not killed by the old 30-second launch
+budget; an unusually slow live start reports its PID and log path for diagnosis.

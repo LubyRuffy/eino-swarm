@@ -230,12 +230,12 @@ function collectRows(transcript: TranscriptState, turnId: string, locale: Locale
       })
     }
   }
-  for (const event of transcript.desktopRecoveryEvents ?? []) {
+  for (const event of transcript.recoveryEvents ?? []) {
     if (event.turn_id !== turnId) continue
     rows.push({
       at: event.created_at,
       kind: event.kind,
-      agent: "desktop",
+      agent: event.kind === "desktop_recovery" ? "desktop" : "engine",
       text: event.text ?? "",
       details: JSON.stringify(event, null, 2),
       failed: false,

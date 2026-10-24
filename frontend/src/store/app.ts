@@ -496,6 +496,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   send: async (text, images, opts) => {
+    if (get().meta?.startup === "restoring") return false
     if (opts?.fromEventSeq) {
       const id = get().activeId
       if (!id) return false

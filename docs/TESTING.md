@@ -741,8 +741,12 @@ It reproduces startup beyond the former 15-second cutoff and verifies the
 ready URL belongs to that child. Additional cases check current-attempt log
 isolation, the actual exit status, and cancellation that reaps the launched
 child. `cmd/zwai/engine_restart_budget_test.go` retains the independent caller
-deadline and competing-holder checks; the cold-start allowance cannot extend
-the 30-second replacement budget.
+deadline and competing-holder checks before irreversible handoff. After ACK
+and stopping the old engine, `engine_startup_forward_test.go` verifies that the
+launcher preserves its sole replacement beyond the handoff deadline, attaches
+after an actual 31-second delayed lease publication, and retains a live child
+with its PID/log pending result after the cold wait. Explicit cancellation still
+reaps only its child and retains the cancellation cause.
 
 `TestSpawnEngineRetriesItsOwnFirstReadinessProbeTimeout` delays the real
 child's first metadata response by 750ms, beyond the individual 500ms probe,
@@ -761,6 +765,37 @@ URL or a discovery error, and must preserve the independent lease holder.
 ```bash
 go test -race -count=1 ./cmd/zwai -run 'TestSpawnEngine|TestSpawnStartup|TestInProcessStartup'
 go test -race -count=1 ./internal/lease -run 'TestDiscover'
+```
+
+### Reachable recovery and cancellation
+
+`internal/app/startup_restore_test.go` verifies that a deferred-restoration app
+serves metadata before recovery and becomes ready afterwards. Engine, HTTP and
+phone startup tests check progress, mutation refusal and durable Stop before
+runtime occupation. `cmd/zwai/engine_restore_process_test.go` exercises two real
+engine processes and the offline loopback model adapter: the replacement serves
+`restoring` immediately while its owned restoration exceeds 30 seconds; reads,
+presence and `409 restoring` remain observable, then the original task/worker
+continues without another spawn or side effect. This is headless process
+acceptance; native window behavior uses the ci-macOS case runner separately.
+
+```bash
+go test -race -count=1 ./internal/app ./internal/server ./internal/remote ./internal/engine -run 'TestDeferredRestore|TestRestoringEngine|TestStopBeforeRestore|TestRecoveryServes|TestPhoneRecovery'
+go test -race -count=1 ./cmd/zwai -run 'TestReplacementListensWhileRecoveryExceedsThirtySeconds|TestAcknowledgedReplacement|TestForwardReplacement'
+```
+
+### Large-history restoration measurement
+
+`BenchmarkRestoreSnapshotLargeHistory` uses 100,001 historical tool-result rows
+(each 1,080 bytes) and two checkpoint bodies each larger than 2 MiB. On the
+2026-10-24 Apple M3 Max run, three repetitions measured **125.695 ms/op**,
+**9,018,429 B/op**, **325 allocs/op** (fixture creation excluded). This measures
+snapshot construction, not native startup or arbitrary user histories. The
+query-count regression asserts one checkpoint read, one selected-event read and
+zero unfiltered full-event reads through the resumed bootstrap's next generation.
+
+```bash
+go test ./internal/engine -run '^$' -bench BenchmarkRestoreSnapshotLargeHistory -benchtime=3x -benchmem
 ```
 
 ## Phone hub startup independence (F-210 / C-006)

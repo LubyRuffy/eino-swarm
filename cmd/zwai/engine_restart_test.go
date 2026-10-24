@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -78,6 +80,10 @@ func TestCancelledReplacementLeavesTheOldEngineAlive(t *testing.T) {
 }
 
 func TestRestartReportsProgressWhileTheHandoffIsPending(t *testing.T) {
+	var output bytes.Buffer
+	before := log.Writer()
+	log.SetOutput(&output)
+	t.Cleanup(func() { log.SetOutput(before) })
 	var polls atomic.Int32
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -89,7 +95,7 @@ func TestRestartReportsProgressWhileTheHandoffIsPending(t *testing.T) {
 		if polls.Add(1) == 3 {
 			close(release)
 		}
-		_, _ = w.Write([]byte(`{"stage":"preparing","workers":2,"checkpointed":1}`))
+		_, _ = w.Write([]byte(`{"stage":"summarizing","workers":2,"settled":1,"checkpointed":0}`))
 	}))
 	defer srv.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -105,6 +111,9 @@ func TestRestartReportsProgressWhileTheHandoffIsPending(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || polls.Load() < 3 {
 		t.Fatalf("progress polls=%d status=%d", polls.Load(), resp.StatusCode)
+	}
+	if !strings.Contains(output.String(), "1/2 worker(s) settled") || !strings.Contains(output.String(), "0/2 checkpoint(s) saved") {
+		t.Fatalf("worker settlement was hidden behind checkpoint count: %s", output.String())
 	}
 }
 

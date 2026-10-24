@@ -49,6 +49,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-110`, `F-220`, `C-001`, `C-027`: publish a reachable restoring engine before task recovery, expose progress on PC and phone, and reject new work until recovery precedes scheduling. Share indexed recovery snapshots and retain per-turn restore timing in Trace.
+
 - `F-430`, `C-010`: prepare numeric candidate `0.1.36` with matching mobile
   package metadata before the exact-source Mac installer acceptance. This is a
   local acceptance candidate; native gates and publication remain pending, and
@@ -92,6 +94,8 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-150`, `C-009`: a scheduled check cannot complete the standing objective while its own manager-created conversation wake remains armed, including a newly armed wake ID after a one-shot fired. The final check may complete after cancelling that wait; the reverse call order and parallel tool calls cannot rearm the same continuation after completion. Conflicts return recoverable `goal_schedule_conflict` results. Human-created waits and independent jobs retain their own lifecycle; existing completed goals are not automatically reopened (Issue #79).
 
 ### Fixed
+
+- `F-110`, `C-027`: preserve the sole replacement engine after irreversible handoff when the old launch deadline expires; explicit cancellation still reaps only the owned child. A Stop received before restoration is durable and prevents checkpoint revival.
 
 - `F-120`, `F-130`, `C-003`, `C-008`: opening long PC conversations paints the
   tail page before context usage and other metadata finish. The existing

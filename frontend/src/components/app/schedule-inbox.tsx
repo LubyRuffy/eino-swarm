@@ -231,6 +231,8 @@ export function ScheduleListPane() {
 /** Editor for the selected wait. Fills the task column; the list stays
  *  in the nav unless Expand hides it so a long instruction can use the width. */
 export function ScheduleDetail() {
+  const [creatingSchedule, setCreatingSchedule] = useState(false)
+  const restoring = useApp((s) => s.meta?.startup === "restoring")
   const t = useT()
   const open = useApp((s) => s.scheduleInboxOpen)
   const schedules = useApp((s) => s.schedules)
@@ -323,11 +325,17 @@ export function ScheduleDetail() {
 
   if (!open) return null
 
-  const submit = (body: ScheduleCreate) => {
+  const submit = async (body: ScheduleCreate) => {
+    if (restoring || creatingSchedule) return
     if (creating) {
-      void createSchedule(body)
-      closeDrawer()
-      setFilter("active")
+      setCreatingSchedule(true)
+      try {
+        // Only an acknowledged create may close the form that sent it.
+        if (await createSchedule(body) && useScheduleInboxUI.getState().drawer === drawer) {
+          closeDrawer()
+          setFilter("active")
+        }
+      } finally { setCreatingSchedule(false) }
       return
     }
     if (!selected || !dirty) return
@@ -342,6 +350,7 @@ export function ScheduleDetail() {
             type="button"
             variant="ghost"
             size="sm"
+            disabled={restoring}
             onClick={() => void patchSchedule(selected.id, { status: "paused" })}
           >
             {t("schedule.pause")}
@@ -351,6 +360,7 @@ export function ScheduleDetail() {
             type="button"
             variant="ghost"
             size="sm"
+            disabled={restoring}
             onClick={() => void patchSchedule(selected.id, { status: "active" })}
           >
             {t("schedule.resume")}
@@ -360,6 +370,7 @@ export function ScheduleDetail() {
           type="button"
           variant="ghost"
           size="sm"
+          disabled={restoring}
           onClick={() => void runScheduleNow(selected.id)}
         >
           {t("schedule.runNow")}
@@ -368,6 +379,7 @@ export function ScheduleDetail() {
           type="button"
           variant="ghost"
           size="sm"
+          disabled={restoring}
           aria-label={t("schedule.cancel")}
           onClick={() => {
             void deleteSchedule(selected.id)
@@ -449,7 +461,8 @@ export function ScheduleDetail() {
           projectId={form.projectId}
           runsIn={form.runsIn}
           readOnly={editing && !liveEdit}
-          canSubmit={editing ? Boolean(dirty) : undefined}
+          disabled={restoring || creatingSchedule}
+          canSubmit={!restoring && !creatingSchedule && (editing ? Boolean(dirty) : true)}
           submitLabel={editing ? t("schedule.save") : undefined}
           extraActions={editActions}
           onPrompt={(prompt) => patchForm({ prompt })}

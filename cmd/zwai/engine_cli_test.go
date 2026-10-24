@@ -49,6 +49,9 @@ func TestDesktopURLCarriesTheWindowPIDForUpdateRestart(t *testing.T) {
 // harness, which would run the suite again. An "engine" argument means the
 // spawn is probing a child that is not the app.
 func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == "engine" && os.Getenv("ZWAI_ENGINE_RESTORE_HELPER") == "1" {
+		os.Exit(runRestoreProcessHelper())
+	}
 	if os.Getenv("ZWAI_LEASE_HOLD") == "1" {
 		if os.Getenv("ZWAI_LEASE_IGNORE_STOP") == "1" {
 			signal.Ignore(syscall.SIGTERM)

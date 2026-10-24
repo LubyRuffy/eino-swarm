@@ -4,11 +4,13 @@ package engine
 // its parked workers. A process death must not turn an acknowledged Stop into
 // permission to restore an older checkpoint.
 func (e *Engine) interruptThread(threadID string) error {
-	done, err := e.beginAdmission()
+	done, err := e.beginLifecycleAdmission()
 	if err != nil {
 		return err
 	}
 	defer done()
+	e.restoreMu.Lock()
+	defer e.restoreMu.Unlock()
 	if _, err := e.store.GetThread(threadID); err != nil {
 		return err
 	}
@@ -16,7 +18,7 @@ func (e *Engine) interruptThread(threadID string) error {
 	rt := e.runtimes[threadID]
 	e.mu.Unlock()
 	if rt == nil {
-		return ErrIdle
+		return e.stopBeforeRestore(threadID)
 	}
 	rt.mu.Lock()
 	running, parked, turnID := rt.running, rt.parked, rt.turnID

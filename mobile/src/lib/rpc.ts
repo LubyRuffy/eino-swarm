@@ -20,6 +20,7 @@ export const OpRunNow = "run_now"
 export const OpCancelWait = "cancel_wait"
 export const OpResumeGoal = "resume_goal"
 export const OpHello = "hello"
+export const OpMeta = "meta"
 export const OpCatalog = "catalog"
 export const OpRefreshCatalog = "refresh_catalog"
 export const OpGetTimeouts = "get_timeouts"
@@ -190,7 +191,12 @@ export type ThreadDetail = {
   turns?: TurnView[]
 }
 
-export type RemoteResponse = {
+export type EngineStartup = {
+  startup?: "restoring" | "ready"
+  restore?: { completed: number; total: number; failed?: number }
+}
+
+export type RemoteResponse = EngineStartup & {
   v: number
   id: string
   ok: boolean

@@ -5,7 +5,8 @@ import { phoneAgents } from "./transcript"
 
 describe("desktop recovery metadata on a paired phone", () => {
   for (const running of [true, false]) {
-    it(`retains the original ${running ? "running" : "completed"} work across live and cold metadata`, () => {
+    for (const kind of ["desktop_recovery", "engine_restore"]) {
+    it(`retains the original ${running ? "running" : "completed"} work across live and cold ${kind} metadata`, () => {
       const base = { thread_id: "thread", turn_id: "turn", text: "", created_at: "2026-10-22T00:00:00Z" }
       const events: RemoteEvent[] = [
         { ...base, seq: 1, kind: "user_message", text: "inspect the operation" },
@@ -21,7 +22,7 @@ describe("desktop recovery metadata on a paired phone", () => {
       })
       const open = () => openView({ id: "thread", title: "work" })
       const before = applyPush(open(), ready(events))
-      const diagnostic: RemoteEvent = { ...base, seq: 5, kind: "desktop_recovery", text: '{"session_id":"renderer-session","phase":"recovered"}' }
+      const diagnostic: RemoteEvent = { ...base, seq: 5, kind, text: '{"session_id":"renderer-session","phase":"recovered"}' }
       const pushed: RemoteResponse = { v: 1, id: "", ok: true, op: OpEvent, thread_id: "thread", seq: 5, event: diagnostic }
       const live = applyPush(before, pushed)
       expect(live.blocks).toEqual(before.blocks)
@@ -34,5 +35,6 @@ describe("desktop recovery metadata on a paired phone", () => {
       expect(cold.blocks).toEqual(before.blocks)
       expect(cold.detail).toEqual(before.detail)
     })
+    }
   }
 })

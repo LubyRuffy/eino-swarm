@@ -38,6 +38,9 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-110 Desktop, browser, and terminal shells
 
+- 启动恢复：数据库和配置可用即发布可连接的 `restoring` 引擎，PC／手机显示恢复进度，成功后自动移除；部分失败显示数量并保留原 turn 诊断，其余工作继续可用；创建日程只有成功 ACK 后关闭，恢复拒绝保留输入；历史、Trace、事件流、草稿、在线登记和 Stop 可用，新工作及日程变更等待 `ready`。ACK 后的替换进程不会被原交接截止时间杀掉；人工取消只回收本次子进程。每对话共用一次恢复快照，原 turn Trace 包含 `engine_restore` 耗时与扫描量。关联契约：`C-001`、`C-027`、`C-012`；实现／测试：`internal/app/startup.go`、`internal/engine/restore.go`、`internal/server/startup_test.go`、`internal/remote/startup_test.go`、`cmd/zwai/engine_restore_process_test.go`。
+
+
 - 目的：从原生窗口、网页或终端使用同一引擎；使用者：PC 用户；入口：`zwai desktop`, `zwai web`, `zwai tui`；输入：本机配置和对话；输出：同源的对话和状态；前置条件：本机引擎可启动；失败表现：启动或连接错误；关联契约：`C-001`, `C-005`, `C-027`；实现证据：`cmd/zwai`, `internal/app`, `internal/desktop`, `frontend/src`。
 
 - 冷启动就绪：完成当前 checkout 的前端准备后，允许本地初始化最多 2 分钟，每 10 秒报告启动进度；手机 hub 注册不阻塞本地窗口。探测期间取消不得因迟到响应而继续附着或丢失取消类别，失败保留本次子进程退出原因及本次追加日志，取消／超时仅清理自己的启动子进程，保留竞争引擎。替换已有引擎仍遵守准备后的统一 30 秒交接预算。关联契约：`C-001`、`C-006`、`C-027`；实现／验证证据：`cmd/zwai/engine_boot.go`、`cmd/zwai/engine_boot_test.go`、`internal/app/app.go`、`internal/app/startup_remote_test.go`。

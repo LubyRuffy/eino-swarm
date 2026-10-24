@@ -705,3 +705,12 @@ receipt with cloud ID/type/status/action/details, provider/model and `llm_call_i
 `details` retains the actual cloud output item returned by the provider.
 Event turn/agent identity remains the one-ID troubleshooting key. These rows do
 not create local tool results or worker lifecycle events (`C-030`).
+
+### Startup restoration diagnostics (`F-110`, `C-027`)
+
+The existing event table stores `engine_restore` on the original thread and turn.
+Its JSON records recovery phase, `duration_ms`, `scanned_events` and
+`checkpoint_reads`; it is diagnostic metadata, not a worker completion or spawn.
+Recovery queries reuse `idx_evt_thread_kind_seq` and read the latest valid v1
+checkpoint plus the selected lifecycle and pending-tool evidence once per
+conversation. No new table, migration, archive or event-body compression is added.

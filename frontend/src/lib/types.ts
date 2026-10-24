@@ -39,6 +39,7 @@ export type EventKind =
   | "error"
   | "resumed"
   | "restart_preparing"
+  | "engine_restore"
   | "engine_restart_checkpoint"
   | "restart_ready"
   | "restart_resumed"
@@ -417,6 +418,8 @@ export interface PresenceClient {
 }
 
 export interface Meta {
+  startup?: "restoring" | "ready"
+  restore?: { completed: number; total: number; failed?: number }
   version: string
   mode: "web" | "desktop" | "engine"
   mock: boolean

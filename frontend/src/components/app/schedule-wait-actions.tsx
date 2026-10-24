@@ -1,6 +1,7 @@
 import { Play, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { useApp } from "@/store/app"
 import { useT } from "@/lib/use-t"
 
 /** Run now / Cancel wait. The transcript notice keeps labels; the composer
@@ -17,6 +18,7 @@ export function ScheduleWaitActions({
   onCancel: () => void
 }) {
   const t = useT()
+  const restoring = useApp((s) => s.meta?.startup === "restoring")
   return (
     <div className="flex shrink-0 items-center justify-end gap-0.5">
       {!running ? (
@@ -26,6 +28,7 @@ export function ScheduleWaitActions({
           size={compact ? "icon-sm" : "sm"}
           className="shrink-0"
           aria-label={t("schedule.runNow")}
+          disabled={restoring}
           onClick={onRunNow}
         >
           <Play />
@@ -38,6 +41,7 @@ export function ScheduleWaitActions({
         size={compact ? "icon-sm" : "sm"}
         className="shrink-0"
         aria-label={t("schedule.cancel")}
+        disabled={restoring}
         onClick={onCancel}
       >
         {compact ? <X /> : t("schedule.cancel")}

@@ -34,6 +34,7 @@ export function ThreadScreen({
   onDropFollowup,
   onInterrupt,
   composerPending,
+  restoring,
   models,
   reasoningLevels,
   catalogBusy,
@@ -64,6 +65,7 @@ export function ThreadScreen({
   onDropFollowup?: (id: string) => void
   onInterrupt?: (id: string) => void
   composerPending?: boolean
+  restoring?: boolean
   models?: ModelChoice[]
   reasoningLevels?: string[]
   catalogBusy?: boolean
@@ -276,7 +278,7 @@ export function ThreadScreen({
             {t("thread.agents")} ({activeAgents.length})
           </Button>
         ) : null}
-        {agentPage === "chat" && running ? (
+        {agentPage === "chat" && (running || restoring) ? (
           <Button
             variant="ghost"
             className="h-8 shrink-0 px-2 text-destructive"
@@ -290,11 +292,13 @@ export function ThreadScreen({
         detail={detail}
         running={running}
         waiting={waiting}
+        disabled={restoring}
         onResume={onResumeGoal}
       /> : null}
       {agentPage === "chat" ? <ScheduleBanner
         detail={detail}
         running={running}
+        disabled={restoring}
         onRunNow={onRunNow}
         onCancel={onCancelWait}
       /> : null}
@@ -398,7 +402,7 @@ export function ThreadScreen({
               <AskCard
                 key={ask.callId}
                 questions={ask.questions!}
-                disabled={composerPending}
+                disabled={composerPending || restoring}
                 onSubmit={(answers) => onAnswerStructured(ask.callId || "", answers)}
               />
             ) : null}
@@ -447,9 +451,9 @@ export function ThreadScreen({
       {agentPage === "chat" && followups.length > 0 ? (
         <QueueTray
           items={followups}
-          onSteer={onSteerFollowup}
+          onSteer={restoring ? undefined : onSteerFollowup}
           onDrop={onDropFollowup}
-          onInterrupt={running ? onInterrupt : undefined}
+          onInterrupt={running && !restoring ? onInterrupt : undefined}
         />
       ) : null}
       {agentPage === "chat" ? <Composer
@@ -464,6 +468,7 @@ export function ThreadScreen({
         onSteer={running && !asking ? onSteer : undefined}
         stopLabel={t("thread.stop")}
         onStop={running && !asking ? onStop : undefined}
+        disabled={restoring}
         pending={composerPending}
         models={models}
         reasoningLevels={reasoningLevels}

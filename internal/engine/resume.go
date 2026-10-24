@@ -48,44 +48,61 @@ func (e *Engine) ResumeOrphanedTurns() (int, error) {
 	}
 	n := 0
 	for i := range resume {
-		t := resume[i]
-		if reconciled, err := e.convergeTerminalTurn(&t); err != nil {
+		e.restoreMu.Lock()
+		snapshot, err := e.loadRestoreSnapshot(context.Background(), resume[i].ThreadID)
+		count := 0
+		if err == nil {
+			count, err = e.resumeOrphanedTurn(context.Background(), resume[i], snapshot)
+		}
+		e.restoreMu.Unlock()
+		n += count
+		if err != nil {
 			return n, err
-		} else if reconciled {
-			continue
 		}
-		checkpoint := e.checkpointForTurn(t.ID)
-		if e.turnHasKind(t.ID, KindUserStopRequested) || checkpoint != nil && checkpoint.HumanStopped {
-			e.stopOrphanedGenerations(t.ThreadID, true)
-			e.record(store.Event{ThreadID: t.ThreadID, TurnID: t.ID, Kind: swarm.NotifyError.String(), AgentID: swarm.DefaultManagerID, Err: "interrupted", SuppressCompletion: true})
-			if err := e.store.FinishTurn(t.ID, store.TurnCancelled, "", "interrupted"); err != nil {
-				return n, err
-			}
-			e.finishScheduledRun(&t, store.TurnCancelled, "", "interrupted")
-			e.runtimeFor(t.ThreadID).pauseOpenGoalOnInterrupt()
-			continue
-		}
-		if err := e.resumeTurn(&t); err != nil {
-			e.log.Warn("could not resume a leftover turn", "turn", t.ID, "thread", t.ThreadID, "err", err)
-			if errors.Is(err, ErrBusy) {
-				continue
-			}
-			e.stopOrphanedGenerations(t.ThreadID, false)
-			_ = e.store.FinishTurn(t.ID, store.TurnError, "", err.Error())
-			if !errors.Is(err, store.ErrScheduleRunConflict) {
-				e.finishScheduledRun(&t, store.TurnError, "", err.Error())
-			}
-			e.record(store.Event{
-				ThreadID: t.ThreadID, TurnID: t.ID,
-				Kind: swarm.NotifyError.String(), AgentID: swarm.DefaultManagerID,
-				Err: err.Error(),
-			})
-			e.blockOpenGoalOnTurnError(t.ThreadID)
-			continue
-		}
-		n++
 	}
+
 	return n, nil
+}
+
+func (e *Engine) resumeOrphanedTurn(ctx context.Context, t store.Turn, snapshot *restoreSnapshot) (int, error) {
+	if reconciled, err := e.convergeTerminalTurn(&t, snapshot); err != nil {
+		return 0, err
+	} else if reconciled {
+		return 0, nil
+	}
+	checkpoint := e.checkpointForTurn(t.ID, snapshot)
+	if e.turnHasKind(t.ID, KindUserStopRequested, snapshot) || checkpoint != nil && checkpoint.HumanStopped {
+		e.stopOrphanedGenerations(t.ThreadID, true, snapshot)
+		e.record(store.Event{ThreadID: t.ThreadID, TurnID: t.ID, Kind: swarm.NotifyError.String(), AgentID: swarm.DefaultManagerID, Err: "interrupted", SuppressCompletion: true})
+		if err := e.store.FinishTurn(t.ID, store.TurnCancelled, "", "interrupted"); err != nil {
+			return 0, err
+		}
+		e.finishScheduledRun(&t, store.TurnCancelled, "", "interrupted")
+		e.runtimeFor(t.ThreadID).pauseOpenGoalOnInterrupt()
+		return 0, nil
+	}
+	if err := e.resumeTurn(ctx, &t, snapshot); err != nil {
+		if ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
+		e.log.Warn("could not resume a leftover turn", "turn", t.ID, "thread", t.ThreadID, "err", err)
+		if errors.Is(err, ErrBusy) {
+			return 0, nil
+		}
+		e.stopOrphanedGenerations(t.ThreadID, false, snapshot)
+		_ = e.store.FinishTurn(t.ID, store.TurnError, "", err.Error())
+		if !errors.Is(err, store.ErrScheduleRunConflict) {
+			e.finishScheduledRun(&t, store.TurnError, "", err.Error())
+		}
+		e.record(store.Event{
+			ThreadID: t.ThreadID, TurnID: t.ID,
+			Kind: swarm.NotifyError.String(), AgentID: swarm.DefaultManagerID,
+			Err: err.Error(),
+		})
+		e.blockOpenGoalOnTurnError(t.ThreadID)
+		return 0, nil
+	}
+	return 1, nil
 }
 
 // pickOrphanedTurns keeps the latest running turn per conversation. Two
@@ -119,7 +136,10 @@ func pickOrphanedTurns(turns []store.Turn) (resume, drop []store.Turn) {
 	return resume, drop
 }
 
-func (e *Engine) resumeTurn(turn *store.Turn) error {
+func (e *Engine) resumeTurn(restoreCtx context.Context, turn *store.Turn, snapshot *restoreSnapshot) error {
+	if err := restoreCtx.Err(); err != nil {
+		return err
+	}
 	th, err := e.store.GetThread(turn.ThreadID)
 	if err != nil {
 		return err
@@ -129,7 +149,7 @@ func (e *Engine) resumeTurn(turn *store.Turn) error {
 			return err
 		}
 	}
-	messages, err := e.resumeConversation(turn)
+	messages, err := e.resumeConversation(turn, snapshot)
 	if err != nil {
 		return err
 	}
@@ -137,7 +157,7 @@ func (e *Engine) resumeTurn(turn *store.Turn) error {
 	if err != nil {
 		return err
 	}
-	toolset, err := tools.Build(context.Background(), e.cfg, e.WorkspaceDir(turn.ThreadID))
+	toolset, err := tools.Build(restoreCtx, e.cfg, e.WorkspaceDir(turn.ThreadID))
 	if err != nil {
 		return err
 	}
@@ -157,13 +177,16 @@ func (e *Engine) resumeTurn(turn *store.Turn) error {
 	if effort == "" {
 		effort = th.ReasoningEffort
 	}
-	builder, err := e.pool.ModelBuilder(context.Background(), prov.ID, prov.Model, effort, e.callRecorder(turn.ThreadID, turn.ID))
+	builder, err := e.pool.ModelBuilder(restoreCtx, prov.ID, prov.Model, effort, e.callRecorder(turn.ThreadID, turn.ID))
 	if err != nil {
 		return err
 	}
 
+	if err := restoreCtx.Err(); err != nil {
+		return err
+	}
 	reg := e.newTurnRegistry(builder, toolset, pc)
-	unread := e.unreadSteerMessages(turn)
+	unread := e.unreadSteerMessages(turn, snapshot)
 	messages = dropSteerMessages(messages, unread)
 
 	rt := e.runtimeFor(turn.ThreadID)
@@ -177,8 +200,8 @@ func (e *Engine) resumeTurn(turn *store.Turn) error {
 	for _, m := range unread {
 		_ = reg.SteerManagerMessage(m)
 	}
-	rt.setWorkerRestore(e.workersFromThread(turn.ThreadID))
-	if checkpoint := e.checkpointForTurn(turn.ID); checkpoint != nil {
+	rt.setWorkerRestore(e.workersFromThread(turn.ThreadID, snapshot))
+	if checkpoint := e.checkpointForTurn(turn.ID, snapshot); checkpoint != nil {
 		if checkpoint.Pause == "cap" {
 			rt.mu.Lock()
 			rt.restartCap = checkpoint
@@ -197,9 +220,9 @@ func (e *Engine) resumeTurn(turn *store.Turn) error {
 		}
 	}
 
-	e.interruptOrphanedGenerations(turn.ThreadID, e.checkpointForTurn(turn.ID) != nil)
+	e.interruptOrphanedGenerations(turn.ThreadID, e.checkpointForTurn(turn.ID, snapshot) != nil, snapshot)
 	_ = e.store.TouchThread(turn.ThreadID)
-	go rt.run(ctx, cancel, idle, turn, reg, toolset, pc, messages, len(messages), e.imagesForTurn(turn), true)
+	go rt.run(ctx, cancel, idle, turn, reg, toolset, pc, messages, len(messages), e.imagesForTurn(turn), true, snapshot)
 	return nil
 }
 
@@ -250,8 +273,8 @@ func lastUserIs(msgs []adk.Message, text string) bool {
 	return false
 }
 
-func (e *Engine) turnHasKind(turnID, kind string) bool {
-	events, err := e.store.ListTurnEvents(turnID)
+func (e *Engine) turnHasKind(turnID, kind string, snapshots ...*restoreSnapshot) bool {
+	events, err := e.restoreTurnEvents(turnID, snapshots...)
 	if err != nil {
 		return false
 	}
@@ -297,16 +320,16 @@ func orphanedToolCalls(events []store.Event) []orphanedToolCall {
 	return out
 }
 
-func (e *Engine) closeOrphanedToolCalls(turn *store.Turn) {
+func (e *Engine) closeOrphanedToolCalls(turn *store.Turn, snapshots ...*restoreSnapshot) {
 	if e == nil || turn == nil {
 		return
 	}
-	events, err := e.store.ListTurnEvents(turn.ID)
+	events, err := e.restoreTurnEvents(turn.ID, snapshots...)
 	if err != nil {
 		e.log.Warn("could not list in-flight tools for resume", "turn", turn.ID, "err", err)
 		return
 	}
-	running, finished := e.workersFromThread(turn.ThreadID)
+	running, finished := e.workersFromThread(turn.ThreadID, snapshots...)
 	for _, c := range orphanedToolCalls(events) {
 		if isAskUserToolText(c.Text) {
 			// Re-arm the wait in run(); closing it as stopped would swallow

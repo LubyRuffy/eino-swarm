@@ -17,7 +17,7 @@ the URL in `engine.json` (a random loopback port unless `--addr` was set).
 |---|---|
 | `400` | malformed body, bad path, or a rejected value; `code: "workdir"` — a project's working directory is not an absolute path to an existing directory |
 | `404` | no such conversation / turn / file / project / skill / unread steer / schedule / schedule run |
-| `409` | `code: "update_busy"` a desktop update is installing or restarting; `code: "busy"` a turn is already running; `code: "idle"` nothing is waiting; `code: "no_steer"` Interrupt was asked with no unread steering; `code: "ask_mismatch"` that `ask_user` call is not the open questionnaire; `code: "nothing_to_compact"` compact had nothing to fold; `code: "conflict"` a stale memory write; `code: "skipped_busy"` Run now skipped because the target conversation is already running or a fire is already claimed; `code: "remote_offline"` phone pairing is off or the hub is unreachable; `code: "exists"` copying a skill onto a name the destination already has; `code: "local"` or `"diverged"` pulling a skill would replace local edits |
+| `409` | `code: "restoring"` startup recovery has not finished;  `code: "update_busy"` a desktop update is installing or restarting; `code: "busy"` a turn is already running; `code: "idle"` nothing is waiting; `code: "no_steer"` Interrupt was asked with no unread steering; `code: "ask_mismatch"` that `ask_user` call is not the open questionnaire; `code: "nothing_to_compact"` compact had nothing to fold; `code: "conflict"` a stale memory write; `code: "skipped_busy"` Run now skipped because the target conversation is already running or a fire is already claimed; `code: "remote_offline"` phone pairing is off or the hub is unreachable; `code: "exists"` copying a skill onto a name the destination already has; `code: "local"` or `"diverged"` pulling a skill would replace local edits |
 | `429` | too many terminals are already open |
 | `501` | the shell cannot do this (`reveal` / `open` when this process is not a loopback engine or the desktop app) |
 
@@ -185,11 +185,13 @@ returns `200` with `stage: "idle"` and zero byte counts; it does not start a che
 
 ### `GET /api/meta`
 
-What the UI reads once at startup to decide what to render.
+Client startup metadata. During recovery, clients poll it until `startup` is `ready`.
 
 ```json
 {
   "version": "dev",
+  "startup": "restoring",
+  "restore": {"completed": 1, "total": 3},
   "mode": "engine",
   "mock": false,
   "configured": true,
@@ -217,6 +219,19 @@ What the UI reads once at startup to decide what to render.
   "clients": [{"id": "pc_ab12", "surface": "desktop", "pid": 4242}]
 }
 ```
+
+`startup` is `restoring` while the serving process restores conversation state,
+then `ready`. `restore.completed/total` counts examined conversations. Optional
+`restore.failed` counts individual conversations that could not be restored;
+those failures remain explicit in their original-turn Trace and engine log.
+They do not terminate the serving engine or claim the failed workers resumed.
+Ready clients retain a static failure warning while other work remains usable. HTTP reads,
+event streams, presence, composer draft storage, read receipts and Stop remain
+available. Other state changes return `409` with `code: "restoring"`; clients keep
+unsent input and do not automatically retry a send. The schedule-create form
+also closes only after a successful acknowledgement and retains inputs on refusal. Recovery finishes before the
+scheduler starts. The paired-phone read-only `meta` RPC returns the same `startup`
+and `restore` fields; work mutations reject `code: "restoring"` before changing state.
 
 `mode` is `engine` for the shared process. Older notes that said `web` or
 `desktop` described a process that was itself the window; shells now attach
@@ -2254,20 +2269,24 @@ New turn admission returns `409` with `code: "restarting"`.
 A `200` acknowledgement is returned only after durable checkpoints:
 
 ```json
-{"stage":"ready","threads":2,"workers":3,"checkpointed":3,"threads_checkpointed":2,"ready":true}
+{"stage":"ready","threads":2,"workers":3,"settled":3,"checkpointed":3,"threads_checkpointed":2,"ready":true}
 ```
 
 `GET /api/engine/restart` reads those progress fields without changing state.
 `stage` is initially empty, then `preparing`, `summarizing`, `checkpointing`,
 `ready`, or `failed`. The endpoint
 is safe to read while handoff runs. `checkpointed` counts worker checkpoints;
-`threads_checkpointed` counts conversation checkpoints. A failed save returns
+`threads_checkpointed` counts conversation checkpoints. During `summarizing`,
+`settled` counts workers that finished or whose handoff stop was requested; it is
+not task completion or durable checkpoint confirmation. A single warning after
+half the shared handoff budget lists pending worker IDs/roles per conversation.
+A failed save returns
 an error; retry reuses the frozen recovery state rather than granting another
 summary period. A disconnected caller cannot turn an incomplete save into a
 positive acknowledgement.
 
 The same turn's event/Trace stream contains `restart_preparing`,
-`engine_restart_checkpoint`, `restart_ready`, `restart_resumed` and `user_stop_requested`.
+`engine_restart_checkpoint`, `restart_ready`, `restart_resumed`, `engine_restore` and `user_stop_requested`.
 `engine_restart_checkpoint` is versioned recovery data, hidden from ordinary
 conversation rendering; it is not a completed answer, tool result or worker
 creation. Unknown interrupted tools require verification of external effects.

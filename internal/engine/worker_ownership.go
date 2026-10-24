@@ -111,11 +111,11 @@ func (rt *runtime) recordParkedStop(reg *swarm.Registry, turnID string) {
 	}
 }
 
-func (e *Engine) retainedWorkerIDs(turn *store.Turn) map[string]bool {
+func (e *Engine) retainedWorkerIDs(turn *store.Turn, snapshots ...*restoreSnapshot) map[string]bool {
 	if turn.Status != store.TurnError || !turn.ScheduleContinue {
 		return nil
 	}
-	events, err := e.store.ListTurnEvents(turn.ID)
+	events, err := e.restoreTurnEvents(turn.ID, snapshots...)
 	if err != nil {
 		return nil
 	}

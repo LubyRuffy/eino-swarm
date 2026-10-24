@@ -52,6 +52,7 @@ export const KINDS = [
   "error",
   "resumed",
   "restart_preparing",
+  "engine_restore",
   "engine_restart_checkpoint",
   "restart_ready",
   "restart_resumed",

@@ -2,6 +2,7 @@ import { ApiError, api } from "@/lib/api"
 import { resolveLocale, t, type LocalePref } from "@/lib/i18n"
 import { setThreadRunning } from "@/lib/thread-title"
 import type {
+  Meta,
   Schedule,
   ScheduleCreate,
   SchedulePatch,
@@ -50,7 +51,7 @@ export type ScheduleSlice = {
   scheduleUnread: number
   scheduleInboxOpen: boolean
   refreshSchedules: (opts?: { silent?: boolean }) => Promise<void>
-  createSchedule: (body: ScheduleCreate) => Promise<void>
+  createSchedule: (body: ScheduleCreate) => Promise<boolean>
   patchSchedule: (id: string, patch: SchedulePatch) => Promise<void>
   deleteSchedule: (id: string) => Promise<void>
   runScheduleNow: (id: string) => Promise<void>
@@ -60,6 +61,7 @@ export type ScheduleSlice = {
 }
 
 type ScheduleHost = {
+  meta?: Meta
   locale: LocalePref
   error?: string
   activeId?: string
@@ -116,15 +118,19 @@ export function scheduleActions(
     },
 
     createSchedule: async (body) => {
+      if (get().meta?.startup === "restoring") return false
       try {
         await api.createSchedule(body)
         await get().refreshSchedules()
+        return true
       } catch (e) {
         set({ error: deps.fail(e) })
+        return false
       }
     },
 
     patchSchedule: async (id, patch) => {
+      if (get().meta?.startup === "restoring") return
       try {
         await api.patchSchedule(id, patch)
         await get().refreshSchedules()
@@ -134,6 +140,7 @@ export function scheduleActions(
     },
 
     deleteSchedule: async (id) => {
+      if (get().meta?.startup === "restoring") return
       try {
         await api.deleteSchedule(id)
         set((s) => {
@@ -153,6 +160,7 @@ export function scheduleActions(
     },
 
     runScheduleNow: async (id) => {
+      if (get().meta?.startup === "restoring") return
       const row = get().schedules.find((s) => s.id === id)
       const activeId = get().activeId
       const already = get().status.running

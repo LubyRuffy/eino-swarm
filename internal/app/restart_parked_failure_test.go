@@ -133,8 +133,45 @@ func TestNewReportsParkedRecoveryFailureWithoutClaimingWorkResumed(t *testing.T)
 			if runs, err := a.Store.ListRuns(wake.ID); err != nil || len(runs) != 0 {
 				t.Fatalf("failed recovery fired the future wake: %+v, %v", runs, err)
 			}
-			if events, err := a.Store.ListTurnEvents(turn.ID); err != nil || !reflect.DeepEqual(events, before) {
-				t.Fatalf("failed recovery fabricated lifecycle events or lost its checkpoint: %+v, %v", events, err)
+			events, err := a.Store.ListTurnEvents(turn.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lifecycle := make([]store.Event, 0, len(events))
+			diagnostics := 0
+			for _, event := range events {
+				if event.Kind != "engine_restore" {
+					lifecycle = append(lifecycle, event)
+					continue
+				}
+				diagnostics++
+				var diagnostic struct {
+					Phase    string `json:"phase"`
+					Category string `json:"error_category"`
+				}
+				if err := json.Unmarshal([]byte(event.Text), &diagnostic); err != nil {
+					t.Fatal(err)
+				}
+				if event.ThreadID != th.ID || event.TurnID != turn.ID || event.AgentID != swarm.DefaultManagerID || diagnostic.Phase != "failed" || diagnostic.Category != "restore_error" {
+					t.Fatalf("recovery failure diagnostic misreported its cause or owner: %+v %s", event, event.Text)
+				}
+			}
+			if diagnostics != 1 || !reflect.DeepEqual(lifecycle, before) {
+				t.Fatalf("failed recovery fabricated lifecycle events or lost its checkpoint: %+v", events)
+			}
+			metaResponse := httptest.NewRecorder()
+			a.Server.Handler().ServeHTTP(metaResponse, httptest.NewRequest(http.MethodGet, "/api/meta", nil))
+			var meta struct {
+				Startup string `json:"startup"`
+				Restore struct {
+					Failed int `json:"failed"`
+				} `json:"restore"`
+			}
+			if err := json.Unmarshal(metaResponse.Body.Bytes(), &meta); err != nil {
+				t.Fatal(err)
+			}
+			if metaResponse.Code != http.StatusOK || meta.Startup != "ready" || meta.Restore.Failed != 1 || a.Engine.ActiveWork() != 0 {
+				t.Fatalf("partial recovery failure disabled the engine or hid the failure: %d %s", metaResponse.Code, metaResponse.Body.String())
 			}
 			if calls, err := a.Store.ListLLMCalls(turn.ID); err != nil || len(calls) != 0 {
 				t.Fatalf("failed recovery executed a model call: %+v, %v", calls, err)

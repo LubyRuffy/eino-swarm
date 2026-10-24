@@ -96,7 +96,7 @@ func New(opts Options) (*Server, error) {
 	r.MaxMultipartMemory = maxUploadMemory
 
 	api := r.Group("/api")
-	api.Use(s.rejectForeignOrigin())
+	api.Use(s.rejectForeignOrigin(), s.requireStartupReady())
 	{
 		api.GET("/meta", s.getMeta)
 		api.POST("/desktop/recovery", s.postDesktopRecovery)
@@ -265,6 +265,8 @@ func (s *Server) rejectForeignOrigin() gin.HandlerFunc {
 // a missing conversation is not a bad request.
 func (s *Server) fail(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, engine.ErrRestoring):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "restoring"})
 	case errors.Is(err, store.ErrDraftConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "draft_conflict"})
 	case errors.Is(err, store.ErrInvalidDraft):

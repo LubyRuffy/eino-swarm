@@ -43,7 +43,11 @@ func replaceEngine(ctx context.Context, rec lease.Record) error {
 	} else {
 		log.Print("task progress saved; restarting the engine and restoring unfinished tasks")
 	}
-	if err := ctx.Err(); err != nil {
+	owner := ctx
+	if policy, ok := ctx.Value(engineStartupPolicyKey{}).(engineStartupPolicy); ok && !legacy {
+		owner = policy.owner
+	}
+	if err := engineContextError(owner); err != nil {
 		return fmt.Errorf("engine restart: %w", err)
 	}
 	return lease.Kill(rec.PID)
@@ -119,11 +123,12 @@ func handoffHTTP(req *http.Request, heartbeat time.Duration) (*http.Response, er
 				Stage        string `json:"stage"`
 				Workers      int    `json:"workers"`
 				Checkpointed int    `json:"checkpointed"`
+				Settled      int    `json:"settled"`
 			}
 			err = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&status)
 			_ = resp.Body.Close()
 			if err == nil && resp.StatusCode == http.StatusOK && status.Stage != "" {
-				log.Printf("preparing restart: %s; %d/%d worker checkpoint(s) saved", status.Stage, status.Checkpointed, status.Workers)
+				log.Printf("preparing restart: %s; %d/%d worker(s) settled; %d/%d checkpoint(s) saved", status.Stage, status.Settled, status.Workers, status.Checkpointed, status.Workers)
 			}
 		}
 	}

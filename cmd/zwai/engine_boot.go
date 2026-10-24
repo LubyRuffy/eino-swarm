@@ -15,8 +15,8 @@ import (
 )
 
 // Cold startup can include a frontend rebuild and persisted-state recovery.
-// Replacement passes its existing 30-second context into the same wait, so
-// the longer cold-start allowance never extends a restart's shared budget.
+// After an acknowledged replacement, readiness has its own bounded wait.
+// Expiring that wait cannot stop the only remaining lease holder.
 var engineBootWait = 2 * time.Minute
 var engineBootHeartbeat = 10 * time.Second
 
@@ -35,7 +35,7 @@ func discoverIfStartingContext(parent context.Context, dir string, mock bool) (l
 	progress := time.NewTicker(engineBootHeartbeat)
 	defer progress.Stop()
 	for {
-		if err := ctx.Err(); err != nil {
+		if err := engineContextError(ctx); err != nil {
 			return lease.Record{}, true, fmt.Errorf("engine holds the data directory but is not listening: %w", err)
 		}
 		rec, err := lease.Discover(dir, mock)
@@ -65,7 +65,7 @@ func spawnEngine(dir, addr string, mock bool) (string, error) {
 }
 
 func spawnEngineContext(parent context.Context, dir, addr string, mock bool) (string, error) {
-	if err := parent.Err(); err != nil {
+	if err := engineContextError(parent); err != nil {
 		return "", err
 	}
 	ctx, cancel := context.WithTimeout(parent, engineBootWait)
@@ -121,11 +121,17 @@ func spawnEngineContext(parent context.Context, dir, addr string, mock bool) (st
 	defer progress.Stop()
 	childExited := false
 	for {
-		if err := ctx.Err(); err != nil {
+		if err := engineContextError(ctx); err != nil {
 			select {
 			case <-exited:
+				childExited = true
 				err = errors.Join(err, waitErr)
 			default:
+			}
+			policy, _ := parent.Value(engineStartupPolicyKey{}).(engineStartupPolicy)
+			if policy.forwardOnly && parent.Err() == nil && !childExited && lease.Busy(dir) {
+				keepChild = true
+				return "", &engineStartupPendingError{PID: cmd.Process.Pid, LogPath: logPath, Cause: err}
 			}
 			return "", fmt.Errorf("engine startup did not finish: %w\n%s", err, engineLogTail(logPath, offset))
 		}

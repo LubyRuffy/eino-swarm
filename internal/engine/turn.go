@@ -537,7 +537,7 @@ const (
 
 func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan struct{},
 	turn *store.Turn, reg *swarm.Registry, toolset *tools.Set, pc *projectContext,
-	messages []adk.Message, inputCount int, images []store.ImageRef, resumed bool,
+	messages []adk.Message, inputCount int, images []store.ImageRef, resumed bool, snapshots ...*restoreSnapshot,
 ) {
 	e := rt.engine
 	var finishUnlock func()
@@ -559,8 +559,8 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	}()
 
 	if resumed {
-		if !e.turnHasKind(turn.ID, KindUser) && !e.turnHasKind(turn.ID, KindGoalContinued) &&
-			!e.turnHasKind(turn.ID, KindScheduleFired) {
+		if !e.turnHasKind(turn.ID, KindUser, snapshots...) && !e.turnHasKind(turn.ID, KindGoalContinued, snapshots...) &&
+			!e.turnHasKind(turn.ID, KindScheduleFired, snapshots...) {
 			if turn.GoalContinue {
 				e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
 					Kind: KindGoalContinued, AgentID: swarm.DefaultManagerID, Text: goalContinuedNotice})
@@ -572,10 +572,10 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 					Kind: KindUser, AgentID: swarm.DefaultManagerID, Text: turn.UserText, Images: images})
 			}
 		}
-		e.closeOrphanedToolCalls(turn)
-		messages = rt.resolveOrphanedAsk(ctx, turn, messages)
+		e.closeOrphanedToolCalls(turn, snapshots...)
+		messages = rt.resolveOrphanedAsk(ctx, turn, messages, snapshots...)
 		kind, notice := KindResumed, resumeNotice
-		if e.checkpointForTurn(turn.ID) != nil {
+		if e.checkpointForTurn(turn.ID, snapshots...) != nil {
 			kind, notice = KindRestartResumed, "Saved task progress restored; continuing."
 		}
 		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,

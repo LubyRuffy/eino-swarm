@@ -85,7 +85,7 @@ func TestFrontendPreparationFailurePreservesTheServingEngine(t *testing.T) {
 	}
 }
 
-func TestFrontendPreparationFinishesBeforeTheRestartBudgetStarts(t *testing.T) {
+func TestFrontendPreparationFinishesBeforeHandoffAndReplacementOwnsItsWait(t *testing.T) {
 	dir := t.TempDir()
 	holder := startLeaseHolder(t, dir)
 	var prepared atomic.Int64
@@ -111,10 +111,9 @@ func TestFrontendPreparationFinishesBeforeTheRestartBudgetStarts(t *testing.T) {
 	}
 	want := errors.New("fixture stops after observing the replacement budget")
 	launchEngine = func(ctx context.Context, _ string, _ string, _ bool) (string, error) {
-		deadline, ok := ctx.Deadline()
-		preparedAt := time.Unix(0, prepared.Load())
-		if !ok || prepared.Load() == 0 || deadline.Sub(preparedAt) < restartBudget-100*time.Millisecond {
-			t.Errorf("frontend preparation consumed the replacement budget: prepared=%v deadline=%v", preparedAt, deadline)
+		policy, _ := ctx.Value(engineStartupPolicyKey{}).(engineStartupPolicy)
+		if _, bounded := ctx.Deadline(); bounded || prepared.Load() == 0 || !policy.forwardOnly {
+			t.Errorf("acknowledged replacement did not receive its own wait: prepared=%d bounded=%v forwardOnly=%v", prepared.Load(), bounded, policy.forwardOnly)
 		}
 		return "", want
 	}

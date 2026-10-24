@@ -5,11 +5,13 @@ import (
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"github.com/LubyRuffy/eino-swarm/internal/engine"
 )
 
 const (
 	ProtocolV = 1
 
+	OpMeta           = "meta"
 	OpList           = "list"
 	OpMore           = "more"
 	OpOpen           = "open"
@@ -111,38 +113,40 @@ type Request struct {
 // Response is what the PC replies. Path and SessionID are pairlink
 // metadata so zwai trace can join the remote hop.
 type Response struct {
-	V               int             `json:"v"`
-	ID              string          `json:"id"`
-	OK              bool            `json:"ok"`
-	Error           string          `json:"error,omitempty"`
-	Code            string          `json:"code,omitempty"`
-	Path            string          `json:"path,omitempty"`
-	SessionID       string          `json:"session_id,omitempty"`
-	Host            string          `json:"host,omitempty"`
-	Projects        []ProjectView   `json:"projects,omitempty"`
-	Threads         []ThreadView    `json:"threads,omitempty"`
-	Running         []RunningView   `json:"running,omitempty"`
-	Attention       []ThreadView    `json:"attention,omitempty"`
-	AttentionMore   bool            `json:"attention_more,omitempty"`
-	AttentionCursor string          `json:"attention_cursor,omitempty"`
-	More            bool            `json:"more,omitempty"`
-	Next            string          `json:"next,omitempty"`
-	Detail          *ThreadDetail   `json:"detail,omitempty"`
-	Op              string          `json:"op,omitempty"`
-	ThreadID        string          `json:"thread_id,omitempty"`
-	Seq             int64           `json:"seq,omitempty"`
-	Event           *EventView      `json:"event,omitempty"`
-	Events          []EventView     `json:"events,omitempty"`
-	Status          *WatchStatus    `json:"status,omitempty"`
-	Models          []ModelView     `json:"models,omitempty"`
-	ReasoningLevels []string        `json:"reasoning_levels,omitempty"`
-	Put             *PutView        `json:"put,omitempty"`
-	Groups          []ThreadGroup   `json:"groups,omitempty"`
-	Followups       *[]FollowupView `json:"followups,omitempty"`
-	Clients         *ClientCatalog  `json:"clients,omitempty"`
-	ClientView      *ClientView     `json:"client_view,omitempty"`
-	Files           []FileView      `json:"files,omitempty"`
-	FileChunk       *FileChunkView  `json:"file_chunk,omitempty"`
+	Startup         string                  `json:"startup,omitempty"`
+	Restore         *engine.RestoreProgress `json:"restore,omitempty"`
+	V               int                     `json:"v"`
+	ID              string                  `json:"id"`
+	OK              bool                    `json:"ok"`
+	Error           string                  `json:"error,omitempty"`
+	Code            string                  `json:"code,omitempty"`
+	Path            string                  `json:"path,omitempty"`
+	SessionID       string                  `json:"session_id,omitempty"`
+	Host            string                  `json:"host,omitempty"`
+	Projects        []ProjectView           `json:"projects,omitempty"`
+	Threads         []ThreadView            `json:"threads,omitempty"`
+	Running         []RunningView           `json:"running,omitempty"`
+	Attention       []ThreadView            `json:"attention,omitempty"`
+	AttentionMore   bool                    `json:"attention_more,omitempty"`
+	AttentionCursor string                  `json:"attention_cursor,omitempty"`
+	More            bool                    `json:"more,omitempty"`
+	Next            string                  `json:"next,omitempty"`
+	Detail          *ThreadDetail           `json:"detail,omitempty"`
+	Op              string                  `json:"op,omitempty"`
+	ThreadID        string                  `json:"thread_id,omitempty"`
+	Seq             int64                   `json:"seq,omitempty"`
+	Event           *EventView              `json:"event,omitempty"`
+	Events          []EventView             `json:"events,omitempty"`
+	Status          *WatchStatus            `json:"status,omitempty"`
+	Models          []ModelView             `json:"models,omitempty"`
+	ReasoningLevels []string                `json:"reasoning_levels,omitempty"`
+	Put             *PutView                `json:"put,omitempty"`
+	Groups          []ThreadGroup           `json:"groups,omitempty"`
+	Followups       *[]FollowupView         `json:"followups,omitempty"`
+	Clients         *ClientCatalog          `json:"clients,omitempty"`
+	ClientView      *ClientView             `json:"client_view,omitempty"`
+	Files           []FileView              `json:"files,omitempty"`
+	FileChunk       *FileChunkView          `json:"file_chunk,omitempty"`
 
 	TimeoutSettings *config.TimeoutSettings `json:"timeout_settings,omitempty"`
 }

@@ -28,7 +28,15 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req R
 	if req.V != 0 && req.V != ProtocolV {
 		return fail(req.ID, path, sessionID, "bad_version", "unsupported protocol version")
 	}
+	if err := requireStartupReady(eng, req.Op); err != nil {
+		return mapErr(req.ID, path, sessionID, err)
+	}
 	switch strings.TrimSpace(req.Op) {
+	case OpMeta:
+		resp := okBase(req.ID, path, sessionID)
+		state, progress := eng.StartupStatus()
+		resp.Startup, resp.Restore = state, &progress
+		return resp
 	case OpList, OpMore:
 		return handleList(eng, cfg, req, path, sessionID)
 	case OpClients:
@@ -204,6 +212,8 @@ func opErr(id, path, sessionID string, err error) Response {
 
 func mapErr(id, path, sessionID string, err error) Response {
 	switch {
+	case errors.Is(err, engine.ErrRestoring):
+		return fail(id, path, sessionID, "restoring", err.Error())
 	case errors.Is(err, engine.ErrBusy):
 		return fail(id, path, sessionID, "busy", err.Error())
 	case errors.Is(err, engine.ErrIdle):

@@ -98,6 +98,8 @@ export function Composer({
   onRefreshModels,
   onEditProviders,
   disabled: readOnly,
+  restoring,
+  canStopWhileRestoring,
   prefill,
   prefillToken,
   focusSignal,
@@ -152,6 +154,8 @@ export function Composer({
   onRefreshModels?: () => Promise<void>
   onEditProviders?: () => void
   disabled?: boolean
+  restoring?: boolean
+  canStopWhileRestoring?: boolean
   /** Bumped by the empty state (or a shortcut) to drop text into the box
    *  without the composer being a controlled field of the whole app. */
   prefill?: string
@@ -218,7 +222,7 @@ export function Composer({
   const [submitting, setSubmitting] = useState(false)
   const [slashRejected, setSlashRejected] = useState(false)
   const submittingRef = useRef(false)
-  const disabled = readOnly || submitting || Boolean(durable.snapshot && (!durable.snapshot.loaded || durable.snapshot.busy || durable.snapshot.conflict || durable.snapshot.draft.state !== "editing"))
+  const disabled = readOnly || restoring || submitting || Boolean(durable.snapshot && (!durable.snapshot.loaded || durable.snapshot.busy || durable.snapshot.conflict || durable.snapshot.draft.state !== "editing"))
   const [uploading, setUploading] = useState(false)
   const [armed, setArmed] = useState(false)
   const [adding, setAdding] = useState(false)
@@ -339,7 +343,8 @@ export function Composer({
     awaitingArgument,
   })
   const sendDisabled = Boolean(disabled) || uploading || !submittable
-  const corner = composerCornerActions({
+  const restoreStop = Boolean(restoring && canStopWhileRestoring)
+  const corner = restoreStop ? { stop: true, send: true } : composerCornerActions({
     running,
     submittable,
     awaitingArgument,
@@ -503,7 +508,7 @@ export function Composer({
       <div
         ref={dockRef}
         data-testid="composer-dock"
-        aria-disabled={disabled || undefined}
+        aria-disabled={(disabled && !restoreStop) || undefined}
         className={cn(
           "relative z-10 content-column content-gutter pb-3",
           readOnly ? "pointer-events-none opacity-60" : disabled ? "pointer-events-none" : "pointer-events-auto",
@@ -810,6 +815,7 @@ export function Composer({
                 <Button
                   size="icon"
                   variant="secondary"
+                  className={restoreStop ? "pointer-events-auto" : undefined}
                   onClick={onStop}
                   aria-label={t("composer.stop")}
                   title={t("composer.stop")}

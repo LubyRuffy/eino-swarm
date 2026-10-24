@@ -1,5 +1,7 @@
 import { generationEn } from "./messages-generation"
 export const en = {
+  "startup.failed": "{failed} conversations could not be restored. Check Trace or logs.",
+  "startup.restoring": "Restoring unfinished tasks {completed}/{total}",
   ...generationEn,
   "pcTimeouts.title": "PC timeouts",
   "pcTimeouts.scope": "For this PC. First-byte waiting and stream-idle waiting are independent. Saved values apply to new model calls and new sub-agents; running work and paused tasks are unchanged.",

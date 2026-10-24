@@ -51,6 +51,7 @@ const wireKinds: EventKind[] = [
   "generation_interrupted",
   "generation_recovered",
   "desktop_recovery",
+  "engine_restore",
   "delta",
   "turn",
   "spawned",
@@ -147,6 +148,14 @@ describe("the event stream", () => {
     })
     expect(onEvent.mock.calls.map(([event]) => event.kind)).toEqual(["done", "desktop_recovery"])
     expect(onEvent.mock.calls[1][0]).toMatchObject({ seq: 13, agent_id: "", text: '{"phase":"recovered"}' })
+  })
+
+  it("delivers engine restoration metadata by its actual named SSE listener", () => {
+    const onEvent = vi.fn()
+    subscribeEvents("th_1", { onEvent })
+    FakeEventSource.last.deliver("engine_restore", { kind: "engine_restore", seq: 13, turn_id: "turn", text: '{"phase":"restored","duration_ms":8,"scanned_events":50,"checkpoint_reads":1}' })
+    expect(onEvent).toHaveBeenCalledOnce()
+    expect(onEvent.mock.calls[0][0]).toMatchObject({ kind: "engine_restore", seq: 13, turn_id: "turn" })
   })
 
   // The event name is the authority: a payload whose kind disagrees with the

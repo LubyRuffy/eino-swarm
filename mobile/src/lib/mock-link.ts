@@ -11,6 +11,7 @@ import {
   OpFileChunk,
   OpFollowupSteer,
   OpHello,
+  OpMeta,
   OpClientRead,
   OpClients,
   OpList,
@@ -569,6 +570,7 @@ export class MockHost {
 
   detail(th: MockThread): ThreadDetail {
     return {
+      ...(new URLSearchParams(location.search).get("history") === "restore-pending" && !th.running ? { turns: [{ id: "stored-before-restart", status: "running" }] } : {}),
       id: th.id,
       title: th.title,
       ...(this.legacyCompletion ? {} : { unread: (th.completedSeq ?? 0) > (th.readSeq ?? 0), completed_seq: th.completedSeq ?? 0 }),
@@ -779,6 +781,11 @@ export class MockLink {
     const id = req.id ?? ""
     const thread = () => this.host.find(req.thread_id ?? "")
     switch (req.op) {
+      case OpMeta: {
+        const search = new URLSearchParams(location.search)
+        const [completed, total] = (search.get("restore") ?? "0,0").split(",").map(Number)
+        return this.ok({ id, startup: search.get("startup") === "restoring" ? "restoring" : "ready", restore: { completed, total } })
+      }
       case OpHello:
         return this.ok({ id })
       case OpUnwatch:
