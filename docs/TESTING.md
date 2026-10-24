@@ -799,6 +799,20 @@ presence and `409 restoring` remain observable, then the original task/worker
 continues without another spawn or side effect. This is headless process
 acceptance; native window behavior uses the ci-macOS case runner separately.
 
+On 2026-10-24, the isolated ci-macOS runner passed the actual
+`go run ./cmd/zwai desktop --mock` command from an exact source copy of
+`75ccd839a303b66f796e3c25d9f377b07fbef030` plus all 33 original dirty entries.
+Native text entry and one Send produced an offline two-worker turn with matching
+tool-output bytes and Trace; all 65 served assets matched the freshly built
+bundle, and a PID-bound screenshot showed the final result. Source/index/status
+remained unchanged. The cold-source round took **159.069 seconds**, including
+**11.398 seconds** of complete process/data cleanup; first source transfer and
+admission brought the measured total to **161.316 seconds** within its separate
+900-second budget. This accepts the normal checkout launch path. Recovery beyond
+30 seconds remains headless evidence above; this is neither a formal ZIP release
+nor renderer-fault acceptance. Earlier CG multi-window refusals remain retained
+without an established product cause.
+
 ```bash
 go test -race -count=1 ./internal/app ./internal/server ./internal/remote ./internal/engine -run 'TestDeferredRestore|TestRestoringEngine|TestStopBeforeRestore|TestRecoveryServes|TestPhoneRecovery'
 go test -race -count=1 ./cmd/zwai -run 'TestReplacementListensWhileRecoveryExceedsThirtySeconds|TestAcknowledgedReplacement|TestForwardReplacement'
