@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { composer, freshConversation, waitForIdle } from "./session"
+import { composer, freshConversation, reloadOpenConversation, waitForIdle } from "./session"
 
 test("restoration progress keeps history readable and a saved draft intact until an explicit send after readiness", async ({ page }, info) => {
   let startup = "ready", completed = 0
@@ -9,6 +9,7 @@ test("restoration progress keeps history readable and a saved draft intact until
     await route.fulfill({ response, json: { ...body, startup, restore: { completed, total: 3 } } })
   })
   await freshConversation(page)
+  const selectedId = await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute("data-id")
   await composer(page).fill("Inspect the assigned operation.")
   const first = page.waitForResponse((response) => response.request().method() === "POST" && /\/steer$/.test(new URL(response.url()).pathname))
   await composer(page).press("Enter")
@@ -25,6 +26,11 @@ test("restoration progress keeps history readable and a saved draft intact until
   await expect(page.getByTestId("user-message")).toContainText("Inspect the assigned operation.")
   completed = 2
   await expect(page.getByTestId("engine-startup")).toHaveText("Restoring unfinished tasks 2/3")
+  await reloadOpenConversation(page)
+  await expect(page.getByTestId("engine-startup")).toHaveText("Restoring unfinished tasks 2/3")
+  await expect(page.locator('[data-testid="thread-row"][aria-current="true"]')).toHaveAttribute("data-id", selectedId!)
+  await expect(composer(page)).toHaveValue("Retained draft during restoration")
+  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled()
   await page.screenshot({ path: info.outputPath("restoration-progress-with-saved-draft.png") })
   startup = "ready"; completed = 3
   await expect(page.getByTestId("engine-startup")).toHaveCount(0)

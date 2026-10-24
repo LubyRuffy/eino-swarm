@@ -778,8 +778,8 @@ function AppComposer({
       contextChars={thread?.context_chars}
       contextBudget={thread?.context_budget ?? meta?.swarm.context_char_budget}
       onSetGoal={(text, id) => setGoal(text, id)}
-      onClearGoal={() => void setGoal("")}
-      onEditGoal={(text) => void editGoal(text)}
+      onClearGoal={() => setGoal("")}
+      onEditGoal={(text) => editGoal(text)}
       onResumeGoal={() => void resumeGoal()}
       onCompact={() => void compactThread()}
       planMode={thread?.plan_mode}

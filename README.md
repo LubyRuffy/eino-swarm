@@ -1104,6 +1104,9 @@ The desktop/Web window can attach while unfinished work is restoring. PC and
 phone show recovery progress and keep saved history available; new work waits
 until recovery ends. Individual recovery failures leave a visible failure count
 and the original Trace while other work stays usable. Stop remains available and is persisted before that
-conversation can resume. The scheduler starts after recovery. A replacement
+conversation can resume. Goal editing and its keyboard shortcuts pause during recovery. A refused goal
+edit stays open with its text; readiness never submits it automatically, and
+only an acknowledged explicit save closes it.
+The scheduler starts after recovery. A replacement
 that has already accepted handoff is not killed by the old 30-second launch
 budget; an unusually slow live start reports its PID and log path for diagnosis.

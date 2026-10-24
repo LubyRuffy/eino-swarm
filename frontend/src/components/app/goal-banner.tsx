@@ -52,6 +52,7 @@ export function GoalBanner({
   running,
   startedAt,
   waiting,
+  disabled,
   onClear,
   onEdit,
   onResume,
@@ -69,8 +70,9 @@ export function GoalBanner({
   startedAt?: string
   /** Parked on a thread wake. Auto-continue is waiting, not stuck. */
   waiting?: boolean
-  onClear: () => void
-  onEdit?: (text: string) => void
+  disabled?: boolean
+  onClear: () => boolean | Promise<boolean>
+  onEdit?: (text: string) => boolean | Promise<boolean>
   onResume?: () => void
 }) {
   const t = useT()
@@ -79,6 +81,9 @@ export function GoalBanner({
   const [now, setNow] = useState(() => Date.now())
   const areaRef = useRef<HTMLTextAreaElement>(null)
   const open = useRef(false)
+  const pending = useRef(false)
+  const [saving, setSaving] = useState(false)
+  const blockedAction = disabled || saving
 
   useEffect(() => {
     if (!editing) setDraft(goal)
@@ -126,22 +131,35 @@ export function GoalBanner({
           : t("goal.capHint")
         : ""
 
-  const save = () => {
-    if (!open.current) return
-    open.current = false
+  const save = async () => {
+    if (!open.current || disabled || pending.current) return
     const next = draft.trim()
-    setEditing(false)
-    if (!next) {
-      onClear()
+    if (next === goal.trim()) {
+      open.current = false
+      setEditing(false)
       return
     }
-    if (next !== goal.trim()) onEdit?.(next)
+    pending.current = true
+    setSaving(true)
+    try {
+      const acknowledged = await (next ? onEdit?.(next) : onClear())
+      if (acknowledged === true) {
+        open.current = false
+        setEditing(false)
+      }
+    } catch {
+      // The mutation owner reports errors; a rejection still keeps this edit.
+    } finally {
+      pending.current = false
+      setSaving(false)
+    }
   }
 
   return (
     <div
       data-testid="goal-banner"
       data-waiting={waiting ? "true" : undefined}
+      aria-busy={saving || undefined}
       className={composerPinClass}
     >
       <div className="flex items-center gap-2">
@@ -155,11 +173,13 @@ export function GoalBanner({
             data-edit-draft="true"
             aria-label={t("goal.edit")}
             value={draft}
+            disabled={blockedAction}
             rows={2}
             className="min-h-12 flex-1"
             onChange={(e) => setDraft(e.target.value)}
-            onBlur={save}
+            onBlur={() => void save()}
             onKeyDown={(e) => {
+              if (blockedAction) return
               if (e.key === "Escape") {
                 e.preventDefault()
                 open.current = false
@@ -167,7 +187,7 @@ export function GoalBanner({
                 setEditing(false)
               } else if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault()
-                save()
+                void save()
               }
             }}
           />
@@ -178,6 +198,7 @@ export function GoalBanner({
             className="min-w-0 flex-1 truncate text-left hover:underline"
             aria-label={t("goal.edit")}
             title={reason || goal}
+            disabled={blockedAction}
             onClick={() => {
               if (!onEdit) return
               open.current = true
@@ -204,6 +225,7 @@ export function GoalBanner({
             className="shrink-0"
             data-testid="goal-start"
             aria-label={t("goal.start")}
+            disabled={blockedAction}
             onClick={onResume}
           >
             <Play />
@@ -214,6 +236,7 @@ export function GoalBanner({
           variant="ghost"
           size="icon-sm"
           aria-label={t("goal.clear")}
+          disabled={blockedAction}
           onClick={onClear}
         >
           <X />

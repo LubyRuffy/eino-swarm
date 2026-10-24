@@ -95,6 +95,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-110`, `C-001`: explicitly disable PC goal controls and focused-editor keyboard/blur saves during engine restoration. A goal edit waits for its actual acknowledgement; refusals retain the current conversation's text and never automatically retry. Late acknowledgements cannot close another conversation's editor. Recovery UI regression now includes an actual page reload and restoration of the original saved-draft scope.
+
 - `F-110`, `C-027`: clarify the existing failed-handoff boundary: retain frozen
   execution and retryable checkpoints, keep readable history/Trace/restart
   diagnostics available, and never treat a surviving engine as proof that

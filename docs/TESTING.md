@@ -777,6 +777,18 @@ go test -race -count=1 ./internal/lease -run 'TestDiscover'
 
 ### Reachable recovery and cancellation
 
+`frontend/e2e/engine-startup.spec.ts` reloads the actual page during restoration,
+reopens the original conversation under the existing home-on-reload contract,
+and checks its identity, saved draft, disabled Send, continuing progress and
+automatic banner removal at readiness. `frontend/e2e/goal-restoring.spec.ts`
+starts with a focused goal edit: Enter/blur during restoration cannot submit;
+an actual intercepted `409 restoring` keeps its text and original conversation,
+with no automatic retry before an explicitly acknowledged save. Component and
+store tests cover a pending/rejected ACK, empty clear, duplicate blur/Enter and
+navigation while an old acknowledgement is pending. Run those browser cases
+with an independent port, data directory and output directory. These headless
+UI cases do not replace real-process recovery or ci-macOS native acceptance.
+
 `internal/app/startup_restore_test.go` verifies that a deferred-restoration app
 serves metadata before recovery and becomes ready afterwards. Engine, HTTP and
 phone startup tests check progress, mutation refusal and durable Stop before

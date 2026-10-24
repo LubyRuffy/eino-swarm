@@ -182,8 +182,8 @@ export function Composer({
   contextChars?: number
   contextBudget?: number
   onSetGoal?: (text: string, threadId?: string) => void | boolean | Promise<boolean>
-  onClearGoal?: () => void
-  onEditGoal?: (text: string) => void
+  onClearGoal?: () => boolean | Promise<boolean>
+  onEditGoal?: (text: string) => boolean | Promise<boolean>
   onResumeGoal?: () => void
   onCompact?: () => void
   planMode?: boolean
@@ -527,6 +527,7 @@ export function Composer({
             onLeave={onLeavePlan}
           />
           <GoalBanner
+            key={draftKey}
             goal={goal ?? ""}
             complete={goalComplete}
             blocked={goalBlocked}
@@ -535,9 +536,10 @@ export function Composer({
             capped={goalCapped}
             idle={goalIdle}
             running={running}
+            disabled={restoring}
             waiting={parkedWait}
             startedAt={goalStartedAt}
-            onClear={() => onClearGoal?.()}
+            onClear={() => onClearGoal?.() ?? false}
             onEdit={onEditGoal}
             onResume={onResumeGoal}
           />

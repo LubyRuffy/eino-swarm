@@ -138,7 +138,7 @@ export interface AppState extends ScheduleSlice {
     callId: string,
     answers: Record<string, { answers: string[] }>,
   ) => Promise<void>
-  editGoal: (text: string) => Promise<void>
+  editGoal: (text: string) => Promise<boolean>
   resumeGoal: () => Promise<void>
   compactThread: () => Promise<void>
   interrupt: () => Promise<void>
@@ -638,15 +638,17 @@ export const useApp = create<AppState>((set, get) => ({
 
   editGoal: async (text) => {
     const id = get().activeId
-    if (!id) return
+    if (!id || get().meta?.startup === "restoring") return false
     try {
       const updated = await api.patchThread(id, { goal: text, goal_edit: true })
       set((s) => ({
         threads: s.threads.map((t) => (t.id === id ? { ...t, ...updated } : t)),
         error: undefined,
       }))
+      return true
     } catch (e) {
       set({ error: message(e) })
+      return false
     }
   },
 

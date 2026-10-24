@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { useApp } from "@/store/app"
 import { useProjects } from "@/store/projects"
+import { api } from "@/lib/api"
 
 /** Goal/compact stream tests. Kept out of app.test.ts so that file stays
  *  under 1000 lines — the mock here is only what those actions touch. */
@@ -162,10 +163,25 @@ describe("goal and compact", () => {
   it("edits the standing objective in place", async () => {
     await useApp.getState().boot()
     await useApp.getState().openThread("th_old")
-    await useApp.getState().editGoal("keep going, tighter")
+    expect(await useApp.getState().editGoal("keep going, tighter")).toBe(true)
     expect(fake.goals).toEqual([
       { id: "th_old", goal: "keep going, tighter", goal_edit: true },
     ])
+  })
+
+  it("keeps a refused goal edit unacknowledged and preserves the original objective", async () => {
+    fake.goalText = "Original objective"
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
+    const patch = vi.spyOn(api, "patchThread").mockRejectedValueOnce(new Error("Engine is restoring unfinished tasks."))
+    expect(await useApp.getState().editGoal("Unacknowledged edit")).toBe(false)
+    expect(useApp.getState().error).toBe("Engine is restoring unfinished tasks.")
+    expect(fake.goalText).toBe("Original objective")
+    expect(useApp.getState().threads.find((thread) => thread.id === "th_old")?.goal).toBe("Original objective")
+    patch.mockRestore()
+    useApp.setState({ meta: { startup: "restoring" } as import("@/lib/types").Meta })
+    expect(await useApp.getState().editGoal("Blocked edit")).toBe(false)
+    expect(fake.goals).toEqual([])
   })
 
   it("resumes a standing objective on the open conversation", async () => {
@@ -177,7 +193,7 @@ describe("goal and compact", () => {
   })
 
   it("does not edit or resume when nothing is open", async () => {
-    await useApp.getState().editGoal("x")
+    expect(await useApp.getState().editGoal("x")).toBe(false)
     await useApp.getState().resumeGoal()
     expect(fake.goals).toEqual([])
   })

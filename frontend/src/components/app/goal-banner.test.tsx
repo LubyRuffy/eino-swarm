@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { formatGoalAge, GoalBanner } from "./goal-banner"
@@ -155,14 +155,15 @@ describe("GoalBanner", () => {
     expect(screen.queryByTestId("goal-start")).toBeNull()
   })
 
-  it("edits the objective and saves on blur", () => {
-    const onEdit = vi.fn()
+  it("edits the objective and saves on blur", async () => {
+    const onEdit = vi.fn().mockResolvedValue(true)
     render(<GoalBanner goal="keep going" onEdit={onEdit} onClear={vi.fn()} />)
     fireEvent.click(screen.getByTestId("goal-text"))
     const box = screen.getByTestId("goal-edit")
     fireEvent.change(box, { target: { value: "keep going, tighter" } })
     fireEvent.blur(box)
     expect(onEdit).toHaveBeenCalledWith("keep going, tighter")
+    await waitFor(() => expect(screen.queryByTestId("goal-edit")).toBeNull())
   })
 
   it("cancels an edit on Escape", () => {
@@ -177,14 +178,15 @@ describe("GoalBanner", () => {
     expect(screen.getByTestId("goal-text").textContent).toContain("keep going")
   })
 
-  it("clears when the edit is emptied", () => {
-    const onClear = vi.fn()
+  it("clears when the edit is emptied", async () => {
+    const onClear = vi.fn().mockResolvedValue(true)
     render(<GoalBanner goal="keep going" onEdit={vi.fn()} onClear={onClear} />)
     fireEvent.click(screen.getByTestId("goal-text"))
     const box = screen.getByTestId("goal-edit")
     fireEvent.change(box, { target: { value: "  " } })
     fireEvent.blur(box)
     expect(onClear).toHaveBeenCalled()
+    await waitFor(() => expect(screen.queryByTestId("goal-edit")).toBeNull())
   })
 
   it("shows elapsed time from when the objective was set", () => {
