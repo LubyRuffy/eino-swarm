@@ -15,9 +15,10 @@ func TestRestoringEngineRetainsOwnershipAndRejectsNewWork(t *testing.T) {
 		t.Fatal("fresh library engine not ready")
 	}
 	e.BeginRestore()
+	e.SetRestoreFailures(2)
 	e.SetRestoreProgress(1, 3)
 	state, p := e.StartupStatus()
-	if state != "restoring" || p.Completed != 1 || p.Total != 3 || e.ActiveWork() != 1 {
+	if state != "restoring" || p.Completed != 1 || p.Total != 3 || p.Failed != 2 || e.ActiveWork() != 1 {
 		t.Fatalf("lost restore ownership: %s %+v", state, p)
 	}
 	if _, err := e.StartTurn("missing", "run"); !errors.Is(err, ErrRestoring) {

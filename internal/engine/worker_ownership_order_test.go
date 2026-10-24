@@ -19,6 +19,8 @@ func TestParkedWorkerCleanupPrecedesTheNextRegistryClaim(t *testing.T) {
 	for _, action := range []string{"stop", "cancel-last-wake", "finalization-reap"} {
 		t.Run(action, func(t *testing.T) {
 			e := newTestEngine(t)
+			// This ordering fixture installs GORM callbacks; unrelated schedule naming must not write concurrently.
+			e.Config().Swarm.AutoTitle = false
 			th, err := e.CreateThread("worker stop ordering", "", "")
 			if err != nil {
 				t.Fatal(err)
