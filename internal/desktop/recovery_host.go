@@ -16,7 +16,7 @@ type recoveryHost interface {
 	OnApplicationEvent(events.ApplicationEventType, func())
 	Probe(string)
 	Snapshot(context.Context) ([]byte, error)
-	Reload()
+	Reload(string)
 	Quit()
 	ShowError()
 }
@@ -47,8 +47,8 @@ func (h wailsRecoveryHost) Probe(script string) { executeRecoveryProbe(h.window,
 func (h wailsRecoveryHost) Snapshot(ctx context.Context) ([]byte, error) {
 	return captureRecoveryPixels(ctx, h.window)
 }
-func (h wailsRecoveryHost) Reload() { h.window.Reload() }
-func (h wailsRecoveryHost) Quit()   { application.InvokeAsync(h.app.Quit) }
+func (h wailsRecoveryHost) Reload(url string) { h.window.SetURL(url) }
+func (h wailsRecoveryHost) Quit()             { application.InvokeAsync(h.app.Quit) }
 func (h wailsRecoveryHost) ShowError() {
 	h.app.Dialog.Error().SetTitle("界面恢复失败").SetMessage("界面连续恢复失败，已停止自动重启。本次恢复没有停止后台引擎。请关闭此窗口后重新打开，并保留恢复诊断以便排查。").AttachToWindow(h.window).Show()
 }

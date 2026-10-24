@@ -873,6 +873,41 @@ hold an actual HTTP request, close a full bounded queue with concurrent late
 producers, and require cancellation plus local draining before return. The
 original shutdown-delay failure and corrected repeated race runs are retained.
 
+Issue #110 separates selected-location attribution from paint health.
+`frontend/src/lib/composer-recovery.test.ts` checks synchronous publication before
+the next paint tick, no content payload, tuple-only notifications, real
+`openThread` transitions and subscription cleanup. The emitted native script is
+executed by `internal/desktop/recovery_location_script_test.go` in Node against
+the Wails/WebKit/WebView message bridges: initial attribution, event delivery,
+same-session listener reuse and changed-session/generation listener replacement
+are asserted without running animation frames to manufacture health.
+`recovery_location_test.go` rejects wrong origin metadata, frame,
+session/generation, type and size, and verifies that Reload preserves the original
+URL's non-recovery fields. `recovery_location_runtime_test.go` drives the actual
+controller through selection before the next paint, bootstrap Home, stale
+challenge/capture, background selection and unchanged outer deadlines. A restored
+thread's project is derived metadata; thread ID and draft key determine its route,
+so a project field cannot block restoration of that same thread.
+
+The document-epoch regressions also cover the same session/generation across
+Reload: native increments the epoch before navigation, and the emitted probe
+pins the first same-origin document stamp even before root mount. A later probe
+cannot relabel the old JS world with the new epoch. Exercise a new global for
+the new document, reject an old queued location after Reload, and verify that
+neither a changed URL nor a matching query releases the expected-scope guard.
+Fresh matching-document pixels remain necessary; this internal stamp introduces
+no public diagnostic phase or additional recovery deadline.
+
+`frontend/e2e/desktop-recovery.spec.ts` switches real conversations and opens an
+explicit recovery URL, checking the selected conversation and retained draft
+without selecting it manually after navigation. This covers the browser boot
+route, not native `SetURL`, WebContent fault injection or real WKWebView pixels.
+Software results do not accept or publish the frozen formal installer. Native
+acceptance must fault after a recently acknowledged selection, then verify
+automatic original-scope restoration, native draft/attachment values, original
+HTTP input bytes and task identities, with no manual selection or Send replay.
+Keep the original failed case and its exact package identity (Issue #110).
+
 `internal/store/composer_draft_test.go` and the HTTP tests in
 `internal/server/composer_draft*_test.go` verify original bytes and decoded image
 dimensions after reload, CAS conflicts/tombstones, owner deletion, upload failure

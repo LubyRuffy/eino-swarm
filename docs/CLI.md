@@ -150,6 +150,12 @@ active minutes reset the budget. Inactivity, minimization and sleep pause health
 decisions and reset that continuous-health timer. Exhaustion shows a native
 error. The original engine and its task identities remain in place.
 
+Conversation/project selection is reported independently of that five-second
+paint check. Reload preserves its recovery scope in the native URL; initial
+Home state cannot overwrite a still-pending target. The matching selection needs
+fresh painted challenge pixels and does not extend the deadlines above. This
+internal bridge adds no CLI command or option (`C-034`, Issue #110).
+
 Recovery uses the internal `desktop-attach` entry through inherited private
 pipes, an immutable private app copy and the original engine lease. It is not a
 user command: ordinary arguments or missing pipes fail explicitly, without

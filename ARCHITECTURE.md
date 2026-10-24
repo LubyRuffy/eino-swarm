@@ -252,6 +252,42 @@ engine, turn and worker identities; it cannot perform engine handoff or restart
 task work. Sleep/focus changes reset observation grace, not the failure budget.
 Normal exit does not restart the shell. Local diagnostic journals are bounded;
 attributed recovery events enter the existing one-turn Trace path.
+
+Location attribution is separate from the paint probe. After publishing
+`window.__zwaiRecoveryAttribution`, `installComposerRecoveryAttribution` emits
+`zwai:recovery-location` synchronously when its thread/turn/project/draft-key tuple
+changes. The event carries no content or detail payload. Draft save/revision
+changes keep the global attribution current without emitting another location
+event. The native-injected bridge reads the current tuple on installation and
+on subsequent events, binds it to its session/generation, and replaces its old
+listener when that identity changes. Native validation also requires the
+current window and same-origin main frame; no draft text or attachment crosses
+this bridge.
+
+An active thread owns its route through thread ID and draft key. Its project is
+derived only from that thread's metadata; a loose or not-yet-listed thread never
+inherits the sidebar's previous selected project while detail loads. Only a new
+conversation without an active thread uses the selected project.
+
+Document identity is also explicit. Native increments an internal document epoch
+before requesting Reload. The first same-origin probe in a JS world pins its
+session/generation/document stamp before checking whether the root has mounted.
+A later probe with a new epoch cannot rebind that old world within the same
+session/generation; only the new document's new global can claim the new epoch.
+Native rejects queued location messages carrying the old epoch. Changing the URL
+or matching its recovery query is not proof that a new document was created.
+
+`internal/desktop/recovery_location.go` retains that independent location rather
+than letting an older paint response overwrite it. One native `SetURL` reload
+updates only the recovery-scope query fields on the original URL, preserving
+the origin, PID/presence and other query fields and fragment. An explicit
+initial/reload recovery scope remains expected until the page publishes its
+matching selection; bootstrap Home or another scope cannot replace it. Once
+matched, deliberate user navigation to Home is valid again. Matching invalidates
+any previous challenge/capture and requires fresh challenge pixels. Location
+notifications neither acknowledge health nor renew startup, reload or replacement
+deadlines. Browser URL-routing and injected-script tests exercise these boundaries;
+they do not accept the formal installer's native fault recovery (Issue #110).
 The reporter accepts a bounded queue without blocking the health controller.
 Closing it excludes late producers, cancels the in-flight HTTP request and
 drains already accepted rows locally without starting more Trace requests.

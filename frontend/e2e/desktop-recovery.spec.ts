@@ -4,6 +4,50 @@ import { join } from "node:path"
 
 import { composer, freshConversation, reloadOpenConversation, statusBadge, waitForIdle } from "./session"
 
+test("conversation changes notify native location without a paint probe or draft contents", async ({ page }, info) => {
+  await page.addInitScript(() => {
+    const rows: Array<{ thread?: unknown; turn?: unknown; project?: unknown; draft?: unknown; hasDetail: boolean; hasContent: boolean }> = []
+    ;(window as Window & { __locationNotices?: typeof rows }).__locationNotices = rows
+    window.addEventListener("zwai:recovery-location", (event) => {
+      const value = (window as Window & { __zwaiRecoveryAttribution?: Record<string, unknown> }).__zwaiRecoveryAttribution ?? {}
+      rows.push({ thread: value.thread_id, turn: value.turn_id, project: value.project_id, draft: value.draft_key,
+        hasDetail: "detail" in event, hasContent: ["text", "quotes", "files"].some((key) => key in value) })
+    })
+  })
+  const notices = () => page.evaluate(() => (window as Window & {
+    __locationNotices?: Array<{ thread?: string; draft?: string; hasDetail: boolean; hasContent: boolean }>
+  }).__locationNotices ?? [])
+  await freshConversation(page)
+  const selected = page.locator('[data-testid="thread-row"][aria-current="true"]')
+  const first = (await selected.getAttribute("data-id"))!
+  await expect.poll(async () => (await notices()).at(-1)?.thread).toBe(first)
+  const beforeDraft = (await notices()).length
+  await composer(page).fill("A private draft stays with its selected conversation.")
+  await expect(page.getByTestId("composer-draft-status")).toContainText("Draft saved on this computer")
+  expect(await notices()).toHaveLength(beforeDraft)
+
+  await page.getByRole("button", { name: "New conversation", exact: true }).click()
+  await expect(selected).not.toHaveAttribute("data-id", first)
+  const second = (await selected.getAttribute("data-id"))!
+  await expect.poll(async () => (await notices()).at(-1)?.thread).toBe(second)
+  const beforeReturn = (await notices()).length
+  await page.locator(`[data-testid="thread-row"][data-id="${first}"]`).getByTestId("row-label").click()
+  await expect(composer(page)).toHaveValue("A private draft stays with its selected conversation.")
+  const returned = (await notices()).slice(beforeReturn)
+  expect(returned.length).toBeGreaterThan(0)
+  expect(returned.every((row) => row.thread === first && row.draft === `thread:${first}`)).toBe(true)
+  expect((await notices()).every((row) => !row.hasDetail && !row.hasContent)).toBe(true)
+
+  // The native launcher supplies this URL. Verify the frontend boot route
+  // without a sidebar click; this browser case does not accept native paint.
+  await page.goto(`/?shell=desktop&recovery_thread=${encodeURIComponent(first)}&recovery_draft=${encodeURIComponent(`thread:${first}`)}`)
+  await expect(selected).toHaveAttribute("data-id", first)
+  await expect(composer(page)).toHaveValue("A private draft stays with its selected conversation.")
+  await expect.poll(async () => (await notices()).at(-1)?.thread).toBe(first)
+  expect((await notices()).every((row) => !row.hasDetail && !row.hasContent)).toBe(true)
+  await page.screenshot({ path: info.outputPath("explicit-location-recovery-with-retained-private-draft.png"), animations: "disabled" })
+})
+
 test("a live recovery SSE reaches Full log without a history or Trace fetch", async ({ page, request }, info) => {
   let eventConnections = 0
   page.on("request", (req) => { if (/\/api\/threads\/[^/]+\/events(?:\?|$)/.test(req.url())) eventConnections++ })

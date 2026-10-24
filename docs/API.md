@@ -98,6 +98,13 @@ The native session also keeps a bounded 64 KiB local diagnostic journal under
 `$ZWAI_HOME/diagnostics/desktop-<session>.jsonl` when the HTTP path is unavailable.
 This endpoint reports interface recovery; it never restarts or completes work.
 
+The renderer's internal `zwai:recovery-location` DOM notification is separate
+from this HTTP endpoint. It carries no event detail or draft content; the native
+bridge reads only the current thread/turn/project/draft-key attribution and binds
+it to the current session/generation. Location updates preserve selection while
+the page initializes, but do not acknowledge paint health or renew recovery
+deadlines. This does not add a public API phase, route or request field (Issue #110).
+
 ## Desktop update
 
 ### `GET /api/update`

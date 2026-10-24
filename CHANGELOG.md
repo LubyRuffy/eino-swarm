@@ -198,6 +198,15 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-115`, `C-034`: retain the latest conversation/project/draft location through
+  an independent metadata-only notification instead of waiting for the next
+  five-second paint probe. Reload keeps that scope in the original native URL;
+  bootstrap Home and stale paint attribution cannot replace a pending restore
+  target. A matching location still requires fresh challenge pixels and does
+  not extend recovery deadlines. This is an unreleased implementation correction;
+  software checks do not establish formal native recovery or publication
+  (Issue #110).
+
 - `F-430`, `C-010`: Android publication reuses the exact device-accepted APK
   bound to its batch/version/source/name/SHA-256 receipt. Missing, changed or
   conflicting accepted packages stop upload instead of rebuilding them under

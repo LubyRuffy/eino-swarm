@@ -84,14 +84,15 @@ func absChannel(a, b byte) int {
 	return int(b - a)
 }
 
-func recoveryProbeScript(expected, session string, generation int, challenge string, first, second color.NRGBA) string {
+func recoveryProbeScript(expected, session string, generation int, challenge string, first, second color.NRGBA, document int) string {
 	// The marker sits under the native title-bar corner and never handles input.
 	// Colour tolerance cannot distinguish nearby palettes: every ordered nonce bit
 	// must paint, so an old snapshot cannot acknowledge a new paint challenge.
-	payload, _ := json.Marshal(map[string]any{"type": "zwai:recovery", "session": session, "generation": generation, "challenge": challenge})
+	payload, _ := json.Marshal(map[string]any{"type": "zwai:recovery", "session": session, "generation": generation, "challenge": challenge, "document": document})
 	origin, _ := json.Marshal(expected)
-	return fmt.Sprintf(`(()=>{if(location.origin!==%s||!document.getElementById("root")?.firstElementChild)return;const p=%s;
+	return fmt.Sprintf(`(()=>{if(location.origin!==%s)return;const p=%s;const owner=window.__zwaiRecoveryDocument;if(owner&&owner.session===p.session&&owner.generation===p.generation&&owner.document!==p.document)return;window.__zwaiRecoveryDocument={session:p.session,generation:p.generation,document:p.document};if(!document.getElementById("root")?.firstElementChild)return;
 const send=window._wails?.invoke?.bind(window._wails)||window.webkit?.messageHandlers?.external?.postMessage?.bind(window.webkit.messageHandlers.external)||window.chrome?.webview?.postMessage?.bind(window.chrome.webview);if(!send)return;
+const previous=window.__zwaiRecoveryLocationBridge;if(!previous||previous.session!==p.session||previous.generation!==p.generation||previous.document!==p.document){if(previous)window.removeEventListener("zwai:recovery-location",previous.publish);const publish=()=>{const a=window.__zwaiRecoveryAttribution||{};send(JSON.stringify({type:"zwai:recovery-location",session:p.session,generation:p.generation,document:p.document,thread_id:typeof a.thread_id==="string"?a.thread_id:"",turn_id:typeof a.turn_id==="string"?a.turn_id:"",project_id:typeof a.project_id==="string"?a.project_id:"",draft_key:typeof a.draft_key==="string"?a.draft_key:""}));};window.__zwaiRecoveryLocationBridge={session:p.session,generation:p.generation,document:p.document,publish};window.addEventListener("zwai:recovery-location",publish);publish();}
 if(!window.__zwaiNativeRuntimeReady){send("wails:runtime:ready");window.__zwaiNativeRuntimeReady=true;}let e=document.getElementById("zwai-native-render-probe");if(!e){e=document.createElement("div");e.id="zwai-native-render-probe";e.setAttribute("aria-hidden","true");document.documentElement.appendChild(e);}
 e.style.cssText="position:fixed;left:0;top:0;width:16px;height:16px;pointer-events:none;z-index:2147483647;contain:strict;display:grid;grid-template-columns:repeat(8,2px);grid-template-rows:repeat(8,2px)";
 const colours=["rgb(%d,%d,%d)","rgb(%d,%d,%d)"],bytes=p.challenge.match(/../g).map(v=>parseInt(v,16));if(e.children.length!==64)e.replaceChildren();for(let i=0;i<64;i++){let c=e.children[i];if(!c){c=document.createElement("i");e.appendChild(c);}c.style.cssText="display:block;width:2px;height:2px;background:"+colours[(bytes[i>>3]>>(7-(i&7)))&1];}
