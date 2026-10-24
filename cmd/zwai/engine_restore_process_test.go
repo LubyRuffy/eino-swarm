@@ -3,10 +3,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,6 +95,19 @@ func TestReplacementListensWhileRecoveryExceedsThirtySeconds(t *testing.T) {
 		return string(raw) == "recorded\n"
 	})
 	before := restartTrace(t, oldRec.URL, started.Turn.ID)
+	workerID := ""
+	var beforeSeq int64
+	for _, event := range before.Events {
+		if event.Kind == "spawned" {
+			workerID = event.AgentID
+		}
+		if event.Seq > beforeSeq {
+			beforeSeq = event.Seq
+		}
+	}
+	if workerID == "" {
+		t.Fatal("the original turn never recorded its worker identity")
+	}
 	t.Setenv("ZWAI_RESTORE_DELAY", "31s")
 	previousLaunch := launchEngine
 	launchEngine = spawnEngineContext
@@ -107,6 +124,11 @@ func TestReplacementListensWhileRecoveryExceedsThirtySeconds(t *testing.T) {
 	}
 	var meta struct {
 		Startup string `json:"startup"`
+		Clients []struct {
+			ID      string `json:"id"`
+			Surface string `json:"surface"`
+			PID     int    `json:"pid"`
+		} `json:"clients"`
 	}
 	restartJSON(t, "GET", rec.URL+"/api/meta", nil, 200, &meta)
 	if meta.Startup != "restoring" {
@@ -117,9 +139,31 @@ func TestReplacementListensWhileRecoveryExceedsThirtySeconds(t *testing.T) {
 	if denied["code"] != "restoring" {
 		t.Fatalf("new work accepted: %+v", denied)
 	}
-	var presence map[string]any
-	restartJSON(t, "POST", rec.URL+"/api/presence", map[string]any{"surface": "desktop", "pid": os.Getpid()}, 200, &presence)
-	_ = presence
+	presenceID, disconnect := openRestoringDesktopPresence(t, rec.URL)
+	restartJSON(t, "GET", rec.URL+"/api/meta", nil, 200, &meta)
+	if len(meta.Clients) != 1 || meta.Clients[0].ID != presenceID || meta.Clients[0].Surface != "desktop" || meta.Clients[0].PID != os.Getpid() {
+		t.Fatalf("restoring engine did not acknowledge desktop presence: %+v", meta)
+	}
+	disconnect()
+	waitRestartCondition(t, 5*time.Second, "old desktop stream released during restoration", func() bool {
+		restartJSON(t, "GET", rec.URL+"/api/meta", nil, 200, &meta)
+		return len(meta.Clients) == 0
+	})
+	// These are the actual data reads made by a reload; browser page.reload
+	// and visible draft preservation remain the separate client E2E boundary.
+	var reloaded map[string]any
+	restartJSON(t, "GET", rec.URL+"/api/threads/"+created.Thread.ID, nil, 200, &reloaded)
+	restartJSON(t, "GET", rec.URL+"/api/threads/"+created.Thread.ID+"/log", nil, 200, &reloaded)
+	presenceID, reconnectRelease := openRestoringDesktopPresence(t, rec.URL)
+	defer reconnectRelease()
+	restartJSON(t, "GET", rec.URL+"/api/meta", nil, 200, &meta)
+	if meta.Startup != "restoring" || len(meta.Clients) != 1 || meta.Clients[0].ID != presenceID {
+		t.Fatalf("reload reads or desktop reconnect lost restoring ownership: %+v", meta)
+	}
+	stillOwned, err := lease.Discover(dataDir, false)
+	if err != nil || stillOwned.PID != rec.PID || stillOwned.URL != rec.URL || restartTrace(t, rec.URL, started.Turn.ID).Turn.ID != started.Turn.ID {
+		t.Fatalf("desktop reconnect replaced the engine or its turn: lease=%+v error=%v", stillOwned, err)
+	}
 	waitRestartCondition(t, 40*time.Second, "recovery completed beyond launch deadline", func() bool {
 		restartJSON(t, "GET", rec.URL+"/api/meta", nil, 200, &meta)
 		return meta.Startup == "ready"
@@ -133,6 +177,33 @@ func TestReplacementListensWhileRecoveryExceedsThirtySeconds(t *testing.T) {
 	}
 	fixture.allowRecovery()
 	waitRestartCondition(t, 15*time.Second, "original task completes", func() bool { return restartTrace(t, rec.URL, started.Turn.ID).Turn.Status == store.TurnDone })
+	// Read the real durable restore receipt through the original turn's HTTP
+	// Trace. An injected SSE receipt cannot establish this storage/API boundary.
+	finalTrace := restartTrace(t, rec.URL, started.Turn.ID)
+	restoreReceipts, originalWorkerRecovered := 0, false
+	for _, event := range finalTrace.Events {
+		if event.Kind == "generation_started" && event.Seq > beforeSeq && event.AgentID == workerID {
+			originalWorkerRecovered = true
+		}
+		if event.Kind != "engine_restore" {
+			continue
+		}
+		restoreReceipts++
+		var diagnostic struct {
+			Phase           string `json:"phase"`
+			DurationMS      *int64 `json:"duration_ms"`
+			ScannedEvents   *int   `json:"scanned_events"`
+			CheckpointReads *int   `json:"checkpoint_reads"`
+		}
+		if err := json.Unmarshal([]byte(event.Text), &diagnostic); err != nil || diagnostic.Phase != "restored" ||
+			diagnostic.DurationMS == nil || *diagnostic.DurationMS < 0 || diagnostic.ScannedEvents == nil || *diagnostic.ScannedEvents <= 0 ||
+			diagnostic.CheckpointReads == nil || *diagnostic.CheckpointReads != 1 || event.ThreadID != created.Thread.ID || event.TurnID != started.Turn.ID {
+			t.Fatalf("original turn HTTP Trace lost actual restoration evidence: event=%+v error=%v", event, err)
+		}
+	}
+	if restoreReceipts != 1 || !originalWorkerRecovered {
+		t.Fatalf("desktop reconnect lost recovery identity: restore_receipts=%d original_worker_recovered=%v", restoreReceipts, originalWorkerRecovered)
+	}
 	fixture.mu.Lock()
 	defer fixture.mu.Unlock()
 	if fixture.spawnCalls != 1 || fixture.effectCalls != 1 || !fixture.recoveredWorker {
@@ -140,4 +211,32 @@ func TestReplacementListensWhileRecoveryExceedsThirtySeconds(t *testing.T) {
 	}
 	raw, _ := json.Marshal(meta)
 	t.Logf("listener in %s; original turn=%s recovered after >31s, meta=%s", listenerElapsed, started.Turn.ID, raw)
+}
+
+func openRestoringDesktopPresence(t *testing.T, base string) (string, func()) {
+	t.Helper()
+	var reserved struct {
+		ID string `json:"id"`
+	}
+	restartJSON(t, "POST", base+"/api/presence", map[string]any{"surface": "desktop", "pid": os.Getpid()}, 200, &reserved)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/presence/"+reserved.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &http.Transport{ResponseHeaderTimeout: 3 * time.Second}
+	t.Cleanup(transport.CloseIdleConnections)
+	resp, err := (&http.Client{Transport: transport}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := func() { cancel(); _ = resp.Body.Close() }
+	t.Cleanup(release)
+	ack := make([]byte, len(": held\n\n"))
+	if _, err := io.ReadFull(resp.Body, ack); err != nil || resp.StatusCode != http.StatusOK ||
+		!strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") || string(ack) != ": held\n\n" {
+		t.Fatalf("desktop presence lacked a real stream acknowledgement: status=%d ack=%q error=%v", resp.StatusCode, ack, err)
+	}
+	return reserved.ID, release
 }
