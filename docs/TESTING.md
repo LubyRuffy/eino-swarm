@@ -907,6 +907,18 @@ checks ZIP/plist/API version and clean embedded Git revision; a claimed or unkno
 stage is not passed and cannot be blindly repeated. Use the driver's detached
 launch/cancel commands for a campaign longer than its control-channel lifetime;
 retain campaign PID/birth identity and wait for cancellation cleanup.
+The internal `control.execute(args, action, *, admission=None)` API can run an
+explicit admission check while holding that campaign’s actual `driver.lock`,
+before replacing owner/exit receipts. The callback must raise an exception to
+refuse; its return value is ignored. Only callers supplying the callback gain
+its refusal policy; default full6 launch/resume behavior is unchanged.
+`tools/test_native_macos_driver_admission.py` synchronizes two real owned
+processes at the victim’s execute call frame: an older driver completes before
+lock acquisition, and the callback must preserve its exact owner/terminal or
+broken links without publishing a case. Independent file descriptors prove
+lock ownership during admission and release after refusal; default returns,
+interrupts, busy locks and real owner/terminal EISDIR failures are also checked.
+These are HOST metadata/ownership tests, not native behavior acceptance.
 The frozen manifest includes the package, source, executable, runner, native
 helper and all scenario-module hashes. Stages recheck these inputs and their
 whole-case budgets, including cleanup; a zero scenario exit with an exceeded

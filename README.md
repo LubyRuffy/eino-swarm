@@ -1081,6 +1081,10 @@ Native desktop tests run only in UTM `ci-macOS`, one isolated case at a time.
 Offline recovery-proof preparation also refuses incomplete evidence: a failed
 command or timeout remains the primary error if receipt storage fails.
 Recovery checks retain first/last predicate summaries without copying draft content.
+Internal native QA callers may provide an admission callback under the campaign
+driver lock before owner/exit receipts can change; it must raise an exception to
+refuse, preserving prior records. Its return value is not an admission decision.
+This opt-in API leaves the default full6 launch/resume policy unchanged.
 Use the [native case runner](docs/TESTING.md#native-desktop-isolation-f-430--c-031):
 it refuses a physical host and closes case-owned processes before removing
 their private home/cache and test data. Keep the user's running desktop and normal data untouched.
