@@ -199,9 +199,19 @@ def github_platform(root, version, source_sha, platform, state):
                 raise ValueError('Retained installer differs from published asset; refusing rebuild/overwrite')
     else:
         delivery = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
-        batch, _ = delivery_batch(delivery, version, source_sha)
+        batch, _ = delivery_batch(delivery, version, None if platform == 'android' else source_sha)
         native = (batch or {}).get('release_native_validation', {}) if platform == 'macos' else {}
-        if platform == 'macos' and (native or (batch or {}).get('macos') == 'ready_for_publication'):
+        if platform == 'android' and ('release_android_validation' in (batch or {})
+                or (batch or {}).get('android') == 'ready_for_publication'):
+            asset = files[0]
+            accepted = (batch or {}).get('release_android_validation')
+            if (not isinstance(accepted, dict) or batch.get('source_sha') != source_sha
+                    or accepted.get('status') != 'passed'
+                    or accepted.get('version') != version or accepted.get('source_sha') != source_sha
+                    or accepted.get('asset_name') != asset.name or not asset.is_file()
+                    or sha256(asset) != accepted.get('asset_sha256')):
+                raise ValueError('The accepted Android package is missing or differs from native-device evidence')
+        elif platform == 'macos' and (native or (batch or {}).get('macos') == 'ready_for_publication'):
             asset = files[0]
             if (native.get('status') != 'passed' or native.get('version') != version
                     or native.get('source_sha') != source_sha or native.get('asset_name') != asset.name

@@ -244,6 +244,63 @@ class PublicRecoveryTests(unittest.TestCase):
             self.assertEqual(release.execute(self.root, '1.2.3', 'android', self.state_path), 1)
         self.assertNotIn('first_publication', release.read_json(self.state_path))
 
+    def test_public_tag_cannot_hide_a_conflicting_accepted_android_batch(self):
+        # A real public tag bypasses new-batch allocation checks. The Android
+        # receipt must still be checked rather than disappearing in SHA lookup.
+        self.git('tag', 'v1.2.3')
+        self.git('push', 'origin', 'refs/tags/v1.2.3')
+        with (self.root / '.git/info/exclude').open('a') as stream:
+            stream.write('\nbin/\n')
+        asset = self.root / 'bin/zwai-1.2.3-android.apk'
+        asset.parent.mkdir()
+        asset.write_bytes(b'accepted Android installer fixture')
+        digest = release.sha256(asset)
+        self.command_patch.stop()
+        original_run = release.run
+
+        def command(args, **kwargs):
+            self.calls.append(args)
+            if args[0] == 'gh':
+                if args[1] == 'repo':
+                    return 'example/app'
+                if args[1] == 'api':
+                    return json.dumps([[{'tag_name': 'v1.2.3', 'assets': []}]])
+                if args[1:3] == ['release', 'view']:
+                    return json.dumps({'body': ''})
+                if args[1:3] == ['release', 'edit']:
+                    return ''
+                self.fail(f'Unexpected external command: {args}')
+            if args[0] == 'make':
+                asset.write_bytes(b'unaccepted rebuild')
+                return ''
+            if args[0] == 'go':
+                return ''
+            return original_run(args, **kwargs)
+
+        baseline = copy.deepcopy(self.state)
+        for receipt_source in ('e' * 40, self.sha, None):
+            with self.subTest(receipt_source=receipt_source):
+                self.state = copy.deepcopy(baseline)
+                self.batch.update(source_sha='e' * 40, android='ready_for_publication')
+                self.batch['release_android_validation'] = {
+                    'status': 'passed', 'version': '1.2.3',
+                    'source_sha': receipt_source, 'asset_name': asset.name,
+                    'asset_sha256': digest,
+                }
+                if receipt_source is None:
+                    del self.batch['release_android_validation']
+                self.delivery['issues'] = {'1': {'android': 'pending'}}
+                self.persist()
+                self.calls.clear()
+                with patch.object(release, 'run', side_effect=command):
+                    self.assertEqual(release.source_preflight(self.root, '1.2.3',
+                        ('android',)), self.sha)
+                    self.assertEqual(release.execute(self.root, '1.2.3', 'android',
+                        self.state_path), 1)
+                self.assertFalse(any(args[0] in ('make', 'go') for args in self.calls))
+                self.assertIn('accepted Android package',
+                    release.read_json(self.state_path)['android']['last_error'])
+
     def test_pending_native_mac_remains_blocked_after_source_recovery(self):
         self.delivery['issues'] = {'1': {'macos': 'pending_native_window_acceptance'}}
         self.persist()

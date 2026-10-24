@@ -194,6 +194,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430`, `C-010`: Android publication reuses the exact device-accepted APK
+  bound to its batch/version/source/name/SHA-256 receipt. Missing, changed or
+  conflicting accepted packages stop upload instead of rebuilding them under
+  old acceptance evidence; public-asset retries remain immutable (Issue #109).
+
 - `F-110`, `F-130`, `C-002`, `C-027`: reuse the startup recovery snapshot
   for both manager correction allowances instead of loading the full turn log
   twice before worker restoration. Preserve retry and human-continuation receipts

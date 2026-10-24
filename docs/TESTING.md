@@ -4491,6 +4491,19 @@ the added tests preserve that evidence without changing the frozen v0.1.20 bundl
 
 ## Unified release regression checks
 
+`python3 -m unittest discover -s tools -p 'test_release_android_retained.py' -v`
+runs the actual `github_platform` with temporary installer/ledger files and
+substituted external commands. It first reproduces an accepted Android APK
+being rebuilt, then verifies exact-byte reuse, every receipt identity/status,
+missing/changed/non-file installers, malformed or missing ready receipts,
+historical batch recovery, source drift and unchanged public-asset digest
+retries. `tools/test_release_public_recovery.py` also runs actual `execute`
+and `source_preflight` against a temporary bare Git remote and public tag:
+a conflicting same-version batch must not fall back to a new APK build even
+when the tag matches. The ordinary unaccepted pending build path remains covered. No test
+builds an APK, installs it, contacts GitHub or uploads; actual device acceptance
+and signature/upgrade checks remain separate.
+
 `python3 -m unittest discover -s tools -p 'test_release_public_recovery.py'`
 uses real temporary local Git remotes and an offline Apple adapter to reproduce
 TestFlight-first publication without a GitHub tag. It checks frozen recovery
