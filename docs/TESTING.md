@@ -745,8 +745,15 @@ deadline and competing-holder checks before irreversible handoff. After ACK
 and stopping the old engine, `engine_startup_forward_test.go` verifies that the
 launcher preserves its sole replacement beyond the handoff deadline, attaches
 after an actual 31-second delayed lease publication, and retains a live child
-with its PID/log pending result after the cold wait. Explicit cancellation still
-reaps only its child and retains the cancellation cause.
+with its PID/log ownership-unconfirmed pending result after the cold wait.
+`TestForwardReplacementExpiryPreservesChildWhoseOwnershipIsNotYetKnown`
+delays the actual child before Acquire until after that wait, then requires
+that same PID to acquire and publish a discoverable URL. The competing-holder
+case delays that same acquisition, keeps the competitor intact, and requires
+the losing child to exit naturally and its Wait goroutine to finish. Neither
+busy nor free lock state establishes this child's ownership or authorizes a
+forward-only deadline kill. Explicit cancellation still reaps only its child
+and retains the cancellation cause.
 
 `TestSpawnEngineRetriesItsOwnFirstReadinessProbeTimeout` delays the real
 child's first metadata response by 750ms, beyond the individual 500ms probe,
@@ -764,6 +771,7 @@ URL or a discovery error, and must preserve the independent lease holder.
 
 ```bash
 go test -race -count=1 ./cmd/zwai -run 'TestSpawnEngine|TestSpawnStartup|TestInProcessStartup'
+go test -race -count=1 ./cmd/zwai -run 'TestForwardReplacement|TestAcknowledgedReplacement'
 go test -race -count=1 ./internal/lease -run 'TestDiscover'
 ```
 
@@ -787,15 +795,33 @@ go test -race -count=1 ./cmd/zwai -run 'TestReplacementListensWhileRecoveryExcee
 ### Large-history restoration measurement
 
 `BenchmarkRestoreSnapshotLargeHistory` uses 100,001 historical tool-result rows
-(each 1,080 bytes) and two checkpoint bodies each larger than 2 MiB. On the
+(each 1,080 bytes) and two checkpoint bodies of 2,240,246 bytes each. On the
 2026-10-24 Apple M3 Max run, three repetitions measured **125.695 ms/op**,
 **9,018,429 B/op**, **325 allocs/op** (fixture creation excluded). This measures
-snapshot construction, not native startup or arbitrary user histories. The
-query-count regression asserts one checkpoint read, one selected-event read and
-zero unfiltered full-event reads through the resumed bootstrap's next generation.
+snapshot construction.
+
+`BenchmarkRestoreToGenerationLargeHistory` in
+`internal/engine/restore_bench_test.go` reuses that fixture and times actual
+`Engine.Restore` through both its return and receipt of the restored worker's
+unchanged 1,120,000-byte history by the offline loopback HTTP model adapter.
+Three repetitions on the same date and machine, under concurrent local
+build/test load, measured **485.068 ms/op**, **28,912,989 B/op**, **8,601 allocs/op**.
+The assertions retain thread `large`, turn `original-turn`, worker
+`original-worker` and role `inspector`, observe its durable `generation_started`
+and actual HTTP input, and reject another worker identity or tool-call replay.
+Both recovery query counters must be one (latest checkpoint and filtered event
+scan), with zero unfiltered full-event reads through the model-input boundary.
+
+The actual-recovery fixture disables auto-title and memory, never starts the
+scheduler, and blocks model responses. Setup and cleanup are outside the timer:
+registry `Cleanup` followed by `Wait` confirms worker exit before engine shutdown
+joins the manager. These are local observations, not native startup, whole-task
+latency or a guarantee for arbitrary user histories.
 
 ```bash
 go test ./internal/engine -run '^$' -bench BenchmarkRestoreSnapshotLargeHistory -benchtime=3x -benchmem
+go test ./internal/engine -run '^$' -bench '^BenchmarkRestoreToGenerationLargeHistory$' -benchtime=3x -benchmem
+go test -race ./internal/engine -run '^$' -bench '^BenchmarkRestoreToGenerationLargeHistory$' -benchtime=1x -benchmem
 ```
 
 ## Phone hub startup independence (F-210 / C-006)
