@@ -1901,6 +1901,49 @@ and finish without repeating the write. It rejects replacement user turns,
 worker twins, false completion and terminal confirmation prompts. Binary build
 time precedes the measured restart. `go test -short` skips this expensive real
 process gate; a short run cannot substitute for the full acceptance.
+The ordinary process tests copy the same build into old/new executable paths;
+they do not establish historical-version compatibility.
+`cmd/zwai/engine_upgrade_acceptance_test.go` is a separate opt-in old→new gate.
+It skips unless both `ZWAI_UPGRADE_OLD_BINARY` and `ZWAI_UPGRADE_NEW_BINARY` are
+explicit absolute executable paths, rejects equal bytes, and records both hashes.
+All engines use fresh private data/workspaces and a keyless loopback model.
+`-race` instruments the test harness; supplied executable bytes retain their
+original build modes and are not silently rebuilt with instrumentation.
+It verifies the old database lacks `pending_schedule_answers`, the replacement
+creates it, the same turn/worker/generation is restored and collected, and one
+real persisted shell effect is inspected without repeating its write. Separate
+private cases preserve the original unanswered ask and iteration-cap permission
+wait; only the actual answer/Continue permits the next manager request. Manager
+continuation is counted separately from tool execution. These cases cover an
+active worker; they do not claim historical-version finished-worker or native
+window acceptance. Private replacement leases are stopped before the next case.
+The historical gate requests the old engine's real restart API, requires its
+durable `ready` acknowledgement, joins that owned child, then starts and joins
+the candidate as a directly owned engine child. It does not claim coverage of
+the complete historical automatic launcher; the ordinary same-build process
+gate exercises that separate shell path. A historical development binary may
+retain its original frontend source path even with private data. Record that
+checkout's tracked state and built-asset hashes before/after the opt-in run.
+
+The 2026-10-25 private cross-version run passed all three cases under `-race`
+(30.602s): old SHA-256
+`357f79ed3f27219faffbfddcdcc9dc1f01ee1491a8ed319d11350b1c1b78c224`, candidate
+`28ea3bc0da239611f6f9ac6e483c9c4bcf7c2830071597047a67944cf85cdeb4`.
+The active worker retained ID `verifier-1` and generation 1, its persisted write
+and verification each occurred once, and the original turn resumed within
+18.835s. All six owned engine children exited normally. The original checkout
+remained at `224864e` with no tracked changes; all 66 existing built assets
+retained their hashes. The old child rebuilt the same asset bytes once and
+added the missing ignored `frontend/dist/.source-stamp`; this is recorded as an
+observed preparation effect, not an unchanged-directory claim.
+
+```bash
+ZWAI_UPGRADE_OLD_BINARY=/absolute/historical-zwai \
+ZWAI_UPGRADE_NEW_BINARY=/absolute/candidate-zwai \
+go test -race -count=1 -timeout 3m -v ./cmd/zwai \
+  -run '^TestUpgradeOlderEnginePreservesPrivateWorkAndHumanPause$'
+```
+
 `cmd/zwai/engine_restart_budget_test.go` checks caller deadlines against real
 blocked startup and lease competition, including cleanup of owned resources.
 Native acceptance must use private data even when LaunchServices reopens the

@@ -52,6 +52,12 @@ func TestRestartReplacesTheRealProcessAndResumesTheSameTaskWithin30Seconds(t *te
 		t.Fatal(err)
 	}
 
+	runRestartProcessAcceptance(t, dir, oldBinary, newBinary, false)
+}
+
+func runRestartProcessAcceptance(t *testing.T, dir, oldBinary, newBinary string, legacySchema bool) {
+	t.Helper()
+
 	marker := filepath.Join(dir, "effect.txt")
 	fixture := newRestartProcessFixture(t, marker)
 	dataDir := filepath.Join(dir, "data")
@@ -72,6 +78,9 @@ func TestRestartReplacesTheRealProcessAndResumesTheSameTaskWithin30Seconds(t *te
 	oldRecord := waitRestartRecord(t, dataDir, 0, 15*time.Second, old)
 	if oldRecord.PID != old.cmd.Process.Pid {
 		t.Fatalf("old engine published another process: %+v", oldRecord)
+	}
+	if legacySchema {
+		assertUpgradePrivateTable(t, cfg.DBPath(), false)
 	}
 	t.Cleanup(func() {
 		// The new shell intentionally leaves its detached engine running. Only
@@ -111,8 +120,14 @@ func TestRestartReplacesTheRealProcessAndResumesTheSameTaskWithin30Seconds(t *te
 	}
 
 	began := time.Now()
-	shell := startRestartProcess(t, dir, newBinary, "web", "--no-open", "--data-dir", dataDir, "--addr", "127.0.0.1:0")
-	newRecord := waitRestartRecord(t, dataDir, oldRecord.PID, 30*time.Second, shell)
+	var newRecord lease.Record
+	var shell *restartProcess
+	if legacySchema {
+		shell, newRecord = handoffUpgradePrivateEngine(t, dir, dataDir, newBinary, old, oldRecord)
+	} else {
+		shell = startRestartProcess(t, dir, newBinary, "web", "--no-open", "--data-dir", dataDir, "--addr", "127.0.0.1:0")
+		newRecord = waitRestartRecord(t, dataDir, oldRecord.PID, 30*time.Second, shell)
+	}
 	recovered := restartTrace(t, newRecord.URL, started.Turn.ID)
 	if recovered.Turn.Status != store.TurnRunning {
 		t.Fatalf("a restart checkpoint became task completion before verification: %+v", recovered.Turn)
@@ -146,10 +161,20 @@ func TestRestartReplacesTheRealProcessAndResumesTheSameTaskWithin30Seconds(t *te
 	}
 	var meta struct {
 		DataDir string `json:"data_dir"`
+		Startup string `json:"startup"`
+		Restore struct {
+			Failed int `json:"failed"`
+		} `json:"restore"`
 	}
-	restartJSON(t, http.MethodGet, newRecord.URL+"/api/meta", nil, http.StatusOK, &meta)
-	if meta.DataDir != dataDir {
-		t.Fatalf("replacement changed the data directory: %q", meta.DataDir)
+	waitRestartCondition(t, 10*time.Second, "owned recovery to finish without failures", func() bool {
+		restartJSON(t, http.MethodGet, newRecord.URL+"/api/meta", nil, http.StatusOK, &meta)
+		return meta.Startup == "ready"
+	})
+	if meta.DataDir != dataDir || meta.Restore.Failed != 0 {
+		t.Fatalf("replacement changed data or failed recovery: %+v", meta)
+	}
+	if legacySchema {
+		assertUpgradePrivateTable(t, cfg.DBPath(), true)
 	}
 
 	var final restartProcessTrace
@@ -187,6 +212,9 @@ func TestRestartReplacesTheRealProcessAndResumesTheSameTaskWithin30Seconds(t *te
 	}
 	if finished != 1 || !checkpointed || !resumed {
 		t.Errorf("Trace must retain a checkpoint, recovery and one actual worker completion: finished=%d checkpointed=%v resumed=%v events=%+v", finished, checkpointed, resumed, final.Events)
+	}
+	if legacySchema {
+		assertUpgradeWorkerGeneration(t, final, workerID)
 	}
 	fixture.mu.Lock()
 	defer fixture.mu.Unlock()
@@ -357,10 +385,12 @@ type restartModelInput struct {
 			Name string `json:"name"`
 		} `json:"function"`
 	} `json:"tools"`
-	Stream bool `json:"stream"`
+	Stream     bool   `json:"stream"`
+	ToolChoice string `json:"tool_choice"`
 }
 
 type restartProcessFixture struct {
+	policyPrompt                         string
 	server                               *httptest.Server
 	mu                                   sync.Mutex
 	recovery                             chan struct{}
@@ -374,7 +404,7 @@ type restartProcessFixture struct {
 
 func newRestartProcessFixture(t *testing.T, marker string) *restartProcessFixture {
 	t.Helper()
-	f := &restartProcessFixture{recovery: make(chan struct{}), marker: marker}
+	f := &restartProcessFixture{recovery: make(chan struct{}), marker: marker, policyPrompt: scheduleAnswerProcessPrompt(t)}
 	f.server = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(func() {
 		f.allowRecovery()
@@ -402,9 +432,9 @@ func (f *restartProcessFixture) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, msg := range input.Messages {
 		if msg != nil && msg.Role == schema.System && strings.HasPrefix(msg.Content, "## Schedule answer claims\n") {
-			if input.Stream || len(input.Tools) != 0 {
+			if !restartClassificationMatches(input, f.policyPrompt, "The operation and its persisted result are verified.") {
 				f.mu.Lock()
-				f.errors = append(f.errors, "answer classifier was not tool-free and non-streaming")
+				f.errors = append(f.errors, "answer classifier used an unknown candidate or protocol")
 				f.mu.Unlock()
 				http.Error(w, "invalid classifier request", http.StatusBadRequest)
 				return
