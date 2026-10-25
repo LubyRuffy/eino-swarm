@@ -253,6 +253,16 @@ task work. Sleep/focus changes reset observation grace, not the failure budget.
 Normal exit does not restart the shell. Local diagnostic journals are bounded;
 attributed recovery events enter the existing one-turn Trace path.
 
+Before an automatic reload/replacement, the controller reports its last probe
+boundary and age using the same diagnostic path. This adds no per-probe journal
+stream or recovery delay. Callback absence is distinct from a pending snapshot,
+capture error and mismatched pixels. Lease failures keep `ErrUnreachable` while
+exposing only safe HTTP categories, status and elapsed time; parent prelaunch,
+successor attach and post-ready precommit validation have separate error prefixes.
+The existing asynchronous reporter does not guarantee that enqueueing has become
+durable before reload. Neither a lease error nor a missing callback identifies
+the renderer's root cause.
+
 Location attribution is separate from the paint probe. After publishing
 `window.__zwaiRecoveryAttribution`, `installComposerRecoveryAttribution` emits
 `zwai:recovery-location` synchronously when its thread/turn/project/draft-key tuple

@@ -173,7 +173,7 @@ func attachDesktopRecoveryWithLauncher(opts desktop.Options, spec desktopRecover
 		launchCtx, stop := context.WithTimeout(parent, desktopSuccessorDeadline)
 		defer stop()
 		if err := verifyDesktopRecoveryTarget(launchCtx, next); err != nil {
-			return err
+			return fmt.Errorf("desktop recovery parent prelaunch: %w", err)
 		}
 		actual, err := desktopRecoveryExecutableHash(next.Executable)
 		if err != nil {
@@ -251,7 +251,7 @@ func runDesktopAttachment(control io.Reader, readyPipe io.Writer) error {
 		return errors.New("invalid desktop recovery lineage")
 	}
 	if err := verifyDesktopRecoveryTarget(context.Background(), spec); err != nil {
-		return err
+		return fmt.Errorf("desktop recovery successor attach: %w", err)
 	}
 	aborted := make(chan struct{})
 	type commitResult struct {
@@ -418,7 +418,7 @@ func runRecoverySuccessor(ctx context.Context, spec desktopRecoverySpec, command
 	}
 	if spec.Engine.PID > 0 {
 		if err := verifyDesktopRecoveryTarget(ctx, spec); err != nil {
-			return err
+			return fmt.Errorf("desktop recovery post-ready precommit: %w", err)
 		}
 	}
 	if err := json.NewEncoder(controlWriter).Encode(desktopRecoveryCommit{Token: spec.Token, Commit: true}); err != nil {

@@ -532,6 +532,11 @@ E2E suite.
 
 ## Front-end rules
 
+- An unattended rendering report needs an explicitly input-free observation after
+  setup. Periodic composer edits, navigation or sends cannot accept that scope.
+  Report the last probe boundary before automatic reload; asynchronous enqueueing
+  is not a durable receipt. A white image captured afterward does not establish
+  that the original document was already white.
 - A renderer stall with a healthy engine is a product recovery failure until
   bounded native recovery is accepted. Preserve process-specific WebContent/GPU
   evidence before restarting; a successful reopen does not prove the trigger

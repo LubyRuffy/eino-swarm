@@ -8,6 +8,7 @@
 package lease
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,6 +36,43 @@ var (
 	// --mock than this shell asked for.
 	ErrMockMismatch = errors.New("lease: engine mock mode does not match")
 )
+
+// UnreachableError records a failed Discover health predicate, not a verified
+// engine. Category is transport, status, read or decode; StatusCode is zero if
+// no response arrived. Duration covers the HTTP request through that predicate.
+// ContextCategory is empty, canceled or deadline_exceeded. No peer URL, body or
+// underlying error is retained, because callers may write this error to logs.
+type UnreachableError struct {
+	Category        string
+	StatusCode      int
+	Duration        time.Duration
+	ContextCategory string
+}
+
+func (e *UnreachableError) Error() string {
+	return fmt.Sprintf("%s: category=%s status=%d elapsed_ms=%d context=%s",
+		ErrUnreachable, e.Category, e.StatusCode, e.Duration.Milliseconds(), e.ContextCategory)
+}
+
+func (e *UnreachableError) Unwrap() error { return ErrUnreachable }
+
+// Is retains only standard context classifications, never a possibly sensitive
+// transport error chain. The existing ErrUnreachable identity uses Unwrap.
+func (e *UnreachableError) Is(target error) bool {
+	return (target == context.DeadlineExceeded && e.ContextCategory == "deadline_exceeded") ||
+		(target == context.Canceled && e.ContextCategory == "canceled")
+}
+
+func newUnreachableError(category string, status int, started time.Time, cause error) *UnreachableError {
+	kind := ""
+	switch {
+	case errors.Is(cause, context.DeadlineExceeded):
+		kind = "deadline_exceeded"
+	case errors.Is(cause, context.Canceled):
+		kind = "canceled"
+	}
+	return &UnreachableError{Category: category, StatusCode: status, Duration: time.Since(started), ContextCategory: kind}
+}
 
 // Record is the on-disk description of the engine a shell can attach to.
 // Version and the executable's identity are how a newer binary tells that
@@ -260,21 +298,26 @@ func Discover(dataDir string, mock bool) (Record, error) {
 		return Record{}, ErrNotRunning
 	}
 	client := &http.Client{Timeout: 500 * time.Millisecond}
+	started := time.Now()
 	resp, err := client.Get(rec.URL + "/api/meta")
+	status := 0
+	if resp != nil {
+		status = resp.StatusCode
+	}
 	if err != nil {
-		return rec, ErrUnreachable
+		return rec, newUnreachableError("transport", status, started, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return rec, ErrUnreachable
+		return rec, newUnreachableError("status", status, started, nil)
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return rec, ErrUnreachable
+		return rec, newUnreachableError("read", status, started, err)
 	}
 	var meta metaView
 	if err := json.Unmarshal(raw, &meta); err != nil {
-		return rec, ErrUnreachable
+		return rec, newUnreachableError("decode", status, started, err)
 	}
 	if filepath.Clean(meta.DataDir) != filepath.Clean(dataDir) {
 		return Record{}, ErrNotRunning

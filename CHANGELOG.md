@@ -13,6 +13,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-115`, `C-034`, `C-001`, `C-012`: preserve the last observed probe boundary
+  before automatic renderer recovery, distinguish snapshot errors from pixel
+  mismatches, and identify replacement validation phases and safe lease HTTP
+  failure categories. The original white-screen trigger and formal package
+  acceptance remain unresolved (Issue #94).
+
 - `F-170`, `F-230`, `C-009`: document and regress the existing Chat Completions
   compatibility with legacy `reasoning_content` and newer vLLM `reasoning` in
   JSON replies and live deltas. Offline adapter and PC/phone UI tests preserve

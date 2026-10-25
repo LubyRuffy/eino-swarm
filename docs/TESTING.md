@@ -883,6 +883,17 @@ Incident evidence and the upstream-cause uncertainty are recorded in
 `internal/desktop/recovery*_test.go` exercises the actual controller with injected
 clock/probe/snapshot effects, including stale challenges, blank pixels, source
 origin, inactivity, sleep-sized tick gaps, retry exhaustion and cancellation.
+`recovery_diagnostic_runtime_test.go` requires the observed probe boundary before
+reload, preserving its policy reason and lineage without leaking native error
+content. `internal/lease/discover_diagnostics_test.go` uses real offline HTTP for
+transport/status/read/decode failures and preserves the unreachable record/error
+identity. `cmd/zwai/desktop_recovery_phase_diagnostics_test.go` exercises the real
+parent, attach and pipe-handshake validation phases and child cleanup.
+
+A reported unattended stall also needs an explicitly input-free observation.
+Periodic composer edits, restore navigation or send actions cannot accept that
+scope. Preserve images and diagnostics before automatic recovery where available;
+a white image after reload does not prove that the document was white beforehand.
 `cmd/zwai/desktop_recovery_test.go` uses real child processes and private pipes
 to regress readiness/commit ownership and exact-child cleanup. Cache tests keep
 an executable alive while preparing its immutable bundle again.

@@ -101,3 +101,43 @@ at least 18 hours of operation. Preserve package/source hashes, real native
 screenshots/actions, unchanged draft bytes, engine/turn/worker identity and cleanup
 receipts. See [testing procedure](../TESTING.md#desktop-renderer-resilience-f-115--c-034).
 The host's already-running app is outside the native acceptance scope.
+
+## Unattended observation — 2026-10-25
+
+The user clarified that the window initially worked and later went white without
+interaction. Case `df7fc633a4794e5993a82256227d0f25` therefore used an explicit
+no-input interval in ci-macOS with the unchanged App7d v0.1.36 ZIP
+(`3ba52e0f585f4a87d998398301c89f1e6b6885c0dadecd013212572778c3e30f`),
+QA `09b9c3314f151849c2b49501b31e9d2f7e98842f`, and no fault injection.
+It held the display awake; this did not exercise natural display-off or system sleep.
+
+- At 01:15:28.392030 UTC the actual window, acknowledged draft, original binary
+  and 3×2 PNG, running worker and parked worker were prepared. No UI action
+  followed that point; scheduled observations captured pixels and read the API.
+- Tick 30 still showed the complete interface and retained draft/bytes/task IDs.
+  At 01:46:13.438975 UTC, about 30 minutes 45 seconds after that start, the
+  application reported `reloading / renderer_unresponsive` without injection.
+- Replacement followed, including an `ErrUnreachable` validation failure. The
+  old log conflated transport, status, body-read and JSON-decode failures and
+  did not identify which prelaunch or post-ready validation failed.
+- Tick 31 retained a 1264×752 PNG of the original window with a white content
+  area: SHA-256 `aad0fe8dd1df0c304a8d96e4f81baebc5d72c0dda99e80ab733d9f4b6a3430e9`.
+  Its before-observation was already about 16.35 seconds after the reload log;
+  capture completion and after-observation are absent. It cannot prove that
+  white content preceded reload. Whole-image colour buckets also classified
+  this white-content image as painted because of its black border and controls;
+  that heuristic cannot override the original pixels.
+
+The first health-coverage failure remains the missing SDK lock-state flag at
+sequence zero; the window also had an overlapping window. The journal alert's
+bounded collector later timed out and obtained no pre-reload WebContent sample.
+The original runner exited with scenario failure after 1890.106 seconds and
+completed its actual process/data cleanup. This is a natural no-input recovery
+event with subsequent white pixels, **not** a completed two-hour health test,
+successful recovery or proof of the original OS27 SVG/GPU trigger.
+
+Controller regressions now require the last observed probe boundary before
+reload and distinguish capture error from mismatched pixels. Real offline HTTP
+and private-pipe tests distinguish lease predicates and validation phases without
+logging URLs, response bodies or native error text. These diagnostics preserve
+the evidence needed for another targeted run; they do not establish a root-cause fix.

@@ -76,7 +76,8 @@ test("a live recovery SSE reaches Full log without a history or Trace fetch", as
   const sessionId = "live-recovery-" + threadId
   const posted = await request.post("/api/desktop/recovery", { data: {
     session_id: sessionId, generation: 1, attempt: 1, shell_pid: process.pid, engine_pid: enginePID,
-    thread_id: threadId, turn_id: turnId, phase: "recovered", at: new Date().toISOString(),
+    thread_id: threadId, turn_id: turnId, phase: "probe_failed", reason: "snapshot_pending",
+    duration_ms: 20000, at: new Date().toISOString(),
   } })
   expect(posted.ok()).toBe(true)
   expect(await posted.json()).toEqual({ persisted: true })
@@ -85,6 +86,12 @@ test("a live recovery SSE reaches Full log without a history or Trace fetch", as
   await expect(diagnostic).toHaveCount(1)
   await diagnostic.getByTestId("review-trace-details").click()
   await expect(diagnostic.locator("pre")).toContainText(`"turn_id": "${turnId}"`)
+  // Full log renders a stored event whose text is the diagnostic JSON string.
+  // Decode that payload rather than depending on the outer JSON's escaping.
+  await expect.poll(async () => {
+    const event = JSON.parse((await diagnostic.locator("pre").textContent())!)
+    return JSON.parse(event.text)
+  }).toMatchObject({ phase: "probe_failed", reason: "snapshot_pending", duration_ms: 20000 })
   await expect(statusBadge(page)).toHaveText("Idle")
   await expect(page.getByTestId("trace-status")).toHaveText("done")
   await expect(page.getByTestId("transcript")).not.toContainText(sessionId)

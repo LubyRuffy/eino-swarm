@@ -98,6 +98,18 @@ The native session also keeps a bounded 64 KiB local diagnostic journal under
 `$ZWAI_HOME/diagnostics/desktop-<session>.jsonl` when the HTTP path is unavailable.
 This endpoint reports interface recovery; it never restarts or completes work.
 
+Before reload or replacement, `probe_failed` reports the last observed boundary:
+`callback_missing`, `location_pending`, `snapshot_pending`, `snapshot_error`,
+`snapshot_mismatch`, or no pending probe. These are observations, not proof of a
+JavaScript/GPU cause. `duration_ms` is the age of the latest dispatched probe
+when known, not a completed recovery duration. Native error text is excluded.
+Replacement errors distinguish `parent prelaunch`, `successor attach` and
+`post-ready precommit`. An unreachable lease retains its error category and
+reports only `transport` / `status` / `read` / `decode`, HTTP status and elapsed
+time; URLs, response bodies and underlying error messages are excluded.
+The native reporter remains asynchronous and bounded: enqueueing before reload
+does not acknowledge durable storage before the document changes.
+
 The renderer's internal `zwai:recovery-location` DOM notification is separate
 from this HTTP endpoint. It carries no event detail or draft content; the native
 bridge reads only the current thread/turn/project/draft-key attribution and binds

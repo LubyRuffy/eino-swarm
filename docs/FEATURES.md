@@ -57,6 +57,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-115 Bounded native renderer recovery
 
+- 故障诊断：重载／替换前向原异步诊断通道发出最后探针边界和已知年龄，区分回调缺失、位置待恢复、截图待回、截图错误及像素不匹配；继任错误保留启动前／attach／ready 后提交前阶段和安全 lease HTTP 分类，不记录原生错误正文、URL 或响应内容。该分类不等于已定位 GPU／JS 根因。证据：`internal/desktop/recovery_diagnostic_runtime_test.go`、`internal/lease/discover_diagnostics_test.go`、`cmd/zwai/desktop_recovery_phase_diagnostics_test.go`；契约：`C-034`、`C-001`、`C-012`。
 - 目的：在 macOS WebContent 活挂、绘图失效或白屏时恢复可用窗口；使用者：桌面用户；入口：`zwai desktop` 的原生恢复控制循环；输入：同源、主 frame、当前 challenge 响应与实际截图像素；输出：一次重载，必要时附着原引擎的继任窗口；前置条件：引擎租约可验证、恢复副本与诊断目录可写；失败表现：有界尝试耗尽后的原生错误提示及保留诊断；关联契约：`C-034`, `C-001`, `C-012`, `C-033`；实现证据：`internal/desktop/recovery.go`, `internal/desktop/recovery_state.go`, `internal/desktop/recovery_snapshot_darwin.m`, `cmd/zwai/desktop_recovery_darwin.go`, `internal/desktop/recovery_test.go`, `cmd/zwai/desktop_recovery_test.go`。
 - 健康条件包含本次随机探针的真实像素；HTTP、JS 响应或动画帧不单独算绘制成功。失焦、最小化、睡眠与唤醒有检测暂停／宽限。
 - 继任窗口经私有继承管道与两阶段确认接管，沿用数据目录、离线模式和原引擎 PID／URL／租约，恢复会话／项目与草稿位置；不调用引擎替换或重新执行任务。

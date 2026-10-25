@@ -165,6 +165,11 @@ application updates do not trigger watchdog resurrection. See
 [recovery diagnostics](API.md#desktop-recovery-diagnostics) and
 [native acceptance](TESTING.md#desktop-renderer-resilience-f-115--c-034).
 
+For an unattended white screen, retain the diagnostic journal and the original
+turn's Trace. Probe failures distinguish missing callbacks from pending or failed
+snapshots; replacement errors identify the lease-validation phase and safe HTTP
+failure category. These diagnostics do not establish the original rendering cause.
+
 A released Mac app shows its version at the bottom of the conversation list
 (`Version x.y.z`). On startup it asks
 [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases/latest)

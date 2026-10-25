@@ -196,6 +196,8 @@ func (c *recoveryController) run(ctx context.Context) {
 	}
 	lastTick := now
 	var challenge string
+	probeStage := "probe_not_started"
+	var probeStarted time.Time
 	var first, second color.NRGBA
 	location := recoveryLocationFromURL(c.windowURL)
 	expected := location
@@ -214,7 +216,12 @@ func (c *recoveryController) run(ctx context.Context) {
 	snapshotPending := false
 	report := func(phase, reason string) {
 		if c.opts.Diagnostic != nil {
-			c.opts.Diagnostic(RecoveryDiagnostic{SessionID: c.opts.SessionID, Generation: c.opts.Generation, Attempt: state.attempts, ShellPID: os.Getpid(), ThreadID: location.ThreadID, TurnID: location.TurnID, Phase: phase, Reason: reason, At: time.Now().UTC()})
+			observed := c.now()
+			var elapsed int64
+			if !probeStarted.IsZero() && !observed.Before(probeStarted) {
+				elapsed = observed.Sub(probeStarted).Milliseconds()
+			}
+			c.opts.Diagnostic(RecoveryDiagnostic{SessionID: c.opts.SessionID, Generation: c.opts.Generation, Attempt: state.attempts, ShellPID: os.Getpid(), ThreadID: location.ThreadID, TurnID: location.TurnID, Phase: phase, Reason: reason, At: observed.UTC(), DurationMS: elapsed})
 		}
 	}
 	for {
@@ -244,6 +251,7 @@ func (c *recoveryController) run(ctx context.Context) {
 				}
 				state.setActive(active, now)
 				challenge = ""
+				probeStage, probeStarted = "probe_not_started", time.Time{}
 				if snapshotCancel != nil {
 					snapshotCancel()
 				}
@@ -265,6 +273,7 @@ func (c *recoveryController) run(ctx context.Context) {
 					// Only the per-probe work is discarded; outer deadlines stay fixed.
 					awaitingLocation = false
 					challenge = ""
+					probeStage, probeStarted = "probe_not_started", time.Time{}
 					if snapshotCancel != nil {
 						snapshotCancel()
 					}
@@ -280,11 +289,16 @@ func (c *recoveryController) run(ctx context.Context) {
 				snapshotPending = false
 				challenge = ""
 				if input.err != nil || !snapshotMatchesProbe(input.pixels, first, second, input.probe) {
+					probeStage = "snapshot_mismatch"
+					if input.err != nil {
+						probeStage = "snapshot_error"
+					}
 					state.failed(now)
-					report("probe_failed", "snapshot_missing_or_mismatched")
+					report("probe_failed", probeStage)
 					continue
 				}
 				state.healthy(now)
+				probeStage = "probe_not_pending"
 				if !ready {
 					ready = true
 					report("ready", "")
@@ -305,6 +319,7 @@ func (c *recoveryController) run(ctx context.Context) {
 				location = attribution
 			}
 			snapshotPending = true
+			probeStage = "snapshot_pending"
 			snapshotCtx, cancelSnapshot := context.WithDeadline(ctx, state.pendingUntil)
 			snapshotCancel = cancelSnapshot
 			go func(token string, probeCtx context.Context, cancelCapture context.CancelFunc) {
@@ -319,6 +334,7 @@ func (c *recoveryController) run(ctx context.Context) {
 			if now.Sub(lastTick) > recoveryHealthTimeout {
 				state.setActive(state.active, now)
 				challenge = ""
+				probeStage, probeStarted = "probe_not_started", time.Time{}
 				if snapshotCancel != nil {
 					snapshotCancel()
 				}
@@ -347,10 +363,17 @@ func (c *recoveryController) run(ctx context.Context) {
 					continue
 				}
 				challenge = hex.EncodeToString(random[:])
+				probeStarted, probeStage = c.now(), "callback_missing"
+				if awaitingLocation {
+					probeStage = "location_pending"
+				}
 				first = color.NRGBA{R: 40 + random[0]%64, G: 40 + random[1]%64, B: 40 + random[2]%64, A: 255}
 				second = color.NRGBA{R: 255 - first.R, G: 255 - first.G, B: 255 - first.B, A: 255}
 				c.probe(recoveryProbeScript(c.origin, c.opts.SessionID, c.opts.Generation, challenge, first, second, document))
 			case recoveryReload:
+				// Report the last probe's missing boundary before reload removes
+				// that document. This adds no per-probe journal traffic or retries.
+				report("probe_failed", probeStage)
 				report("reloading", "renderer_unresponsive")
 				challenge = ""
 				if snapshotCancel != nil {
@@ -362,6 +385,7 @@ func (c *recoveryController) run(ctx context.Context) {
 				awaitingLocation = expected != (recoveryLocation{})
 				c.reload(location.windowURL(c.windowURL))
 			case recoveryReplace:
+				report("probe_failed", probeStage)
 				report("replacing", "reload_did_not_restore_renderer")
 				challenge = ""
 				if snapshotCancel != nil {

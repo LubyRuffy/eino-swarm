@@ -69,7 +69,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   selection metadata alone never proves that the page painted. Repeated failures stop
   with a native error instead of an endless restart loop. A system WebKit fault
   can still occur; successful recovery is not evidence that the system fault has
-  been removed. See [recovery diagnostics](docs/API.md#desktop-recovery-diagnostics).
+  been removed. The journal and original-turn Trace distinguish probe boundaries
+  and replacement lease failures. See [recovery diagnostics](docs/API.md#desktop-recovery-diagnostics).
 - **Paste a screenshot into the box.** It lands as a thumbnail you can drop
   before sending, and goes to the model as visual input — not as a file in the
   workspace. Dragging a file onto the box does the same split: images become
