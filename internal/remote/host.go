@@ -26,6 +26,7 @@ type Host struct {
 
 	mu       sync.Mutex
 	conn     *client.Conn
+	links    *hostLinkGroup
 	id       *crypto.Identity
 	starting *hostStart
 	offerURI string
@@ -68,9 +69,7 @@ func (h *Host) Reload() {
 	attempt, launch := h.prepareStartLocked(context.Background())
 	h.applyWakeLocked()
 	h.mu.Unlock()
-	if previous != nil {
-		<-previous.done
-	}
+	previous.finish()
 	h.finishStart(attempt, launch)
 }
 
@@ -85,14 +84,12 @@ func (h *Host) Start() {
 
 func (h *Host) Stop() {
 	h.mu.Lock()
-	attempt := h.stopLocked()
+	previous := h.stopLocked()
 	if h.wake != nil {
 		_ = h.wake.Set(false)
 	}
 	h.mu.Unlock()
-	if attempt != nil {
-		<-attempt.done
-	}
+	previous.finish()
 }
 
 func (h *Host) applyWakeLocked() {
@@ -106,29 +103,6 @@ func (h *Host) applyWakeLocked() {
 	}
 	if err := h.wake.Set(wakeup.Wanted(enabled, keep)); err != nil {
 		h.log.Warn("keep-awake failed", "err", err)
-	}
-}
-
-func (h *Host) stopLocked() *hostStart {
-	attempt := h.starting
-	if attempt != nil {
-		attempt.cancel()
-		h.starting = nil
-	}
-	if h.conn != nil {
-		_ = h.conn.Close()
-		h.conn = nil
-	}
-	h.offerURI = ""
-	return attempt
-}
-
-func (h *Host) serveLink(l *client.Link) {
-	h.log.Info("remote device linked", "path", l.Path(), "session", l.SessionID())
-	pump := newLinkPump(h.eng, h.cfg.Remote, l)
-	defer pump.Close()
-	for msg := range l.Recv() {
-		pump.Dispatch(msg)
 	}
 }
 

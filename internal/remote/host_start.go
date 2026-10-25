@@ -129,8 +129,11 @@ func (h *Host) connect(attempt *hostStart) {
 		h.log.Warn("remote host connect failed", "err", err)
 		return
 	}
-	conn.OnLink(func(l *client.Link) { go h.serveLink(l) })
+	ctx, cancel := context.WithCancel(context.Background())
+	links := &hostLinkGroup{ctx: ctx, cancel: cancel, current: make(map[string]*hostLink)}
 	h.conn = conn
+	h.links = links
+	conn.OnLink(func(l *client.Link) { h.acceptLink(links, l) })
 	h.id = attempt.config.Identity
 	h.err = ""
 	h.mu.Unlock()
