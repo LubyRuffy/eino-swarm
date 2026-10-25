@@ -5,17 +5,17 @@ import { startScheduleAnswerFixture, unsupportedScheduleAnswer, verifiedSchedule
 
 type Event = { kind: string; text?: string; tool_call_id?: string }
 
-test("a live unverified scheduling answer is corrected against an actual saved wake", async ({ page, request }, info) => {
+test("a live unverified scheduling answer is corrected and verified beyond thirty seconds against an actual saved wake", async ({ page, request }, info) => {
   test.skip(process.env.ZWAI_E2E_SCHEDULE_ANSWER !== "1", "requires the offline answer admission fixture")
-  const fixture = await startScheduleAnswerFixture()
+  const fixture = await startScheduleAnswerFixture({ secondPolicyDelayMS: 31_000 })
   let scheduleID = ""
   let threadID = ""
-  let trace: { turn: { id: string; status: string }; events: Event[]; llm_calls: { agent_id: string }[] } | undefined
+  let trace: { turn: { id: string; status: string }; events: Event[]; llm_calls: { agent_id: string; duration_ms: number; err?: string }[] } | undefined
   const history = /\/api\/threads\/[^/]+\/log(?:\?|$)/
   try {
     const { settings } = await (await request.get("/api/settings")).json()
     expect((await request.put("/api/settings", { data: {
-      models: { default: "answer-fixture", providers: [{ id: "answer-fixture", label: "Offline scheduling admission", base_url: fixture.url, model: "fixture-model", api_key: "", context_window: 128000 }] },
+      models: { default: "answer-fixture", providers: [{ id: "answer-fixture", label: "Offline scheduling admission", base_url: fixture.url, model: "fixture-model", api_key: "", context_window: 128000, first_byte_timeout_seconds: 40, timeout_seconds: 10 }] },
       swarm: { ...settings.swarm, auto_title: false, schedule_min_interval_seconds: 1 },
       memory: { ...settings.memory, auto_review: false },
     } })).ok()).toBe(true)
@@ -47,7 +47,7 @@ test("a live unverified scheduling answer is corrected against an actual saved w
     expect(fixture.state()).toMatchObject({ managerRequests: 2, checks: 1 })
     await page.screenshot({ path: info.outputPath("unverified-answer-withheld.png"), animations: "disabled" })
     fixture.allowArm()
-    await expect(transcript).toContainText(verifiedScheduleAnswer)
+    await expect(transcript).toContainText(verifiedScheduleAnswer, { timeout: 45_000 })
     await expect(transcript).not.toContainText(unsupportedScheduleAnswer)
     await expect(page.getByTestId("schedule-banner")).toBeVisible()
     await expect(page.getByTestId("status-badge")).toContainText("Waiting")
@@ -69,7 +69,10 @@ test("a live unverified scheduling answer is corrected against an actual saved w
     const saved = await (await request.get(`/api/schedules/${scheduleID}`)).json()
     expect(saved.schedule).toMatchObject({ id: scheduleID, thread_id: threadID, status: "active", every_s: 90 })
     expect(saved.schedule.next_run_at).toBeTruthy()
-    expect(trace!.llm_calls.filter((call) => call.agent_id === "schedule-answer-policy")).toHaveLength(2)
+    const policyCalls = trace!.llm_calls.filter((call) => call.agent_id === "schedule-answer-policy")
+    expect(policyCalls).toHaveLength(2)
+    expect(policyCalls[1].duration_ms).toBeGreaterThanOrEqual(30_000)
+    expect(policyCalls[1].err ?? "").toBe("")
     for (const event of trace!.events.filter((event) => ["agent_message", "delta", "done"].includes(event.kind))) expect(event.text ?? "").not.toContain(unsupportedScheduleAnswer)
     await page.unroute(history)
     await reloadOpenConversation(page)

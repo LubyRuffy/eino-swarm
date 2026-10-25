@@ -194,6 +194,12 @@ is bounded to the original turn, and its policy calls remain attributed there.
 The classifier extracts claims only; deterministic schedule checks must reject
 unsupported scope, current state, cadence or new-arrangement attribution.
 No external model is used in regression tests.
+`internal/engine/schedule_answer_timeout_test.go` holds a real loopback
+classification response beyond 30 seconds while the configured provider budget
+allows it, then checks the original turn completes without a repeated manager
+request. It also checks parent cancellation and the configured first-byte
+and body-idle timeouts, retaining each failure in the original turn's Trace;
+candidate prose stays withheld until classification succeeds.
 `internal/engine/schedule_answer_retry_test.go` returns a malformed real
 policy HTTP response and proves that its retained diagnostic cause cannot
 restart the standing goal or reset the same-turn correction budget.

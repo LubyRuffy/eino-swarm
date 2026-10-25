@@ -1814,7 +1814,11 @@ an unsupported scheduling claim in the same turn. It does not mean the
 provider failed or that a wait was created. Its metadata remains in Trace;
 the transcript says the schedule is being checked. Candidate manager prose
 is held until the tool-free `schedule-answer-policy` call extracts claims
-and code verifies them against current persisted plans. A new-arrangement
+and code verifies them against current persisted plans. This non-streaming
+policy call honors the provider's `first_byte_timeout_seconds` for response
+headers, `timeout_seconds` for body silence and the turn's cancellation. It
+adds no separate 30-second total deadline; a longer configured wait remains
+effective for classification. A new-arrangement
 claim needs this turn's successful arrangement, and a cancelled or failed
 arrangement cannot support it. One correction is allowed; repeated unsupported
 claims or an unavailable check produce an explicit error. Restart preserves

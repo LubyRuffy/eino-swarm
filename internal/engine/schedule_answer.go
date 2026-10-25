@@ -61,8 +61,9 @@ func (e *Engine) verifyScheduleAnswer(ctx context.Context, turn *store.Turn, tex
 	}{text, e.clock().Format(time.RFC3339)})
 	hash := sha256.Sum256(body)
 	failure := &scheduleAnswerError{Code: "classification_unavailable", Hash: hex.EncodeToString(hash[:])}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
+	// Generate already observes provider header/body-idle budgets and caller
+	// cancellation. A shorter total deadline can reject a valid classification
+	// and replay manager work that has already executed.
 	th, err := e.store.GetThread(turn.ThreadID)
 	if err != nil {
 		failure.Cause = err

@@ -209,6 +209,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-150`, `F-160`, `C-009`: scheduling-answer classification now honors the
+  provider's configured response-header and body-idle waits without an extra
+  30-second total deadline. Valid slower checks no longer force a manager
+  correction or stop the task solely at that hidden deadline; cancellation,
+  scheduling evidence checks and the durable correction budget remain enforced.
+
 - `F-210`, `F-220`, `C-006`: phone conversation previews and detail no longer
   load entire event/turn histories. Indexed, projected tail reads preserve
   visible summaries through hidden coordination records. Phone opening uses

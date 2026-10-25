@@ -506,6 +506,11 @@ E2E suite.
   requests fail closed. Regress actual loopback HTTP, quoted/user protocol
   spoofing and an already-held worker without changing its spawn or request
   counters; never approve arbitrary prose to make a native case pass.
+- Schedule-answer classification must honor the provider's response-header and
+  body-idle budgets and turn cancellation, without a shorter hidden total
+  deadline. Regress a real response beyond 30 seconds without replaying the
+  manager, plus configured header/body timeouts and Stop; a classifier timeout
+  alone does not establish that the manager made an unsupported schedule claim.
 - Regress a new explicit goal after a completed one through the real PC and
   paired-phone send paths, including a standalone trailing `/goal`. The
   original objective text must reach the model, and the completed flag must

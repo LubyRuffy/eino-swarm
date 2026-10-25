@@ -187,7 +187,11 @@ uncertainty is not scheduling success. Exhausting this gate is terminal even
 when the diagnostic cause is a model transport or decoding failure, so goal
 continuation cannot reset its correction budget. The same-turn allowance is
 restored from its durable correction event after restart; failed receipt reads
-or writes terminate admission before another corrective model request.
+or writes terminate admission before another corrective model request. The
+non-streaming policy call uses the provider's configured response-header and
+body-idle timeouts and the turn's cancellation; it adds no separate 30-second
+total deadline. A response arriving after 30 seconds remains eligible within
+those configured budgets.
 Tools, reasoning and worker events
 continue on the original notification path. Policy calls and correction
 metadata are attributed to the original turn's Trace.
