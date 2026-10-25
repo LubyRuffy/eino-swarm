@@ -711,7 +711,7 @@ protocol.
 Responses carry `path` (`relay` or `direct`), `session_id`, and `host` so `zwai trace`
 can join the hop and the phone can name this PC.
 
-`watch` `{thread_id, since}` subscribes to the same event kinds as desktop
+`watch` `{thread_id, since, include_detail?}` subscribes to the same event kinds as desktop
 SSE (`frontend/src/lib/stream.ts` `KINDS`). `since` omitted or `0` loads the
 live edge (at most 24 stored events from the last turn's end, even when
 `watch_events` is higher), not the entire log from seq 1. The rest of that
@@ -722,6 +722,20 @@ waiting on a later push. `status` is the same live header as desktop:
 thread wait is parked. Goal, schedule, `turn`, `done` and `error` event
 frames carry that `status` too so a parked `/goal` does not look idle after
 `done`.
+With `include_detail: true`, `ready` also carries the existing `open` `detail`.
+Header, status and tail share the frame budget; packing keeps the newest events
+and sets `more` if it removes older ones. Metadata alone exceeding the budget
+returns `too_large` and leaves no new watch. A new phone talking to an older
+PC receives its ordinary watch snapshot, then requests `open` only for the
+missing detail. Ordinary watch and open remain compatible with older phones.
+
+Preview reads select only the current turn's relevant event kinds in indexed
+tail pages; detail selects only its configured recent completed turns. Neither
+decodes the complete historical timeline before clipping. Reconnecting one
+device cancels its old watch/catalog handler; other devices stay independent.
+Host Stop/Reload revoke admission and join all handlers outside the Host lock.
+An old captured connection callback cannot replace the new owner.
+
 The phone renders each stored `done` or `error` as a turn divider using that
 event's `created_at`; it does not infer completion from the last answer or
 the phone's clock. Scheduled input may be hidden while its divider remains.

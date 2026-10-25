@@ -879,12 +879,15 @@ export class MockLink {
         return this.ok({ id, detail: this.host.detail(th) })
       }
       case OpWatch: {
+        if (req.include_detail && mockPauseOpenMs()) {
+          await new Promise((resolve) => window.setTimeout(resolve, mockPauseOpenMs()))
+        }
         const th = thread()
         if (!th) return this.missing(id)
         this.stopWatching()
         this.watcher = { threadID: th.id, deliver: (r) => this.onPush?.(r) }
         this.host.watch(this.watcher)
-        return this.ok({ id, op: OpReady, thread_id: th.id,
+        return this.ok({ id, op: OpReady, thread_id: th.id, detail: req.include_detail ? this.host.detail(th) : undefined,
           more: ["hidden", "streamed-agents"].includes(new URLSearchParams(location.search).get("history") ?? "") && th.id === "t-live",
           ...this.host.snapshot(th) })
       }

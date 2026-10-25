@@ -48,6 +48,11 @@ The phone is a compact screen on the same conversation as the desktop: same
 event kinds and seq (`watch` / `unwatch` / `log`), clipped bodies so a frame
 stays under 64KiB. First paint is a live-edge snapshot on the `watch` RPC
 `ready`, already at the tail; a tap shows the chrome before that returns.
+Current PCs include the header and tail in that one reply when the phone sends
+`include_detail: true`. Older PCs remain usable through a separate header read.
+Reconnecting replaces the old device subscription instead of accumulating
+duplicate event senders. The PC reads previews and recent turns in indexed
+pages; opening a long task does not decode its complete history.
 **Earlier** sits above the log; pulling up also pages older events. User and
 assistant rows render markdown; a path link does not navigate the
 webview. Recognised language fences use the existing source syntax colours in

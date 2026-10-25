@@ -127,7 +127,14 @@ func (p *LinkPump) startWatch(req Request) Response {
 	if tid == "" {
 		return fail(req.ID, p.path, p.sessionID, "bad_request", "thread_id required")
 	}
-	if _, err := p.eng.Store().GetThread(tid); err != nil {
+	var detail *ThreadDetail
+	if req.IncludeDetail {
+		var err error
+		detail, err = openDetail(p.eng, tid, p.cfg)
+		if err != nil {
+			return mapErr(req.ID, p.path, p.sessionID, err)
+		}
+	} else if _, err := p.eng.Store().GetThread(tid); err != nil {
 		return mapErr(req.ID, p.path, p.sessionID, err)
 	}
 	p.stopWatch()
@@ -137,8 +144,11 @@ func (p *LinkPump) startWatch(req Request) Response {
 	p.cancel = cancel
 	p.watching = tid
 	p.mu.Unlock()
-	history, hasMore, err := readWatchHistory(p, tid, req.Since)
-	if err != nil {
+	accepted := false
+	defer func() {
+		if accepted {
+			return
+		}
 		cancel()
 		sub.Close()
 		p.mu.Lock()
@@ -147,16 +157,26 @@ func (p *LinkPump) startWatch(req Request) Response {
 			p.watching = ""
 		}
 		p.mu.Unlock()
+	}()
+	history, hasMore, err := readWatchHistory(p, tid, req.Since)
+	if err != nil {
 		return fail(req.ID, p.path, p.sessionID, "", fmtErr(err))
 	}
 	highest := watchHighest(req.Since, history, hasMore, p.eng.Store(), tid)
 	resp := p.readySnapshot(req.ID, tid, history, hasMore, highest)
+	if detail != nil {
+		resp = packWatchDetail(resp, detail)
+		if !resp.OK {
+			return resp
+		}
+	}
 	p.watchWG.Add(1)
 	go func() {
 		defer p.watchWG.Done()
 		defer sub.Close()
 		p.watchLoop(ctx, sub, tid, highest)
 	}()
+	accepted = true
 	return resp
 }
 

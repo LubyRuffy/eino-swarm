@@ -264,7 +264,8 @@ overwriting or re-signing an executable already used by an engine/window.
 ## Phone remote (pairlink)
 
 The PC stays the system of record. A phone never hits gin `/api`. Binding is a
-QR; data starts on the hub (DERP) and may upgrade to UDP. The hub sees
+QR; the current phone client uses the hub WebSocket relay. Pairlink can also
+support UDP with compatible peers. The hub sees
 fingerprints and ciphertext length, not projects or events. The desktop host
 must keep a live WebSocket on the hub (keepalive data frames, reconnect on
 drop). The phone does the same on its ticket socket (a quiet hub drops after
@@ -282,6 +283,19 @@ HTTP readiness condition. A slow or unavailable hub leaves desktop, browser
 and terminal startup available while the phone reports its connection state.
 Stop and Reload cancel pending registration; late results cannot install a
 host after its lifecycle has ended.
+
+`host_links.go` owns the connected lifecycle that pairlink's inbox does not
+close. Each current connection group admits one handler per device, cancels its
+previous watch/catalog on reconnect and joins all handlers on Stop/Reload.
+Ownership is revoked under the Host lock; network close and joins run outside
+it. Captured callbacks from an older group cannot admit a new handler.
+
+Phone opening requests `watch include_detail`, receiving the header and live
+edge in one byte-bounded `ready` reply. A legacy PC falls back to a separate
+header read. Preview and recent-turn queries use projected, indexed tail pages
+through `internal/store/phone_reads.go`; they preserve hidden-record skipping
+without decoding the whole event history. The existing older-page and event
+sequence semantics remain shared with normal watch.
 
 ```mermaid
 flowchart TB

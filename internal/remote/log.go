@@ -17,14 +17,14 @@ func lastTurnWindow(st *store.Store, threadID string, cap int) ([]store.Event, b
 	if cap <= 0 {
 		cap = config.DefaultRemoteWatchEvents
 	}
-	turns, err := st.ListTurns(threadID)
+	turnID, err := st.LatestTurnID(threadID)
 	if err != nil {
 		return nil, false, err
 	}
-	if len(turns) == 0 {
+	if turnID == "" {
 		return st.ListTailEvents(threadID, 0, cap)
 	}
-	page, moreTurn, err := st.ListTailEventsByTurn(threadID, turns[len(turns)-1].ID, cap)
+	page, moreTurn, err := st.ListTailEventsByTurn(threadID, turnID, cap)
 	if err != nil {
 		return nil, false, err
 	}

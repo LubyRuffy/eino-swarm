@@ -54,6 +54,25 @@ export function applyOpenDetail(view: PhoneView, detail: ThreadDetail): PhoneVie
   return openView(detail)
 }
 
+/** A legacy header arrives after ready. Fill metadata without replaying the
+ * snapshot or replacing actual live changes, including fields changed twice. */
+export function applyPendingOpenDetail(view: PhoneView, detail: ThreadDetail, before: PhoneView): PhoneView {
+  let merged = { ...detail }
+  const known = new Set(before.events.map((event) => `${event.thread_id}:${event.seq}`))
+  for (const event of view.events) {
+    // Identity excludes already-present rows; the snapshot boundary separately
+    // excludes historical pages, which cannot change the current header.
+    if (known.has(`${event.thread_id}:${event.seq}`) || event.seq < before.lastSeq) continue
+    merged = patchDetail(merged, event, view.blocks)
+  }
+  if (before.detail && view.detail) {
+    for (const key of Object.keys({ ...before.detail, ...view.detail }) as (keyof ThreadDetail)[]) {
+      if (view.detail[key] !== before.detail[key]) Object.assign(merged, { [key]: view.detail[key] })
+    }
+  }
+  return applyOpenDetail(view, merged)
+}
+
 export function markRunning(view: PhoneView): PhoneView {
   if (!view.detail || view.detail.running) return view
   return {

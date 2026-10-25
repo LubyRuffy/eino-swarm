@@ -123,12 +123,21 @@ func threadView(eng *engine.Engine, th store.Thread, cfg config.RemoteConfig) Th
 	}
 }
 
+// previewReadPage bounds each local read; paging still finds older visible prose.
+const previewReadPage = 24
+
 func threadSummary(eng *engine.Engine, threadID string, chars int) string {
-	turns, err := eng.Store().ListTurns(threadID)
-	if err != nil || len(turns) == 0 {
-		return ""
+	var before int64
+	for {
+		turns, err := eng.Store().ListSummaryTurns(threadID, before, previewReadPage)
+		if err != nil || len(turns) == 0 {
+			return ""
+		}
+		if summary := summaryFromTurns(turns, chars); summary != "" {
+			return summary
+		}
+		before = turns[0].Seq
 	}
-	return summaryFromTurns(turns, chars)
 }
 
 func runningViews(eng *engine.Engine, cfg config.RemoteConfig) []RunningView {
@@ -185,12 +194,18 @@ func runningView(eng *engine.Engine, th *store.Thread, chars int) RunningView {
 		v.Action = threadSummary(eng, th.ID, chars)
 		return v
 	}
-	evts, err := eng.Store().ListEvents(th.ID, 0, 0)
-	if err != nil {
-		return v
+	var before int64
+	for {
+		evts, err := eng.Store().ListTailEventsByKinds(th.ID, st.TurnID, []string{"agent_message", "delta", "tool_call"}, before, previewReadPage)
+		if err != nil || len(evts) == 0 {
+			return v
+		}
+		if action := runningPreview(evts, st.TurnID); action != "" {
+			v.Action = clipPreview(action, chars)
+			return v
+		}
+		before = evts[0].Seq
 	}
-	v.Action = clipPreview(runningPreview(evts, st.TurnID), chars)
-	return v
 }
 
 func openDetail(eng *engine.Engine, threadID string, cfg config.RemoteConfig) (*ThreadDetail, error) {
@@ -199,23 +214,15 @@ func openDetail(eng *engine.Engine, threadID string, cfg config.RemoteConfig) (*
 		return nil, err
 	}
 	d := threadDetail(eng, th, cfg)
-	turns, err := eng.Store().ListTurns(th.ID)
-	if err != nil {
-		return nil, err
-	}
 	n := cfg.OpenTurns
 	if n <= 0 {
 		n = config.DefaultRemoteOpenTurns
 	}
-	done := make([]store.Turn, 0, n)
-	for i := len(turns) - 1; i >= 0 && len(done) < n; i-- {
-		if turns[i].Status == store.TurnRunning {
-			continue
-		}
-		done = append(done, turns[i])
+	done, err := eng.Store().ListCompletedTurnPreviews(th.ID, n)
+	if err != nil {
+		return nil, err
 	}
-	for i := len(done) - 1; i >= 0; i-- {
-		t := done[i]
+	for _, t := range done {
 		text := t.Final
 		if text == "" {
 			text = t.UserText

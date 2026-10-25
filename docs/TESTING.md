@@ -59,6 +59,25 @@ entry also records `engine_restore.phase=failed` rather than a success receipt.
 
 ## Long-conversation opening (`F-120`, `F-130`, `C-003`, `C-008`)
 
+Phone opening has its own adapter and must be checked separately from the PC
+HTTP path (`F-210`, `F-220`, `C-006`). `snapshot_reads_test.go` checks actual SQL
+projection, row counts, current-turn selection and paging past hidden records;
+`phone_reads_test.go` checks legacy NULL values, index migration and query plans.
+`watch_open_test.go` checks one encrypted relay request carrying detail and
+tail, legacy response shape, combined frame budget and refusal cleanup.
+`mobile/src/lib/open-thread.test.ts` checks the single RPC, legacy-host fallback,
+queued live events and Back during either response. The Chromium/WebKit
+`mobile/e2e/conversation-open.spec.ts` exercises reopening and Earlier history.
+
+Reconnect regression must use production Host admission with a real encrypted
+relay, then count outbound frames for a subsequent real engine event. Closing
+a fixture's own pumps cannot prove production cleanup. `host_links_test.go`
+reconnects one device twice and requires one sender, keeps a second device
+independent, verifies old connection callbacks cannot replace new owners and
+joins actual watch/catalog work through Stop/Reload. A network write already
+entered into pairlink still uses that dependency's existing write deadline;
+the test does not claim a total shutdown deadline.
+
 Replay regressions use the real Store with tool bodies much larger than retained
 user/assistant text. Assert the query results exclude tool roles and unrelated
 event kinds, compare output and `context_chars` with the previous replay, and

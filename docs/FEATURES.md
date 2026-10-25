@@ -202,6 +202,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-220 Read and control PC conversations
 
+- 首屏一次 `watch include_detail` 同时取得详情与最新事件；旧 PC 自动补读详情。摘要与轮次在 SQLite 中有界读取，跨隐藏协调记录仍能找到原有可见摘要；重连替换旧订阅，Stop／Reload 收口自有链接。关联契约：`C-006`；实现：`internal/remote/watch_snapshot.go`、`internal/remote/host_links.go`、`internal/store/phone_reads.go`、`mobile/src/lib/open-thread.ts`；验证：`internal/remote/watch_open_test.go`、`internal/remote/host_links_test.go`、`internal/remote/snapshot_reads_test.go`、`mobile/src/lib/open-thread.test.ts`、`mobile/e2e/conversation-open.spec.ts`。
 - Ask Other 使用与消息编辑器相同的 16px 聚焦字号；关闭 iOS 键盘、提交被拒绝及重试成功后保留窗口内的导航和内容。关联契约：`C-017`；实现：`mobile/src/components/ask-card.tsx`；验证：`mobile/e2e/ask-answer.spec.ts`, `mobile/e2e/ios-ask-viewport.swift`。
 - 已绑定 PC 的收件箱菜单提供电脑超时入口；读取、编辑与保存的主定义见 `F-170`，不复用手机直连提供商设置。关联契约：`C-006`、`C-009`、`C-015`；实现／UI 回归：`mobile/src/components/pc-timeout-sheet.tsx`、`mobile/src/lib/use-pc-timeouts.ts`、`mobile/e2e/pc-timeouts.spec.ts`。
 - 手机配对对话中的用户与回答代码围栏按已知语言使用主题语法色，C++ 别名沿用现有词法器；未知或无语言标签保持纯文本，流式追加和复制保持代码原文。直连聊天复用同一渲染能力，详见 `F-230`。关联契约：`C-032`；实现证据：`mobile/src/components/markdown.tsx`, `frontend/src/lib/source-highlight.ts`；测试：`mobile/src/components/markdown-highlight.test.tsx`, `mobile/e2e/markdown-highlight.spec.ts`。

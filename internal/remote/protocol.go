@@ -67,18 +67,21 @@ func plaintextBudget() int {
 
 // Request is the slim RPC the phone sends over a sealed pairlink frame.
 type Request struct {
-	V            int             `json:"v"`
-	ID           string          `json:"id"`
-	Op           string          `json:"op"`
-	Cursor       string          `json:"cursor,omitempty"`
-	ThreadID     string          `json:"thread_id,omitempty"`
-	ProjectID    string          `json:"project_id,omitempty"`
-	Text         string          `json:"text,omitempty"`
-	CallID       string          `json:"call_id,omitempty"`
-	Answers      json.RawMessage `json:"answers,omitempty"`
-	Since        int64           `json:"since,omitempty"`
-	CompletedSeq int64           `json:"completed_seq,omitempty"`
-	Before       int64           `json:"before,omitempty"`
+	V         int             `json:"v"`
+	ID        string          `json:"id"`
+	Op        string          `json:"op"`
+	Cursor    string          `json:"cursor,omitempty"`
+	ThreadID  string          `json:"thread_id,omitempty"`
+	ProjectID string          `json:"project_id,omitempty"`
+	Text      string          `json:"text,omitempty"`
+	CallID    string          `json:"call_id,omitempty"`
+	Answers   json.RawMessage `json:"answers,omitempty"`
+	Since     int64           `json:"since,omitempty"`
+	// IncludeDetail opens a conversation in the watch ready reply. Older hosts
+	// ignore it; the phone can still request open separately.
+	IncludeDetail bool  `json:"include_detail,omitempty"`
+	CompletedSeq  int64 `json:"completed_seq,omitempty"`
+	Before        int64 `json:"before,omitempty"`
 	// ProviderID and Model switch the conversation's endpoint. Empty leaves it.
 	ProviderID string `json:"provider_id,omitempty"`
 	Model      string `json:"model,omitempty"`

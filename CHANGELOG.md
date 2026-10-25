@@ -181,6 +181,14 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-210`, `F-220`, `C-006`: phone conversation previews and detail no longer
+  load entire event/turn histories. Indexed, projected tail reads preserve
+  visible summaries through hidden coordination records. Phone opening uses
+  one watch reply for detail and the live edge, with a legacy-host fallback
+  and the existing sealed-frame limit. Reconnecting the same device cancels
+  its previous watch/catalog handler; Stop and Reload join owned handlers and
+  refuse stale connection callbacks.
+
 - `F-110`, `F-130`, `C-002`, `C-027`: reuse the startup recovery snapshot
   for both manager correction allowances instead of loading the full turn log
   twice before worker restoration. Preserve retry and human-continuation receipts

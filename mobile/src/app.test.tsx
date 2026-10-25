@@ -621,11 +621,11 @@ describe("inbox window and thread loading", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("page offline")
   })
 
-  it("shows loading outside the transcript while open has not answered", async () => {
+  it("shows loading outside the transcript while the opening snapshot has not answered", async () => {
     seedLink()
     vi.mocked(openSaved).mockResolvedValue(
       hostLink({
-        open: () => new Promise(() => undefined),
+        watch: () => new Promise(() => undefined),
       }),
     )
     render(<App />)

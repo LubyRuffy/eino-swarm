@@ -48,6 +48,7 @@ export type RemoteRequest = {
   answers?: unknown
   completed_seq?: number
   since?: number
+  include_detail?: boolean
   before?: number
   provider_id?: string
   model?: string

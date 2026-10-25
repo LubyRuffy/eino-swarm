@@ -160,8 +160,8 @@ type ImageRef struct {
 // is the handle a user pastes into `zwai trace` to replay the whole thing.
 type Turn struct {
 	ID         string `gorm:"primaryKey;size:64" json:"id"`
-	ThreadID   string `gorm:"index;size:64" json:"thread_id"`
-	Seq        int64  `json:"seq"`
+	ThreadID   string `gorm:"index;index:idx_turn_thread_seq,priority:1;size:64" json:"thread_id"`
+	Seq        int64  `gorm:"index:idx_turn_thread_seq,priority:2" json:"seq"`
 	Status     string `gorm:"size:32" json:"status"`
 	UserText   string `json:"user_text"`
 	Final      string `json:"final"`
@@ -200,10 +200,10 @@ type Event struct {
 	SourceThreadID     string     `gorm:"size:64" json:"source_thread_id,omitempty"`
 	SourceTurnID       string     `gorm:"size:64" json:"source_turn_id,omitempty"`
 	ID                 uint       `gorm:"primaryKey" json:"-"`
-	ThreadID           string     `gorm:"index:idx_evt_thread_seq;index:idx_evt_thread_kind_seq,priority:1;size:64" json:"thread_id"`
-	TurnID             string     `gorm:"index;size:64" json:"turn_id"`
-	Seq                int64      `gorm:"index:idx_evt_thread_seq;index:idx_evt_thread_kind_seq,priority:3" json:"seq"`
-	Kind               string     `gorm:"index:idx_evt_thread_kind_seq,priority:2;size:32" json:"kind"`
+	ThreadID           string     `gorm:"index:idx_evt_thread_seq;index:idx_evt_thread_kind_seq,priority:1;index:idx_evt_thread_turn_seq,priority:1;index:idx_evt_thread_turn_kind_seq,priority:1;size:64" json:"thread_id"`
+	TurnID             string     `gorm:"index;index:idx_evt_thread_turn_seq,priority:2;index:idx_evt_thread_turn_kind_seq,priority:2;size:64" json:"turn_id"`
+	Seq                int64      `gorm:"index:idx_evt_thread_seq;index:idx_evt_thread_kind_seq,priority:3;index:idx_evt_thread_turn_seq,priority:3;index:idx_evt_thread_turn_kind_seq,priority:4" json:"seq"`
+	Kind               string     `gorm:"index:idx_evt_thread_kind_seq,priority:2;index:idx_evt_thread_turn_kind_seq,priority:3;size:32" json:"kind"`
 	AgentID            string     `gorm:"size:64" json:"agent_id"`
 	Role               string     `gorm:"size:64" json:"role,omitempty"`
 	Text               string     `json:"text"`

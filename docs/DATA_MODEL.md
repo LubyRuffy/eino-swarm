@@ -23,6 +23,15 @@ no cgo and no system SQLite to install. The file is opened with
 `journal_mode=WAL`, `busy_timeout=5000` and `foreign_keys=1`: WAL is what keeps
 the UI's reads from blocking behind a write-heavy streaming turn.
 
+Phone preview and live-edge reads use `idx_turn_thread_seq` on
+`turns(thread_id, seq)`, `idx_evt_thread_turn_seq` on
+`events(thread_id, turn_id, seq)` and `idx_evt_thread_turn_kind_seq` on
+`events(thread_id, turn_id, kind, seq)`. `store.Open` adds these indexes to
+existing databases through the normal migration. No conversation fields or
+stored event identities change. `internal/store/phone_reads_test.go` regresses
+index recreation on reopen and actual query plans; previews project only the
+fields they consume and paginate before decoding history.
+
 One process owns the file — this is a desktop app — which is why sequence numbers
 come from an in-memory counter per conversation, seeded from the table on first
 use, instead of a `MAX(seq)` query per row. Events arrive once per streamed token;
