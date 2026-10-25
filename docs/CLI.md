@@ -169,6 +169,11 @@ application updates do not trigger watchdog resurrection. See
 [recovery diagnostics](API.md#desktop-recovery-diagnostics) and
 [native acceptance](TESTING.md#desktop-renderer-resilience-f-115--c-034).
 
+Native QA retains each helper's complete byte streams, process identity and timing
+in its private `native-actions/<id>/receipt.json`; a shortened terminal exception
+is not the full diagnostic record. QA activation follows the successor's own new
+pixel-ready event and cannot establish automatic recovery (`C-031`).
+
 For an unattended white screen, retain the diagnostic journal and the original
 turn's Trace. Probe failures distinguish missing callbacks from pending or failed
 snapshots; replacement errors identify the lease-validation phase and safe HTTP

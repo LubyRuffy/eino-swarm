@@ -754,6 +754,51 @@ the strict window assertions only when ready. Fill/Send, a wrong NS PID or a
 nonempty wrong bundle remain immediate nonzero refusals. Regress these branches
 through the actual C main, plus pending-to-window, deadline exhaustion and
 identity-error/cancellation propagation through the actual Python caller.
+Registration pending is distinct from a registered app whose AX window list is
+still empty. The formal smoke snapshot requests one guarded application
+activation even for that empty list, while keeping `ready:false` and performing
+no raise, fill or Send. Reuse `tools/native_macos_smoke.py`'s `wait_window`;
+do not prepend a read-only AX-nonempty polling gate that prevents the formal
+activation path from running. The existing shared deadline includes each helper
+call and poll; a successful fresh window observation remains mandatory.
+`tools/test_native_macos_activation.py` checks the actual C zero-window caller's
+single activation and absence of window input. `tools/test_native_macos_smoke.py`
+checks registered empty-window responses followed by a valid ready response through
+the actual `wait_window`/`native_snapshot` boundary without resetting that deadline.
+These protect existing formal behavior; they do not establish why a particular
+guest returned an empty AX list or accept its native window.
+
+Every resilience helper invocation saves a unique
+`native-actions/<id>/receipt.json` before JSON parsing or raising a shortened
+terminal error. The receipt retains the original command, case/PID, execution
+timing, requested deadline and actual exit/exception, with independent base64
+streams and explicit missing/empty types. Failed receipt storage cannot replace
+an existing command error; a successful command without its required receipt
+refuses acceptance. `tools/test_native_macos_native_evidence.py` runs the actual
+caller across success, long refusal output, malformed JSON, timeout and storage
+failure; legacy choose-file receipt paths remain compatible.
+
+Automatic replacement acceptance reads the successor's current session,
+generation, engine and fresh pixel-ready event before QA activation. Activating
+an unready successor could unpause its health controller and manufacture the
+evidence being tested. `tools/test_native_macos_resilience_phases.py` regresses a
+helper that would create ready only when the test activates it; that helper must
+never be called until the product has supplied its own ready event.
+
+An extra same-PID window must be identified before changing a QA setup or window
+selection. Size, empty title and floating layer alone cannot identify an input
+accessory. Preserve its actual AX role/subrole, identifier, children and native
+pixels. A confirmed Caps Lock indicator can be corrected in the isolated guest
+under the case exclusion lock; verify actual modifier readback and fresh pixels.
+Per-event CG flags and a successful asynchronous setter alone do not establish
+that Caps Lock is off. Navigation also needs page-specific arrival controls:
+main-page tabs can themselves be radio buttons. Use the actual Settings/Search
+and Back/Close controls when keyboard delivery is not independently established.
+Window resizing requires stable AX/CG size readback and matching screenshot
+dimensions at the screen's backing scale; a successful AX setter only confirms
+the request. An unreachable requested size remains a failed assertion until the
+screen constraints and a new attainable target are explicitly established.
+
 The resilience helper's application-only `activate` command uses only
 `NSRunningApplication`, without AX window lookup or raise. Its activation-only
 result is not a window receipt: subsequent snapshot/input still requires a

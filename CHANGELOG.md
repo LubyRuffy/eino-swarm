@@ -215,6 +215,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430`, `C-031`, `C-034`: preserve complete per-call native helper evidence
+  before parsing or shortened errors. Require the successor's own new pixel-ready
+  event before QA activation, so the test cannot make a stuck automatic recovery
+  appear successful. Regress the formal zero-window activation path and shared
+  readiness deadline; product/native acceptance remains a separate result.
+
 - `F-115`, `C-034`: hide the renderer's pixel probe behind a non-interactive
   native cover that follows theme and dialog backgrounds. WebView snapshots
   still verify each complete random challenge; colour sampling failures behind

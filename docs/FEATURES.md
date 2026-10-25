@@ -302,6 +302,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
+- 原生 helper 每次调用保存独立完整字节收据及执行时间；自动继任验收先观察产品自己的新像素 ready，再激活检查窗口，避免 QA 动作制造恢复成功。关联契约：`C-031`、`C-034`；证据：`tools/native_macos_resilience.py`、`tools/native_macos_resilience_phases.py`、`tools/test_native_macos_native_evidence.py`、`tools/test_native_macos_resilience_phases.py`。
+
 - 显式紧急发布使用 `tools/release.py --urgent-reason <reason>`，保留当前人类授权原因，仅放宽常规批次等待及 TestFlight 日发布频率；原生与交付验收仍独立生效。关联契约：`C-010`；证据：`tools/test_release_urgent.py`、`tools/test_release_ios_urgent.py`。
 
 - 已验收 Android APK 的统一发布恢复：批次 `release_android_validation` 绑定通过状态、版本、完整源码 SHA、附件名与 SHA-256；上传前核对并直接复用同一 APK，不重新构建。缺文件、变更、非法回执或 ready 状态缺回执拒绝上传，已有远端附件仍按 digest 恢复。入口：`tools/release.py --platform android`；关联契约：`C-010`；实现／验证：`tools/release.py`、`tools/test_release_android_retained.py`、`docs/RELEASE.md`；来源：Issue #109。

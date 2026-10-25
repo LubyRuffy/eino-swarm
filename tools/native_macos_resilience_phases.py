@@ -285,16 +285,19 @@ def replacement_ready(context, harness, *, original_pid, since):
                 or ".app/Contents/MacOS/" not in argv[0] or "engine" in argv[1:]):
             raise RuntimeError("replacement desktop presence is not this private case shell")
         context["app_pid"] = pid
+        # Observe automatic product readiness before any QA activation can
+        # change the successor's foreground-dependent recovery state.
+        rows = [row for row in journal_rows(context) if ready_matches(row, harness, pid=pid,
+                engine=context["engine_pid"], session=context.get("recovery_session_id", ""),
+                generation=context.get("recovery_generation", 0) + 1, since=since)]
+        if not rows:
+            continue
         if context.get("activated_pid") != pid:
             activated = harness.native(context, "activate")
             if not activated.get("active") or activated.get("frontmost_pid") != pid:
                 return None
             context["activated_pid"] = pid
-        rows = [row for row in journal_rows(context) if ready_matches(row, harness, pid=pid,
-                engine=context["engine_pid"], session=context.get("recovery_session_id", ""),
-                generation=context.get("recovery_generation", 0) + 1, since=since)]
-        if rows:
-            return max(rows, key=lambda row:harness.timestamp(row["at"]))
+        return max(rows, key=lambda row:harness.timestamp(row["at"]))
     return None
 
 

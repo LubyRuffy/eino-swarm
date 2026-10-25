@@ -438,41 +438,81 @@ def api(origin, path, method="GET", body=None):
         return json.load(response)
 
 
+def _run_native_helper(argv, **options):
+    return subprocess.run(argv, **options)
+
+
+def _native_action_receipt(context, action, argv, started_at, elapsed_seconds, result=None, error=None):
+    source = result if result is not None else error
+    streams = {}
+    for key in ("stdout", "stderr"):
+        value = getattr(source, key, None)
+        raw = value.encode("utf-8", "surrogatepass") if isinstance(value, str) else value
+        streams[key] = dict(type="none" if value is None else type(value).__name__,
+                            base64=base64.b64encode(raw if raw is not None else b"").decode("ascii"))
+    # Each invocation owns a new directory; later snapshots cannot replace it.
+    directory = context["evidence"] / "native-actions"
+    directory.mkdir(mode=0o700, exist_ok=True)
+    invocation = directory / uuid.uuid4().hex
+    invocation.mkdir(mode=0o700)
+    atomic_json(invocation / "receipt.json", dict(streams, schema=1, action=action,
+        case_id=context["case_id"], pid=context["app_pid"], requested_argv=argv, timeout_seconds=8,
+        started_at=started_at, elapsed_seconds=elapsed_seconds,
+        returncode=result.returncode if result is not None else None,
+        exception_type=type(error).__name__ if error is not None else None,
+        exception_timeout_seconds=getattr(error, "timeout", None),
+        exception_argv=getattr(error, "cmd", None)))
+    if action == "choose-file" and isinstance(error, subprocess.TimeoutExpired):
+        atomic_json(context["evidence"] / "native-timeout.json", dict(
+            stdout_base64=streams["stdout"]["base64"], stderr_base64=streams["stderr"]["base64"],
+            type=type(error).__name__, action=action, case_id=context["case_id"], requested_argv=argv,
+            exception_argv=error.cmd, timeout_seconds=error.timeout,
+            stdout_is_none=error.stdout is None, stderr_is_none=error.stderr is None))
+    elif action == "choose-file" and result is not None:
+        text = {key: value.decode("utf-8", "replace") if isinstance(value, bytes) else value
+                for key, value in (("stdout", result.stdout), ("stderr", result.stderr))}
+        atomic_json(context["evidence"] / "native-result.json", dict(text, case_id=context["case_id"],
+                    action=action, argv=result.args, returncode=result.returncode))
+
+
+def _warn_native_evidence(action, error):
+    try:
+        print("WARN native_evidence_write_failed " + json.dumps(dict(action=action,
+              error_type=type(error).__name__)), file=sys.stderr)
+    except (OSError, ValueError):
+        pass  # A closed diagnostic stream cannot replace the helper's failure.
+
+
 def native(context, action="snapshot", value=""):
     argv, marker = runner.process_identity(context["app_pid"])
     if marker != context["case_id"] or not argv or not Path(argv[0]).is_relative_to(context["app"].parent):
         raise RuntimeError("native action lost its private case ownership")
     if action == "press" and context.get("native_language") == "zh":
         value = {"Send": "发送", "Attach files": "附加文件", "Conversations": "对话", "New conversation": "新对话"}.get(value, value)
+    argv = [context["helper"], action, str(context["app_pid"]), value]
+    started_at, started = time.time(), time.monotonic()
     try:
-        result = subprocess.run([context["helper"], action, str(context["app_pid"]), value],
-                                capture_output=True, text=True, timeout=8)
-    except subprocess.TimeoutExpired as error:
-        fault_phases.observe_restore_native(context, action, error=error)
-        if action != "choose-file":
-            raise
+        result = _run_native_helper(argv, capture_output=True, timeout=8)
+    except (OSError, subprocess.SubprocessError, KeyboardInterrupt) as error:
+        elapsed = time.monotonic() - started
         try:
-            streams = {name: base64.b64encode(raw if isinstance(raw, bytes) else (raw or "").encode()).decode()
-                       for name, raw in (("stdout_base64", error.stdout), ("stderr_base64", error.stderr))}
-            atomic_json(context["evidence"] / "native-timeout.json", dict(streams,
-                        type=type(error).__name__, action=action, case_id=context["case_id"],
-                        requested_argv=[context["helper"], action, str(context["app_pid"]), value],
-                        exception_argv=error.cmd, timeout_seconds=error.timeout,
-                        stdout_is_none=error.stdout is None, stderr_is_none=error.stderr is None))
-        except (OSError, TypeError, ValueError):
-            pass
+            _native_action_receipt(context, action, argv, started_at, elapsed, error=error)
+        except (OSError, TypeError, ValueError) as write_error:
+            _warn_native_evidence(action, write_error)
+        if isinstance(error, subprocess.TimeoutExpired):
+            fault_phases.observe_restore_native(context, action, error=error)
         raise
+    elapsed = time.monotonic() - started
+    try:
+        _native_action_receipt(context, action, argv, started_at, elapsed, result=result)
+    except (OSError, TypeError, ValueError) as write_error:
+        if not result.returncode:
+            raise
+        _warn_native_evidence(action, write_error)
     fault_phases.observe_restore_native(context, action, result=result)
-    if action == "choose-file":
-        try:
-            atomic_json(context["evidence"] / "native-result.json", dict(
-                        case_id=context["case_id"], action=action, argv=result.args,
-                        returncode=result.returncode, stdout=result.stdout, stderr=result.stderr))
-        except OSError:
-            if not result.returncode:
-                raise
     if result.returncode:
-        raise OSError("native " + action + ": " + result.stderr.strip()[:1000])
+        stderr = result.stderr.decode("utf-8", "replace") if isinstance(result.stderr, bytes) else result.stderr
+        raise OSError("native " + action + ": " + (stderr or "").strip()[:1000])
     row = json.loads(result.stdout)
     if "发送" in row.get("text", ""):
         context["native_language"] = "zh"

@@ -149,6 +149,21 @@ E2E suite.
   or AX access and does not verify that requested bundle. Keep the existing
   shared window deadline; fill/Send, wrong native PID and a nonempty wrong
   bundle remain immediate refusals. Regress the real main and window caller.
+  A registered app with no AX windows is still waiting for its window, not for
+  registration. Never prepend an AX-nonempty polling gate to formal activation:
+  reuse `tools/native_macos_smoke.py`'s `wait_window` and its shared deadline.
+  Its guarded zero-window snapshot still requests one application activation,
+  with no raise or input; only a fresh real window can become ready.
+  Automatic successor acceptance observes its fresh pixel-ready journal before
+  any QA activation; a test must not activate a stuck successor into readiness.
+  Persist every helper call's complete streams and timing before parsing or
+  truncating an exception. Keep original failures when evidence storage fails.
+  A small same-PID floating window is not safe to ignore by size or layer.
+  Inspect its actual role/identifier first. A confirmed Caps Lock accessory
+  requires real guest modifier readback and fresh pixels after correction;
+  per-event CG flags or a successful setter alone do not prove the lock is off.
+  Navigation needs the actual page-specific controls, not a sent shortcut or
+  an arbitrary radio button that could belong to the background page.
   The resilience helper's application-only activate command does no AX lookup
   or raise; callers still require a fresh real-window and pixel observation.
   Keep `ZWAI_NATIVE_APP` as the original case anchor when a recovery shell

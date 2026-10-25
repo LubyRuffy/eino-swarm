@@ -1117,7 +1117,11 @@ duties — are in [AGENTS.md](AGENTS.md). Read it before opening a pull request.
 Native desktop tests run only in UTM `ci-macOS`, one isolated case at a time.
 Offline recovery-proof preparation also refuses incomplete evidence: a failed
 command or timeout remains the primary error if receipt storage fails.
-Recovery checks retain first/last predicate summaries without copying draft content.
+Recovery predicate summaries retain first/last types, hashes and comparisons.
+Each helper invocation also retains its complete streams and timing in a unique
+private `native-actions/<id>/receipt.json`, including any fixture text emitted by
+the helper. Automatic recovery needs the successor's own
+fresh pixel-ready event before QA activation can inspect that window.
 Internal native QA callers may provide an admission callback under the campaign
 driver lock before owner/exit receipts can change; it must raise an exception to
 refuse, preserving prior records. Its return value is not an admission decision.
