@@ -121,7 +121,6 @@ func startRecoveryForHost(host recoveryHost, opts Options) *recoveryController {
 	c.done = done
 	host.OnShutdown(c.shutdown)
 	bindRecoveryActivity(host, c)
-	bindRecoverySuccessorFocus(ctx, host, c, opts.Logger)
 	started := make(chan recoveryWindowActivity, 1)
 	var startedOnce sync.Once
 	host.OnApplicationEvent(events.Common.ApplicationStarted, func() {

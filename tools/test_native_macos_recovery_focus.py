@@ -1,4 +1,4 @@
-"""Exercise the actual successor focus entry without opening a host window."""
+"""Exercise the actual parent coordinator using AppKit/kernel seams, without host GUI."""
 from pathlib import Path
 import json
 import platform
@@ -6,84 +6,113 @@ import subprocess
 import tempfile
 import unittest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = r'''
 #import <Cocoa/Cocoa.h>
+#include <libproc.h>
+#include <sys/proc_info.h>
 #include <unistd.h>
+#include <string.h>
 #include <stdio.h>
 static NSString *mode;
-static int activations, orders, keys, parentReads;
-static id app, window, current, parent, front;
-static void require(BOOL value, const char *reason) {
-    if (!value) { fprintf(stderr, "%s\n", reason); exit(31); }
+static int activations, yields, legacy, kernelReads, frontReads;
+static id app, window, panel, current, child, other;
+static void require(BOOL value, const char *reason) { if (!value) { fprintf(stderr, "%s\n", reason); exit(31); } }
+static int fixturePidInfo(int pid, int flavor, uint64_t arg, void *buffer, int size) {
+    kernelReads++;
+    if ([mode isEqual:@"kernel-missing"]) return 0;
+    struct proc_bsdinfo *info = buffer; memset(info, 0, sizeof(*info));
+    info->pbi_pid = [mode isEqual:@"wrong-kernel-pid"] ? 901 : pid;
+    info->pbi_ppid = [mode isEqual:@"foreign-child"] ? getpid()+1 : getpid();
+    info->pbi_start_tvsec = [mode isEqual:@"birth-changed"] || ([mode isEqual:@"late-birth-change"] && kernelReads > 1) ? 11 : 10;
+    info->pbi_start_tvusec = 20;
+    return sizeof(*info);
 }
-static pid_t fixtureParent(void) {
-    parentReads++;
-    if ([mode isEqual:@"orphan"] || ([mode isEqual:@"parent-changed"] && parentReads > 1)) return 1;
-    return 900;
+static int fixturePidPath(int pid, void *buffer, uint32_t size) {
+    if ([mode isEqual:@"kernel-path-missing"]) return 0;
+    strcpy(buffer, [mode isEqual:@"kernel-path-changed"] ? "/fixture/other" : "/fixture/child"); return 15;
+}
+static char *fixtureRealpath(const char *path, char *resolved) {
+    if ([mode isEqual:@"realpath-failed"]) return NULL;
+    strcpy(resolved, path); return resolved;
 }
 @interface FixtureThread : NSObject
 + (BOOL)isMainThread;
 @end
 @implementation FixtureThread
-+ (BOOL)isMainThread {
-    if ([mode hasPrefix:@"actual-"]) return [NSThread isMainThread];
-    return ![mode isEqual:@"worker-thread"];
-}
++ (BOOL)isMainThread { return [mode isEqual:@"not-main"] ? NO : [NSThread isMainThread]; }
 @end
 @interface FixtureWindow : NSObject
 - (BOOL)isMiniaturized;
-- (void)makeKeyAndOrderFront:(id)sender;
-- (void)makeKeyWindow;
+- (BOOL)isVisible;
 @end
 @implementation FixtureWindow
 - (BOOL)isMiniaturized { return [mode isEqual:@"minimized"]; }
-- (void)makeKeyAndOrderFront:(id)sender { orders++; require(activations == 1, "window ordered before self activation request"); }
-- (void)makeKeyWindow { keys++; require(orders == 1, "key request preceded ordering"); }
+- (BOOL)isVisible { return ![mode isEqual:@"invisible"]; }
 @end
 @interface FixtureApp : NSObject
 - (BOOL)isHidden;
+- (id)mainWindow;
+- (id)keyWindow;
 - (NSArray *)windows;
+- (void)yieldActivationToApplication:(id)target;
 @end
 @implementation FixtureApp
 - (BOOL)isHidden { return [mode isEqual:@"hidden"]; }
+- (id)mainWindow { return [mode isEqual:@"no-window"] ? nil : [mode isEqual:@"bad-window-type"] ? [NSObject new] : window; }
+- (id)keyWindow { return [mode isEqual:@"native-panel"] ? panel : window; }
 - (NSArray *)windows { return [mode isEqual:@"foreign-window"] ? @[] : @[window]; }
+- (void)yieldActivationToApplication:(id)target { require(target == child && activations == 0, "yield did not precede the one owned-child request"); yields++; }
 @end
 @interface FixtureRunning : NSObject
 + (id)currentApplication;
 + (id)runningApplicationWithProcessIdentifier:(pid_t)pid;
 - (pid_t)processIdentifier;
 - (NSString *)bundleIdentifier;
+- (NSURL *)executableURL;
 - (BOOL)isTerminated;
+- (BOOL)isActive;
+- (BOOL)isHidden;
+- (BOOL)isFinishedLaunching;
+- (NSApplicationActivationPolicy)activationPolicy;
 - (BOOL)activateWithOptions:(NSApplicationActivationOptions)options;
 @end
 @implementation FixtureRunning
-+ (id)currentApplication { return [mode isEqual:@"no-self"] ? nil : current; }
-+ (id)runningApplicationWithProcessIdentifier:(pid_t)pid { return [mode isEqual:@"no-parent"] ? nil : parent; }
++ (id)currentApplication { return [mode isEqual:@"no-current"] ? nil : current; }
++ (id)runningApplicationWithProcessIdentifier:(pid_t)pid { require(pid == 900, "looked up an unowned target"); return [mode isEqual:@"unregistered"] ? nil : child; }
 - (pid_t)processIdentifier {
-    if (self == current) return [mode isEqual:@"wrong-self"] ? getpid()+1 : getpid();
-    if (self == parent) return [mode isEqual:@"wrong-parent"] ? 901 : 900;
-    return [mode isEqual:@"user-switched"] ? 901 : 900;
+    if (self == current) return [mode isEqual:@"wrong-current-pid"] ? getpid()+1 : getpid();
+    if (self == child) return [mode isEqual:@"wrong-child-pid"] ? 901 : 900;
+    return 901;
 }
 - (NSString *)bundleIdentifier {
-    if ([mode isEqual:@"empty-bundle"] && self == current) return @"";
-    return self == parent && [mode isEqual:@"other-bundle"] ? @"other.app" : @"app.zwai.desktop";
+    if (self == current && [mode isEqual:@"empty-bundle"]) return @"";
+    return self == child && [mode isEqual:@"bundle-mismatch"] ? @"other.app" : @"app.zwai.desktop";
 }
-- (BOOL)isTerminated { return ([mode isEqual:@"parent-terminated"] && self == parent) || ([mode isEqual:@"self-terminated"] && self == current); }
+- (NSURL *)executableURL { return [mode isEqual:@"no-child-executable"] ? nil : [NSURL fileURLWithPath:[mode isEqual:@"child-executable-changed"] ? @"/fixture/other" : @"/fixture/child"]; }
+- (BOOL)isTerminated { return (self == current && [mode isEqual:@"current-terminated"]) || (self == child && [mode isEqual:@"child-terminated"]); }
+- (BOOL)isActive { return self == current ? ![mode isEqual:@"parent-inactive"] : [mode isEqual:@"already-frontmost"]; }
+- (BOOL)isHidden { return self == child && [mode isEqual:@"child-hidden"]; }
+- (BOOL)isFinishedLaunching { return ![mode isEqual:@"launching"]; }
+- (NSApplicationActivationPolicy)activationPolicy { return NSApplicationActivationPolicyRegular; }
 - (BOOL)activateWithOptions:(NSApplicationActivationOptions)options {
-    require(self == current && options == 0, "activated an external app or changed activation policy");
-    activations++;
-    return ![mode isEqual:@"activation-refused"];
+    require(self == child && options == 0 && yields == ([mode isEqual:@"legacy-api"] ? 0 : 1), "parent-owned request changed receiver/options/yield order");
+    if ([mode isEqual:@"legacy-api"]) legacy++;
+    activations++; return ![mode isEqual:@"activation-refused"];
 }
 @end
 @interface FixtureWorkspace : NSObject
-+ (id)sharedWorkspace;
++ (instancetype)sharedWorkspace;
 - (id)frontmostApplication;
 @end
 @implementation FixtureWorkspace
-+ (id)sharedWorkspace { static id workspace; if (!workspace) workspace = [self new]; return workspace; }
-- (id)frontmostApplication { return [mode isEqual:@"no-frontmost"] ? nil : front; }
++ (instancetype)sharedWorkspace { static id value; if (!value) value = [self new]; return value; }
+- (id)frontmostApplication {
+    frontReads++;
+    if ([mode isEqual:@"already-frontmost"]) return child;
+    if ([mode isEqual:@"user-switched"] || ([mode isEqual:@"late-user-switch"] && frontReads > 1)) return other;
+    return current;
+}
 @end
 #define NSThread FixtureThread
 #define NSWindow FixtureWindow
@@ -91,29 +120,39 @@ static pid_t fixtureParent(void) {
 #define NSWorkspace FixtureWorkspace
 #undef NSApp
 #define NSApp ((FixtureApp *)app)
-#define getppid fixtureParent
+#define proc_pidinfo fixturePidInfo
+#define proc_pidpath fixturePidPath
+#define realpath fixtureRealpath
 #include "recovery_focus_darwin.m"
 int main(int argc, char **argv) { @autoreleasepool {
     mode = argc > 1 ? @(argv[1]) : @"normal";
-    window = [FixtureWindow new]; app = [FixtureApp new];
-    current = [FixtureRunning new]; parent = [FixtureRunning new]; front = [FixtureRunning new];
-    id target = [mode isEqual:@"wrong-window-type"] ? [NSObject new] : window;
+    window = [FixtureWindow new]; panel = [FixtureWindow new]; app = [FixtureApp new];
+    current = [FixtureRunning new]; child = [FixtureRunning new]; other = [FixtureRunning new];
+    if ([mode isEqual:@"legacy-api"]) {
+        require(activateRecoveryChild(child, NO) && activations == 1 && legacy == 1 && yields == 0, "legacy API fallback did not request once");
+        printf("legacy API verified\n"); return 0;
+    }
+    if ([mode isEqual:@"capture-invalid"]) {
+        zwaiRecoveryBirth value;
+        require(!zwaiRecoveryCapture(1, "/fixture/child", &value) && !zwaiRecoveryCapture(900, NULL, &value)
+            && !zwaiRecoveryCapture(900, "/fixture/child", NULL), "invalid capture input accepted");
+        printf("capture boundary verified\n"); return 0;
+    }
+    int status;
     if ([mode isEqual:@"actual-worker"]) {
+        __block int result = -1;
         dispatch_semaphore_t done = dispatch_semaphore_create(0);
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0), ^{
-            zwaiRecoveryFocus((__bridge void *)target);
-            dispatch_semaphore_signal(done);
+            result = zwaiRecoveryFocusSuccessor(900, "/fixture/child", (zwaiRecoveryBirth){10,20}); dispatch_semaphore_signal(done);
         });
-        require(dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC)) == 0, "worker entry did not finish");
-    } else {
-        zwaiRecoveryFocus([mode isEqual:@"no-window"] ? NULL : (__bridge void *)target);
-    }
-    BOOL accepted = [mode isEqual:@"normal"] || [mode isEqual:@"actual-main"];
-    BOOL refusedActivation = [mode isEqual:@"activation-refused"];
-    require(activations == (accepted || refusedActivation ? 1 : 0), "wrong number of self activation requests");
-    require(orders == (accepted ? 1 : 0) && keys == (accepted ? 1 : 0), "refusal changed window focus or success missed its one request");
-    printf("guarded successor focus verified\n");
-    return 0;
+        require(dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC)) == 0, "worker did not finish"); status = result;
+    } else status = zwaiRecoveryFocusSuccessor(900, "/fixture/child", (zwaiRecoveryBirth){10,20});
+    BOOL requested = [mode isEqual:@"normal"] || [mode isEqual:@"activation-refused"];
+    BOOL pending = [mode isEqual:@"unregistered"] || [mode isEqual:@"launching"];
+    require(activations == (requested ? 1 : 0) && yields == (requested ? 1 : 0) && legacy == 0, "refusal/pending activated or success missed one cooperative request");
+    require(!pending || status == 0, "registration did not stay pending");
+    require(!requested || status == 2, "request was confused with readiness");
+    printf("owned parent coordination verified status=%d\n", status); return 0;
 }}
 '''
 
@@ -122,51 +161,59 @@ int main(int argc, char **argv) { @autoreleasepool {
 class NativeRecoveryFocusTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        temporary = tempfile.TemporaryDirectory(prefix="recovery-focus-headless-")
+        temporary = tempfile.TemporaryDirectory(prefix="recovery-parent-headless-")
         cls.addClassCleanup(temporary.cleanup)
         source = Path(temporary.name) / "test.m"
         cls.binary = Path(temporary.name) / "test"
         source.write_text(FIXTURE)
-        result = subprocess.run([
-            "clang", "-fobjc-arc", "-mmacosx-version-min=11.0", "-I", str(ROOT / "internal/desktop"),
-            "-framework", "Cocoa", str(source), "-o", str(cls.binary),
-        ], capture_output=True, text=True)
+        result = subprocess.run(["clang", "-fobjc-arc", "-mmacosx-version-min=11.0", "-I", str(ROOT / "internal/desktop"),
+                                 "-framework", "Cocoa", "-lproc", str(source), "-o", str(cls.binary)], capture_output=True, text=True)
         if result.returncode:
-            raise RuntimeError("native focus fixture compilation failed:\n" + result.stdout + result.stderr)
+            raise RuntimeError("native parent fixture compilation failed:\n" + result.stdout + result.stderr)
 
-    def test_actual_entry_requests_self_focus_once_only_while_parent_owns_foreground(self):
-        for mode in ("normal", "actual-main", "actual-worker", "worker-thread", "orphan", "parent-changed", "minimized", "hidden",
-                     "foreign-window", "no-self", "wrong-self", "no-parent", "wrong-parent",
-                     "user-switched", "no-frontmost", "empty-bundle", "other-bundle",
-                     "parent-terminated", "self-terminated", "no-window", "wrong-window-type",
-                     "activation-refused"):
+    def test_parent_owns_one_cooperative_request_and_refusals_do_no_action(self):
+        reasons = {"normal": "activation_requested", "activation-refused": "activation_refused",
+                   "not-main": "not_main", "actual-worker": "not_main", "kernel-missing": "child_identity_changed",
+                   "wrong-kernel-pid": "child_identity_changed", "foreign-child": "child_identity_changed",
+                   "kernel-path-missing": "child_identity_changed", "kernel-path-changed": "child_identity_changed",
+                   "realpath-failed": "child_identity_changed", "birth-changed": "child_identity_changed",
+                   "late-birth-change": "child_identity_changed", "no-current": "invalid_current",
+                   "wrong-current-pid": "invalid_current", "current-terminated": "invalid_current",
+                   "already-frontmost": "already_frontmost", "user-switched": "parent_not_frontmost",
+                   "late-user-switch": "parent_not_frontmost", "parent-inactive": "parent_not_frontmost",
+                   "hidden": "parent_hidden", "no-window": "no_parent_window", "bad-window-type": "no_parent_window",
+                   "foreign-window": "foreign_parent_window", "minimized": "parent_window_unavailable",
+                   "invisible": "parent_window_unavailable", "native-panel": "parent_modal_window",
+                   "wrong-child-pid": "invalid_child", "child-terminated": "invalid_child", "child-hidden": "child_hidden",
+                   "empty-bundle": "bundle_mismatch", "bundle-mismatch": "bundle_mismatch",
+                   "no-child-executable": "child_executable_changed", "child-executable-changed": "child_executable_changed"}
+        for mode in (*reasons, "unregistered", "launching", "legacy-api", "capture-invalid"):
             with self.subTest(mode=mode):
                 result = subprocess.run([str(self.binary), mode], capture_output=True, text=True, timeout=5)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertIn("guarded successor focus verified", result.stdout)
-                observations = [json.loads(line.removeprefix("ZWAI_RECOVERY_FOCUS "))
-                                for line in result.stderr.splitlines() if line.startswith("ZWAI_RECOVERY_FOCUS ")]
+                observations = [json.loads(line.removeprefix("ZWAI_RECOVERY_FOCUS ")) for line in result.stderr.splitlines()
+                                if line.startswith("ZWAI_RECOVERY_FOCUS ")]
+                if mode not in reasons:
+                    self.assertEqual(observations, [], "pending registration wrote repeated diagnostics")
+                    continue
                 self.assertEqual(len(observations), 1, result.stderr)
-                expected = {"normal": "activation_requested", "actual-main": "activation_requested", "actual-worker": "not_main",
-                            "worker-thread": "not_main", "orphan": "no_parent_pid",
-                            "parent-changed": "parent_changed", "minimized": "minimized", "hidden": "hidden",
-                            "foreign-window": "foreign_window", "no-self": "no_current", "wrong-self": "wrong_current_pid",
-                            "no-parent": "no_parent", "wrong-parent": "wrong_parent_pid", "user-switched": "frontmost_changed",
-                            "no-frontmost": "frontmost_changed", "empty-bundle": "empty_current_bundle", "other-bundle": "bundle_mismatch",
-                            "parent-terminated": "parent_terminated", "self-terminated": "current_terminated",
-                            "no-window": "no_window", "wrong-window-type": "wrong_window_type", "activation-refused": "activation_refused"}[mode]
-                self.assertEqual(observations[0]["reason"], expected)
-                self.assertEqual(observations[0]["activation_requested"], mode in ("normal", "actual-main", "activation-refused"))
-                self.assertIsInstance(observations[0]["pid"], int)
-                self.assertNotIn("path", observations[0])
-                if mode in ("normal", "actual-main"):
-                    self.assertEqual(observations[0]["ppid"], 900)
-                    self.assertEqual(observations[0]["frontmost_pid"], 900)
-                    self.assertEqual(observations[0]["current_bundle"], "app.zwai.desktop")
-                    self.assertEqual(observations[0]["parent_bundle"], "app.zwai.desktop")
-                    self.assertFalse(observations[0]["hidden"])
-                    self.assertFalse(observations[0]["minimized"])
-                    self.assertTrue(observations[0]["main"])
+                row = observations[0]
+                self.assertEqual(row["reason"], reasons[mode])
+                self.assertEqual(row["child_pid"], 900)
+                self.assertEqual(row["activation_requested"], mode in ("normal", "activation-refused"))
+                self.assertLess(len(result.stderr), 2048)
+                self.assertNotIn("/fixture", result.stderr)
+                if mode == "normal":
+                    self.assertEqual(row["current_bundle"], "app.zwai.desktop")
+                    self.assertEqual(row["child_bundle"], "app.zwai.desktop")
+                    self.assertTrue(row["current_active"])
+                    self.assertFalse(row["child_active"])
+                    self.assertTrue(row["child_finished_launching"])
+                    self.assertTrue(row["cooperative"])
+                    self.assertTrue(row["activation_returned"])
+                    self.assertTrue(row["own_window"])
+                    self.assertFalse(row["hidden"])
+                    self.assertFalse(row["minimized"])
 
 
 if __name__ == "__main__":

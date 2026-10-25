@@ -25,6 +25,7 @@ import (
 // The same live engine can become unreachable at different handoff boundaries.
 // Its diagnostic must identify that boundary without changing ownership or cause.
 func TestRecoveryEngineVerificationReportsItsActualHandoffPhase(t *testing.T) {
+	stubRecoverySuccessorFocus(t)
 	for _, phase := range []string{"parent prelaunch", "successor attach", "post-ready precommit"} {
 		t.Run(phase, func(t *testing.T) {
 			dir := t.TempDir()

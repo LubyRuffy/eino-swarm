@@ -511,20 +511,28 @@ A binary-stream timeout fixture first witnesses its child's completed writes,
 then starts the short communicate deadline. Slow process startup cannot stand
 in for lost output; the original failing run remains separate evidence.
 
-A recovery successor requests focus at most once after actual navigation,
-only while its parent remains foreground and it is neither hidden nor minimized.
-Queued work is refused after cancellation, parent loss or pixel readiness.
-`internal/desktop/recovery_focus_test.go` crosses the real host/controller
-entry and nonce-ready callback; `tools/test_native_macos_recovery_focus.py`
-compiles the actual Objective-C entry with SDK seams. Neither opens a host window. Native fault acceptance still requires fresh product
-nonce-ready/commit evidence before QA may activate the successor.
-The configured logger separately retains the navigation, queued/main-thread and
-cancellation stages. The native entry emits one bounded `ZWAI_RECOVERY_FOCUS`
-JSON record with its guard reason, already-sampled identities and activation
-return value; unsampled facts remain unknown. The actual SDK regression covers
-each refusal and action count. These logs distinguish a missing callback from
-a guard refusal or OS activation request, without accepting any as readiness or
-adding recovery journal/API phases.
+The actual parent launcher sends the private handoff before coordinating focus
+for its owned successor within the same deadline. Registration observations do
+not activate; the final native main-thread action rechecks the parent window,
+foreground, child kernel birth/executable/native identity and cancellation. On
+macOS 14 and later it yields permission then requests cooperative activation;
+older systems make one targeted request from the parent. App switches, hidden or
+minimized windows, a separate native modal window and late queued work refuse
+activation. Genuine pixel readiness, child exit or caller cancellation cancels
+and joins the observation owner without blocking the original Ready receipt.
+`internal/desktop/recovery_focus_test.go` tests the actual coordinator and
+`tools/test_native_macos_recovery_focus.py` compiles its Objective-C entry with
+SDK seams. `cmd/zwai/desktop_recovery_focus_test.go` preserves spec-before-focus ordering,
+cancellation and the real ready/commit/committed protocol. Neither opens a host
+window. Bounded native diagnostics retain refusal/request results and sampled
+identities; unsampled facts remain unknown. A request result cannot accept
+recovery: native fault acceptance still requires fresh product nonce-ready and
+commit evidence before QA may activate the successor. No focus phase is added
+to the recovery journal/API or used to extend the deadline. Focus observation
+errors retain a safe warning and leave the original Ready/exit/context outcome
+in control. The exit regression reaps a real child, delays publication of its
+actual Wait/EOF results, then exercises the real kernel identity refusal before
+releasing those results; observation failure cannot turn user close into retry.
 
 The render-probe cover has two independent assertions: a native screen capture
 must omit the nonce, and a WebView snapshot must still match a fresh challenge.

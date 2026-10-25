@@ -66,8 +66,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   window on the same engine if needed. Its pixel marker is covered in the native
   window, while WebView snapshots still verify the actual random pattern. The
   cover follows theme and dialog backgrounds and does not receive input.
-  The replacement requests focus once after navigation only while the original
-  shell still owns the foreground; switching to another app is respected.
+  The original shell coordinates one focus request for its identified successor
+  while it still owns the foreground; switching to another app is respected.
   A focus request still needs real painted pixels before takeover.
   Background work continues; the restored
   window returns to its conversation and saved draft. Conversation/project

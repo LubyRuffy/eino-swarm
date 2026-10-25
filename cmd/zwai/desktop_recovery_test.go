@@ -60,6 +60,7 @@ func TestRecoveryAttachesOnlyToItsOriginalEngineWithoutPreparingFrontend(t *test
 }
 
 func TestRecoverySuccessorNeedsRealReadyAndCommitAndReapsOnlyItsChild(t *testing.T) {
+	stubRecoverySuccessorFocus(t)
 	if os.Getenv("ZWAI_TEST_RECOVERY_CHILD") != "" {
 		return
 	}
@@ -169,6 +170,7 @@ func TestDesktopRecoveryChildProtocol(t *testing.T) {
 
 func recoveryEngineFixture(t *testing.T) (desktopRecoverySpec, <-chan desktop.RecoveryDiagnostic) {
 	t.Helper()
+	stubRecoverySuccessorFocus(t)
 	dir := t.TempDir()
 	events := make(chan desktop.RecoveryDiagnostic, 100)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -318,6 +320,7 @@ func TestAttachOnlyEntryRequiresCommitAfterRendererReady(t *testing.T) {
 }
 
 func TestRecoveryOwnershipAndHandshakeCancellationFailures(t *testing.T) {
+	stubRecoverySuccessorFocus(t)
 	for _, mode := range []string{"exit", "no_commit", "wrong_commit"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
@@ -342,6 +345,7 @@ func TestRecoveryOwnershipAndHandshakeCancellationFailures(t *testing.T) {
 }
 
 func TestNormalSuccessorCloseCannotRaceEOFIntoAnotherAutomaticRestart(t *testing.T) {
+	stubRecoverySuccessorFocus(t)
 	for i := 0; i < 5; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		command := exec.Command(os.Args[0], "-test.run=^TestDesktopRecoveryChildProtocol$")

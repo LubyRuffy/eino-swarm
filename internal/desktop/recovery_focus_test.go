@@ -3,77 +3,189 @@
 package desktop
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"image/color"
-	"log/slog"
-	"os"
+	"os/exec"
 	"regexp"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
-func TestRecoverySuccessorFocusReportsNavigationAndMainDispatchOnce(t *testing.T) {
-	var pending []func()
-	calls := replaceRecoveryFocus(t, func(fn func()) { pending = append(pending, fn) })
-	var logs bytes.Buffer
-	host := &recoveryTestHost{window: &directoryRecordingWindow{}, windowEvents: make(map[events.WindowEventType]func()), appEvents: make(map[events.ApplicationEventType]func())}
-	controller := startRecoveryForHost(host, Options{URL: "http://127.0.0.1:1234", Logger: slog.New(slog.NewJSONHandler(&logs, nil)), Recovery: &RecoveryOptions{
-		SessionID: "focus-session", Generation: 2, Attempts: 1, Ready: func(context.Context) error { return nil },
-	}})
-	defer controller.shutdown()
-	host.windowEvents[events.Mac.WebViewDidFinishNavigation]()
-	host.windowEvents[events.Mac.WebViewDidFinishNavigation]()
-	if len(pending) != 1 || calls.Load() != 0 {
-		t.Fatal("navigation did not queue exactly one main-thread request")
-	}
-	stages := func() []string {
-		t.Helper()
-		decoder := json.NewDecoder(bytes.NewReader(logs.Bytes()))
-		var stages []string
-		for decoder.More() {
-			var row map[string]any
-			if err := decoder.Decode(&row); err != nil {
-				t.Fatal(err)
-			}
-			if row["msg"] != "desktop recovery focus" || row["session_id"] != "focus-session" || row["generation"] != float64(2) || row["attempt"] != float64(1) || row["shell_pid"] != float64(os.Getpid()) {
-				t.Fatalf("focus observation lost its shell identity: %v", row)
-			}
-			stages = append(stages, row["stage"].(string))
+func TestRecoverySuccessorDoesNotRequestItsOwnActivationOnNavigation(t *testing.T) {
+	for _, ready := range []func(context.Context) error{nil, func(context.Context) error { return nil }} {
+		host := &recoveryTestHost{window: &directoryRecordingWindow{}, windowEvents: make(map[events.WindowEventType]func()), appEvents: make(map[events.ApplicationEventType]func())}
+		controller := startRecoveryForHost(host, Options{URL: "http://127.0.0.1:1234", Recovery: &RecoveryOptions{Ready: ready}})
+		if host.windowEvents[events.Mac.WebViewDidFinishNavigation] != nil {
+			t.Fatal("a successor retained a competing self-activation path")
 		}
-		return stages
-	}
-	if got := fmt.Sprint(stages()); got != "[navigation queued]" {
-		t.Fatalf("focus enqueue stages=%s", got)
-	}
-	pending[0]()
-	if got := fmt.Sprint(stages()); got != "[navigation queued main native_returned]" || calls.Load() != 1 {
-		t.Fatalf("focus execution stages=%s calls=%d", got, calls.Load())
+		controller.shutdown()
 	}
 }
 
-func replaceRecoveryFocus(t *testing.T, dispatch func(func())) *atomic.Int64 {
-	t.Helper()
+func TestOwnedRecoverySuccessorWaitsForRegistrationAndRequestsOnlyOnce(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	birth := recoverySuccessorBirth{1, 2}
+	captures, observations := 0, 0
+	err := focusRecoverySuccessor(ctx, 42, "/private/child", func(pid int, path string) (recoverySuccessorBirth, error) {
+		captures++
+		if pid != 42 || path != "/private/child" {
+			t.Fatal("capture changed the owned target")
+		}
+		return birth, nil
+	}, func(actual context.Context, pid int, path string, expected recoverySuccessorBirth) (int, error) {
+		if actual != ctx || pid != 42 || path != "/private/child" || expected != birth {
+			t.Fatal("registration lost the original context or birth")
+		}
+		observations++
+		if observations < 3 {
+			return recoveryFocusPending, nil
+		}
+		return recoveryFocusRequested, nil
+	})
+	if err != nil || captures != 1 || observations != 3 {
+		t.Fatalf("err=%v captures=%d observations=%d", err, captures, observations)
+	}
+}
+
+func TestOwnedRecoverySuccessorPreservesRefusalsIdentityAndCancellation(t *testing.T) {
+	captureFailure := errors.New("kernel identity unavailable")
+	requestFailure := errors.New("main dispatch failed")
+	for _, mode := range []string{"invalid-pid", "relative-path", "cancelled", "capture-error", "capture-cancel", "request-error", "identity-changed", "unknown", "refused", "pending-cancel"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			pid, path := 42, "/private/child"
+			var want error
+			switch mode {
+			case "invalid-pid":
+				pid = 1
+				want = ErrRecoveryFocusIdentity
+			case "relative-path":
+				path = "child"
+				want = ErrRecoveryFocusIdentity
+			case "cancelled":
+				cancel()
+				want = context.Canceled
+			case "capture-error":
+				want = captureFailure
+			case "capture-cancel", "pending-cancel":
+				want = context.Canceled
+			case "request-error":
+				want = requestFailure
+			case "identity-changed", "unknown":
+				want = ErrRecoveryFocusIdentity
+			}
+			requests := 0
+			err := focusRecoverySuccessor(ctx, pid, path, func(int, string) (recoverySuccessorBirth, error) {
+				if mode == "capture-error" {
+					return recoverySuccessorBirth{}, captureFailure
+				}
+				if mode == "capture-cancel" {
+					cancel()
+				}
+				return recoverySuccessorBirth{1, 2}, nil
+			}, func(context.Context, int, string, recoverySuccessorBirth) (int, error) {
+				requests++
+				switch mode {
+				case "capture-cancel":
+					t.Fatal("cancelled capture reached native dispatch")
+				case "request-error":
+					return 0, requestFailure
+				case "identity-changed":
+					return recoveryFocusIdentityChanged, nil
+				case "unknown":
+					return 99, nil
+				case "pending-cancel":
+					cancel()
+					return recoveryFocusPending, nil
+				}
+				return recoveryFocusRefused, nil
+			})
+			if !errors.Is(err, want) {
+				t.Fatalf("err=%v want=%v", err, want)
+			}
+			if requests > 1 {
+				t.Fatal("a refusal retried activation")
+			}
+		})
+	}
+}
+
+func TestParentActivationRechecksCancellationOnMain(t *testing.T) {
 	previousDispatch, previousNative := recoveryFocusOnMain, recoveryFocusNative
-	calls := new(atomic.Int64)
-	recoveryFocusOnMain = dispatch
-	recoveryFocusNative = func(application.Window) { calls.Add(1) }
 	t.Cleanup(func() { recoveryFocusOnMain, recoveryFocusNative = previousDispatch, previousNative })
-	return calls
+	var calls int
+	recoveryFocusNative = func(pid int, path string, birth recoverySuccessorBirth) int {
+		calls++
+		if pid != 42 || path != "/child" || birth != (recoverySuccessorBirth{1, 2}) {
+			t.Fatal("main dispatch changed target identity")
+		}
+		return recoveryFocusRequested
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	queued := make(chan func(), 1)
+	recoveryFocusOnMain = func(fn func()) { queued <- fn }
+	done := make(chan error, 1)
+	go func() {
+		_, err := requestRecoverySuccessorActivation(ctx, 42, "/child", recoverySuccessorBirth{1, 2})
+		done <- err
+	}()
+	pending := <-queued
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	pending()
+	if calls != 0 {
+		t.Fatal("a cancelled queued action activated the child")
+	}
+	recoveryFocusOnMain = func(fn func()) { fn() }
+	status, err := requestRecoverySuccessorActivation(context.Background(), 42, "/child", recoverySuccessorBirth{1, 2})
+	if err != nil || status != recoveryFocusRequested || calls != 1 {
+		t.Fatalf("status=%d err=%v calls=%d", status, err, calls)
+	}
+	late, stop := context.WithCancel(context.Background())
+	recoveryFocusNative = func(int, string, recoverySuccessorBirth) int { stop(); return recoveryFocusRequested }
+	if _, err := requestRecoverySuccessorActivation(late, 42, "/child", recoverySuccessorBirth{1, 2}); !errors.Is(err, context.Canceled) {
+		t.Fatal("late cancellation became activation success")
+	}
 }
 
-func TestRecoverySuccessorWaitsForNavigationBeforeRequestingFocus(t *testing.T) {
-	calls := replaceRecoveryFocus(t, func(fn func()) { fn() })
+func TestOwnedRecoveryCaptureUsesRealKernelBirthAndExecutable(t *testing.T) {
+	child := exec.Command("/bin/sleep", "5")
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = child.Process.Kill(); _ = child.Wait() })
+	first, err := captureRecoverySuccessor(child.Process.Pid, "/bin/sleep")
+	if err != nil || first.seconds == 0 {
+		t.Fatalf("birth=%v err=%v", first, err)
+	}
+	second, err := captureRecoverySuccessor(child.Process.Pid, "/bin/sleep")
+	if err != nil || second != first {
+		t.Fatalf("birth changed: %v %v", second, err)
+	}
+	if _, err := captureRecoverySuccessor(child.Process.Pid, "/bin/cat"); !errors.Is(err, ErrRecoveryFocusIdentity) {
+		t.Fatal("different executable was accepted")
+	}
+	if err := FocusRecoverySuccessor(context.Background(), 0, "/child"); !errors.Is(err, ErrRecoveryFocusIdentity) {
+		t.Fatal("invalid public request was accepted")
+	}
+	// The Go test thread is not AppKit's main thread. The real C boundary must
+	// refuse before NSApp access, without opening or activating a host app.
+	if status := activateRecoverySuccessor(0, "/missing", recoverySuccessorBirth{}); status != recoveryFocusRefused {
+		t.Fatalf("status=%d", status)
+	}
+}
+func TestRecoverySuccessorStillRequiresFocusAndMatchingNoncePixels(t *testing.T) {
 	scripts, phases, ready := make(chan string, 4), make(chan RecoveryDiagnostic, 8), make(chan struct{}, 1)
 	window := &directoryRecordingWindow{}
 	host := &recoveryTestHost{window: window, windowEvents: make(map[events.WindowEventType]func()), appEvents: make(map[events.ApplicationEventType]func()), probe: func(script string) { scripts <- script }}
@@ -82,9 +194,6 @@ func TestRecoverySuccessorWaitsForNavigationBeforeRequestingFocus(t *testing.T) 
 		Diagnostic: func(event RecoveryDiagnostic) { phases <- event },
 	}})
 	defer controller.shutdown()
-	if host.windowEvents[events.Mac.WebViewDidFinishNavigation] == nil {
-		t.Fatal("an uncommitted successor has no post-navigation focus request while its parent owns the foreground")
-	}
 	var clock atomic.Int64
 	clock.Store(time.Now().UnixNano())
 	ticks, pixels := make(chan time.Time), make(chan []byte, 2)
@@ -121,14 +230,9 @@ func TestRecoverySuccessorWaitsForNavigationBeforeRequestingFocus(t *testing.T) 
 	}
 	host.appEvents[events.Common.ApplicationStarted]()
 	advance(1)
-	if calls.Load() != 0 {
-		t.Fatal("application startup requested focus before navigation")
-	}
-	host.windowEvents[events.Mac.WebViewDidFinishNavigation]()
-	host.windowEvents[events.Mac.WebViewDidFinishNavigation]()
 	advance(1)
-	if calls.Load() != 1 || len(scripts) != 0 || len(ready) != 0 {
-		t.Fatal("focus was repeated or the request itself bypassed the real focus/pixel gates")
+	if len(scripts) != 0 || len(ready) != 0 {
+		t.Fatal("an inactive successor bypassed the real focus/pixel gates")
 	}
 	host.windowEvents[events.Common.WindowFocus]()
 	phase("resumed")
@@ -166,81 +270,4 @@ func TestRecoverySuccessorWaitsForNavigationBeforeRequestingFocus(t *testing.T) 
 	case <-time.After(time.Second):
 		t.Fatal("matching nonce pixels did not reach the actual successor handshake")
 	}
-	host.windowEvents[events.Mac.WebViewDidFinishNavigation]()
-	if calls.Load() != 1 {
-		t.Fatal("committed successor requested another focus")
-	}
-}
-
-func TestOrdinaryShellNeverRegistersSuccessorFocus(t *testing.T) {
-	host := &recoveryTestHost{window: &directoryRecordingWindow{}, windowEvents: make(map[events.WindowEventType]func()), appEvents: make(map[events.ApplicationEventType]func())}
-	controller := startRecoveryForHost(host, Options{URL: "http://127.0.0.1:1234", Recovery: &RecoveryOptions{}})
-	defer controller.shutdown()
-	if host.windowEvents[events.Mac.WebViewDidFinishNavigation] != nil {
-		t.Fatal("an ordinary background shell gained an automatic focus request")
-	}
-}
-
-func TestQueuedSuccessorFocusRechecksCancellationParentAndReadyOnMainThread(t *testing.T) {
-	for _, boundary := range []string{"context", "parent", "ready"} {
-		t.Run(boundary, func(t *testing.T) {
-			var pending []func()
-			var logs bytes.Buffer
-			calls := replaceRecoveryFocus(t, func(fn func()) { pending = append(pending, fn) })
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			parentDone := make(chan struct{})
-			expected := errors.New("original ready result")
-			host := &recoveryTestHost{ctx: ctx, window: &directoryRecordingWindow{}, windowEvents: make(map[events.WindowEventType]func()), appEvents: make(map[events.ApplicationEventType]func())}
-			controller := startRecoveryForHost(host, Options{URL: "http://127.0.0.1:1234", Logger: slog.New(slog.NewJSONHandler(&logs, nil)), Recovery: &RecoveryOptions{
-				Ready: func(context.Context) error { return expected }, ParentDone: parentDone,
-			}})
-			defer controller.shutdown()
-			host.windowEvents[events.Mac.WebViewDidFinishNavigation]()
-			if len(pending) != 1 || calls.Load() != 0 {
-				t.Fatal("focus bypassed main-thread dispatch")
-			}
-			switch boundary {
-			case "context":
-				cancel()
-			case "parent":
-				close(parentDone)
-			case "ready":
-				if err := controller.opts.Ready(ctx); !errors.Is(err, expected) {
-					t.Fatalf("focus lifetime changed the original ready result: %v", err)
-				}
-			}
-			pending[0]()
-			host.windowEvents[events.Mac.WebViewDidFinishNavigation]()
-			if calls.Load() != 0 || len(pending) != 1 {
-				t.Fatal("a stale focus request survived its boundary or retried after refusal")
-			}
-			stage := "context_cancelled"
-			if boundary == "parent" {
-				stage = "parent_closed"
-			}
-			if !strings.Contains(logs.String(), `"stage":"`+stage+`"`) || boundary == "ready" && !strings.Contains(logs.String(), `"stage":"ready_cancelled"`) {
-				t.Fatalf("focus cancellation boundary was not observable: %s", &logs)
-			}
-		})
-	}
-}
-
-type recoveryFocusNilNativeWindow struct{ application.Window }
-
-func (recoveryFocusNilNativeWindow) NativeWindow() unsafe.Pointer { return nil }
-
-func TestRecoveryFocusWrapperRefusesNilWindowAndHasNoHostGUI(t *testing.T) {
-	calls := replaceRecoveryFocus(t, func(fn func()) { fn() })
-	var stages []string
-	requestRecoverySuccessorFocus(context.Background(), nil, nil, func(stage string) { stages = append(stages, stage) })
-	if calls.Load() != 0 {
-		t.Fatal("nil window reached the native focus adapter")
-	}
-	if fmt.Sprint(stages) != "[queued main window_missing]" {
-		t.Fatalf("nil native window refusal was not observable: %v", stages)
-	}
-	// The real two-line cgo entry receives a nil pointer; the SDK guards are
-	// exercised separately with fake AppKit objects, never the host NSApplication.
-	focusRecoveryWindow(recoveryFocusNilNativeWindow{})
 }

@@ -215,13 +215,14 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
-- `F-115`, `C-034`: let an uncommitted replacement request its own focus once
-  after navigation while the original shell remains in front. Respect user
-  app switches, hidden/minimized windows and cancellation; real nonce pixels
-  and the existing ownership handshake still gate takeover.
-- `F-115`, `C-034`, `C-012`: retain bounded successor-focus dispatch and native
-  guard diagnostics with sampled identities and activation results. These logs
-  preserve the existing focus guards, pixel checks and recovery deadlines.
+- `F-115`, `C-034`, `C-012`: coordinate successor focus from the still-foreground
+  parent after its private handoff, avoiding a system-refused self-activation
+  request. Bind the child to its kernel birth and executable, respect user app
+  switches, hidden/minimized windows and cancellation, and retain bounded guard
+  and activation diagnostics. Real nonce pixels and the existing ownership
+  handshake still gate takeover within the original deadline. An auxiliary
+  identity-observation error cannot replace a real child exit or turn user close
+  into another recovery attempt.
 - `F-430`, `C-031`: distinguish process-observation command timeouts from the
   actual scenario deadline and retain their original streams before cleanup.
   Cancel owned direct children even when full inventory fails, while retaining

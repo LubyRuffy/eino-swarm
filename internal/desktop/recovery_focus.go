@@ -1,39 +1,74 @@
+//go:build darwin
+
 package desktop
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"os"
-	"sync"
-
-	"github.com/wailsapp/wails/v3/pkg/events"
+	"path/filepath"
+	"time"
 )
 
-// A successor's page may finish loading while its parent still owns the
-// foreground. Only this uncommitted shell gets one guarded focus request.
-func bindRecoverySuccessorFocus(ctx context.Context, host recoveryHost, c *recoveryController, logger *slog.Logger) {
-	if c.opts.Ready == nil {
-		return
+// ErrRecoveryFocusIdentity refuses activation after the owned child identity changes.
+var ErrRecoveryFocusIdentity = errors.New("desktop recovery child identity changed")
+
+type recoverySuccessorBirth struct{ seconds, microseconds uint64 }
+
+const (
+	recoveryFocusPending = iota
+	recoveryFocusRefused
+	recoveryFocusRequested
+	recoveryFocusIdentityChanged
+)
+
+// FocusRecoverySuccessor coordinates one activation of the caller's own child.
+// Registration is observed within ctx; activation never acknowledges renderer health.
+func FocusRecoverySuccessor(ctx context.Context, pid int, executable string) error {
+	return focusRecoverySuccessor(ctx, pid, executable, captureRecoverySuccessor, requestRecoverySuccessorActivation)
+}
+
+func focusRecoverySuccessor(ctx context.Context, pid int, executable string,
+	capture func(int, string) (recoverySuccessorBirth, error),
+	request func(context.Context, int, string, recoverySuccessorBirth) (int, error),
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	if logger == nil {
-		logger = slog.Default()
+	if pid <= 1 || !filepath.IsAbs(executable) {
+		return ErrRecoveryFocusIdentity
 	}
-	report := func(stage string) {
-		logger.Info("desktop recovery focus", "session_id", c.opts.SessionID, "generation", c.opts.Generation,
-			"attempt", c.opts.Attempts, "shell_pid", os.Getpid(), "stage", stage)
+	birth, err := capture(pid, executable)
+	if err != nil {
+		return err
 	}
-	focusCtx, stopFocus := context.WithCancel(ctx)
-	ready := c.opts.Ready
-	c.opts.Ready = func(ctx context.Context) error {
-		report("ready_cancelled")
-		stopFocus()
-		return ready(ctx)
+	slog.Info("desktop recovery focus", "shell_pid", os.Getpid(), "child_pid", pid, "stage", "parent_waiting")
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		status, err := request(ctx, pid, executable, birth)
+		if err != nil {
+			return err
+		}
+		switch status {
+		case recoveryFocusRefused, recoveryFocusRequested:
+			return nil
+		case recoveryFocusIdentityChanged:
+			return ErrRecoveryFocusIdentity
+		case recoveryFocusPending:
+			select {
+			case <-ctx.Done():
+				slog.Info("desktop recovery focus", "shell_pid", os.Getpid(), "child_pid", pid, "stage", "parent_cancelled")
+				return ctx.Err()
+			case <-ticker.C:
+			}
+		default:
+			return fmt.Errorf("%w: native observation status %d", ErrRecoveryFocusIdentity, status)
+		}
 	}
-	var once sync.Once
-	host.OnWindowEvent(events.Mac.WebViewDidFinishNavigation, func() {
-		once.Do(func() {
-			report("navigation")
-			requestRecoverySuccessorFocus(focusCtx, c.window, c.opts.ParentDone, report)
-		})
-	})
 }

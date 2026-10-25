@@ -290,15 +290,23 @@ deadline first requests one reload, then invokes the launcher's attach-only
 successor path. `cmd/zwai/desktop_recovery_darwin.go` holds engine presence,
 checks the original lease identity and launches a private immutable app copy.
 The inherited pipes carry the cumulative attempt budget and require ready,
-commit and committed before the old window quits. Once its page finishes
-navigation, an uncommitted successor may request its own window focus once,
-on the native main thread and only while its actual parent still owns the
-foreground. Hidden/minimized windows, cancellation and completed readiness
-prevent that request; it does not acknowledge health or extend the deadline.
-The configured logger records bounded navigation, main-thread dispatch and
-cancellation stages with recovery identity. A single native stderr record
-retains the sampled guard reason and activation result; these records neither
-add journal phases nor establish that the OS actually activated the window.
+commit and committed before the old window quits. After sending the private
+handoff, the parent observes its exact child's native registration within the
+same deadline. On the native main thread it rechecks the child's kernel birth
+and executable identity, its own foreground window and cancellation before one
+activation request. On macOS 14 and later the parent yields activation to that
+child before requesting cooperative activation; older systems use the parent's
+targeted activation request. User app switches, hidden/minimized windows and
+cancellation prevent the request. Focus observation is cancelled and joined
+on genuine pixel readiness, child exit or caller cancellation; it does not
+acknowledge health or extend
+the deadline. Bounded native guard and activation diagnostics neither add
+journal phases nor establish that the OS actually activated the window. An
+observation error records a safe warning while the original Ready/exit/context
+protocol determines the outcome; it cannot replace a user close with retry.
+This follows Apple's [cooperative activation model](https://developer.apple.com/documentation/appkit/passing-control-from-one-app-to-another-with-cooperative-activation?language=objc):
+the active parent grants permission before requesting activation on the child's
+behalf; the system still decides whether to honor it.
 The replacement preserves
 engine, turn and worker identities; it cannot perform engine handoff or restart
 task work. Sleep/focus changes reset observation grace, not the failure budget.

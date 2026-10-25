@@ -2,11 +2,6 @@
 
 package desktop
 
-import (
-	"context"
+import "context"
 
-	"github.com/wailsapp/wails/v3/pkg/application"
-)
-
-func requestRecoverySuccessorFocus(context.Context, application.Window, <-chan struct{}, func(string)) {
-}
+func FocusRecoverySuccessor(ctx context.Context, _ int, _ string) error { return ctx.Err() }
