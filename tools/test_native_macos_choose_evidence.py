@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -24,15 +25,33 @@ class NativeTimeoutReceipt(unittest.TestCase):
         self.owner = patch.object(self.h.runner,'process_identity',return_value=([str(self.context['app']/'Contents/MacOS/zwai')],'own-case'));self.owner.start();self.addCleanup(self.owner.stop)
 
     def test_actual_subprocess_timeout_retains_original_binary_streams_and_same_exception(self):
-        real_run = subprocess.run;actual = {}
+        actual = {}
         def os_boundary(argv, **kwargs):
             self.assertEqual(kwargs, dict(capture_output=True,timeout=8))
             self.assertEqual(argv,['/private/own-helper','choose-file','41','/private/input.bin'])
+            # The output witness must precede the short timeout. Process startup
+            # under concurrent builds is not evidence that the streams were lost.
+            ready = self.context['evidence'] / 'binary-helper-ready'
+            process = subprocess.Popen([sys.executable, '-c',
+                'import os,time,sys;from pathlib import Path;'
+                'os.write(1,b"\\x00\\xffout");os.write(2,b"err\\x00\\xfe");'
+                'Path(sys.argv[1]).write_text("ready");time.sleep(120)', str(ready)],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
-                real_run([sys.executable,'-c','import os,time;os.write(1,b"\\x00\\xffout");os.write(2,b"err\\x00\\xfe");time.sleep(1)'],capture_output=True,text=True,timeout=.08)
-            except subprocess.TimeoutExpired as error:
-                actual['error'] = error
-                raise
+                deadline = time.monotonic() + 3
+                while not ready.exists():
+                    self.assertIsNone(process.poll(), 'binary helper exited before writing its streams')
+                    self.assertLess(time.monotonic(), deadline, 'binary helper did not become ready')
+                    time.sleep(.005)
+                try:
+                    process.communicate(timeout=.08)
+                except subprocess.TimeoutExpired as error:
+                    actual['error'] = error
+                    raise
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate()
         with patch.object(self.h,'_run_native_helper',side_effect=os_boundary) as run:
             with self.assertRaises(subprocess.TimeoutExpired) as caught:self.h.native(self.context,'choose-file','/private/input.bin')
         self.assertIs(caught.exception,actual['error']);self.assertEqual(run.call_count,1)

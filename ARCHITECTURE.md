@@ -290,7 +290,12 @@ deadline first requests one reload, then invokes the launcher's attach-only
 successor path. `cmd/zwai/desktop_recovery_darwin.go` holds engine presence,
 checks the original lease identity and launches a private immutable app copy.
 The inherited pipes carry the cumulative attempt budget and require ready,
-commit and committed before the old window quits. The replacement preserves
+commit and committed before the old window quits. Once its page finishes
+navigation, an uncommitted successor may request its own window focus once,
+on the native main thread and only while its actual parent still owns the
+foreground. Hidden/minimized windows, cancellation and completed readiness
+prevent that request; it does not acknowledge health or extend the deadline.
+The replacement preserves
 engine, turn and worker identities; it cannot perform engine handoff or restart
 task work. Sleep/focus changes reset observation grace, not the failure budget.
 Normal exit does not restart the shell. Local diagnostic journals are bounded;

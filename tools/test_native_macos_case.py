@@ -216,7 +216,7 @@ class NativeCaseTests(unittest.TestCase):
                         raise OSError("cleanup unavailable")
                     return result
                 failure = (KeyboardInterrupt() if expected == 130 else
-                           subprocess.TimeoutExpired("scenario", .1) if expected == 124 else None)
+                           runner.ScenarioDeadlineExpired("scenario", .1) if expected == 124 else None)
                 def wait(process, timeout):
                     if failure:
                         raise failure

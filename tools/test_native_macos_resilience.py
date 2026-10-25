@@ -270,7 +270,7 @@ class ResilienceTests(unittest.TestCase):
             self.assertEqual(resilience.submit(context, text, 1, result), turn)
         self.assertEqual(result["turn_ids"], ["turn-new"])
 
-    def test_attachment_selection_waits_for_the_real_sheet_before_one_choose_action(self):
+    def test_quiet_saved_draft_uses_durable_readback_after_real_attachment_sheet(self):
         import hashlib
         context=dict(case_id="a"*32,app_pid=7,workspace=self.root,evidence=self.root)
         state=dict(text="",files=[],dialogs=0,choices=0,panel_ready=False)
@@ -287,7 +287,8 @@ class ResilienceTests(unittest.TestCase):
                 return dict(chosen=True)
             if action=="paste-file":
                 path=Path(value);state["files"].append(dict(id="image",name=path.name,kind="image",sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
-            return dict(values=[state["text"]],text="Draft saved")
+            # Healthy saves intentionally have no visible status label.
+            return dict(values=[state["text"]],text="")
         with mock.patch.object(resilience,"native",side_effect=native),mock.patch.object(resilience,"draft_snapshot",side_effect=draft), \
                 mock.patch.object(resilience.time,"sleep"):
             row=resilience.collect_draft(context,5)
@@ -295,9 +296,9 @@ class ResilienceTests(unittest.TestCase):
         self.assertEqual(len(row["files"]),2)
         self.assertEqual(resilience.read_json(self.root/"attachment-panel-ready.json")["rows"][0]["AXRole"],"AXSheet")
 
-    def test_collection_retains_last_existing_observation_without_extra_input_or_reads(self):
+    def test_collection_retains_durable_readback_without_repeating_native_input(self):
         import copy
-        for mode in ("success", "ack_transient", "text", "state", "count", "hash", "kind", "native", "api_error", "native_error", "ack", "ack_error", "interrupt", "paste_error"):
+        for mode in ("success", "ack_transient", "text", "state", "count", "hash", "kind", "native", "api_error", "native_error", "quiet", "ack_error", "ack_text", "ack_state", "ack_hash", "ack_native", "interrupt", "paste_error"):
             with self.subTest(mode=mode):
                 root=self.root/mode;root.mkdir()
                 context=dict(case_id="a"*32,app_pid=7,workspace=root,evidence=root)
@@ -318,16 +319,16 @@ class ResilienceTests(unittest.TestCase):
                     if action=="snapshot":
                         state["snapshots"]+=1
                         if mode=="native_error" or (mode=="ack_error" and state["snapshots"]>1) or (mode=="ack_transient" and state["snapshots"]==2):raise problem
-                    return dict(values=["changed" if mode=="native" else state["text"]],text="" if mode=="ack" else "Draft saved")
+                    return dict(values=["changed" if mode=="native" or (mode=="ack_native" and state["snapshots"]>1) else state["text"]],text="" if mode=="quiet" else "Draft saved")
                 def draft(ctx):
                     row=dict(text=state["text"],quotes=[],files=copy.deepcopy(state["files"]),state="editing")
                     if state["pasted"]:
                         state["reads"]+=1
                         if mode=="api_error":raise problem
-                        if mode=="text":row["text"]="changed"
-                        if mode=="state":row["state"]="sending"
+                        if mode=="text" or (mode=="ack_text" and state["reads"]>1):row["text"]="changed"
+                        if mode=="state" or (mode=="ack_state" and state["reads"]>1):row["state"]="sending"
                         if mode in ("count","interrupt"):row["files"]=row["files"][:1]
-                        if mode=="hash":row["files"][1]["sha256"]="different"
+                        if mode=="hash" or (mode=="ack_hash" and state["reads"]>1):row["files"][1]["sha256"]="different"
                         if mode=="kind":row["files"][1]["kind"]="file"
                     return row
                 clock=[0.0];interrupted=KeyboardInterrupt("private interruption")
@@ -338,7 +339,7 @@ class ResilienceTests(unittest.TestCase):
                         mock.patch.object(resilience.time,"monotonic",side_effect=lambda:clock[0]), \
                         mock.patch.object(resilience.time,"sleep",side_effect=sleep), \
                         mock.patch.object(resilience,"atomic_json",wraps=resilience.atomic_json) as writes:
-                    if mode in ("success","ack_transient"):
+                    if mode in ("success","ack_transient","quiet"):
                         row=resilience.collect_draft(context,1)
                         self.assertEqual(len(row["files"]),2)
                     elif mode=="interrupt":
@@ -355,26 +356,35 @@ class ResilienceTests(unittest.TestCase):
                 self.assertEqual(actions[5:],["snapshot"]*state["snapshots"])
                 if mode in ("text","state","count","hash","kind","api_error","interrupt","paste_error"):
                     self.assertEqual(state["snapshots"],0)
-                elif mode in ("success","ack_transient"):self.assertEqual(state["snapshots"],3 if mode=="ack_transient" else 2)
-                elif mode in ("ack","ack_error"):self.assertGreater(state["snapshots"],1);self.assertEqual(state["reads"],1)
+                elif mode in ("success","ack_transient","quiet"):self.assertEqual(state["snapshots"],3 if mode=="ack_transient" else 2)
+                elif mode in ("ack_text","ack_state","ack_hash"):
+                    self.assertEqual(state["snapshots"],1);self.assertGreater(state["reads"],1)
                 else:self.assertEqual(state["snapshots"],state["reads"])
                 observed=resilience.read_json(root/"draft-collection-last.json")
                 self.assertEqual(observed["case_id"],context["case_id"])
-                self.assertEqual(observed["api"]["text"]["sha256"],resilience.hashlib.sha256(("changed" if mode=="text" else state["text"]).encode()).hexdigest())
-                if mode in ("success","ack_transient"):
+                self.assertEqual(observed["api"]["text"]["sha256"],resilience.hashlib.sha256(("changed" if mode in ("text","ack_text") else state["text"]).encode()).hexdigest())
+                if mode in ("success","ack_transient","quiet"):
                     self.assertNotIn("observation_error",observed)
                     self.assertTrue(all(observed["predicates"].values()))
                     self.assertNotIn("error",observed)
                 else:
                     self.assertEqual(observed["error"]["type"],"OSError" if mode=="paste_error" else "KeyboardInterrupt" if mode=="interrupt" else "TimeoutError")
-                    self.assertEqual(observed["error"]["stage"],"paste" if mode=="paste_error" else "acknowledgement" if mode in ("ack","ack_error") else "saved")
+                    self.assertEqual(observed["error"]["stage"],"paste" if mode=="paste_error" else "acknowledgement" if mode.startswith("ack_") and mode!="ack_transient" else "saved")
                 if mode in ("api_error","native_error","ack_error"):
                     self.assertEqual(observed["observation_error"],dict(type="OSError"))
                 if mode in ("text","state","count","hash","kind"):
                     key={"text":"text","state":"state","count":"file_count","hash":"file_hash_kinds","kind":"file_hash_kinds"}[mode]
                     self.assertFalse(observed["predicates"][key]);self.assertIsNone(observed["native"])
                 if mode=="native":self.assertFalse(observed["predicates"]["native_values"])
-                if mode=="ack":self.assertFalse(observed["predicates"]["saved_acknowledged"])
+                if mode=="quiet":
+                    self.assertFalse(observed["native"]["saved_label"])
+                    self.assertTrue(observed["predicates"]["saved_acknowledged"])
+                if mode in ("ack_text","ack_state","ack_hash"):
+                    self.assertFalse(observed["native_for_api"])
+                    self.assertFalse(observed["predicates"]["saved_acknowledged"])
+                if mode=="ack_native":
+                    self.assertFalse(observed["predicates"]["native_values"])
+                    self.assertFalse(observed["predicates"]["saved_acknowledged"])
                 if mode in ("api_error","interrupt"):self.assertEqual(observed["api"]["file_count"],1)
                 if mode!="paste_error":
                     self.assertTrue(resilience.read_json(root/"draft-image-paste.json")["pasted"])

@@ -215,6 +215,17 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-115`, `C-034`: let an uncommitted replacement request its own focus once
+  after navigation while the original shell remains in front. Respect user
+  app switches, hidden/minimized windows and cancellation; real nonce pixels
+  and the existing ownership handshake still gate takeover.
+- `F-430`, `C-031`: distinguish process-observation command timeouts from the
+  actual scenario deadline and retain their original streams before cleanup.
+  Cancel owned direct children even when full inventory fails, while retaining
+  the refusal latch and data until all descendants are confirmed cleaned.
+  Saved-input QA reads durable content and native values instead of requiring
+  the healthy-save status text that the composer intentionally keeps hidden.
+
 - `F-430`, `C-031`, `C-034`: preserve complete per-call native helper evidence
   before parsing or shortened errors. Require the successor's own new pixel-ready
   event before QA activation, so the test cannot make a stuck automatic recovery

@@ -489,6 +489,29 @@ and cleanup assertions remain separate.
 
 Recorded guest acceptance: [2026-10-21 native isolation evidence](diagnostics/native-isolation-20261021.md). It binds a frozen candidate, precise legacy cleanup, serial real-window cases and host foreground observations; it is not latest-main or release acceptance.
 
+A native case reports `scenario timeout` only for its actual scenario deadline.
+A process-inventory command timeout retains its own command, limit and original
+streams before cleanup. Inventory failure still cancels and waits for directly held
+child processes; it cannot declare unknown descendants gone.
+The incomplete-cleanup latch and private data remain until a fresh complete
+inventory and fault cleanup prove exit. A failed runner's surviving scenario
+may write later evidence; those files do not make the failed round pass.
+
+Saved-input acceptance reads the persisted draft twice, including unchanged
+attachment bytes and the current native composer value. Healthy-save copy is
+optional; changed text/state/files/native values on the later read still refuse.
+A binary-stream timeout fixture first witnesses its child's completed writes,
+then starts the short communicate deadline. Slow process startup cannot stand
+in for lost output; the original failing run remains separate evidence.
+
+A recovery successor requests focus at most once after actual navigation,
+only while its parent remains foreground and it is neither hidden nor minimized.
+Queued work is refused after cancellation, parent loss or pixel readiness.
+`internal/desktop/recovery_focus_test.go` crosses the real host/controller
+entry and nonce-ready callback; `tools/test_native_macos_recovery_focus.py`
+compiles the actual Objective-C entry with SDK seams. Neither opens a host window. Native fault acceptance still requires fresh product
+nonce-ready/commit evidence before QA may activate the successor.
+
 The render-probe cover has two independent assertions: a native screen capture
 must omit the nonce, and a WebView snapshot must still match a fresh challenge.
 `go test -race ./internal/desktop` exercises actual injected JavaScript, trusted
@@ -1364,9 +1387,11 @@ that region timing does not identify an individual blocked AX call.
 Draft collection keeps its last existing API/native observations in memory and
 writes a fixed diagnostic file on success, failure or handled cancellation.
 It retains individual predicates, attachment byte hashes/metadata and text/value
-lengths/hashes, without copying draft prose or the native transcript. There are
-no added native/API reads, paste retries, polling file writes or sleeps; the
-deadline and exact text/attachment-byte assertions stay unchanged. Evidence
+lengths/hashes, without copying draft prose or the native transcript. Diagnostic
+retention itself adds no reads. Save acknowledgement independently re-reads the
+persisted snapshot, attachment bytes and native value because healthy-save copy
+is intentionally hidden. There are no added input retries, polling file writes
+or sleeps; the deadline and exact text/attachment-byte assertions stay unchanged. Evidence
 write failure cannot replace an existing exception and prevents an otherwise
 successful check from passing. SIGKILL or VM loss may prevent the final write.
 A later successful case cannot explain an earlier timeout whose final observation

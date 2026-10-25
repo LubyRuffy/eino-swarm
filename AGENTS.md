@@ -85,6 +85,14 @@ E2E suite.
   shared trace/network/ZIP `ENOENT` errors require an isolated rerun with its
   own evidence. A retry turning green alone does not establish the cause or
   accept the original run. See `docs/TESTING.md` for existing CLI options.
+- A native runner's process-inventory timeout is not a scenario deadline.
+  Preserve the actual command, deadline and original streams before cleanup.
+  Inventory failure must still cancel and wait for directly owned Popen children;
+  unknown descendants keep the refusal latch and data. A surviving scenario's
+  later files do not accept the failed round. Regress real delayed input actors,
+  repeated inventory failure and exact owned-child cancellation.
+  Draft acceptance uses fresh durable content/bytes and native value readback,
+  never requires healthy-save copy that the product intentionally hides.
 - Native desktop acceptance runs only inside the UTM `ci-macOS` guest. The
   host is for building, transferring and collecting evidence; never open or
   focus a test app, Finder, a browser, UTM console or simulator on the user's

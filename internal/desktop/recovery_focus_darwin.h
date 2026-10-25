@@ -1,0 +1,1 @@
+void zwaiRecoveryFocus(void *native);

@@ -66,6 +66,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   window on the same engine if needed. Its pixel marker is covered in the native
   window, while WebView snapshots still verify the actual random pattern. The
   cover follows theme and dialog backgrounds and does not receive input.
+  The replacement requests focus once after navigation only while the original
+  shell still owns the foreground; switching to another app is respected.
+  A focus request still needs real painted pixels before takeover.
   Background work continues; the restored
   window returns to its conversation and saved draft. Conversation/project
   selection reaches that controller independently of the five-second paint
@@ -1122,6 +1125,8 @@ Each helper invocation also retains its complete streams and timing in a unique
 private `native-actions/<id>/receipt.json`, including any fixture text emitted by
 the helper. Automatic recovery needs the successor's own
 fresh pixel-ready event before QA activation can inspect that window.
+Saved-input acceptance reads back the durable draft and original attachment
+bytes alongside the native composer value; a healthy save needs no status label.
 Internal native QA callers may provide an admission callback under the campaign
 driver lock before owner/exit receipts can change; it must raise an exception to
 refuse, preserving prior records. Its return value is not an admission decision.

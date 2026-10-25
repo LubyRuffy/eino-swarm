@@ -164,7 +164,10 @@ Recovery uses the internal `desktop-attach` entry through inherited private
 pipes, an immutable private app copy and the original engine lease. It is not a
 user command: ordinary arguments or missing pipes fail explicitly, without
 starting an engine or falling back to `desktop`. The old shell exits only after
-the successor paints and completes the ownership handshake. Normal Quit and
+the successor paints and completes the ownership handshake. After navigation,
+the successor requests its own focus once only if its actual parent still owns
+the foreground; switching apps, hiding/minimizing or cancellation prevents it.
+That request is not pixel readiness and grants no extra time. Normal Quit and
 application updates do not trigger watchdog resurrection. See
 [recovery diagnostics](API.md#desktop-recovery-diagnostics) and
 [native acceptance](TESTING.md#desktop-renderer-resilience-f-115--c-034).

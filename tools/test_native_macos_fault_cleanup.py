@@ -186,7 +186,9 @@ class KilledScenarioCleanupTests(unittest.TestCase):
                     code = runner.run_case(app, evidence, 10, [sys.executable, "-c", scenario])
                 receipt = json.loads((evidence / "cleanup.json").read_text())
                 self.assertEqual(killed, [-signal.SIGKILL])
-                self.assertEqual(code, 124, receipt)  # Cleanup never turns the failed case into success.
+                self.assertEqual(code, 2, receipt)  # The injected child failure is not a scenario deadline.
+                self.assertEqual(receipt["failure_kind"], "subprocess_timeout")
+                self.assertEqual(receipt["timeouts"][0]["command"], "killed private QA child")
                 self.assertEqual(targets[0].wait(timeout=2), 0)
                 self.assertTrue(receipt["cleanup_complete"], receipt)
                 self.assertTrue(receipt["data_removed"])

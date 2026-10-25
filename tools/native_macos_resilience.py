@@ -724,17 +724,14 @@ def collect_draft(context, timeout):
             observation["observation_error"] = dict(type=type(error).__name__)
             raise
     def acknowledged():
-        observation["stage"] = "acknowledgement"
         try:
-            actual = native(context)
-            observation.update(native=native_observation(actual), native_for_api=True)
-            observation.pop("observation_error", None)
-            matched = any(label in actual.get("text", "") for label in ("Draft saved", "草稿已保存"))
+            # Normal saves have no status label. Re-read the durable snapshot
+            # and native value; neither visible copy nor a stale match is an ACK.
+            matched = saved() is not None
             observation["predicates"]["saved_acknowledged"] = matched
             return matched
-        except Exception as error:
-            observation["observation_error"] = dict(type=type(error).__name__)
-            raise
+        finally:
+            observation["stage"] = "acknowledgement"
     def flush():
         if pasted is not None:
             atomic_json(context["evidence"] / "draft-image-paste.json", pasted)
@@ -744,8 +741,6 @@ def collect_draft(context, timeout):
         expected = {sha256(binary): "file", sha256(image): "image"}
         observation["expected_hash_kinds"] = expected
         row = wait_for(saved, Deadline(timeout))
-        # Retain existing reads in memory and flush after the check exits;
-        # add no native input/reads, polling I/O or sleeps.
         wait_for(acknowledged, Deadline(timeout))
     except BaseException as error:
         observation["error"] = dict(type=type(error).__name__, stage=observation["stage"])
