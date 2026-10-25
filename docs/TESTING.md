@@ -110,9 +110,9 @@ Opening and terminal turn-list reads share the request generation in
 opening response must neither replace nor prevent the newer terminal snapshot.
 
 ```bash
-go test -race -timeout 20m ./internal/store ./internal/engine
+go test -race -timeout 25m ./internal/store ./internal/engine
 go test ./internal/engine -run '^$' -bench '^BenchmarkReplayHistoryToolBodies$' -benchmem
-go test -race -timeout 20m ./...
+go test -race -timeout 25m ./...
 go vet ./...
 (cd frontend && npm run lint && npm test && npm run build)
 ZWAI_E2E_PORT=18996 ZWAI_E2E_DATA_DIR=.e2e-data-open-tail \
@@ -200,13 +200,93 @@ allows it, then checks the original turn completes without a repeated manager
 request. It also checks parent cancellation and the configured first-byte
 and body-idle timeouts, retaining each failure in the original turn's Trace;
 candidate prose stays withheld until classification succeeds.
-`internal/engine/schedule_answer_retry_test.go` returns a malformed real
-policy HTTP response and proves that its retained diagnostic cause cannot
-restart the standing goal or reset the same-turn correction budget.
+`internal/engine/schedule_answer_recovery_http_test.go` exercises classifier
+service failures through the real loopback adapter, preserving one manager
+request, the original candidate/turn, recovery backoff and a single published
+answer. A legal HTTP 200 with invalid classification JSON retains
+`model_backoff.code:classification_invalid` and the original `candidate_id`,
+even though its LLM transport call succeeded. Other service failures retain
+`classification_unavailable`; provider-only backoff payloads remain compatible.
+A persistent outage keeps the turn running; Stop cancels its actual
+HTTP request without exposing private prose or publishing a terminal success.
+`internal/engine/schedule_answer_pending.go` separates that classifier retry
+path from the original single manager correction for a confirmed unsupported
+claim. Neither service failure nor a retry creates a new goal turn.
 `internal/engine/schedule_answer_restart_test.go` holds the real corrective
 model request across PrepareRestart and cold resume of the same turn. The
 persisted correction allowance stays consumed; event writes and budget reads
 that fail prevent another model attempt instead of resetting the allowance.
+
+`internal/store/schedule_answer_pending_test.go` checks immutable private
+candidate identity, retry-state preservation, stable ordering across all
+decisions, running-owner/Stop guards and single admission under concurrent
+calls. Event insertion, replay insertion or candidate-decision failure must
+roll back all public rows and leave the candidate pending. Empty public prose
+still commits acceptance, and a repeated accepted identity returns the explicit
+already-admitted error. Thread/project deletion and rewind remove the correct
+private candidates transactionally; injected deletion failure rolls back the
+owner and private rows, and late writes cannot recreate deleted state.
+The same suite injects failures into both terminal turn writes and private
+payload clearing: only a successful transaction may discard the full recovery
+payload, preserving lightweight accepted/rejected receipts and other turns.
+Long-turn storage tests retain only the newest answer transcript, leaving
+distinct report receipts intact. New insertion and previous-answer compaction
+must roll back together on refusal or an ignored write. Per-turn ordinals
+preserve latest-candidate recovery through clock rollback, equal timestamps,
+caller-supplied ordinal values and re-saving an existing identity.
+The report-recovery query is checked against all three decision states,
+another thread and terminal empty-payload receipts; it must not load the
+current answer's full transcript while discovering original report calls.
+
+`internal/engine/schedule_answer_restore_test.go` checks latest-candidate
+selection, malformed private state, original report-call receipts and worker
+restoration without a manager request. Restoring a report result cannot publish
+unverified findings or manufacture a result for an unrelated call.
+`internal/engine/schedule_answer_recovery_restart_test.go` crosses the actual
+PrepareRestart, shutdown, database-close/reopen and orphaned-turn recovery
+paths. It checks original turn/candidate/output IDs and retry allowance, a live
+worker restored under its original identity, and accepted publication followed
+by a failed terminal write. Recovery cannot generate another manager request
+or duplicate a saved answer. The actual handoff checkpoint must not contain
+the withheld candidate before the replacement resumes.
+`internal/engine/schedule_answer_checkpoint_test.go` checks the stored and live
+checkpoint omit normal and raw Responses prose while preserving accepted
+history, tools and reasoning without mutating the private original.
+These cases rebuild engines inside the Go test
+process; they do not by themselves establish executable-process or native UI
+acceptance.
+`cmd/zwai/schedule_answer_process_test.go` adds the OS-process boundary: the
+real headless engine entry point records a private candidate and classifier
+failure, the test verifies its owned lease/PID and SIGKILLs that child, then a
+different engine PID reopens the same private data. It checks actual SSE and
+Trace retain the original turn/candidate/output identity, with no repeated
+manager call or duplicate answer after the local classifier recovers. This is
+headless engine acceptance, separate from a native desktop-window case.
+`internal/engine/report_admission_test.go` checks actual manager tools retain
+their original receipt/candidate IDs, defer findings verification until the
+manager boundary and avoid repeating committed rearms. A blocked model request
+does not hold the global goal/wake lock.
+Its report-save fault cases distinguish an already committed rearm/cancel from
+findings-only or unchanged actions: storage refusal cannot publish findings or
+invite repeating a change that already committed. This receipt does not accept
+the unobserved crash window before the private save.
+`internal/engine/schedule_answer_steer_test.go` injects human steering after
+classification at the final ownership read. The superseded answer stays out
+of subsequent model input, and steering does not consume a previously used
+claim-correction allowance. Its HTTP case also steers during the actual pending
+classifier request: that request is cancelled, identical later answer text has
+a distinct output/candidate identity, and only the new verified output publishes.
+`internal/engine/schedule_answer_steer_ownership_test.go` blocks real attachment
+hydration across a turn/Registry replacement and verifies the stale steer is
+refused without delivering to either owner; empty busy-turn input is also refused.
+
+`frontend/e2e/schedule-answer.spec.ts` uses its isolated loopback fixture to
+exercise 503/429 classification failures followed by a response delayed beyond
+30 seconds, named live backoff events, the original manager/tool request
+counts, actual scheduling facts and replay after reload. Its Stop case keeps
+the fixture alive past the pending retry time and checks no delayed request
+escapes cancellation. The case retains screenshots and original-turn Trace;
+its offline HTTP model does not call an external provider.
 
 `frontend/src/lib/schedule-claim-notice.test.ts` and
 `mobile/src/lib/transcript-schedule-claim.test.ts` check the correction notice
@@ -284,7 +364,7 @@ not reapply its state or notification side effects. Closing a partial
 `tool_call_delta` must not complete a tool already executing.
 
 ```bash
-go test -race -timeout 20m ./...
+go test -race -timeout 25m ./...
 go vet ./...
 (cd frontend && npm run lint && npm test && npm run build)
 (cd mobile && npm run lint && npm test && npm run build)
@@ -379,7 +459,7 @@ phone-direct provider configuration stays separate. Run from the repository root
 
 ```bash
 go test -race ./internal/config ./internal/provider ./internal/remote ./internal/server ./internal/engine
-go test -race -timeout 20m ./...
+go test -race -timeout 25m ./...
 (cd frontend && npm test -- settings-persist.test.ts settings-persist-delta.test.ts settings-dialog.test.tsx)
 (cd frontend && npm run lint && npm run build)
 (cd frontend && npm run e2e -- settings-timeout-concurrency.spec.ts --output /absolute/unique-frontend-output)
@@ -953,7 +1033,7 @@ attachments remain valid. `internal/engine/desktop_recovery_test.go` checks
 durable/live Trace ordering without model calls or changing task state. Run:
 
 ```bash
-go test -race -count=1 -timeout 20m ./...
+go test -race -count=1 -timeout 25m ./...
 cd frontend && npm run lint && npm test && npm run build
 ```
 
@@ -1572,6 +1652,28 @@ after Stop, final-wake cancellation/pause, consumed one-shot without an owner,
 or an inactive goal. Receipt assertions bind exact owner/worker IDs to a
 persisted event before the manager's terminal error.
 
+Lifecycle fixtures must return valid `{"claims":[]}` for the exact tool-free
+schedule-answer classifier protocol and disable unrelated memory review.
+Terminal-failure cases use the real scheduled no-activity limit or an explicit
+manager HTTP refusal. A plain-text fallback is invalid classification output;
+it exercises pending service recovery rather than terminal ownership. The first
+2026-10-25 full race run exposed this fixture defect: three ownership tests
+stalled in their initial successful-check setup, before their intended failed
+check. Retain that first failure when validating the repaired fixture.
+Direct manager fixtures must execute the exact Registry and turn registered in
+the runtime. `TestIndependentManagersDiscoverAndNegotiate` queues peer notices
+into its actual receiver Registry before that manager starts; a dummy owner
+would retain an undrainable inbox and repeatedly supersede accepted answers.
+The later full-race timeout exposed this separate fixture defect, with valid
+classifier JSON throughout. `TestManagerFixtureRejectsAnExistingDifferentOwnerBeforeModel`
+requires the test helper to return an identifiable ownership error before any
+model call and preserve the existing owner for both Registry and turn mismatch.
+`TestScheduledClassifierOutageKeepsTheOriginalWorkerUntilRecovery` separately
+returns a real classifier HTTP 503, verifies the original turn, registry, worker
+ID and worker HTTP request remain active without terminal/cleanup events, then
+restores the service. Only classification repeats; the manager and worker are
+not restarted, and a later human Stop still cancels the worker request.
+
 `internal/engine/worker_ownership_test.go` covers executable-goal and wake
 selection (including plan mode with an active but non-executable wake),
 receipt write failure, resource/watchdog exclusions, owner/Stop
@@ -1635,7 +1737,7 @@ model output.
 tool details and reload through controlled offline event responses.
 
 ```bash
-go test -race -timeout 20m ./...
+go test -race -timeout 25m ./...
 cd frontend && npm test -- src/lib/transcript-message.test.ts src/store/app-stream-history.test.ts
 cd frontend && npm run e2e -- e2e/agent-history-overlap.spec.ts
 ```
@@ -1986,7 +2088,7 @@ memory files and stored outcomes, not agreement with the old reviewer's answer:
   legacy notes, storage failure and concurrent drafts against a real store.
 
 ```bash
-go test -race -count=1 -timeout 20m ./internal/memory ./internal/engine
+go test -race -count=1 -timeout 25m ./internal/memory ./internal/engine
 go test -race -run '^(TestReviewBatch|TestReviewEvidence|TestValidateReview|TestReviewNoteDiff|TestInvokeReviewOperation)' ./internal/engine
 go test -race -count=1 ./internal/engine -run 'ReviewHistory|FullThreadWorkerHistory|LifecycleHistory|CompatibilityWrapper|TerminalStatus'
 go test -race -count=1 ./internal/engine -run 'Review.*(Capacity|Proposal|Diagnostics|ReceiptFeedback|Bounded|Refusal|ModelError|TerminalFailure)'
@@ -2056,7 +2158,7 @@ directory validation; `internal/engine/project_test.go` retains the save-time
 workdir contract.
 
 ```bash
-go test -race -count=1 -cover -timeout 20m ./internal/desktop ./internal/engine
+go test -race -count=1 -cover -timeout 25m ./internal/desktop ./internal/engine
 cd frontend && npm test -- src/lib/workdir.test.ts src/components/app/workdir-input.test.tsx src/components/app/project-dialog.test.tsx
 cd frontend && npm run e2e -- e2e/workdir.spec.ts
 ```
@@ -2505,7 +2607,7 @@ Fix SHAs must be ancestors of the integration checkout's main candidate. These
 accounting checks do not replace application tests or platform acceptance.
 
 ```bash
-make test        # go test -race -cover -timeout 20m ./...  +  front-end unit tests + mobile unit tests
+make test        # go test -race -cover -timeout 25m ./...  +  front-end unit tests + mobile unit tests
 make e2e         # Playwright, on the scripted offline provider
 make check       # go vet + both of the above
 ```
@@ -2518,7 +2620,7 @@ deterministic and fast enough to run on every change.
 
 | layer | what it covers | command |
 |---|---|---|
-| Go unit tests | config, store, memory, provider, tools, engine, search, server, CLI, TUI, and the swarm library | `go test -race -cover -timeout 20m ./...` |
+| Go unit tests | config, store, memory, provider, tools, engine, search, server, CLI, TUI, and the swarm library | `go test -race -cover -timeout 25m ./...` |
 | HTTP tests | every endpoint, SSE replay and resume, the tail log page (`GET /log`, including the live-edge roster sidecar), one worker's log (`GET /agents/:agent/log`), upload path traversal, restart recovery (leftover turns, in-flight sub-agents, and the follow-up queue continue; in-flight tools are closed), PTY terminals (`GET /terminal`, same-origin / loopback Origin, DNS-rebind Host refused, project cwd), phone pairing status/token/offer (`/api/remote/*`, token never echoed), conversation search (`GET /api/search` finds a body the title does not contain; embeddings stay off until a model is pinned), SPA freeze (a Vite rebuild of `dist/` cannot steal hashed JS from a live window; a missing `/assets/*` file is 404 text, not the HTML shell) | `go test ./internal/server/` |
 | Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (count chip at rest, hover to read/edit/drop; tagged `<selected_text>` / `<user_request>` on send; Copy message without the wire tags; the Add to chat snapshot surviving a live stream), clipboard image paste, copying transcript text when the Clipboard API refuses (copy event plant, not a silent execCommand true), file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice Run now and cancel / live waits sort first and show prompt / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `ui_font_size` / `font_size` / `content_width` / `transcript_mode` / `palette`, directory density), tail-first history pages (`thread-log` / `thread-history` / `use-history-window` / `use-turn-jump`), dismissible settings toasts, ⌘K palette body search (`thread-search` / `palette.test`, stale hits cleared while the next query is in flight), semantic-search settings (off until a model is named) | `cd frontend && npm test` |
 | End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, directory rows tracking UI size, scheduled inbox / wake banner, Phone settings QR control (pairing failure toasts over the sheet; Bound phones paints a reported model) | `cd frontend && npm run e2e` |
@@ -3189,8 +3291,16 @@ today's date); tests assert those values, never a sample OS or a sample command.
 
 ## Go tests
 
+The full Go package deadline is 25 minutes, including real HTTP timeouts,
+recovery and cancellation regressions. In the measured expanded engine suite,
+the prefix before task coordination took about 19m10s and its corrected
+112-test tail took another 90.6s. This package deadline does not extend any
+individual test, provider timeout, worker budget or native acceptance budget.
+An indefinitely waiting fixture must still be diagnosed and fixed; extending
+the package deadline cannot accept it.
+
 ```bash
-go test -race -cover -timeout 20m ./...       # everything
+go test -race -cover -timeout 25m ./...       # everything
 go test -race ./internal/engine/              # one package
 go test -race -run TestSteer ./internal/engine/
 go test ./internal/server/ -coverprofile=/tmp/c.out && go tool cover -html=/tmp/c.out
@@ -5149,7 +5259,7 @@ retry behavior or impose a server-wide request limit.
 Use keyless loopback fixtures, never a real model or network service:
 
 ```bash
-go test -race -timeout 20m ./internal/config ./internal/provider ./internal/server ./internal/engine
+go test -race -timeout 25m ./internal/config ./internal/provider ./internal/server ./internal/engine
 cd frontend && npm run lint && npm test && npm run build
 ZWAI_E2E_BUILTIN_TOOLS=1 ZWAI_E2E_PORT=8819 npm run e2e -- builtin-tools.spec.ts
 ```

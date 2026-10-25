@@ -1,16 +1,18 @@
 import { expect, test } from "@playwright/test"
 import { writeFile } from "node:fs/promises"
+import { setTimeout as delay } from "node:timers/promises"
 import { composer, freshConversation, reloadOpenConversation } from "./session"
 import { startScheduleAnswerFixture, unsupportedScheduleAnswer, verifiedScheduleAnswer } from "./schedule-answer-fixture"
 
-type Event = { kind: string; text?: string; tool_call_id?: string }
+type Event = { kind: string; text?: string; tool_call_id?: string; agent_id?: string }
+type Trace = { turn: { id: string; status: string; final?: string }; events: Event[]; llm_calls: { agent_id: string; duration_ms: number; err?: string }[] }
 
-test("a live unverified scheduling answer is corrected and verified beyond thirty seconds against an actual saved wake", async ({ page, request }, info) => {
+test("a live scheduling answer survives classifier failures and a response beyond thirty seconds without repeating the manager", async ({ page, request }, info) => {
   test.skip(process.env.ZWAI_E2E_SCHEDULE_ANSWER !== "1", "requires the offline answer admission fixture")
-  const fixture = await startScheduleAnswerFixture({ secondPolicyDelayMS: 31_000 })
+  const fixture = await startScheduleAnswerFixture({ secondPolicyDelayMS: 31_000, secondPolicyFailures: [503, 429] })
   let scheduleID = ""
   let threadID = ""
-  let trace: { turn: { id: string; status: string }; events: Event[]; llm_calls: { agent_id: string; duration_ms: number; err?: string }[] } | undefined
+  let trace: Trace | undefined
   const history = /\/api\/threads\/[^/]+\/log(?:\?|$)/
   try {
     const { settings } = await (await request.get("/api/settings")).json()
@@ -22,11 +24,14 @@ test("a live unverified scheduling answer is corrected and verified beyond thirt
     await page.addInitScript(() => {
       const NativeEventSource = window.EventSource
       const observed = [] as unknown[]
+      const backoffs = [] as unknown[]
       ;(window as Window & { __answerRetryEvents?: unknown[] }).__answerRetryEvents = observed
+      ;(window as Window & { __answerBackoffEvents?: unknown[] }).__answerBackoffEvents = backoffs
       window.EventSource = class extends NativeEventSource {
         constructor(url: string | URL, options?: EventSourceInit) {
           super(url, options)
           this.addEventListener("model_retry", (event) => { observed.push(JSON.parse(event.data)) })
+          this.addEventListener("model_backoff", (event) => { backoffs.push(JSON.parse(event.data)) })
         }
       }
     })
@@ -47,7 +52,13 @@ test("a live unverified scheduling answer is corrected and verified beyond thirt
     expect(fixture.state()).toMatchObject({ managerRequests: 2, checks: 1 })
     await page.screenshot({ path: info.outputPath("unverified-answer-withheld.png"), animations: "disabled" })
     fixture.allowArm()
-    await expect(transcript).toContainText(verifiedScheduleAnswer, { timeout: 45_000 })
+    await expect(transcript).toContainText("Waiting 5s before retrying the model request.")
+    await expect.poll(() => page.evaluate(() => (window as Window & { __answerBackoffEvents?: unknown[] }).__answerBackoffEvents?.length ?? 0)).toBeGreaterThan(0)
+    await expect(transcript).not.toContainText(verifiedScheduleAnswer)
+    await expect(transcript).not.toContainText(unsupportedScheduleAnswer)
+    expect(fixture.state()).toMatchObject({ managerRequests: 3, checks: 2 })
+    await page.screenshot({ path: info.outputPath("classification-recovery-wait.png"), animations: "disabled" })
+    await expect(transcript).toContainText(verifiedScheduleAnswer, { timeout: 65_000 })
     await expect(transcript).not.toContainText(unsupportedScheduleAnswer)
     await expect(page.getByTestId("schedule-banner")).toBeVisible()
     await expect(page.getByTestId("status-badge")).toContainText("Waiting")
@@ -70,9 +81,12 @@ test("a live unverified scheduling answer is corrected and verified beyond thirt
     expect(saved.schedule).toMatchObject({ id: scheduleID, thread_id: threadID, status: "active", every_s: 90 })
     expect(saved.schedule.next_run_at).toBeTruthy()
     const policyCalls = trace!.llm_calls.filter((call) => call.agent_id === "schedule-answer-policy")
-    expect(policyCalls).toHaveLength(2)
-    expect(policyCalls[1].duration_ms).toBeGreaterThanOrEqual(30_000)
-    expect(policyCalls[1].err ?? "").toBe("")
+    expect(policyCalls).toHaveLength(4)
+    expect(policyCalls[1].err).toContain("503")
+    expect(policyCalls[2].err).toContain("429")
+    expect(policyCalls[3].duration_ms).toBeGreaterThanOrEqual(30_000)
+    expect(policyCalls[3].err ?? "").toBe("")
+    expect(trace!.events.filter((event) => event.kind === "model_backoff" && event.agent_id === "schedule-answer-policy").length).toBeGreaterThanOrEqual(2)
     for (const event of trace!.events.filter((event) => ["agent_message", "delta", "done"].includes(event.kind))) expect(event.text ?? "").not.toContain(unsupportedScheduleAnswer)
     await page.unroute(history)
     await reloadOpenConversation(page)
@@ -81,12 +95,83 @@ test("a live unverified scheduling answer is corrected and verified beyond thirt
     await expect(page.getByTestId("schedule-banner")).toBeVisible()
     await expect(page.getByTestId("status-badge")).toContainText("Waiting")
     expect(fixture.errors).toEqual([])
-    expect(fixture.state()).toMatchObject({ managerRequests: 3, checks: 2 })
+    expect(fixture.state()).toMatchObject({ managerRequests: 3, checks: 4 })
     await page.screenshot({ path: info.outputPath("verified-schedule-after-reload.png"), animations: "disabled" })
     await writeFile(info.outputPath("scheduling-admission-evidence.json"), JSON.stringify({ trace, saved, fixture: fixture.state(), errors: fixture.errors }, null, 2), { mode: 0o600 })
   } finally {
     await page.unroute(history)
     try { if (scheduleID) await request.delete(`/api/schedules/${scheduleID}`, { timeout: 5000 }) }
     finally { await fixture.close() }
+  }
+})
+
+test("Stop cancels a classification recovery wait without publishing or rerunning the manager", async ({ page, request }, info) => {
+  test.skip(process.env.ZWAI_E2E_SCHEDULE_ANSWER !== "1", "requires the offline answer admission fixture")
+  const fixture = await startScheduleAnswerFixture({ unavailable: true })
+  let threadID = ""
+  const history = /\/api\/threads\/[^/]+\/log(?:\?|$)/
+  try {
+    const { settings } = await (await request.get("/api/settings")).json()
+    expect((await request.put("/api/settings", { data: {
+      models: { default: "answer-stop-fixture", providers: [{ id: "answer-stop-fixture", label: "Offline classification cancellation", base_url: fixture.url, model: "fixture-model", api_key: "", context_window: 128000, first_byte_timeout_seconds: 40, timeout_seconds: 10 }] },
+      swarm: { ...settings.swarm, auto_title: false },
+      memory: { ...settings.memory, auto_review: false },
+    } })).ok()).toBe(true)
+    await page.addInitScript(() => {
+      const NativeEventSource = window.EventSource
+      const observed = [] as unknown[]
+      ;(window as Window & { __answerBackoffEvents?: unknown[] }).__answerBackoffEvents = observed
+      window.EventSource = class extends NativeEventSource {
+        constructor(url: string | URL, options?: EventSourceInit) {
+          super(url, options)
+          this.addEventListener("model_backoff", (event) => { observed.push(JSON.parse(event.data)) })
+        }
+      }
+    })
+    await freshConversation(page)
+    threadID = (await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute("data-id")) ?? ""
+    expect(threadID).toBeTruthy()
+    await page.route(history, (route) => route.fulfill({ json: { events: [], has_more: false } }))
+    await composer(page).fill("Inspect the current task state.")
+    await composer(page).press("Enter")
+    const transcript = page.getByTestId("transcript")
+    await expect(transcript).toContainText("Waiting 5s before retrying the model request.")
+    await expect.poll(() => page.evaluate(() => (window as Window & { __answerBackoffEvents?: unknown[] }).__answerBackoffEvents?.length ?? 0)).toBeGreaterThan(0)
+    await expect(transcript).not.toContainText(unsupportedScheduleAnswer)
+    await expect(transcript).not.toContainText(verifiedScheduleAnswer)
+    expect(fixture.state()).toMatchObject({ managerRequests: 1, checks: 1 })
+    const { turns } = await (await request.get(`/api/threads/${threadID}/turns`)).json()
+    const turnID = turns[0].id as string
+    await page.getByRole("button", { name: "Stop", exact: true }).click()
+    let trace: Trace | undefined
+    await expect.poll(async () => {
+      trace = await (await request.get(`/api/trace/${turnID}`)).json()
+      return trace?.turn.status
+    }).toBe("cancelled")
+    expect(trace!.turn.id).toBe(turnID)
+    expect(trace!.turn.final ?? "").toBe("")
+    expect(trace!.events.filter((event) => event.kind === "model_retry")).toHaveLength(0)
+    expect(fixture.state()).toMatchObject({ managerRequests: 1, checks: 1 })
+    const stopped = fixture.state()
+    // Keep the real offline HTTP endpoint alive beyond the pending 5s retry.
+    // This negative observation catches a leaked retry timer after Stop.
+    await delay(6_000)
+    expect(fixture.state()).toEqual(stopped)
+    for (const event of trace!.events.filter((event) => ["agent_message", "delta", "done"].includes(event.kind))) {
+      expect(event.text ?? "").not.toContain(unsupportedScheduleAnswer)
+      expect(event.text ?? "").not.toContain(verifiedScheduleAnswer)
+    }
+    await page.unroute(history)
+    await reloadOpenConversation(page)
+    await expect(transcript).not.toContainText(unsupportedScheduleAnswer)
+    await expect(transcript).not.toContainText(verifiedScheduleAnswer)
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0)
+    expect(fixture.errors).toEqual([])
+    await page.screenshot({ path: info.outputPath("classification-recovery-stopped.png"), animations: "disabled" })
+    await writeFile(info.outputPath("classification-stop-evidence.json"), JSON.stringify({ trace, stopped, afterObservation: fixture.state(), observationMS: 6_000, errors: fixture.errors }, null, 2), { mode: 0o600 })
+  } finally {
+    await page.unroute(history)
+    if (threadID) await request.post(`/api/threads/${threadID}/interrupt`, { timeout: 5000 }).catch(() => undefined)
+    await fixture.close()
   }
 })

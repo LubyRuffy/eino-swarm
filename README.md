@@ -231,8 +231,13 @@ uploads, downloads and the live event stream have exactly one implementation.
   Reports that a future check was arranged are checked against saved, currently
   effective plans before the manager's prose is shown. A failed or missing
   scheduling call cannot support a success report. One same-turn correction is
-  allowed; a repeated unsupported claim or unavailable check ends visibly with
-  an error. Tool, thinking and worker activity remain live during this check.
+  allowed for a confirmed unsupported claim; repeating it ends with an error.
+  An unavailable or malformed classification keeps the original turn and its
+  workers running while only the privately saved candidate is retried with
+  capped delays. It does not rerun the manager or its tools. Stop cancels this
+  wait; new human guidance supersedes the old candidate. Engine recovery resumes
+  the saved candidate, and its prose is published only after verification.
+  Tool, thinking and worker activity remain live during this check.
   Completion removes the goal strip above the composer immediately on PC and
   phone. The stored objective, completion state, results and history remain;
   reloading or reopening keeps the completed strip hidden. Its completion notice
@@ -242,8 +247,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   not reopened by ordinary messages. A new explicit `/goal` replaces the old
   objective, clears its completed state and displays the strip again.
   A live turn is steered so this round sees the
-  new text. A turn ends when the manager stops calling tools; the runtime
-  then continues, unless an active thread wake is waiting on this
+  new text. A turn finishes after answer verification and worker ownership or
+  collection are settled. The runtime then continues, unless an active thread wake is waiting on this
   conversation — that wait is the next turn until it fires or you cancel it. Context pressure compact in place. Hitting the manager
   tool-round slice keeps the same turn going. In-flight sub-agents survive
   a pursuing turn that ends while they are still running, including when a

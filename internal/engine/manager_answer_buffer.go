@@ -142,9 +142,7 @@ func (b *managerAnswerBuffer) sealPending() {
 	}
 }
 
-func (b *managerAnswerBuffer) text() []string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+func (b *managerAnswerBuffer) textLocked() []string {
 	var text []string
 	for _, m := range b.generated {
 		text = append(text, m.Content)
@@ -211,7 +209,7 @@ func withoutPendingManagerProse(messages []*schema.Message) []*schema.Message {
 	return out
 }
 
-func (e *Engine) admitScheduleAnswer(threadID, turnID string, expected []store.Schedule, events []store.Event) *scheduleAnswerError {
+func (e *Engine) admitScheduleAnswer(threadID, turnID string, expected []store.Schedule, events []store.Event, candidates ...string) *scheduleAnswerError {
 	// Stop/restart ownership and publication share the established rt.mu ->
 	// recordMu order. A still-running turn row alone does not prove ownership.
 	rt := e.runtimeFor(threadID)
@@ -223,12 +221,18 @@ func (e *Engine) admitScheduleAnswer(threadID, turnID string, expected []store.S
 	if rt.userStopped || rt.abandoned {
 		return &scheduleAnswerError{Code: "answer_owner_stopped"}
 	}
+	if len(candidates) > 0 && rt.reg != nil && rt.reg.HasPendingSteers() {
+		return &scheduleAnswerError{Code: "answer_superseded"}
+	}
 	e.recordMu.Lock()
 	defer e.recordMu.Unlock()
 	if _, dropped := e.droppedTurns[turnID]; dropped {
 		return &scheduleAnswerError{Code: "answer_owner_deleted"}
 	}
-	if err := e.store.AdmitScheduleAnswer(threadID, turnID, expected, events); err != nil {
+	if err := e.store.AdmitScheduleAnswer(threadID, turnID, expected, events, candidates...); err != nil {
+		if errors.Is(err, store.ErrScheduleAnswerAlreadyAdmitted) {
+			return nil
+		}
 		if errors.Is(err, store.ErrScheduleAnswerStopped) {
 			rt.userStopped = true
 			if rt.cancel != nil {

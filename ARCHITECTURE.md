@@ -182,19 +182,50 @@ Manager prose admission for scheduled-work claims lives in
 `internal/engine/schedule_answer.go` and `manager_answer_buffer.go`. A tool-free
 policy call extracts claims from candidate prose; code checks them against
 persisted schedule rows, current state and turn ownership before publishing
-the buffered text. Unsupported claims get one correction in the same turn;
-uncertainty is not scheduling success. Exhausting this gate is terminal even
-when the diagnostic cause is a model transport or decoding failure, so goal
-continuation cannot reset its correction budget. The same-turn allowance is
-restored from its durable correction event after restart; failed receipt reads
-or writes terminate admission before another corrective model request. The
-non-streaming policy call uses the provider's configured response-header and
-body-idle timeouts and the turn's cancellation; it adds no separate 30-second
-total deadline. A response arriving after 30 seconds remains eligible within
-those configured budgets.
-Tools, reasoning and worker events
-continue on the original notification path. Policy calls and correction
-metadata are attributed to the original turn's Trace.
+the buffered text. `schedule_answer_pending.go` first stores the candidate's
+original identity, pending events, final answer and transcript in the private
+`pending_schedule_answers` table. Its transaction-assigned per-turn ordinal
+defines candidate order independently of wall time. A newly saved answer
+keeps only its latest full transcript, compacting prior answer payloads in the
+same transaction; distinct report receipts remain until the turn finishes.
+Unavailable or malformed classification
+results retry that same candidate with persistent 5/10/20/30-second capped
+backoff. They do not rerun the manager, consume its correction allowance or
+end its turn and worker ownership. Stop cancels the request or wait; a human
+steer supersedes the unpublished candidate and continues with the actual tool
+receipts. Each non-streaming policy call uses the provider's response-header
+and body-idle budgets without an extra 30-second total deadline.
+
+A confirmed unsupported scheduling claim still gets one correction in the
+same turn. Its durable `model_retry` receipt preserves that allowance across
+restart; another unsupported claim fails explicitly. Unreadable private state,
+correction receipts or failed storage writes also fail explicitly instead of
+pretending recovery is durable. `model_backoff` and classifier LLM records
+belong to the original turn's Trace; private candidate prose is not a public
+event, ordinary history or compaction input.
+
+`report_admission.go` commits the requested scheduling action and saves its
+private findings plus original tool-call receipt before returning
+`report_pending:true`. Verification then runs outside the global goal/wake
+lock. Restoring that saved receipt settles the original call without executing
+its scheduling action again. The action and private save are separate commits:
+if saving fails after a change, the tool returns `answer_storage_failed` with
+`action_committed:true` and `report_published:false`, retaining a schedule ID
+when available. A crash between those commits has unknown effect and requires
+checking current state before retrying the action. This is not an all-window
+exactly-once guarantee. `schedule_answer_restore.go` reads the latest
+answer's decision and restores its workers before deciding whether the manager
+may run; a rejected latest candidate cannot revive an older answer. Recovery
+first verifies the original pending candidate. Admission atomically writes
+public events, replay messages and the accepted candidate state, so an already
+accepted candidate is not broadcast again. Thread/project deletion and rewind
+remove private candidates in the same transaction as their owners. A terminal
+turn commit clears its candidate payloads and retains lightweight decision
+receipts; a failed commit preserves the full recovery payload. A private
+candidate alone does not fabricate a planned-handoff checkpoint. Public
+handoff checkpoints serialize a copy of manager history with pending prose
+removed, including provider-owned Responses text. Accepted history, tool calls
+and reasoning remain; filtering does not mutate the original private history.
 
 ## Ordinary turn completion
 

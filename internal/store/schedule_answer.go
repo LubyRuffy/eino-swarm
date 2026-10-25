@@ -10,13 +10,16 @@ import (
 
 var ErrScheduleAnswerChanged = errors.New("store: scheduling evidence changed before answer admission")
 var ErrScheduleAnswerStopped = errors.New("store: human Stop was recorded before answer admission")
+var ErrScheduleAnswerAlreadyAdmitted = errors.New("store: scheduling answer was already admitted")
 
 // AdmitScheduleAnswer rechecks the exact rows used to validate a scheduling
 // claim and commits its public answer and replay messages together. The sole
 // SQLite connection orders cancellation/retargeting against this transaction.
 // The engine holds recordMu through this commit and the subsequent broadcast.
-func (s *Store) AdmitScheduleAnswer(threadID, turnID string, expected []Schedule, events []Event) error {
-	if len(events) == 0 {
+// Candidate decisions commit with those rows, including an empty public answer.
+// ErrScheduleAnswerAlreadyAdmitted means callers must not broadcast again.
+func (s *Store) AdmitScheduleAnswer(threadID, turnID string, expected []Schedule, events []Event, candidateIDs ...string) error {
+	if len(events) == 0 && len(candidateIDs) == 0 {
 		return nil
 	}
 	msgs := make([]Message, 0, len(events))
@@ -37,19 +40,11 @@ func (s *Store) AdmitScheduleAnswer(threadID, turnID string, expected []Schedule
 		}
 	}
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		var turn Turn
-		if err := tx.First(&turn, "id = ? AND thread_id = ?", turnID, threadID).Error; err != nil {
+		if err := pendingScheduleAnswerAdmission(tx, threadID, turnID, candidateIDs); err != nil {
 			return err
 		}
-		if turn.Status != TurnRunning {
-			return ErrScheduleAnswerChanged
-		}
-		var stopped int64
-		if err := tx.Model(&Event{}).Where("thread_id = ? AND turn_id = ? AND kind = ?", threadID, turnID, "user_stop_requested").Count(&stopped).Error; err != nil {
+		if err := scheduleAnswerOwner(tx, threadID, turnID); err != nil {
 			return err
-		}
-		if stopped != 0 {
-			return ErrScheduleAnswerStopped
 		}
 		for _, want := range expected {
 			var got Schedule
@@ -60,14 +55,56 @@ func (s *Store) AdmitScheduleAnswer(threadID, turnID string, expected []Schedule
 				return ErrScheduleAnswerChanged
 			}
 		}
-		if err := tx.Create(&events).Error; err != nil {
-			return err
+		if len(events) > 0 {
+			if err := requireScheduleAnswerWrite(tx.Create(&events), int64(len(events))); err != nil {
+				return err
+			}
 		}
 		if len(msgs) > 0 {
-			return tx.Create(&msgs).Error
+			if err := requireScheduleAnswerWrite(tx.Create(&msgs), int64(len(msgs))); err != nil {
+				return err
+			}
+		}
+		if len(candidateIDs) > 0 {
+			return requireScheduleAnswerWrite(tx.Model(&PendingScheduleAnswer{}).Where("id IN ?", candidateIDs).Update("state", "accepted"), int64(len(candidateIDs)))
 		}
 		return nil
 	})
+}
+
+func pendingScheduleAnswerAdmission(tx *gorm.DB, threadID, turnID string, ids []string) error {
+	accepted := 0
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if seen[id] {
+			return ErrScheduleAnswerChanged
+		}
+		seen[id] = true
+		var row PendingScheduleAnswer
+		if err := tx.First(&row, "id = ?", id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if row.ThreadID != threadID || row.TurnID != turnID {
+			return ErrScheduleAnswerChanged
+		}
+		switch row.State {
+		case "accepted":
+			accepted++
+		case "pending":
+		default:
+			return ErrScheduleAnswerChanged
+		}
+	}
+	if accepted > 0 {
+		if accepted == len(ids) {
+			return ErrScheduleAnswerAlreadyAdmitted
+		}
+		return ErrScheduleAnswerChanged
+	}
+	return nil
 }
 
 func sameScheduleAnswerEvidence(want, got Schedule) bool {
