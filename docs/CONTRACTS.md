@@ -35,7 +35,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 验收失败：`verify_draft` 草稿恢复检查正常／异常／可处理取消退出时，每次检查独立保存首个不成立观察和最后 API／原生观察摘要与逐项判定；false、error、not_read 不混同。首个不成立观察只是轮询事实，不等同整例失败。摘要仅使用原调用已经读到的值，不复制正文、不追加请求／输入或重试粘贴；硬杀／来宾丢失可能无法落证。采证写失败不覆盖原异常及 cause，原检查成功时则拒绝通过。后续通过不覆盖先前失败，也不能证明尚未捕获的失败原因。证据：`tools/native_macos_resilience.py`、`tools/native_macos_resilience_phases.py`、`tools/test_native_macos_restore_observation.py`。
 - 验收输入：PNG 仅通过一次公共原生 Edit→Paste 输入；剪贴板写入失败、原 bytes／ownership 计数变化、菜单角色／身份／唯一性／启用／前台检查失败时不得请求 Paste。传输回执只确认菜单请求，完整 API 快照、文件／图片原 bytes、原生值和保存 ACK 仍是通过条件；禁止以旧 snapshot、重试粘贴或直接写草稿接受输入。头less 纯校验与来宾副作用验收分开，不能据菜单通过宣称键盘或 vendor 缺陷已修复。证据：`tools/native_macos_resilience_ax.m`, `tools/test_native_macos_paste.py`, `tools/native_macos_resilience.py`。
 - 证据：实现 `internal/desktop/recovery.go`, `internal/desktop/recovery_state.go`, `internal/desktop/recovery_probe.go`, `internal/desktop/recovery_snapshot_darwin.m`, `internal/desktop/bundle_darwin.go`, `cmd/zwai/desktop_recovery_darwin.go`, `internal/engine/desktop_recovery.go`, `internal/server/desktop_recovery.go`；测试 `internal/desktop/recovery_test.go`, `cmd/zwai/desktop_recovery_test.go`, `internal/engine/desktop_recovery_test.go`, `internal/server/desktop_recovery_test.go`, `tools/test_native_macos_resilience.py`。
-- 变更规则：同步 ARCHITECTURE、CLI、API、FEATURES、TESTING、CHANGELOG；正式 ZIP 在 `ci-macOS` 验证渲染器／GPU 活挂、草稿／附件、后台任务连续性、真实睡眠唤醒和至少 18 小时长开，保留准确源码／ZIP 身份及独立 cleanup 回执。
+- 变更规则：同步 ARCHITECTURE、CLI、API、FEATURES、TESTING、CHANGELOG；正式 ZIP 在 `ci-macOS` 验证渲染器／GPU 活挂、草稿／附件、后台任务连续性、真实睡眠唤醒；不再把固定长测时长作为本白屏任务的验收约定，保留准确源码／ZIP 身份及独立 cleanup 回执。
 - 来源：GitHub Issue #94；Added，弥补仍存活的 WebContent 绘图挂起不能由终止回调恢复的缺口。
 
 ## C-022 Single PC work rows use one disclosure

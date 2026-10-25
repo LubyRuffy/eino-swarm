@@ -94,13 +94,12 @@ the host's already-running binary changed. The first checkout case reached its
 behavior assertions but failed read-only module-cache cleanup; its failed receipt
 was preserved, the runner was fixed, and a fresh case passed complete cleanup.
 
-Required before acceptance: complete current-source build/static/unit/E2E review;
-a clean pushed source and its exact formal installer; serial ci-macOS baseline,
-renderer/GPU stall, finite-budget exhaustion, three real sleep/wake cycles and
-at least 18 hours of operation. Preserve package/source hashes, real native
-screenshots/actions, unchanged draft bytes, engine/turn/worker identity and cleanup
-receipts. See [testing procedure](../TESTING.md#desktop-renderer-resilience-f-115--c-034).
-The host's already-running app is outside the native acceptance scope.
+Formal installer acceptance remains incomplete. The user stopped this
+investigation and native acceptance on 2026-10-25 and withdrew its fixed-duration
+long-run requirement. Existing package/source hashes, native screenshots/actions,
+draft/attachment bytes, engine/turn/worker identities and cleanup receipts remain
+retained evidence with their original scope. Future work requires a new explicit
+scope. The host's already-running app remains outside native acceptance.
 
 ## Unattended observation — 2026-10-25
 

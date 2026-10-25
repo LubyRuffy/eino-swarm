@@ -1098,15 +1098,19 @@ and the unchanged versioned ZIP from the clean pushed source:
 ```bash
 python3 tools/native_macos_resilience.py launch \
   --zip /absolute/zwai-X.Y.Z-darwin-arm64.zip --source FULL_40_CHARACTER_SHA \
-  --evidence /absolute/new-campaign --soak-seconds 64800 --sleep-cycles 3 \
+  --evidence /absolute/new-campaign --sleep-cycles 3 \
   --interval 60 --stage-timeout 180 \
-  --phases baseline renderer gpu exhaustion sleepwake soak
+  --phases baseline renderer gpu exhaustion sleepwake
 python3 tools/native_macos_resilience.py status --evidence /absolute/new-campaign
 ```
 
 The driver supports baseline, renderer stall, GPU stall, exhaustion, sleep/wake
-and an 18-hour soak. `selection_complete` and an exit status of zero mean only the
-selected stages passed; overall `passed` requires real evidence for all six.
+and an optional long-run profile. The fixed-duration soak agreement for Issue #94
+has been withdrawn, and that task is stopped. The example selects only the five
+listed stages; it does not authorize resuming that task. The legacy optional
+soak profile retains its tool-defined input limits. `selection_complete` and an
+exit status of zero mean only the selected stages passed; the driver's full-profile
+`passed` still requires real evidence for all six.
 Selection and the full plan are immutable within one evidence directory;
 removing pending stages cannot produce acceptance. Exhaustion's case budget is
 at least 360 seconds. Each stage runs via
@@ -1453,9 +1457,10 @@ Editing, saving and restoration share one action deadline; immediate UI input
 does not imply the debounced durable save has finished. Both wall and monotonic
 clocks must remain ordered and within `interval + stage-timeout` between ticks;
 a tick itself must finish within the action timeout. The interval cannot exceed
-that timeout. Independent acceptance requires at least eighteen hours between
-the first and last successful real ticks, checks every gap, and hashes the tick
-ledger. A long wall-clock gap, missing ticks or an elapsed summary alone fails.
+that timeout. A separately selected long-run observation retains its actual
+duration, checks every gap and hashes the tick ledger. It is not a fixed-duration
+obligation for Issue #94. A long wall-clock gap, missing ticks or an elapsed
+summary alone cannot establish successful observations.
 
 ## Local startup readiness (F-110 / C-001 / C-027)
 

@@ -298,6 +298,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
+- 原生工具可显式选择验证阶段；阶段成功与完整 profile 成功分开记录。Issue #94 的固定长测时长约定已撤销，停止的任务不会因工具 profile 自动恢复，也不改动其他任务的验收范围。关联契约：`C-031`、`C-034`；证据：`tools/native_macos_resilience.py`、`docs/TESTING.md`。
+
 - 原生 case 的内部 `prepare` 接缝在原真实锁、未清理回执及私有进程清单下完成有限登录／power 交接；App 发布前执行最终准入，scenario 用同 birth 三类断言确认接管。登录仅接收一次内存凭据，缺失 SDK lock 字段保持 unknown，仍须本次新鲜桌面图批准；未提供回调的公共 CLI 不变。关联契约：`C-031`；实现／验证：`tools/native_macos_case.py`、`tools/native_macos_case_power.py`、`tools/native_macos_prepare_login.py`、`tools/native_macos_prepare_login_client.py`、`tools/native_macos_prepare_login.swift`、`tools/test_native_macos_case_prepare.py`、`tools/test_native_macos_case_power.py`、`tools/test_native_macos_prepare_login.py`。HOST 回归不代表来宾窗口或恢复验收。
 
 - 显式紧急发布使用 `tools/release.py --urgent-reason <reason>`，保留当前人类授权原因，仅放宽常规批次等待及 TestFlight 日发布频率；原生与交付验收仍独立生效。关联契约：`C-010`；证据：`tools/test_release_urgent.py`、`tools/test_release_ios_urgent.py`。
