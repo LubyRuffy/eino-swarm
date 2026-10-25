@@ -304,6 +304,7 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-430 Build and release paths
 
 - 原生 case 区分真实场景截止与子命令观测超时，保留首错原始流；库存失败仍取消并等待已持有的直接子进程，未知后代继续保留清理拒绝标记与私有数据。草稿验收再次读回持久文本、附件原字节与真实输入框值，不依赖正常保存时已隐藏的提示。关联契约：`C-031`、`C-033`；证据：`tools/native_macos_case.py`、`tools/test_native_macos_case.py`、`tools/test_native_macos_case_timeouts.py`、`tools/native_macos_resilience.py`、`tools/test_native_macos_resilience.py`。
+- SIGKILL 清理回归以本测试真实私有进程库存执行故障和恢复，并在失败时保留 runner 首错与证据；测试命名空间不代替生产完整 collector 验收。关联契约：`C-031`；证据：`tools/test_native_macos_fault_cleanup.py`、`tools/test_native_macos_resilience_fault.py`。
 
 - 原生 helper 每次调用保存独立完整字节收据及执行时间；自动继任验收先观察产品自己的新像素 ready，再激活检查窗口，避免 QA 动作制造恢复成功。关联契约：`C-031`、`C-034`；证据：`tools/native_macos_resilience.py`、`tools/native_macos_resilience_phases.py`、`tools/test_native_macos_native_evidence.py`、`tools/test_native_macos_resilience_phases.py`。
 

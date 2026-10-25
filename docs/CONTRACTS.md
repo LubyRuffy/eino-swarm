@@ -428,6 +428,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 作用范围：原生桌面验收、UTM 来宾、测试数据与证据；关联功能：`F-430`。
 - 契约内容：
   - 只有真实场景截止可标记 `scenario timeout`；运行／清理阶段的进程库存等子命令超时必须保留实际命令、期限和完整原始流，区分缺失／空流，不冒充场景或整轮预算耗尽。首因在清理前留存，后续清理错误不得覆盖；库存失败仍取消并等待本 runner 已持有的直接子进程，防止旧 scenario 继续输入或注入故障。直接子进程退出不能证明所有后代／故障目标已清理；完整库存未知时保持 false latch 和私有数据，拒绝下一例。证据：`tools/native_macos_case.py`、`tools/test_native_macos_case.py`、`tools/test_native_macos_case_timeouts.py`；Fixed，原生进程观测超时与清理。
+  - SIGKILL 故障清理回归使用本测试持有的真实私有 PID 库存，仍执行实际 parser、身份核对、持久故障记录、STOP／KILL／CONT 和退出确认；失败须在临时状态删除前保留 runner 首错及完整证据。此命名空间只能证明清理行为，不接受生产完整 collector；生产全量库存、五秒期限及未知候选拒绝保持独立验证。证据：`tools/test_native_macos_fault_cleanup.py`、`tools/test_native_macos_resilience_fault.py`。
   - 自动恢复验收先读取继任同 session／generation／engine 的新随机像素 ready，再允许 QA 激活以复核窗口；测试激活不得成为产品 ready 的来源。空 AX 列表不能阻断正式启动观测中的激活路径，但未验证的窗口仍不得接受输入。证据：`tools/native_macos_resilience_phases.py`、`tools/test_native_macos_resilience_phases.py`、`tools/test_native_macos_activation.py`、`tools/test_native_macos_smoke.py`；Fixed，用户 2026-10-25 的原生恢复复验。
   - 草稿注入前的保存确认以新鲜持久草稿读回、附件原字节／类型及原生输入值一致为依据；正常保存没有状态文案也可确认。首次匹配后再次读回变化、发送中、附件变化或原生值不一致仍拒绝，不能用旧匹配或可见提示代替持久结果。证据：`tools/native_macos_resilience.py`、`tools/test_native_macos_resilience.py`；Fixed，适配 `C-033` 的正常保存静默界面。
   - 每次 helper 调用在解析或抛错前保存独立完整收据，绑定 case／PID、命令、时间、期限、退出或异常与原 stdout／stderr 字节，区分缺失与空流。后续调用不能覆盖前次；写证失败不能覆盖原调用失败，调用成功而必要收据失败则拒绝继续。证据：`tools/native_macos_resilience.py`、`tools/test_native_macos_native_evidence.py`、`tools/test_native_macos_choose_evidence.py`；Fixed，原生观测首因保留。

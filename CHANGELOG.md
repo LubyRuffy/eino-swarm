@@ -223,6 +223,9 @@ co-working app built on it. The library API is unchanged except where noted
   handshake still gate takeover within the original deadline. An auxiliary
   identity-observation error cannot replace a real child exit or turn user close
   into another recovery attempt.
+- `F-430`, `C-031`: isolate the fault-cleanup regression to its real private
+  process namespace and preserve failure evidence before removing temporary
+  state. Production inventory admission and deadlines remain unchanged.
 - `F-430`, `C-031`: distinguish process-observation command timeouts from the
   actual scenario deadline and retain their original streams before cleanup.
   Cancel owned direct children even when full inventory fails, while retaining

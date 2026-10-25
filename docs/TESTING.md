@@ -504,6 +504,17 @@ The incomplete-cleanup latch and private data remain until a fresh complete
 inventory and fault cleanup prove exit. A failed runner's surviving scenario
 may write later evidence; those files do not make the failed round pass.
 
+The SIGKILL fault-cleanup regression owns a private process namespace. Its
+listing seam queries the real held PIDs with `ps -p`; the actual parser, process
+identities, durable fault receipt, STOP/KILL/CONT and exit checks still run.
+An unrelated full-machine inventory failure cannot prevent this cleanup test
+from reaching its injection. Assertion failures retain the runner's complete
+receipt and evidence before temporary state is removed. This test accepts
+cleanup behavior, not the production collector's completeness: production keeps
+its full inventory, five-second command deadline and unknown-process refusal.
+See `tools/test_native_macos_fault_cleanup.py` and the separate collector tests
+in `tools/test_native_macos_resilience_fault.py`.
+
 Saved-input acceptance reads the persisted draft twice, including unchanged
 attachment bytes and the current native composer value. Healthy-save copy is
 optional; changed text/state/files/native values on the later read still refuse.
