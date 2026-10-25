@@ -172,6 +172,10 @@ application updates do not trigger watchdog resurrection. See
 [recovery diagnostics](API.md#desktop-recovery-diagnostics) and
 [native acceptance](TESTING.md#desktop-renderer-resilience-f-115--c-034).
 
+Successor logs retain focus navigation/dispatch/cancellation stages and one
+`ZWAI_RECOVERY_FOCUS` record with native guard and activation results. Preserve
+these alongside the journal; a successful request does not prove window focus.
+
 Native QA retains each helper's complete byte streams, process identity and timing
 in its private `native-actions/<id>/receipt.json`; a shortened terminal exception
 is not the full diagnostic record. QA activation follows the successor's own new

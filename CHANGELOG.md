@@ -219,6 +219,9 @@ co-working app built on it. The library API is unchanged except where noted
   after navigation while the original shell remains in front. Respect user
   app switches, hidden/minimized windows and cancellation; real nonce pixels
   and the existing ownership handshake still gate takeover.
+- `F-115`, `C-034`, `C-012`: retain bounded successor-focus dispatch and native
+  guard diagnostics with sampled identities and activation results. These logs
+  preserve the existing focus guards, pixel checks and recovery deadlines.
 - `F-430`, `C-031`: distinguish process-observation command timeouts from the
   actual scenario deadline and retain their original streams before cleanup.
   Cancel owned direct children even when full inventory fails, while retaining

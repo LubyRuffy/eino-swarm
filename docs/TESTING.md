@@ -518,6 +518,13 @@ Queued work is refused after cancellation, parent loss or pixel readiness.
 entry and nonce-ready callback; `tools/test_native_macos_recovery_focus.py`
 compiles the actual Objective-C entry with SDK seams. Neither opens a host window. Native fault acceptance still requires fresh product
 nonce-ready/commit evidence before QA may activate the successor.
+The configured logger separately retains the navigation, queued/main-thread and
+cancellation stages. The native entry emits one bounded `ZWAI_RECOVERY_FOCUS`
+JSON record with its guard reason, already-sampled identities and activation
+return value; unsampled facts remain unknown. The actual SDK regression covers
+each refusal and action count. These logs distinguish a missing callback from
+a guard refusal or OS activation request, without accepting any as readiness or
+adding recovery journal/API phases.
 
 The render-probe cover has two independent assertions: a native screen capture
 must omit the nonce, and a WebView snapshot must still match a fresh challenge.

@@ -3,12 +3,17 @@
 package desktop
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image/color"
+	"log/slog"
+	"os"
 	"regexp"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,6 +22,45 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
+
+func TestRecoverySuccessorFocusReportsNavigationAndMainDispatchOnce(t *testing.T) {
+	var pending []func()
+	calls := replaceRecoveryFocus(t, func(fn func()) { pending = append(pending, fn) })
+	var logs bytes.Buffer
+	host := &recoveryTestHost{window: &directoryRecordingWindow{}, windowEvents: make(map[events.WindowEventType]func()), appEvents: make(map[events.ApplicationEventType]func())}
+	controller := startRecoveryForHost(host, Options{URL: "http://127.0.0.1:1234", Logger: slog.New(slog.NewJSONHandler(&logs, nil)), Recovery: &RecoveryOptions{
+		SessionID: "focus-session", Generation: 2, Attempts: 1, Ready: func(context.Context) error { return nil },
+	}})
+	defer controller.shutdown()
+	host.windowEvents[events.Mac.WebViewDidFinishNavigation]()
+	host.windowEvents[events.Mac.WebViewDidFinishNavigation]()
+	if len(pending) != 1 || calls.Load() != 0 {
+		t.Fatal("navigation did not queue exactly one main-thread request")
+	}
+	stages := func() []string {
+		t.Helper()
+		decoder := json.NewDecoder(bytes.NewReader(logs.Bytes()))
+		var stages []string
+		for decoder.More() {
+			var row map[string]any
+			if err := decoder.Decode(&row); err != nil {
+				t.Fatal(err)
+			}
+			if row["msg"] != "desktop recovery focus" || row["session_id"] != "focus-session" || row["generation"] != float64(2) || row["attempt"] != float64(1) || row["shell_pid"] != float64(os.Getpid()) {
+				t.Fatalf("focus observation lost its shell identity: %v", row)
+			}
+			stages = append(stages, row["stage"].(string))
+		}
+		return stages
+	}
+	if got := fmt.Sprint(stages()); got != "[navigation queued]" {
+		t.Fatalf("focus enqueue stages=%s", got)
+	}
+	pending[0]()
+	if got := fmt.Sprint(stages()); got != "[navigation queued main native_returned]" || calls.Load() != 1 {
+		t.Fatalf("focus execution stages=%s calls=%d", got, calls.Load())
+	}
+}
 
 func replaceRecoveryFocus(t *testing.T, dispatch func(func())) *atomic.Int64 {
 	t.Helper()
@@ -141,13 +185,14 @@ func TestQueuedSuccessorFocusRechecksCancellationParentAndReadyOnMainThread(t *t
 	for _, boundary := range []string{"context", "parent", "ready"} {
 		t.Run(boundary, func(t *testing.T) {
 			var pending []func()
+			var logs bytes.Buffer
 			calls := replaceRecoveryFocus(t, func(fn func()) { pending = append(pending, fn) })
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			parentDone := make(chan struct{})
 			expected := errors.New("original ready result")
 			host := &recoveryTestHost{ctx: ctx, window: &directoryRecordingWindow{}, windowEvents: make(map[events.WindowEventType]func()), appEvents: make(map[events.ApplicationEventType]func())}
-			controller := startRecoveryForHost(host, Options{URL: "http://127.0.0.1:1234", Recovery: &RecoveryOptions{
+			controller := startRecoveryForHost(host, Options{URL: "http://127.0.0.1:1234", Logger: slog.New(slog.NewJSONHandler(&logs, nil)), Recovery: &RecoveryOptions{
 				Ready: func(context.Context) error { return expected }, ParentDone: parentDone,
 			}})
 			defer controller.shutdown()
@@ -170,6 +215,13 @@ func TestQueuedSuccessorFocusRechecksCancellationParentAndReadyOnMainThread(t *t
 			if calls.Load() != 0 || len(pending) != 1 {
 				t.Fatal("a stale focus request survived its boundary or retried after refusal")
 			}
+			stage := "context_cancelled"
+			if boundary == "parent" {
+				stage = "parent_closed"
+			}
+			if !strings.Contains(logs.String(), `"stage":"`+stage+`"`) || boundary == "ready" && !strings.Contains(logs.String(), `"stage":"ready_cancelled"`) {
+				t.Fatalf("focus cancellation boundary was not observable: %s", &logs)
+			}
 		})
 	}
 }
@@ -180,9 +232,13 @@ func (recoveryFocusNilNativeWindow) NativeWindow() unsafe.Pointer { return nil }
 
 func TestRecoveryFocusWrapperRefusesNilWindowAndHasNoHostGUI(t *testing.T) {
 	calls := replaceRecoveryFocus(t, func(fn func()) { fn() })
-	requestRecoverySuccessorFocus(context.Background(), nil, nil)
+	var stages []string
+	requestRecoverySuccessorFocus(context.Background(), nil, nil, func(stage string) { stages = append(stages, stage) })
 	if calls.Load() != 0 {
 		t.Fatal("nil window reached the native focus adapter")
+	}
+	if fmt.Sprint(stages) != "[queued main window_missing]" {
+		t.Fatalf("nil native window refusal was not observable: %v", stages)
 	}
 	// The real two-line cgo entry receives a nil pointer; the SDK guards are
 	// exercised separately with fake AppKit objects, never the host NSApplication.

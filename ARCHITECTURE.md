@@ -295,6 +295,10 @@ navigation, an uncommitted successor may request its own window focus once,
 on the native main thread and only while its actual parent still owns the
 foreground. Hidden/minimized windows, cancellation and completed readiness
 prevent that request; it does not acknowledge health or extend the deadline.
+The configured logger records bounded navigation, main-thread dispatch and
+cancellation stages with recovery identity. A single native stderr record
+retains the sampled guard reason and activation result; these records neither
+add journal phases nor establish that the OS actually activated the window.
 The replacement preserves
 engine, turn and worker identities; it cannot perform engine handoff or restart
 task work. Sleep/focus changes reset observation grace, not the failure budget.

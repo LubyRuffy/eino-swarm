@@ -21,16 +21,25 @@ func focusRecoveryWindow(window application.Window) {
 	C.zwaiRecoveryFocus(window.NativeWindow())
 }
 
-func requestRecoverySuccessorFocus(ctx context.Context, window application.Window, parentDone <-chan struct{}) {
+func requestRecoverySuccessorFocus(ctx context.Context, window application.Window, parentDone <-chan struct{}, report func(string)) {
+	report("queued")
 	recoveryFocusOnMain(func() {
-		if window == nil || ctx.Err() != nil {
+		report("main")
+		if window == nil {
+			report("window_missing")
+			return
+		}
+		if ctx.Err() != nil {
+			report("context_cancelled")
 			return
 		}
 		select {
 		case <-parentDone:
+			report("parent_closed")
 			return
 		default:
 		}
 		recoveryFocusNative(window)
+		report("native_returned")
 	})
 }
