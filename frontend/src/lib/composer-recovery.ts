@@ -18,9 +18,10 @@ export function explicitComposerRecovery(search: string): { threadId?: string; p
 export function installComposerRecoveryAttribution() {
   let draftUnsubscribe: (() => void) | undefined
   let key = ""
+  let location = ""
   const publish = () => {
     const state = useApp.getState()
-    const projectId = state.threads.find((thread) => thread.id === state.activeId)?.project_id || useProjects.getState().selectedId
+    const projectId = state.activeId ? state.threads.find((thread) => thread.id === state.activeId)?.project_id : useProjects.getState().selectedId
     const currentKey = composerDraftKey(state.activeId, projectId)
     if (key !== currentKey) {
       draftUnsubscribe?.()
@@ -28,14 +29,21 @@ export function installComposerRecoveryAttribution() {
       draftUnsubscribe = composerDraftSession(key).subscribe(publish)
     }
     const draft = composerDraftSession(key).getSnapshot()
+    const turnId = state.status.turn_id || state.transcript.turns.at(-1)?.id || state.turns.at(-1)?.id
     ;(window as Window & { __zwaiRecoveryAttribution?: object }).__zwaiRecoveryAttribution = {
       thread_id: state.activeId,
-      turn_id: state.status.turn_id || state.transcript.turns.at(-1)?.id || state.turns.at(-1)?.id,
+      turn_id: turnId,
       project_id: projectId,
       draft_key: key,
       draft_saved: draft.saved,
       draft_state: draft.draft.state,
       draft_revision: draft.draft.revision,
+    }
+    const current = JSON.stringify([state.activeId, turnId, projectId, key])
+    if (current !== location) {
+      location = current
+      // Native reads the published scope now; this event never proves paint health.
+      window.dispatchEvent(new Event("zwai:recovery-location"))
     }
   }
   const app = useApp.subscribe(publish)

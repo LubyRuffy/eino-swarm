@@ -45,9 +45,31 @@ func (h *recoveryTestHost) Probe(script string) {
 	}
 }
 func (*recoveryTestHost) Snapshot(context.Context) ([]byte, error) { return nil, nil }
-func (*recoveryTestHost) Reload()                                  {}
+func (*recoveryTestHost) Reload(string)                            {}
 func (*recoveryTestHost) Quit()                                    {}
 func (*recoveryTestHost) ShowError()                               {}
+
+type recoveryNavigationWindow struct {
+	application.Window
+	urls    []string
+	reloads int
+}
+
+func (w *recoveryNavigationWindow) SetURL(url string) application.Window {
+	w.urls = append(w.urls, url)
+	return w
+}
+func (w *recoveryNavigationWindow) Reload() { w.reloads++ }
+
+func TestRecoveryNavigatesOnceToThePreservedLocation(t *testing.T) {
+	window := &recoveryNavigationWindow{}
+	host := wailsRecoveryHost{window: window}
+	url := "http://127.0.0.1:1234?shell=desktop&recovery_thread=th_selected"
+	host.Reload(url)
+	if len(window.urls) != 1 || window.urls[0] != url || window.reloads != 0 {
+		t.Fatalf("recovery issued stale or duplicate navigation: %+v", window)
+	}
+}
 
 func TestNativeRecoveryLifecycleWiringHasNoHostGUIRequirement(t *testing.T) {
 	if !rendererRecoveryAvailable() {

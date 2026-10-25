@@ -17,7 +17,8 @@ import uuid
 
 PHASES = ("baseline", "renderer", "gpu", "exhaustion", "sleepwake", "soak")
 DEPENDENCIES = ("native_macos_resilience_background.py", "native_macos_resilience_worker.py",
-                "native_macos_resilience_fault.py", "native_macos_resilience_phases.py", "native_macos_resilience_soak.py")
+                "native_macos_resilience_fault.py", "native_macos_resilience_phases.py", "native_macos_resilience_soak.py",
+                "native_macos_input_evidence.py")
 
 
 def validate_budget(cleanup, budget):
@@ -159,7 +160,7 @@ def execute(args, action, *, admission=None):
         lock.close()
 
 
-def launch(args, script):
+def launch(args, script, *, admission=None):
     root = args.evidence.resolve()
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     launch_id = uuid.uuid4().hex
@@ -171,6 +172,8 @@ def launch(args, script):
             "--interval", str(args.interval), "--stage-timeout", str(args.stage_timeout),
             "--phases", *getattr(args, "phases", PHASES), "--launch-id", launch_id]
     with (root / "driver.stdout.log").open("xb") as out, (root / "driver.stderr.log").open("xb") as err:
+        if admission is not None:
+            admission(args)
         process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=out, stderr=err, start_new_session=True)
     row = dict(launch_id=launch_id, process=identity(process.pid), detached=True, launched_at=time.time())
     write_json(root / "launch.json", row)

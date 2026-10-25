@@ -91,7 +91,7 @@ func TestEveryNonceCellNeedsEnoughOpaqueMatchingPixels(t *testing.T) {
 }
 
 func TestNativePaintProbeEncodesTheWholeNonceWithoutSVG(t *testing.T) {
-	script := recoveryProbeScript("http://127.0.0.1:1234", "session", 2, "a53c9e1172d4b608", color.NRGBA{R: 40, G: 60, B: 80}, color.NRGBA{R: 215, G: 195, B: 175})
+	script := recoveryProbeScript("http://127.0.0.1:1234", "session", 2, "a53c9e1172d4b608", color.NRGBA{R: 40, G: 60, B: 80}, color.NRGBA{R: 215, G: 195, B: 175}, 0)
 	for _, want := range []string{"repeat(8,2px)", "width:16px;height:16px", "i<64", "7-(i&7)", "requestAnimationFrame", "a53c9e1172d4b608"} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("probe omits %q", want)

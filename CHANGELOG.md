@@ -59,6 +59,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430`, `C-010`: align the phone package and derived development iOS settings
+  with the allocated, unpublished `0.1.38` source batch. TestFlight archives keep
+  their independently selected marketing version; publication remains gated.
+
 - `F-110`, `C-001`, `C-027`: running and parked startup recovery failures now
   both produce failed Trace receipts and a typed `RestoreFailures` aggregate,
   while independent conversations continue. `ResumeOrphanedTurns` returns its
@@ -87,6 +91,19 @@ co-working app built on it. The library API is unchanged except where noted
   close their own lock. Two-process races and real filesystem failures regress
   this internal boundary; default full6 launch/resume policy is unchanged
   (Issue #94).
+- `F-430`, `C-031`: expose an optional internal launch check after both driver
+  logs open and immediately before publication, preserving default CLI and
+  run/resume behavior. Callback refusal retains the claim and original failure
+  without creating a driver. Native QA now retains actual before/after/sent
+  HTTP input bodies and separate HTTP MIME/metadata; offline stage acceptance
+  rereads them, validates exact bytes and decoded image dimensions, and binds
+  the evidence validator in the runtime fingerprint. Old case evidence remains
+  unchanged and these HOST checks do not accept native recovery (Issue #94).
+- `F-430`, `C-031`: add an optional internal after-wake callback after the
+  original wake log, sharing the original cycle Deadline with recovery checks
+  and slow I/O. The fixed 8-second snapshot leaf, pmset commands, cycle/whole-case
+  budgets and wake-event cleanup are unchanged. This exposes a QA seam without
+  claiming actor integration or native sleep/wake acceptance (Issue #94).
 
 - `F-430`, `C-031`: native QA file-panel traversal requests a fixed five-attribute
   batch per distinct scanned node, retaining complete graph/unique Open checks
@@ -188,6 +205,20 @@ co-working app built on it. The library API is unchanged except where noted
   and the existing sealed-frame limit. Reconnecting the same device cancels
   its previous watch/catalog handler; Stop and Reload join owned handlers and
   refuse stale connection callbacks.
+
+- `F-115`, `C-034`: retain the latest conversation/project/draft location through
+  an independent metadata-only notification instead of waiting for the next
+  five-second paint probe. Reload keeps that scope in the original native URL;
+  bootstrap Home and stale paint attribution cannot replace a pending restore
+  target. A matching location still requires fresh challenge pixels and does
+  not extend recovery deadlines. This is an unreleased implementation correction;
+  software checks do not establish formal native recovery or publication
+  (Issue #110).
+
+- `F-430`, `C-010`: Android publication reuses the exact device-accepted APK
+  bound to its batch/version/source/name/SHA-256 receipt. Missing, changed or
+  conflicting accepted packages stop upload instead of rebuilding them under
+  old acceptance evidence; public-asset retries remain immutable (Issue #109).
 
 - `F-110`, `F-130`, `C-002`, `C-027`: reuse the startup recovery snapshot
   for both manager correction allowances instead of loading the full turn log

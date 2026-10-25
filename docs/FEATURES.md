@@ -60,6 +60,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：在 macOS WebContent 活挂、绘图失效或白屏时恢复可用窗口；使用者：桌面用户；入口：`zwai desktop` 的原生恢复控制循环；输入：同源、主 frame、当前 challenge 响应与实际截图像素；输出：一次重载，必要时附着原引擎的继任窗口；前置条件：引擎租约可验证、恢复副本与诊断目录可写；失败表现：有界尝试耗尽后的原生错误提示及保留诊断；关联契约：`C-034`, `C-001`, `C-012`, `C-033`；实现证据：`internal/desktop/recovery.go`, `internal/desktop/recovery_state.go`, `internal/desktop/recovery_snapshot_darwin.m`, `cmd/zwai/desktop_recovery_darwin.go`, `internal/desktop/recovery_test.go`, `cmd/zwai/desktop_recovery_test.go`。
 - 健康条件包含本次随机探针的真实像素；HTTP、JS 响应或动画帧不单独算绘制成功。失焦、最小化、睡眠与唤醒有检测暂停／宽限。
 - 继任窗口经私有继承管道与两阶段确认接管，沿用数据目录、离线模式和原引擎 PID／URL／租约，恢复会话／项目与草稿位置；不调用引擎替换或重新执行任务。
+- 会话／回合／项目／草稿 key 变化时，前端先发布当前归属，再同步发出不含正文的内部 `zwai:recovery-location` 通知；原生桥独立保存位置，不等待五秒绘制探针。一次 Reload 在原 URL 更新恢复作用域，保留 PID／presence 等字段；初始化 Home 不覆盖尚未匹配的恢复目标，匹配后仍需新挑战的真实像素。位置通知不确认健康或延长任何恢复总期限。证据：`frontend/src/lib/composer-recovery.ts`、`frontend/src/lib/composer-recovery.test.ts`、`frontend/e2e/desktop-recovery.spec.ts`、`internal/desktop/recovery_location.go`、`internal/desktop/recovery_location_test.go`、`internal/desktop/recovery_location_runtime_test.go`、`internal/desktop/recovery_location_script_test.go`；Fixed `C-034`，Issue #110。
 - 原生验收在草稿检查退出时保留已有 API／原生观察的摘要及逐项判定，不复制正文、不追加界面操作或放宽原断言；先前失败原因未捕获时仍标为未知。证据：`tools/native_macos_resilience.py`, `tools/test_native_macos_resilience.py`, `docs/TESTING.md`。
 - 原生 QA 的 PNG 输入使用一次同进程、前台、唯一启用的 Edit→Paste 菜单动作，先校验剪贴板写入与原 bytes／计数，并保留传输回执；菜单动作回执不替代完整草稿保存与原生 ACK。头less 测试只运行真实 helper 的纯校验，界面副作用仅在隔离来宾验收。证据：`tools/native_macos_resilience_ax.m`, `tools/test_native_macos_paste.py`, `docs/TESTING.md`。
 
@@ -296,7 +297,11 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
+- 已验收 Android APK 的统一发布恢复：批次 `release_android_validation` 绑定通过状态、版本、完整源码 SHA、附件名与 SHA-256；上传前核对并直接复用同一 APK，不重新构建。缺文件、变更、非法回执或 ready 状态缺回执拒绝上传，已有远端附件仍按 digest 恢复。入口：`tools/release.py --platform android`；关联契约：`C-010`；实现／验证：`tools/release.py`、`tools/test_release_android_retained.py`、`docs/RELEASE.md`；来源：Issue #109。
+
 - 原生 campaign 控制模块为内部调用方提供可选持锁 admission：真实取得本 campaign 的 `driver.lock` 后、首次写 owner 前运行；检查失败必须抛出异常，返回值不参与准入判定，拒绝不调用场景或改写 owner／terminal，所有退出路径关闭本次锁。旧记录拒绝策略只约束显式使用该 hook 的调用方，默认 full6 launch／resume 行为不变。关联契约：`C-031`；实现／验证：`tools/native_macos_resilience_control.py`、`tools/test_native_macos_driver_admission.py`、`tools/test_native_macos_resilience_control.py`；来源：Issue #94。
+- 内部 launch 可在双日志打开后、真实发布 driver 前执行一次 raising admission；实际 main 仅向 launch 传递，默认 CLI 和 run／resume 不变。拒绝保留 claim／日志、不发布进程，不用先前外层视觉检查掩盖最后 I/O 的过期。campaign 还保留 before／after／实际 sent 下载原体与原 HTTP MIME／元数据，accepted_stage 离线重读核验原字节、同 case 作用域与解压图像尺寸；输入证据模块也受 fingerprint 约束。这些 HOST 适配测试不等于原生恢复或 full6 通过。关联契约：`C-031`；实现／验证：`tools/native_macos_resilience_control.py`、`tools/native_macos_input_evidence.py`、`tools/test_native_macos_driver_admission.py`、`tools/test_native_macos_input_evidence.py`；来源：Issue #94。
+- 内部 sleepwake 可在原 wake 日志保存后执行可选 `after_wake(context, cycle, deadline)`，与随后恢复检查共用原周期 Deadline；慢 I/O 不累计新预算，snapshot 固定 8 秒叶边界和 pmset／周期数／清理不变。默认无 hook，不据此声称 actor 已接入或原生通过。关联契约：`C-031`；实现／验证：`tools/native_macos_resilience.py`、`tools/test_native_macos_sleepwake.py`；来源：Issue #94。
 
 - 原生恢复的每次 `verify_draft` 草稿恢复检查保留首个不成立观察和最后观察，区分 false、未知错误及未读取；只记录原调用已有值的类型、摘要和匹配判定，不复制正文或增加输入／请求。退出采证不得覆盖原异常，成功缺必要收据仍拒绝。关联契约：`C-031`、`C-034`；实现／验证：`tools/native_macos_resilience.py`、`tools/native_macos_resilience_phases.py`、`tools/test_native_macos_restore_observation.py`；来源：Issue #94。
 

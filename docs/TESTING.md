@@ -892,6 +892,41 @@ hold an actual HTTP request, close a full bounded queue with concurrent late
 producers, and require cancellation plus local draining before return. The
 original shutdown-delay failure and corrected repeated race runs are retained.
 
+Issue #110 separates selected-location attribution from paint health.
+`frontend/src/lib/composer-recovery.test.ts` checks synchronous publication before
+the next paint tick, no content payload, tuple-only notifications, real
+`openThread` transitions and subscription cleanup. The emitted native script is
+executed by `internal/desktop/recovery_location_script_test.go` in Node against
+the Wails/WebKit/WebView message bridges: initial attribution, event delivery,
+same-session listener reuse and changed-session/generation listener replacement
+are asserted without running animation frames to manufacture health.
+`recovery_location_test.go` rejects wrong origin metadata, frame,
+session/generation, type and size, and verifies that Reload preserves the original
+URL's non-recovery fields. `recovery_location_runtime_test.go` drives the actual
+controller through selection before the next paint, bootstrap Home, stale
+challenge/capture, background selection and unchanged outer deadlines. A restored
+thread's project is derived metadata; thread ID and draft key determine its route,
+so a project field cannot block restoration of that same thread.
+
+The document-epoch regressions also cover the same session/generation across
+Reload: native increments the epoch before navigation, and the emitted probe
+pins the first same-origin document stamp even before root mount. A later probe
+cannot relabel the old JS world with the new epoch. Exercise a new global for
+the new document, reject an old queued location after Reload, and verify that
+neither a changed URL nor a matching query releases the expected-scope guard.
+Fresh matching-document pixels remain necessary; this internal stamp introduces
+no public diagnostic phase or additional recovery deadline.
+
+`frontend/e2e/desktop-recovery.spec.ts` switches real conversations and opens an
+explicit recovery URL, checking the selected conversation and retained draft
+without selecting it manually after navigation. This covers the browser boot
+route, not native `SetURL`, WebContent fault injection or real WKWebView pixels.
+Software results do not accept or publish the frozen formal installer. Native
+acceptance must fault after a recently acknowledged selection, then verify
+automatic original-scope restoration, native draft/attachment values, original
+HTTP input bytes and task identities, with no manual selection or Send replay.
+Keep the original failed case and its exact package identity (Issue #110).
+
 `internal/store/composer_draft_test.go` and the HTTP tests in
 `internal/server/composer_draft*_test.go` verify original bytes and decoded image
 dimensions after reload, CAS conflicts/tombstones, owner deletion, upload failure
@@ -1026,8 +1061,47 @@ broken links without publishing a case. Independent file descriptors prove
 lock ownership during admission and release after refusal; default returns,
 interrupts, busy locks and real owner/terminal EISDIR failures are also checked.
 These are HOST metadata/ownership tests, not native behavior acceptance.
+`control.launch(args, script, *, admission=None)` also offers a single raising
+check after both driver log files open and immediately before `Popen`.
+`main(*, launch_admission=None)` passes it only to launch; the default CLI and
+existing run/resume paths gain no new gate. Rejection retains the exclusive
+claim/logs, launches no driver and creates no fake owner/terminal. Tests use the
+actual main/parser/control, real log I/O and bounded owned inert Python children;
+late log opens must refuse before publication and all test children are reaped.
+The caller keeps its original absolute visual/local deadline; return values do
+not authorize a launch and earlier outer checks do not cover the final I/O gap.
+These hooks add no CLI flags or automatic retry.
+
+`sleepwake(..., *, after_wake=None)` offers a separate raising hook after the
+original wake log is saved. It receives `(context, cycle, deadline)`, with a
+zero-based cycle and the same Deadline used by that wake wait and subsequent
+draft verification. Log/progress I/O and the callback consume that original
+budget; slow I/O cannot start a new timeout. The snapshot adapter still has its
+fixed 8-second leaf limit, with the cycle deadline checked around it. Default
+pmset commands, three-cycle policy, whole-case budgets and the owned wake-event
+cleanup stay unchanged. `test_native_macos_sleepwake.py` exercises the actual
+scenario/sleepwake path through explicit OS and business-I/O seams. This hook
+does not establish that an actor is connected or accept native sleep/wake.
+
+Snapshots without an evidence label preserve the original request/size/hash
+checks and primary-error order; only an explicit label enables the added MIME
+and raw-body capture. Both before/after revisions must be exact integers,
+not JSON booleans or floats.
+
+Campaign input bodies are recorded by `native_macos_input_evidence.py` beneath
+`http-inputs/{before,after,sent-<turn>}/{index}.body`, with separate `receipt.json`
+containing the original HTTP Content-Type, parsed MIME, metadata and body
+hash/size/path. Ordinary file metadata MIME need not equal ServeContent's HTTP
+sniff result. Image bodies must exactly match the decodable fixture and be
+decompressed to verify dimensions. `accepted_stage` reopens these original
+bodies, checks before/after/sent equality, scope/revision and HTTP/path identity,
+and refuses missing, altered, cross-case or redirected evidence. Draft image
+IDs are not required to equal permanent turn-image IDs. The module is part of
+the runtime fingerprint; old manifests lacking it refuse rather than silently
+upgrading old evidence. `test_native_macos_input_evidence.py` uses actual
+loopback HTTP and offline revalidation; this is not a native package acceptance.
 The frozen manifest includes the package, source, executable, runner, native
-helper and all scenario-module hashes. Stages recheck these inputs and their
+helper and all scenario/input-evidence module hashes. Stages recheck these inputs and their
 whole-case budgets, including cleanup; a zero scenario exit with an exceeded
 budget or missing cleanup receipt is not accepted. The long soak explicitly
 receives a longer budget rather than extending the runner's one-minute default.
@@ -4470,6 +4544,19 @@ second unreleased fix. Current source requires no additional layout changes;
 the added tests preserve that evidence without changing the frozen v0.1.20 bundle.
 
 ## Unified release regression checks
+
+`python3 -m unittest discover -s tools -p 'test_release_android_retained.py' -v`
+runs the actual `github_platform` with temporary installer/ledger files and
+substituted external commands. It first reproduces an accepted Android APK
+being rebuilt, then verifies exact-byte reuse, every receipt identity/status,
+missing/changed/non-file installers, malformed or missing ready receipts,
+historical batch recovery, source drift and unchanged public-asset digest
+retries. `tools/test_release_public_recovery.py` also runs actual `execute`
+and `source_preflight` against a temporary bare Git remote and public tag:
+a conflicting same-version batch must not fall back to a new APK build even
+when the tag matches. The ordinary unaccepted pending build path remains covered. No test
+builds an APK, installs it, contacts GitHub or uploads; actual device acceptance
+and signature/upgrade checks remain separate.
 
 `python3 -m unittest discover -s tools -p 'test_release_public_recovery.py'`
 uses real temporary local Git remotes and an offline Apple adapter to reproduce

@@ -20,6 +20,18 @@ version, source SHA, asset name and SHA-256, keep that accepted ZIP in `bin/`.
 The release entry verifies and uploads that file without rebuilding it; a missing
 or changed ZIP stops macOS publication. An allocated batch marked
 `ready_for_publication` also requires this exact receipt.
+For Android, record the exact device-accepted APK in the allocated batch's
+`release_android_validation` object: `status: "passed"`, `version`, full
+`source_sha`, `asset_name` and `asset_sha256`. Keep that file at
+`bin/zwai-x.y.z-android.apk`. Publication verifies all five fields and the batch source SHA, then reuses
+those bytes without running Make. A public tag does not hide a conflicting
+same-version batch receipt. A present malformed/conflicting receipt, a
+missing/changed file, or batch `android: "ready_for_publication"` without a
+matching receipt refuses Android upload. The receipt records prior installation,
+upgrade/signature and behavior acceptance; the hash check does not perform or
+replace those checks. A still-pending batch without this receipt retains the
+existing build entry. Existing public APKs retain their remote-digest retry rule.
+
 Platform errors are printed immediately; independent platforms continue. The command
 exits non-zero if a required platform fails or is waiting. No version is incremented
 inside publication. Allocate/commit one version after more than three main

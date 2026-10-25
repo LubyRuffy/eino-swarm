@@ -62,7 +62,11 @@ uploads, downloads and the live event stream have exactly one implementation.
 - **The Mac window has bounded rendering recovery.** An independent native
   controller checks actual painted pixels, tries one reload, then replaces the
   window on the same engine if needed. Background work continues; the restored
-  window returns to its conversation and saved draft. Repeated failures stop
+  window returns to its conversation and saved draft. Conversation/project
+  selection reaches that controller independently of the five-second paint
+  probe, so a failure immediately after navigation retains the selected scope.
+  Reload and replacement keep that scope while the new page initializes;
+  selection metadata alone never proves that the page painted. Repeated failures stop
   with a native error instead of an endless restart loop. A system WebKit fault
   can still occur; successful recovery is not evidence that the system fault has
   been removed. See [recovery diagnostics](docs/API.md#desktop-recovery-diagnostics).

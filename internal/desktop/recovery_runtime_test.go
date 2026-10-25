@@ -42,7 +42,7 @@ func newRecoveryHarness(t *testing.T, attempts int, configure ...func(*recoveryH
 		now := time.Unix(0, h.clock.Load())
 		initializedOnce.Do(func() { close(initialized) })
 		return now
-	}, opts: RecoveryOptions{SessionID: "session", Generation: 2, Attempts: attempts, Diagnostic: func(event RecoveryDiagnostic) { h.phases <- event }}, reload: func() { h.actions <- "reload" }, quit: func() { h.actions <- "quit" }, showError: func() { h.actions <- "error" }}
+	}, opts: RecoveryOptions{SessionID: "session", Generation: 2, Attempts: attempts, Diagnostic: func(event RecoveryDiagnostic) { h.phases <- event }}, reload: func(string) { h.actions <- "reload" }, quit: func() { h.actions <- "quit" }, showError: func() { h.actions <- "error" }}
 	h.c.probe = func(script string) {
 		if !h.responsive.Load() {
 			return

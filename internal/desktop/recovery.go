@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"image/color"
 	"log/slog"
@@ -83,6 +82,7 @@ type recoveryController struct {
 	window          application.Window
 	opts            RecoveryOptions
 	origin          string
+	windowURL       string
 	in              chan recoveryInput
 	cancel          context.CancelFunc
 	done            <-chan struct{}
@@ -90,7 +90,7 @@ type recoveryController struct {
 	initialActivity recoveryWindowActivity
 	probe           func(string)
 	capture         func(context.Context) ([]byte, error)
-	reload          func()
+	reload          func(string)
 	quit            func()
 	showError       func()
 	now             func() time.Time
@@ -110,7 +110,7 @@ func startRecoveryForHost(host recoveryHost, opts Options) *recoveryController {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(host.Context())
-	c := &recoveryController{window: host.Window(), opts: *opts.Recovery, origin: u.Scheme + "://" + u.Host, in: make(chan recoveryInput, 32), cancel: cancel}
+	c := &recoveryController{window: host.Window(), opts: *opts.Recovery, origin: u.Scheme + "://" + u.Host, windowURL: opts.URL, in: make(chan recoveryInput, 32), cancel: cancel}
 	c.probe = host.Probe
 	c.capture = host.Snapshot
 	c.reload = host.Reload
@@ -197,7 +197,11 @@ func (c *recoveryController) run(ctx context.Context) {
 	lastTick := now
 	var challenge string
 	var first, second color.NRGBA
-	var threadID, turnID, projectID, draftKey string
+	location := recoveryLocationFromURL(c.windowURL)
+	expected := location
+	awaitingLocation := expected != (recoveryLocation{})
+	independentLocation := false
+	document := 0
 	var snapshotCancel context.CancelFunc
 	defer func() {
 		if snapshotCancel != nil {
@@ -210,7 +214,7 @@ func (c *recoveryController) run(ctx context.Context) {
 	snapshotPending := false
 	report := func(phase, reason string) {
 		if c.opts.Diagnostic != nil {
-			c.opts.Diagnostic(RecoveryDiagnostic{SessionID: c.opts.SessionID, Generation: c.opts.Generation, Attempt: state.attempts, ShellPID: os.Getpid(), ThreadID: threadID, TurnID: turnID, Phase: phase, Reason: reason, At: time.Now().UTC()})
+			c.opts.Diagnostic(RecoveryDiagnostic{SessionID: c.opts.SessionID, Generation: c.opts.Generation, Attempt: state.attempts, ShellPID: os.Getpid(), ThreadID: location.ThreadID, TurnID: location.TurnID, Phase: phase, Reason: reason, At: time.Now().UTC()})
 		}
 	}
 	for {
@@ -251,6 +255,24 @@ func (c *recoveryController) run(ctx context.Context) {
 				}
 				continue
 			}
+			if next, valid := validRecoveryLocation(c.origin, c.opts.SessionID, c.opts.Generation, document, input.message, input.origin); valid {
+				if awaitingLocation && !expected.matchesRestored(next) {
+					continue
+				}
+				location, independentLocation = next, true
+				if awaitingLocation {
+					// A pre-restore capture cannot acknowledge the restored document.
+					// Only the per-probe work is discarded; outer deadlines stay fixed.
+					awaitingLocation = false
+					challenge = ""
+					if snapshotCancel != nil {
+						snapshotCancel()
+					}
+					snapshotPending = false
+					state.pendingUntil, state.nextProbe = time.Time{}, now
+				}
+				continue
+			}
 			if input.probe != "" {
 				if input.probe != challenge || !state.active {
 					continue
@@ -276,23 +298,11 @@ func (c *recoveryController) run(ctx context.Context) {
 				}
 				continue
 			}
-			if snapshotPending || !state.active || !validRecoveryMessage(c.origin, c.opts.SessionID, c.opts.Generation, challenge, input.message, input.origin) {
+			if awaitingLocation || snapshotPending || !state.active || !validRecoveryMessage(c.origin, c.opts.SessionID, c.opts.Generation, challenge, input.message, input.origin) {
 				continue
 			}
-			var attribution struct {
-				ThreadID  string `json:"thread_id"`
-				TurnID    string `json:"turn_id"`
-				ProjectID string `json:"project_id"`
-				DraftKey  string `json:"draft_key"`
-			}
-			if json.Unmarshal([]byte(input.message), &attribution) == nil && len(attribution.ThreadID) <= 128 && len(attribution.TurnID) <= 128 {
-				threadID, turnID = attribution.ThreadID, attribution.TurnID
-				if len(attribution.ProjectID) <= 128 {
-					projectID = attribution.ProjectID
-				}
-				if len(attribution.DraftKey) <= 256 {
-					draftKey = attribution.DraftKey
-				}
+			if attribution, valid := readRecoveryLocation(input.message); valid && !independentLocation {
+				location = attribution
 			}
 			snapshotPending = true
 			snapshotCtx, cancelSnapshot := context.WithDeadline(ctx, state.pendingUntil)
@@ -339,7 +349,7 @@ func (c *recoveryController) run(ctx context.Context) {
 				challenge = hex.EncodeToString(random[:])
 				first = color.NRGBA{R: 40 + random[0]%64, G: 40 + random[1]%64, B: 40 + random[2]%64, A: 255}
 				second = color.NRGBA{R: 255 - first.R, G: 255 - first.G, B: 255 - first.B, A: 255}
-				c.probe(recoveryProbeScript(c.origin, c.opts.SessionID, c.opts.Generation, challenge, first, second))
+				c.probe(recoveryProbeScript(c.origin, c.opts.SessionID, c.opts.Generation, challenge, first, second, document))
 			case recoveryReload:
 				report("reloading", "renderer_unresponsive")
 				challenge = ""
@@ -347,7 +357,10 @@ func (c *recoveryController) run(ctx context.Context) {
 					snapshotCancel()
 				}
 				snapshotPending = false
-				c.reload()
+				document++
+				expected = location
+				awaitingLocation = expected != (recoveryLocation{})
+				c.reload(location.windowURL(c.windowURL))
 			case recoveryReplace:
 				report("replacing", "reload_did_not_restore_renderer")
 				challenge = ""
@@ -359,7 +372,7 @@ func (c *recoveryController) run(ctx context.Context) {
 					state.replacementFailed(now)
 					continue
 				}
-				if err := c.opts.Relaunch(ctx, RecoveryAttempt{Generation: c.opts.Generation + 1, Attempts: state.attempts, ThreadID: threadID, ProjectID: projectID, DraftKey: draftKey}); err != nil {
+				if err := c.opts.Relaunch(ctx, RecoveryAttempt{Generation: c.opts.Generation + 1, Attempts: state.attempts, ThreadID: location.ThreadID, ProjectID: location.ProjectID, DraftKey: location.DraftKey}); err != nil {
 					report("replacement_failed", err.Error())
 					if errors.Is(err, ErrRecoveryCancelled) {
 						c.quit()

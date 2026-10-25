@@ -63,6 +63,10 @@ E2E suite.
    `internal/engine` shows the intended grain.
 6. **Docs are part of the change.** Code without documentation does not ship. See
    below.
+   Publishing an accepted installer must preserve its exact bytes: Android's
+   `release_android_validation` binds version/source/name/SHA-256 and skips the
+   rebuild. Regress the actual publisher with mismatched/missing receipts and
+   files; a repeated build alone cannot inherit native acceptance.
 
 ## Testing rules
 

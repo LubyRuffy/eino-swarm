@@ -134,7 +134,7 @@ func TestSnapshotMustContainBothCurrentChallengeColours(t *testing.T) {
 	if snapshotMatchesProbe(pixels, color.NRGBA{R: 99, G: 88, B: 77, A: 255}, second, challenge) || snapshotMatchesProbe(nil, first, second, challenge) {
 		t.Fatal("wrong challenge or missing pixels passed rendering acceptance")
 	}
-	if script := recoveryProbeScript("http://127.0.0.1:1234", "session", 2, challenge, first, second); !strings.Contains(script, "requestAnimationFrame") || !strings.Contains(script, "location.origin") {
+	if script := recoveryProbeScript("http://127.0.0.1:1234", "session", 2, challenge, first, second, 0); !strings.Contains(script, "requestAnimationFrame") || !strings.Contains(script, "location.origin") {
 		t.Fatal("probe lost its asynchronous paint or receiving-origin guard")
 	}
 }
