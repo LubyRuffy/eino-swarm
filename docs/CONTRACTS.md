@@ -9,11 +9,13 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 引用校验：保存事务必须确认既存附件 bytes 仍存在且长度与 manifest 一致；缺失或长度变化拒绝保存，正文、revision 和同批新增 bytes 全部回滚。长度校验不宣称能检测等长存储损坏。
 - 允许行为：保留未确认输入、显式解决冲突、发送结果未知时先检查对话；禁止行为：保存失败仍称已保存、发送 ACK 前清稿、自动重发未知结果、按文字相似度推断发送成功或跨 scope 取附件。
 - 失败语义：恢复、保存、上传、发送或 CAS 清理失败必须可见并保留当前内容。只能保证已收到持久化 ACK 的版本可恢复；最后尚未 ACK 的修改不得伪称已落盘。`sending` 在重开后按结果未知处理。首发复制保留源稿直到发送确认，旧原生归属也能找到完整副本。
+- 提示边界：自动保存继续执行；无异常的加载、保存中、已保存和发送中不渲染草稿状态区或“删除草稿”按钮，不保留占位。仅恢复／保存失败、版本冲突或发送状态未知时显示提示和现有处理操作；异常解决后隐藏。状态区隐藏不代表保存已确认。
+- 异常操作：输入及发送因草稿异常禁用时，父容器不得通过继承的 `aria-disabled` 同时禁用重试、版本选择或继续编辑；只读视图仍保持禁用。
 - 不变量：发送固定目标会话；每个成功 ACK 只清对应 revision，tombstone 防止旧保存复活。scope 所属会话／项目必须在保存事务内存在；删除所属对象同时清理其草稿与 bytes，迟到保存不得复活它。
 - 文本动作：PC `/goal`、`/plan` 不携带附件或引用；含这些内容的草稿必须在发送前可见拒绝并完整保留，不能用仅文本动作的 ACK 清除整份快照。
 - 缓存生命周期：无订阅、操作或待写入且已确认保存的闲置 scope 释放 File 缓存和预览 URL，返回时从 SQLite 重读；未保存、冲突或发送中的唯一副本不能被淘汰。首发迁移和发送必须持有跨导航所有权，不能依赖组件及时挂载。
 - 边界条件：正文与引用合计 1 MiB；32 个附件、总量 256 MiB；图片最多 8 张且每张最多 8 MiB。原始 bytes、MIME、名称、最后修改时间保留；blob URL 不持久化。附件下载强制 attachment、nosniff、no-store。工作区上传原有单文件限制不变。
-- 证据：实现 `internal/store/composer_draft.go`, `internal/server/composer_draft.go`, `frontend/src/lib/composer-draft.ts`, `frontend/src/lib/use-composer-draft.ts`, `frontend/src/components/app/composer.tsx`, `frontend/src/store/app.ts`；测试 `internal/store/composer_draft_test.go`, `internal/server/composer_draft_test.go`, `frontend/src/lib/composer-draft.test.ts`, `frontend/src/components/app/composer-draft.test.tsx`。
+- 证据：实现 `internal/store/composer_draft.go`, `internal/server/composer_draft.go`, `frontend/src/lib/composer-draft.ts`, `frontend/src/lib/use-composer-draft.ts`, `frontend/src/components/app/composer.tsx`, `frontend/src/components/app/composer-draft-status.tsx`, `frontend/src/store/app.ts`；测试 `internal/store/composer_draft_test.go`, `internal/server/composer_draft_test.go`, `frontend/src/lib/composer-draft.test.ts`, `frontend/src/components/app/composer-draft.test.tsx`, `frontend/src/components/app/composer-draft-status.test.tsx`, `frontend/e2e/composer-draft.spec.ts`。
 - 变更规则：同步 API、DATA_MODEL、README、FEATURES、TESTING、CHANGELOG；回归 ACK 丢失、跨 scope／首发迁移、附件逐字节、可解码图片、CAS 和实际原生恢复。
 - 缓存证据：`frontend/src/lib/composer-draft-cache.test.ts`、`frontend/e2e/composer-draft.spec.ts`。
 - 来源：GitHub Issue #94；Added，修复白屏恢复丢失未发送内容及发送前清稿。

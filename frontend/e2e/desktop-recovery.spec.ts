@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
-import { composer, freshConversation, reloadOpenConversation, statusBadge, waitForIdle } from "./session"
+import { composer, freshConversation, reloadOpenConversation, statusBadge, waitForDraftSaved, waitForIdle } from "./session"
 
 test("conversation changes notify native location without a paint probe or draft contents", async ({ page }, info) => {
   await page.addInitScript(() => {
@@ -23,7 +23,7 @@ test("conversation changes notify native location without a paint probe or draft
   await expect.poll(async () => (await notices()).at(-1)?.thread).toBe(first)
   const beforeDraft = (await notices()).length
   await composer(page).fill("A private draft stays with its selected conversation.")
-  await expect(page.getByTestId("composer-draft-status")).toContainText("Draft saved on this computer")
+  await waitForDraftSaved(page)
   expect(await notices()).toHaveLength(beforeDraft)
 
   await page.getByRole("button", { name: "New conversation", exact: true }).click()

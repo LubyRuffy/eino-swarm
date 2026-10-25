@@ -1,12 +1,12 @@
 import { expect, test, type Page } from "@playwright/test"
 import { readFileSync } from "node:fs"
-import { composer, freshConversation, reloadOpenConversation, waitForIdle } from "./session"
+import { composer, freshConversation, reloadOpenConversation, waitForDraftSaved, waitForIdle } from "./session"
 
 const image = readFileSync(new URL("./fixtures/vision-photo.jpg", import.meta.url))
 const attachment = Buffer.from([0, 255, 13, 42, 0, 1])
 const selectedThread = (page: Page) => page.locator('[data-testid="thread-row"][aria-current="true"]')
 const row = (page: Page, id: string) => page.locator(`[data-testid="thread-row"][data-id="${id}"]`)
-const saved = (page: Page) => expect(page.getByTestId("composer-draft-status")).toContainText("Draft saved on this computer")
+const saved = waitForDraftSaved
 
 async function attachImage(page: Page) {
   await composer(page).evaluate((el, b64) => {
@@ -17,6 +17,78 @@ async function attachImage(page: Page) {
     el.dispatchEvent(event)
   }, image.toString("base64"))
 }
+
+test("autosaves quietly and shows a failed save only until retry succeeds", async ({ page, request }, info) => {
+  await freshConversation(page)
+  const id = (await selectedThread(page).getAttribute("data-id"))!
+  const path = `/api/composer/drafts/${encodeURIComponent(`thread:${id}`)}`
+  let release!: () => void
+  const held = new Promise<void>((done) => { release = done })
+  let entered!: () => void
+  const saving = new Promise<void>((done) => { entered = done })
+  let failed = false
+  await page.route(`**${path}`, async (route) => {
+    if (route.request().method() !== "PUT" || failed) { await route.continue(); return }
+    entered()
+    await held
+    failed = true
+    await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "fixture draft storage unavailable" }) })
+  })
+  await expect(page.getByTestId("composer-draft-status")).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Delete draft", exact: true })).toHaveCount(0)
+  await composer(page).fill("Retain this input without persistent status chrome.")
+  await saving
+  try {
+    await expect(page.getByTestId("composer-draft-status")).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Delete draft", exact: true })).toHaveCount(0)
+  } finally { release() }
+  const status = page.getByTestId("composer-draft-status")
+  await expect(status.getByRole("alert")).toContainText("Draft not saved")
+  await expect(status).toContainText("fixture draft storage unavailable")
+  await expect(composer(page)).toHaveValue("Retain this input without persistent status chrome.")
+  await page.screenshot({ path: info.outputPath("save-failure-with-retry.png"), animations: "disabled" })
+  await status.getByRole("button", { name: "Retry saving", exact: true }).click()
+  await saved(page)
+  expect((await (await request.get(path)).json()).draft.text).toBe("Retain this input without persistent status chrome.")
+  await expect(status).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Delete draft", exact: true })).toHaveCount(0)
+  await reloadOpenConversation(page)
+  await expect(composer(page)).toHaveValue("Retain this input without persistent status chrome.")
+  await saved(page)
+  await expect(status).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Delete draft", exact: true })).toHaveCount(0)
+  await page.screenshot({ path: info.outputPath("saved-draft-without-status-chrome.png"), animations: "disabled" })
+})
+
+test("shows a conflicting window's draft until an explicit version choice resolves it", async ({ page, context, request }, info) => {
+  await freshConversation(page)
+  const id = (await selectedThread(page).getAttribute("data-id"))!
+  await composer(page).fill("Shared draft before either window changes it.")
+  await saved(page)
+  const other = await context.newPage()
+  try {
+    await other.goto("/")
+    await other.getByTestId("dest-chats").click()
+    await row(other, id).getByTestId("row-label").click()
+    await expect(composer(other)).toHaveValue("Shared draft before either window changes it.")
+    await composer(other).fill("A newer draft saved by the other window.")
+    await saved(other)
+    await composer(page).fill("The current window's unsaved input.")
+    const status = page.getByTestId("composer-draft-status")
+    await expect(status).toContainText("Another window changed this draft")
+    await expect(composer(page)).toHaveValue("The current window's unsaved input.")
+    await expect(composer(page)).toBeDisabled()
+    await expect(status.getByRole("button", { name: "Save this input (replace the saved version)", exact: true })).toBeEnabled()
+    await page.screenshot({ path: info.outputPath("conflicting-draft-with-version-choice.png"), animations: "disabled" })
+    await status.getByRole("button", { name: "Use the saved version (replace this input)", exact: true }).click()
+    await expect(composer(page)).toHaveValue("A newer draft saved by the other window.")
+    await expect(composer(page)).toBeEnabled()
+    await saved(page)
+    expect((await (await request.get(`/api/composer/drafts/${encodeURIComponent(`thread:${id}`)}`)).json()).draft.text).toBe("A newer draft saved by the other window.")
+    await expect(status).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Delete draft", exact: true })).toHaveCount(0)
+  } finally { await other.close() }
+})
 
 test("restores the complete draft and exact attachment bytes without crossing conversation scopes", async ({ page, request }, info) => {
   await freshConversation(page)

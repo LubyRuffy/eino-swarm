@@ -65,6 +65,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-145`, `C-033`: composer drafts continue saving automatically while normal
+  loading, saving, saved and sending states leave no draft status or Delete draft
+  control in the input area. Guidance and recovery actions appear only for
+  save/restore failures, conflicts or uncertain sends, and hide after resolution.
+  Disabled inputs keep those recovery actions available; read-only views remain disabled.
+
 - `F-430`, `C-010`: allocate source batch `0.1.39` for phone history-loading
   and reconnect fixes. Explicit human-requested urgent releases can retain a
   reason while relaxing aggregation wait and the local TestFlight daily policy;
