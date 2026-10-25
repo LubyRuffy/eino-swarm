@@ -1404,6 +1404,16 @@ existing PATCH behavior.
 Goal commands accept text only. Images or files on a goal-command send are
 rejected before changing the objective, including while the conversation is
 running; clients must retain the original draft and attachments on that error.
+The paired-phone composer also rejects a recognized `/goal` or `/plan` when
+at least one selected-text quotation is nonblank. It checks the editable text
+before adding `<selected_text>` / `<user_request>` blocks, clearing the draft,
+uploading attachments or invoking send/steer. The localized local alert is a
+refusal, with the original text, quotations and selected files retained; no
+goal mutation or RPC success is implied. The user removes the nonblank quotations
+or changes the request into an ordinary message, then explicitly retries. This
+adds no API/RPC parameter or error code,
+does not reinterpret ordinary quoted messages, and does not change pure-text
+command semantics (`C-009`, `C-033`).
 
 `from_event_seq`, when set, names a stored `user_message` to replace. That
 event and everything after it is deleted (later turns, their messages and

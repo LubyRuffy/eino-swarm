@@ -228,6 +228,15 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-150`, `F-221`, `C-009`, `C-033`: the phone visibly refuses a recognized
+  goal/plan command combined with a nonblank quotation before wrapping,
+  clearing or uploading the draft or invoking send/steer. Original text,
+  quotations and selected files remain for explicit correction and retry.
+  PC and phone reuse the pure command parser; ordinary quoted messages and
+  pure-text engine/RPC semantics stay unchanged. Mixed quoted commands show a
+  refusal instead of silently becoming ordinary chat without a goal update;
+  selected context is not discarded to activate a command (Issue #111).
+
 - `F-110`, `F-130`, `C-027`: reuse the shared recovery snapshot's validated
   human-question call identity when arming and leaving its waiter. Keep early
   answers, wrong/duplicate-answer refusal and Stop semantics while avoiding a

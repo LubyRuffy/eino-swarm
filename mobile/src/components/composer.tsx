@@ -4,6 +4,7 @@ import { ArrowUp, Loader2, Paperclip, Square, X, Zap } from "lucide-react"
 import { cn } from "@/lib/cn"
 import { t } from "@/lib/i18n"
 import { formatQuotedMessage } from "@/lib/quote"
+import { parseSlashSubmit } from "../../../frontend/src/lib/slash-core"
 import { isVisionFile } from "@/lib/put-chunks"
 import type { ModelChoice } from "@/lib/rpc"
 import { ModelPicker } from "./model-picker"
@@ -75,6 +76,7 @@ export function Composer({
   onTune?: (next: { providerId: string; model: string; reasoning: string }) => void
 }) {
   const [text, setText] = useState("")
+  const [commandRejected, setCommandRejected] = useState(false)
   const [attached, setAttached] = useState<File[]>([])
   const [pick, setPick] = useState(() => chosen(models, providerId, model))
   const explicitPick = useRef(false)
@@ -86,6 +88,8 @@ export function Composer({
   const images = attached.filter((file) => isVisionFile(file))
   const files = attached.filter((file) => !isVisionFile(file))
   const hasDraft = text.trim().length > 0 || attached.length > 0 || quotes.some((quote) => quote.trim().length > 0)
+  const command = quotes.some((quote) => quote.trim()) ? parseSlashSubmit(text) : null
+  const quotedCommand = command?.id === "goal" || command?.id === "plan"
   const ready = hasDraft && !disabled && !pending
   const showStop = Boolean(onStop && stopLabel && (pending || !hasDraft))
   const showTools = models.length > 0 || reasoningLevels.length > 0 || catalogBusy || Boolean(onRefreshModels)
@@ -124,6 +128,13 @@ export function Composer({
   }
 
   const fire = async (send: Send) => {
+    // The quote envelope hides the command from the PC. Refuse before clearing
+    // or uploading any part of this draft, as the desktop composer does.
+    if (quotedCommand) {
+      setCommandRejected(true)
+      return
+    }
+    setCommandRejected(false)
     const payload = formatQuotedMessage(quotes, text)
     if ((!payload && attached.length === 0) || disabled || pending) return
     const shot = attached
@@ -199,6 +210,9 @@ export function Composer({
             </li>
           ))}
         </ul>
+      ) : null}
+      {commandRejected && quotedCommand ? (
+        <p role="alert" className="mb-2 text-sm text-destructive">{t("composer.commandTextOnly")}</p>
       ) : null}
       <form
         className={cn(

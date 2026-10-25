@@ -100,6 +100,14 @@ follow-up, steer, stop, ask, `/goal` and `/plan` land on the PC engine; the
 other window sees them live. Sending `<objective> /goal` activates that
 objective through the PC's shared command parser, including after the old
 objective completed. The suffix is not sent to the model as task text.
+The paired composer refuses a recognized goal or plan command when at least
+one selected-text quotation is nonblank. Send, Follow-up, Steer or Enter then shows a local message asking
+you to remove the quotation first. Your text, quotations and selected files
+stay in the composer; this refusal does not set a goal, enter plan mode or send
+anything to the PC. Remove the nonblank quotations, or change the request into
+an ordinary message, then submit again explicitly.
+Ordinary quoted requests, paths and literal command text keep their usual
+behavior. Pure-text commands still use the PC engine's existing semantics.
 **Outputs** in a paired conversation lists that
 PC conversation's workspace, including uploads and generated files. It opens
 with the first-level files and folders visible and every folder collapsed;
@@ -146,6 +154,8 @@ sending. A quote can be sent by itself or with a typed request. The phone
 sends the same `<selected_text>` and `<user_request>` blocks as the desktop;
 the quote is not part of the editable message text. Direct model chat does
 not have a PC transcript to quote.
+The command refusal above preserves the current phone draft; it does not add a
+cross-restart draft-storage guarantee or silently discard selected context.
 
 The inbox does not compose. Search and **New chat** sit under the list,
 and the header corner is the same **New chat** — Add a PC stays on the

@@ -13,6 +13,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 异常操作：输入及发送因草稿异常禁用时，父容器不得通过继承的 `aria-disabled` 同时禁用重试、版本选择或继续编辑；只读视图仍保持禁用。
 - 不变量：发送固定目标会话；每个成功 ACK 只清对应 revision，tombstone 防止旧保存复活。scope 所属会话／项目必须在保存事务内存在；删除所属对象同时清理其草稿与 bytes，迟到保存不得复活它。
 - 文本动作：PC `/goal`、`/plan` 不携带附件或引用；含这些内容的草稿必须在发送前可见拒绝并完整保留，不能用仅文本动作的 ACK 清除整份快照。
+- 手机引用命令：`C-009` 的提交前拒绝保留手机当前输入框的正文、引用和所选文件；不把该本地保留扩展为 PC SQLite 草稿 ACK 或跨重启持久化保证。
 - 缓存生命周期：无订阅、操作或待写入且已确认保存的闲置 scope 释放 File 缓存和预览 URL，返回时从 SQLite 重读；未保存、冲突或发送中的唯一副本不能被淘汰。首发迁移和发送必须持有跨导航所有权，不能依赖组件及时挂载。
 - 边界条件：正文与引用合计 1 MiB；32 个附件、总量 256 MiB；图片最多 8 张且每张最多 8 MiB。原始 bytes、MIME、名称、最后修改时间保留；blob URL 不持久化。附件下载强制 attachment、nosniff、no-store。工作区上传原有单文件限制不变。
 - 证据：实现 `internal/store/composer_draft.go`, `internal/server/composer_draft.go`, `frontend/src/lib/composer-draft.ts`, `frontend/src/lib/use-composer-draft.ts`, `frontend/src/components/app/composer.tsx`, `frontend/src/components/app/composer-draft-status.tsx`, `frontend/src/store/app.ts`；测试 `internal/store/composer_draft_test.go`, `internal/server/composer_draft_test.go`, `frontend/src/lib/composer-draft.test.ts`, `frontend/src/components/app/composer-draft.test.tsx`, `frontend/src/components/app/composer-draft-status.test.tsx`, `frontend/e2e/composer-draft.spec.ts`。
@@ -166,6 +167,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 调度答复依据：只读模型仅从候选主管正文提取调度成功声明，不能创建计划或认定安排已发生；事实由代码核对持久化计划的当前状态、同会话／独立任务范围、周期和精确轮次归属。本轮新安排必须归属本轮；旧有效等待只能支持继续存在的陈述；未调用、被拒、存储失败、已取消／暂停／改投的安排均不能支持成功声明。正文通知须在校验通过后才能发布，工具、思考和子代理活动沿用原链路。无依据时同轮最多纠正一次，预算由本轮持久化纠正事件恢复，engine 替换不能重置；纠正事件写入或预算读取失败时终止，不能继续请求模型。不自动补建等待、不绕过人类禁令，仍无依据或无法校验时明确失败；校验器底层的模型错误不得将这次终止重新归类为普通目标的自动模型重试、跨轮重置纠正预算。`model_retry.reason=schedule_claim_unverified` 及 `schedule-answer-policy` 调用留在同一 turn Trace；失败声明不得作为回答进入实时、持久化或历史回放。关联 `F-150`、`F-160`、`C-012`；实现／验证：`internal/engine/schedule_answer.go`、`internal/engine/manager_answer_buffer.go`、`internal/engine/schedule_answer_http_test.go`；变更类型：Changed；来源：Issue #103。
 
 - 目标附件边界：命令发送仅接受正文；携带图片或文件的前缀／句尾目标命令在改变目标前整体拒绝，运行中 send／steer 也不得返回成功后丢弃原附件。调用方保留原正文和附件，失败不激活新目标。证据：`internal/engine/slash.go`、`internal/remote/slash_goal_attachment_test.go`、`mobile/src/components/composer-goal-refusal.test.tsx`；来源：Issue #103。
+- 手机引用命令边界：PC／手机复用 `frontend/src/lib/slash-core.ts` 的 `parseSlashSubmit`；手机正文被识别为目标／计划命令且任一引用去空白后非空时，发送／插话／表单提交必须在引用封装、清稿和上传／RPC 回调前显示本地拒绝，保留原正文、引用和文件。拒绝不设置目标、不进入计划、不产生发送成功；修正正文或移除有效引用后须由用户重试。未知命令、路径、URL，以及引用／代码内的字面命令不得误拒；普通引用仍沿 `C-011` 格式，不剥离 `<user_request>` 或丢弃 `<selected_text>` 来激活命令。纯文本的既有引擎／RPC 语义与附件单独存在时的拒绝路径不变。关联 `F-150`、`F-221`、`C-033`；证据：`mobile/src/components/composer.tsx`、`mobile/src/components/composer-quoted-command.test.tsx`、`mobile/e2e/quoted-goal.spec.ts`、`internal/slash/testdata/trailing-goal.json`；变更类型：Fixed；来源：Issue #111。
 
 ## C-010 Build artifacts and update channel
 

@@ -1,5 +1,10 @@
 # Testing
 
+Create private evidence files with explicit mode `0600` while preserving and
+recording the normal compiler/test subprocess umask; a restrictive logging-only
+mask must not silently change executable-mode fixtures or be reported as a
+product regression without a controlled comparison.
+
 ## Chat Completions reasoning fields (`F-170`, `F-230`, `C-009`)
 
 `internal/provider/reasoning_fields_test.go` runs both Generate and Stream through
@@ -160,8 +165,8 @@ Trace、窗口截图及完整 cleanup。正常离线脚本的窗口验收不能�
 Issue #103 starts from a completed objective and no active thread wake.
 Shared fixtures in `internal/slash/testdata/trailing-goal.json` cover ASCII,
 CJK/IME slash, whitespace, multiline objectives and literal paths, quotations
-and code, including CJK paths ending in `/goal`. Go and PC parsers use the
-same cases. `frontend/src/components/app/composer-trailing-goal.test.tsx` checks
+and code, including CJK paths ending in `/goal`. Go, PC and phone command
+admission use the same cases. `frontend/src/components/app/composer-trailing-goal.test.tsx` checks
 Send/Enter, idle/running admission, menu completion and literal drafts. Leading
 commands retain their whole argument even when it ends with `/goal`; UI/HTTP
 regressions check that a second interpretation cannot rewrite the objective.
@@ -221,6 +226,73 @@ before goal mutation, including busy sends and steering.
 `mobile/src/components/composer-goal-refusal.test.tsx` checks that a refused
 send preserves the original draft and decodable PNG/file bytes for correction
 and resubmission through the actual phone client.
+
+Issue #111 checks quotations before command wrapping. The phone imports the
+pure `frontend/src/lib/slash-core.ts` parser; `frontend/src/lib/slash.ts` keeps
+the existing desktop exports and localization. The actual Composer tests in
+`mobile/src/components/composer-quoted-command.test.tsx` cover Send/Steer/form
+submission, prefix/trailing and CJK commands, the shared Go corpus, local alert,
+unchanged text/quotes/File selection and no submit/steer callback. They also
+cover ordinary quoted requests, unknown names, paths, URLs and literal markers
+so a quotation does not become a blanket command ban.
+`mobile/e2e/quoted-goal.spec.ts` selects real transcript text, attempts a quoted
+goal, verifies the visible refusal and preserved draft, then removes the quote
+and explicitly submits the original command. It runs in both the phone and
+`iphone-layout` WebKit projects. This offline host E2E accepts that UI boundary,
+not a newly configured engine goal or packaged native iOS/Android behavior;
+existing real Engine/Pairlink command tests remain the goal-semantic evidence.
+Never unwrap `<user_request>` or drop selected context to turn the refusal into
+an apparent success. Attachment-only goal refusal retains its existing path.
+
+Packaged native entry points for the same quoted-command boundary are
+`mobile/e2e/ios-quoted-command.swift` and
+`mobile/android/app/src/androidTest/java/com/lubyruffy/zwai/QuotedCommandTest.java`.
+For iOS, first build/copy the current phone assets through the existing offline
+fixture flow. From `mobile`, select an explicitly owned simulator UDID in
+`IOS_LAYOUT_SIMULATOR`, create the disposable layout fixture, and replace only
+that fixture's test file:
+
+```bash
+ios_quoted_fixture="$(IOS_LAYOUT_QUERY='/?mock=1&tick=0' python3 scripts/ios-layout-fixture.py)"
+cp e2e/ios-quoted-command.swift "$ios_quoted_fixture/mobile/ios/App/AppUITests/BindFlowTests.swift"
+xcodebuild -project "$ios_quoted_fixture/mobile/ios/App/App.xcodeproj" \
+  -scheme App -configuration Debug \
+  -destination "platform=iOS Simulator,id=$IOS_LAYOUT_SIMULATOR" \
+  -derivedDataPath "$ios_quoted_fixture/DerivedData" CODE_SIGNING_ALLOWED=NO \
+  -only-testing:AppUITests/BindFlowTests -parallel-testing-enabled NO \
+  -resultBundlePath "$ios_quoted_fixture/quoted-command.xcresult" test
+```
+
+Do not replace the checkout's `AppUITests/BindFlowTests.swift`. Android reuses
+the disposable offline APK/test-APK flow below, with an owned headless emulator
+and explicit `android_test_device`. Run each method separately, stopping only
+the owned fixture app between methods so WebView/AX state cannot leak:
+
+```bash
+for quoted_method in quotedGoalKeepsDraftUntilQuoteIsRemoved ordinaryQuotedMessageStillSends; do
+  adb -s "$android_test_device" shell am force-stop com.lubyruffy.zwai
+  adb -s "$android_test_device" shell am instrument -w \
+    -e class "com.lubyruffy.zwai.QuotedCommandTest#$quoted_method" \
+    com.lubyruffy.zwai.test/androidx.test.runner.AndroidJUnitRunner
+done
+```
+
+Both cases must reach the actual packaged screen, use the system long-press
+selection and Add to chat action, and verify the quoted-goal refusal with the
+original text/quotation retained and no new message bubble. After removing the
+quotation, submit the complete original command once; also verify an ordinary
+quoted message still sends with its quotation. Count only actual transcript
+messages: a textarea's nested accessibility StaticText is not a sent bubble.
+Retain exact source/target and test-package hashes, action/DOM/accessibility
+evidence, screenshots, result/exit status and owned-device cleanup. MockLink
+does not prove an engine goal was stored in SQLite.
+
+A DOM alert or native action acknowledgement does not prove visible rendering.
+Synchronize the WebView's presented frame with a bounded wait inside the same
+case deadline before capturing the refusal; inspect the actual screenshot for
+the visible message. Preserve the original stale-frame screenshot and failure
+separately. Do not repeat Send or other product input to repair capture evidence,
+and do not claim native visual acceptance from DOM/AX state alone.
 
 The PC and phone trailing-goal E2E specs exercise a completed objective followed
 by a new suffix command. The scheduling admission browser regression runs with:

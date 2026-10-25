@@ -97,6 +97,7 @@ export const zh: Record<MessageKey, string> = {
   "composer.noModels": "没有可用模型。",
   "composer.refreshFailed": "无法刷新模型列表，请重试。",
   "composer.refreshUnsupported": "请更新电脑端以刷新模型列表。",
+  "composer.commandTextOnly": "/goal 和 /plan 命令只接受纯文本。请先移除引用，输入内容已保留。",
   "composer.attach": "添加文件",
   "composer.remove": "移除{name}",
   "composer.model": "模型",
