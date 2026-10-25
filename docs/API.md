@@ -1786,7 +1786,7 @@ shortening only the bounded detail text.
 | `memory_review` | the post-turn review of a project's memory finished (see below) |
 | `max_iterations` | the manager hit `swarm.manager_max_iterations`; `text` is `{"limit":N,"extend_by":N}` and the turn is still running |
 | `max_iterations_continued` | the human extended the turn; `text` names how many extra rounds |
-| `model_backoff` | a chat request is waiting for its shared upstream recovery cooldown. `agent_id` is the actual caller; `text` is JSON `{attempt,wait_ms}` (consecutive service failure generation and remaining cooldown at observation, with positive sub-millisecond waits recorded as `1`; `0` means waiting for an already active probe with unknown remaining time). This is neither a sent request nor a new retry allowance. Multiple waiters can record the same generation; only one probe is admitted after cooldown. A later failure can extend the wait. Stored in the same turn Trace and shown in the desktop Full log. |
+| `model_backoff` | a model request is waiting for shared upstream recovery or scheduling-candidate verification. `agent_id` is the actual caller; `text` is JSON `{attempt,wait_ms}` (consecutive service failure generation and remaining cooldown at observation, with positive sub-millisecond waits recorded as `1`; `0` means waiting for an already active probe with unknown remaining time). This is neither a sent request nor a new retry allowance. For the shared provider gate, multiple waiters can record the same generation and only one probe is admitted after cooldown. Scheduling-candidate recovery instead counts that candidate's verification failures and may add `code` and `candidate_id` as described below. A later failure can extend the wait. Stored in the same turn Trace and shown in the desktop Full log. |
 | `model_retry` | the manager hit a recoverable ChatModel failure and re-entered this turn. `text` is JSON `{attempt,cap,reason?}`. `reason` selects the transcript notice: `invalid_tool_json` (the model returned a tool call that was not valid JSON), `model_response_invalid` (the SDK cannot decode the model HTTP response or stream, including a wrong field type; the turn did not reach a tool), `rate_limited`, `model_unavailable` (HTTP 500/502/503/504/529), `model_transport` (dropped stream, connection reset, mid-stream read timeout), `model_idle` (silence after the first byte). Older rows omit `reason` and keep the generic retry line. `reason: "context_overflow"` is separate: the endpoint rejected the call because the prompt plus the requested output does not fit the window. That notice names the window, the turn compacts once, and a second rejection ends the turn with `the prompt plus the requested output exceeds this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry`. A repeating schedule that ends that way is paused. When the in-turn retries are exhausted, the turn error is the same class: `the model returned a tool call that was not valid JSON`, `the model service is rate limiting requests`, `the model service is unavailable`, `the model service returned a response that could not be decoded`, or `the connection to the model service dropped`. An exhausted idle timeout keeps the sentence that names how long the model sent no data. A trailing tool call whose arguments are not valid JSON is refused before the next model request and then dropped, so that payload is not sent and a `400 Unterminated string` cannot repeat. `reason: "scheduled_no_activity"` is the scheduled-check continuation, not a model failure |
 | `title` | the conversation was named; `text` is the new title, `agent_id` is `title-namer`. Not rendered in the transcript |
 | `session_memory` | the rolling session briefing was refreshed from the event log; `text` is JSON `{summary,through_seq}`. `agent_id` is `session-memory`. Not rendered in the transcript; compact and the reviewer read the thread fields. Post-turn refresh is background work: a queued follow-up starts as soon as the turn is `done` or `error`, and does not wait for this event |
@@ -1814,25 +1814,57 @@ shortening only the bounded detail text.
 | `error` | the turn failed; `err` explains |
 | `ready` | replay is complete (no `seq`, not stored) |
 
-`model_retry.reason: "schedule_claim_unverified"` is a bounded correction of
-an unsupported scheduling claim in the same turn. It does not mean the
-provider failed or that a wait was created. Its metadata remains in Trace;
-the transcript says the schedule is being checked. Candidate manager prose
-is held until the tool-free `schedule-answer-policy` call extracts claims
-and code verifies them against current persisted plans. This non-streaming
-policy call honors the provider's `first_byte_timeout_seconds` for response
-headers, `timeout_seconds` for body silence and the turn's cancellation. It
-adds no separate 30-second total deadline; a longer configured wait remains
-effective for classification. A new-arrangement
-claim needs this turn's successful arrangement, and a cancelled or failed
-arrangement cannot support it. One correction is allowed; repeated unsupported
-claims or an unavailable check produce an explicit error. Restart preserves
-the original turn’s consumed allowance. Reading or saving its correction
-receipt must succeed before another corrective model request. Tool, reasoning and
-worker events continue live. The policy model is an interpreter, and the
-schedule database remains the source of scheduling facts. Exhaustion keeps
-its scheduling-admission error class even when the underlying diagnostic
-cause is a provider error; it cannot start another automatic goal turn.
+`model_retry.reason: "schedule_claim_unverified"` is the original turn's
+single correction for a scheduling claim that classification and current
+persisted facts cannot support. It is not a classifier-service retry or proof
+that a wait was created. Candidate manager prose stays private until the
+tool-free `schedule-answer-policy` call extracts claims and code verifies the
+current plans. A new-arrangement claim needs this turn's successful action;
+a cancelled or failed arrangement cannot support it. A repeated unsupported
+claim fails explicitly. Restart preserves the consumed correction allowance;
+receipt reads and writes must succeed before another corrective manager call.
+
+An unavailable or malformed classification instead keeps the same turn
+running and retries the original durable candidate, with 5/10/20/30-second
+capped backoff. It does not rerun the manager or its tools, consume that
+correction allowance or create another goal turn. Waiting is reported through
+`model_backoff` (`agent_id: "schedule-answer-policy"`, JSON `text` containing
+`attempt` and `wait_ms`, with optional `code` and `candidate_id`). For candidate
+recovery, `code` is `classification_unavailable` or `classification_invalid`
+and `candidate_id` binds the original private answer/report. This also diagnoses
+an HTTP 200 response whose classifier JSON is invalid even when the LLM-call
+transport error is empty. Other provider backoff events keep their existing
+`attempt`/`wait_ms` payload. Actual classifier calls and their errors remain in
+the original turn's Trace. Private candidate payloads are excluded from Trace,
+SSE and ordinary history. Stop cancels the classifier or wait; a superseding
+human steer discards the old unpublished candidate. Existing worker ownership
+and its independent lifetime limits remain in force.
+
+Each non-streaming policy request honors `first_byte_timeout_seconds` for
+response headers and `timeout_seconds` for body silence, with no extra
+30-second total deadline. Candidate retry count and next retry time survive
+restart. Saving/reading private state or admission receipts can still fail
+explicitly; unavailable classification alone is not a terminal task failure.
+Public answer events, replay messages and the accepted candidate decision
+commit together, preventing duplicate publication after restart. The policy
+model interprets prose; the schedule database remains the source of facts.
+
+On the real manager-tool path, `report_schedule` returns
+`{"ok":true,"quiet":false,"report_pending":true}` after its scheduling action
+and private report intent have been saved (`quiet` reflects the findings).
+This acknowledges the action and queued verification, not verified findings.
+The global goal/wake lock is released before classification. A saved receipt
+is bound to the original tool-call ID so recovery does not repeat that action;
+only admitted findings produce the public `schedule_report` event.
+The scheduling action and private report save are separate commits. If the
+action commits but saving the candidate fails, the real tool returns
+`ok:false`, `code:"answer_storage_failed"`, `action_committed:true` and
+`report_published:false`, with `schedule_id` when available. Its error asks the
+manager to inspect current state rather than repeat that change. A findings-only
+report or an unchanged cancellation reports `action_committed:false` on this
+save failure. A crash after the action and before a durable receipt remains
+unknown and requires current-state verification; the saved-receipt recovery
+rule does not promise exactly-once action execution across that window.
 Paired-phone Earlier paging retains classified retry notices, including this
 reason, and skips unknown or malformed envelopes that paint no phone block.
 

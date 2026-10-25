@@ -55,6 +55,8 @@ erDiagram
   TURN ||--o{ EVENT : produced
   TURN ||--o{ MESSAGE : produced
   TURN ||--o{ LLMCALL : made
+  THREAD ||--o{ PENDING_SCHEDULE_ANSWER : owns
+  TURN ||--o{ PENDING_SCHEDULE_ANSWER : verifies
   SCHEDULE ||--o{ SCHEDULERUN : fires
 ```
 
@@ -148,7 +150,7 @@ that sees a truncated tool result will re-run the tool.
 |---|---|
 | `id` | auto increment |
 | `thread_id`, `turn_id` | which conversation and which turn produced it |
-| `seq` | per-conversation, gap-free, `(thread_id, seq)` indexed; the read order |
+| `seq` | per-conversation, increasing, `(thread_id, seq)` indexed; the read order. Refused or rolled-back admission may leave unused numbers |
 | `role` | `user`, `assistant`, `tool`, `system` |
 | `agent_id` | `manager` or a sub-agent id |
 | `content` | the text |
@@ -177,7 +179,9 @@ fact check; admitting a report does not create an assistant replay message.
 Unadmitted prose is excluded from compaction inputs. The interpretation call
 is attributed to `schedule-answer-policy`; a bounded correction uses the
 existing `model_retry` event with `reason: "schedule_claim_unverified"`.
-No new table or column is introduced (Issue #103, `C-009`, `C-012`).
+Classifier service failures instead use the private candidate and backoff
+state below; they do not consume that correction (`C-009`, `C-012`).
+
 
 普通回合的 worker 收取状态也不新增表或列。生命周期工具的成功回执在既有
 `tool_result.text` 中保存精确 `agent_id` 与 worker 执行 `generation`；manager
@@ -210,6 +214,61 @@ Model generation lifecycle uses existing `events` rows, without another table.
 recovery updates are additional events, preserving the historical cause.
 These are generation facts, not worker `finished` receipts or completion
 attention. Legacy rows need no output-ID or cause migration.
+
+## `pending_schedule_answers` — private admission and recovery state
+
+| column | type | notes |
+|---|---|---|
+| `id` | text, PK | immutable candidate identity; report candidates bind the original turn and actual tool-call ID |
+| `thread_id`, `turn_id` | text, separately indexed | owning conversation and running turn |
+| `ordinal` | int64, unique with `turn_id` | assigned as that turn's `MAX(ordinal)+1` inside the save transaction. Determines insertion/recovery order; caller values, clock rollback and equal timestamps cannot change it |
+| `kind` | text | `answer` or `report` |
+| `payload` | text | latest answer's private versioned JSON while the turn is running; contains original answer ID, candidate text/events, Final/Transcript and max-iteration state. Reports retain their distinct committed-rearm IDs and original tool-call/result receipt. Cleared by the successful terminal transaction |
+| `state` | text | `pending`, `accepted` or `rejected`; terminal turns retain only lightweight decision receipts, with pending changed to rejected |
+| `created_at` | time | immutable wall-clock diagnostic; does not decide candidate order |
+| `attempts` | int | persisted classifier recovery count, never decreased by a stale retry write |
+| `retry_at` | time | next candidate retry time; restart waits out the remaining delay |
+
+Saving checks the owning thread, running turn and durable Stop receipt in the
+same transaction. Reusing an ID cannot replace its owner, kind or payload and
+does not reset its ordinal, decision or retry state. Reads include every state
+ordered by the private ordinal, separate from public event sequence numbers.
+Saving a new `answer` retains only its full transcript: prior answers of that
+turn become lightweight receipts, with old pending decisions rejected. Report
+payloads and other turns remain unchanged. Insertion and this cleanup share
+one transaction, so failure preserves the previously recoverable transcript.
+This bounds retained answer text during a long turn that crosses many manager
+slices instead of storing every growing transcript prefix. Private payloads are not events,
+Trace, SSE, search/replay messages or compaction inputs. Failed persistence
+cannot be treated as a recoverable durable wait.
+
+Admission checks current scheduling evidence and ownership again, then commits
+public events, assistant replay messages and `accepted` in one transaction.
+An empty public answer still commits its candidate decision. Repeating an
+accepted ID returns `ErrScheduleAnswerAlreadyAdmitted` without another write
+or broadcast; a batch mixing accepted and pending IDs is refused.
+`FinishTurn` writes the terminal turn fields and clears every candidate payload
+of that turn in the same transaction. Pending decisions become rejected;
+accepted/rejected identity, creation time and retry diagnostics remain. A
+failed terminal or cleanup write rolls back both changes and retains complete
+payloads for recovery. This avoids retaining another full transcript for every
+finished candidate; other turns' private data is untouched. Thread and
+project deletion remove all candidate states transactionally. Rewind removes
+the candidates of every deleted turn, including private payloads created
+before the cut event in that same turn; late writes cannot recreate a deleted
+owner. This table is independent of planned engine-handoff checkpoints.
+For reports, the schedule action commits before the separate private save.
+An existing original-call receipt prevents repeating that action during
+classification recovery. If the process dies before the private save, this
+table cannot prove the action's outcome; recovery must verify current state.
+The thread-level recovery read selects only nonempty report payloads, including
+rejected decisions needed to identify original calls. It excludes full answer
+transcripts and terminal receipts whose payload has already been cleared.
+
+Implementation and transaction regressions: `internal/store/schedule_answer_pending.go`,
+`internal/store/schedule_answer.go`, `internal/store/schedule_answer_pending_test.go`.
+Engine payload and recovery: `internal/engine/schedule_answer_pending.go`,
+`internal/engine/schedule_answer_restore.go`.
 
 ## `turns` — one request and everything done to answer it
 
@@ -288,6 +347,10 @@ stream still walks forward.
 the remaining cooldown observed before sending, or `0` while waiting for an
 active recovery probe. It is a wait observation, not a retry allowance or an
 LLM request; a later failure can extend it. No migration or new column is needed.
+Scheduling-candidate recovery adds optional `code` (`classification_unavailable`
+or `classification_invalid`) and `candidate_id` to this event's JSON. These
+retain semantic-classification failure attribution without copying its private
+payload or inventing an LLM transport failure; ordinary provider waits omit them.
 
 `workers_retained` is an additive event kind using the existing `events.text`
 JSON payload, without a schema migration or new column:
@@ -747,7 +810,11 @@ original `id` and `role`, current invocation `task`, original-task
 `inbox`, `timeout_failures`, actual `finished`/`result`/`err`, optional handoff
 `summary`, and `in_flight` tools (`name`, `call_id`, `arguments`). After recovery,
 `task` can be a resumption cue; the original assignment remains in `instruction`
-and its retained conversation history.
+and its retained conversation history. Before serialization, a copy of
+`manager_history` removes prose marked as an unverified scheduling answer,
+including raw Responses output text. Accepted history, tool calls and reasoning
+remain. The original in-memory checkpoint is unchanged; candidate recovery
+uses `pending_schedule_answers` instead of public checkpoint prose.
 
 worker 还保留可选 `generation`、`collected` 与 `close_requested`，对应公开
 checkpoint／restore 结构的 `Generation`、`Collected`、`CloseRequested`。

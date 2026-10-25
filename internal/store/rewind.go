@@ -57,6 +57,9 @@ func (s *Store) TruncateFromEventSeq(threadID string, fromSeq int64) error {
 			if err := tx.Where("thread_id = ? AND turn_id IN ?", threadID, ids).Delete(&LLMCall{}).Error; err != nil {
 				return err
 			}
+			if err := tx.Where("thread_id = ? AND turn_id IN ?", threadID, ids).Delete(&PendingScheduleAnswer{}).Error; err != nil {
+				return err
+			}
 			if err := tx.Where("thread_id = ? AND id IN ?", threadID, ids).Delete(&Turn{}).Error; err != nil {
 				return err
 			}

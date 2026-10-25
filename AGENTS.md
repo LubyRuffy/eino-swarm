@@ -8,7 +8,7 @@ first for what the modules are; this file is about how to change them.
 ```bash
 go run ./cmd/zwai desktop          # the app, native window (builds frontend/dist if sources changed)
 go run ./cmd/zwai web --mock       # the app in a browser, no model needed
-make test                          # go test -race -cover -timeout 20m ./...  + front-end unit tests + phone tests
+make test                          # go test -race -cover -timeout 25m ./...  + front-end unit tests + phone tests
 make e2e                           # Playwright, on the offline provider
 make frontend                      # rebuild frontend/dist if the TypeScript sources changed
 make build                         # ./bin/zwai (rebuilds the bundle first)
@@ -30,7 +30,7 @@ go run ./mobile/scripts/genicons.go  # paint appicon.png into iOS/Android launch
 ```
 
 Before finishing any change: **it compiles, the tests pass, and the docs match.**
-Touched Go code → `go test -race -timeout 20m ./...`. Touched `frontend/src` → `npm run lint`
+Touched Go code → `go test -race -timeout 25m ./...`. Touched `frontend/src` → `npm run lint`
 (a `tsc` type check), `npm test`. `go run ./cmd/zwai desktop` (and `web`)
 rebuild `frontend/dist` when the sources changed, so a local run does not
 need a separate `make frontend`. `make build` still generates first so the
@@ -227,6 +227,11 @@ E2E suite.
   unrelated background title tasks must be absent or joined. Keep automatic-title
   tests on the real untitled schedule API and assert lifecycle helper waits have
   `TitleAuto=false`; a repeated green race run alone does not prove isolation.
+  A one-shot GORM callback on a private test Store stays until Store.Close unless
+  every querying actor is joined. A terminal row or idle notification alone does
+  not join turn finalization and cannot authorize removing its callback.
+  Direct manager fixtures must register the same turn and Registry they execute;
+  an existing different owner must fail before model input, never remain a no-op.
 - Run with `-race`. The engine, the event bus and the HTTP server run
   concurrently, and every serious bug found here so far has been an ordering bug.
 - Local startup must not wait for optional phone-hub registration. Keep remote
@@ -511,6 +516,28 @@ E2E suite.
   deadline. Regress a real response beyond 30 seconds without replaying the
   manager, plus configured header/body timeouts and Stop; a classifier timeout
   alone does not establish that the manager made an unsupported schedule claim.
+  Persist the original candidate before classification. Unavailable or malformed
+  classifications retry only that candidate with durable capped backoff; they
+  cannot consume the manager's correction allowance, end its turn or cancel its
+  workers. Stop and a superseding human steer remain effective. Accept public
+  events, replay messages and the candidate decision in one transaction; an
+  accepted identity must not broadcast twice after restart. Keep private candidate payloads
+  out of events, Trace, compaction and ordinary history, and delete private rows
+  with their owning thread/project or rewound turns. Clear candidate payloads
+  in the terminal turn's transaction, retaining lightweight decisions; a failed
+  terminal write must preserve the full recovery state. Regress real HTTP failure,
+  recovery, storage refusal, worker ownership and process replacement.
+  Running turns retain only their latest answer's full transcript; save and old
+  answer compaction must commit together without clearing report receipts.
+  Candidate order uses a transaction-owned monotonic ordinal, never wall time
+  or random IDs; regress clock rollback, tied timestamps and stale-ID re-saves.
+  A report's committed action and actual tool-call receipt must survive findings
+  verification without repeating the action. Release the global goal/wake lock
+  before requesting a model; a slow classifier cannot block unrelated schedules.
+  The schedule action and private report save are separate commits. A failed
+  private save must report whether the action committed, without claiming the
+  findings were published. A crash between those commits remains unknown and
+  requires checking current scheduling state before repeating the action.
 - Regress a new explicit goal after a completed one through the real PC and
   paired-phone send paths, including a standalone trailing `/goal`. The
   original objective text must reach the model, and the completed flag must

@@ -15,7 +15,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-func TestPolicyDecodeFailureCannotRestartTheStandingGoalAfterItsGuardBudget(t *testing.T) {
+func TestPolicyFailureKeepsTheStandingGoalWithoutRestartingItsManager(t *testing.T) {
 	var policy, managers atomic.Int32
 	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -56,22 +56,34 @@ func TestPolicyDecodeFailureCannotRestartTheStandingGoalAfterItsGuardBudget(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitForTurn(t, e, turn.ID)
-	waitSettled(t, e, th.ID)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		rows, err := e.store.ListPendingScheduleAnswers(turn.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) == 1 && rows[0].Attempts == 1 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
 	turns, _ := e.Store().ListTurns(th.ID)
 	t.Logf("turns=%d manager_requests=%d policy_requests=%d", len(turns), managers.Load(), policy.Load())
 	for _, row := range turns {
 		t.Logf("turn=%s goal_continue=%v status=%s error=%s", row.ID, row.GoalContinue, row.Status, row.Error)
 	}
-	if len(turns) != 1 || managers.Load() != 2 || policy.Load() != 2 {
-		t.Fatalf("policy error escaped the bounded same-turn guard: turns=%d managers=%d policy=%d", len(turns), managers.Load(), policy.Load())
+	if len(turns) != 1 || turns[0].Status != "running" || managers.Load() != 1 || policy.Load() != 1 {
+		t.Fatalf("policy error replayed or terminated the manager: turns=%+v managers=%d policy=%d", turns, managers.Load(), policy.Load())
 	}
 	got, _ := e.Store().GetThread(th.ID)
-	if !got.GoalBlocked || got.GoalAutoTurns != 0 {
-		t.Fatalf("failed answer guard left automatic pursuit enabled: %+v", got)
+	if got.GoalBlocked || got.GoalAutoTurns != 0 || scheduleAnswerRetryCount(t, e, turn.ID) != 0 {
+		t.Fatalf("failed classifier changed goal or correction ownership: %+v", got)
 	}
-	if !strings.Contains(turns[0].Error, "schedule_claim_unverified") {
-		t.Fatalf("policy failure lost its admission origin: %s", turns[0].Error)
+	if err := e.Interrupt(th.ID); err != nil {
+		t.Fatal(err)
+	}
+	if cancelled := waitForTurn(t, e, turn.ID); cancelled.Status != "cancelled" || cancelled.Final != "" {
+		t.Fatalf("Stop did not cancel the pending classification: %+v", cancelled)
 	}
 	calls, _ := e.Store().ListLLMCalls(turn.ID)
 	for _, call := range calls {

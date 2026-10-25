@@ -50,7 +50,7 @@ func TestScheduledReportFindingsCannotPublishAnUnarmedCheck(t *testing.T) {
 					args["next_in_s"] = 90
 				}
 				body, _ := json.Marshal(args)
-				writeContextFlowReply(w, req.Stream, map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": "report-check", "type": "function", "function": map[string]any{"name": ToolReportSchedule, "arguments": string(body)}}}}, "tool_calls")
+				writeContextFlowReply(w, req.Stream, map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": store.NewID("report"), "type": "function", "function": map[string]any{"name": ToolReportSchedule, "arguments": string(body)}}}}, "tool_calls")
 			}))
 			t.Cleanup(endpoint.Close)
 			e := newTestEngine(t)

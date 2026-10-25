@@ -191,6 +191,16 @@ adapter emits its finish reason. A connection ending after a partial answer cann
 reset failures. Catalog discovery and embeddings
 keep their existing request policies. See `C-029` in `docs/CONTRACTS.md`.
 
+Scheduling-answer classification uses the conversation's provider and these
+same response-header/body-idle budgets, without a separate 30-second total
+deadline. An unavailable or malformed classification retries its original
+private candidate with a persistent 5/10/20/30-second capped delay; the turn
+stays running and the manager and its executed tools are not requested again.
+This candidate retry policy uses the existing backoff defaults, adds no YAML
+fields and does not grant another manager correction. Stop or a superseding
+human steer cancels the pending verification. Candidate attempts and next retry
+time survive restart; the provider's in-memory origin gate remains separate.
+
 A provider is **ready** when it has both `base_url` and `model`. Until the default
 provider is ready, `GET /api/meta` reports `configured: false` and the UI shows a
 setup banner instead of pretending a turn can run. Listing models only needs the

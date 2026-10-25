@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -121,34 +122,66 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	}
 	var res swarm.RunResult
 	var runErr error
-	restore, planted := rt.takeWorkerRestore()
+	pending, restoredAnswer, restoreFailure := e.restorePendingScheduleAnswer(turn)
+	if restoreFailure != nil {
+		return res, restoreFailure
+	}
 	for {
 		answer := newManagerAnswerBuffer(acc)
-		middlewares := append(e.autoCompactHandlers(rt.threadID, turn.ID, th, forceCompact), answer)
-		answerCtx := context.WithValue(ctx, scheduleAnswerBufferContextKey{}, answer)
-		res, runErr = reg.RunWith(answerCtx, swarm.RunConfig{
-			Instruction:        instruction,
-			Messages:           messages,
-			ManagerTools:       managerTools,
-			MaxIterations:      budget,
-			RestoreWorkers:     restore,
-			FinishedWorkers:    planted,
-			ManagerMiddlewares: middlewares,
-		}, swarm.Callback(answer.onNotify))
+		var candidate *pendingScheduleAnswer
+		var row *store.PendingScheduleAnswer
+		if restoredAnswer != nil {
+			row, candidate = pending, restoredAnswer
+			pending, restoredAnswer = nil, nil
+			answer.id = candidate.AnswerID
+			res = swarm.RunResult{Final: candidate.Final, Transcript: candidate.Transcript}
+			reg.SetHistory(res.Transcript)
+			if err := rt.restorePendingScheduleWorkers(ctx, reg); err != nil {
+				return answer.reject(res), err
+			}
+			runErr = nil
+			if candidate.MaxIterations {
+				runErr = adk.ErrExceedMaxIterations
+			}
+		} else {
+			restore, planted := rt.takeWorkerRestore()
+			middlewares := append(e.autoCompactHandlers(rt.threadID, turn.ID, th, forceCompact), answer)
+			answerCtx := context.WithValue(ctx, scheduleAnswerBufferContextKey{}, answer)
+			res, runErr = reg.RunWith(answerCtx, swarm.RunConfig{
+				Instruction: instruction, Messages: messages, ManagerTools: managerTools, MaxIterations: budget,
+				RestoreWorkers: restore, FinishedWorkers: planted, ManagerMiddlewares: middlewares,
+			}, swarm.Callback(answer.onNotify))
+		}
 		forceCompact = false
-		restore, planted = nil, nil
 		used += budget
 		if ctx.Err() != nil {
 			return answer.reject(res), ctx.Err()
 		}
 		var failure *scheduleAnswerError
 		var evidence []store.Schedule
-		if runErr == nil || isMaxIterations(runErr) {
+		admitted := row != nil && row.State == "accepted"
+		if !admitted && (runErr == nil || isMaxIterations(runErr)) {
 			failure = answer.reportError()
 			if failure == nil {
-				evidence, failure = e.verifyScheduleAnswer(ctx, turn, answer.text())
+				if row == nil {
+					row, failure = answer.prepare(turn, res, runErr)
+					if failure == nil {
+						candidate = &pendingScheduleAnswer{}
+						if err := json.Unmarshal([]byte(row.Payload), candidate); err != nil {
+							failure = &scheduleAnswerError{Code: "answer_state_invalid", Cause: err}
+						}
+					}
+				}
+				if failure == nil {
+					policyCtx, endPolicy := rt.scheduleAnswerContext(ctx, reg)
+					failure = rt.admitPendingScheduleReports(policyCtx, turn)
+					if failure == nil {
+						evidence, failure = rt.verifyPendingScheduleAnswer(policyCtx, turn, row, candidate)
+					}
+					endPolicy()
+				}
 			}
-		} else {
+		} else if !admitted {
 			res = answer.reject(res)
 			reg.SetHistory(res.Transcript)
 		}
@@ -156,8 +189,11 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		// generate can die with context.Canceled while the turn is still live;
 		// stitch unread steering and keep going. Stop still hits ctx above.
 		preempted := reg.TakePreempt()
-		if preempted && (runErr == nil || isPreemptRunError(runErr)) {
+		if !admitted && (preempted || failure != nil && failure.Code == "answer_superseded") && (runErr == nil || isPreemptRunError(runErr)) {
 			if runErr != nil || reg.HasPendingSteers() {
+				if err := rt.rejectPendingScheduleAnswer(turn, row); err != nil {
+					return answer.reject(res), err
+				}
 				res = answer.reject(res)
 				reg.SetHistory(res.Transcript)
 				messages = stitchManagerToolResults(
@@ -170,7 +206,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		}
 		// Existing completion eligibility precedes answer admission. A failed
 		// scheduled check is not an ordinary successful final with worker debt.
-		if runErr == nil && turn.ScheduleContinue && failure == nil {
+		if !admitted && runErr == nil && turn.ScheduleContinue && failure == nil {
 			events, err := e.store.ListTurnEvents(turn.ID)
 			if err != nil {
 				res = answer.reject(res)
@@ -178,6 +214,9 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 				return res, fmt.Errorf("read scheduled check evidence: %w", err)
 			}
 			if !scheduledOutputRecorded(events, res.Final) {
+				if err := rt.rejectPendingScheduleAnswer(turn, row); err != nil {
+					return answer.reject(res), err
+				}
 				res = answer.reject(res)
 				reg.SetHistory(res.Transcript)
 				if scheduleContinued {
@@ -193,7 +232,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 			}
 		}
 		if runErr == nil || isMaxIterations(runErr) {
-			if failure == nil {
+			if failure == nil && !admitted {
 				if ctx.Err() != nil {
 					return answer.reject(res), ctx.Err()
 				}
@@ -205,6 +244,9 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 				}
 				if runErr == nil {
 					if ids := rt.uncollectedWorkerIDs(reg); len(ids) > 0 {
+						if err := rt.rejectPendingScheduleAnswer(turn, row); err != nil {
+							return answer.reject(res), err
+						}
 						res = answer.reject(res)
 						reg.SetHistory(res.Transcript)
 						if collectionContinued {
@@ -225,13 +267,32 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 						continue
 					}
 				}
-				failure = answer.publish(evidence)
+				failure = e.admitScheduleAnswer(turn.ThreadID, turn.ID, evidence, candidate.Events, row.ID)
 			}
 			if failure != nil {
 				res = answer.reject(res)
 				reg.SetHistory(res.Transcript)
 				if ctx.Err() != nil {
 					return res, ctx.Err()
+				}
+				if err := rt.rejectPendingScheduleAnswer(turn, row); err != nil {
+					return res, err
+				}
+				// A steer can arrive after the earlier epoch check, immediately
+				// before atomic admission. It supersedes this candidate without
+				// spending the allowance for a false scheduling assertion.
+				if failure.Code == "answer_superseded" {
+					messages = stitchManagerToolResults(
+						nextManagerMessages(res, messages, reg.TakePendingSteerMessages()),
+						e.managerToolResults(turn.ID),
+					)
+					messages = dropTrailingIncompleteToolCalls(messages)
+					continue
+				}
+				// Infrastructure/storage refusal is not a finding about the
+				// manager's claim and cannot authorize repeating its tools.
+				if failure.Code != "no_matching_schedule" && failure.Code != "schedule_state_changed" {
+					return res, failure
 				}
 				if answerContinued {
 					return res, failure
@@ -371,6 +432,10 @@ func (e *Engine) ContinueTurn(threadID string, proceed bool) error {
 func (rt *runtime) signalContinue(proceed bool) bool {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
+	return rt.signalContinueLocked(proceed)
+}
+
+func (rt *runtime) signalContinueLocked(proceed bool) bool {
 	ch := rt.continueCh
 	if ch == nil {
 		return false

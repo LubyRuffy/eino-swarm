@@ -75,7 +75,7 @@ func Open(path string) (*Store, error) {
 		followupSeq: map[string]int64{},
 		inMemory:    inMemory,
 	}
-	if err := db.AutoMigrate(&Project{}, &Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}, &Schedule{}, &ScheduleRun{}, &RemoteDevice{}, &ThreadWakeDecision{}, &ComposerDraft{}, &ComposerDraftBlob{}); err != nil {
+	if err := db.AutoMigrate(&Project{}, &Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}, &Schedule{}, &ScheduleRun{}, &RemoteDevice{}, &ThreadWakeDecision{}, &ComposerDraft{}, &ComposerDraftBlob{}, &PendingScheduleAnswer{}); err != nil {
 		return nil, fmt.Errorf("store: migrate: %w", err)
 	}
 	if err := s.ensureSearch(); err != nil {
@@ -256,7 +256,7 @@ func (s *Store) DeleteThread(id string) error {
 		if err := deleteSearchForThread(tx, id); err != nil {
 			return err
 		}
-		for _, m := range []any{&Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}, &ThreadWakeDecision{}} {
+		for _, m := range []any{&Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}, &ThreadWakeDecision{}, &PendingScheduleAnswer{}} {
 			if err := tx.Where("thread_id = ?", id).Delete(m).Error; err != nil {
 				return err
 			}
@@ -384,19 +384,40 @@ func (s *Store) CreateTurn(t *Turn) error {
 	return nil
 }
 
-// FinishTurn closes a turn, recording how it ended and how long it took.
+// FinishTurn closes a turn and discards its private candidate prose atomically.
+// A failed terminal write retains the complete recovery payload.
 func (s *Store) FinishTurn(id, status, final, errText string) error {
 	t, err := s.GetTurn(id)
 	if err != nil {
 		return err
 	}
 	now := time.Now().UTC()
-	return s.applyTurnUpdate(id, map[string]any{
-		"status":      status,
-		"final":       final,
-		"error":       errText,
-		"ended_at":    now,
-		"duration_ms": now.Sub(t.StartedAt).Milliseconds(),
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&Turn{}).Where("id = ?", id).Updates(map[string]any{
+			"status":      status,
+			"final":       final,
+			"error":       errText,
+			"ended_at":    now,
+			"duration_ms": now.Sub(t.StartedAt).Milliseconds(),
+		})
+		if res.Error != nil {
+			return fmt.Errorf("store: update turn: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			return ErrNotFound
+		}
+		var candidates int64
+		if err := tx.Model(&PendingScheduleAnswer{}).Where("turn_id = ?", id).Count(&candidates).Error; err != nil {
+			return fmt.Errorf("store: read terminal schedule answer payloads: %w", err)
+		}
+		cleared := tx.Model(&PendingScheduleAnswer{}).Where("turn_id = ?", id).Updates(map[string]any{
+			"payload": "",
+			"state":   gorm.Expr("CASE WHEN state = 'pending' THEN 'rejected' ELSE state END"),
+		})
+		if err := requireScheduleAnswerWrite(cleared, candidates); err != nil {
+			return fmt.Errorf("store: clear terminal schedule answer payload: %w", err)
+		}
+		return nil
 	})
 }
 

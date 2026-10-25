@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
@@ -438,110 +437,6 @@ func (e *Engine) cancelScheduleJSON(_, _, args string) (string, error) {
 
 func (e *Engine) reportScheduleJSON(threadID, turnID, args string) (string, error) {
 	return e.reportScheduleContextJSON(context.Background(), threadID, turnID, args)
-}
-
-func (e *Engine) reportScheduleContextJSON(ctx context.Context, threadID, turnID, args string) (string, error) {
-	// Verification happens before lifecycle locks and every report side effect.
-	// Even keep:false must not mutate the wait when a recadence was refused.
-	if a, err := parseScheduleToolArgs(args); err == nil && a.NextInSPresent {
-		if turn, err := e.store.GetTurn(turnID); err == nil && turn.ThreadID == threadID && turn.ScheduleContinue {
-			if sch := e.scheduleForTurn(turn); sch != nil && sch.Kind == store.ScheduleThread && sch.ThreadID == threadID {
-				if err := e.verifyThreadWakePolicy(ctx, threadID, turnID); err != nil {
-					return threadWakeFailure(err), nil
-				}
-			}
-		}
-	}
-	e.goalWakeMu.Lock()
-	defer e.goalWakeMu.Unlock()
-	turn, err := e.store.GetTurn(turnID)
-	if err != nil {
-		return scheduleToolFailure("%s", err.Error()), nil
-	}
-	if turn.ThreadID != threadID {
-		return scheduleToolFailure("%s", "that turn is not on this conversation"), nil
-	}
-	if !turn.ScheduleContinue {
-		return scheduleToolFailure("%s", "report_schedule is only for a scheduled check"), nil
-	}
-	a, err := parseScheduleToolArgs(args)
-	if err != nil {
-		return scheduleToolFailure("%s", err.Error()), nil
-	}
-	if a.NextInS != 0 {
-		if _, err := parseScheduleSpec(0, a.NextInS, "", e.scheduleMinInterval()); err != nil {
-			return scheduleToolFailure("%s", err.Error()), nil
-		}
-	}
-	findings := strings.TrimSpace(a.Findings)
-	quiet := findings == ""
-	scope, err := e.wakeGoalScope(threadID, turnID)
-	if err != nil {
-		return goalScheduleFailure(err), nil
-	}
-	if err := e.store.CheckGoalContinuation(scope, a.Keep == nil || *a.Keep); err != nil {
-		return goalScheduleFailure(err), nil
-	}
-	sch, err := e.scheduleForGoalReport(turn, scope)
-	if err != nil {
-		return goalScheduleFailure(err), nil
-	}
-	if sch != nil {
-		if a.Keep != nil && !*a.Keep {
-			var cancelErr error
-			if a.NextInSPresent && sch.Kind == store.ScheduleThread {
-				var changed *store.Schedule
-				changed, cancelErr = e.store.CancelScheduleForTurnWithWakePolicy(scope, sch.ID)
-				if cancelErr == nil && changed != nil {
-					e.recordScheduleCancelled(changed)
-					e.continueGoalAfterWakeStop(changed)
-				}
-			} else {
-				cancelErr = e.cancelScheduleForTurn(scope, sch.ID)
-			}
-			if err := cancelErr; err != nil {
-				return goalScheduleFailure(err), nil
-			}
-		} else if a.NextInS != 0 {
-			if msg, err := e.interruptedWakeRefusal(threadID); err != nil {
-				return scheduleToolFailure("%s", err.Error()), nil
-			} else if msg != "" {
-				return scheduleToolFailure("%s", msg), nil
-			}
-			if err := e.rearmScheduleIntervalForTurn(sch, a.NextInS, scope); err != nil {
-				return goalScheduleFailure(err), nil
-			}
-		}
-	}
-	payload, _ := json.Marshal(struct {
-		Findings string `json:"findings"`
-		Quiet    bool   `json:"quiet"`
-	}{Findings: findings, Quiet: quiet})
-	var committedRearm []string
-	if sch != nil && a.NextInS > 0 && (a.Keep == nil || *a.Keep) {
-		committedRearm = append(committedRearm, sch.ID)
-	}
-	var evidence []store.Schedule
-	var failure *scheduleAnswerError
-	if findings != "" {
-		evidence, failure = e.verifyScheduleAnswer(ctx, turn, []string{findings}, committedRearm...)
-	}
-	if failure == nil {
-		failure = e.admitScheduleAnswer(threadID, turnID, evidence, []store.Event{{
-			ThreadID: threadID, TurnID: turnID,
-			Kind: KindScheduleReport, AgentID: swarm.DefaultManagerID,
-			Text: string(payload),
-		}})
-	}
-	if buffer, ok := ctx.Value(scheduleAnswerBufferContextKey{}).(*managerAnswerBuffer); ok {
-		buffer.reportStatus(failure)
-	}
-	if failure != nil {
-		body, _ := json.Marshal(map[string]any{"ok": false, "code": "schedule_claim_unverified", "error": failure.Error()})
-		return string(body), nil
-	}
-	body, _ := json.Marshal(map[string]any{"ok": true, "quiet": quiet})
-	return string(body), nil
 }
 
 // rearmScheduleInterval is report_schedule next_in_s. A delay one-shot is

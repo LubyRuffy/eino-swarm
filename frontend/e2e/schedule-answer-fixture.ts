@@ -8,7 +8,11 @@ type Input = { messages: { role: string; content?: string }[]; stream?: boolean;
 
 // An actor/step protocol, independent of the human task. The correction waits
 // at the fixture boundary until the browser has observed its live SSE notice.
-export async function startScheduleAnswerFixture({ secondPolicyDelayMS = 0 }: { secondPolicyDelayMS?: number } = {}) {
+export async function startScheduleAnswerFixture({ secondPolicyDelayMS = 0, secondPolicyFailures = [], unavailable = false }: {
+  secondPolicyDelayMS?: number
+  secondPolicyFailures?: number[]
+  unavailable?: boolean
+} = {}) {
   const errors: string[] = []
   let managerRequests = 0
   let checks = 0
@@ -34,9 +38,15 @@ export async function startScheduleAnswerFixture({ secondPolicyDelayMS = 0 }: { 
         if (system.startsWith("## Schedule answer claims")) {
           if (input.stream || input.tools?.length || input.tool_choice !== "none" || input.messages.length !== 2 || input.messages[0].role !== "system" || input.messages[1].role !== "user") throw new Error("Claim policy must remain a separate read-only request")
           checks += 1
+          const failureStatus = unavailable ? 503 : checks > 1 ? secondPolicyFailures[checks - 2] : undefined
+          if (failureStatus) {
+            res.writeHead(failureStatus, { "Content-Type": "application/json" })
+            res.end(JSON.stringify({ error: { message: "The offline classification service is temporarily unavailable.", type: "service_unavailable" } }))
+            return
+          }
           // Delay headers to exercise the configured non-streaming first-byte
           // budget, independently of the shorter response-body idle budget.
-          if (checks === 2 && secondPolicyDelayMS > 0) await delay(secondPolicyDelayMS)
+          if (checks === secondPolicyFailures.length + 2 && secondPolicyDelayMS > 0) await delay(secondPolicyDelayMS)
           policy(res, { claims: [{ quote: checks === 1 ? unsupportedScheduleAnswer : verifiedScheduleAnswer, scope: "thread", new: true, every_s: 90 }] })
           return
         }

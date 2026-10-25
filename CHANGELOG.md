@@ -221,6 +221,27 @@ co-working app built on it. The library API is unchanged except where noted
   an existing cover do not disable detection or trigger false recovery. Native
   painting stays inside the cover bounds even for an oversized dirty rectangle.
 
+- `F-150`, `F-160`, `C-008`, `C-009`, `C-012`, `C-027`: unavailable or malformed
+  scheduling-answer classification now retries the original durable candidate
+  with capped backoff while retaining its turn and worker ownership. It no
+  longer reruns the manager or consumes the correction reserved for confirmed
+  unsupported claims. Private candidate decisions and public answer rows commit
+  atomically, preventing duplicate publication after restart; Stop, superseding
+  human steering, deletion and rewind retain their ownership boundaries.
+  Terminal commits clear private candidate transcripts while retaining compact
+  decision receipts; failed commits preserve the complete recovery payload.
+  Running turns retain only the latest answer transcript, ordered by a private
+  monotonic ordinal that survives equal timestamps and clock rollback; report
+  action receipts remain available independently. Public handoff checkpoints
+  remove unverified normal and raw Responses prose from a copy, retaining
+  accepted history, tool calls, reasoning and the private original.
+  `report_schedule` saves the original action receipt and defers findings
+  verification outside the global scheduling lock, so retrying classification
+  does not repeat a committed action. Regression fixtures now bind the actual
+  executing turn/Registry and retain private database hooks through cleanup.
+  The expanded Go suite has a 25-minute package deadline; individual behavior,
+  provider and native acceptance budgets are unchanged.
+
 - `F-150`, `F-160`, `C-009`: scheduling-answer classification now honors the
   provider's configured response-header and body-idle waits without an extra
   30-second total deadline. Valid slower checks no longer force a manager

@@ -36,6 +36,9 @@ type runtime struct {
 	idle      chan struct{} // closed when the current turn finishes
 
 	wakePolicyCheck wakePolicyCheck
+	// Nonempty only during read-only admission, so a new steer can supersede
+	// its old candidate without interrupting any already executed manager tool.
+	answerCancel context.CancelFunc
 	// continueCh is set only while the manager is paused at its tool-round
 	// cap. true extends the run; false (or interrupt) ends it. Buffered so
 	// Interrupt cannot block on a receiver that has not reached the select.
@@ -518,15 +521,26 @@ func (e *Engine) steerInput(threadID string, in UserInput, interpretSlash bool) 
 		return err
 	}
 	msg := BuildUserMessage("[steer] "+text, in.Images)
+	// Admission and steering share rt.mu -> recordMu. The persisted human
+	// instruction and its inbox entry must become visible on the same side
+	// of an answer's final publication decision.
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if !rt.running || rt.reg != reg || rt.turnID != turnID {
+		return ErrIdle
+	}
 	if err := e.persistSteer(threadID, turnID, msg, text, refs); err != nil {
 		return err
 	}
 	if !reg.SteerManagerMessage(msg) {
 		return ErrIdle
 	}
+	if rt.answerCancel != nil {
+		rt.answerCancel()
+	}
 	// A steer while the manager is paused at its cap is the human still
 	// talking to it: keep the text and treat that as "yes, continue".
-	rt.signalContinue(true)
+	rt.signalContinueLocked(true)
 	return nil
 }
 

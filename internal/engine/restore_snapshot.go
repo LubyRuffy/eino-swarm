@@ -64,6 +64,24 @@ func (e *Engine) loadRestoreSnapshot(ctx context.Context, threadID string) (*res
 			pendingIDs = append(pendingIDs, id)
 		}
 	}
+	// A committed report can have a synthetic result in checkpoint history.
+	// Include its exact call in this one filtered read, even if that history
+	// considered the call closed, so receipt repair never rereads the full turn.
+	reports, err := e.store.ListScheduleReportsForRecovery(threadID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range reports {
+		row := &reports[i]
+		payload, failure := decodeRestoredScheduleAnswer(&store.Turn{ID: row.TurnID, ThreadID: threadID}, row)
+		if failure != nil {
+			return nil, failure
+		}
+		if payload.ToolCallID == "" {
+			return nil, &scheduleAnswerError{Code: "answer_restore_invalid"}
+		}
+		pendingIDs = append(pendingIDs, payload.ToolCallID)
+	}
 	s.events, err = e.store.ListRecoveryEvents(ctx, threadID, cutoff, pendingIDs...)
 	if err != nil {
 		return nil, err

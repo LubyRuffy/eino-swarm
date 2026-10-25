@@ -20,6 +20,8 @@ import (
 // registry pointer that survived after its worker had already been stopped.
 type scheduleOwnershipFixture struct {
 	mode, steps, workers atomic.Int32
+	policyCalls          atomic.Int32
+	policyUnavailable    atomic.Bool
 	entered, cancelled   chan struct{}
 	stop, finish         chan struct{}
 	enterOnce, stopOnce  sync.Once
@@ -50,6 +52,20 @@ func newScheduleOwnershipEngine(t *testing.T) (*Engine, *scheduleOwnershipFixtur
 		var messages []struct{ Role, Content string }
 		if err := json.Unmarshal(req.Messages, &messages); err != nil {
 			t.Errorf("decode offline messages: %v", err)
+			return
+		}
+		if len(messages) > 0 && messages[0].Content == scheduleAnswerPrompt {
+			f.policyCalls.Add(1)
+			if f.policyUnavailable.Load() {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(`{"error":{"message":"The offline classification service is unavailable.","type":"service_unavailable"}}`))
+				return
+			}
+			// The failure modes below belong to the scheduled check. A broken
+			// classifier response would instead keep its answer awaiting service
+			// recovery, and cannot prove terminal worker-ownership behavior.
+			replyNoScheduleClaimsFixture(t, w, messages[0].Content, req.Stream, len(req.Tools))
 			return
 		}
 		worker := len(messages) > 0 && messages[0].Role == "system" && strings.HasSuffix(messages[0].Content, "inspect the assigned work")
@@ -102,6 +118,7 @@ func newScheduleOwnershipEngine(t *testing.T) (*Engine, *scheduleOwnershipFixtur
 	t.Cleanup(func() { f.stopOnce.Do(func() { close(f.stop) }) })
 	e := newTestEngine(t)
 	e.cfg.Swarm.AutoTitle = false
+	e.cfg.Memory.AutoReview = false
 	e.cfg.Models.Providers[0].BaseURL = endpoint.URL
 	e.cfg.Models.Providers[0].Model = "offline-ownership-fixture"
 	e.pool = provider.New(e.cfg)
@@ -298,6 +315,63 @@ func TestFailedOneShotCheckCleansWorkerWithoutRemainingOwner(t *testing.T) {
 	failOwnedScheduleCheck(t, e, f, sch)
 	if !hasKind(t, e, th.ID, KindCleanup) {
 		t.Fatal("failed consumed one-shot left an unowned worker running")
+	}
+	assertScheduleWorkerCancelled(t, f)
+}
+
+func TestScheduledClassifierOutageKeepsTheOriginalWorkerUntilRecovery(t *testing.T) {
+	e, f := newScheduleOwnershipEngine(t)
+	th, sch, reg, id := startOwnedScheduleWorker(t, e, f)
+	f.setMode(2)
+	f.policyUnavailable.Store(true)
+	beforePolicies := f.policyCalls.Load()
+	turn, err := e.RunScheduleNow(sch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitRestartState(t, func() bool {
+		rows, err := e.store.ListPendingScheduleAnswers(turn.ID)
+		if err != nil {
+			return false
+		}
+		for _, row := range rows {
+			if row.Kind == "report" && row.Attempts == 1 {
+				return true
+			}
+		}
+		return false
+	})
+	rt := e.runtimeFor(th.ID)
+	rt.mu.Lock()
+	active := rt.reg
+	rt.mu.Unlock()
+	progress := reg.Progress()
+	status := e.Status(th.ID)
+	if !status.Running || status.TurnID != turn.ID || active != reg || len(progress) != 1 || progress[0].AgentID != id || !progress[0].Running || f.workers.Load() != 1 || f.steps.Load() != 2 || f.policyCalls.Load() != beforePolicies+1 {
+		t.Fatalf("classification outage changed the original turn or worker: status=%+v same_registry=%v progress=%+v worker_requests=%d manager_requests=%d policy_requests=%d", status, active == reg, progress, f.workers.Load(), f.steps.Load(), f.policyCalls.Load()-beforePolicies)
+	}
+	select {
+	case <-f.cancelled:
+		t.Fatal("pending classification cancelled the actual worker HTTP request")
+	default:
+	}
+	events, err := e.store.ListTurnEvents(turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range events {
+		if ev.Kind == KindCleanup || ev.Kind == KindWorkersRetained || ev.Kind == KindScheduleReport || ev.Kind == swarm.NotifyDone.String() || ev.Kind == swarm.NotifyError.String() || ev.Kind == KindModelRetry {
+			t.Fatalf("classification outage became a terminal check or published unverified findings: %+v", ev)
+		}
+	}
+	f.policyUnavailable.Store(false)
+	if got := waitForTurn(t, e, turn.ID); got.Status != store.TurnDone || got.ID != turn.ID || f.steps.Load() != 2 || f.workers.Load() != 1 || f.policyCalls.Load() != beforePolicies+2 {
+		t.Fatalf("classification recovery repeated manager or worker work: turn=%+v manager_requests=%d worker_requests=%d policy_requests=%d", got, f.steps.Load(), f.workers.Load(), f.policyCalls.Load()-beforePolicies)
+	}
+	waitSettled(t, e, th.ID)
+	assertScheduleWorkerStillOwned(t, e, f, th, reg, id)
+	if err := e.Interrupt(th.ID); err != nil {
+		t.Fatal(err)
 	}
 	assertScheduleWorkerCancelled(t, f)
 }
