@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Page, type TestInfo } from "@playwright/test"
 import { writeFile } from "node:fs/promises"
 
-import { composer, freshConversation, reloadOpenConversation, waitForIdle } from "./session"
+import { composer, freshConversation, reloadOpenConversation, waitForDraftSaved, waitForIdle } from "./session"
 
 const sendButton = (page: Page) => page.getByRole("button", { name: "Send", exact: true })
 const selectedThread = (page: Page) => page.locator('[data-testid="thread-row"][aria-current="true"]')
@@ -32,7 +32,7 @@ async function submitStandingObjective(
 ) {
   const id = (await selectedThread(page).getAttribute("data-id"))!
   const text = await composer(page).inputValue()
-  await expect(page.getByTestId("composer-draft-status")).toContainText("Draft saved on this computer")
+  await waitForDraftSaved(page)
   const before = (await (await request.get(draftPath(id))).json()).draft
   expect(before).toMatchObject({ text, state: "editing" })
   const observed = observeSubmissions(page, id)

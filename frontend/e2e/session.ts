@@ -39,6 +39,26 @@ export async function reloadOpenConversation(page: Page) {
 export const composer = (page: Page) => page.getByTestId("composer-input")
 export const statusBadge = (page: Page) => page.getByTestId("status-badge")
 
+/** Saved input stays visually quiet. Wait for the current scope's actual
+ *  persistence acknowledgement, rather than treating absent UI as a save. */
+export async function waitForDraftSaved(page: Page) {
+  const text = await composer(page).inputValue()
+  const key = await page.evaluate(() => (window as Window & {
+    __zwaiRecoveryAttribution?: { draft_key: string }
+  }).__zwaiRecoveryAttribution?.draft_key)
+  expect(key).toBeTruthy()
+  await expect.poll(async () => {
+    const acknowledged = await page.evaluate(() => (window as Window & {
+      __zwaiRecoveryAttribution?: { draft_key: string; draft_saved: boolean; draft_revision: number }
+    }).__zwaiRecoveryAttribution)
+    if (!acknowledged || !acknowledged.draft_saved || acknowledged.draft_key !== key) return false
+    const response = await page.request.get(`/api/composer/drafts/${encodeURIComponent(key!)}`)
+    if (!response.ok()) return false
+    const { draft } = await response.json()
+    return draft.text === text && draft.revision === acknowledged.draft_revision
+  }).toBe(true)
+}
+
 export async function send(page: Page, text: string) {
   await composer(page).fill(text)
   await composer(page).press("Enter")

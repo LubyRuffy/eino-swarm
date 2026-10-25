@@ -1012,6 +1012,17 @@ uploading, rejected/lost send acknowledgment and failed queue edits. Each browse
 run needs separate port/data/output paths. Keep the first failed run and its
 cause; corrected selectors or teardown do not erase that evidence.
 
+`frontend/src/components/app/composer-draft-status.test.tsx` covers the draft
+guidance boundary: normal loading, saving, saved and sending states render no
+status region or Delete draft control. Save/restore failures, conflicts and
+uncertain sends retain their guidance and recovery controls, then hide when
+resolved. `frontend/src/components/app/composer-draft.test.tsx` checks that a
+disabled input does not disable draft recovery actions through ancestor ARIA,
+while read-only views retain that boundary. The composer-draft E2E must check the same visible behavior while
+automatic saving and reload restoration continue. Wait for acknowledged
+persistence when a case needs a saved draft; an absent status region alone
+cannot prove that the latest input reached SQLite.
+
 `frontend/src/lib/transcript-recovery.ts` retains recovery diagnostics separately
 from conversation blocks. Reducer and Trace UI tests require original event
 identity, deduplication/rewind, no invented worker or state transition, and no raw

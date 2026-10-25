@@ -222,6 +222,7 @@ export function Composer({
   const [submitting, setSubmitting] = useState(false)
   const [slashRejected, setSlashRejected] = useState(false)
   const submittingRef = useRef(false)
+  const draftNeedsAttention = Boolean(durable.snapshot && (durable.snapshot.error || durable.snapshot.conflict || durable.snapshot.draft.state === "uncertain"))
   const disabled = readOnly || restoring || submitting || Boolean(durable.snapshot && (!durable.snapshot.loaded || durable.snapshot.busy || durable.snapshot.conflict || durable.snapshot.draft.state !== "editing"))
   const [uploading, setUploading] = useState(false)
   const [armed, setArmed] = useState(false)
@@ -508,7 +509,7 @@ export function Composer({
       <div
         ref={dockRef}
         data-testid="composer-dock"
-        aria-disabled={(disabled && !restoreStop) || undefined}
+        aria-disabled={(disabled && !restoreStop && (readOnly || !draftNeedsAttention)) || undefined}
         className={cn(
           "relative z-10 content-column content-gutter pb-3",
           readOnly ? "pointer-events-none opacity-60" : disabled ? "pointer-events-none" : "pointer-events-auto",
@@ -595,7 +596,7 @@ export function Composer({
             }
           >
           {armed || adding ? <ComposerDropOverlay busy={adding} /> : null}
-          {durable.session && durable.snapshot ? <ComposerDraftStatus session={durable.session} snapshot={durable.snapshot} /> : null}
+          {durable.session && durable.snapshot ? <ComposerDraftStatus session={durable.session} snapshot={durable.snapshot} disabled={readOnly} /> : null}
           {slashRejected ? <p role="alert" className="pointer-events-auto px-4 py-1 text-xs text-destructive">{t("draft.slashTextOnly")}</p> : null}
           <ComposerQuotes quotes={quoted} onChange={changeQuotes} />
           <ComposerImages

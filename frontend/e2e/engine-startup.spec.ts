@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { composer, freshConversation, reloadOpenConversation, waitForIdle } from "./session"
+import { composer, freshConversation, reloadOpenConversation, waitForDraftSaved, waitForIdle } from "./session"
 
 test("restoration progress keeps history readable and a saved draft intact until an explicit send after readiness", async ({ page }, info) => {
   let startup = "ready", completed = 0
@@ -16,7 +16,7 @@ test("restoration progress keeps history readable and a saved draft intact until
   expect((await first).status()).toBe(202)
   await waitForIdle(page)
   await composer(page).fill("Retained draft during restoration")
-  await expect(page.getByTestId("composer-draft-status")).toContainText("Draft saved")
+  await waitForDraftSaved(page)
   let sends = 0
   page.on("request", (request) => { if (/\/(steer|turns)$/.test(new URL(request.url()).pathname) && request.method() === "POST") sends++ })
   startup = "restoring"; completed = 1

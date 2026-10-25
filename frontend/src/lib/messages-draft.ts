@@ -1,7 +1,4 @@
 export const draftEN = {
-  "draft.loading": "Restoring the draft and attachments…",
-  "draft.saving": "Saving draft…",
-  "draft.saved": "Draft saved on this computer",
   "draft.failed": "Draft not saved. Your current input is still here.",
   "draft.retry": "Retry saving",
   "draft.retryLoad": "Retry restoring",
@@ -14,9 +11,6 @@ export const draftEN = {
   "draft.slashTextOnly": "The /goal and /plan commands accept text only. Remove files, images and quotations first. Your draft was kept.",
 } as const
 export const draftZH = {
-  "draft.loading": "正在恢复草稿和附件…",
-  "draft.saving": "正在保存草稿…",
-  "draft.saved": "草稿已保存在本机",
   "draft.failed": "草稿尚未保存，当前输入仍保留在这里。",
   "draft.retry": "重试保存",
   "draft.retryLoad": "重试恢复",

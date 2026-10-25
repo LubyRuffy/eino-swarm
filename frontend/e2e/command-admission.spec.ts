@@ -1,7 +1,7 @@
 import { expect, request as createRequest, test, type APIRequestContext, type Page, type TestInfo } from "@playwright/test"
 import { writeFile } from "node:fs/promises"
 
-import { composer, freshConversation, reloadOpenConversation } from "./session"
+import { composer, freshConversation, reloadOpenConversation, waitForDraftSaved } from "./session"
 
 const selectedThread = (page: Page) => page.locator('[data-testid="thread-row"][aria-current="true"]')
 const threadPath = (id: string) => `/api/threads/${id}`
@@ -135,7 +135,7 @@ test("a captured goal target entering a question keeps that question and leaves 
   const metadata: unknown[] = []
   try {
     await composer(page).fill(command)
-    await expect(page.getByTestId("composer-draft-status")).toContainText("Draft saved on this computer")
+    await waitForDraftSaved(page)
     await page.getByRole("button", { name: "Send", exact: true }).click()
     await sending
     await page.getByRole("button", { name: "New conversation", exact: true }).click()

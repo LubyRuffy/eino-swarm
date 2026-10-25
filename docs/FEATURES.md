@@ -134,8 +134,9 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-145 Durable composer drafts
 
-- 目的：在刷新、窗口恢复及引擎换端口后保留未发送内容；使用者：PC 桌面和 Web 用户；入口：输入框、附件／粘贴图片／引用，以及 `/api/composer/drafts/:key`；输入：正文、引用、原始文件与图片；输出：按会话或新会话项目隔离的完整草稿及保存／失败／冲突状态；前置条件：本机 SQLite 可写；失败表现：保留当前输入并显示恢复／保存／发送未确认或版本冲突，不自动重发；关联契约：`C-033`, `C-028`, `C-011`；实现证据：`frontend/src/lib/composer-draft.ts`, `frontend/src/lib/use-composer-draft.ts`, `frontend/src/components/app/composer-draft-status.tsx`, `internal/store/composer_draft.go`, `internal/server/composer_draft.go`, `internal/store/composer_draft_test.go`, `internal/server/composer_draft_test.go`, `frontend/src/components/app/composer-draft.test.tsx`。
-- 正文、引用、附件引用在同一事务中保存；原始 bytes 只在新增附件时写入，后续键入仅更新快照。保存 ACK 前不能显示“已保存”；发送 ACK 后才清理对应版本，旧页面迟到保存不能复活已清草稿。首发迁移保留来源副本至发送确认。
+- 目的：在刷新、窗口恢复及引擎换端口后保留未发送内容；使用者：PC 桌面和 Web 用户；入口：输入框、附件／粘贴图片／引用，以及 `/api/composer/drafts/:key`；输入：正文、引用、原始文件与图片；输出：按会话或新会话项目隔离的完整草稿，异常时显示恢复指引；前置条件：本机 SQLite 可写；失败表现：保留当前输入并显示恢复／保存失败、发送未确认或版本冲突，不自动重发；关联契约：`C-033`, `C-028`, `C-011`；实现证据：`frontend/src/lib/composer-draft.ts`, `frontend/src/lib/use-composer-draft.ts`, `frontend/src/components/app/composer-draft-status.tsx`, `internal/store/composer_draft.go`, `internal/server/composer_draft.go`, `internal/store/composer_draft_test.go`, `internal/server/composer_draft_test.go`, `frontend/src/components/app/composer-draft.test.tsx`, `frontend/src/components/app/composer-draft-status.test.tsx`。
+- 正常加载、保存中、已保存及发送中隐藏草稿状态区和“删除草稿”，不占输入框空间；仅恢复／保存失败、冲突或发送状态未知时显示提示及现有处理按钮，异常解决后自动隐藏。
+- 正文、引用、附件引用在同一事务中保存；原始 bytes 只在新增附件时写入，后续键入仅更新快照。保存 ACK 前不能标记为已保存；发送 ACK 后才清理对应版本，旧页面迟到保存不能复活已清草稿。首发迁移保留来源副本至发送确认。
 - 后续编辑引用的附件 bytes 缺失或长度不符时拒绝保存，保留原版本，不能仅凭 manifest 返回保存成功。
 - 离开已保存且无待处理操作的 scope 后释放内存中的附件缓存和预览 URL，返回时重读原始 bytes；未保存、冲突和发送中内容继续保留。
 - `/goal`、`/plan` 仅接收文本；同时带附件、粘贴图片或引用时，输入框拒绝动作并保留完整草稿，不能用只覆盖文本的确认清理其他内容。

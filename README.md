@@ -49,9 +49,11 @@ uploads, downloads and the live event stream have exactly one implementation.
   and the label stays a count, not a fake percentage.
 - **Unsent content survives a reload.** The composer saves text, quotations,
   original files and pasted images together in the local engine database, per
-  conversation or new-conversation project. Its saved/saving/error status is
-  visible. Only an acknowledged save is durable. Sending retains the snapshot
-  until the server accepts it; an uncertain result keeps the draft for inspection
+  conversation or new-conversation project. Normal loading and saving stay quiet,
+  with no draft status or Delete draft control occupying the composer. Only a
+  failed save/restore, a conflict or an uncertain send shows draft guidance and
+  recovery controls. Only an acknowledged save is durable. Sending retains the
+  snapshot until the server accepts it; an uncertain result keeps the draft for inspection
   and is never automatically sent again. Resolve a conflicting window explicitly.
   Leaving a saved idle draft releases its attachment previews from memory;
   returning restores its original files from the local database.
