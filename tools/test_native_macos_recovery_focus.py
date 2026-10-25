@@ -86,7 +86,7 @@ static pid_t fixtureParent(void) {
 #define NSRunningApplication FixtureRunning
 #define NSWorkspace FixtureWorkspace
 #undef NSApp
-#define NSApp app
+#define NSApp ((FixtureApp *)app)
 #define getppid fixtureParent
 #include "recovery_focus_darwin.m"
 int main(int argc, char **argv) { @autoreleasepool {
@@ -114,10 +114,12 @@ class NativeRecoveryFocusTests(unittest.TestCase):
         source = Path(temporary.name) / "test.m"
         cls.binary = Path(temporary.name) / "test"
         source.write_text(FIXTURE)
-        subprocess.run([
+        result = subprocess.run([
             "clang", "-fobjc-arc", "-mmacosx-version-min=11.0", "-I", str(ROOT / "internal/desktop"),
             "-framework", "Cocoa", str(source), "-o", str(cls.binary),
-        ], check=True, capture_output=True, text=True)
+        ], capture_output=True, text=True)
+        if result.returncode:
+            raise RuntimeError("native focus fixture compilation failed:\n" + result.stdout + result.stderr)
 
     def test_actual_entry_requests_self_focus_once_only_while_parent_owns_foreground(self):
         for mode in ("normal", "worker-thread", "orphan", "parent-changed", "minimized", "hidden",

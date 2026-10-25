@@ -78,14 +78,25 @@ func TestOpenAIAdapterAllowsConfiguredFirstByteWaitLongerThanIdle(t *testing.T) 
 
 func TestFirstByteTimeoutKeepsTheActualBudgetAndOriginalCause(t *testing.T) {
 	first := 30 * time.Millisecond
-	var attempts atomic.Int32
+	// Handler scheduling may lag behind both client deadlines. It must not be
+	// used as the observation boundary for a bounded transport reconnect.
+	allowHandler := make(chan struct{})
+	defer close(allowHandler)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		attempts.Add(1)
+		<-allowHandler
 		_, _ = io.Copy(io.Discard, r.Body)
 		<-r.Context().Done()
 	}))
 	t.Cleanup(srv.Close)
-	_, err := chatHTTPClient(time.Second, first).Post(srv.URL, "text/plain", strings.NewReader("body"))
+	var attempts atomic.Int32
+	client := chatHTTPClient(time.Second, first)
+	transport := client.Transport.(*idleTransport)
+	base := transport.base
+	transport.base = backoffRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		attempts.Add(1)
+		return base.RoundTrip(r)
+	})
+	_, err := client.Post(srv.URL, "text/plain", strings.NewReader("body"))
 	var timeout FirstByteTimeoutError
 	if !errors.As(err, &timeout) || timeout.Wait != first {
 		t.Fatalf("timeout must retain the configured budget: %v", err)

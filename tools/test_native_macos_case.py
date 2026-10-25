@@ -679,7 +679,7 @@ time.sleep(.2)
                     self.assertEqual(phases.count(phase), attempts)
                     self.assertEqual(pause.call_count, attempts - 1)
 
-    def test_unreadable_owned_process_cannot_claim_cleanup_or_unlock_next_case(self):
+    def test_unreadable_held_child_is_reaped_before_complete_inventory_unlocks_next_case(self):
         original_launch, original_identity = runner.subprocess.Popen, runner.process_identity
         processes = []
         def launch(command, *args, **kwargs):
@@ -695,14 +695,22 @@ time.sleep(.2)
             with mock.patch.object(runner.subprocess, "Popen", side_effect=launch), \
                     mock.patch.object(runner, "process_identity", side_effect=identity):
                 code, _, receipt = self.run_case()
-            self.assertEqual(code, 3)
-            self.assertFalse(receipt["cleanup_complete"])
-            self.assertFalse(receipt["data_removed"])
-            self.assertIn(str(processes[0].pid), receipt["cleanup_error"])
-            self.assertTrue(Path(receipt["data_dir"]).is_dir())
-            code, _, blocked = self.run_case()
-            self.assertNotEqual(code, 0)
-            self.assertFalse(blocked["launched"])
+            self.assertEqual(code, 2)
+            self.assertIn(str(processes[0].pid), receipt["failure"])
+            self.assertIn("cannot inspect process arguments", receipt["failure"])
+            self.assertNotIn("cleanup_error", receipt)
+            self.assertTrue(receipt["cleanup_complete"])
+            self.assertTrue(receipt["data_removed"])
+            self.assertEqual(receipt["remaining_owned_pids"], [])
+            self.assertFalse(Path(receipt["data_dir"]).exists())
+            self.assertEqual(receipt["direct_child_cleanup"], [dict(
+                pid=processes[0].pid, signals=["TERM"], wait_errors=[],
+                outcome="terminated", returncode=-signal.SIGTERM)])
+            self.assertEqual(processes[0].poll(), -signal.SIGTERM)
+            code, _, following = self.run_case()
+            self.assertEqual(code, 0)
+            self.assertTrue(following["launched"])
+            self.assertTrue(following["cleanup_complete"])
         finally:
             for process in processes:
                 if process.poll() is None:

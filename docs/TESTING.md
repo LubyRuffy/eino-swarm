@@ -489,6 +489,13 @@ and cleanup assertions remain separate.
 
 Recorded guest acceptance: [2026-10-21 native isolation evidence](diagnostics/native-isolation-20261021.md). It binds a frozen candidate, precise legacy cleanup, serial real-window cases and host foreground observations; it is not latest-main or release acceptance.
 
+The first-byte budget regression counts attempts at the real client transport
+boundary, not the server handler's scheduling. Its handler is deliberately held
+until the client finishes both 30 ms waits; the original transport error and
+configured budget must survive. This prevents a delayed handler from reporting
+fewer attempts than the client actually made. See
+`internal/provider/first_byte_test.go`; no provider runtime budget is changed.
+
 A native case reports `scenario timeout` only for its actual scenario deadline.
 A process-inventory command timeout retains its own command, limit and original
 streams before cleanup. Inventory failure still cancels and waits for directly held
