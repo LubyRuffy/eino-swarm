@@ -143,6 +143,10 @@ under a per-hash lock, then reuses it without overwriting or signing a running
 binary. Different source executables get different bundles.
 
 On macOS the native shell checks actual painted probe pixels every five seconds.
+The marker is covered by an input-transparent native sibling and remains in
+WebView snapshots for validation. Its cover follows theme and modal backgrounds;
+temporary colour sampling failure behind an existing cover does not stop health
+checks. This adds no CLI option and does not change recovery deadlines.
 After its 30-second startup grace, a 20-second health failure triggers one page
 reload and a 15-second wait, then an owned shell replacement with a 30-second
 deadline. At most two replacements are allowed until five continuous healthy,

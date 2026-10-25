@@ -409,6 +409,22 @@ and cleanup assertions remain separate.
 
 Recorded guest acceptance: [2026-10-21 native isolation evidence](diagnostics/native-isolation-20261021.md). It binds a frozen candidate, precise legacy cleanup, serial real-window cases and host foreground observations; it is not latest-main or release acceptance.
 
+The render-probe cover has two independent assertions: a native screen capture
+must omit the nonce, and a WebView snapshot must still match a fresh challenge.
+`go test -race ./internal/desktop` exercises actual injected JavaScript, trusted
+RGB messages, complete/stale/missing nonce pixels and recovery transitions.
+`python3 -m unittest tools/test_native_macos_render_cover.py` compiles the actual
+Objective-C entry with view/JavaScript seams, without opening a host window;
+it checks cover-before-paint, opaque geometry, flipped/offset layout, resize,
+single-cover reuse, input/AX exclusion and failed colour preparation. This is
+also included in `make docs-check`. Native acceptance separately checks light
+and dark themes, both palettes, modal/settings changes and recovery in the
+isolated guest; a successful JS callback alone never accepts WebView painting.
+`frontend/e2e/render-probe-cover.spec.ts` runs the actual injected script in
+Chromium against a real Radix modal and theme/settings changes, including
+background compositing while body pointer input is disabled and exact restoration
+of that pointer state after synchronous sampling.
+
 Native macOS acceptance runs in the UTM **ci-macOS** guest. The user's host
 desktop may already be running zwai; do not launch or focus another desktop
 app there, replace its cache bundle, change its engine/data, or bring UTM,

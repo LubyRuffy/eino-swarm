@@ -61,7 +61,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   with the existing eight images / 8 MiB per-image vision limits.
 - **The Mac window has bounded rendering recovery.** An independent native
   controller checks actual painted pixels, tries one reload, then replaces the
-  window on the same engine if needed. Background work continues; the restored
+  window on the same engine if needed. Its pixel marker is covered in the native
+  window, while WebView snapshots still verify the actual random pattern. The
+  cover follows theme and dialog backgrounds and does not receive input.
+  Background work continues; the restored
   window returns to its conversation and saved draft. Conversation/project
   selection reaches that controller independently of the five-second paint
   probe, so a failure immediately after navigation retains the selected scope.

@@ -10,6 +10,7 @@ import (
 )
 
 func rendererRecoveryAvailable() bool                               { return false }
+func updateRecoveryCover(window application.Window, colour [3]byte) {}
 func executeRecoveryProbe(window application.Window, script string) { window.ExecJS(script) }
 func captureRecoveryPixels(context.Context, application.Window) ([]byte, error) {
 	return nil, errors.New("native renderer snapshot is unavailable on this platform")

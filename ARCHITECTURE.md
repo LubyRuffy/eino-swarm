@@ -125,6 +125,14 @@ is exactly one implementation of uploads, downloads and the live event stream.
 Traffic lights follow the window (`?shell=desktop` or the native bridge), not
 the server mode string, because that mode is `engine` for every client.
 
+The renderer health nonce remains painted inside the macOS WebView. A small
+opaque native sibling covers that corner on screen and stays outside
+`WKWebView.takeSnapshot`; only those underlying pixels can acknowledge a paint
+challenge. Background sampling precedes the first probe and follows theme and
+dialog changes through a bounded same-origin message, independently of health
+and recovery budgets. A later decoration failure preserves the existing cover
+and continues real pixel checks.
+
 ```mermaid
 flowchart LR
   subgraph shells

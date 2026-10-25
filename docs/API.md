@@ -74,6 +74,11 @@ keeps its current draft visible and reports that persistence failed.
 
 ## Desktop recovery diagnostics
 
+The native on-screen probe cover does not supply a health acknowledgement or
+diagnostic phase. Only the WebView's underlying random challenge pixels satisfy
+the existing paint check; internal background-colour updates do not call this API
+or change its payload and recovery budgets.
+
 `F-115` / `C-034`. `POST /api/desktop/recovery` accepts only a bounded diagnostic
 record (8 KiB), containing `session_id`, `generation`, `attempt` (0–2), actual
 `shell_pid`, this process's `engine_pid`, `phase`, RFC3339 `at`, optional `reason`
