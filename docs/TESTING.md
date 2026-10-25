@@ -5183,3 +5183,20 @@ settled answer. The trace retains the raw call and matching result.
 
 Browser checks validate the shared Web UI and do not establish native-window
 acceptance or update an already running engine.
+
+### Urgent publication authorization (F-430 / C-010)
+
+`tools/test_release_urgent.py` and `tools/test_release_ios_urgent.py` verify that
+only a nonempty current `--urgent-reason` relaxes aggregation or the local
+TestFlight daily limit. Source/workset/native/signing/remote gates remain in
+force, saved reasons do not authorize later runs, and check-only runs do not
+write publication receipts.
+
+Phone conversation loading also has packaged native cases in
+`mobile/e2e/ios-conversation-open.swift` and
+`mobile/android/app/src/androidTest/java/com/lubyruffy/zwai/ConversationOpenTest.java`.
+Use a disposable fixture with `/?mock=1&tick=0&history=hidden&pause=open`.
+Both cases check empty live edge, Earlier history, Back and reopening the same
+conversation before reading Earlier again, retaining PNG and accessibility
+observations. Native fixture behavior supplements bounded-query/RPC and
+Chromium/WebKit regression tests; it does not measure a real paired network.

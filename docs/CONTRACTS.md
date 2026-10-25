@@ -166,6 +166,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-010 Build artifacts and update channel
 
+- 显式紧急发布：当前人类要求立即发布时，`tools/release.py --urgent-reason <非空授权原因>` 仅可放宽批次聚合等待和 TestFlight 北京日发布次数策略。实际发布回执保留原因；历史原因不授权后续调用。完整源码、收口工作集、原生验收、签名、不可变版本及 Apple 可安装状态门禁仍适用；普通调用继续执行原有两项策略。实现／验证：`tools/release.py`、`tools/release_ios.py`、`tools/test_release_urgent.py`、`tools/test_release_ios_urgent.py`；变更类型：Changed；来源：用户 2026-10-25 明确立即发布手机体验修复。
+
 - TestFlight 组关联使用本应用的配置组白名单，完整分页核对 `GET betaGroups/{group}/builds` 与公开 `GET betaGroups?filter[builds]={build}` 的两个查询方向；不把重复同源列表伪造为反向响应，不调用未支持的 build→betaGroups GET，也不组合 app/build 两个关系过滤器。首次公开证明继续使用 schema 1，旧证明不迁移或重写；VALID／未过期、全部配置组、内外测、审核及源码/build/IPA 身份门禁不变。证据：`tools/release_ios.py`, `tools/test_release_ios_groups.py`, `tools/test_release_public_recovery.py`；变更类型：Fixed；来源：GitHub Issue #92。
 
 - TestFlight 可以先于 GitHub tag 完成首次公开。无 tag 的冻结批次恢复必须匹配原版本、完整源码 SHA 和收口工作集，交叉核对成功 iOS 交付账本、官方状态中的精确 build、营销版本、构建 ID、IPA 哈希及首次严格公开证明；不能把已公开批次重新计入未分配集合。首次公开证明持久保存当时的时间、VALID／未过期、双向组关联和测试／审核状态，不能被后来的 iOS 过期、撤组或 Apple 不可达撤销。旧状态缺该证明时允许一次只读实时核验，预检不写，实际恢复在现有发布锁内落证；缺失／冲突证明拒绝，不能以布尔 published 代替。实际 iOS 交付仍执行当前门禁。旧冻结源码无需追随较新 main，其他端的原生验收独立生效。冲突 tag/SHA 必须拒绝；未公开批次继续执行实时门槛、最新完整 main 和 active_issue／finalized_workset 检查。证据：`tools/release.py`, `tools/release_ios.py`, `tools/test_release_public_recovery.py`；来源：GitHub Issue #90。

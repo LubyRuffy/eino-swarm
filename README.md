@@ -719,7 +719,9 @@ The reconciliation command counts pending deliveries on every required platform,
 and separates already allocated batches from fixes awaiting their first version.
 More than three main commits since the previous published source SHA, or an
 oldest accepted pending change waiting over 24 hours, triggers one new release
-batch. The trigger persists across runs and dates; before it fires, fixes stay
+batch. A current explicit urgent request can use the documented
+`tools/release.py --urgent-reason <reason>` exception for aggregation and the
+local TestFlight daily policy, retaining all acceptance gates. The trigger persists across runs and dates; before it fires, fixes stay
 integrated without a new version. Only affected desktop/mobile platforms are
 published. Remaining platforms of an allocated batch resume its same
 version/source SHA without reuploading completed platforms. See `C-010` in

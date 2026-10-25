@@ -41,6 +41,20 @@ push the complete main and record its version/SHA in the delivery ledger.
 Only mobile batches require `mobile/package.json` to match the new version.
 Desktop-only releases leave the mobile version/build number unchanged.
 
+An explicit human request for an immediate release can override only the batch
+aggregation wait and TestFlight's local Beijing daily limit. Pass the current
+authorization as a nonempty reason on every invocation:
+
+```bash
+python3 tools/release.py --version x.y.z --urgent-reason 'Human-requested urgent fix' --check
+python3 tools/release.py --version x.y.z --urgent-reason 'Human-requested urgent fix'
+```
+
+The release receipt retains that reason. A saved reason does not authorize a
+later invocation. Source, finalized workset, native acceptance, signing,
+immutable artifacts and Apple availability checks still apply. Normal runs
+retain the aggregation and daily limits.
+
 ### Recover native Mac acceptance in a locked session
 
 Run native desktop cases only inside UTM **ci-macOS**, using the

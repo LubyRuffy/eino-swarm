@@ -59,6 +59,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430`, `C-010`: allocate source batch `0.1.39` for phone history-loading
+  and reconnect fixes. Explicit human-requested urgent releases can retain a
+  reason while relaxing aggregation wait and the local TestFlight daily policy;
+  source, native, signing, immutable assets and availability checks still apply.
+
 - `F-430`, `C-010`: align the phone package and derived development iOS settings
   with the allocated, unpublished `0.1.38` source batch. TestFlight archives keep
   their independently selected marketing version; publication remains gated.

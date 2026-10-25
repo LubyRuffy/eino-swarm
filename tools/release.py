@@ -106,7 +106,16 @@ def run(args, *, cwd=ROOT, env=None):
     return (result.stdout or result.stderr).strip()
 
 
-def source_preflight(root, version, platforms=('macos', 'android', 'ios')):
+def urgent_release_reason(value):
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError('Urgent release reason must not be blank')
+    return value.strip()
+
+
+def source_preflight(root, version, platforms=('macos', 'android', 'ios'), *, urgent_reason=None):
+    urgent_reason = urgent_release_reason(urgent_reason)
     version_code(version)
     if run(['git', 'status', '--porcelain'], cwd=root):
         raise ValueError('Release source checkout must be clean')
@@ -150,18 +159,20 @@ def source_preflight(root, version, platforms=('macos', 'android', 'ios')):
         batch = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
         pending = batch.get('pending_new_batch', {})
         if (pending.get('version') != version or pending.get('source_sha') != sha
-                or not pending.get('issues') or not pending.get('qualified_for_new_release')):
+                or not pending.get('issues') or not (pending.get('qualified_for_new_release') or urgent_reason)):
             raise ValueError('New publication requires a verified, allocated batch')
         report = json.loads(run([sys.executable, str(ROOT / 'tools/audit_pending_batch.py'), '--state',
             str(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')))], cwd=root))
-        if (not report.get('resume_allocated_version') or report.get('main_sha') != sha
+        timing_qualified = report.get('resume_allocated_version') or (
+            urgent_reason and report.get('batch_version') == version and report.get('version_locked') is False)
+        if (not timing_qualified or report.get('main_sha') != sha
                 or set(pending['issues']) != set(report.get('unallocated_issues', []))
                 or not set(platforms) <= set(report.get('platforms_to_release', []))):
             raise ValueError('Live batch audit does not qualify this exact main/source batch')
         if batch.get('active_issue') is not None:
             raise ValueError('Issue integration is still in progress; finalize the workset before publication')
         workset = pending.get('finalized_workset', {})
-        if (workset.get('source_sha') != sha
+        if (workset.get('source_sha') != sha or workset.get('active_issue') is not None
                 or set(workset.get('issues', [])) != set(report['unallocated_issues'])
                 or set(workset.get('platforms_to_release', [])) != set(report['platforms_to_release'])):
             raise ValueError('New publication requires a finalized workset for this source and all required platforms')
@@ -176,7 +187,7 @@ def home():
     return Path(os.environ.get('ZWAI_HOME', Path.home() / '.zwai-swarm'))
 
 
-def github_platform(root, version, source_sha, platform, state):
+def github_platform(root, version, source_sha, platform, state, *, urgent_reason=None):
     if platform == 'android':
         files = [root / 'bin' / f'zwai-{version}-android.apk']
     else:
@@ -225,7 +236,7 @@ def github_platform(root, version, source_sha, platform, state):
                 raise ValueError('Build changed tracked source; refusing upload')
         if platform == 'macos':
             validate_macos_zip(files[0])
-    if source_preflight(root, version, (platform,)) != source_sha:
+    if source_preflight(root, version, (platform,), urgent_reason=urgent_reason) != source_sha:
         raise ValueError('Source changed during platform build')
     run(['go', 'run', './internal/release/cmd', '-version', version, '-dir', str(root / 'bin'),
          '-platform', platform, '-target', source_sha], cwd=ROOT)
@@ -305,12 +316,15 @@ def platform_acceptance_gate(version, platform):
             raise ValueError(f'Issue #{number} {platform} native acceptance is still pending')
 
 
-def execute(root, version, selected, state_path, check=False):
+def execute(root, version, selected, state_path, check=False, *, urgent_reason=None):
+    urgent_reason = urgent_release_reason(urgent_reason)
     platforms = selected_platforms(version, selected)
-    source_sha = source_preflight(root, version, tuple(platforms))
+    source_sha = source_preflight(root, version, tuple(platforms), urgent_reason=urgent_reason)
     state = read_json(state_path, {'version': version, 'source_sha': source_sha})
     if state['version'] != version or state['source_sha'] != source_sha:
         raise ValueError('Release state belongs to another version/source SHA')
+    if urgent_reason:
+        state['urgent_reason'] = urgent_reason
     from release_ios import IOSRelease
     delivery = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
     frozen, _ = delivery_batch(delivery, version, source_sha)
@@ -325,13 +339,13 @@ def execute(root, version, selected, state_path, check=False):
             if not check:
                 platform_acceptance_gate(version, platform)
             if platform == 'ios':
-                ios = IOSRelease(root, version, source_sha, state)
+                ios = IOSRelease(root, version, source_sha, state, urgent_reason=urgent_reason)
                 result = ios.publish(check=check)
             elif check:
                 run(['go', 'run', './internal/release/cmd', '-version', version, '-check'], cwd=root)
                 result = {'status': 'preflight_passed'}
             else:
-                result = github_platform(root, version, source_sha, platform, state)
+                result = github_platform(root, version, source_sha, platform, state, urgent_reason=urgent_reason)
             if not check:
                 state[platform] = result
                 if platform != 'ios' and result['status'] == 'published':
@@ -366,6 +380,8 @@ def main():
     parser.add_argument('--platform', choices=['all', 'macos', 'android', 'ios'], default='all')
     parser.add_argument('--check', action='store_true', help='read-only source, signing and remote checks')
     parser.add_argument('--source-dir', type=Path, default=ROOT)
+    parser.add_argument('--urgent-reason', type=urgent_release_reason,
+                        help='explicit user-authorized urgent release; bypass timing policy only')
     args = parser.parse_args()
     version_code(args.version)
     directory = home() / 'releases'
@@ -376,7 +392,7 @@ def main():
         except BlockingIOError:
             raise ValueError('Another release is active; refusing overlapping publication') from None
         return execute(args.source_dir.resolve(), args.version, args.platform,
-                       directory / f'{args.version}.json', args.check)
+                       directory / f'{args.version}.json', args.check, urgent_reason=args.urgent_reason)
 
 
 if __name__ == '__main__':

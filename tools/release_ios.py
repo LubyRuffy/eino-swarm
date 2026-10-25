@@ -86,8 +86,13 @@ def verify_public_receipt(version, source_sha, state, ledger):
 
 
 class IOSRelease:
-    def __init__(self, root, version, source_sha, state):
+    def __init__(self, root, version, source_sha, state, *, urgent_reason=None):
         self.root, self.version, self.source_sha, self.state = root, version, source_sha, state
+        if urgent_reason is not None and (not isinstance(urgent_reason, str) or not urgent_reason.strip()):
+            raise ValueError('An urgent reason must be nonblank text')
+        self.urgent_reason = urgent_reason.strip() if urgent_reason is not None else None
+        if self.urgent_reason:
+            self.state['urgent_reason'] = self.urgent_reason
         self.number = version_code(version)
         self.config_path = Path(os.environ.get('IOS_RELEASE_CONFIG', home() / 'ios-signing/release-config.json'))
         self.config = read_json(self.config_path, {})
@@ -384,7 +389,7 @@ class IOSRelease:
                 raise ValueError('Remote build marketing version mismatch')
         if build and self.observe(build, not check):
             return {**existing, 'status': 'published', 'source_sha': self.source_sha, 'build_id': build['id'], 'group_ids': self.config['group_ids']}
-        if self.quota(not check):
+        if self.quota(not check) and not self.urgent_reason:
             return {**existing, 'status': 'waiting_daily_limit', 'earliest_beijing_date': 'next natural day'}
         # Other accepted candidates might become available after asynchronous review.
         pending = [r for r in self.ledger.get('releases', []) if r.get('app_id') == self.module.APP_ID
@@ -422,7 +427,8 @@ class IOSRelease:
             else:
                 self.declaration()  # refuse expensive archive until this build's classification exists
                 ipa = self.build_ipa()
-            if source_preflight(self.root, self.version, ('ios',)) != self.source_sha:
+            source_options = {'urgent_reason': self.urgent_reason} if self.urgent_reason else {}
+            if source_preflight(self.root, self.version, ('ios',), **source_options) != self.source_sha:
                 raise ValueError('Source changed during iOS archive; refusing upload')
             self.api = self.module.Client()
             value = self.verify_ipa(ipa)
@@ -433,7 +439,7 @@ class IOSRelease:
             # Durable checkpoint before upload: the outer driver will persist on failure too.
             write_json(home() / 'releases' / f'{self.version}.json', self.state)
             accepted = self.snapshot()  # recheck immediately before the first upload
-            if self.quota():
+            if self.quota() and not self.urgent_reason:
                 return {**existing, 'status': 'waiting_daily_limit'}
             if accepted or any(str(u['attributes'].get('cfBundleVersion')) == self.number for u in self.uploads):
                 return {**existing, 'status': 'waiting_processing'}

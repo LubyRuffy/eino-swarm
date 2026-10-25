@@ -203,7 +203,10 @@ publication must also contain the committed mobile package version; a Mac-only
 version leaves that package untouched. A new version requires a qualified batch
 (more than three main commits since the last published SHA, or an accepted
 pending change older than 24 hours); this command
-does not increment versions or commit unverified changes. A published version
+does not increment versions or commit unverified changes. An explicit human-requested
+urgent release can pass `--urgent-reason <reason>` to `tools/release.py` to
+relax only aggregation waiting and the local TestFlight daily policy. All
+source, native and publication checks remain required. A published version
 is frozen at its tag SHA. Missing remote assets are appended; same-name assets
 require identical SHA-256 and are skipped. No published attachment is replaced.
 
