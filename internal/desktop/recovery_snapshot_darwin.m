@@ -17,7 +17,12 @@ extern void desktopSnapshotResult(uint64_t request, int status, unsigned char *p
 - (BOOL)acceptsFirstResponder { return NO; }
 - (BOOL)isAccessibilityElement { return NO; }
 - (NSView *)hitTest:(NSPoint)point { return nil; }
-- (void)drawRect:(NSRect)dirtyRect { [self.colour setFill]; NSRectFill(dirtyRect); }
+- (void)drawRect:(NSRect)dirtyRect {
+    // AppKit may invalidate outside our bounds; filling dirtyRect can erase
+    // the entire window on macOS 14+, whose views no longer clip by default.
+    [self.colour setFill];
+    NSRectFill(self.bounds);
+}
 - (void)dealloc { [_colour release]; [super dealloc]; }
 @end
 
@@ -42,6 +47,7 @@ static BOOL zwaiSetRenderCover(WKWebView *view, id value) {
     ZwaiRenderProbeCover *cover = objc_getAssociatedObject(view, &zwaiRenderProbeCoverKey);
     if (cover == nil) {
         cover = [[[ZwaiRenderProbeCover alloc] initWithFrame:NSZeroRect] autorelease];
+        cover.clipsToBounds = YES;
         cover.translatesAutoresizingMaskIntoConstraints = NO;
         [view.superview addSubview:cover positioned:NSWindowAbove relativeTo:view];
         [NSLayoutConstraint activateConstraints:@[

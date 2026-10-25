@@ -212,7 +212,8 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-115`, `C-034`: hide the renderer's pixel probe behind a non-interactive
   native cover that follows theme and dialog backgrounds. WebView snapshots
   still verify each complete random challenge; colour sampling failures behind
-  an existing cover do not disable detection or trigger false recovery.
+  an existing cover do not disable detection or trigger false recovery. Native
+  painting stays inside the cover bounds even for an oversized dirty rectangle.
 
 - `F-150`, `F-160`, `C-009`: scheduling-answer classification now honors the
   provider's configured response-header and body-idle waits without an extra

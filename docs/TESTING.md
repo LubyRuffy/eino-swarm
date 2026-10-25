@@ -417,6 +417,8 @@ RGB messages, complete/stale/missing nonce pixels and recovery transitions.
 Objective-C entry with view/JavaScript seams, without opening a host window;
 it checks cover-before-paint, opaque geometry, flipped/offset layout, resize,
 single-cover reuse, input/AX exclusion and failed colour preparation. This is
+also a pixel regression: an oversized native dirty rectangle must not paint
+outside the cover's own bounds or erase the rest of the window. It is
 also included in `make docs-check`. Native acceptance separately checks light
 and dark themes, both palettes, modal/settings changes and recovery in the
 isolated guest; a successful JS callback alone never accepts WebView painting.

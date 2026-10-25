@@ -64,8 +64,39 @@ void desktopSnapshotResult(uint64_t request, int status, unsigned char *pixels, 
 #define WKWebView FixtureWebView
 #define NSWindow FixtureWindow
 #include "recovery_snapshot_darwin.m"
+static void verifyBoundedDrawing(void) {
+    NSBitmapImageRep *bitmap = [[[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
+        pixelsWide:64 pixelsHigh:64 bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES
+        isPlanar:NO colorSpaceName:NSDeviceRGBColorSpace bytesPerRow:64*4 bitsPerPixel:32] autorelease];
+    require(bitmap != nil, "offscreen pixel fixture could not be created");
+    ZwaiRenderProbeCover *cover = [[[ZwaiRenderProbeCover alloc] initWithFrame:NSMakeRect(0,0,16,16)] autorelease];
+    cover.colour = [NSColor colorWithSRGBRed:1 green:1 blue:1 alpha:1];
+    for (NSValue *dirty in @[[NSValue valueWithRect:NSMakeRect(0,0,64,64)],
+                            [NSValue valueWithRect:NSMakeRect(-16,-16,96,96)]]) {
+        [NSGraphicsContext saveGraphicsState];
+        [NSGraphicsContext setCurrentContext:[NSGraphicsContext graphicsContextWithBitmapImageRep:bitmap]];
+        [[NSColor colorWithSRGBRed:1 green:0 blue:0 alpha:1] setFill];
+        NSRectFill(NSMakeRect(0,0,64,64));
+        // macOS 14+ may pass a dirtyRect extending beyond this view's bounds.
+        // Exercise the real drawRect with no artificial context clipping so an
+        // oversized native fill cannot be hidden by the test environment.
+        [cover drawRect:dirty.rectValue];
+        [NSGraphicsContext restoreGraphicsState];
+        for (NSInteger y = 0; y < 64; y++) for (NSInteger x = 0; x < 64; x++) {
+            NSColor *pixel = [[bitmap colorAtX:x y:y] colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+            BOOL inside = x < 16 && y >= 48;
+            require(pixel.redComponent > 0.99 && pixel.alphaComponent > 0.99,
+                "native cover damaged the lower window's existing pixels");
+            require(inside ? pixel.greenComponent > 0.99 && pixel.blueComponent > 0.99
+                           : pixel.greenComponent < 0.01 && pixel.blueComponent < 0.01,
+                "native cover painted outside its 16 by 16 bounds and erased the WebView");
+        }
+    }
+    printf("native cover redraw stayed inside its bounds\n");
+}
 int main(int argc, char **argv) { @autoreleasepool {
     mode = argc > 1 ? [NSString stringWithUTF8String:argv[1]] : @"normal";
+    if ([mode isEqual:@"draw-bounds"]) { verifyBoundedDrawing(); return 0; }
     FixtureWindow *window = [FixtureWindow new];
     Class parentClass = [mode isEqual:@"flipped"] ? FlippedParent.class : NSView.class;
     window.contentView = [[[parentClass alloc] initWithFrame:NSMakeRect(0,0,500,400)] autorelease];
@@ -120,7 +151,7 @@ class NativeRenderCoverTests(unittest.TestCase):
         cls.binary = Path(temporary.name) / "test"
         source.write_text(FIXTURE)
         subprocess.run([
-            "clang", "-fblocks", "-I", str(ROOT / "internal/desktop"),
+            "clang", "-fblocks", "-mmacosx-version-min=11.0", "-I", str(ROOT / "internal/desktop"),
             "-framework", "Cocoa", "-framework", "WebKit",
             str(source), "-o", str(cls.binary),
         ], check=True, capture_output=True, text=True)
@@ -138,6 +169,11 @@ class NativeRenderCoverTests(unittest.TestCase):
                 result = subprocess.run([str(self.binary), mode], capture_output=True, text=True, timeout=10)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn("preparation refused", result.stdout)
+
+    def test_cover_redraw_cannot_erase_the_webview(self):
+        result = subprocess.run([str(self.binary), "draw-bounds"], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("native cover redraw stayed inside its bounds", result.stdout)
 
 
 if __name__ == "__main__":
