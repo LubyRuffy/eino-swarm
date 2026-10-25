@@ -298,6 +298,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
+- 原生 case 的内部 `prepare` 接缝在原真实锁、未清理回执及私有进程清单下完成有限登录／power 交接；App 发布前执行最终准入，scenario 用同 birth 三类断言确认接管。登录仅接收一次内存凭据，缺失 SDK lock 字段保持 unknown，仍须本次新鲜桌面图批准；未提供回调的公共 CLI 不变。关联契约：`C-031`；实现／验证：`tools/native_macos_case.py`、`tools/native_macos_case_power.py`、`tools/native_macos_prepare_login.py`、`tools/native_macos_prepare_login_client.py`、`tools/native_macos_prepare_login.swift`、`tools/test_native_macos_case_prepare.py`、`tools/test_native_macos_case_power.py`、`tools/test_native_macos_prepare_login.py`。HOST 回归不代表来宾窗口或恢复验收。
+
 - 显式紧急发布使用 `tools/release.py --urgent-reason <reason>`，保留当前人类授权原因，仅放宽常规批次等待及 TestFlight 日发布频率；原生与交付验收仍独立生效。关联契约：`C-010`；证据：`tools/test_release_urgent.py`、`tools/test_release_ios_urgent.py`。
 
 - 已验收 Android APK 的统一发布恢复：批次 `release_android_validation` 绑定通过状态、版本、完整源码 SHA、附件名与 SHA-256；上传前核对并直接复用同一 APK，不重新构建。缺文件、变更、非法回执或 ready 状态缺回执拒绝上传，已有远端附件仍按 digest 恢复。入口：`tools/release.py --platform android`；关联契约：`C-010`；实现／验证：`tools/release.py`、`tools/test_release_android_retained.py`、`docs/RELEASE.md`；来源：Issue #109。

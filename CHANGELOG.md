@@ -13,6 +13,15 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-430`, `C-031`: add internal case-owned preparation and final App admission,
+  with bounded login/frame approval and a same-birth power handoff. Preparation
+  children share the original lock, deadlines and cleanup; cross-process expiry
+  projects the original work budget onto system RAW and retains frame wall expiry.
+  Credentials remain
+  in memory and missing SDK lock fields remain unknown. This fixes a test
+  handoff gap; it does not establish the white-screen trigger or native package
+  acceptance (Issue #94).
+
 - `F-115`, `C-034`, `C-001`, `C-012`: preserve the last observed probe boundary
   before automatic renderer recovery, distinguish snapshot errors from pixel
   mismatches, and identify replacement validation phases and safe lease HTTP

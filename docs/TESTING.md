@@ -411,6 +411,61 @@ headless unit/browser tests may run on the host. Use background guest control
 (SSH when available) and guest-side screenshots/accessibility. An unavailable
 guest is a pending native check, never permission to test on the host.
 
+### Case-owned preparation and finite power handoff (Issue #94)
+
+The Python API `main(argv=None, *, prepare=None)` supports an internal callback,
+not an extra CLI mode. The runner first holds its real case lock, saves an
+incomplete cleanup receipt, creates private directories and a `ProcessScope`,
+then calls `prepare(lock, receipt, environment, processes, scope, work_deadline)`.
+Return `None` or `CasePreparation(before_launch, handoff)`. `before_launch()`
+runs immediately before App Popen; `handoff(scenario, deadline)` runs after the
+actual scenario starts. Neither callback may allocate a fresh work budget.
+A process-local monotonic value is not a portable deadline: the guest Python
+3.9 producer and child were measured with different monotonic origins. Shared
+work expiry is a single conservative projection of the original local budget
+onto system `CLOCK_MONOTONIC_RAW`; frames also retain their wall expiry. A
+receiver maps the original remaining time once to its local monotonic clock. Later checks read the same expiry, never allocate another TTL.
+
+`native_macos_case_power.make_prepare` registers its finite setup bridge in the
+original process list before invoking the login/admission callback. The scenario
+calls `start_setup_hold` at entry and publishes its actual birth and assertion
+owner. The driver independently checks that owner's PID, birth, executable,
+direct parent and three IOPM assertions, reaps its bridge, then publishes the
+handoff commit. No ACK, malformed/partial ACK, a changed identity or cancellation
+fails the case and follows the original cleanup. For an idle observation, start
+the measured `-d -i` owner, prove its two assertions with no `UserIsActive`, and
+call `release_setup_hold` before recording t0. Power is never login evidence.
+
+`native_macos_prepare_login.make_before_app` creates a callback which returns
+a final admission closure after Root approves the desktop. Power retains that
+closure for `CasePreparation.before_launch`; preliminary approval cannot replace
+this final check. The callback binds the original runner/case,
+source/package, exact helper/client bytes and current session. The caller must
+also verify the complete candidate inputs. The actor publishes current PNG and
+ready receipts under `prepare-login/`. Root must inspect each current image:
+only a strict locked result plus a ci/US/empty-password frame permits the one
+input; a missing SDK flag stays unknown and does not load a credential. The
+actor checks the sender's exact kernel/argv, case marker and birth. The pinned
+client checks the case-root inode, actor/server identity, source and relative
+socket, prints READY, then accepts one memory stdin payload within the original
+eight seconds. A new desktop frame and approval are mandatory after input;
+raw locked=true always refuses. Both approvals expire at the original capture
+plus 60 seconds, checked again at final App publication. No password is written,
+hashed, logged or put in argv/environment. Login source is read by explicit
+interpreters; a LaunchServices executable entry still needs its own mode check.
+
+HOST regressions exercise the actual runner main, real flock, real headless
+children and sockets, cancellation/partial input/ACK and preparation cleanup.
+OS leaves are replaced only for headless tests. Run:
+
+```bash
+python3 -B -m unittest discover -s tools -p 'test_native_macos_case*.py'
+python3 -B -m unittest discover -s tools -p 'test_native_macos_prepare_login.py'
+swiftc -typecheck tools/native_macos_prepare_login.swift
+```
+
+These checks do not demonstrate a guest login, window, fault recovery or release.
+
 ### Access evidence and maintenance exclusion (Issue #97)
 
 Run the host preflight with the provisioned private profile and a new evidence

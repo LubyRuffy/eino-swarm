@@ -32,9 +32,9 @@ import zipfile
 import zlib
 
 HERE = Path(__file__).resolve().parent
-_spec = importlib.util.spec_from_file_location("native_case", HERE / "native_macos_case.py")
-runner = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(runner)
+import native_macos_case as runner
+if Path(runner.__file__).resolve() != HERE / "native_macos_case.py":
+    raise RuntimeError("native case runner belongs to another QA directory")
 _control_spec = importlib.util.spec_from_file_location("resilience_control", HERE / "native_macos_resilience_control.py")
 control = importlib.util.module_from_spec(_control_spec)
 _control_spec.loader.exec_module(control)

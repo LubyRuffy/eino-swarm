@@ -1540,7 +1540,20 @@ launches do not replace the guest user's normal cached app bundle.
 The scenario collects real window/behavior evidence; the runner terminates its
 owned processes before deleting disposable state, retaining logs and cleanup
 receipts separately. A failed cleanup blocks another case. Host-side provenance
-checks do not launch or replace the user's native app. See `C-031` and
+checks do not launch or replace the user's native app.
+An optional internal case preparation callback runs under that same lock and
+incomplete receipt before the App starts. Its final admission runs immediately
+before App Popen; a separate handoff waits for the actual scenario's same-birth
+power owner. Both share the original work deadline; cross-process expiry uses
+the original work budget projected once onto system RAW, with wall expiry
+retained for frames and one mapping to each receiver's local monotonic clock.
+The preparation login
+actor uses a case-root relative socket and a pinned one-shot client: Root
+approves current before/after frames, credentials remain in memory, and missing
+SDK lock fields stay unknown. Finite power bridges are original-case children,
+not login proof or accepted native behavior. The scenario proves its passive
+display/system hold and removes setup UserIsActive before idle measurement.
+See `C-031` and
 [Testing](docs/TESTING.md#native-desktop-isolation-f-430--c-031).
 The campaign control module offers an optional final launch admission after its
 log I/O, separate from its existing ownership-lock admission. Input-body capture
