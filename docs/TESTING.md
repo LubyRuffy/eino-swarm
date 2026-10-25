@@ -5198,5 +5198,9 @@ Phone conversation loading also has packaged native cases in
 Use a disposable fixture with `/?mock=1&tick=0&history=hidden&pause=open`.
 Both cases check empty live edge, Earlier history, Back and reopening the same
 conversation before reading Earlier again, retaining PNG and accessibility
-observations. Native fixture behavior supplements bounded-query/RPC and
+observations. Android API 33 text polling reads the actual rendered WebView
+DOM because its cached accessibility tree can omit a painted paragraph;
+all navigation and Earlier actions still use native accessibility clicks.
+An unloaded body or null callback remains pending within the original poll.
+Native fixture behavior supplements bounded-query/RPC and
 Chromium/WebKit regression tests; it does not measure a real paired network.
