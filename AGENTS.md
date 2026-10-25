@@ -313,6 +313,12 @@ E2E suite.
   launch deadline after acknowledged handoff. Regress restoration exceeding 30s,
   durable Stop before runtime occupation, a shared per-conversation snapshot and
   one indexed checkpoint read; Trace diagnostics cannot claim restored on error.
+  Include a real pending human ask: its validated call identity must reach the
+  waiter and cancellation cleanup without another full-turn body read. Freeze
+  query counters only after the current attempt's live/parked workers have each
+  made a real resumed request and the actual ask waiter is armed, before HTTP
+  Trace/log observers can add reads. Regress the observer with actual full-query and
+  failed-write counterexamples; self-reported counts alone are insufficient.
   Regress real process replacement, original turn/worker identities, human
   pauses and Stop, storage failure, and tool results arriving after shutdown.
   Unknown external effects require verification before retry; a model summary

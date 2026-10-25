@@ -228,6 +228,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-110`, `F-130`, `C-027`: reuse the shared recovery snapshot's validated
+  human-question call identity when arming and leaving its waiter. Keep early
+  answers, wrong/duplicate-answer refusal and Stop semantics while avoiding a
+  repeated full-turn checkpoint read. Real-process regressions combine 351
+  worker identities, live and parked work, a human pause, uncertain side-effect
+  verification, explicit cancellation and same-directory cold recovery (Issue #102).
+
 - `F-210`, `F-220`, `C-006`: phone conversation previews and detail no longer
   load entire event/turn histories. Indexed, projected tail reads preserve
   visible summaries through hidden coordination records. Phone opening uses

@@ -1564,6 +1564,43 @@ go test -race -count=1 ./internal/app ./internal/server ./internal/remote ./inte
 go test -race -count=1 ./cmd/zwai -run 'TestReplacementListensWhileRecoveryExceedsThirtySeconds|TestAcknowledgedReplacement|TestForwardReplacement'
 ```
 
+### Mixed worker roster and human-pause replacement (Issue #102)
+
+`cmd/zwai/engine_large_roster_process_test.go` and its fixture exercise actual
+old and replacement processes, SQLite, the Registry and a keyless loopback model.
+349 historical finished workers are explicitly seeded as historical events;
+two live/parked workers and the human question are created through real tools.
+The old engine's actual `PrepareRestart` must checkpoint all 351 identities.
+The tests retain task/call identities, historical results and the future wake,
+verify an uncertain write by a real read before completion, and reject duplicate
+answers. The second case explicitly stops its identified restoring child after
+model work is observed, then cold-recovers the same data without reseeding.
+This is explicit cancellation, not a post-ACK deadline kill or a product crash.
+
+The test-only helper records real indexed-checkpoint, filtered and full-body
+query counts and stage timings. Counters remain active through the resumed
+bootstrap; the parent requires fresh live/parked worker requests beyond that
+attempt's baseline and waits for the actual ask waiter via the read-only thread
+list, then receives the counter-freeze acknowledgement before requesting Trace.
+`engine_large_roster_probe_checks_test.go` challenges the observer with real
+full-thread/turn queries and failed generation writes. Restored ask lookup and
+Stop separately regress zero repeated body reads in
+`internal/engine/restore_ask_reads_test.go`. Early accepted answers and successive
+questions retain the existing restart-answer replay regressions.
+
+Handoff/listener readiness keeps its shared 30-second target; restoration and
+total work are measured separately. This mixed-roster cardinality case does not
+reproduce the large payload benchmark below and does not accept a native window
+or installer. Keep each failed attempt, model inputs, original/new process logs,
+Trace, probe and cleanup receipts separately from a later successful run.
+`ZWAI_LARGE_ROSTER_EVIDENCE` optionally retains those private files; omit it for
+ordinary disposable test data. No real model or host GUI is used.
+
+```bash
+go test -race -count=1 -timeout 8m ./cmd/zwai -run 'TestReplacementRestoresLargeRosterWithLiveParkedAndHumanPause|TestCancelledLargeRestoreReapsOwnedChildAndColdRecoversSameWork|TestLargeRestoreProbeCounts'
+go test -race -count=1 ./internal/engine -run 'TestRestoreBindsTheOriginalQuestion|TestRestartReplaysAnAnswerAccepted|TestRestartReplaysAnAcceptedAnswer|TestRestartDoesNotApplyAnEarlierAcceptedAnswer|TestLateAskAnswer'
+```
+
 ### Large-history restoration measurement
 
 `BenchmarkRestoreSnapshotLargeHistory` uses 100,001 historical tool-result rows

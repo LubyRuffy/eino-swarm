@@ -379,7 +379,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   Active and background sub-agents retain their IDs, histories, unread
   messages and confirmed results. Summaries are best effort under one shared
   deadline; a task does not become completed because it was summarized.
-  Questions and iteration-cap pauses still wait for you. The conversation
+  Questions and iteration-cap pauses still wait for you. A restored question
+  reuses its verified call identity without rereading the complete turn's
+  checkpoint bodies when waiting or stopping. The conversation
   shows saving/saved/restored notices, and its turn ID exposes the complete
   handoff in Trace. Checkpoint failures stop replacement with an explicit
   error. A failed handoff keeps execution frozen and its checkpoints retryable;

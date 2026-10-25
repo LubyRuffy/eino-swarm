@@ -76,7 +76,8 @@ launcher's child; a competing loser is reaped when its single Acquire fails.
 history. `serveEngine` listens, publishes a `restoring` lease and serves HTTP,
 then owns synchronous `App.Restore`; the idle watcher counts recovery as active
 work. `Engine.Restore` builds one indexed checkpoint/event snapshot per conversation,
-passes it through the restored runtime bootstrap, including both manager correction
+passes it through the restored runtime bootstrap, including the validated identity
+of an unanswered human call and both manager correction
 allowances, and records `engine_restore` measurements on the original turn. The
 filtered events retain `model_retry` and `max_iterations_continued` receipts across
 checkpoints. A new human cap continuation discards the startup snapshot before

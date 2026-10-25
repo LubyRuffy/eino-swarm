@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/LubyRuffy/eino-swarm/internal/app"
@@ -27,7 +28,14 @@ func runRestoreProcessHelper() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	delay, _ := time.ParseDuration(os.Getenv("ZWAI_RESTORE_DELAY"))
-	err := serveEngine(ctx, engineOpts{DataDir: *dir, Addr: *addr, Restore: func(ctx context.Context, a *app.App) error {
+	err := serveEngine(ctx, engineOpts{DataDir: *dir, Addr: *addr, Restore: func(ctx context.Context, a *app.App) (err error) {
+		probe, err := startLargeRestoreProbe(ctx, a)
+		if err != nil {
+			return err
+		}
+		if probe != nil {
+			defer func() { err = errors.Join(err, probe.finish(err)) }()
+		}
 		if delay > 0 {
 			timer := time.NewTimer(delay)
 			defer timer.Stop()
