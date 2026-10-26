@@ -26,7 +26,9 @@ async function printOutput(page: Page, terminal: Locator, marker: string) {
   // row to select with real pointer input. No terminal implementation API is used.
   await page.keyboard.type(`printf '\\033[2J\\033[H'; printf '%s\\n' '${marker}'`)
   await page.keyboard.press("Enter")
-  const output = terminal.locator(".xterm-rows > div").filter({ hasText: marker })
+  // The echoed printf command also contains marker before its output arrives.
+  const exactMarker = new RegExp(`^${marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`)
+  const output = terminal.locator(".xterm-rows > div").filter({ hasText: exactMarker })
   await expect(output).toHaveCount(1)
   await expect(output).toHaveText(marker)
   return output
