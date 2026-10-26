@@ -1794,10 +1794,10 @@ shortening only the bounded detail text.
 | `session_memory` | the rolling session briefing was refreshed from the event log; `text` is JSON `{summary,through_seq}`. `agent_id` is `session-memory`. Not rendered in the transcript; compact and the reviewer read the thread fields. Post-turn refresh is background work: a queued follow-up starts as soon as the turn is `done` or `error`, and does not wait for this event |
 | `goal` | the human set or cleared a standing objective; `text` is the objective (empty when cleared). Resets complete/blocked/capped |
 | `goal_complete` | the manager called `complete_goal`; auto-continue stops. `text` is JSON `{summary}`. `reopen_goal` in the same turn records `goal_resumed`, resets the auto-continue budget, and pursuit continues |
-| `goal_blocked` | the manager called `block_goal`, or a pursuing turn had a non-recoverable failure outside the isolated scheduled-check boundary. Auto-continue stops until the human resumes. `text` is JSON `{reason}` |
+| `goal_blocked` | the manager called `block_goal`, or a pursuing turn had a non-recoverable failure outside the isolated scheduled-check boundary. A scheduling-answer `no_matching_schedule` refusal does not emit this event or write `goal_block_reason`. Auto-continue stops until the human resumes. `text` is JSON `{reason}` |
 | `goal_resumed` | `role: "human"` marks an explicit human goal-resume request and resets worker watchdog recovery; manager `reopen_goal` does not reset it. The human started pursuit again after a block, a cap, an idle open goal, or a completed objective that finished too early — or the manager called `reopen_goal` after a mistaken `complete_goal`. Same Working-clock rule as `goal_continued` |
 | `goal_continued` | the runtime started the next turn to keep pursuing an open objective. Not a `user_message`. Clients start the Working clock from this event's `created_at` (a `done` has just cleared `status.started_at`) |
-| `goal_capped` | consecutive auto-continues hit `swarm.goal_max_auto_turns` (`text` is JSON `{auto_turns,cap}`), or the human interrupted a pursuing turn (`text` is JSON `{reason:"interrupted"}`). A later human message or resume resets the budget |
+| `goal_capped` | consecutive auto-continues hit `swarm.goal_max_auto_turns` (`text` is JSON `{auto_turns,cap}`), or the human interrupted a pursuing turn (`text` is JSON `{reason:"interrupted"}`), or three consecutive unsupported scheduling-answer failures paused ordinary automatic pursuit of the same goal (`text` is JSON `{reason:"schedule_claim_unverified",code:"no_matching_schedule",attempt:3,cap:3}`). The last case is a verification failure cap, not an external blocker. A later human message or resume resets the budget |
 | `goal_idle` | an engine-started continuation finished with no counted tool activity (`text` is the notice). Auto-continue stops until a human message or resume; the objective stays open |
 | `goal_edited` | the human changed the objective text in place; `text` is the new objective. Status stays put. A running turn is also steered |
 | `plan` | the conversation entered `/plan`; write/edit/exec and similar are unmounted. `text` is `planning` |
@@ -1821,10 +1821,38 @@ single correction for a scheduling claim that classification and current
 persisted facts cannot support. It is not a classifier-service retry or proof
 that a wait was created. Candidate manager prose stays private until the
 tool-free `schedule-answer-policy` call extracts claims and code verifies the
-current plans. A new-arrangement claim needs this turn's successful action;
+current plans. Each extracted item requires `stance` (`affirmed`, `negated`,
+`hypothetical`), `temporal` (`current`, `historical`, `intended`) and
+`attribution` (`assistant`, `reported`). Only affirmed/current/assistant items
+require schedule evidence. A quote preserves its contiguous negation, tense
+and attribution context. Denials, status-only reports, relayed human prohibitions
+and ended or cancelled historical waits should yield empty claims; such items
+are excluded when their structured classification identifies them. Missing or
+invalid fields are `classification_invalid`, so only the original candidate
+retries. This is a semantic model boundary, not a deterministic guarantee of
+an external model's interpretation. A new-arrangement claim needs this turn's
+successful action;
 a cancelled or failed arrangement cannot support it. A repeated unsupported
-claim fails explicitly. Restart preserves the consumed correction allowance;
-receipt reads and writes must succeed before another corrective manager call.
+claim fails explicitly; a correction with the claim removed publishes normally.
+Restart preserves the consumed same-turn correction allowance; receipt reads
+and writes must succeed before another corrective manager call. A terminal
+`schedule_claim_unverified` ending in `(no_matching_schedule)` keeps the turn
+`error` and `final` empty, but does not write `goal_block_reason` or mark the
+goal externally blocked. A pursuing goal may start another turn within its
+existing automatic budget; three consecutive such ordinary-pursuit failures of the same goal
+stop automatic continuation with the distinct `goal_capped` payload above.
+This durable goal-level cap survives replacement and is separate from the
+single correction allowed within each turn. Success, cancellation, another
+error class or a new human turn breaks the streak. Setting/clearing the goal
+and explicit human resume reset it; manager reopen does not. Failed scheduled
+checks retain their future-wake ownership without an immediate goal retry.
+The capped flag and reason event commit atomically after rechecking the goal
+identity, automatic count and latest turn. Unreadable retry evidence pauses
+with `reason:"schedule_claim_retry_state_unavailable"` and
+`code:"retry_state_unavailable"`; failed persistence cannot claim a cap or
+authorize another automatic request. Desktop/Web retain the historical
+correction request and terminal refusal as separate rows; a terminal row says
+that no final answer was published instead of implying verification continues.
 
 An unavailable or malformed classification instead keeps the same turn
 running and retries the original durable candidate, with 5/10/20/30-second

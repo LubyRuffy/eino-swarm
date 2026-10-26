@@ -44,7 +44,7 @@ test("a live scheduling answer survives classifier failures and a response beyon
     await composer(page).fill("Inspect the assigned task state.")
     await composer(page).press("Enter")
     const transcript = page.getByTestId("transcript")
-    await expect(transcript).toContainText("Checking the schedule before reporting it as arranged.")
+    await expect(transcript).toContainText("The previous answer contained an unverified schedule claim. One correction was requested.")
     await expect(transcript).not.toContainText(unsupportedScheduleAnswer)
     await expect(page.getByTestId("schedule-banner")).toHaveCount(0)
     await expect.poll(() => page.evaluate(() => (window as Window & { __answerRetryEvents?: unknown[] }).__answerRetryEvents?.length ?? 0)).toBe(1)
@@ -169,6 +169,92 @@ test("Stop cancels a classification recovery wait without publishing or rerunnin
     expect(fixture.errors).toEqual([])
     await page.screenshot({ path: info.outputPath("classification-recovery-stopped.png"), animations: "disabled" })
     await writeFile(info.outputPath("classification-stop-evidence.json"), JSON.stringify({ trace, stopped, afterObservation: fixture.state(), observationMS: 6_000, errors: fixture.errors }, null, 2), { mode: 0o600 })
+  } finally {
+    await page.unroute(history)
+    if (threadID) await request.post(`/api/threads/${threadID}/interrupt`, { timeout: 5000 }).catch(() => undefined)
+    await fixture.close()
+  }
+})
+
+test("consecutive unsupported corrections stop goal continuation with separate retry and terminal rows", async ({ page, request }, info) => {
+  test.skip(process.env.ZWAI_E2E_SCHEDULE_ANSWER !== "1", "requires the offline answer admission fixture")
+  const fixture = await startScheduleAnswerFixture({ uncorrected: true })
+  let threadID = ""
+  const history = /\/api\/threads\/[^/]+\/log(?:\?|$)/
+  try {
+    const { settings } = await (await request.get("/api/settings")).json()
+    expect((await request.put("/api/settings", { data: {
+      models: { default: "answer-refusal-fixture", providers: [{ id: "answer-refusal-fixture", label: "Offline correction limit", base_url: fixture.url, model: "fixture-model", api_key: "", context_window: 128000 }] },
+      swarm: { ...settings.swarm, auto_title: false },
+      memory: { ...settings.memory, auto_review: false },
+    } })).ok()).toBe(true)
+    await page.addInitScript(() => {
+      const NativeEventSource = window.EventSource
+      const observed = [] as { kind: string; text?: string }[]
+      ;(window as Window & { __answerLifecycle?: unknown[] }).__answerLifecycle = observed
+      window.EventSource = class extends NativeEventSource {
+        constructor(url: string | URL, options?: EventSourceInit) {
+          super(url, options)
+          for (const kind of ["model_retry", "error", "goal_capped"]) this.addEventListener(kind, (event) => observed.push(JSON.parse((event as MessageEvent).data)))
+        }
+      }
+    })
+    await freshConversation(page)
+    threadID = (await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute("data-id")) ?? ""
+    expect(threadID).toBeTruthy()
+    expect((await request.patch(`/api/threads/${threadID}`, { data: { goal: "Verify the complete objective." } })).ok()).toBe(true)
+    await page.route(history, (route) => route.fulfill({ json: { events: [], has_more: false } }))
+    await composer(page).fill("Inspect the assigned state.")
+    await composer(page).press("Enter")
+    const transcript = page.getByTestId("transcript")
+    const receiptText = "The previous answer contained an unverified schedule claim. One correction was requested."
+    const failureText = "This turn's schedule claim could not be verified. No final answer was published (schedule_claim_unverified / no_matching_schedule)."
+    const limitText = "Stopped auto-continuing: consecutive schedule claims could not be verified. Press Start on the goal to keep going."
+    await expect(transcript).toContainText(receiptText)
+    await expect(transcript).not.toContainText(unsupportedScheduleAnswer)
+    await page.screenshot({ path: info.outputPath("correction-receipt-live.png"), animations: "disabled" })
+    fixture.allowArm()
+    await expect(transcript).toContainText(limitText)
+    await expect(transcript.getByText(failureText, { exact: true })).toHaveCount(3)
+    await expect(page.getByTestId("goal-banner")).toContainText("Paused")
+    await expect(page.getByTestId("goal-banner")).not.toContainText("Blocked")
+    await expect(transcript).not.toContainText("Checking the schedule before reporting it as arranged.")
+    await expect(transcript).not.toContainText("Standing objective blocked: progress needs you or an external change.")
+    const notice = transcript.getByTestId("memory-notice").filter({ hasText: receiptText }).first()
+    const error = transcript.getByText(failureText, { exact: true }).first()
+    const noticeBounds = await notice.boundingBox()
+    const errorBounds = await error.boundingBox()
+    expect(noticeBounds).toBeTruthy()
+    expect(errorBounds).toBeTruthy()
+    expect(errorBounds!.y).toBeGreaterThanOrEqual(noticeBounds!.y + noticeBounds!.height)
+    const { thread } = await (await request.get(`/api/threads/${threadID}`)).json()
+    expect(thread).toMatchObject({ goal_blocked: false, goal_capped: true, goal_auto_turns: 2 })
+    expect(thread.goal_block_reason ?? "").toBe("")
+    const { turns } = await (await request.get(`/api/threads/${threadID}/turns`)).json()
+    expect(turns).toHaveLength(3)
+    const traces: Trace[] = await Promise.all(turns.map(async (turn: { id: string }) => (await request.get(`/api/trace/${turn.id}`)).json() as Promise<Trace>))
+    for (const trace of traces) {
+      expect(trace.turn.status).toBe("error")
+      expect(trace.turn.final ?? "").toBe("")
+      expect(trace.events.filter((event) => event.kind === "model_retry")).toHaveLength(1)
+      expect(trace.events.filter((event) => event.kind === "goal_blocked")).toHaveLength(0)
+    }
+    const lifecycle = await page.evaluate(() => (window as Window & { __answerLifecycle?: { kind: string; text?: string }[] }).__answerLifecycle ?? [])
+    expect(lifecycle.filter((event) => event.kind === "error")).toHaveLength(3)
+    expect(lifecycle.filter((event) => event.kind === "model_retry")).toHaveLength(3)
+    expect(JSON.parse(lifecycle.find((event) => event.kind === "goal_capped")!.text ?? "{}")).toMatchObject({ reason: "schedule_claim_unverified", code: "no_matching_schedule", attempt: 3, cap: 3 })
+    expect(fixture.state()).toEqual({ managerRequests: 6, checks: 6 })
+    await page.screenshot({ path: info.outputPath("goal-schedule-refusal-limit.png"), animations: "disabled" })
+    await page.unroute(history)
+    await reloadOpenConversation(page)
+    await expect(transcript).toContainText(limitText)
+    await expect(transcript.getByText(failureText, { exact: true })).toHaveCount(3)
+    await expect(transcript).not.toContainText(unsupportedScheduleAnswer)
+    await expect(page.getByTestId("goal-banner")).toContainText("Paused")
+    expect(fixture.state()).toEqual({ managerRequests: 6, checks: 6 })
+    expect(fixture.errors).toEqual([])
+    await page.screenshot({ path: info.outputPath("goal-schedule-refusal-replay.png"), animations: "disabled" })
+    await writeFile(info.outputPath("goal-schedule-refusal-evidence.json"), JSON.stringify({ thread, traces, lifecycle, fixture: fixture.state(), errors: fixture.errors }, null, 2), { mode: 0o600 })
   } finally {
     await page.unroute(history)
     if (threadID) await request.post(`/api/threads/${threadID}/interrupt`, { timeout: 5000 }).catch(() => undefined)

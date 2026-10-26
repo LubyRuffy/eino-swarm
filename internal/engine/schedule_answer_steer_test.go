@@ -105,7 +105,7 @@ func TestLateSteerAfterClassificationDoesNotSpendAnAlreadyUsedCorrection(t *test
 			n := policies.Add(1)
 			claims := `{"claims":[]}`
 			if n == 1 {
-				claims = `{"claims":[{"quote":"` + fixtureScheduleClaim + `","scope":"thread","new":true,"every_s":90}]}`
+				claims = `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureScheduleClaim + `","scope":"thread","new":true,"every_s":90}]}`
 			}
 			if n == 2 {
 				waitBeforeAdmission.Store(true)

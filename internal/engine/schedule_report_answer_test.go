@@ -30,7 +30,7 @@ func TestScheduledReportFindingsCannotPublishAnUnarmedCheck(t *testing.T) {
 				}
 				if strings.Contains(req.Messages[0].Content, "## Schedule answer claims") {
 					checks.Add(1)
-					writeContextFlowReply(w, false, map[string]any{"content": `{"claims":[{"quote":"` + fixtureScheduleClaim + `","scope":"thread","new":true,"every_s":90}]}`}, "stop")
+					writeContextFlowReply(w, false, map[string]any{"content": `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureScheduleClaim + `","scope":"thread","new":true,"every_s":90}]}`}, "stop")
 					return
 				}
 				if strings.Contains(req.Messages[0].Content, "## Thread wake authorization classification") {

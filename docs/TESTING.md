@@ -193,7 +193,24 @@ replay: unsupported scheduling prose must not become an answer. Correction
 is bounded to the original turn, and its policy calls remain attributed there.
 The classifier extracts claims only; deterministic schedule checks must reject
 unsupported scope, current state, cadence or new-arrangement attribution.
-No external model is used in regression tests.
+`internal/engine/schedule_answer_meaning_test.go` exercises nonclaim publication
+through Registry/HTTP and decoder filtering/invalid fields. No external model
+is used in regression tests. Structured classification
+requires stance, time and attribution; nonaffirmative, noncurrent and reported
+items cannot require a matching armed plan. These offline fixtures prove the
+protocol and runtime boundary, not an external model's semantic accuracy.
+`internal/engine/goal_schedule_claim_test.go` checks the real Registry/HTTP
+path for failed and corrected scheduling claims, automatic goal continuation
+and a durable three-failure cap. It keeps `goal_blocked` false, the original
+terminal error and empty final intact, and the existing automatic budget.
+Successful/cancelled/different-error turns and new human input break the
+streak; goal changes and explicit human resume reset it, manager reopen does
+not. Scheduled errors retain future-wake ownership without immediate retry.
+`internal/store/goal_cap_test.go` checks atomic cap/reason rollback on failed
+reads and writes, deleted owners, changed goals, budget resets and newer turns;
+a stale decision cannot pause new human work. Unreadable retry evidence has a
+distinct recovery-state cap reason, and failed persistence never grants another
+automatic request.
 `internal/engine/schedule_answer_timeout_test.go` holds a real loopback
 classification response beyond 30 seconds while the configured provider budget
 allows it, then checks the original turn completes without a repeated manager
@@ -281,16 +298,22 @@ hydration across a turn/Registry replacement and verifies the stale steer is
 refused without delivering to either owner; empty busy-turn input is also refused.
 
 `frontend/e2e/schedule-answer.spec.ts` uses its isolated loopback fixture to
-exercise 503/429 classification failures followed by a response delayed beyond
-30 seconds, named live backoff events, the original manager/tool request
+exercise unsupported claims through the three-failure goal cap, separate
+correction-request and terminal-error rows, reload, and 503/429 classification
+failures followed by a response delayed beyond 30 seconds, named live backoff
+events, the original manager/tool request
 counts, actual scheduling facts and replay after reload. Its Stop case keeps
 the fixture alive past the pending retry time and checks no delayed request
 escapes cancellation. The case retains screenshots and original-turn Trace;
 its offline HTTP model does not call an external provider.
 
+`frontend/src/components/app/transcript-schedule-claim.test.tsx`,
 `frontend/src/lib/schedule-claim-notice.test.ts` and
 `mobile/src/lib/transcript-schedule-claim.test.ts` check the correction notice
 and Chinese display without exposing internal JSON or claiming a wait exists.
+The desktop component checks distinct notice/error rows in live and history
+projections; the terminal error says the final was withheld and does not imply
+verification is still running.
 `internal/remote/schedule_answer_paging_test.go` exercises actual phone
 Earlier requests for all visible retry reasons and invisible/invalid envelopes,
 so a correction-only page is retained without trapping paging on an empty row.

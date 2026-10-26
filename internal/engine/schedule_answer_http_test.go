@@ -49,10 +49,18 @@ func TestUnverifiedScheduleClaimNeverBecomesLiveOrStoredAnswer(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := waitForTurn(t, e, turn.ID)
+			if mode == "goal-only" {
+				waitScheduleClaimGoalCap(t, e, th.ID)
+				waitSettled(t, e, th.ID)
+			}
 			if got.Status != store.TurnError || !strings.Contains(got.Error, "schedule_claim_unverified") || got.Final != "" {
 				t.Fatalf("unsupported scheduling became success: %+v", got)
 			}
-			if manager.Load() != 2 || checks.Load() != 2 {
+			wantCalls := int32(2)
+			if mode == "goal-only" {
+				wantCalls = 2 * scheduleClaimGoalFailureCap
+			}
+			if manager.Load() != wantCalls || checks.Load() != wantCalls {
 				t.Fatalf("unbounded/missing correction: manager=%d classifier=%d", manager.Load(), checks.Load())
 			}
 			events, err := e.Store().ListTurnEvents(turn.ID)
@@ -118,7 +126,7 @@ func newScheduleAnswerFixture(t *testing.T, mode string, correct bool) (*Engine,
 			if req.Stream || len(req.Tools) != 0 || len(req.Messages) != 2 {
 				t.Errorf("claim extractor has tools/replay: %+v", req)
 			}
-			claims := `{"claims":[{"quote":"` + fixtureScheduleClaim + `","scope":"thread","new":true,"every_s":90}]}`
+			claims := `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureScheduleClaim + `","scope":"thread","new":true,"every_s":90}]}`
 			if correct && n > 1 {
 				claims = `{"claims":[]}`
 			}

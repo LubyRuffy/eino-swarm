@@ -24,6 +24,8 @@ const NOTICE_EXACT: Record<string, MessageKey> = {
     "notice.goalCapped",
   "Stopped auto-continuing: the standing objective is still open. Press Start on the goal to keep going.":
     "notice.goalCapped",
+  "Stopped auto-continuing: consecutive schedule claims could not be verified. Press Start on the goal to keep going.":
+    "notice.goalScheduleClaimCapped",
   "Stopped auto-continuing: the last continuation made no progress.":
     "notice.goalIdle",
   "Stopped auto-continuing: the last continuation made no progress. Press Start on the goal to keep going.":
@@ -46,6 +48,7 @@ const NOTICE_EXACT: Record<string, MessageKey> = {
     "notice.modelRetryTransport",
   "The model service stopped sending data. Retrying.": "notice.modelRetryIdle",
   "Checking the schedule before reporting it as arranged.": "notice.scheduleClaimCheck",
+  "The previous answer contained an unverified schedule claim. One correction was requested.": "notice.scheduleClaimCheck",
   "Collecting delegated work before completing this turn.": "notice.workerCollection",
   "the model request failed because a tool call was not valid JSON":
     "notice.invalidToolJSON",
@@ -158,6 +161,8 @@ export function t(locale: Locale, key: MessageKey, vars?: Vars): string {
 /** Transcript chrome the reducer still emits in English. Model text and
  *  unknown notices pass through so a translation table cannot swallow them. */
 export function localizeNotice(text: string, locale: Locale): string {
+  const scheduleFailure = /^schedule_claim_unverified: the claimed future check could not be verified; no unverified answer was published \(([a-z_]+)\)$/.exec(text)
+  if (scheduleFailure) return t(locale, "notice.scheduleClaimFailed", { code: scheduleFailure[1] })
   const backoff = /^Waiting (\d+)s before retrying the model request\.$/.exec(text)
   if (backoff) return t(locale, "notice.modelBackoff", { seconds: backoff[1] })
   const firstByteWait = firstByteTimeoutDuration(text)

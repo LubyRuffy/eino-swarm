@@ -561,6 +561,15 @@ E2E suite.
   private save must report whether the action committed, without claiming the
   findings were published. A crash between those commits remains unknown and
   requires checking current scheduling state before repeating the action.
+- Scheduling-claim extraction must retain negation, time and attribution in
+  complete contiguous quotes. Only affirmed/current/assistant assertions can
+  require armed-plan evidence; status reports, human prohibitions and ended
+  history cannot become claims by cropping their context. Regress these cases
+  through the real Registry/HTTP adapter. A confirmed unsupported claim gets
+  one correction per turn; restart cannot reset it. Its terminal verification
+  error is not an external goal blocker. Regress durable consecutive-failure
+  capping, automatic continuation and separate retry/error UI rows, without
+  replaying tools or clearing the ordinary goal budget.
 - Regress a new explicit goal after a completed one through the real PC and
   paired-phone send paths, including a standalone trailing `/goal`. The
   original objective text must reach the model, and the completed flag must

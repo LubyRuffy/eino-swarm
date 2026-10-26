@@ -215,6 +215,18 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-150`, `F-160`, `C-009`, `C-003`, `C-012`: classify scheduling assertions
+  with explicit stance, time and attribution so denials, status-only reports,
+  relayed human prohibitions and ended/cancelled historical waits do not become
+  current armed-wait claims. Unsupported affirmative claims retain one
+  same-turn correction; a corrected answer without the claim publishes.
+  Repeated `no_matching_schedule` failures keep their error and empty final
+  without blocking the standing objective as an external dependency. Existing
+  goal budgets continue, with a durable cap after three consecutive failures
+  of that class. Desktop/Web show the completed correction request and terminal
+  refusal on separate rows. Classifier outages and malformed output still retry
+  only the original candidate without replaying manager work or tools.
+
 - `F-115`, `C-034`, `C-012`: coordinate successor focus from the still-foreground
   parent after its private handoff, avoiding a system-refused self-activation
   request. Bind the child to its kernel birth and executable, respect user app
