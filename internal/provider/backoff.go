@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"crypto/rand"
 	"sync"
 	"time"
 )
@@ -17,6 +18,7 @@ const (
 // A gate belongs to an endpoint, so workers cannot turn one outage into many
 // independent retry loops. Healthy requests remain concurrent.
 type backoffGate struct {
+	id         string
 	mu         sync.Mutex
 	initial    time.Duration
 	max        time.Duration
@@ -37,10 +39,10 @@ type backoffTicket struct {
 
 // The caller supplies the configured positive durations, with max >= initial.
 func newBackoffGate(initial, max time.Duration) *backoffGate {
-	return &backoffGate{initial: initial, max: max, changed: make(chan struct{})}
+	return &backoffGate{id: rand.Text(), initial: initial, max: max, changed: make(chan struct{})}
 }
 
-func (g *backoffGate) acquire(ctx context.Context, onWait func(int, time.Duration)) (*backoffTicket, error) {
+func (g *backoffGate) acquire(ctx context.Context, onWait func(int, time.Duration, uint64)) (*backoffTicket, error) {
 	var notified uint64
 	for {
 		g.mu.Lock()
@@ -62,7 +64,7 @@ func (g *backoffGate) acquire(ctx context.Context, onWait func(int, time.Duratio
 			timer := time.NewTimer(delay)
 			if onWait != nil && notified != generation {
 				notified = generation
-				onWait(attempt, delay)
+				onWait(attempt, delay, generation)
 			}
 			select {
 			case <-ctx.Done():
@@ -75,7 +77,7 @@ func (g *backoffGate) acquire(ctx context.Context, onWait func(int, time.Duratio
 		} else {
 			if onWait != nil && notified != generation {
 				notified = generation
-				onWait(attempt, 0)
+				onWait(attempt, 0, generation)
 			}
 			select {
 			case <-ctx.Done():

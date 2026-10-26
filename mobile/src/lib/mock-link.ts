@@ -1,5 +1,6 @@
 import { restartAskHistory } from "./mock-ask-restart"
 import { generationHistory } from "./mock-generation"
+import { backoffHistory } from "./mock-backoff"
 import { scriptedTurn, type Step } from "./mock-turn"
 import {
   OpAnswer,
@@ -242,6 +243,8 @@ export class MockHost {
         this.seed(live, [{ kind: "goal", text: live.goal }, { kind: "goal_capped", text: '{"auto_turns":1,"cap":1}' }], false)
       } else if (new URLSearchParams(location.search).get("history") === "generation-interruption") {
         this.seed(live, generationHistory(), true)
+      } else if (new URLSearchParams(location.search).get("history") === "answer-backoff") {
+        this.seed(live, backoffHistory(), true)
       } else if (new URLSearchParams(location.search).get("history") === "stopped-workers") {
         this.seed(live, stopReplayStart(), true)
       } else if (new URLSearchParams(location.search).get("history") === "streamed-agents") {

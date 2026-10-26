@@ -412,7 +412,7 @@ func (s *Store) FinishTurn(id, status, final, errText string) error {
 		}
 		cleared := tx.Model(&PendingScheduleAnswer{}).Where("turn_id = ?", id).Updates(map[string]any{
 			"payload": "",
-			"state":   gorm.Expr("CASE WHEN state = 'pending' THEN 'rejected' ELSE state END"),
+			"state":   gorm.Expr("CASE WHEN state IN ('pending', 'deferred') THEN 'rejected' ELSE state END"),
 		})
 		if err := requireScheduleAnswerWrite(cleared, candidates); err != nil {
 			return fmt.Errorf("store: clear terminal schedule answer payload: %w", err)

@@ -37,6 +37,8 @@ const NOTICE_EXACT: Record<string, MessageKey> = {
     "notice.goalBlocked",
   "Retrying after a model error.": "notice.modelRetry",
   "Waiting before retrying the model request.": "notice.modelBackoffUnknown",
+  "Waiting to check the unpublished answer again.": "notice.scheduleAnswerBackoffUnknown",
+  "Answer verification is unavailable. The unpublished answer is retained.": "notice.scheduleAnswerDeferred",
   "The model returned a tool call that was not valid JSON. Retrying.":
     "notice.modelRetryToolJSON",
   "The model service is rate limiting requests. Retrying.":
@@ -165,6 +167,8 @@ export function localizeNotice(text: string, locale: Locale): string {
   if (scheduleFailure) return t(locale, "notice.scheduleClaimFailed", { code: scheduleFailure[1] })
   const backoff = /^Waiting (\d+)s before retrying the model request\.$/.exec(text)
   if (backoff) return t(locale, "notice.modelBackoff", { seconds: backoff[1] })
+  const answerBackoff = /^Waiting (\d+)s before checking the unpublished answer again\.$/.exec(text)
+  if (answerBackoff) return t(locale, "notice.scheduleAnswerBackoff", { seconds: answerBackoff[1] })
   const firstByteWait = firstByteTimeoutDuration(text)
   if (firstByteWait) return t(locale, "notice.firstByteTimeout", { duration: firstByteWait })
   const peer = /^Peer task ([^:]*): ([\s\S]*)$/.exec(text)

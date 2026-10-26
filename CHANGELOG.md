@@ -239,6 +239,21 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-150`, `F-160`, `C-009`, `C-029`: isolate scheduling-answer classification
+  from shared origin cooldowns and implicit HTTP reconnects while preserving
+  full first-byte/body-idle budgets. After three consecutive request failures,
+  retain the unpublished candidate durably and let its executable goal or
+  same-thread wake continue with the original turn, Registry, workers and tool
+  receipts; ordinary turns use the existing Continue/Stop pause. Invalid output
+  retries only its candidate and resets that separate failure count. Restart
+  preserves deferral, including provable legacy failure budgets, without
+  replaying tools or restoring an older candidate transcript over new work.
+  PC/phone chat and history distinguish candidate waits from origin cooldowns,
+  show one timed notice per service generation, and omit unknown probe waits;
+  Trace retains the actual caller observations. Packaged Android/iOS notice
+  regressions retain screenshots and bind web assets to the accepted package
+  bytes. No new setting is introduced.
+
 - `F-150`, `C-009`: preserve an existing pause when a human reply fails schedule-claim verification, including unavailable terminal receipts; an idle pause also wins over a stale cap decision inside the storage transaction.
 
 - `F-130`, `F-410`, `C-008`: mark runtime corrections and persist input provenance, excluding transient instructions from later replay, compact inputs and session briefings. Exact legacy cue compatibility preserves independently evidenced human quotations; same-turn correction and worker collection still run.

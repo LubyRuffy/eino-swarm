@@ -86,6 +86,8 @@ export interface Block {
   goalNoticeKind?: "goal_resumed" | "goal_continued"
   /** Only successful/in-flight compaction receives secondary status styling. */
   compacted?: boolean
+  /** Shared service cooldown identity, independent of the waiting role/turn. */
+  cooldownId?: string
   /** One model output can span several manager turns and durable checkpoints. */
   messageId?: string
   /** Still being streamed. Complete blocks stop showing a cursor and can be
@@ -401,7 +403,11 @@ export function reduceEvent(
     return next
   }
   if (ev.kind === "model_backoff") {
-    append(touchAgent(next, MANAGER_ID), block(ev, "notice", modelBackoffNotice(ev.text)))
+    const notice = modelBackoffNotice(ev.text)
+    const row = notice && { ...block(ev, "notice", notice.text), cooldownId: notice.cooldownId }
+    if (row && !next.agents[MANAGER_ID]?.blocks.some((old) => old.id === row.id || row.cooldownId && old.cooldownId === row.cooldownId)) {
+      append(touchAgent(next, MANAGER_ID), row)
+    }
     return sealQuietTurns(next, ev)
   }
   if (ev.kind === "goal_edited") {

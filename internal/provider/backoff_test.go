@@ -209,7 +209,7 @@ func TestBackoffWaitingForActiveProbeReportsUnknownDurationOncePerGeneration(t *
 		notices := make(chan notice, 3)
 		arrived := make(chan *backoffTicket, 1)
 		go func() {
-			ticket, _ := gate.acquire(ctx, func(attempt int, delay time.Duration) {
+			ticket, _ := gate.acquire(ctx, func(attempt int, delay time.Duration, _ uint64) {
 				notices <- notice{attempt: attempt, delay: delay}
 			})
 			arrived <- ticket
@@ -269,7 +269,11 @@ func TestBackoffWaitersFollowRepeatedFailuresAndWakeTogetherOnRecovery(t *testin
 
 func mustAcquireBackoff(t *testing.T, gate *backoffGate, onWait func(int, time.Duration)) *backoffTicket {
 	t.Helper()
-	ticket, err := gate.acquire(context.Background(), onWait)
+	var notify func(int, time.Duration, uint64)
+	if onWait != nil {
+		notify = func(attempt int, delay time.Duration, _ uint64) { onWait(attempt, delay) }
+	}
+	ticket, err := gate.acquire(context.Background(), notify)
 	if err != nil {
 		t.Fatalf("acquire: %v", err)
 	}

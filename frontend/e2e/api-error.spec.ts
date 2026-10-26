@@ -92,6 +92,9 @@ test(`${responseCase.name} stays visible in Chat and the same turn Trace after r
       for (const [index, event] of waits.entries()) {
         expect(event).toMatchObject({ turn_id: turn.id, thread_id: threadID, agent_id: "manager" })
         const wait = JSON.parse(event.text ?? "{}")
+        expect(wait.scope).toBe("origin")
+        expect(wait.cooldown_id).toEqual(expect.any(String))
+        expect(wait.cooldown_id).not.toContain("127.0.0.1")
         expect(wait.attempt).toBe(index + 1)
         expect(wait.wait_ms).toBeGreaterThan(0)
         expect(wait.wait_ms).toBeLessThanOrEqual((index + 1) * 5000)

@@ -199,7 +199,17 @@ function clip(s: string, n: number): string {
 }
 
 function localizeNotice(text: string): string {
+  const backoff = /^Waiting (\d+)s before retrying the model request\.$/.exec(text)
+  if (backoff) return t("notice.modelBackoff", { seconds: backoff[1] })
+  const answerBackoff = /^Waiting (\d+)s before checking the unpublished answer again\.$/.exec(text)
+  if (answerBackoff) return t("notice.scheduleAnswerBackoff", { seconds: answerBackoff[1] })
   switch (text) {
+    case "Waiting before retrying the model request.":
+      return t("notice.modelBackoffUnknown")
+    case "Waiting to check the unpublished answer again.":
+      return t("notice.scheduleAnswerBackoffUnknown")
+    case "Answer verification is unavailable. The unpublished answer is retained.":
+      return t("notice.scheduleAnswerDeferred")
     case "A wait is armed.":
       return t("notice.scheduleArmed")
     case "A wait was cancelled.":

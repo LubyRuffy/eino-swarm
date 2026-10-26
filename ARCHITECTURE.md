@@ -205,14 +205,27 @@ original identity, pending events, final answer and transcript in the private
 `pending_schedule_answers` table. Its transaction-assigned per-turn ordinal
 defines candidate order independently of wall time. A newly saved answer
 keeps only its latest full transcript, compacting prior answer payloads in the
-same transaction; distinct report receipts remain until the turn finishes.
-Unavailable or malformed classification
-results retry that same candidate with persistent 5/10/20/30-second capped
-backoff. They do not rerun the manager, consume its correction allowance or
-end its turn and worker ownership. Stop cancels the request or wait; a human
-steer supersedes the unpublished candidate and continues with the actual tool
-receipts. Each non-streaming policy call uses the provider's response-header
-and body-idle budgets without an extra 30-second total deadline.
+same transaction. Deferred answers retain their unpublished content with only
+the old transcript removed; distinct report receipts remain until the turn finishes.
+Classification requests use `provider.WithIsolatedRecovery`: they neither
+wait for nor update the shared origin gate, emit provider cooldown observations,
+or receive the HTTP adapter's implicit header-timeout reconnect. Each request
+still uses the complete configured response-header and body-idle budgets,
+without an extra total deadline. Request failures (`classification_unavailable`)
+and malformed output (`classification_invalid`) retry only the original
+candidate with persistent 5/10/20/30-second capped delay. Malformed output resets
+the separate consecutive request-failure counter. Local storage/configuration
+failures have distinct codes and do not consume that counter.
+
+After three consecutive classification request failures, the candidate becomes
+`deferred` durably and its unpublished text remains private. This decision does
+not establish a false schedule claim or consume its correction allowance.
+The same turn, Registry and workers keep their identities: an executable goal
+or active same-thread wake permits the next manager work slice with real tool
+receipts, while an ordinary turn uses the existing human Continue/Stop pause.
+The old candidate is not retried or published. Stop cancels a request or wait;
+a human steer supersedes the unpublished candidate and continues with actual
+receipts. The failure limit is an internal policy constant, not a new setting.
 
 A confirmed unsupported scheduling claim still gets one correction in the
 same turn. Its durable `model_retry` receipt preserves that allowance across
@@ -252,7 +265,11 @@ checking current state before retrying the action. This is not an all-window
 exactly-once guarantee. `schedule_answer_restore.go` reads the latest
 answer's decision and restores its workers before deciding whether the manager
 may run; a rejected latest candidate cannot revive an older answer. Recovery
-first verifies the original pending candidate. Admission atomically writes
+first verifies an eligible pending candidate. A deferred candidate cannot
+reclaim execution or replace a newer checkpoint with its old transcript.
+Legacy retry state derives its consecutive failure budget only from a
+contiguous suffix of that candidate's durable classification receipts; origin
+waits and missing attempts cannot prove the budget. Admission atomically writes
 public events, replay messages and the accepted candidate state, so an already
 accepted candidate is not broadcast again. Thread/project deletion and rewind
 remove private candidates in the same transaction as their owners. A terminal
@@ -554,8 +571,15 @@ waits at the same gate before resending. Response-header budgets start at the
 actual HTTP attempt, after admission; the caller's context still bounds the whole
 operation. No retry count is added. Per-agent
 recorders persist `model_backoff` waits on the original turn separately from
-LLM calls. Discover and embeddings retain their separate clients; no cross-process
-or server-wide rate limit is implied. See `C-029` and
+LLM calls. Origin waits carry `scope: "origin"` and an opaque, process-local
+`cooldown_id` shared by every role waiting in that generation. PC/phone chat
+and replay show one timed notice per conversation/generation and omit unknown
+probe waits (`wait_ms: 0`); Trace retains each original caller observation.
+Classification recovery instead uses `scope: "schedule_answer"`, candidate ID
+and a failure/deferred code, with separate readable notices. Its isolated
+requests cannot start, recover or wait on this origin gate. Discovery and
+embeddings retain their separate clients; no cross-process or server-wide rate
+limit is implied. See `C-029` and
 `internal/provider/backoff.go`, `internal/provider/model_backoff.go`,
 `internal/provider/stream_completion.go`.
 

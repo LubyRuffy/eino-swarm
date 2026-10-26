@@ -240,12 +240,17 @@ uploads, downloads and the live event stream have exactly one implementation.
   effective plans before the manager's prose is shown. A failed or missing
   scheduling call cannot support a success report. One same-turn correction is
   allowed for a confirmed unsupported claim; repeating it ends with an error.
-  An unavailable or malformed classification keeps the original turn and its
-  workers running while only the privately saved candidate is retried with
-  capped delays. It does not rerun the manager or its tools. Stop cancels this
-  wait; new human guidance supersedes the old candidate. Engine recovery resumes
-  the saved candidate, and its prose is published only after verification.
-  Tool, thinking and worker activity remain live during this check.
+  Classification retries only the private candidate with capped delays,
+  using the full provider first-byte/body-idle budgets while bypassing shared
+  service cooldowns and implicit reconnects. After three consecutive request
+  failures, that candidate is durably deferred and stays unpublished. The same
+  turn, Registry and workers continue user work under an executable goal or
+  active conversation wake; other turns use the existing Continue/Stop pause.
+  Invalid classifier output resets that failure streak and retries the candidate;
+  neither case consumes the unsupported-claim correction or replays tools.
+  Stop cancels verification; human guidance supersedes the old candidate.
+  Recovery preserves deferral and cannot let old prose block new work or replace
+  a newer checkpoint. Tool, thinking and worker activity remain live.
   Completion removes the goal strip above the composer immediately on PC and
   phone. The stored objective, completion state, results and history remain;
   reloading or reopening keeps the completed strip hidden. Its completion notice
@@ -494,8 +499,12 @@ uploads, downloads and the live event stream have exactly one implementation.
   provider aliases. One probe tests recovery at a time; a complete successful
   response restores normal concurrency. A Chat Completions stream needs a protocol terminator or
   explicit finish reason; a truncated connection cannot prove recovery. Stop
-  cancels waiting and the active request. Trace records
-  `model_backoff` waits separately from actual calls and retry attempts.
+  cancels waiting and the active request. Read-only answer classification
+  uses its own candidate recovery and cannot start or wait on this shared gate.
+  Trace records `model_backoff` waits separately from actual calls and retries,
+  distinguishing origin cooldowns from candidate checks. PC/phone chat and
+  replay show one timed explanation per conversation/cooldown generation;
+  unknown-duration probe waits add no extra row. Trace keeps each caller record.
   Stream errors and EOF reach the consumer after the call-record callback finishes,
   retaining received usage before the turn can finish or storage can shut down.
   Model API errors retain their HTTP status and concrete rejection or response

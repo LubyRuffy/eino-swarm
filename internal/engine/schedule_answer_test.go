@@ -200,7 +200,9 @@ func TestScheduleAnswerUnknownAuthorityFailsClosed(t *testing.T) {
 			switch boundary {
 			case "thread":
 				turn.ThreadID = "missing"
+				want = "answer_storage_failed"
 			case "provider":
+				want = "classification_configuration_unavailable"
 				if err := e.store.UpdateThread(th.ID, map[string]any{"provider_id": "missing-provider"}); err != nil {
 					t.Fatal(err)
 				}
