@@ -179,73 +179,114 @@ func TestMalformedSuccessfulModelStreamKeepsTheOriginCooling(t *testing.T) {
 	}
 }
 
-// Sibling workers must wait while the one recovery probe is still streaming.
-// Only its complete valid response may restore ordinary parallel requests.
-func TestModelBackoffRecoveryWaitsForTheCompleteProbeStream(t *testing.T) {
-	var requests atomic.Int32
-	probeStarted := make(chan struct{})
-	releaseProbe := make(chan struct{})
-	var releaseOnce sync.Once
-	release := func() { releaseOnce.Do(func() { close(releaseProbe) }) }
-	t.Cleanup(release)
-	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch requests.Add(1) {
-		case 1:
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = io.WriteString(w, `{"error":{"message":"temporarily unavailable","type":"server_error"}}`)
-		case 2:
-			w.Header().Set("Content-Type", "text/event-stream")
-			_, _ = io.WriteString(w, backoffChunk)
-			w.(http.Flusher).Flush()
-			close(probeStarted)
-			select {
-			case <-releaseProbe:
-				_, _ = io.WriteString(w, "data: [DONE]\n\n")
-			case <-r.Context().Done():
+// A long recovery generation must release sibling models after decoded content,
+// while retaining sole authority over the outage until its terminal result.
+func TestModelBackoffRecoveryReopensAfterUsefulProbeContent(t *testing.T) {
+	for _, tc := range []struct{ name, prelude, delta string }{
+		{"headers", "", `{"content":"ready"}`},
+		{"role", `data: {"choices":[{"index":0,"delta":{"role":"assistant"}}]}` + "\n\n", `{"content":"ready"}`},
+		{"empty", `data: {"choices":[{"index":0,"delta":{}}]}` + "\n\n", `{"content":"ready"}`},
+		{"usage", `data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}` + "\n\n", `{"content":"ready"}`},
+		{"empty_tool", `data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"type":"function"}]}}]}` + "\n\n", `{"content":"ready"}`},
+		{"reasoning", "", `{"reasoning_content":"working"}`},
+		{"tool_name", "", `{"tool_calls":[{"index":0,"function":{"name":"check"}}]}`},
+		{"tool_arguments", "", `{"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]}`},
+		{"tool_id", "", `{"tool_calls":[{"index":0,"id":"call_fixture"}]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests atomic.Int32
+			probeStarted, content, releaseProbe := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			var contentOnce, releaseOnce sync.Once
+			release := func() { contentOnce.Do(func() { close(content) }); releaseOnce.Do(func() { close(releaseProbe) }) }
+			endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch requests.Add(1) {
+				case 1:
+					w.WriteHeader(http.StatusServiceUnavailable)
+				case 2:
+					w.Header().Set("Content-Type", "text/event-stream")
+					_, _ = io.WriteString(w, tc.prelude)
+					w.(http.Flusher).Flush()
+					close(probeStarted)
+					select {
+					case <-content:
+					case <-r.Context().Done():
+						return
+					}
+					_, _ = fmt.Fprintf(w, "data: {\"choices\":[{\"index\":0,\"delta\":%s}]}\n\n", tc.delta)
+					w.(http.Flusher).Flush()
+					select {
+					case <-releaseProbe:
+						_, _ = io.WriteString(w, "data: [DONE]\n\n")
+					case <-r.Context().Done():
+					}
+				default:
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = io.WriteString(w, backoffCompletion)
+				}
+			}))
+			t.Cleanup(endpoint.Close)
+			t.Cleanup(release)
+			pool := backoffPool(endpoint.URL)
+			gate := newBackoffGate(time.Millisecond, 4*time.Millisecond)
+			pool.backoffs = map[string]*backoffGate{backoffKey(endpoint.URL): gate}
+			build, err := pool.ModelBuilder(context.Background(), "fixture", "probe-model", "", nil)
+			if err != nil {
+				t.Fatal(err)
 			}
-		default:
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = io.WriteString(w, backoffCompletion)
-		}
-	}))
-	t.Cleanup(endpoint.Close)
-	pool := backoffPool(endpoint.URL)
-	pool.backoffs = map[string]*backoffGate{backoffKey(endpoint.URL): newBackoffGate(20*time.Millisecond, 80*time.Millisecond)}
-	m, err := pool.Get(context.Background(), "fixture", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := m.Generate(context.Background(), backoffMessages()); err == nil {
-		t.Fatal("the initial unavailable response must fail")
-	}
-	probeCtx, cancelProbe := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancelProbe()
-	stream, err := m.Stream(probeCtx, backoffMessages())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer stream.Close()
-	select {
-	case <-probeStarted:
-	case <-probeCtx.Done():
-		t.Fatal("recovery probe did not reach the fixture")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
-	_, err = m.Generate(ctx, backoffMessages())
-	cancel()
-	if !errors.Is(err, context.DeadlineExceeded) || requests.Load() != 2 {
-		t.Fatalf("HTTP 200 reopened requests before the probe finished: err=%v requests=%d", err, requests.Load())
-	}
-	release()
-	if err := finishBackoffStream(stream); err != nil {
-		t.Fatalf("complete recovery stream: %v", err)
-	}
-	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	out, err := m.Generate(ctx, backoffMessages())
-	if err != nil || out == nil || out.Content != "ready" || requests.Load() != 3 {
-		t.Fatalf("complete stream did not restore requests: output=%+v err=%v requests=%d", out, err, requests.Load())
+			m := build("manager", "probe-manager")
+			other, err := pool.ModelBuilder(context.Background(), "fixture", "other-model", "", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			worker := other("worker", "other-conversation-worker")
+			if _, err := m.Generate(context.Background(), backoffMessages()); err == nil {
+				t.Fatal("initial outage must fail")
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			stream, err := m.Stream(ctx, backoffMessages())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stream.Close()
+			select {
+			case <-probeStarted:
+			case <-ctx.Done():
+				t.Fatal("probe did not reach fixture")
+			}
+			waiting, cancelWaiting := context.WithTimeout(ctx, 40*time.Millisecond)
+			_, err = worker.Generate(waiting, backoffMessages())
+			cancelWaiting()
+			if !errors.Is(err, context.DeadlineExceeded) || requests.Load() != 2 {
+				t.Fatalf("non-content released gate: err=%v requests=%d", err, requests.Load())
+			}
+			contentOnce.Do(func() { close(content) })
+			if _, err := stream.Recv(); err != nil {
+				t.Fatalf("decoded content: %v", err)
+			}
+			parallel, cancelParallel := context.WithTimeout(ctx, 250*time.Millisecond)
+			_, err = worker.Generate(parallel, backoffMessages())
+			cancelParallel()
+			if err != nil || requests.Load() != 3 {
+				t.Fatalf("content did not admit other role/model before stream completion: err=%v requests=%d", err, requests.Load())
+			}
+			gate.mu.Lock()
+			failures, probing := gate.failures, gate.probe
+			gate.mu.Unlock()
+			if failures != 1 || !probing {
+				t.Fatalf("parallel success settled active probe: failures=%d probe=%v", failures, probing)
+			}
+			release()
+			if err := finishBackoffStream(stream); err != nil {
+				t.Fatalf("complete stream: %v", err)
+			}
+			gate.mu.Lock()
+			failures, probing = gate.failures, gate.probe
+			gate.mu.Unlock()
+			if failures != 0 || probing {
+				t.Fatalf("completed probe did not clear outage: failures=%d probe=%v", failures, probing)
+			}
+		})
 	}
 }
 
@@ -432,9 +473,15 @@ func backoffMessages() []*schema.Message {
 }
 
 // The SDK exposes EOF both for [DONE] and a socket ending after a valid delta.
-// Only a terminal model response is evidence that the shared origin recovered.
-func TestModelBackoffTruncatedDeltaStreamCannotRestoreConcurrency(t *testing.T) {
+// Decoded output may release concurrency, but a later truncation must restore
+// cooldown and retain the failure streak and usage.
+func TestModelBackoffTruncatedDeltaStreamRenewsCooldownAfterOpening(t *testing.T) {
 	var requests atomic.Int32
+	releaseProbe := make(chan struct{})
+	peerStarted, releasePeer := make(chan struct{}), make(chan struct{})
+	var releaseOnce, peerOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseProbe) }) }
+	releaseParallel := func() { peerOnce.Do(func() { close(releasePeer) }) }
 	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch requests.Add(1) {
 		case 1:
@@ -443,16 +490,34 @@ func TestModelBackoffTruncatedDeltaStreamCannotRestoreConcurrency(t *testing.T) 
 			w.Header().Set("Content-Type", "text/event-stream")
 			_, _ = io.WriteString(w, backoffChunk)
 			_, _ = io.WriteString(w, "data: {\"id\":\"fixture\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}\n\n")
+			w.(http.Flusher).Flush()
+			select {
+			case <-releaseProbe:
+			case <-r.Context().Done():
+			}
+		case 4:
+			w.WriteHeader(http.StatusServiceUnavailable)
+		case 5:
+			close(peerStarted)
+			select {
+			case <-releasePeer:
+			case <-r.Context().Done():
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, backoffCompletion)
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, backoffCompletion)
 		}
 	}))
 	t.Cleanup(endpoint.Close)
+	t.Cleanup(release)
+	t.Cleanup(releaseParallel)
 	pool := backoffPool(endpoint.URL)
-	gate := newBackoffGate(20*time.Millisecond, 80*time.Millisecond)
+	gate := newBackoffGate(100*time.Millisecond, 400*time.Millisecond)
 	pool.backoffs = map[string]*backoffGate{backoffKey(endpoint.URL): gate}
-	records := make(chan CallRecord, 8)
+	records := make(chan CallRecord, 16)
 	build, err := pool.ModelBuilder(context.Background(), "fixture", "", "", func(record CallRecord) { records <- record })
 	if err != nil {
 		t.Fatal(err)
@@ -461,11 +526,40 @@ func TestModelBackoffTruncatedDeltaStreamCannotRestoreConcurrency(t *testing.T) 
 	if _, err := m.Generate(context.Background(), backoffMessages()); err == nil {
 		t.Fatal("initial outage did not reach the HTTP fixture")
 	}
-	stream, err := m.Stream(context.Background(), backoffMessages())
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	stream, err := m.Stream(ctx, backoffMessages())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stream.Close()
+	if _, err := stream.Recv(); err != nil {
+		t.Fatalf("probe content: %v", err)
+	}
+	// Both outcomes belong to parallel calls, not to the health probe.
+	for _, wantFailure := range []bool{false, true} {
+		out, err := build("worker", "parallel-worker").Generate(ctx, backoffMessages())
+		if (err != nil) != wantFailure || (!wantFailure && out == nil) {
+			t.Fatalf("parallel failure=%v: out=%v err=%v", wantFailure, out, err)
+		}
+		gate.mu.Lock()
+		failures, probing := gate.failures, gate.probe
+		gate.mu.Unlock()
+		if failures != 1 || !probing {
+			t.Fatalf("parallel result changed probe health: failures=%d probe=%v", failures, probing)
+		}
+	}
+	peerDone := make(chan error, 1)
+	go func() {
+		_, err := build("worker", "still-running-worker").Generate(ctx, backoffMessages())
+		peerDone <- err
+	}()
+	select {
+	case <-peerStarted:
+	case <-ctx.Done():
+		t.Fatal("parallel call did not reach fixture")
+	}
+	release()
 	if err := finishBackoffStream(stream); !errors.Is(err, io.ErrUnexpectedEOF) {
 		t.Fatalf("a stream ending without a terminal response must fail, got %v", err)
 	}
@@ -489,11 +583,32 @@ func TestModelBackoffTruncatedDeltaStreamCannotRestoreConcurrency(t *testing.T) 
 	if failures != 2 || probing {
 		t.Fatalf("truncated recovery probe reset the service: failures=%d probe=%v", failures, probing)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-	defer cancel()
-	if _, err := m.Generate(ctx, backoffMessages()); !errors.Is(err, context.DeadlineExceeded) || requests.Load() != 2 {
+	waiting, cancelWaiting := context.WithTimeout(ctx, 20*time.Millisecond)
+	defer cancelWaiting()
+	if _, err := m.Generate(waiting, backoffMessages()); !errors.Is(err, context.DeadlineExceeded) || requests.Load() != 5 {
 		t.Fatalf("truncated stream let another request escape: err=%v requests=%d", err, requests.Load())
 	}
+	select {
+	case err := <-peerDone:
+		t.Fatalf("probe failure canceled an admitted call: %v", err)
+	default:
+	}
+	releaseParallel()
+	select {
+	case err := <-peerDone:
+		if err != nil {
+			t.Fatalf("admitted call failed after probe truncation: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("admitted call did not finish")
+	}
+	gate.mu.Lock()
+	failures = gate.failures
+	gate.mu.Unlock()
+	if failures != 2 {
+		t.Fatalf("late parallel success reset new outage: failures=%d", failures)
+	}
+
 }
 
 // Compatible endpoints may omit [DONE] after an explicit finish_reason; both
@@ -524,7 +639,8 @@ func TestModelBackoffCompleteHTTPStreamPreservesUsageAndRestoresRequests(t *test
 			}))
 			t.Cleanup(endpoint.Close)
 			pool := backoffPool(endpoint.URL)
-			pool.backoffs = map[string]*backoffGate{backoffKey(endpoint.URL): newBackoffGate(time.Millisecond, 4*time.Millisecond)}
+			gate := newBackoffGate(time.Millisecond, 4*time.Millisecond)
+			pool.backoffs = map[string]*backoffGate{backoffKey(endpoint.URL): gate}
 			records := make(chan CallRecord, 8)
 			build, err := pool.ModelBuilder(context.Background(), "fixture", "", "", func(record CallRecord) { records <- record })
 			if err != nil {
@@ -542,6 +658,13 @@ func TestModelBackoffCompleteHTTPStreamPreservesUsageAndRestoresRequests(t *test
 			if err := finishBackoffStream(stream); err != nil {
 				t.Fatalf("complete stream rejected: %v", err)
 			}
+			gate.mu.Lock()
+			failures, probing := gate.failures, gate.probe
+			gate.mu.Unlock()
+			if failures != 0 || probing {
+				t.Fatalf("terminal %s did not reset health: failures=%d probe=%v", ending, failures, probing)
+			}
+
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 			if _, err := m.Generate(ctx, backoffMessages()); err != nil || requests.Load() != 3 {

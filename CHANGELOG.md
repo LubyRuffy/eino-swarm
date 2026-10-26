@@ -89,6 +89,17 @@ co-working app built on it. The library API is unchanged except where noted
   visible. Preserve history order, completion footers, search and live activity
   (Issue #113).
 
+- `F-130`, `F-160`, `C-029`: relax shared-origin recovery admission after the
+  probe's first decoded nonempty body, reasoning or tool-call delta, so a long
+  successful stream no longer holds other conversations and models until EOF.
+  Headers, role-only/empty/usage-only deltas and error frames still keep the gate
+  closed. Only that probe's final result resets or advances failures; parallel
+  results during it cannot change the streak or later generations. Truncation
+  still returns `io.ErrUnexpectedEOF`, retains usage and renews cooldown without
+  cancelling admitted calls. Non-streaming completion, Stop, isolated scheduling
+  classification, retry/watchdog budgets and zero-wait notice rendering keep
+  their existing boundaries.
+
 - `F-430`, `C-031`: native smoke checks its prepared helper, current caller's
   control permissions and guest console/login state before app copy/launch.
   Classified refusals retain raw evidence within the existing round budget;
@@ -258,6 +269,14 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-150`, `C-009`: a scheduled check cannot complete the standing objective while its own manager-created conversation wake remains armed, including a newly armed wake ID after a one-shot fired. The final check may complete after cancelling that wait; the reverse call order and parallel tool calls cannot rearm the same continuation after completion. Conflicts return recoverable `goal_schedule_conflict` results. Human-created waits and independent jobs retain their own lifecycle; existing completed goals are not automatically reopened (Issue #79).
 
 ### Fixed
+
+- `F-430`, `C-031`: publish native preparation test readiness atomically, so
+  partial JSON writes do not replace the intended deadline regression during
+  concurrent test execution.
+
+- `F-110`, `F-170`: open terminal tabs now follow light/dark and colour-palette
+  changes without reconnecting their shells or losing output. System appearance
+  also follows OS colour-scheme changes while the app is running.
 
 - `F-150`, `F-160`, `C-009`, `C-029`: isolate scheduling-answer classification
   from shared origin cooldowns and implicit HTTP reconnects while preserving

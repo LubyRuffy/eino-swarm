@@ -813,6 +813,8 @@ interpreters; a LaunchServices executable entry still needs its own mode check.
 
 HOST regressions exercise the actual runner main, real flock, real headless
 children and sockets, cancellation/partial input/ACK and preparation cleanup.
+The preparation fixture publishes complete readiness JSON by atomically renaming
+a temporary file from the same directory.
 OS leaves are replaced only for headless tests. Run:
 
 ```bash
@@ -4892,6 +4894,13 @@ Several things are tested here, some as pure logic and some in jsdom:
   retain their client tab/source target and initial-directory/shell context
   inside the existing quote text, including across draft save and refresh.
   Browser E2E evidence does not establish native WebView acceptance.
+- **Terminal appearance (`F-110` / `F-170`)**:
+  `src/components/app/terminal-session.test.tsx` checks live light/dark and
+  named-palette updates, hidden tabs, observer disposal and unchanged terminal
+  and socket identities. `src/lib/system-theme.test.tsx` covers OS theme
+  subscriptions, fixed preferences and cleanup. `e2e/terminal-theme.spec.ts`
+  checks actual xterm colours and retained shell output through theme changes,
+  including runtime OS colour-scheme changes in System mode.
 - **`src/lib/titlebar.ts`**: a double-click on the desktop title bar (not on a
   button in it) sends `wails:drag:doubleclick` so the native window zooms; a
   browser has no bridge and the click is left alone. Dragging is native and is
@@ -5792,6 +5801,15 @@ quality improvement from this deterministic payload test.
 
 ## Shared model recovery backoff (`C-029`)
 
+The 2026-10-26 local content-admission candidate passed the complete provider
+package with `-race -count=1` at 96.5% statement coverage. The gate, admission,
+content predicate and Generate/Stream wrappers reached 100%; the Responses
+event handler reached 97.7%. These are local checks, not a release or native
+desktop acceptance. The previous completion-only probe test failed at the
+new early-admission assertion before the implementation change. An overlay
+of the old Responses completion handler also reproduced tool output escaping
+before a contradictory error/completed event was rejected.
+
 Before this integration, the local provider race audit reported 96.0% package
 coverage and Pool.Get at 93.3%; the 2026-10-21 remote audit reported 95.3% package
 coverage. Its shared gate, admission/classification, HTTP reconnect adapter,
@@ -5807,14 +5825,28 @@ three-call budget; rerun that fixture for the merged candidate.
 probe, healthy concurrency, stale in-flight replies, cancellation, renewed
 cooldown notifications and idempotent release. `model_backoff_test.go` exercises
 classification and recorder/context wiring; authentication/parameter errors
-cannot add failures or prove recovery. `backoff_integration_test.go` uses the
-real SDK with keyless loopback HTTP fixtures to verify cross-role/model/provider
-and cache-invalidated calls, independent origins, malformed successful streams,
-complete-stream recovery and delayed/cancelled header reconnects. An actual Chat Completions HTTP
-stream ending after valid deltas but without `[DONE]` or finish reason must fail
-with `io.ErrUnexpectedEOF`, retain received usage and keep sibling requests
-blocked. Complete `[DONE]`, `stop`, `length` and `tool_calls` responses preserve
-usage and reopen admission. `stream_completion_test.go` verifies exact unchanged
+cannot add failures or prove recovery. `backoff_progress_test.go` checks content
+admission without settling probe health, parallel and stale results, cancellation
+after progress, and the current reconnect ticket under `testing/synctest`.
+`backoff_integration_test.go` uses the
+real Pool/SDK boundary with keyless loopback HTTP fixtures to verify
+cross-role/model/provider and cache-invalidated calls, independent origins,
+malformed successful streams and delayed/cancelled header reconnects. After an
+initial 503 and cooldown, a probe remains open: before its first decoded nonempty
+body, reasoning or tool-call delta, a sibling role/model request must not reach
+the server; after that delta, it must arrive before the probe finishes. Headers,
+role-only/empty deltas, usage-only frames and error frames cannot release it.
+Parallel successes and failures during the open probe cannot reset or advance
+the failure streak, and late results cannot rewrite a newer generation.
+`internal/provider/backoff_progress_http_test.go` also drives a real configured
+body-idle timeout after content has opened admission: the failed probe renews
+cooldown while an already admitted, heartbeat-fed sibling stream stays alive.
+An actual Chat Completions HTTP probe ending after valid deltas but without
+`[DONE]` or finish reason must fail with `io.ErrUnexpectedEOF`, retain received
+usage and renew cooldown for the next request without cancelling already
+admitted siblings. Complete `[DONE]`, `stop`, `length` and `tool_calls` responses
+preserve usage and clear failures only at the final result; non-streaming
+Generate also waits for its complete result. `stream_completion_test.go` verifies exact unchanged
 bytes, fragmented/large frames and false terminator matches. Closing an Eino
 reader alone retains a silent probe; canceling its request context releases it
 without clearing failures. A header reconnect following a cooldown longer than
@@ -5839,6 +5871,12 @@ Late waits after a quiet scheduled report remain hidden from Chat while their
 raw Trace events are retained. `internal/provider/backoff_responses_test.go`
 exercises the actual Pool/Responses boundary, including reasoning, output caps,
 cloud-tool receipts and cancelled admission producing no invented model call.
+`internal/provider/backoff_progress_responses_test.go` checks Responses probe
+content and the non-streaming Generate boundary through both protocols.
+Responses probe content may release concurrent admission, but only a legal
+`response.completed` accepts its final success; a raw `[DONE]` does not. The
+isolated classification HTTP fixtures retain timeout coverage with no origin
+`model_backoff` observation or change to the origin failure streak.
 The opt-in `frontend/e2e/api-error.spec.ts` measures actual HTTP arrival gaps on
 502 (at least 5s then 10s), and checks the original turn, Chat, Full log and reload.
 

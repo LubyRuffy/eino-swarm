@@ -25,7 +25,11 @@ child=subprocess.Popen([sys.executable,'-c','import time;time.sleep(120)'])
 def stop(signum,frame):
     child.terminate();child.wait(timeout=2);raise SystemExit(0)
 signal.signal(signal.SIGTERM,stop)
-Path(os.environ['ZWAI_NATIVE_EVIDENCE'],'bridge-ready.json').write_text(json.dumps(dict(pid=os.getpid(),child=child.pid)))
+# A visible ready path must already contain complete JSON for the parent.
+ready=Path(os.environ['ZWAI_NATIVE_EVIDENCE'],'bridge-ready.json')
+pending=ready.with_suffix('.pending')
+pending.write_text(json.dumps(dict(pid=os.getpid(),child=child.pid)))
+os.replace(pending,ready)
 while True:time.sleep(.1)
 """
 
