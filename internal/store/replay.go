@@ -11,7 +11,7 @@ const replayWhitespace = "\t\n\v\f\r \u0085\u00a0\u1680\u2000\u2001\u2002\u2003\
 // Pin the role index: ORDER BY alone otherwise favors the old seq index and
 // visits every tool row before applying the role filter.
 func (s *Store) ListReplayMessages(threadID string, through int64, skipTurnID string) ([]Message, error) {
-	q := s.db.Table("messages INDEXED BY idx_msg_thread_role_seq").Select("thread_id", "turn_id", "seq", "role", "content", "images", "event_seq").
+	q := s.db.Table("messages INDEXED BY idx_msg_thread_role_seq").Select("thread_id", "turn_id", "seq", "role", "content", "images", "event_seq", "source").
 		Where("thread_id = ? AND role IN ?", threadID, []string{"user", "assistant"})
 	if through > 0 {
 		q = q.Where("seq > ?", through)

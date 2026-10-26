@@ -22,6 +22,10 @@ func (e *Engine) replayHistorySkipping(threadID, skipTurnID string) ([]adk.Messa
 	if err != nil {
 		return nil, err
 	}
+	rows, err = e.withoutRuntimeRows(rows)
+	if err != nil {
+		return nil, err
+	}
 	events, err := e.store.ListReplayEvents(threadID, through, skipTurnID)
 	if err != nil {
 		return nil, err

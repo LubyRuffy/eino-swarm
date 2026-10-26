@@ -74,7 +74,12 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	if got, err := e.store.GetThread(rt.threadID); err == nil {
 		th = got
 	}
-	instruction := ManagerPrompt(toolset, e.cfg, JoinPromptSections(taskCoordinationPrompt, managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID))))
+	humanReply, err := e.pausedGoalAnswerSection(th, turn)
+	if err != nil {
+		return swarm.RunResult{}, err
+	}
+	instruction := ManagerPrompt(toolset, e.cfg, JoinPromptSections(taskCoordinationPrompt,
+		managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID)), humanReply))
 	// Fresh slice: pc.managerTools may return the workspace toolset's
 	// backing array, and appending complete_goal / block_goal in place
 	// would hand them to every sub-agent.
@@ -104,7 +109,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	managerTools = append(managerTools, rt.managerScheduleTools(turn)...)
 	managerTools = append(managerTools, rt.managerTaskTools(turn)...)
 	budget := e.cfg.SwarmSnapshot().ManagerIterations()
-	if pursuingGoal(th) {
+	if pursuingGoal(th) && !pausedStandingGoal(th) {
 		budget = e.cfg.SwarmSnapshot().GoalSessionIterations()
 	}
 	used := 0
@@ -227,7 +232,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 					Kind: KindModelRetry, AgentID: swarm.DefaultManagerID,
 					Text: `{"attempt":1,"cap":1,"reason":"scheduled_no_activity"}`})
 				messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()),
-					schema.UserMessage(scheduleCompletionCue))
+					runtimeUserMessage(scheduleCompletionCue))
 				continue
 			}
 		}
@@ -263,7 +268,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 							return res, err
 						}
 						collectionContinued = true
-						messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()), schema.UserMessage(workerCollectionCue(ids)))
+						messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()), runtimeUserMessage(workerCollectionCue(ids)))
 						continue
 					}
 				}
@@ -301,7 +306,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 				if err := rt.recordScheduleAnswerRetry(turn, failure); err != nil {
 					return res, err
 				}
-				messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()), schema.UserMessage(scheduleAnswerCorrectionCue))
+				messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()), runtimeUserMessage(scheduleAnswerCorrectionCue))
 				continue
 			}
 			res = answer.accept(res)
@@ -334,7 +339,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		if got, err := e.store.GetThread(rt.threadID); err == nil {
 			th = got
 		}
-		if pursuingGoal(th) {
+		if pursuingGoal(th) && !pausedStandingGoal(th) {
 			// eino needs a finite ReAct slice. That is not a /goal
 			// session boundary: keep this turn, keep the registry, do
 			// not spend goal_max_auto_turns.

@@ -141,6 +141,13 @@ func TestOrdinaryTurnCollectsItsRealWorkerBeforePublishingCompletion(t *testing.
 				t.Error("manager completed without receiving the actual original worker result")
 			}
 			writeContextFlowReply(w, true, map[string]any{"content": collected}, "stop")
+		case 5:
+			for _, message := range input.Messages {
+				if message.Role == schema.User && (strings.HasPrefix(message.Content, cue) || message.Content == GoalContinueText()) {
+					t.Error("a completed turn's runtime correction or continuation was replayed as human input")
+				}
+			}
+			writeContextFlowReply(w, true, map[string]any{"content": "The follow-up was answered."}, "stop")
 		default:
 			t.Errorf("ordinary completion correction was unbounded: manager requests=%d", step)
 			writeContextFlowReply(w, true, map[string]any{"content": collected}, "stop")
@@ -245,5 +252,17 @@ withheld:
 	}
 	if spawned != 1 || !doneWait || strings.Contains(replayDump(t, e, th.ID), premature) {
 		t.Fatalf("ordinary completion lost identity, collection receipt or replay safety: spawned=%d done_wait=%v", spawned, doneWait)
+	}
+	// Existing databases have unmarked runtime continuation rows. They must
+	// not authorize another collection or objective slice in a later turn.
+	if err := e.store.AppendMessages(th.ID, turn.ID, []store.Message{{Role: "user", Content: GoalContinueText()}}); err != nil {
+		t.Fatal(err)
+	}
+	next, err := e.StartTurn(th.ID, "Explain the observed result.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := waitForTurn(t, e, next.ID); got.Status != store.TurnDone || managers.Load() != 5 {
+		t.Fatalf("follow-up failed: turn=%+v manager_requests=%d", got, managers.Load())
 	}
 }

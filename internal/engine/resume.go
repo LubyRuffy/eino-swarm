@@ -256,7 +256,7 @@ func resumeMessages(history []adk.Message, userText string) []adk.Message {
 		out = append(out, schema.UserMessage(userText))
 	}
 	if !lastUserIs(out, resumeCue) {
-		out = append(out, schema.UserMessage(resumeCue))
+		out = append(out, runtimeUserMessage(resumeCue))
 	}
 	return out
 }

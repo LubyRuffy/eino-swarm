@@ -151,7 +151,7 @@ func appendModelRetryCue(msgs []adk.Message) []adk.Message {
 			return msgs
 		}
 	}
-	return append(msgs, schema.UserMessage(modelRetryCue))
+	return append(msgs, runtimeUserMessage(modelRetryCue))
 }
 
 // errInvalidToolJSONNotSent is raised before the model HTTP call. The

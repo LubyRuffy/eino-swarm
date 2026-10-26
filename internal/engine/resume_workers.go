@@ -107,11 +107,11 @@ func (rt *runtime) attachLeftoverWorkers(reused, pin bool, live int, messages []
 	switch {
 	case reused && live > 0:
 		if !hasUserContent(messages, parkedWorkersCue) {
-			messages = append(messages, schema.UserMessage(parkedWorkersCue))
+			messages = append(messages, runtimeUserMessage(parkedWorkersCue))
 		}
 	case !reused && len(running) > 0:
 		if !hasUserContent(messages, resumeWorkersCue) {
-			messages = append(messages, schema.UserMessage(resumeWorkersCue))
+			messages = append(messages, runtimeUserMessage(resumeWorkersCue))
 		}
 	}
 	return messages
@@ -373,12 +373,12 @@ func (e *Engine) resumeConversation(turn *store.Turn, snapshots ...*restoreSnaps
 		for _, call := range orphanedToolCalls(events) {
 			name := toolCallName(call.Text)
 			if name != waitAgentsToolName && name != ToolAskUser {
-				msgs = append(msgs, schema.UserMessage("This tool has an unknown outcome after restart. Inspect actual state or an external receipt before deciding whether retry is safe; do not assume failure: "+call.Text))
+				msgs = append(msgs, runtimeUserMessage("This tool has an unknown outcome after restart. Inspect actual state or an external receipt before deciding whether retry is safe; do not assume failure: "+call.Text))
 			}
 		}
 	}
 	if len(running) > 0 && !hasUserContent(msgs, resumeWorkersCue) {
-		msgs = append(msgs, schema.UserMessage(resumeWorkersCue))
+		msgs = append(msgs, runtimeUserMessage(resumeWorkersCue))
 	}
 	return e.appendInterruptedWorkerCue(turn.ThreadID, msgs, snapshots...), nil
 }
@@ -417,8 +417,14 @@ func (e *Engine) thisTurnMessages(turn *store.Turn, snapshots ...*restoreSnapsho
 			}
 			continue
 		}
-		if r.Role == string(schema.User) && isEngineOnlyUser(r.Content) {
-			continue
+		if r.Role == string(schema.User) && r.Source != store.MessageSourceHuman && isEngineOnlyUser(r.Content) {
+			human, err := e.store.MessageHasHumanSource(r)
+			if err != nil {
+				return nil, err
+			}
+			if r.Source == store.MessageSourceRuntime || !human {
+				continue
+			}
 		}
 		msg := e.storedToSchema(r)
 		if msg == nil {

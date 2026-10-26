@@ -1185,7 +1185,7 @@ auto-continues hit `swarm.goal_max_auto_turns`, or after the human
 interrupts a pursuing turn (the banner shows Paused, a line that this is
 not an error, and Start); `goal_idle`
 is true after an auto-continue finished with no counted tool activity
-(Start or a human message resumes). The objective text stays in
+(only explicit Start / `goal_resume: true` / phone `resume_goal` resumes). Ordinary sends while capped, blocked or idle answer that message in one turn, retain all pause flags and the auto-turn count, and do not authorize further goal investigation or automatic continuation. While pursuit is active and not paused, a human message still resets the consecutive auto-turn count. Clients that previously relied on an ordinary message to restart paused pursuit must use the existing explicit resume operation. The objective text stays in
 every case. The banner shows unfinished objectives and hides completed ones;
 setting a new objective resets completion and displays it again. `goal_block_reason` is the optional
 one-line reason from `block_goal`, or the public turn error when a pursuing
@@ -1797,8 +1797,8 @@ shortening only the bounded detail text.
 | `goal_blocked` | the manager called `block_goal`, or a pursuing turn had a non-recoverable failure outside the isolated scheduled-check boundary. Auto-continue stops until the human resumes. `text` is JSON `{reason}` |
 | `goal_resumed` | `role: "human"` marks an explicit human goal-resume request and resets worker watchdog recovery; manager `reopen_goal` does not reset it. The human started pursuit again after a block, a cap, an idle open goal, or a completed objective that finished too early — or the manager called `reopen_goal` after a mistaken `complete_goal`. Same Working-clock rule as `goal_continued` |
 | `goal_continued` | the runtime started the next turn to keep pursuing an open objective. Not a `user_message`. Clients start the Working clock from this event's `created_at` (a `done` has just cleared `status.started_at`) |
-| `goal_capped` | consecutive auto-continues hit `swarm.goal_max_auto_turns` (`text` is JSON `{auto_turns,cap}`), or the human interrupted a pursuing turn (`text` is JSON `{reason:"interrupted"}`). A later human message or resume resets the budget |
-| `goal_idle` | an engine-started continuation finished with no counted tool activity (`text` is the notice). Auto-continue stops until a human message or resume; the objective stays open |
+| `goal_capped` | consecutive auto-continues hit `swarm.goal_max_auto_turns` (`text` is JSON `{auto_turns,cap}`), or the human interrupted a pursuing turn (`text` is JSON `{reason:"interrupted"}`). Explicit goal resume resets the budget; ordinary messages retain the pause and answer only their own turn |
+| `goal_idle` | an engine-started continuation finished with no counted tool activity (`text` is the notice). Auto-continue stops until explicit goal resume; ordinary messages retain the hold and the objective stays open |
 | `goal_edited` | the human changed the objective text in place; `text` is the new objective. Status stays put. A running turn is also steered |
 | `plan` | the conversation entered `/plan`; write/edit/exec and similar are unmounted. `text` is `planning` |
 | `plan_updated` | `propose_plan` or a human edit wrote the plan body. `text` is the markdown (also on disk at `$ZWAI_HOME/plans/<thread_id>/PLAN.md`) |

@@ -175,11 +175,22 @@ func TestAHumanMessageResetsTheGoalAutoContinueBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForTurn(t, e, second.ID)
-	waitForTurnCount(t, e, th.ID, 4)
 	waitSettled(t, e, th.ID)
 	turns, _ := e.Store().ListTurns(th.ID)
-	if len(turns) != 4 {
-		t.Fatalf("a human message must reset the cap, got %d turns", len(turns))
+	got, _ := e.Store().GetThread(th.ID)
+	if len(turns) != 3 || !got.GoalCapped || got.GoalAutoTurns != 1 {
+		t.Fatalf("a human message must answer once and retain the cap: turns=%d capped=%v auto=%d", len(turns), got.GoalCapped, got.GoalAutoTurns)
+	}
+	resumed, err := e.ResumeThreadGoal(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForTurn(t, e, resumed.ID)
+	waitForTurnCount(t, e, th.ID, 5)
+	waitSettled(t, e, th.ID)
+	turns, _ = e.Store().ListTurns(th.ID)
+	if len(turns) != 5 || !turns[3].GoalContinue || !turns[4].GoalContinue {
+		t.Fatalf("explicit resume must grant the next continuation budget: %+v", turns)
 	}
 }
 
@@ -848,7 +859,7 @@ func TestSetThreadGoalSteersARunningTurn(t *testing.T) {
 	}
 }
 
-func TestAHumanMessageClearsABlockedGoal(t *testing.T) {
+func TestAHumanMessagePreservesABlockedGoal(t *testing.T) {
 	provider.SetCompleteOpenGoal(false)
 	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
 
@@ -866,11 +877,11 @@ func TestAHumanMessageClearsABlockedGoal(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForTurn(t, e, first.ID)
-	waitForTurnCount(t, e, th.ID, 2)
 	waitSettled(t, e, th.ID)
 	got, _ := e.Store().GetThread(th.ID)
-	if got.GoalBlocked {
-		t.Fatal("a human message must clear the block")
+	turns, _ := e.Store().ListTurns(th.ID)
+	if !got.GoalBlocked || got.GoalBlockReason != "needs an external change" || len(turns) != 1 {
+		t.Fatalf("a human message must answer once without clearing the block: thread=%+v turns=%d", got, len(turns))
 	}
 }
 

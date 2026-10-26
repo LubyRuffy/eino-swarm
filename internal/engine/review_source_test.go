@@ -102,7 +102,7 @@ func TestReviewEventLineReadsTheLogNotTheNoise(t *testing.T) {
 	}{
 		{store.Event{Kind: KindUser}, "", "", false},
 		{store.Event{Kind: KindSteer, Text: "nudge"}, "human", "nudge", true},
-		{store.Event{Kind: KindSteer, Text: goalSessionWrapSteer()}, "", "", false},
+		{store.Event{Kind: KindSteer, Text: goalSessionWrapSteer()}, "human", goalSessionWrapSteer(), true},
 		{store.Event{Kind: KindSteerRetracted, Text: `{"seq":3}`}, "", "", false},
 		{store.Event{Kind: KindSteerPreempted}, "", "", false},
 		{store.Event{Kind: KindSteerRevised, Text: `{"seq":3,"text":"later"}`}, "", "", false},

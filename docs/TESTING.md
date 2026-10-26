@@ -1,5 +1,36 @@
 # Testing
 
+## Paused goal replies and runtime provenance (`F-150`, `F-220`, `C-008`, `C-009`)
+
+`goal_test.go` changes the old cap-reset expectation: cap 1 admits a human turn
+and one automatic turn; another ordinary message adds only its answer turn.
+`goal_paused_message_test.go` and `goal_idle_test.go` cover blocked/idle, explicit
+resume, active-pursuit reset, failed replies, Stop and independent wake ownership.
+`prompt_goal_pause_test.go` inspects actual manager HTTP input for the source-bound
+human deliverable and checks generic completion-criteria guidance. No incident
+request, objective, title or conversation ID is a positive prompt expectation.
+
+`goal_pause_integration_test.go` crosses both PC HTTP send/PATCH and phone RPC
+send/resume_goal for capped, blocked and idle. Desktop Playwright keeps the
+paused banner and Start after sending/reloading, then observes pursuit after
+Start. Phone tests retain the same projection through send until resume_goal.
+`ordinary_worker_completion_test.go` uses the actual worker/manager boundary:
+the same-turn correction is consumed and collection completes, then the real
+next StartTurn excludes it and older GoalContinueText. `runtime_cues_test.go`
+also captures compact input, retains human quotations and filters session
+briefing input; legacy compatibility matches complete known cues only.
+
+```bash
+go test -race ./internal/engine ./internal/store ./internal/server ./internal/remote
+ZWAI_E2E_GOAL_PAUSE=1 ZWAI_E2E_PORT=18964 ZWAI_E2E_DATA_DIR=/absolute/unique-pause-data \
+  npm --prefix frontend run e2e -- goal-pause.spec.ts --output /absolute/unique-pause-output
+(cd mobile && ZWAI_MOBILE_E2E_PORT=14196 npm run e2e -- goal-pause.spec.ts --output /absolute/unique-phone-pause-output)
+```
+
+Each concurrent run needs its own port, data/output directories and built dist.
+The fixtures use loopback HTTP without provider credentials and disposable test
+workspaces. They do not read or modify an active user's data directory.
+
 ## Chat Completions reasoning fields (`F-170`, `F-230`, `C-009`)
 
 `internal/provider/reasoning_fields_test.go` runs both Generate and Stream through
@@ -3587,8 +3618,8 @@ stopping tools starts the next turn with no `goal_session`;
 continuation records `goal_idle` instead of looping, and a live
 `wait_agents` does not;
 `TestHoldGoalIdleIsIdempotentAndSkipsMissingThreads` /
-`TestAHumanMessageClearsAHeldGoal` / `TestResumeClearsAHeldGoal` are why
-the hold is sticky until a human message or Start;
+`TestAHumanMessagePreservesAHeldGoal` / `TestResumeClearsAHeldGoal` are why
+the hold survives ordinary messages and only explicit Start resumes pursuit;
 `TestParkedWorkersStayVisibleBetweenGoalSessions` is why Agents still
 sees in-flight sub-agents after the manager yields.
 `TestHostNotifyKeepsWorkerEventsAfterRunReturns` /
@@ -3973,7 +4004,7 @@ Several things are tested here, some as pure logic and some in jsdom:
   turn, not a frozen 1s. An `error` then `goal_blocked` idles the composer
   and marks the objective blocked, so a crashed `/goal` turn is not still
   Working — a real refusal, not truncated tool JSON / `429` / a dropped
-  stream (those `model_retry` then auto-continue). A `goal_idle` event holds the banner until a human message or Start.
+  stream (those `model_retry` then auto-continue). A `goal_idle` event holds the banner across ordinary sends until explicit Start.
   Split from `app.test.ts` so neither file crosses 1000 lines.
 - **`src/store/app-plan.ts`**: `/plan` enters planning and starts a turn with
   an argument (not during a run, not when the argument is empty); a human

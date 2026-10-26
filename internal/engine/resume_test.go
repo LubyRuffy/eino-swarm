@@ -795,7 +795,7 @@ func TestPersistTranscriptSkipsAnswersAlreadyStored(t *testing.T) {
 		schema.SystemMessage("instruction"),
 		schema.UserMessage("the request"),
 		nil,
-		schema.UserMessage(resumeCue),
+		runtimeUserMessage(resumeCue),
 		schema.UserMessage("[steer] later"),
 		schema.AssistantMessage("already stored", nil),
 		schema.AssistantMessage("brand new", nil),
@@ -827,6 +827,25 @@ func TestPersistTranscriptSkipsAnswersAlreadyStored(t *testing.T) {
 	}
 	if tools != 1 {
 		t.Fatalf("want the tool-call row kept, got %d: %+v", tools, msgs)
+	}
+	// The same words from a human are durable input; source, not wording,
+	// distinguishes them from the manager's transient recovery instruction.
+	e.persistTranscript(th.ID, turn.ID, []adk.Message{
+		schema.SystemMessage("instruction"),
+		withMessageSource(schema.UserMessage(resumeCue), store.MessageSourceHuman),
+	}, 0)
+	msgs, err = e.Store().ListMessages(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cues = 0
+	for _, message := range msgs {
+		if message.Content == resumeCue && message.Source == store.MessageSourceHuman {
+			cues++
+		}
+	}
+	if cues != 1 {
+		t.Fatalf("the human quotation must be stored once: %+v", msgs)
 	}
 }
 

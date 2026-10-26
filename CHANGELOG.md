@@ -65,6 +65,9 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-150`, `F-220`, `C-009`, `C-006`: ordinary PC/phone messages no longer resume capped, blocked or idle standing goals. They answer only the current request, retain the pause and auto-turn count, and leave Start available. Explicit goal resume starts pursuit again; unpaused human steering still resets the consecutive count. Paused replies use ordinary iteration limits and cannot borrow goal worker ownership.
+- `F-150`, `C-009`: guide open-ended goals to ask once for observable completion criteria before a new investigation slice, without changing continuation limits, idle tool accounting or `complete_goal` completion evidence.
+
 - `F-145`, `C-033`: composer drafts continue saving automatically while normal
   loading, saving, saved and sending states leave no draft status or Delete draft
   control in the input area. Guidance and recovery actions appear only for
@@ -214,6 +217,8 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-150`, `C-009`: a scheduled check cannot complete the standing objective while its own manager-created conversation wake remains armed, including a newly armed wake ID after a one-shot fired. The final check may complete after cancelling that wait; the reverse call order and parallel tool calls cannot rearm the same continuation after completion. Conflicts return recoverable `goal_schedule_conflict` results. Human-created waits and independent jobs retain their own lifecycle; existing completed goals are not automatically reopened (Issue #79).
 
 ### Fixed
+
+- `F-130`, `F-410`, `C-008`: mark runtime corrections and persist input provenance, excluding transient instructions from later replay, compact inputs and session briefings. Exact legacy cue compatibility preserves independently evidenced human quotations; same-turn correction and worker collection still run.
 
 - `F-115`, `C-034`, `C-012`: coordinate successor focus from the still-foreground
   parent after its private handoff, avoiding a system-refused self-activation

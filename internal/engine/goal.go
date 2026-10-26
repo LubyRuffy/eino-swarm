@@ -24,8 +24,9 @@ const KindGoalContinued = "goal_continued"
 
 // KindGoalCapped is recorded when consecutive auto-turns hit
 // swarm.goal_max_auto_turns, or when the human interrupts a pursuing
-// turn. The objective stays open; a human message or an explicit resume
-// resets the budget. Interrupt payload is JSON {reason:"interrupted"};
+// turn. The objective stays open until an explicit resume resets the budget.
+// An ordinary human message answers once without reopening pursuit.
+// Interrupt payload is JSON {reason:"interrupted"};
 // a budget cap is {auto_turns,cap}.
 const KindGoalCapped = "goal_capped"
 
@@ -41,8 +42,8 @@ const KindGoalBlocked = "goal_blocked"
 const KindGoalEdited = "goal_edited"
 
 // KindGoalIdle is recorded when an engine-started continuation finished
-// with no counted tool activity. Auto-continue stops until a human
-// message or resume; the objective stays open.
+// with no counted tool activity. Auto-continue stops until an explicit
+// resume; the objective stays open while ordinary messages are answered.
 const KindGoalIdle = "goal_idle"
 
 // KindGoalResumed is recorded when the human starts pursuit again after
@@ -299,6 +300,12 @@ func pursuingGoal(th *store.Thread) bool {
 	return hasOpenGoal(th) && !th.GoalBlocked
 }
 
+// pausedStandingGoal retains the objective without granting another pursuit
+// budget. A human question can be answered while this pause remains durable.
+func pausedStandingGoal(th *store.Thread) bool {
+	return hasOpenGoal(th) && (th.GoalCapped || th.GoalBlocked || th.GoalIdle)
+}
+
 // closedStandingGoal is complete or blocked: the text is still there, but
 // this turn must not keep the ReAct loop or ask the human to extend it.
 func closedStandingGoal(th *store.Thread) bool {
@@ -306,16 +313,10 @@ func closedStandingGoal(th *store.Thread) bool {
 }
 
 func resetGoalBudget(e *Engine, th *store.Thread) {
-	if th == nil || (th.GoalAutoTurns == 0 && !th.GoalCapped && !th.GoalBlocked && !th.GoalIdle) {
+	if th == nil || pausedStandingGoal(th) || th.GoalAutoTurns == 0 {
 		return
 	}
-	if err := e.store.UpdateThread(th.ID, map[string]any{
-		"goal_auto_turns":   0,
-		"goal_capped":       false,
-		"goal_blocked":      false,
-		"goal_block_reason": "",
-		"goal_idle":         false,
-	}); err != nil {
+	if err := e.store.UpdateThread(th.ID, map[string]any{"goal_auto_turns": 0}); err != nil {
 		e.log.Warn("could not reset the goal auto-continue budget",
 			"thread", th.ID, "err", err)
 	}

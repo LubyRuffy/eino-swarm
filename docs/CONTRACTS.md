@@ -108,6 +108,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-006 Phone remote protocol
 
+- 暂停目标的手机 send 保留 capped／blocked／idle 和连续预算，答完不启动目标下一轮；只有显式 `resume_goal` 按 `C-009` 恢复。协议操作名与载荷不变，UI 保留暂停投影和恢复操作。关联功能：`F-220`；证据：`internal/server/goal_pause_integration_test.go`、`internal/remote/rpc.go`；变更类型：Changed / Fixed。
+
 - 首屏与读取边界：新手机发送 `watch {thread_id, include_detail:true}`，同一 `ready` 回复包含对话 `detail` 和至多 24 条初始事件；元数据、状态和事件共享 sealed-frame 字节预算，裁掉较旧事件时保留 `more` 和最新序号，元数据本身超限返回 `too_large`。旧手机的普通 watch 保持原响应；旧 PC 忽略该字段时，新手机只补请求 `open`，不得再次订阅。晚到详情不得覆盖已观察的实时生命周期或 seq=0 正文；字段即使恢复为原值，也必须保留实际事件带来的状态。详情、摘要和最近轮次必须在数据库中按需投影、倒序分页，不得先读取完整会话再裁剪；跨隐藏记录查找摘要仍保留原有可见语义。证据：`internal/remote/watch_open_test.go`、`internal/remote/snapshot_reads_test.go`、`internal/store/phone_reads_test.go`、`mobile/src/lib/open-thread.test.ts`、`mobile/e2e/conversation-open.spec.ts`；关联功能：`F-220`；变更类型：Changed / Fixed。
 - 链接所有权：每个当前 Host 连接中的同一设备只能有一个有效 RPC/watch 生命周期。重连取消其旧 watch、目录刷新与读取循环；不同设备互不替换。Stop／Reload 撤销链接准入，在 Host 锁外收口所有自有 handler；已捕获的旧 callback 不得复活旧连接或替换新连接。已进入 pairlink 的网络写继续受依赖的既有写时限约束，取消后的排队发送不得重新进入旧 Link。证据：`internal/remote/host_links.go`、`internal/remote/host_links_test.go`；关联功能：`F-210`、`F-220`；变更类型：Fixed。
 - PC 超时配置：显式 `get_timeouts`／`set_timeouts` 只传窄 `timeout_settings` DTO，包含 worker 时长、提供商 ID／标签、独立的首字节／流空闲秒数及只读兼容字段 `effective_first_byte_timeout_seconds`；不传端点、密钥或完整配置。该兼容字段等于归一化首字节时长，不与 idle 取最小值。写请求只含提供商 ID 和编辑过的正整数时长，空修改、未知／重复 ID、溢出或只读／未知字段整体拒绝。帧预算检查与写回执绑定同一已保存候选，超限必须在持久化前拒绝。失败保留编辑与错误，不能用回填默认值冒充加载成功；旧主机 `unknown_op` 与请求等待超时只在面板提示，不解除连接。旧链接或旧读取／保存代次的回调不得覆盖当前页面；关闭不撤回已发送保存，重开必须重读。关联 `C-009`；证据：`internal/config/timeouts.go`、`internal/remote/timeouts.go`、`internal/remote/timeouts_test.go`、`mobile/src/lib/use-pc-timeouts.ts`、`mobile/src/lib/use-pc-timeouts.test.ts`、`mobile/e2e/pc-timeouts.spec.ts`；变更类型：Added；来源：Issue #82。
@@ -134,6 +136,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-008 Durable local data
 
+- 运行时输入来源：`messages.source` 与 ADK `Extra["zwai_message_source"]` 显式区分 human／runtime／schedule／plan。runtime 纠偏可在同轮执行与诊断中保留，不进入下一轮 replay、compact 摘要输入和 session briefing；真实人类即使完整引用纠偏原文也保留。未标记旧行仅按现有完整常量或有效 worker-ID 后缀判定候选，并优先核对同轮原始 human 事件／非自动 turn 输入，原始输入只绑定首个 user 行，不能替后续同文纠偏证明来源；不得按关键词、前缀相似或业务内容删除人话。此兼容只过滤读取，不删除历史事件或改写旧摘要。关联功能：`F-130`、`F-150`、`F-410`；证据：`internal/engine/runtime_cues.go`、`internal/store/message_source.go`、`internal/engine/ordinary_worker_completion_test.go`；变更类型：Added / Fixed。
+
 - 状态：active；类型：data；作用范围：store、search、engine 会话摘要与记忆复核；关联功能：`F-120`、`F-130`、`F-150`、`F-410`、`F-420`。
 - 契约内容：对话、turn、完成事件和计划保存在本机数据目录；测试使用临时目录，不写用户数据目录。
 - 私有准入数据：`pending_schedule_answers` 按 `C-009` 保存尚未校验的正文及恢复身份，独立于公共事件、回放、搜索和 handoff 检查点。每 turn 的私有 ordinal 由保存事务分配 MAX+1，拒绝调用方伪造次序，不以墙钟或随机 ID 判定新旧；重存原 ID 不分配新次序。新 answer 与旧 answer 全文清理同事务，只保留最新 answer 完整上下文，report 回执不受影响；任何失败必须保留上一份完整恢复状态。FinishTurn 的终态事务清空该 turn 全部候选载荷，将 pending 结清为 rejected，保留 accepted／rejected 轻量身份；任何终态或清理写失败必须回滚并保留完整恢复原文。删除会话／项目及倒带删除 turn 时，所有 pending／accepted／rejected 候选与拥有者同事务删除；迟到写入不能重建已删除拥有者的私有数据。实现／验证：`internal/store/schedule_answer_pending.go`、`internal/store/schedule_answer_pending_test.go`、`internal/store/store.go`、`internal/store/projects.go`、`internal/store/rewind.go`；变更类型：Added。
@@ -146,6 +150,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 摘要／复核证据：实现 `internal/engine/worker_lifecycle_facts.go`、`internal/engine/session_memory.go`、`internal/engine/review_source.go`、`internal/engine/review.go`；测试 `internal/engine/worker_lifecycle_facts_test.go`、`internal/engine/session_memory_bound_test.go`、`internal/engine/review_source_test.go`；变更规则：同步摘要、目标收尾、复核及事实裁剪回归；来源：GitHub Issue #78。
 
 ## C-009 Editable configuration and scheduled waits
+
+- 目标暂停与普通发送：goal_capped／goal_blocked／goal_idle 任一成立时，普通 PC HTTP／手机 RPC 发送只创建回答该消息的一轮，不清除暂停标志和 goal_auto_turns，结束后不自动续跑。该轮以人类请求为交付物，可为回答使用工具，但暂停目标不授权新的调查 worker，也不授权自动延长目标 ReAct 切片或保留新 worker；独立有效 wake 归属仍按原契约。显式 Start／`goal_resume:true`／`resume_goal` 恢复；未暂停追求态的普通人话继续重置连续计数。暂停中的回答失败或 Stop 保留原暂停类别和原因。目标缺少可观察完成条件时的单次 ask_user 是通用模型指导，同一目标不逐轮重问，回答不是完成回执。关联功能：`F-150`、`F-220`；证据：`internal/engine/goal.go`、`internal/engine/prompt_goal_pause.go`、`internal/engine/goal_paused_message_test.go`、`internal/server/goal_pause_integration_test.go`、`frontend/e2e/goal-pause.spec.ts`；变更类型：Changed / Fixed。
 
 - 推理字段兼容（`F-170`、`F-230`）：Chat Completions 的 JSON message 与流式 delta 同时接受 `reasoning_content`、`reasoning`。非空旧字段优先，旧字段缺失、空串或 null 时读取新字段；两者均空时不生成虚假思考，两者均有值时不拼接重复内容。推理与正文分开进入现有模型输出；PC 保留流、历史及 Trace，手机直连保留思考及本地历史。不增加字段名配置，不改变 Responses 协议。实现：`internal/provider/provider.go` 使用 `go.mod` 中固定的 Eino OpenAI ACL 依赖、`mobile/src/lib/openai-wire.ts`；验证：`internal/provider/reasoning_fields_test.go`、`frontend/e2e/reasoning-fields.spec.ts`、`mobile/e2e/direct-chat-reasoning.spec.ts`；变更规则：升级模型适配依赖时运行这些兼容用例；来源：2026-10-23 vLLM 字段更名兼容核查，现有行为的测试与文档明确化。
 

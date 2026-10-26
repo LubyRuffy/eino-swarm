@@ -146,6 +146,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-150 Goals and scheduled waits
 
+- 暂停后的单轮回答：capped／blocked／idle 目标遇普通 PC／手机发送时保留暂停标志和自动续轮计数，仅回答当前消息；System 段携带人类来源与当前 turn 请求，工具限于该回答，暂停目标不授权新调查 worker。显式 Start、HTTP `goal_resume`、RPC `resume_goal` 才恢复追求；未暂停时人话仍归零连续计数。开放目标缺少可观察交付物或停止条件时，提示模型先对同一目标文本用一次 `ask_user` 明确完成判据，不逐轮重问；完成仍需 `complete_goal`。关联契约：`C-009`、`C-006`、`C-008`；实现／验证：`internal/engine/goal.go`、`internal/engine/prompt_goal_pause.go`、`internal/engine/goal_test.go`、`internal/engine/prompt_goal_pause_test.go`、`internal/server/goal_pause_integration_test.go`、`frontend/e2e/goal-pause.spec.ts`。
+
 - 显式命令参数：PC 目标与计划仅发送一次完整命令，命令参数中的 `/goal`、`/plan` 字面量保持原文，空闲到运行／待答的竞争不把命令当成跟进或回答。目标可更新并保留原待答问题；计划只创建新轮次，转忙时拒绝且保留草稿；裸计划与忙碌更新保持原有边界。关联契约：`C-002`、`C-009`、`C-033`；实现／验证：`frontend/src/store/app.ts`、`frontend/src/store/app-plan.ts`、`frontend/src/store/app-goal.test.ts`、`frontend/src/store/app-plan.test.ts`、`internal/engine/turn.go`、`internal/engine/slash_command_once_http_test.go`、`frontend/e2e/trailing-goal.spec.ts`、`frontend/e2e/plan.spec.ts`。
 - 显式目标命令：`<objective> /goal` 使用前置正文激活新持续目标，清除旧目标的完成状态；PC、HTTP 和手机发送／插话共用命令语义，普通消息、含中文的路径、引用及代码中的字面命令保持普通内容。关联契约：`C-009`；实现／验证：`internal/slash/trailing.go`、`internal/slash/trailing_goal_test.go`、`internal/slash/testdata/trailing-goal.json`、`internal/engine/slash_steer_test.go`、`internal/remote/slash_goal_test.go`、`frontend/src/lib/slash.ts`、`frontend/src/components/app/composer-trailing-goal.test.tsx`、`frontend/e2e/trailing-goal.spec.ts`。
 - 目标完成展示：桌面/Web 与配对手机在目标 `complete` 后立即隐藏输入框上方目标条，刷新或重新进入已完成会话仍不显示；保留持久化目标、完成状态、结果和历史记录，不自动清空或重新执行。桌面与手机对话历史保留 `goal_complete` 完成通知；桌面/Web 的完成通知置于已折叠目标会话外，早于或晚于最终回答到达都可见；新设 `/goal` 后重新显示目标条。未完成的暂停、受阻和计划等待继续保留状态及相应控制；已完成目标不再通过目标条显示 Start。关联契约：`C-009`、`C-003`；实现／验证证据：`frontend/src/components/app/goal-banner.tsx`、`frontend/src/components/app/goal-banner.test.tsx`、`frontend/src/lib/transcript.ts`、`frontend/src/components/app/transcript-session.tsx`、`frontend/src/components/app/transcript-session.test.tsx`、`frontend/e2e/goal-resume.spec.ts`、`frontend/e2e/goal-schedule.spec.ts`、`mobile/src/components/status-banners.tsx`、`mobile/src/components/thread-screen.test.tsx`、`mobile/src/lib/transcript.ts`、`mobile/src/lib/transcript-goal.test.ts`、`mobile/e2e/goal-completion.spec.ts`。
@@ -277,6 +279,8 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：让 Go 程序嵌入 manager 与 sub-agent；使用者：Go 开发者；入口：模块公开 API；输入：registry、provider 和任务；输出：结果与通知；前置条件：依赖可编译；失败表现：Go 错误或结构化工具错误；关联契约：`C-003`；实现证据：`swarm.go`, `run.go`, `docs/LIBRARY.md`, `examples`。
 
 ### F-410 Local conversation storage and search
+
+- 运行时纠偏来源：同轮 ADK 和持久化消息显式保留来源，下一轮回放、compact 与 session briefing 排除 runtime 指令；旧行仅按完整常量及合法 worker-ID 后缀兼容，真实人类引用保留。关联契约：`C-008`；实现／验证：`internal/engine/runtime_cues.go`、`internal/store/message_source.go`、`internal/engine/ordinary_worker_completion_test.go`。
 
 - 目的：持久保存对话、事件与检索索引；使用者：PC 用户；入口：对话列表和搜索；输入：事件与查询；输出：可恢复历史和结果；前置条件：数据目录可写；失败表现：存储或索引错误；关联契约：`C-003`, `C-008`；实现证据：`internal/store`, `internal/search`, `docs/DATA_MODEL.md`。
 

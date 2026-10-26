@@ -12,17 +12,18 @@ const workerRoster = process.env.ZWAI_E2E_WORKER_ROSTER === "1"
 const scheduleAnswer = process.env.ZWAI_E2E_SCHEDULE_ANSWER === "1"
 const workerCompletion = process.env.ZWAI_E2E_WORKER_COMPLETION === "1"
 const goalSchedule = process.env.ZWAI_E2E_GOAL_SCHEDULE === "1"
+const goalPause = process.env.ZWAI_E2E_GOAL_PAUSE === "1"
 const humanWakePolicy = process.env.ZWAI_E2E_HUMAN_WAKE_POLICY === "1"
 const memoryReview = process.env.ZWAI_E2E_MEMORY_REVIEW === "1"
 const builtinTools = process.env.ZWAI_E2E_BUILTIN_TOOLS === "1"
 const workerOwnership = process.env.ZWAI_E2E_SCHEDULE_WORKER_OWNERSHIP === "1"
 const generationInterruption = process.env.ZWAI_E2E_GENERATION_INTERRUPTION === "1"
-const loopbackModel = reasoningFields || workerCompletion || scheduleAnswer || modelAPIError || workerRoster || goalSchedule || humanWakePolicy || memoryReview || builtinTools || workerOwnership || generationInterruption
+const loopbackModel = reasoningFields || workerCompletion || scheduleAnswer || modelAPIError || workerRoster || goalSchedule || goalPause || humanWakePolicy || memoryReview || builtinTools || workerOwnership || generationInterruption
 
 export default defineConfig({
   testDir: "./e2e",
   globalSetup: "./e2e/engine-presence.ts",
-  testMatch: reasoningFields ? "reasoning-fields.spec.ts" : workerCompletion ? "worker-completion.spec.ts" : scheduleAnswer ? "schedule-answer.spec.ts" : generationInterruption ? "generation-interruption.spec.ts" : workerOwnership ? "schedule-worker-ownership.spec.ts" : builtinTools ? "builtin-tools.spec.ts" : memoryReview ? "memory-review.spec.ts" : modelAPIError ? "api-error.spec.ts" : workerRoster ? "worker-roster-history.spec.ts" : goalSchedule ? "goal-schedule.spec.ts" : humanWakePolicy ? "human-wake-policy.spec.ts" : undefined,
+  testMatch: reasoningFields ? "reasoning-fields.spec.ts" : workerCompletion ? "worker-completion.spec.ts" : scheduleAnswer ? "schedule-answer.spec.ts" : generationInterruption ? "generation-interruption.spec.ts" : workerOwnership ? "schedule-worker-ownership.spec.ts" : builtinTools ? "builtin-tools.spec.ts" : memoryReview ? "memory-review.spec.ts" : modelAPIError ? "api-error.spec.ts" : workerRoster ? "worker-roster-history.spec.ts" : goalPause ? "goal-pause.spec.ts" : goalSchedule ? "goal-schedule.spec.ts" : humanWakePolicy ? "human-wake-policy.spec.ts" : undefined,
   timeout: 90_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,

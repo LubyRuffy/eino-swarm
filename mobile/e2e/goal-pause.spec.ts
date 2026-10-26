@@ -1,0 +1,20 @@
+import { expect, test } from "@playwright/test"
+
+test("sending on a paused goal keeps Start until resume_goal is requested", async ({ page }, info) => {
+  await page.addInitScript(() => localStorage.setItem("zwai.phone.locale", "en"))
+  await page.goto("/?mock=1&tick=0&history=goal-paused")
+  await page.getByRole("button", { name: "Back", exact: true }).click()
+  await page.getByRole("button", { name: "Open Trim the layout pass", exact: true }).first().click()
+  await expect(page.getByTestId("goal-banner")).toContainText("Paused")
+  await expect(page.getByRole("button", { name: "Start goal", exact: true })).toBeVisible()
+  await page.getByLabel("Message", { exact: true }).fill("Describe the current state.")
+  await page.locator("form").getByRole("button", { name: "Send", exact: true }).click()
+  await expect(page.getByTestId("transcript").getByText("Describe the current state.", { exact: true })).toBeVisible()
+  await expect(page.getByTestId("goal-banner")).toContainText("Paused")
+  await expect(page.getByRole("button", { name: "Start goal", exact: true })).toBeVisible()
+  await page.screenshot({ path: info.outputPath("paused-after-send.png"), animations: "disabled" })
+  await page.getByRole("button", { name: "Start goal", exact: true }).click()
+  await expect(page.getByTestId("goal-banner")).toContainText("Pursuing")
+  await expect(page.getByRole("button", { name: "Start goal", exact: true })).toHaveCount(0)
+  await page.screenshot({ path: info.outputPath("pursuing-after-start.png"), animations: "disabled" })
+})

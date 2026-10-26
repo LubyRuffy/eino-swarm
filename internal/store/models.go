@@ -76,7 +76,7 @@ type Thread struct {
 	GoalComplete bool `json:"goal_complete"`
 	// GoalBlocked is true after the manager called block_goal: progress
 	// needs the human or an external change. Auto-continue stops until
-	// they resume. A human message also clears it.
+	// they explicitly resume. Ordinary messages retain the pause.
 	GoalBlocked bool `json:"goal_blocked"`
 	// GoalBlockReason is the optional one-line reason from block_goal.
 	GoalBlockReason string `json:"goal_block_reason"`
@@ -84,14 +84,14 @@ type Thread struct {
 	// Nil when there is no goal. The banner uses it as an elapsed clock.
 	GoalStartedAt *time.Time `json:"goal_started_at,omitempty"`
 	// GoalAutoTurns counts consecutive runtime-started turns that kept
-	// pursuing an open goal. A human message resets it. Hitting the cap
-	// sets GoalCapped and stops auto-continue until the human speaks.
+	// pursuing an open goal. Human messages reset it only while unpaused.
+	// Hitting the cap sets GoalCapped until an explicit human goal resume.
 	// A human interrupt of a pursuing turn also sets GoalCapped (paused).
 	GoalAutoTurns int  `json:"goal_auto_turns"`
 	GoalCapped    bool `json:"goal_capped"`
 	// GoalIdle is true after an engine-started continuation finished with
-	// no counted tool activity. Auto-continue stops until a human message
-	// or resume; the objective stays open (not blocked, not capped).
+	// no counted tool activity. Auto-continue stops until explicit resume;
+	// ordinary messages retain the hold and the objective stays open.
 	GoalIdle bool `json:"goal_idle"`
 	// PlanMode is true while /plan is open: the manager explores and drafts,
 	// and write/edit/exec are not mounted.
@@ -128,12 +128,14 @@ type Thread struct {
 // verbatim for same-turn recovery; later-turn replay loads user/assistant text
 // and images, without previous tool calls or results.
 type Message struct {
-	ID         uint   `gorm:"primaryKey" json:"id"`
-	ThreadID   string `gorm:"index:idx_msg_thread_seq;index:idx_msg_thread_role_seq,priority:1;size:64" json:"thread_id"`
-	TurnID     string `gorm:"index;size:64" json:"turn_id"`
-	Seq        int64  `gorm:"index:idx_msg_thread_seq;index:idx_msg_thread_role_seq,priority:3" json:"seq"`
-	Role       string `gorm:"index:idx_msg_thread_role_seq,priority:2;size:32" json:"role"`
-	AgentID    string `gorm:"size:64" json:"agent_id"`
+	ID       uint   `gorm:"primaryKey" json:"id"`
+	ThreadID string `gorm:"index:idx_msg_thread_seq;index:idx_msg_thread_role_seq,priority:1;size:64" json:"thread_id"`
+	TurnID   string `gorm:"index;size:64" json:"turn_id"`
+	Seq      int64  `gorm:"index:idx_msg_thread_seq;index:idx_msg_thread_role_seq,priority:3" json:"seq"`
+	Role     string `gorm:"index:idx_msg_thread_role_seq,priority:2;size:32" json:"role"`
+	AgentID  string `gorm:"size:64" json:"agent_id"`
+	// Source separates human input from transient runtime corrections. Empty is legacy.
+	Source     string `gorm:"size:32" json:"source,omitempty"`
 	Content    string `json:"content"`
 	Reasoning  string `json:"reasoning,omitempty"`
 	ToolCalls  string `json:"tool_calls,omitempty"` // JSON array, as received

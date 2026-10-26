@@ -115,12 +115,12 @@ in this database: notes and skills are files, so a person can read and fix them
 | `reasoning_effort` | text | this conversation's thinking level (``, `low`, `medium`, `high`); empty means the model's own default. Switchable in the composer, applied from the next turn |
 | `goal` | text | standing objective from `/goal`. Empty means none. Injected into later turns until changed or cleared |
 | `goal_complete` | bool | true after successful `complete_goal`. Completion fields and the `goal_complete` event commit atomically. A scheduled tool call whose own manager-created thread wake remains active returns `goal_schedule_conflict` without changing either. The text and completion state stay stored while PC/phone hide the completed goal strip; auto-continue stops and history remains. `reopen_goal`, `goal_resume: true`, or the `resume_goal` RPC clears completion, resets `goal_auto_turns`, and pursuit continues |
-| `goal_blocked` | bool | true after `block_goal`, or after a pursuing turn has a non-recoverable failure outside the isolated scheduled-check boundary. Ordinary scheduled model/evidence failures do not set this field. Auto-continue stops until the human resumes or sends a message |
+| `goal_blocked` | bool | true after `block_goal`, or after a pursuing turn has a non-recoverable failure outside the isolated scheduled-check boundary. Ordinary scheduled model/evidence failures do not set this field. Auto-continue stops until an explicit human resume; ordinary sends answer only that message and retain the pause |
 | `goal_block_reason` | text | optional one-line reason from `block_goal`, or the public turn error when a pursuing turn dies before the manager can call it |
 | `goal_started_at` | time | when the current objective was set (not edited). Nil when there is no goal |
-| `goal_auto_turns` | int | consecutive runtime-started turns that kept pursuing an open goal. A human message, `reopen_goal`, or **Start** resets it |
-| `goal_capped` | bool | true after `goal_auto_turns` hit `swarm.goal_max_auto_turns`, or after the human interrupts a pursuing turn. A later human message or resume clears it and resets the budget |
-| `goal_idle` | bool | true after an engine-started continuation finished with no counted tool activity. Auto-continue stops until a human message or resume |
+| `goal_auto_turns` | int | consecutive runtime-started turns that kept pursuing an open goal. A human message resets it only while the goal is pursuing and not paused. Paused human sends retain it; explicit **Start** / resume or a valid `reopen_goal` resets it |
+| `goal_capped` | bool | true after `goal_auto_turns` hit `swarm.goal_max_auto_turns`, or after the human interrupts a pursuing turn. Only an explicit goal resume clears this pause and resets its budget; ordinary sends retain both |
+| `goal_idle` | bool | true after an engine-started continuation finished with no counted tool activity. Auto-continue stops until an explicit goal resume; ordinary sends retain the hold |
 | `plan_mode` | bool | true while `/plan` is open. Write/edit/exec and similar are unmounted; `ask_user` and `propose_plan` stay |
 | `plan_markdown` | text | current plan body. The file `$ZWAI_HOME/plans/<thread_id>/PLAN.md` is the on-disk copy; this column is what GET returns |
 | `compact_summary` | text | briefing that replaces earlier replay in the next turn's prompt. Empty means no fold yet. Copied from `session_memory` when that is set and accepted. A transcript dump is not stored, and a previously stored dump is omitted from the next manager prompt |
@@ -154,11 +154,14 @@ that sees a truncated tool result will re-run the tool.
 | `role` | `user`, `assistant`, `tool`, `system` |
 | `agent_id` | `manager` or a sub-agent id |
 | `content` | the text |
+| `source` | input provenance: `human`, `runtime`, `schedule`, or `plan`; empty on legacy rows and roles without input provenance. Runtime corrections stay in same-turn execution/diagnostics but are excluded from future replay and compact inputs |
 | `reasoning` | the model's thinking, when the endpoint returns it separately |
 | `tool_calls` | JSON array, exactly as received |
 | `tool_call_id` | set on a tool result, matching the call |
 | `images` | JSON array of `{id,name,mime}` for pasted vision input. The pixels live under `$ZWAI_HOME/inputs/<thread_id>/<id>`, not in this row |
 | `event_seq` | timeline seq of the `steer` that minted this `[steer]` user row. Retract (`DELETE …/steers/:seq`) deletes by this column so two identical captions do not collide. Empty on every other role |
+
+Legacy unmarked user rows equal to known runtime cue constants (including the exact worker-ID suffix) are excluded unless a matching durable human `user_message` / `steer`, or a nonautomatic turn input, proves human origin. Initial-input proof binds only the first user row of its turn, not later runtime duplicates with the same text. A marked human quotation is always preserved. This is read-time compatibility; historical rows and Trace are not deleted. The in-flight ADK message carries the same provenance in `Extra["zwai_message_source"]`. Goal continuation events are omitted from session briefing extraction; genuine human quotes remain input.
 
 Replay into a later turn is **reduced** to user and assistant messages: the full
 tool trace is here for troubleshooting, but feeding all of it back would blow up

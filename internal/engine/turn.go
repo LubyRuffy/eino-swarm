@@ -410,7 +410,7 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 		return nil, err
 	}
 	if err := e.store.AppendMessages(threadID, turn.ID, []store.Message{
-		{Role: string(schema.User), Content: text, Images: refs},
+		{Role: string(schema.User), Content: text, Images: refs, Source: inputMessageSource(in)},
 	}); err != nil {
 		return nil, err
 	}
@@ -466,7 +466,7 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 		reg.ResetWorkerTimeouts()
 		rt.resetRestoredWorkerTimeouts()
 	}
-	messages = append(messages, BuildUserMessage(text, modelImages))
+	messages = append(messages, withMessageSource(BuildUserMessage(text, modelImages), inputMessageSource(in)))
 	// After the request, so a schedule prompt that still says the workers
 	// are writing does not outrank the roster of ids the process stopped.
 	messages = e.appendInterruptedWorkerCue(threadID, messages)
@@ -890,7 +890,7 @@ func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Mes
 		if _, runtimeState := workerstate.Parse(m); runtimeState {
 			continue
 		}
-		if m == nil {
+		if m == nil || isRuntimeMessage(m) {
 			continue
 		}
 		row := store.Message{
@@ -898,6 +898,7 @@ func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Mes
 			Content:    m.Content,
 			Reasoning:  m.ReasoningContent,
 			ToolCallID: m.ToolCallID,
+			Source:     messageSource(m),
 		}
 		if len(m.ToolCalls) > 0 {
 			if raw, err := json.Marshal(m.ToolCalls); err == nil {
@@ -912,9 +913,6 @@ func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Mes
 		}
 		if row.Role == string(schema.User) && haveUsers[strings.TrimSpace(row.Content)] {
 			continue
-		}
-		if row.Role == string(schema.User) && isEngineOnlyUser(row.Content) {
-			continue // injected for the model, not a human message
 		}
 		if row.Role == string(schema.Assistant) {
 			key := strings.TrimSpace(row.Content)
