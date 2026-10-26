@@ -76,6 +76,9 @@ co-working app built on it. The library API is unchanged except where noted
 
 - `F-150`, `F-220`, `C-009`, `C-006`: ordinary PC/phone messages no longer resume capped, blocked or idle standing goals. They answer only the current request, retain the pause and auto-turn count, including a scheduling-claim failure cap and its diagnostic, and leave Start available. Explicit goal resume starts pursuit again; unpaused human steering still resets the consecutive count. Paused replies use ordinary iteration limits and cannot borrow goal worker ownership.
 - `F-150`, `C-009`: guide open-ended goals to ask once for observable completion criteria before a new investigation slice, without changing continuation limits, idle tool accounting or `complete_goal` completion evidence.
+
+- `F-430`, `C-010`: prepare source batch `0.1.41` for the scheduling-answer fix and previously accepted mobile work. macOS publishes independently; Android/iOS release-package acceptance and publication remain pending.
+
 - `F-430`, `C-034`: withdraw the fixed-duration soak agreement for Issue #94 at
   the user's request and stop that investigation. Retain existing failure and
   cleanup evidence; optional harness profiles and other tasks remain unchanged.
