@@ -13,6 +13,15 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-430`, `C-031`: add internal case-owned preparation and final App admission,
+  with bounded login/frame approval and a same-birth power handoff. Preparation
+  children share the original lock, deadlines and cleanup; cross-process expiry
+  projects the original work budget onto system RAW and retains frame wall expiry.
+  Credentials remain
+  in memory and missing SDK lock fields remain unknown. This fixes a test
+  handoff gap; it does not establish the white-screen trigger or native package
+  acceptance (Issue #94).
+
 - `F-115`, `C-034`, `C-001`, `C-012`: preserve the last observed probe boundary
   before automatic renderer recovery, distinguish snapshot errors from pixel
   mismatches, and identify replacement validation phases and safe lease HTTP
@@ -64,6 +73,10 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-420`, `C-025`: Settings → Memory can set a separate reasoning level for automatic and manual turn review. Empty retains conversation inheritance; conversation work, catalog tidy, model and output cap are unchanged.
 
 ### Changed
+
+- `F-430`, `C-034`: withdraw the fixed-duration soak agreement for Issue #94 at
+  the user's request and stop that investigation. Retain existing failure and
+  cleanup evidence; optional harness profiles and other tasks remain unchanged.
 
 - `F-145`, `C-033`: composer drafts continue saving automatically while normal
   loading, saving, saved and sending states leave no draft status or Delete draft
@@ -283,6 +296,22 @@ co-working app built on it. The library API is unchanged except where noted
   30-second total deadline. Valid slower checks no longer force a manager
   correction or stop the task solely at that hidden deadline; cancellation,
   scheduling evidence checks and the durable correction budget remain enforced.
+
+- `F-150`, `F-221`, `C-009`, `C-033`: the phone visibly refuses a recognized
+  goal/plan command combined with a nonblank quotation before wrapping,
+  clearing or uploading the draft or invoking send/steer. Original text,
+  quotations and selected files remain for explicit correction and retry.
+  PC and phone reuse the pure command parser; ordinary quoted messages and
+  pure-text engine/RPC semantics stay unchanged. Mixed quoted commands show a
+  refusal instead of silently becoming ordinary chat without a goal update;
+  selected context is not discarded to activate a command (Issue #111).
+
+- `F-110`, `F-130`, `C-027`: reuse the shared recovery snapshot's validated
+  human-question call identity when arming and leaving its waiter. Keep early
+  answers, wrong/duplicate-answer refusal and Stop semantics while avoiding a
+  repeated full-turn checkpoint read. Real-process regressions combine 351
+  worker identities, live and parked work, a human pause, uncertain side-effect
+  verification, explicit cancellation and same-directory cold recovery (Issue #102).
 
 - `F-210`, `F-220`, `C-006`: phone conversation previews and detail no longer
   load entire event/turn histories. Indexed, projected tail reads preserve

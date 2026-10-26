@@ -23,10 +23,16 @@ import subprocess
 import sys
 import tempfile
 import time
+from typing import Callable, NamedTuple
 import uuid
 
 
 LOCK_PATH = Path("/tmp") / f"zwai-native-macos-{os.getuid()}.lock"
+
+
+class CasePreparation(NamedTuple):
+    before_launch: Callable[[], None]
+    handoff: Callable[[subprocess.Popen, float], None]
 
 
 def require_guest():
@@ -410,7 +416,7 @@ def recover_renderer_faults(evidence, receipt, bundle, *, require_exit=False):
         return False
 
 
-def run_case(app, evidence, timeout, command, *, budget=60):
+def run_case(app, evidence, timeout, command, *, budget=60, prepare=None):
     started = time.monotonic()
     evidence = evidence.absolute()
     # Evidence is durable and must never be recursively copied with the source app.
@@ -430,6 +436,9 @@ def run_case(app, evidence, timeout, command, *, budget=60):
     try:
         if receipt["budget_seconds"] is None:
             raise ValueError("provide a positive finite case budget")
+        if prepare is not None and not callable(prepare):
+            raise ValueError("case preparation must be callable")
+        work_deadline = started + receipt["budget_seconds"] - receipt["cleanup_reserve_seconds"]
         with measure_phase(receipt, "guest_gate"):
             require_guest()
         receipt["virtualized"] = True
@@ -439,7 +448,7 @@ def run_case(app, evidence, timeout, command, *, budget=60):
         with case_lock() as lock:
             root = Path(tempfile.mkdtemp(prefix="zwai-native-" + receipt["case_id"] + "-")).resolve()
             bundle, data = root / "app-not-copied", root / "data"
-            processes, scenario, scope = [], None, None
+            processes, scenario, scope, preparation = [], None, None, None
             receipt.update(case_root=str(root), data_dir=str(data), cleanup_complete=False)
             phase = "prepare"
             try:
@@ -457,6 +466,11 @@ def run_case(app, evidence, timeout, command, *, budget=60):
                                        ZWAI_NATIVE_DATA=str(data), ZWAI_NATIVE_WORKSPACE=str(workspace),
                                        ZWAI_NATIVE_EVIDENCE=str(evidence), ZWAI_NATIVE_CASE_ID=receipt["case_id"])
                     scope = ProcessScope(bundle, data, processes, receipt["case_id"])
+                    if prepare is not None:
+                        preparation = prepare(lock, receipt, environment, processes, scope, work_deadline)
+                        if preparation is not None and (not isinstance(preparation, CasePreparation)
+                                or not callable(preparation.before_launch) or not callable(preparation.handoff)):
+                            raise ValueError("case preparation must return CasePreparation or None")
                 work_remaining(started, receipt, "app launch")
                 with (evidence / "app.stdout.log").open("wb") as out, \
                         (evidence / "app.stderr.log").open("wb") as err, \
@@ -464,6 +478,9 @@ def run_case(app, evidence, timeout, command, *, budget=60):
                         (evidence / "scenario.stderr.log").open("wb") as scenario_err:
                     phase = "launch"
                     with measure_phase(receipt, "launch"):
+                        if preparation is not None:
+                            preparation.before_launch()
+                            work_remaining(started, receipt, "app launch")
                         desktop = subprocess.Popen([str(executable), "desktop", "--mock", "--data-dir", str(data)],
                                                    cwd=workspace, env=environment, stdout=out, stderr=err,
                                                    start_new_session=True)
@@ -483,6 +500,8 @@ def run_case(app, evidence, timeout, command, *, budget=60):
                         processes.append(scenario)
                         scope.groups.add(scenario.pid)
                         scenario.native_scope = scope
+                        if preparation is not None:
+                            preparation.handoff(scenario, min(scenario_deadline, work_deadline))
                         wait_limit = min(scenario_deadline - time.monotonic(),
                                          work_remaining(started, receipt, "scenario wait"))
                         if wait_limit <= 0:
@@ -558,7 +577,7 @@ def run_case(app, evidence, timeout, command, *, budget=60):
     return code
 
 
-def main(argv=None):
+def main(argv=None, *, prepare=None):
     parser = argparse.ArgumentParser(description=__doc__, epilog=(
         "Scenario environment: HOME (isolated home/cache, parent unchanged), "
         "ZWAI_HOME / ZWAI_NATIVE_DATA (isolated data), "
@@ -583,7 +602,7 @@ def main(argv=None):
         raise KeyboardInterrupt
     handlers = {sig: signal.signal(sig, interrupt) for sig in (signal.SIGTERM, signal.SIGINT)}
     try:
-        return run_case(args.app, args.evidence, args.timeout, command, budget=args.budget)
+        return run_case(args.app, args.evidence, args.timeout, command, budget=args.budget, prepare=prepare)
     except (OSError, ValueError) as error:
         parser.exit(2, str(error) + "\n")
     finally:
