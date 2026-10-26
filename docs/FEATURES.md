@@ -38,6 +38,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-110 Desktop, browser, and terminal shells
 
+- 集成终端随应用的深浅色和配色方案实时更新，包括隐藏标签页；保留已有输出与 PTY 连接。外观选择 System 时运行中跟随系统，显式 Light／Dark 保持固定。实现／验证：`frontend/src/components/app/terminal-session.tsx`、`frontend/src/lib/system-theme.ts`、`frontend/src/components/app/terminal-session.test.tsx`、`frontend/src/lib/system-theme.test.tsx`、`frontend/e2e/terminal-theme.spec.ts`。
+
 - PC 恢复交互：恢复时显式禁用目标编辑／清除／开始，包括已聚焦编辑框的键盘和失焦保存；目标编辑只在成功 ACK 后关闭，拒绝保留本会话输入，就绪不自动重发，导航后旧 ACK 不影响新会话。页面 reload 按现有首页契约重选原对话后保留其已存草稿并继续显示恢复进度。关联契约：`C-001`；证据：`frontend/e2e/engine-startup.spec.ts`、`frontend/e2e/goal-restoring.spec.ts`、`frontend/src/components/app/goal-banner-restoring.test.tsx`、`frontend/src/components/app/composer-goal-restoring.test.tsx`。
 
 - 启动恢复：数据库和配置可用即发布可连接的 `restoring` 引擎，PC／手机显示恢复进度，成功后自动移除；running／parked 部分失败统一显示数量并保留原 turn 失败诊断，其余工作继续可用；创建日程只有成功 ACK 后关闭，恢复拒绝保留输入；历史、Trace、事件流、草稿、在线登记和 Stop 可用，新工作及日程变更等待 `ready`。ACK 后的替换进程不会被原交接截止时间杀掉；冷等待到期仍活着的本次 child 即使尚未 Acquire 也保留，并以 PID／日志和归属未确认错误报告，不能把竞争者的锁当成自己的；人工取消只回收本次子进程。每对话共用一次恢复快照，包括 manager 纠正预算及已经验证的原人类提问 call 身份；提问恢复等待／Stop 不重读完整 turn 检查点；保留预算消耗与人工续行回执，新的人类 Continue 读取新回执。原 turn Trace 包含 `engine_restore` 耗时与扫描量。关联契约：`C-001`、`C-027`、`C-012`；实现／测试：`internal/app/startup.go`、`internal/engine/restore.go`、`internal/server/startup_test.go`、`internal/remote/startup_test.go`、`cmd/zwai/engine_restore_process_test.go`。

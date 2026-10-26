@@ -4772,6 +4772,13 @@ Several things are tested here, some as pure logic and some in jsdom:
   retain their client tab/source target and initial-directory/shell context
   inside the existing quote text, including across draft save and refresh.
   Browser E2E evidence does not establish native WebView acceptance.
+- **Terminal appearance (`F-110` / `F-170`)**:
+  `src/components/app/terminal-session.test.tsx` checks live light/dark and
+  named-palette updates, hidden tabs, observer disposal and unchanged terminal
+  and socket identities. `src/lib/system-theme.test.tsx` covers OS theme
+  subscriptions, fixed preferences and cleanup. `e2e/terminal-theme.spec.ts`
+  checks actual xterm colours and retained shell output through theme changes,
+  including runtime OS colour-scheme changes in System mode.
 - **`src/lib/titlebar.ts`**: a double-click on the desktop title bar (not on a
   button in it) sends `wails:drag:doubleclick` so the native window zooms; a
   browser has no bridge and the click is left alone. Dragging is native and is
