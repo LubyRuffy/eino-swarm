@@ -841,11 +841,18 @@ What you get:
    current manager tool; the pencil pulls one unread bubble into the composer
    and retracts it, so Enter queues that draft; **Delete** retracts one unread bubble. Steering that
    arrives after the last model call becomes a follow-up turn.
-4. **Quote the conversation.** Select a passage and **Add to chat** when you want
+4. **Quote the conversation or terminal.** Select a passage and **Add to chat** when you want
    the next message to point at it — including while a turn is still streaming.
    The composer shows a count chip at rest (hover to read, edit or drop);
    send with an empty box if the quote is the whole request. The model sees
    `<selected_text>` and `<user_request>` as separate blocks.
+   Terminal selections use the same action and include their source tab,
+   conversation or project, initial directory and shell. They go into the
+   current composer even when the terminal belongs to another conversation.
+   Only selected text is included: select the command too when it matters.
+   The initial directory is where the shell started, not a claim about its
+   directory after `cd` or `ssh`. References can be edited or removed and are
+   saved with the existing composer draft across refreshes.
 5. **What this turn cost.** The **Trace** tab shows status, duration, billed
    tokens, and the turn id (`zwai trace <id>` replays the full dump). The event
    log stays folded until you open **Full log**.

@@ -1430,7 +1430,7 @@ switch would paint the top of the history and never offer the jump control.
 Opening a sub-agent in the Agents tab uses the same hook on `agent-scroller`
 (keyed by worker id): the log lands on the latest line, follows while the
 reader stays at the edge, and offers the same jump control after a wheel-up.
-Selecting transcript text (or a sub-agent's log) offers **Add to chat**. The
+Selecting transcript text, a sub-agent's log, or terminal text offers **Add to chat**. The
 pill is a snapshot of that range: a live stream's auto-follow scroll and the
 text-node replacements of a streaming markdown block used to dismiss it.
 Selecting also unpins follow (`zwai:quote-selection`) so the live edge does
@@ -1608,6 +1608,18 @@ when the conversation is in one, otherwise `workspaces/<thread-id>/`. A
 starts `$SHELL` there, and the first text frame is
 `{"type":"ready","cwd":"…","shell":"…"}` so the tab label is the path the
 server chose. Eight sessions per process.
+
+`TerminalSessionView` reads xterm's selection API rather than DOM ranges and
+offers the same selection menu. The resulting `Quote.text` starts with
+`Source: integrated terminal` and records `Session` (the client tab ID), the
+source `Conversation` or `Project`, and the ready frame's `Initial directory`
+and `Shell` when available. The selected text follows the source header, before
+the metadata so the composer preview shows the selection;
+commands are included only when selected. The client does not infer an executed
+command, its exit status or a later working directory from shell input/output.
+Adding the quote targets the current composer while preserving the terminal's
+original source. Editing, removal, durable draft storage and `<selected_text>`
+serialization use the existing quoting path without a second message protocol.
 
 ## Shell differences
 

@@ -196,7 +196,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-180 PC text quoting
 
-- 目的：把选中的对话原文与提问分开提交；使用者：PC 用户；入口：选中 transcript 文本 → Add to chat；输入：选区和可选请求；输出：可编辑引用与带标签的消息；前置条件：选区在对话来源内；失败表现：无有效选区时不显示操作；关联契约：`C-011`；实现证据：`frontend/src/components/app/selection-menu.tsx`, `frontend/src/lib/quote.ts`, `frontend/src/components/app/selection-menu.test.tsx`。
+- 目的：把选中的对话、子代理日志或集成终端原文与提问分开提交；使用者：PC 用户；入口：选中来源文本 → Add to chat；输入：选区和可选请求；输出：可编辑引用与带标签的消息；前置条件：选区在可引用来源内；失败表现：无有效选区时不显示操作；关联契约：`C-011`；实现证据：`frontend/src/components/app/selection-menu.tsx`, `frontend/src/components/app/terminal-session.tsx`, `frontend/src/lib/terminal.ts`, `frontend/src/lib/quote.ts`；验证：`frontend/src/components/app/selection-menu.test.tsx`, `frontend/src/components/app/terminal-session.test.tsx`, `frontend/src/lib/terminal.test.ts`, `frontend/e2e/terminal-quotes.spec.ts`。
+- 终端引用在现有 `Quote.text` 中保留 `Source: integrated terminal`、客户端标签页 `Session`、源 `Conversation`／`Project`，以及 ready 帧已知的 `Initial directory`／`Shell`。加入当前输入框，保留原终端来源；正文仅包含用户实际选中的内容，命令须被选中才会带入，不推断执行命令、退出码或 `cd`／`ssh` 后的工作目录。引用沿用现有查看、编辑、删除、草稿保存与刷新恢复，发送仍使用 `<selected_text>`，用户请求单独使用 `<user_request>`。
 
 ### F-190 Desktop updates
 
