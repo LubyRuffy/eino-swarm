@@ -244,7 +244,9 @@ co-working app built on it. The library API is unchanged except where noted
   replaying tools or restoring an older candidate transcript over new work.
   PC/phone chat and history distinguish candidate waits from origin cooldowns,
   show one timed notice per service generation, and omit unknown probe waits;
-  Trace retains the actual caller observations. No new setting is introduced.
+  Trace retains the actual caller observations. Packaged Android/iOS notice
+  regressions retain screenshots and bind web assets to the accepted package
+  bytes. No new setting is introduced.
 
 - `F-150`, `C-009`: preserve an existing pause when a human reply fails schedule-claim verification, including unavailable terminal receipts; an idle pause also wins over a stale cap decision inside the storage transaction.
 

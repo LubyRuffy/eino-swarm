@@ -399,6 +399,16 @@ suppression and replay without inventing classifier workers. The phone's
 Chrome and iPhone WebKit using `mobile/src/lib/mock-backoff.ts`; it checks the
 actual rendered notices without candidate IDs/JSON. This MockLink case verifies
 phone projection, not an engine/database outage or a packaged native app.
+Packaged native projection uses Android `BackoffNoticeTest` in
+`mobile/android/app/src/androidTest/java/com/lubyruffy/zwai/BackoffNoticeTest.java`
+and `mobile/e2e/ios-backoff-notice.swift` through the isolated iOS layout
+fixture. Both inspect the four distinct notices, one row per cooldown, hidden
+zero-duration probe waits, absence of classifier workers, and Back/reopen.
+Retain screenshots and accessibility observations. Android records the installed
+APK and public asset hashes; iOS release acceptance compares the simulator's
+public assets with the final signed IPA and records the architecture and test
+bootstrap differences separately. These fixtures do not replace real engine
+HTTP, cancellation or process-replacement tests.
 The desktop component checks distinct notice/error rows in live and history
 projections; the terminal error says the final was withheld and does not imply
 verification is still running.
