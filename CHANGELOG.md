@@ -252,6 +252,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430`, `C-031`: publish native preparation test readiness atomically, so
+  partial JSON writes do not replace the intended deadline regression during
+  concurrent test execution.
+
 - `F-110`, `F-170`: open terminal tabs now follow light/dark and colour-palette
   changes without reconnecting their shells or losing output. System appearance
   also follows OS colour-scheme changes while the app is running.

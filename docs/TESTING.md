@@ -813,6 +813,8 @@ interpreters; a LaunchServices executable entry still needs its own mode check.
 
 HOST regressions exercise the actual runner main, real flock, real headless
 children and sockets, cancellation/partial input/ACK and preparation cleanup.
+The preparation fixture publishes complete readiness JSON by atomically renaming
+a temporary file from the same directory.
 OS leaves are replaced only for headless tests. Run:
 
 ```bash
