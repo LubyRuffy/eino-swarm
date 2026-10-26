@@ -8,7 +8,7 @@ first for what the modules are; this file is about how to change them.
 ```bash
 go run ./cmd/zwai desktop          # the app, native window (builds frontend/dist if sources changed)
 go run ./cmd/zwai web --mock       # the app in a browser, no model needed
-make test                          # go test -race -cover -timeout 20m ./...  + front-end unit tests + phone tests
+make test                          # go test -race -cover -timeout 25m ./...  + front-end unit tests + phone tests
 make e2e                           # Playwright, on the offline provider
 make frontend                      # rebuild frontend/dist if the TypeScript sources changed
 make build                         # ./bin/zwai (rebuilds the bundle first)
@@ -30,7 +30,7 @@ go run ./mobile/scripts/genicons.go  # paint appicon.png into iOS/Android launch
 ```
 
 Before finishing any change: **it compiles, the tests pass, and the docs match.**
-Touched Go code → `go test -race -timeout 20m ./...`. Touched `frontend/src` → `npm run lint`
+Touched Go code → `go test -race -timeout 25m ./...`. Touched `frontend/src` → `npm run lint`
 (a `tsc` type check), `npm test`. `go run ./cmd/zwai desktop` (and `web`)
 rebuild `frontend/dist` when the sources changed, so a local run does not
 need a separate `make frontend`. `make build` still generates first so the
@@ -85,6 +85,14 @@ E2E suite.
   shared trace/network/ZIP `ENOENT` errors require an isolated rerun with its
   own evidence. A retry turning green alone does not establish the cause or
   accept the original run. See `docs/TESTING.md` for existing CLI options.
+- A native runner's process-inventory timeout is not a scenario deadline.
+  Preserve the actual command, deadline and original streams before cleanup.
+  Inventory failure must still cancel and wait for directly owned Popen children;
+  unknown descendants keep the refusal latch and data. A surviving scenario's
+  later files do not accept the failed round. Regress real delayed input actors,
+  repeated inventory failure and exact owned-child cancellation.
+  Draft acceptance uses fresh durable content/bytes and native value readback,
+  never requires healthy-save copy that the product intentionally hides.
 - Native desktop acceptance runs only inside the UTM `ci-macOS` guest. The
   host is for building, transferring and collecting evidence; never open or
   focus a test app, Finder, a browser, UTM console or simulator on the user's
@@ -149,6 +157,21 @@ E2E suite.
   or AX access and does not verify that requested bundle. Keep the existing
   shared window deadline; fill/Send, wrong native PID and a nonempty wrong
   bundle remain immediate refusals. Regress the real main and window caller.
+  A registered app with no AX windows is still waiting for its window, not for
+  registration. Never prepend an AX-nonempty polling gate to formal activation:
+  reuse `tools/native_macos_smoke.py`'s `wait_window` and its shared deadline.
+  Its guarded zero-window snapshot still requests one application activation,
+  with no raise or input; only a fresh real window can become ready.
+  Automatic successor acceptance observes its fresh pixel-ready journal before
+  any QA activation; a test must not activate a stuck successor into readiness.
+  Persist every helper call's complete streams and timing before parsing or
+  truncating an exception. Keep original failures when evidence storage fails.
+  A small same-PID floating window is not safe to ignore by size or layer.
+  Inspect its actual role/identifier first. A confirmed Caps Lock accessory
+  requires real guest modifier readback and fresh pixels after correction;
+  per-event CG flags or a successful setter alone do not prove the lock is off.
+  Navigation needs the actual page-specific controls, not a sent shortcut or
+  an arbitrary radio button that could belong to the background page.
   The resilience helper's application-only activate command does no AX lookup
   or raise; callers still require a fresh real-window and pixel observation.
   Keep `ZWAI_NATIVE_APP` as the original case anchor when a recovery shell
@@ -227,6 +250,11 @@ E2E suite.
   unrelated background title tasks must be absent or joined. Keep automatic-title
   tests on the real untitled schedule API and assert lifecycle helper waits have
   `TitleAuto=false`; a repeated green race run alone does not prove isolation.
+  A one-shot GORM callback on a private test Store stays until Store.Close unless
+  every querying actor is joined. A terminal row or idle notification alone does
+  not join turn finalization and cannot authorize removing its callback.
+  Direct manager fixtures must register the same turn and Registry they execute;
+  an existing different owner must fail before model input, never remain a no-op.
 - Run with `-race`. The engine, the event bus and the HTTP server run
   concurrently, and every serious bug found here so far has been an ordering bug.
 - Open private evidence files with explicit mode `0600` while preserving the
@@ -515,6 +543,42 @@ E2E suite.
   requests fail closed. Regress actual loopback HTTP, quoted/user protocol
   spoofing and an already-held worker without changing its spawn or request
   counters; never approve arbitrary prose to make a native case pass.
+- Schedule-answer classification must honor the provider's response-header and
+  body-idle budgets and turn cancellation, without a shorter hidden total
+  deadline. Regress a real response beyond 30 seconds without replaying the
+  manager, plus configured header/body timeouts and Stop; a classifier timeout
+  alone does not establish that the manager made an unsupported schedule claim.
+  Persist the original candidate before classification. Unavailable or malformed
+  classifications retry only that candidate with durable capped backoff; they
+  cannot consume the manager's correction allowance, end its turn or cancel its
+  workers. Stop and a superseding human steer remain effective. Accept public
+  events, replay messages and the candidate decision in one transaction; an
+  accepted identity must not broadcast twice after restart. Keep private candidate payloads
+  out of events, Trace, compaction and ordinary history, and delete private rows
+  with their owning thread/project or rewound turns. Clear candidate payloads
+  in the terminal turn's transaction, retaining lightweight decisions; a failed
+  terminal write must preserve the full recovery state. Regress real HTTP failure,
+  recovery, storage refusal, worker ownership and process replacement.
+  Running turns retain only their latest answer's full transcript; save and old
+  answer compaction must commit together without clearing report receipts.
+  Candidate order uses a transaction-owned monotonic ordinal, never wall time
+  or random IDs; regress clock rollback, tied timestamps and stale-ID re-saves.
+  A report's committed action and actual tool-call receipt must survive findings
+  verification without repeating the action. Release the global goal/wake lock
+  before requesting a model; a slow classifier cannot block unrelated schedules.
+  The schedule action and private report save are separate commits. A failed
+  private save must report whether the action committed, without claiming the
+  findings were published. A crash between those commits remains unknown and
+  requires checking current scheduling state before repeating the action.
+- Scheduling-claim extraction must retain negation, time and attribution in
+  complete contiguous quotes. Only affirmed/current/assistant assertions can
+  require armed-plan evidence; status reports, human prohibitions and ended
+  history cannot become claims by cropping their context. Regress these cases
+  through the real Registry/HTTP adapter. A confirmed unsupported claim gets
+  one correction per turn; restart cannot reset it. Its terminal verification
+  error is not an external goal blocker. Regress durable consecutive-failure
+  capping, automatic continuation and separate retry/error UI rows, without
+  replaying tools or clearing the ordinary goal budget.
 - Regress a new explicit goal after a completed one through the real PC and
   paired-phone send paths, including a standalone trailing `/goal`. The
   original objective text must reach the model, and the completed flag must

@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -24,16 +25,34 @@ class NativeTimeoutReceipt(unittest.TestCase):
         self.owner = patch.object(self.h.runner,'process_identity',return_value=([str(self.context['app']/'Contents/MacOS/zwai')],'own-case'));self.owner.start();self.addCleanup(self.owner.stop)
 
     def test_actual_subprocess_timeout_retains_original_binary_streams_and_same_exception(self):
-        real_run = subprocess.run;actual = {}
+        actual = {}
         def os_boundary(argv, **kwargs):
-            self.assertEqual(kwargs, dict(capture_output=True,text=True,timeout=8))
+            self.assertEqual(kwargs, dict(capture_output=True,timeout=8))
             self.assertEqual(argv,['/private/own-helper','choose-file','41','/private/input.bin'])
+            # The output witness must precede the short timeout. Process startup
+            # under concurrent builds is not evidence that the streams were lost.
+            ready = self.context['evidence'] / 'binary-helper-ready'
+            process = subprocess.Popen([sys.executable, '-c',
+                'import os,time,sys;from pathlib import Path;'
+                'os.write(1,b"\\x00\\xffout");os.write(2,b"err\\x00\\xfe");'
+                'Path(sys.argv[1]).write_text("ready");time.sleep(120)', str(ready)],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
-                real_run([sys.executable,'-c','import os,time;os.write(1,b"\\x00\\xffout");os.write(2,b"err\\x00\\xfe");time.sleep(1)'],capture_output=True,text=True,timeout=.08)
-            except subprocess.TimeoutExpired as error:
-                actual['error'] = error
-                raise
-        with patch.object(self.h.subprocess,'run',side_effect=os_boundary) as run:
+                deadline = time.monotonic() + 3
+                while not ready.exists():
+                    self.assertIsNone(process.poll(), 'binary helper exited before writing its streams')
+                    self.assertLess(time.monotonic(), deadline, 'binary helper did not become ready')
+                    time.sleep(.005)
+                try:
+                    process.communicate(timeout=.08)
+                except subprocess.TimeoutExpired as error:
+                    actual['error'] = error
+                    raise
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate()
+        with patch.object(self.h,'_run_native_helper',side_effect=os_boundary) as run:
             with self.assertRaises(subprocess.TimeoutExpired) as caught:self.h.native(self.context,'choose-file','/private/input.bin')
         self.assertIs(caught.exception,actual['error']);self.assertEqual(run.call_count,1)
         row=json.loads((self.context['evidence']/'native-timeout.json').read_text())
@@ -44,13 +63,13 @@ class NativeTimeoutReceipt(unittest.TestCase):
 
     def test_evidence_io_failure_never_masks_original_timeout_or_adds_retry(self):
         error=subprocess.TimeoutExpired(['/private/own-helper'],8,output=b'out',stderr=b'err');cause=RuntimeError('original-cause');error.__cause__=cause
-        with patch.object(self.h.subprocess,'run',side_effect=error) as run,patch.object(self.h,'atomic_json',side_effect=OSError('disk unavailable')):
+        with patch.object(self.h,'_run_native_helper',side_effect=error) as run,patch.object(self.h,'atomic_json',side_effect=OSError('disk unavailable')):
             with self.assertRaises(subprocess.TimeoutExpired) as caught:self.h.native(self.context,'choose-file','/private/input.bin')
         self.assertIs(caught.exception,error);self.assertIs(caught.exception.__cause__,cause);self.assertEqual(run.call_count,1)
 
     def test_timeout_distinguishes_absent_stream_from_present_empty_bytes(self):
         error=subprocess.TimeoutExpired(['/private/own-helper'],8,output=None,stderr=b'')
-        with patch.object(self.h.subprocess,'run',side_effect=error):
+        with patch.object(self.h,'_run_native_helper',side_effect=error):
             with self.assertRaises(subprocess.TimeoutExpired) as caught:self.h.native(self.context,'choose-file','/private/input.bin')
         self.assertIs(caught.exception,error)
         row=json.loads((self.context['evidence']/'native-timeout.json').read_text())
@@ -61,7 +80,7 @@ class NativeTimeoutReceipt(unittest.TestCase):
         self.context.update(data=self.context['evidence']/'data',thread_id='thread',origin='http://127.0.0.1:1')
         def timeout(argv, **kwargs):
             raise subprocess.TimeoutExpired(argv,8,output=None,stderr=(argv[1]+' original receipt').encode())
-        with patch.object(self.h.subprocess,'run',side_effect=timeout) as run,patch.object(self.h,'api',return_value={'draft':{'text':'draft','files':[],'state':'editing'}}):
+        with patch.object(self.h,'_run_native_helper',side_effect=timeout) as run,patch.object(self.h,'api',return_value={'draft':{'text':'draft','files':[],'state':'editing'}}):
             with self.assertRaises(subprocess.TimeoutExpired):self.h.native(self.context,'choose-file','/private/input.bin')
             first=(self.context['evidence']/'native-timeout.json').read_bytes()
             self.h.background.retain(self.context,self.h)
@@ -72,7 +91,7 @@ class NativeTimeoutReceipt(unittest.TestCase):
         self.assertTrue((self.context['evidence']/'final-observation-error.json').exists())
 
     def test_success_remains_single_original_eight_second_call_without_timeout_receipt(self):
-        with patch.object(self.h.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'{"chosen":true}','')) as run:
+        with patch.object(self.h,'_run_native_helper',return_value=subprocess.CompletedProcess([],0,'{"chosen":true}','')) as run:
             self.assertEqual(self.h.native(self.context,'choose-file','/private/input.bin'),{'chosen':True})
         self.assertEqual(run.call_count,1);self.assertEqual(run.call_args.kwargs['timeout'],8)
         self.assertFalse((self.context['evidence']/'native-timeout.json').exists())
@@ -80,7 +99,7 @@ class NativeTimeoutReceipt(unittest.TestCase):
     def test_success_and_nonzero_keep_completed_stdout_stderr_argv_and_returncode(self):
         argv=['/private/own-helper','choose-file','41','/private/input.bin']
         for code in [0,2]:
-            with self.subTest(code=code),patch.object(self.h.subprocess,'run',return_value=subprocess.CompletedProcess(argv,code,'{"chosen":true}', 'ZWAI_CHOOSE real stage\n')) as run:
+            with self.subTest(code=code),patch.object(self.h,'_run_native_helper',return_value=subprocess.CompletedProcess(argv,code,'{"chosen":true}', 'ZWAI_CHOOSE real stage\n')) as run:
                 if code:
                     with self.assertRaisesRegex(OSError,'native choose-file: ZWAI_CHOOSE real stage'):self.h.native(self.context,'choose-file','/private/input.bin')
                 else:self.assertEqual(self.h.native(self.context,'choose-file','/private/input.bin'),{'chosen':True})
@@ -91,7 +110,7 @@ class NativeTimeoutReceipt(unittest.TestCase):
 
     def test_completed_receipt_io_failure_rejects_success_but_keeps_original_action_error(self):
         for code in [0,2]:
-            with self.subTest(code=code),patch.object(self.h.subprocess,'run',return_value=subprocess.CompletedProcess([],code,'{"chosen":true}','original failure')),patch.object(self.h,'atomic_json',side_effect=OSError('evidence unavailable')):
+            with self.subTest(code=code),patch.object(self.h,'_run_native_helper',return_value=subprocess.CompletedProcess([],code,'{"chosen":true}','original failure')),patch.object(self.h,'atomic_json',side_effect=OSError('evidence unavailable')):
                 if code:
                     with self.assertRaisesRegex(OSError,'^native choose-file: original failure$'):self.h.native(self.context,'choose-file','/private/input.bin')
                 else:

@@ -63,7 +63,13 @@ uploads, downloads and the live event stream have exactly one implementation.
   with the existing eight images / 8 MiB per-image vision limits.
 - **The Mac window has bounded rendering recovery.** An independent native
   controller checks actual painted pixels, tries one reload, then replaces the
-  window on the same engine if needed. Background work continues; the restored
+  window on the same engine if needed. Its pixel marker is covered in the native
+  window, while WebView snapshots still verify the actual random pattern. The
+  cover follows theme and dialog backgrounds and does not receive input.
+  The original shell coordinates one focus request for its identified successor
+  while it still owns the foreground; switching to another app is respected.
+  A focus request still needs real painted pixels before takeover.
+  Background work continues; the restored
   window returns to its conversation and saved draft. Conversation/project
   selection reaches that controller independently of the five-second paint
   probe, so a failure immediately after navigation retains the selected scope.
@@ -233,8 +239,13 @@ uploads, downloads and the live event stream have exactly one implementation.
   Reports that a future check was arranged are checked against saved, currently
   effective plans before the manager's prose is shown. A failed or missing
   scheduling call cannot support a success report. One same-turn correction is
-  allowed; a repeated unsupported claim or unavailable check ends visibly with
-  an error. Tool, thinking and worker activity remain live during this check.
+  allowed for a confirmed unsupported claim; repeating it ends with an error.
+  An unavailable or malformed classification keeps the original turn and its
+  workers running while only the privately saved candidate is retried with
+  capped delays. It does not rerun the manager or its tools. Stop cancels this
+  wait; new human guidance supersedes the old candidate. Engine recovery resumes
+  the saved candidate, and its prose is published only after verification.
+  Tool, thinking and worker activity remain live during this check.
   Completion removes the goal strip above the composer immediately on PC and
   phone. The stored objective, completion state, results and history remain;
   reloading or reopening keeps the completed strip hidden. Its completion notice
@@ -244,8 +255,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   not reopened by ordinary messages. A new explicit `/goal` replaces the old
   objective, clears its completed state and displays the strip again.
   A live turn is steered so this round sees the
-  new text. A turn ends when the manager stops calling tools; the runtime
-  then continues, unless an active thread wake is waiting on this
+  new text. A turn finishes after answer verification and worker ownership or
+  collection are settled. The runtime then continues, unless an active thread wake is waiting on this
   conversation — that wait is the next turn until it fires or you cancel it. Context pressure compact in place. Hitting the manager
   tool-round slice keeps the same turn going. In-flight sub-agents survive
   a pursuing turn that ends while they are still running, including when a
@@ -1113,7 +1124,13 @@ duties — are in [AGENTS.md](AGENTS.md). Read it before opening a pull request.
 Native desktop tests run only in UTM `ci-macOS`, one isolated case at a time.
 Offline recovery-proof preparation also refuses incomplete evidence: a failed
 command or timeout remains the primary error if receipt storage fails.
-Recovery checks retain first/last predicate summaries without copying draft content.
+Recovery predicate summaries retain first/last types, hashes and comparisons.
+Each helper invocation also retains its complete streams and timing in a unique
+private `native-actions/<id>/receipt.json`, including any fixture text emitted by
+the helper. Automatic recovery needs the successor's own
+fresh pixel-ready event before QA activation can inspect that window.
+Saved-input acceptance reads back the durable draft and original attachment
+bytes alongside the native composer value; a healthy save needs no status label.
 Internal native QA callers may provide an admission callback under the campaign
 driver lock before owner/exit receipts can change; it must raise an exception to
 refuse, preserving prior records. Its return value is not an admission decision.

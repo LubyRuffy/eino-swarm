@@ -80,6 +80,7 @@ co-working app built on it. The library API is unchanged except where noted
   inline briefing disclosure; failed compression and other notice cards remain
   visible. Preserve history order, completion footers, search and live activity
   (Issue #113).
+- `F-430`, `C-010`: prepare source batch `0.1.41` for the scheduling-answer fix and previously accepted mobile work. macOS publishes independently; Android/iOS release-package acceptance and publication remain pending.
 
 - `F-430`, `C-034`: withdraw the fixed-duration soak agreement for Issue #94 at
   the user's request and stop that investigation. Retain existing failure and
@@ -234,6 +235,75 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-150`, `C-009`: a scheduled check cannot complete the standing objective while its own manager-created conversation wake remains armed, including a newly armed wake ID after a one-shot fired. The final check may complete after cancelling that wait; the reverse call order and parallel tool calls cannot rearm the same continuation after completion. Conflicts return recoverable `goal_schedule_conflict` results. Human-created waits and independent jobs retain their own lifecycle; existing completed goals are not automatically reopened (Issue #79).
 
 ### Fixed
+
+- `F-150`, `F-160`, `C-009`, `C-003`, `C-012`: classify scheduling assertions
+  with explicit stance, time and attribution so denials, status-only reports,
+  relayed human prohibitions and ended/cancelled historical waits do not become
+  current armed-wait claims. Unsupported affirmative claims retain one
+  same-turn correction; a corrected answer without the claim publishes.
+  Repeated `no_matching_schedule` failures keep their error and empty final
+  without blocking the standing objective as an external dependency. Existing
+  goal budgets continue, with a durable cap after three consecutive failures
+  of that class. Desktop/Web show the completed correction request and terminal
+  refusal on separate rows. Classifier outages and malformed output still retry
+  only the original candidate without replaying manager work or tools.
+
+- `F-115`, `C-034`, `C-012`: coordinate successor focus from the still-foreground
+  parent after its private handoff, avoiding a system-refused self-activation
+  request. Bind the child to its kernel birth and executable, respect user app
+  switches, hidden/minimized windows and cancellation, and retain bounded guard
+  and activation diagnostics. Real nonce pixels and the existing ownership
+  handshake still gate takeover within the original deadline. An auxiliary
+  identity-observation error cannot replace a real child exit or turn user close
+  into another recovery attempt.
+- `F-430`, `C-031`: isolate the fault-cleanup regression to its real private
+  process namespace and preserve failure evidence before removing temporary
+  state. Production inventory admission and deadlines remain unchanged.
+- `F-430`, `C-031`: distinguish process-observation command timeouts from the
+  actual scenario deadline and retain their original streams before cleanup.
+  Cancel owned direct children even when full inventory fails, while retaining
+  the refusal latch and data until all descendants are confirmed cleaned.
+  Saved-input QA reads durable content and native values instead of requiring
+  the healthy-save status text that the composer intentionally keeps hidden.
+
+- `F-430`, `C-031`, `C-034`: preserve complete per-call native helper evidence
+  before parsing or shortened errors. Require the successor's own new pixel-ready
+  event before QA activation, so the test cannot make a stuck automatic recovery
+  appear successful. Regress the formal zero-window activation path and shared
+  readiness deadline; product/native acceptance remains a separate result.
+
+- `F-115`, `C-034`: hide the renderer's pixel probe behind a non-interactive
+  native cover that follows theme and dialog backgrounds. WebView snapshots
+  still verify each complete random challenge; colour sampling failures behind
+  an existing cover do not disable detection or trigger false recovery. Native
+  painting stays inside the cover bounds even for an oversized dirty rectangle.
+
+- `F-150`, `F-160`, `C-008`, `C-009`, `C-012`, `C-027`: unavailable or malformed
+  scheduling-answer classification now retries the original durable candidate
+  with capped backoff while retaining its turn and worker ownership. It no
+  longer reruns the manager or consumes the correction reserved for confirmed
+  unsupported claims. Private candidate decisions and public answer rows commit
+  atomically, preventing duplicate publication after restart; Stop, superseding
+  human steering, deletion and rewind retain their ownership boundaries.
+  Terminal commits clear private candidate transcripts while retaining compact
+  decision receipts; failed commits preserve the complete recovery payload.
+  Running turns retain only the latest answer transcript, ordered by a private
+  monotonic ordinal that survives equal timestamps and clock rollback; report
+  action receipts remain available independently. Public handoff checkpoints
+  remove unverified normal and raw Responses prose from a copy, retaining
+  accepted history, tool calls, reasoning and the private original.
+  `report_schedule` saves the original action receipt and defers findings
+  verification outside the global scheduling lock, so retrying classification
+  does not repeat a committed action. Regression fixtures now bind the actual
+  executing turn/Registry and retain private database hooks through cleanup.
+  The expanded Go suite has a 25-minute package deadline; individual behavior,
+  provider and native acceptance budgets are unchanged.
+
+- `F-150`, `F-160`, `C-009`: scheduling-answer classification now honors the
+  provider's configured response-header and body-idle waits without an extra
+  30-second total deadline. Valid slower checks no longer force a manager
+  correction or stop the task solely at that hidden deadline; cancellation,
+  scheduling evidence checks and the durable correction budget remain enforced.
 
 - `F-150`, `F-221`, `C-009`, `C-033`: the phone visibly refuses a recognized
   goal/plan command combined with a nonblank quotation before wrapping,

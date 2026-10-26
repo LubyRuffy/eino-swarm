@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
@@ -36,10 +35,27 @@ func TestIndependentManagersDiscoverAndNegotiate(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	peerRegistry := swarm.NewRegistry()
-	t.Cleanup(peerRegistry.Close)
-	rb.occupy(peerRegistry, func() {}, "peer-turn", make(chan struct{}))
-	defer rb.release(func() {}, rb.idle, "peer-turn")
+	// The registered receiver must be the same Registry that executes its
+	// manager. Peer notices stay queued there until its real model boundary.
+	setB := buildTestToolset(t, e, b.ID)
+	cmB := &coordinationModel{steps: []func([]*schema.Message) *schema.Message{
+		func(_ []*schema.Message) *schema.Message { return coordinationCall("read", "read_task_messages", `{}`) },
+		func(msgs []*schema.Message) *schema.Message {
+			out := msgs[len(msgs)-1].Content
+			if !strings.Contains(out, a.ID) || !strings.Contains(out, "shared resources") {
+				t.Errorf("peer inbox lost source/body: %s", out)
+			}
+			args, _ := json.Marshal(map[string]string{"thread_id": a.ID, "text": "Acknowledged; I will finish first and send a completion notice."})
+			return coordinationCall("reply", "send_task_message", string(args))
+		},
+		func(_ []*schema.Message) *schema.Message { return schema.AssistantMessage("Agreement recorded.", nil) },
+	}}
+	regB := e.newTurnRegistry(func(string, string) model.BaseChatModel { return cmB }, setB, nil)
+	t.Cleanup(regB.Close)
+	if !rb.occupy(regB, func() {}, peerTurn.ID, make(chan struct{})) {
+		t.Fatal("receiver runtime ownership was not established")
+	}
+	defer rb.release(func() {}, rb.idle, peerTurn.ID)
 	set := buildTestToolset(t, e, a.ID)
 	cm := &coordinationModel{steps: []func([]*schema.Message) *schema.Message{
 		func(msgs []*schema.Message) *schema.Message {
@@ -76,26 +92,14 @@ func TestIndependentManagersDiscoverAndNegotiate(t *testing.T) {
 		t.Fatalf("negotiation never reached its receipt: calls=%d", cm.next)
 	}
 	// Receiver reads the stored message and replies through its own manager.
-	setB := buildTestToolset(t, e, b.ID)
-	cmB := &coordinationModel{steps: []func([]*schema.Message) *schema.Message{
-		func(_ []*schema.Message) *schema.Message { return coordinationCall("read", "read_task_messages", `{}`) },
-		func(msgs []*schema.Message) *schema.Message {
-			out := msgs[len(msgs)-1].Content
-			if !strings.Contains(out, a.ID) || !strings.Contains(out, "shared resources") {
-				t.Errorf("peer inbox lost source/body: %s", out)
-			}
-			args, _ := json.Marshal(map[string]string{"thread_id": a.ID, "text": "Acknowledged; I will finish first and send a completion notice."})
-			return coordinationCall("reply", "send_task_message", string(args))
-		},
-		func(_ []*schema.Message) *schema.Message { return schema.AssistantMessage("Agreement recorded.", nil) },
-	}}
-	regB := e.newTurnRegistry(func(string, string) model.BaseChatModel { return cmB }, setB, nil)
-	t.Cleanup(regB.Close)
 	accB := newAccumulator(e, b.ID, "peer-turn", 0)
 	_, err = rb.runOwnedTestManager(context.Background(), peerTurn, regB, accB, setB, nil, []adk.Message{schema.UserMessage("coordinate this task")})
 	accB.flushAll()
 	if err != nil {
 		t.Fatalf("receiver cannot negotiate: %v", err)
+	}
+	if cmB.next != 3 || regB.HasPendingSteers() {
+		t.Fatalf("receiver replayed negotiation or lost its actual inbox: calls=%d pending=%v", cmB.next, regB.HasPendingSteers())
 	}
 	for _, id := range []string{a.ID, b.ID} {
 		events, err := e.Store().ListEvents(id, 0, 0)

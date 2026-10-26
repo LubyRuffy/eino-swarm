@@ -143,6 +143,10 @@ under a per-hash lock, then reuses it without overwriting or signing a running
 binary. Different source executables get different bundles.
 
 On macOS the native shell checks actual painted probe pixels every five seconds.
+The marker is covered by an input-transparent native sibling and remains in
+WebView snapshots for validation. Its cover follows theme and modal backgrounds;
+temporary colour sampling failure behind an existing cover does not stop health
+checks. This adds no CLI option and does not change recovery deadlines.
 After its 30-second startup grace, a 20-second health failure triggers one page
 reload and a 15-second wait, then an owned shell replacement with a 30-second
 deadline. At most two replacements are allowed until five continuous healthy,
@@ -160,10 +164,22 @@ Recovery uses the internal `desktop-attach` entry through inherited private
 pipes, an immutable private app copy and the original engine lease. It is not a
 user command: ordinary arguments or missing pipes fail explicitly, without
 starting an engine or falling back to `desktop`. The old shell exits only after
-the successor paints and completes the ownership handshake. Normal Quit and
+the successor paints and completes the ownership handshake. After sending the
+private handoff, the original shell coordinates one focus request for that
+successor only while it still owns the foreground. Switching apps,
+hiding/minimizing or cancellation prevents it.
+That request is not pixel readiness and grants no extra time. Normal Quit and
 application updates do not trigger watchdog resurrection. See
 [recovery diagnostics](API.md#desktop-recovery-diagnostics) and
 [native acceptance](TESTING.md#desktop-renderer-resilience-f-115--c-034).
+
+Focus logs retain bounded native guard and activation results. Preserve
+these alongside the journal; a successful request does not prove window focus.
+
+Native QA retains each helper's complete byte streams, process identity and timing
+in its private `native-actions/<id>/receipt.json`; a shortened terminal exception
+is not the full diagnostic record. QA activation follows the successor's own new
+pixel-ready event and cannot establish automatic recovery (`C-031`).
 
 For an unattended white screen, retain the diagnostic journal and the original
 turn's Trace. Probe failures distinguish missing callbacks from pending or failed

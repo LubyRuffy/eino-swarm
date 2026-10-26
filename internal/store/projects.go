@@ -96,7 +96,7 @@ func (s *Store) DeleteProject(id string) error {
 			return err
 		}
 		if len(threadIDs) > 0 {
-			for _, m := range []any{&Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}, &ThreadWakeDecision{}} {
+			for _, m := range []any{&Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}, &ThreadWakeDecision{}, &PendingScheduleAnswer{}} {
 				if err := tx.Where("thread_id IN ?", threadIDs).Delete(m).Error; err != nil {
 					return err
 				}

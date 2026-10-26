@@ -64,7 +64,7 @@ func TestRejectedScheduleClaimIsAbsentFromActualResponsesContinuation(t *testing
 			}
 			classification := `{"claims":[]}`
 			if n == 1 {
-				classification = `{"claims":[{"quote":"` + fixtureScheduleClaim + `","scope":"thread","new":true,"every_s":90}]}`
+				classification = `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureScheduleClaim + `","scope":"thread","new":true,"every_s":90}]}`
 			}
 			writeAnswerResponses(w, false, []map[string]any{{"type": "message", "id": "classifier-answer", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": classification}}}})
 			return

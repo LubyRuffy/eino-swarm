@@ -30,7 +30,7 @@ func TestScheduledReportFindingsCannotPublishAnUnarmedCheck(t *testing.T) {
 				}
 				if strings.Contains(req.Messages[0].Content, "## Schedule answer claims") {
 					checks.Add(1)
-					writeContextFlowReply(w, false, map[string]any{"content": `{"claims":[{"quote":"` + fixtureScheduleClaim + `","scope":"thread","new":true,"every_s":90}]}`}, "stop")
+					writeContextFlowReply(w, false, map[string]any{"content": `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureScheduleClaim + `","scope":"thread","new":true,"every_s":90}]}`}, "stop")
 					return
 				}
 				if strings.Contains(req.Messages[0].Content, "## Thread wake authorization classification") {
@@ -50,7 +50,7 @@ func TestScheduledReportFindingsCannotPublishAnUnarmedCheck(t *testing.T) {
 					args["next_in_s"] = 90
 				}
 				body, _ := json.Marshal(args)
-				writeContextFlowReply(w, req.Stream, map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": "report-check", "type": "function", "function": map[string]any{"name": ToolReportSchedule, "arguments": string(body)}}}}, "tool_calls")
+				writeContextFlowReply(w, req.Stream, map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": store.NewID("report"), "type": "function", "function": map[string]any{"name": ToolReportSchedule, "arguments": string(body)}}}}, "tool_calls")
 			}))
 			t.Cleanup(endpoint.Close)
 			e := newTestEngine(t)

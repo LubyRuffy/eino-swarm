@@ -191,7 +191,7 @@ export const en = {
   "goal.start": "Start goal",
   "goal.edit": "Edit goal",
   "goal.capHint":
-    "Auto-continue paused. This is not an error. Press Start to keep going.",
+    "Auto-continue paused. Press Start to keep going.",
   "goal.idleHint":
     "Auto-continue paused: the last continuation made no progress. Press Start to keep going.",
   "goal.waitHint":
@@ -409,7 +409,9 @@ export const en = {
   "notice.modelRetryResponse": "The model service returned a response that could not be decoded. Retrying.",
   "notice.modelServiceResponse": "the model service returned a response that could not be decoded",
   "notice.modelRetryIdle": "The model service stopped sending data. Retrying.",
-  "notice.scheduleClaimCheck": "Checking the schedule before reporting it as arranged.",
+  "notice.scheduleClaimCheck": "The previous answer contained an unverified schedule claim. One correction was requested.",
+  "notice.scheduleClaimFailed": "This turn's schedule claim could not be verified. No final answer was published (schedule_claim_unverified / {code}).",
+  "notice.goalScheduleClaimCapped": "Stopped auto-continuing: consecutive schedule claims could not be verified. Press Start on the goal to keep going.",
   "notice.workerCollection": "Collecting delegated work before completing this turn.",
   "notice.invalidToolJSON":
     "the model returned a tool call that was not valid JSON",

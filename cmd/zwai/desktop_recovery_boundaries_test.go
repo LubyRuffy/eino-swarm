@@ -133,6 +133,7 @@ func TestRecoveryReporterFailureRetainsLocalEvidence(t *testing.T) {
 }
 
 func TestRecoveryReapsATermIgnoringChildAndTreatsPostCommitCloseAsCancellation(t *testing.T) {
+	stubRecoverySuccessorFocus(t)
 	for _, mode := range []string{"ignore_term", "drop_commit", "close_after_commit"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

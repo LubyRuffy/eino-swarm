@@ -38,11 +38,19 @@ var requestRecoverySnapshot = func(ctx context.Context, window application.Windo
 
 func rendererRecoveryAvailable() bool { return true }
 
+func updateRecoveryCover(window application.Window, colour [3]byte) {
+	application.InvokeAsync(func() {
+		C.zwaiRecoveryCover(window.NativeWindow(), C.uchar(colour[0]), C.uchar(colour[1]), C.uchar(colour[2]))
+	})
+}
+
 func executeRecoveryProbe(window application.Window, script string) {
 	application.InvokeAsync(func() {
 		text := C.CString(script)
 		defer C.free(unsafe.Pointer(text))
-		C.zwaiRecoveryEvaluate(window.NativeWindow(), text)
+		cover := C.CString(recoveryCoverScript)
+		defer C.free(unsafe.Pointer(cover))
+		C.zwaiRecoveryEvaluate(window.NativeWindow(), text, cover)
 	})
 }
 

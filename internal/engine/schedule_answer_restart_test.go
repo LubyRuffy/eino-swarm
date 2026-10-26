@@ -185,7 +185,7 @@ func restartScheduleAnswerFixture(t *testing.T, holdCorrection bool) (*Engine, *
 				t.Error("policy request was not separate and tool-free")
 			}
 			policies.Add(1)
-			writeContextFlowReply(w, false, map[string]any{"content": `{"claims":[{"quote":"` + fixtureScheduleClaim + `","scope":"thread","new":true,"every_s":90}]}`}, "stop")
+			writeContextFlowReply(w, false, map[string]any{"content": `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureScheduleClaim + `","scope":"thread","new":true,"every_s":90}]}`}, "stop")
 			return
 		}
 		if !strings.Contains(system, "## Waiting") {

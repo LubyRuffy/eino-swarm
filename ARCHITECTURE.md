@@ -126,6 +126,14 @@ is exactly one implementation of uploads, downloads and the live event stream.
 Traffic lights follow the window (`?shell=desktop` or the native bridge), not
 the server mode string, because that mode is `engine` for every client.
 
+The renderer health nonce remains painted inside the macOS WebView. A small
+opaque native sibling covers that corner on screen and stays outside
+`WKWebView.takeSnapshot`; only those underlying pixels can acknowledge a paint
+challenge. Background sampling precedes the first probe and follows theme and
+dialog changes through a bounded same-origin message, independently of health
+and recovery budgets. A later decoration failure preserves the existing cover
+and continues real pixel checks.
+
 ```mermaid
 flowchart LR
   subgraph shells
@@ -181,17 +189,74 @@ flowchart LR
 
 Manager prose admission for scheduled-work claims lives in
 `internal/engine/schedule_answer.go` and `manager_answer_buffer.go`. A tool-free
-policy call extracts claims from candidate prose; code checks them against
+policy call classifies candidate assertions by stance, time and attribution.
+Only affirmed, current, assistant-owned assertions enter schedule verification;
+denials, status-only reports, relayed human prohibitions and ended/cancelled
+historical waits do not assert an armed wait. Quotes retain their contiguous
+semantic context rather than isolating an affirmative fragment. Missing or
+invalid classification fields retry the original candidate as malformed output.
+The classifier still interprets prose; these structural checks do not prove
+an external model's semantic accuracy. Code checks eligible claims against
 persisted schedule rows, current state and turn ownership before publishing
-the buffered text. Unsupported claims get one correction in the same turn;
-uncertainty is not scheduling success. Exhausting this gate is terminal even
-when the diagnostic cause is a model transport or decoding failure, so goal
-continuation cannot reset its correction budget. The same-turn allowance is
-restored from its durable correction event after restart; failed receipt reads
-or writes terminate admission before another corrective model request.
-Tools, reasoning and worker events
-continue on the original notification path. Policy calls and correction
-metadata are attributed to the original turn's Trace.
+the buffered text. `schedule_answer_pending.go` first stores the candidate's
+original identity, pending events, final answer and transcript in the private
+`pending_schedule_answers` table. Its transaction-assigned per-turn ordinal
+defines candidate order independently of wall time. A newly saved answer
+keeps only its latest full transcript, compacting prior answer payloads in the
+same transaction; distinct report receipts remain until the turn finishes.
+Unavailable or malformed classification
+results retry that same candidate with persistent 5/10/20/30-second capped
+backoff. They do not rerun the manager, consume its correction allowance or
+end its turn and worker ownership. Stop cancels the request or wait; a human
+steer supersedes the unpublished candidate and continues with the actual tool
+receipts. Each non-streaming policy call uses the provider's response-header
+and body-idle budgets without an extra 30-second total deadline.
+
+A confirmed unsupported scheduling claim still gets one correction in the
+same turn. Its durable `model_retry` receipt preserves that allowance across
+restart; another unsupported claim fails explicitly. Removing the claim lets
+the corrected answer publish. A `no_matching_schedule` terminal error does not
+mark a standing objective externally blocked or overwrite its block reason.
+Automatic goal continuation retains its existing budget and stops after three
+consecutive same-objective ordinary-pursuit failures of this class, with a distinct durable
+`goal_capped` reason instead of `goal_blocked`. This goal-level cap is separate
+from each turn's one correction and survives engine replacement. Success,
+cancellation, another error class or a new human turn breaks the streak;
+setting/clearing the goal or explicit human resume resets it. Manager reopen
+does not. Failed scheduled checks retain their future-wake ownership instead
+of immediately starting another goal turn. `internal/store/goal_cap.go` commits
+the cap and reason event atomically after rechecking the goal, automatic count
+and latest turn. Unknown budget evidence pauses with a distinct recovery-state
+reason; failed persistence never grants another automatic attempt.
+The retry notice records the completed correction request; a terminal refusal
+has its own row and no longer reads as an active verification wait.
+Unreadable private state, correction receipts or failed storage writes also fail explicitly instead of
+pretending recovery is durable. `model_backoff` and classifier LLM records
+belong to the original turn's Trace; private candidate prose is not a public
+event, ordinary history or compaction input.
+
+`report_admission.go` commits the requested scheduling action and saves its
+private findings plus original tool-call receipt before returning
+`report_pending:true`. Verification then runs outside the global goal/wake
+lock. Restoring that saved receipt settles the original call without executing
+its scheduling action again. The action and private save are separate commits:
+if saving fails after a change, the tool returns `answer_storage_failed` with
+`action_committed:true` and `report_published:false`, retaining a schedule ID
+when available. A crash between those commits has unknown effect and requires
+checking current state before retrying the action. This is not an all-window
+exactly-once guarantee. `schedule_answer_restore.go` reads the latest
+answer's decision and restores its workers before deciding whether the manager
+may run; a rejected latest candidate cannot revive an older answer. Recovery
+first verifies the original pending candidate. Admission atomically writes
+public events, replay messages and the accepted candidate state, so an already
+accepted candidate is not broadcast again. Thread/project deletion and rewind
+remove private candidates in the same transaction as their owners. A terminal
+turn commit clears its candidate payloads and retains lightweight decision
+receipts; a failed commit preserves the full recovery payload. A private
+candidate alone does not fabricate a planned-handoff checkpoint. Public
+handoff checkpoints serialize a copy of manager history with pending prose
+removed, including provider-owned Responses text. Accepted history, tool calls
+and reasoning remain; filtering does not mutate the original private history.
 
 ## Ordinary turn completion
 
@@ -248,7 +313,24 @@ deadline first requests one reload, then invokes the launcher's attach-only
 successor path. `cmd/zwai/desktop_recovery_darwin.go` holds engine presence,
 checks the original lease identity and launches a private immutable app copy.
 The inherited pipes carry the cumulative attempt budget and require ready,
-commit and committed before the old window quits. The replacement preserves
+commit and committed before the old window quits. After sending the private
+handoff, the parent observes its exact child's native registration within the
+same deadline. On the native main thread it rechecks the child's kernel birth
+and executable identity, its own foreground window and cancellation before one
+activation request. On macOS 14 and later the parent yields activation to that
+child before requesting cooperative activation; older systems use the parent's
+targeted activation request. User app switches, hidden/minimized windows and
+cancellation prevent the request. Focus observation is cancelled and joined
+on genuine pixel readiness, child exit or caller cancellation; it does not
+acknowledge health or extend
+the deadline. Bounded native guard and activation diagnostics neither add
+journal phases nor establish that the OS actually activated the window. An
+observation error records a safe warning while the original Ready/exit/context
+protocol determines the outcome; it cannot replace a user close with retry.
+This follows Apple's [cooperative activation model](https://developer.apple.com/documentation/appkit/passing-control-from-one-app-to-another-with-cooperative-activation?language=objc):
+the active parent grants permission before requesting activation on the child's
+behalf; the system still decides whether to honor it.
+The replacement preserves
 engine, turn and worker identities; it cannot perform engine handoff or restart
 task work. Sleep/focus changes reset observation grace, not the failure budget.
 Normal exit does not restart the shell. Local diagnostic journals are bounded;

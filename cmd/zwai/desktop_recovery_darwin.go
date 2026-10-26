@@ -33,6 +33,10 @@ import (
 const desktopRecoveryJournalLimit = 64 << 10
 const desktopSuccessorDeadline = 30 * time.Second
 
+var focusRecoverySuccessor = desktop.FocusRecoverySuccessor
+var waitRecoverySuccessor = (*exec.Cmd).Wait
+var readRecoveryReady = (*json.Decoder).Decode
+
 type desktopRecoverySpec struct {
 	SessionID        string       `json:"session_id"`
 	Token            string       `json:"token"`
@@ -371,7 +375,8 @@ func runRecoverySuccessor(ctx context.Context, spec desktopRecoverySpec, command
 		return fmt.Errorf("start recovery shell: %w", err)
 	}
 	exit := make(chan error, 1)
-	go func() { exit <- command.Wait() }()
+	waitChild := waitRecoverySuccessor
+	go func() { exit <- waitChild(command) }()
 	committed := false
 	exited := false
 	defer func() {
@@ -386,29 +391,48 @@ func runRecoverySuccessor(ctx context.Context, spec desktopRecoverySpec, command
 	if err := json.NewEncoder(controlWriter).Encode(spec); err != nil {
 		return fmt.Errorf("send recovery handoff: %w", err)
 	}
+	focusResult, stopFocus := startOwnedRecoveryFocus(ctx, command)
+	defer stopFocus()
 	var ready desktopRecoveryReady
 	receive := make(chan error, 1)
 	decoder := json.NewDecoder(io.LimitReader(readyReader, 4096))
-	go func() { receive <- decoder.Decode(&ready) }()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case err := <-receive:
-		if err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-				var observed bool
-				result, observed = observeRecoveryChildExit(ctx, exit)
-				exited = observed
-				return result
+	readReady := readRecoveryReady
+	go func() { receive <- readReady(decoder, &ready) }()
+
+readyRead:
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-focusResult:
+			focusResult = nil
+			if err != nil {
+				// Activation is assistance, not the handoff result. A departed
+				// child's kernel identity can disappear before Wait or pipe EOF.
+				slog.Warn("desktop recovery focus assist unavailable", "session_id", spec.SessionID,
+					"generation", spec.Generation, "child_pid", command.Process.Pid, "error", err)
 			}
-			return fmt.Errorf("recovery renderer ready: %w", err)
+		case err := <-receive:
+			// A real ready frame never waits for native registration observation.
+			// Join it before commit; a focus request itself cannot produce ready.
+			stopFocus()
+			if err != nil {
+				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+					var observed bool
+					result, observed = observeRecoveryChildExit(ctx, exit)
+					exited = observed
+					return result
+				}
+				return fmt.Errorf("recovery renderer ready: %w", err)
+			}
+			break readyRead
+		case err := <-exit:
+			exited = true
+			if err == nil {
+				return desktop.ErrRecoveryCancelled
+			}
+			return fmt.Errorf("recovery shell exited before ready: %w", err)
 		}
-	case err := <-exit:
-		exited = true
-		if err == nil {
-			return desktop.ErrRecoveryCancelled
-		}
-		return fmt.Errorf("recovery shell exited before ready: %w", err)
 	}
 	if ready.SessionID != spec.SessionID || ready.Generation != spec.Generation || ready.Token != spec.Token || ready.PID != command.Process.Pid {
 		return errors.New("recovery renderer ready identity mismatch")
@@ -425,7 +449,7 @@ func runRecoverySuccessor(ctx context.Context, spec desktopRecoverySpec, command
 		return fmt.Errorf("commit recovery renderer: %w", err)
 	}
 	var acknowledgement desktopRecoveryReady
-	go func() { receive <- decoder.Decode(&acknowledgement) }()
+	go func() { receive <- readReady(decoder, &acknowledgement) }()
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -448,6 +472,16 @@ func runRecoverySuccessor(ctx context.Context, spec desktopRecoverySpec, command
 	}
 	committed = true
 	return nil
+}
+
+func startOwnedRecoveryFocus(ctx context.Context, command *exec.Cmd) (<-chan error, func()) {
+	focusContext, cancelFocus := context.WithCancel(ctx)
+	result, done := make(chan error, 1), make(chan struct{})
+	go func() {
+		defer close(done)
+		result <- focusRecoverySuccessor(focusContext, command.Process.Pid, command.Path)
+	}()
+	return result, func() { cancelFocus(); <-done }
 }
 
 func observeRecoveryChildExit(ctx context.Context, exit <-chan error) (error, bool) {

@@ -155,6 +155,9 @@ func (e *Engine) resumeTurn(restoreCtx context.Context, turn *store.Turn, snapsh
 			return err
 		}
 	}
+	if err := e.restorePendingScheduleReports(turn, snapshot); err != nil {
+		return err
+	}
 	messages, err := e.resumeConversation(turn, snapshot)
 	if err != nil {
 		return err

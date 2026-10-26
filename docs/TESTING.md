@@ -115,9 +115,9 @@ Opening and terminal turn-list reads share the request generation in
 opening response must neither replace nor prevent the newer terminal snapshot.
 
 ```bash
-go test -race -timeout 20m ./internal/store ./internal/engine
+go test -race -timeout 25m ./internal/store ./internal/engine
 go test ./internal/engine -run '^$' -bench '^BenchmarkReplayHistoryToolBodies$' -benchmem
-go test -race -timeout 20m ./...
+go test -race -timeout 25m ./...
 go vet ./...
 (cd frontend && npm run lint && npm test && npm run build)
 ZWAI_E2E_PORT=18996 ZWAI_E2E_DATA_DIR=.e2e-data-open-tail \
@@ -198,18 +198,127 @@ replay: unsupported scheduling prose must not become an answer. Correction
 is bounded to the original turn, and its policy calls remain attributed there.
 The classifier extracts claims only; deterministic schedule checks must reject
 unsupported scope, current state, cadence or new-arrangement attribution.
-No external model is used in regression tests.
-`internal/engine/schedule_answer_retry_test.go` returns a malformed real
-policy HTTP response and proves that its retained diagnostic cause cannot
-restart the standing goal or reset the same-turn correction budget.
+`internal/engine/schedule_answer_meaning_test.go` exercises nonclaim publication
+through Registry/HTTP and decoder filtering/invalid fields. No external model
+is used in regression tests. Structured classification
+requires stance, time and attribution; nonaffirmative, noncurrent and reported
+items cannot require a matching armed plan. These offline fixtures prove the
+protocol and runtime boundary, not an external model's semantic accuracy.
+`internal/engine/goal_schedule_claim_test.go` checks the real Registry/HTTP
+path for failed and corrected scheduling claims, automatic goal continuation
+and a durable three-failure cap. It keeps `goal_blocked` false, the original
+terminal error and empty final intact, and the existing automatic budget.
+Successful/cancelled/different-error turns and new human input break the
+streak; goal changes and explicit human resume reset it, manager reopen does
+not. Scheduled errors retain future-wake ownership without immediate retry.
+`internal/store/goal_cap_test.go` checks atomic cap/reason rollback on failed
+reads and writes, deleted owners, changed goals, budget resets and newer turns;
+a stale decision cannot pause new human work. Unreadable retry evidence has a
+distinct recovery-state cap reason, and failed persistence never grants another
+automatic request.
+`internal/engine/schedule_answer_timeout_test.go` holds a real loopback
+classification response beyond 30 seconds while the configured provider budget
+allows it, then checks the original turn completes without a repeated manager
+request. It also checks parent cancellation and the configured first-byte
+and body-idle timeouts, retaining each failure in the original turn's Trace;
+candidate prose stays withheld until classification succeeds.
+`internal/engine/schedule_answer_recovery_http_test.go` exercises classifier
+service failures through the real loopback adapter, preserving one manager
+request, the original candidate/turn, recovery backoff and a single published
+answer. A legal HTTP 200 with invalid classification JSON retains
+`model_backoff.code:classification_invalid` and the original `candidate_id`,
+even though its LLM transport call succeeded. Other service failures retain
+`classification_unavailable`; provider-only backoff payloads remain compatible.
+A persistent outage keeps the turn running; Stop cancels its actual
+HTTP request without exposing private prose or publishing a terminal success.
+`internal/engine/schedule_answer_pending.go` separates that classifier retry
+path from the original single manager correction for a confirmed unsupported
+claim. Neither service failure nor a retry creates a new goal turn.
 `internal/engine/schedule_answer_restart_test.go` holds the real corrective
 model request across PrepareRestart and cold resume of the same turn. The
 persisted correction allowance stays consumed; event writes and budget reads
 that fail prevent another model attempt instead of resetting the allowance.
 
+`internal/store/schedule_answer_pending_test.go` checks immutable private
+candidate identity, retry-state preservation, stable ordering across all
+decisions, running-owner/Stop guards and single admission under concurrent
+calls. Event insertion, replay insertion or candidate-decision failure must
+roll back all public rows and leave the candidate pending. Empty public prose
+still commits acceptance, and a repeated accepted identity returns the explicit
+already-admitted error. Thread/project deletion and rewind remove the correct
+private candidates transactionally; injected deletion failure rolls back the
+owner and private rows, and late writes cannot recreate deleted state.
+The same suite injects failures into both terminal turn writes and private
+payload clearing: only a successful transaction may discard the full recovery
+payload, preserving lightweight accepted/rejected receipts and other turns.
+Long-turn storage tests retain only the newest answer transcript, leaving
+distinct report receipts intact. New insertion and previous-answer compaction
+must roll back together on refusal or an ignored write. Per-turn ordinals
+preserve latest-candidate recovery through clock rollback, equal timestamps,
+caller-supplied ordinal values and re-saving an existing identity.
+The report-recovery query is checked against all three decision states,
+another thread and terminal empty-payload receipts; it must not load the
+current answer's full transcript while discovering original report calls.
+
+`internal/engine/schedule_answer_restore_test.go` checks latest-candidate
+selection, malformed private state, original report-call receipts and worker
+restoration without a manager request. Restoring a report result cannot publish
+unverified findings or manufacture a result for an unrelated call.
+`internal/engine/schedule_answer_recovery_restart_test.go` crosses the actual
+PrepareRestart, shutdown, database-close/reopen and orphaned-turn recovery
+paths. It checks original turn/candidate/output IDs and retry allowance, a live
+worker restored under its original identity, and accepted publication followed
+by a failed terminal write. Recovery cannot generate another manager request
+or duplicate a saved answer. The actual handoff checkpoint must not contain
+the withheld candidate before the replacement resumes.
+`internal/engine/schedule_answer_checkpoint_test.go` checks the stored and live
+checkpoint omit normal and raw Responses prose while preserving accepted
+history, tools and reasoning without mutating the private original.
+These cases rebuild engines inside the Go test
+process; they do not by themselves establish executable-process or native UI
+acceptance.
+`cmd/zwai/schedule_answer_process_test.go` adds the OS-process boundary: the
+real headless engine entry point records a private candidate and classifier
+failure, the test verifies its owned lease/PID and SIGKILLs that child, then a
+different engine PID reopens the same private data. It checks actual SSE and
+Trace retain the original turn/candidate/output identity, with no repeated
+manager call or duplicate answer after the local classifier recovers. This is
+headless engine acceptance, separate from a native desktop-window case.
+`internal/engine/report_admission_test.go` checks actual manager tools retain
+their original receipt/candidate IDs, defer findings verification until the
+manager boundary and avoid repeating committed rearms. A blocked model request
+does not hold the global goal/wake lock.
+Its report-save fault cases distinguish an already committed rearm/cancel from
+findings-only or unchanged actions: storage refusal cannot publish findings or
+invite repeating a change that already committed. This receipt does not accept
+the unobserved crash window before the private save.
+`internal/engine/schedule_answer_steer_test.go` injects human steering after
+classification at the final ownership read. The superseded answer stays out
+of subsequent model input, and steering does not consume a previously used
+claim-correction allowance. Its HTTP case also steers during the actual pending
+classifier request: that request is cancelled, identical later answer text has
+a distinct output/candidate identity, and only the new verified output publishes.
+`internal/engine/schedule_answer_steer_ownership_test.go` blocks real attachment
+hydration across a turn/Registry replacement and verifies the stale steer is
+refused without delivering to either owner; empty busy-turn input is also refused.
+
+`frontend/e2e/schedule-answer.spec.ts` uses its isolated loopback fixture to
+exercise unsupported claims through the three-failure goal cap, separate
+correction-request and terminal-error rows, reload, and 503/429 classification
+failures followed by a response delayed beyond 30 seconds, named live backoff
+events, the original manager/tool request
+counts, actual scheduling facts and replay after reload. Its Stop case keeps
+the fixture alive past the pending retry time and checks no delayed request
+escapes cancellation. The case retains screenshots and original-turn Trace;
+its offline HTTP model does not call an external provider.
+
+`frontend/src/components/app/transcript-schedule-claim.test.tsx`,
 `frontend/src/lib/schedule-claim-notice.test.ts` and
 `mobile/src/lib/transcript-schedule-claim.test.ts` check the correction notice
 and Chinese display without exposing internal JSON or claiming a wait exists.
+The desktop component checks distinct notice/error rows in live and history
+projections; the terminal error says the final was withheld and does not imply
+verification is still running.
 `internal/remote/schedule_answer_paging_test.go` exercises actual phone
 Earlier requests for all visible retry reasons and invisible/invalid envelopes,
 so a correction-only page is retained without trapping paging on an empty row.
@@ -350,7 +459,7 @@ not reapply its state or notification side effects. Closing a partial
 `tool_call_delta` must not complete a tool already executing.
 
 ```bash
-go test -race -timeout 20m ./...
+go test -race -timeout 25m ./...
 go vet ./...
 (cd frontend && npm run lint && npm test && npm run build)
 (cd mobile && npm run lint && npm test && npm run build)
@@ -445,7 +554,7 @@ phone-direct provider configuration stays separate. Run from the repository root
 
 ```bash
 go test -race ./internal/config ./internal/provider ./internal/remote ./internal/server ./internal/engine
-go test -race -timeout 20m ./...
+go test -race -timeout 25m ./...
 (cd frontend && npm test -- settings-persist.test.ts settings-persist-delta.test.ts settings-dialog.test.tsx)
 (cd frontend && npm run lint && npm run build)
 (cd frontend && npm run e2e -- settings-timeout-concurrency.spec.ts --output /absolute/unique-frontend-output)
@@ -474,6 +583,80 @@ deliberately delays initialization to regress that race; native case deadlines
 and cleanup assertions remain separate.
 
 Recorded guest acceptance: [2026-10-21 native isolation evidence](diagnostics/native-isolation-20261021.md). It binds a frozen candidate, precise legacy cleanup, serial real-window cases and host foreground observations; it is not latest-main or release acceptance.
+
+The first-byte budget regression counts attempts at the real client transport
+boundary, not the server handler's scheduling. Its handler is deliberately held
+until the client finishes both 30 ms waits; the original transport error and
+configured budget must survive. This prevents a delayed handler from reporting
+fewer attempts than the client actually made. See
+`internal/provider/first_byte_test.go`; no provider runtime budget is changed.
+
+A native case reports `scenario timeout` only for its actual scenario deadline.
+A process-inventory command timeout retains its own command, limit and original
+streams before cleanup. Inventory failure still cancels and waits for directly held
+child processes; it cannot declare unknown descendants gone.
+The incomplete-cleanup latch and private data remain until a fresh complete
+inventory and fault cleanup prove exit. A failed runner's surviving scenario
+may write later evidence; those files do not make the failed round pass.
+
+The SIGKILL fault-cleanup regression owns a private process namespace. Its
+listing seam queries the real held PIDs with `ps -p`; the actual parser, process
+identities, durable fault receipt, STOP/KILL/CONT and exit checks still run.
+An unrelated full-machine inventory failure cannot prevent this cleanup test
+from reaching its injection. Assertion failures retain the runner's complete
+receipt and evidence before temporary state is removed. This test accepts
+cleanup behavior, not the production collector's completeness: production keeps
+its full inventory, five-second command deadline and unknown-process refusal.
+See `tools/test_native_macos_fault_cleanup.py` and the separate collector tests
+in `tools/test_native_macos_resilience_fault.py`.
+
+Saved-input acceptance reads the persisted draft twice, including unchanged
+attachment bytes and the current native composer value. Healthy-save copy is
+optional; changed text/state/files/native values on the later read still refuse.
+A binary-stream timeout fixture first witnesses its child's completed writes,
+then starts the short communicate deadline. Slow process startup cannot stand
+in for lost output; the original failing run remains separate evidence.
+
+The actual parent launcher sends the private handoff before coordinating focus
+for its owned successor within the same deadline. Registration observations do
+not activate; the final native main-thread action rechecks the parent window,
+foreground, child kernel birth/executable/native identity and cancellation. On
+macOS 14 and later it yields permission then requests cooperative activation;
+older systems make one targeted request from the parent. App switches, hidden or
+minimized windows, a separate native modal window and late queued work refuse
+activation. Genuine pixel readiness, child exit or caller cancellation cancels
+and joins the observation owner without blocking the original Ready receipt.
+`internal/desktop/recovery_focus_test.go` tests the actual coordinator and
+`tools/test_native_macos_recovery_focus.py` compiles its Objective-C entry with
+SDK seams. `cmd/zwai/desktop_recovery_focus_test.go` preserves spec-before-focus ordering,
+cancellation and the real ready/commit/committed protocol. Neither opens a host
+window. Bounded native diagnostics retain refusal/request results and sampled
+identities; unsampled facts remain unknown. A request result cannot accept
+recovery: native fault acceptance still requires fresh product nonce-ready and
+commit evidence before QA may activate the successor. No focus phase is added
+to the recovery journal/API or used to extend the deadline. Focus observation
+errors retain a safe warning and leave the original Ready/exit/context outcome
+in control. The exit regression reaps a real child, delays publication of its
+actual Wait/EOF results, then exercises the real kernel identity refusal before
+releasing those results; observation failure cannot turn user close into retry.
+
+The render-probe cover has two independent assertions: a native screen capture
+must omit the nonce, and a WebView snapshot must still match a fresh challenge.
+`go test -race ./internal/desktop` exercises actual injected JavaScript, trusted
+RGB messages, complete/stale/missing nonce pixels and recovery transitions.
+`python3 -m unittest tools/test_native_macos_render_cover.py` compiles the actual
+Objective-C entry with view/JavaScript seams, without opening a host window;
+it checks cover-before-paint, opaque geometry, flipped/offset layout, resize,
+single-cover reuse, input/AX exclusion and failed colour preparation. This is
+also a pixel regression: an oversized native dirty rectangle must not paint
+outside the cover's own bounds or erase the rest of the window. It is
+also included in `make docs-check`. Native acceptance separately checks light
+and dark themes, both palettes, modal/settings changes and recovery in the
+isolated guest; a successful JS callback alone never accepts WebView painting.
+`frontend/e2e/render-probe-cover.spec.ts` runs the actual injected script in
+Chromium against a real Radix modal and theme/settings changes, including
+background compositing while body pointer input is disabled and exact restoration
+of that pointer state after synchronous sampling.
 
 Native macOS acceptance runs in the UTM **ci-macOS** guest. The user's host
 desktop may already be running zwai; do not launch or focus another desktop
@@ -777,6 +960,51 @@ the strict window assertions only when ready. Fill/Send, a wrong NS PID or a
 nonempty wrong bundle remain immediate nonzero refusals. Regress these branches
 through the actual C main, plus pending-to-window, deadline exhaustion and
 identity-error/cancellation propagation through the actual Python caller.
+Registration pending is distinct from a registered app whose AX window list is
+still empty. The formal smoke snapshot requests one guarded application
+activation even for that empty list, while keeping `ready:false` and performing
+no raise, fill or Send. Reuse `tools/native_macos_smoke.py`'s `wait_window`;
+do not prepend a read-only AX-nonempty polling gate that prevents the formal
+activation path from running. The existing shared deadline includes each helper
+call and poll; a successful fresh window observation remains mandatory.
+`tools/test_native_macos_activation.py` checks the actual C zero-window caller's
+single activation and absence of window input. `tools/test_native_macos_smoke.py`
+checks registered empty-window responses followed by a valid ready response through
+the actual `wait_window`/`native_snapshot` boundary without resetting that deadline.
+These protect existing formal behavior; they do not establish why a particular
+guest returned an empty AX list or accept its native window.
+
+Every resilience helper invocation saves a unique
+`native-actions/<id>/receipt.json` before JSON parsing or raising a shortened
+terminal error. The receipt retains the original command, case/PID, execution
+timing, requested deadline and actual exit/exception, with independent base64
+streams and explicit missing/empty types. Failed receipt storage cannot replace
+an existing command error; a successful command without its required receipt
+refuses acceptance. `tools/test_native_macos_native_evidence.py` runs the actual
+caller across success, long refusal output, malformed JSON, timeout and storage
+failure; legacy choose-file receipt paths remain compatible.
+
+Automatic replacement acceptance reads the successor's current session,
+generation, engine and fresh pixel-ready event before QA activation. Activating
+an unready successor could unpause its health controller and manufacture the
+evidence being tested. `tools/test_native_macos_resilience_phases.py` regresses a
+helper that would create ready only when the test activates it; that helper must
+never be called until the product has supplied its own ready event.
+
+An extra same-PID window must be identified before changing a QA setup or window
+selection. Size, empty title and floating layer alone cannot identify an input
+accessory. Preserve its actual AX role/subrole, identifier, children and native
+pixels. A confirmed Caps Lock indicator can be corrected in the isolated guest
+under the case exclusion lock; verify actual modifier readback and fresh pixels.
+Per-event CG flags and a successful asynchronous setter alone do not establish
+that Caps Lock is off. Navigation also needs page-specific arrival controls:
+main-page tabs can themselves be radio buttons. Use the actual Settings/Search
+and Back/Close controls when keyboard delivery is not independently established.
+Window resizing requires stable AX/CG size readback and matching screenshot
+dimensions at the screen's backing scale; a successful AX setter only confirms
+the request. An unreachable requested size remains a failed assertion until the
+screen constraints and a new attainable target are explicitly established.
+
 The resilience helper's application-only `activate` command uses only
 `NSRunningApplication`, without AX window lookup or raise. Its activation-only
 result is not a window receipt: subsequent snapshot/input still requires a
@@ -1074,7 +1302,7 @@ attachments remain valid. `internal/engine/desktop_recovery_test.go` checks
 durable/live Trace ordering without model calls or changing task state. Run:
 
 ```bash
-go test -race -count=1 -timeout 20m ./...
+go test -race -count=1 -timeout 25m ./...
 cd frontend && npm run lint && npm test && npm run build
 ```
 
@@ -1346,9 +1574,11 @@ that region timing does not identify an individual blocked AX call.
 Draft collection keeps its last existing API/native observations in memory and
 writes a fixed diagnostic file on success, failure or handled cancellation.
 It retains individual predicates, attachment byte hashes/metadata and text/value
-lengths/hashes, without copying draft prose or the native transcript. There are
-no added native/API reads, paste retries, polling file writes or sleeps; the
-deadline and exact text/attachment-byte assertions stay unchanged. Evidence
+lengths/hashes, without copying draft prose or the native transcript. Diagnostic
+retention itself adds no reads. Save acknowledgement independently re-reads the
+persisted snapshot, attachment bytes and native value because healthy-save copy
+is intentionally hidden. There are no added input retries, polling file writes
+or sleeps; the deadline and exact text/attachment-byte assertions stay unchanged. Evidence
 write failure cannot replace an existing exception and prevents an otherwise
 successful check from passing. SIGKILL or VM loss may prevent the final write.
 A later successful case cannot explain an earlier timeout whose final observation
@@ -1746,6 +1976,28 @@ after Stop, final-wake cancellation/pause, consumed one-shot without an owner,
 or an inactive goal. Receipt assertions bind exact owner/worker IDs to a
 persisted event before the manager's terminal error.
 
+Lifecycle fixtures must return valid `{"claims":[]}` for the exact tool-free
+schedule-answer classifier protocol and disable unrelated memory review.
+Terminal-failure cases use the real scheduled no-activity limit or an explicit
+manager HTTP refusal. A plain-text fallback is invalid classification output;
+it exercises pending service recovery rather than terminal ownership. The first
+2026-10-25 full race run exposed this fixture defect: three ownership tests
+stalled in their initial successful-check setup, before their intended failed
+check. Retain that first failure when validating the repaired fixture.
+Direct manager fixtures must execute the exact Registry and turn registered in
+the runtime. `TestIndependentManagersDiscoverAndNegotiate` queues peer notices
+into its actual receiver Registry before that manager starts; a dummy owner
+would retain an undrainable inbox and repeatedly supersede accepted answers.
+The later full-race timeout exposed this separate fixture defect, with valid
+classifier JSON throughout. `TestManagerFixtureRejectsAnExistingDifferentOwnerBeforeModel`
+requires the test helper to return an identifiable ownership error before any
+model call and preserve the existing owner for both Registry and turn mismatch.
+`TestScheduledClassifierOutageKeepsTheOriginalWorkerUntilRecovery` separately
+returns a real classifier HTTP 503, verifies the original turn, registry, worker
+ID and worker HTTP request remain active without terminal/cleanup events, then
+restores the service. Only classification repeats; the manager and worker are
+not restarted, and a later human Stop still cancels the worker request.
+
 `internal/engine/worker_ownership_test.go` covers executable-goal and wake
 selection (including plan mode with an active but non-executable wake),
 receipt write failure, resource/watchdog exclusions, owner/Stop
@@ -1809,7 +2061,7 @@ model output.
 tool details and reload through controlled offline event responses.
 
 ```bash
-go test -race -timeout 20m ./...
+go test -race -timeout 25m ./...
 cd frontend && npm test -- src/lib/transcript-message.test.ts src/store/app-stream-history.test.ts
 cd frontend && npm run e2e -- e2e/agent-history-overlap.spec.ts
 ```
@@ -1944,6 +2196,49 @@ and finish without repeating the write. It rejects replacement user turns,
 worker twins, false completion and terminal confirmation prompts. Binary build
 time precedes the measured restart. `go test -short` skips this expensive real
 process gate; a short run cannot substitute for the full acceptance.
+The ordinary process tests copy the same build into old/new executable paths;
+they do not establish historical-version compatibility.
+`cmd/zwai/engine_upgrade_acceptance_test.go` is a separate opt-in old→new gate.
+It skips unless both `ZWAI_UPGRADE_OLD_BINARY` and `ZWAI_UPGRADE_NEW_BINARY` are
+explicit absolute executable paths, rejects equal bytes, and records both hashes.
+All engines use fresh private data/workspaces and a keyless loopback model.
+`-race` instruments the test harness; supplied executable bytes retain their
+original build modes and are not silently rebuilt with instrumentation.
+It verifies the old database lacks `pending_schedule_answers`, the replacement
+creates it, the same turn/worker/generation is restored and collected, and one
+real persisted shell effect is inspected without repeating its write. Separate
+private cases preserve the original unanswered ask and iteration-cap permission
+wait; only the actual answer/Continue permits the next manager request. Manager
+continuation is counted separately from tool execution. These cases cover an
+active worker; they do not claim historical-version finished-worker or native
+window acceptance. Private replacement leases are stopped before the next case.
+The historical gate requests the old engine's real restart API, requires its
+durable `ready` acknowledgement, joins that owned child, then starts and joins
+the candidate as a directly owned engine child. It does not claim coverage of
+the complete historical automatic launcher; the ordinary same-build process
+gate exercises that separate shell path. A historical development binary may
+retain its original frontend source path even with private data. Record that
+checkout's tracked state and built-asset hashes before/after the opt-in run.
+
+The 2026-10-25 private cross-version run passed all three cases under `-race`
+(30.602s): old SHA-256
+`357f79ed3f27219faffbfddcdcc9dc1f01ee1491a8ed319d11350b1c1b78c224`, candidate
+`28ea3bc0da239611f6f9ac6e483c9c4bcf7c2830071597047a67944cf85cdeb4`.
+The active worker retained ID `verifier-1` and generation 1, its persisted write
+and verification each occurred once, and the original turn resumed within
+18.835s. All six owned engine children exited normally. The original checkout
+remained at `224864e` with no tracked changes; all 66 existing built assets
+retained their hashes. The old child rebuilt the same asset bytes once and
+added the missing ignored `frontend/dist/.source-stamp`; this is recorded as an
+observed preparation effect, not an unchanged-directory claim.
+
+```bash
+ZWAI_UPGRADE_OLD_BINARY=/absolute/historical-zwai \
+ZWAI_UPGRADE_NEW_BINARY=/absolute/candidate-zwai \
+go test -race -count=1 -timeout 3m -v ./cmd/zwai \
+  -run '^TestUpgradeOlderEnginePreservesPrivateWorkAndHumanPause$'
+```
+
 `cmd/zwai/engine_restart_budget_test.go` checks caller deadlines against real
 blocked startup and lease competition, including cleanup of owned resources.
 Native acceptance must use private data even when LaunchServices reopens the
@@ -2160,7 +2455,7 @@ memory files and stored outcomes, not agreement with the old reviewer's answer:
   legacy notes, storage failure and concurrent drafts against a real store.
 
 ```bash
-go test -race -count=1 -timeout 20m ./internal/memory ./internal/engine
+go test -race -count=1 -timeout 25m ./internal/memory ./internal/engine
 go test -race -run '^(TestReviewBatch|TestReviewEvidence|TestValidateReview|TestReviewNoteDiff|TestInvokeReviewOperation)' ./internal/engine
 go test -race -count=1 ./internal/engine -run 'ReviewHistory|FullThreadWorkerHistory|LifecycleHistory|CompatibilityWrapper|TerminalStatus'
 go test -race -count=1 ./internal/engine -run 'Review.*(Capacity|Proposal|Diagnostics|ReceiptFeedback|Bounded|Refusal|ModelError|TerminalFailure)'
@@ -2230,7 +2525,7 @@ directory validation; `internal/engine/project_test.go` retains the save-time
 workdir contract.
 
 ```bash
-go test -race -count=1 -cover -timeout 20m ./internal/desktop ./internal/engine
+go test -race -count=1 -cover -timeout 25m ./internal/desktop ./internal/engine
 cd frontend && npm test -- src/lib/workdir.test.ts src/components/app/workdir-input.test.tsx src/components/app/project-dialog.test.tsx
 cd frontend && npm run e2e -- e2e/workdir.spec.ts
 ```
@@ -2691,7 +2986,7 @@ Fix SHAs must be ancestors of the integration checkout's main candidate. These
 accounting checks do not replace application tests or platform acceptance.
 
 ```bash
-make test        # go test -race -cover -timeout 20m ./...  +  front-end unit tests + mobile unit tests
+make test        # go test -race -cover -timeout 25m ./...  +  front-end unit tests + mobile unit tests
 make e2e         # Playwright, on the scripted offline provider
 make check       # go vet + both of the above
 ```
@@ -2704,7 +2999,7 @@ deterministic and fast enough to run on every change.
 
 | layer | what it covers | command |
 |---|---|---|
-| Go unit tests | config, store, memory, provider, tools, engine, search, server, CLI, TUI, and the swarm library | `go test -race -cover -timeout 20m ./...` |
+| Go unit tests | config, store, memory, provider, tools, engine, search, server, CLI, TUI, and the swarm library | `go test -race -cover -timeout 25m ./...` |
 | HTTP tests | every endpoint, SSE replay and resume, the tail log page (`GET /log`, including the live-edge roster sidecar), one worker's log (`GET /agents/:agent/log`), upload path traversal, restart recovery (leftover turns, in-flight sub-agents, and the follow-up queue continue; in-flight tools are closed), PTY terminals (`GET /terminal`, same-origin / loopback Origin, DNS-rebind Host refused, project cwd), phone pairing status/token/offer (`/api/remote/*`, token never echoed), conversation search (`GET /api/search` finds a body the title does not contain; embeddings stay off until a model is pinned), SPA freeze (a Vite rebuild of `dist/` cannot steal hashed JS from a live window; a missing `/assets/*` file is 404 text, not the HTML shell) | `go test ./internal/server/` |
 | Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (count chip at rest, hover to read/edit/drop; tagged `<selected_text>` / `<user_request>` on send; Copy message without the wire tags; the Add to chat snapshot surviving a live stream), clipboard image paste, copying transcript text when the Clipboard API refuses (copy event plant, not a silent execCommand true), file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice Run now and cancel / live waits sort first and show prompt / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `ui_font_size` / `font_size` / `content_width` / `transcript_mode` / `palette`, directory density), tail-first history pages (`thread-log` / `thread-history` / `use-history-window` / `use-turn-jump`), dismissible settings toasts, ⌘K palette body search (`thread-search` / `palette.test`, stale hits cleared while the next query is in flight), semantic-search settings (off until a model is named) | `cd frontend && npm test` |
 | End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, directory rows tracking UI size, scheduled inbox / wake banner, Phone settings QR control (pairing failure toasts over the sheet; Bound phones paints a reported model) | `cd frontend && npm run e2e` |
@@ -3375,8 +3670,16 @@ today's date); tests assert those values, never a sample OS or a sample command.
 
 ## Go tests
 
+The full Go package deadline is 25 minutes, including real HTTP timeouts,
+recovery and cancellation regressions. In the measured expanded engine suite,
+the prefix before task coordination took about 19m10s and its corrected
+112-test tail took another 90.6s. This package deadline does not extend any
+individual test, provider timeout, worker budget or native acceptance budget.
+An indefinitely waiting fixture must still be diagnosed and fixed; extending
+the package deadline cannot accept it.
+
 ```bash
-go test -race -cover -timeout 20m ./...       # everything
+go test -race -cover -timeout 25m ./...       # everything
 go test -race ./internal/engine/              # one package
 go test -race -run TestSteer ./internal/engine/
 go test ./internal/server/ -coverprofile=/tmp/c.out && go tool cover -html=/tmp/c.out
@@ -5336,7 +5639,7 @@ retry behavior or impose a server-wide request limit.
 Use keyless loopback fixtures, never a real model or network service:
 
 ```bash
-go test -race -timeout 20m ./internal/config ./internal/provider ./internal/server ./internal/engine
+go test -race -timeout 25m ./internal/config ./internal/provider ./internal/server ./internal/engine
 cd frontend && npm run lint && npm test && npm run build
 ZWAI_E2E_BUILTIN_TOOLS=1 ZWAI_E2E_PORT=8819 npm run e2e -- builtin-tools.spec.ts
 ```

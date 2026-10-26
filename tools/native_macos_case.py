@@ -5,6 +5,7 @@ The scenario owns window/behavior assertions. A zero exit code proves only that
 its command succeeded and case processes/data were cleaned up within the budget.
 """
 import argparse
+import base64
 from contextlib import contextmanager
 import ctypes
 import errno
@@ -19,6 +20,7 @@ import shutil
 import signal
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 from typing import Callable, NamedTuple
@@ -205,13 +207,64 @@ def stop_owned(bundle, data, processes, grace=2, scope=None):
     return scope.sample()
 
 
+def stop_known_children(processes, grace=2):
+    """Cancel only held Popen children before a potentially unavailable inventory."""
+    records, pending, complete = [], [], True
+    for process in reversed(processes):
+        row = dict(pid=process.pid, signals=[], wait_errors=[], outcome="pending", returncode=None)
+        records.append(row)
+        try:
+            status = process.poll()
+            if status is not None:
+                row.update(outcome="already_exited", returncode=process.wait(timeout=0))
+                continue
+        except (OSError, RuntimeError, ValueError) as error:
+            row["wait_errors"].append(dict(operation="initial_wait", error_type=type(error).__name__,
+                                           errno=getattr(error, "errno", None)))
+            complete = False
+        pending.append((process, row))
+    for name, method in (("TERM", "terminate"), ("KILL", "kill")):
+        if not pending:
+            break
+        # One phase deadline is shared by all direct children, not renewed per PID.
+        deadline = time.monotonic() + grace
+        for process, row in pending:
+            try:
+                if process.poll() is None:
+                    getattr(process, method)()
+                    row["signals"].append(name)
+            except (OSError, RuntimeError, ValueError) as error:
+                row["wait_errors"].append(dict(operation=name, error_type=type(error).__name__,
+                                               errno=getattr(error, "errno", None)))
+                complete = False
+        remaining = []
+        for process, row in pending:
+            try:
+                status = process.wait(timeout=max(0, deadline - time.monotonic()))
+                outcome = "killed" if status == -signal.SIGKILL else "terminated" if status == -signal.SIGTERM else "exited"
+                row.update(outcome=outcome, returncode=status)
+            except subprocess.TimeoutExpired as error:
+                row["wait_errors"].append(dict(operation=name + "_wait", error_type=type(error).__name__,
+                                               timeout_seconds=error.timeout))
+                remaining.append((process, row))
+            except (OSError, RuntimeError, ValueError) as error:
+                row["wait_errors"].append(dict(operation=name + "_wait", error_type=type(error).__name__,
+                                               errno=getattr(error, "errno", None)))
+                complete = False
+                remaining.append((process, row))
+        pending = remaining
+    for _, row in pending:
+        row["outcome"] = "wait_failed"
+    return records, complete and not pending
+
+
 def wait_scenario(process, timeout):
     deadline = time.monotonic() + timeout
     while True:
         process.native_scope.sample()
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise subprocess.TimeoutExpired(process.args, timeout)
+            raise ScenarioDeadlineExpired(process.args, timeout)
         try:
             return process.wait(timeout=min(.05, remaining))
         except subprocess.TimeoutExpired:
@@ -242,6 +295,48 @@ def copy_app(source, root):
 
 class CaseBudgetExpired(TimeoutError):
     pass
+
+
+class ScenarioDeadlineExpired(subprocess.TimeoutExpired):
+    """Only the runner's own scenario deadline, never a leaf command timeout."""
+
+
+def write_timeout_receipt(path, row):
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        json.dump(row, stream, ensure_ascii=True, allow_nan=False)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def record_timeout(evidence, receipt, phase, error):
+    command = error.cmd
+    if isinstance(command, (list, tuple)):
+        command = [os.fsdecode(argument) for argument in command]
+    elif command is not None:
+        command = os.fsdecode(command)
+    row = dict(case_id=receipt["case_id"], phase=phase, error_type=type(error).__name__,
+               command=command, command_type=type(error.cmd).__name__,
+               timeout_seconds=error.timeout, observed_at=time.time())
+    for key in ("stdout", "stderr"):
+        value = getattr(error, key, None)
+        raw = value.encode("utf-8", "surrogatepass") if isinstance(value, str) else value
+        row[key] = dict(type="none" if value is None else "text" if isinstance(value, str) else "bytes",
+                        base64=base64.b64encode(raw if raw is not None else b"").decode("ascii"))
+    name = "runner-timeout-" + uuid.uuid4().hex + ".json"
+    retained = dict(row, receipt=name, saved=False)
+    receipt.setdefault("timeouts", []).append(retained)
+    try:
+        write_timeout_receipt(evidence / name, row)
+        retained["saved"] = True
+    except (OSError, TypeError, ValueError) as write_error:
+        failure = dict(phase=phase, error_type=type(write_error).__name__, errno=getattr(write_error, "errno", None))
+        receipt.setdefault("timeout_evidence_errors", []).append(failure)
+        try:
+            print("WARN runner_timeout_evidence_failed " + json.dumps(failure), file=sys.stderr)
+        except (OSError, ValueError):
+            pass
 
 
 @contextmanager
@@ -355,6 +450,7 @@ def run_case(app, evidence, timeout, command, *, budget=60, prepare=None):
             bundle, data = root / "app-not-copied", root / "data"
             processes, scenario, scope, preparation = [], None, None, None
             receipt.update(case_root=str(root), data_dir=str(data), cleanup_complete=False)
+            phase = "prepare"
             try:
                 with measure_phase(receipt, "prepare"):
                     save_lock(lock, receipt)
@@ -380,6 +476,7 @@ def run_case(app, evidence, timeout, command, *, budget=60, prepare=None):
                         (evidence / "app.stderr.log").open("wb") as err, \
                         (evidence / "scenario.stdout.log").open("wb") as scenario_out, \
                         (evidence / "scenario.stderr.log").open("wb") as scenario_err:
+                    phase = "launch"
                     with measure_phase(receipt, "launch"):
                         if preparation is not None:
                             preparation.before_launch()
@@ -395,6 +492,7 @@ def run_case(app, evidence, timeout, command, *, budget=60, prepare=None):
                     receipt["scenario_limit_seconds"] = scenario_limit
                     environment.update(ZWAI_NATIVE_APP_PID=str(desktop.pid),
                                        ZWAI_NATIVE_SCENARIO_TIMEOUT_SECONDS=str(scenario_limit))
+                    phase = "scenario"
                     with measure_phase(receipt, "scenario"):
                         scenario_deadline = time.monotonic() + scenario_limit
                         scenario = subprocess.Popen(command, cwd=workspace, env=environment,
@@ -407,15 +505,22 @@ def run_case(app, evidence, timeout, command, *, budget=60, prepare=None):
                         wait_limit = min(scenario_deadline - time.monotonic(),
                                          work_remaining(started, receipt, "scenario wait"))
                         if wait_limit <= 0:
-                            raise subprocess.TimeoutExpired(command, scenario_limit)
+                            raise ScenarioDeadlineExpired(command, scenario_limit)
                         code = wait_scenario(scenario, wait_limit)
                         receipt["scenario_exit"] = code
             except CaseBudgetExpired as error:
                 code = 124
                 receipt["failure"] = str(error)
-            except subprocess.TimeoutExpired:
+            except ScenarioDeadlineExpired as error:
                 code = 124
                 receipt["failure"] = "scenario timeout"
+                receipt["failure_kind"] = "scenario_deadline"
+                record_timeout(evidence, receipt, phase, error)
+            except subprocess.TimeoutExpired as error:
+                code = 2
+                receipt["failure"] = "subprocess timeout during " + phase
+                receipt["failure_kind"] = "subprocess_timeout"
+                record_timeout(evidence, receipt, phase, error)
             except KeyboardInterrupt:
                 code = 130
                 receipt["failure"] = "interrupted"
@@ -429,11 +534,13 @@ def run_case(app, evidence, timeout, command, *, budget=60, prepare=None):
                         try:
                             before_faults = recover_renderer_faults(evidence, receipt, bundle)
                             try:
+                                direct, direct_complete = stop_known_children(processes)
+                                receipt["direct_child_cleanup"] = direct
                                 remaining = stop_owned(bundle, data, processes, scope=scope)
                             finally:
                                 after_faults = recover_renderer_faults(evidence, receipt, bundle, require_exit=True)
                             receipt["remaining_owned_pids"] = remaining
-                            if not remaining and before_faults and after_faults:
+                            if not remaining and before_faults and after_faults and direct_complete:
                                 engine_log = data / "engine.log"
                                 if engine_log.is_file() and not engine_log.is_symlink():
                                     shutil.copyfile(engine_log, evidence / "engine.log")
@@ -442,7 +549,11 @@ def run_case(app, evidence, timeout, command, *, budget=60, prepare=None):
                                 receipt["cleanup_complete"] = True
                             else:
                                 code = 3
+                                if not direct_complete:
+                                    receipt["cleanup_error"] = "direct child cleanup had an unconfirmed wait"
                         except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+                            if isinstance(error, subprocess.TimeoutExpired):
+                                record_timeout(evidence, receipt, "cleanup", error)
                             receipt["cleanup_error"] = str(error)
                             code = 3
                         # A failed cleanup keeps the original fsynced refusal latch.

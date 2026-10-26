@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import plistlib
 import select
+import shutil
 import signal
 import stat
 import subprocess
@@ -122,6 +123,27 @@ class RendererCleanupHookTests(unittest.TestCase):
 
 class KilledScenarioCleanupTests(unittest.TestCase):
     def test_killed_scenario_cannot_leave_its_recorded_target_stopped(self):
+        self.assert_killed_scenario_cleanup()
+
+    def test_foreign_host_inventory_cannot_prevent_the_private_sigkill_cleanup_case(self):
+        failures, private_reads = [], []
+        backend = types.SimpleNamespace(**vars(subprocess))
+        def foreign_inventory(command, *args, **kwargs):
+            if command[:2] == ["/bin/ps", "-axo"]:
+                failures.append(command)
+                raise subprocess.TimeoutExpired(command, 5, output=b"foreign inventory unavailable", stderr=None)
+            if command[:2] == ["/bin/ps", "-p"]:
+                self.assertEqual(kwargs["timeout"], 5)
+                self.assertIs(kwargs["text"], True)
+                private_reads.append(command)
+            return subprocess.check_output(command, *args, **kwargs)
+        backend.check_output = foreign_inventory
+        with mock.patch.object(runner, "subprocess", backend):
+            self.assert_killed_scenario_cleanup()
+        self.assertEqual(failures, [], "the stall cleanup fixture queried unrelated host processes")
+        self.assertTrue(private_reads, "the fixture skipped actual private process observation")
+
+    def assert_killed_scenario_cleanup(self):
         import native_macos_resilience_fault as fault
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
@@ -142,6 +164,32 @@ class KilledScenarioCleanupTests(unittest.TestCase):
                         "Path(os.environ['ZWAI_NATIVE_EVIDENCE'],'qa-ready.json').write_text(json.dumps("
                         "dict(case_id=os.environ['ZWAI_NATIVE_CASE_ID'],app=os.environ['ZWAI_NATIVE_APP'],"
                         "shell=int(os.environ['ZWAI_NATIVE_APP_PID']))));time.sleep(120)")
+            backend = types.SimpleNamespace(**vars(runner.subprocess))
+            original_launch, original_output = backend.Popen, backend.check_output
+            processes, listings = [], []
+            def launch(*args, **kwargs):
+                child = original_launch(*args, **kwargs)
+                processes.append(child)
+                return child
+            def private_inventory(command, *args, **kwargs):
+                if command != ["/bin/ps", "-axo", "pid=,ppid=,pgid=,uid=,stat=,lstart="]:
+                    return original_output(command, *args, **kwargs)
+                # These two real fixture actors only pause/write/sleep and never
+                # fork. Keep the actual parser/ownership logic without scanning
+                # unrelated host processes; the recorded fault target is separate.
+                living = [child.pid for child in processes if child.poll() is None]
+                if not living:
+                    return ""
+                private = ["/bin/ps", "-p", ",".join(map(str, living)), "-o", command[2]]
+                try:
+                    output = original_output(private, *args, **kwargs)
+                except subprocess.CalledProcessError as error:
+                    if error.returncode != 1 or error.output or any(child.poll() is None for child in processes):
+                        raise
+                    output = ""
+                listings.append(dict(command=private, output=output))
+                return output
+            backend.Popen, backend.check_output = launch, private_inventory
             targets, killed = [], []
             def kill_after_durable_stall(process, _timeout):
                 until = time.monotonic() + 5
@@ -177,23 +225,41 @@ class KilledScenarioCleanupTests(unittest.TestCase):
                 process.kill()
                 killed.append(process.wait(timeout=3))
                 raise subprocess.TimeoutExpired("killed private QA child", .1)
+            passed = False
             try:
                 with mock.patch.object(runner, "LOCK_PATH", root / "lock"), \
                         mock.patch.object(runner, "require_guest"), \
                         mock.patch.object(runner, "wait_scenario", side_effect=kill_after_durable_stall), \
+                        mock.patch.object(runner, "subprocess", backend), \
                         mock.patch.object(fault, "require_guest"), \
                         mock.patch.object(fault, "_service_path", side_effect=lambda _kind, path: path == str(executable)):
                     code = runner.run_case(app, evidence, 10, [sys.executable, "-c", scenario])
                 receipt = json.loads((evidence / "cleanup.json").read_text())
-                self.assertEqual(killed, [-signal.SIGKILL])
-                self.assertEqual(code, 124, receipt)  # Cleanup never turns the failed case into success.
+                self.assertEqual(killed, [-signal.SIGKILL], receipt)
+                self.assertEqual(code, 2, receipt)  # The injected child failure is not a scenario deadline.
+                self.assertEqual(receipt["failure_kind"], "subprocess_timeout")
+                self.assertEqual(receipt["timeouts"][0]["command"], "killed private QA child")
                 self.assertEqual(targets[0].wait(timeout=2), 0)
                 self.assertTrue(receipt["cleanup_complete"], receipt)
                 self.assertTrue(receipt["data_removed"])
                 self.assertEqual(receipt["remaining_owned_pids"], [])
                 self.assertEqual(len(receipt["renderer_fault_cleanup"]), 2)
                 self.assertTrue(receipt["renderer_fault_cleanup"][-1]["require_exit"])
+                passed = True
             finally:
+                if not passed and evidence.exists():
+                    try:
+                        retained = Path(tempfile.mkdtemp(prefix="native-fault-cleanup-failure-"))
+                        shutil.copytree(evidence, retained / "evidence")
+                        (retained / "fixture.json").write_text(json.dumps(dict(
+                            test=self.id(), killed=killed, target_pids=[child.pid for child in targets],
+                            private_pids=[child.pid for child in processes], listings=listings), indent=2) + "\n")
+                        print("native fault cleanup failure evidence: " + str(retained), file=sys.stderr)
+                    except (OSError, TypeError, ValueError) as error:
+                        try:
+                            print("WARN native fault cleanup evidence failed: " + type(error).__name__, file=sys.stderr)
+                        except (OSError, ValueError):
+                            pass
                 for child in targets:
                     if child.poll() is None:
                         os.kill(child.pid, signal.SIGCONT)

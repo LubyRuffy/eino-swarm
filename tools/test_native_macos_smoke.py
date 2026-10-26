@@ -297,6 +297,44 @@ class SmokeTests(unittest.TestCase):
         self.assertLessEqual(run.call_count, 3)
         self.assertGreaterEqual(clock.return_value, deadline.ends)
 
+    def test_registered_application_keeps_formal_window_polling_until_ready(self):
+        context = dict(self.context, ax=self.root / "formal-helper", origin="http://127.0.0.1:4567")
+        pending = dict(self.native_row(), ready=False, registration_pending=False,
+                       bundle_verified=True, activation_requested=True, activation_ready=True,
+                       title="", has_web_area=False, textareas=0, rect=[0, 0, 0, 0],
+                       window_count=0, windows=[], expected_visible=False)
+        ready = dict(self.native_row(), ready=True)
+        responses = [pending, dict(pending), ready]
+        clock = mock.Mock(return_value=10)
+        deadline = smoke.Deadline(1, clock=clock)
+        original_end = deadline.ends
+
+        def native_call(argv, **kwargs):
+            # Exercise wait_window and native_snapshot together. Only the OS
+            # subprocess is replaced; every empty-window poll must still reach
+            # the formal snapshot entry that owns application activation.
+            self.assertEqual(argv[0], str(context["ax"]))
+            self.assertEqual(argv[1:4], ["123", "snapshot", context["case_id"]])
+            row = responses.pop(0)
+            clock.return_value += .05
+            return subprocess.CompletedProcess(argv, 0, json.dumps(row), "")
+
+        with mock.patch.object(smoke, "assert_process", return_value=context["app"] / "Contents/MacOS/zwai"), \
+                mock.patch.object(smoke, "validate_helper", return_value={"binary_sha256": "prepared"}), \
+                mock.patch.object(smoke.subprocess, "run", side_effect=native_call) as run, \
+                mock.patch.object(smoke.time, "sleep", side_effect=lambda seconds: setattr(clock, "return_value", clock.return_value + seconds)) as pause, \
+                mock.patch.object(smoke, "assert_window", wraps=smoke.assert_window) as strict:
+            self.assertEqual(smoke.wait_window(context, deadline), ready)
+        self.assertEqual(responses, [])
+        self.assertEqual(run.call_count, 3)
+        self.assertEqual(pause.call_count, 2)
+        strict.assert_called_once_with(ready, context["app_pid"], require_result=False)
+        timeouts = [call.kwargs["timeout"] for call in run.call_args_list]
+        self.assertAlmostEqual(timeouts[0], 1)
+        self.assertTrue(all(earlier > later > 0 for earlier, later in zip(timeouts, timeouts[1:])))
+        self.assertEqual(deadline.ends, original_end)
+        self.assertLess(clock.return_value, original_end)
+
     def test_window_wait_propagates_identity_refusal_and_cancellation_without_retry(self):
         context = dict(self.context, ax=self.root / "unused-helper", origin="http://127.0.0.1:4567")
         cancelled = KeyboardInterrupt("owned case cancelled")

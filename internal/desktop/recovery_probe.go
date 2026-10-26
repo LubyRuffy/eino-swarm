@@ -85,7 +85,8 @@ func absChannel(a, b byte) int {
 }
 
 func recoveryProbeScript(expected, session string, generation int, challenge string, first, second color.NRGBA, document int) string {
-	// The marker sits under the native title-bar corner and never handles input.
+	// A native sibling covers this corner on screen without entering the
+	// WKWebView snapshot. The marker itself remains opaque and never handles input.
 	// Colour tolerance cannot distinguish nearby palettes: every ordered nonce bit
 	// must paint, so an old snapshot cannot acknowledge a new paint challenge.
 	payload, _ := json.Marshal(map[string]any{"type": "zwai:recovery", "session": session, "generation": generation, "challenge": challenge, "document": document})

@@ -35,13 +35,30 @@ class PhaseTests(unittest.TestCase):
             runner=SimpleNamespace(process_identity=lambda pid:([str(self.root / "zwai.app/Contents/MacOS/zwai")], "c" * 32)),
             native=mock.Mock(return_value=dict(active=True, frontmost_pid=18)))
 
-    def test_replacement_activates_only_the_new_private_shell_then_requires_its_fresh_ready_event(self):
+    def test_replacement_activates_the_new_private_shell_after_its_fresh_ready_event(self):
         row = phases.replacement_ready(self.context, self.harness, original_pid=17, since=5)
         self.assertEqual(row, self.event)
         self.assertEqual(self.context["app_pid"], 18)
         self.assertEqual(self.harness.native.call_args.args[1], "activate")
         self.journal.write_text("")
         self.assertIsNone(phases.replacement_ready(self.context, self.harness, original_pid=17, since=5))
+
+    def test_test_activation_cannot_supply_the_successors_missing_automatic_ready(self):
+        # Activating an unready replacement can unpause its focus-gated health
+        # controller and conceal a broken automatic recovery path.
+        self.journal.write_text("")
+        def activate(context, action):
+            self.journal.write_text(json.dumps(self.event) + "\n")
+            return dict(active=True, frontmost_pid=18)
+        self.harness.native.side_effect = activate
+        self.assertIsNone(phases.replacement_ready(self.context, self.harness, original_pid=17, since=5))
+        self.harness.native.assert_not_called()
+        self.assertNotIn("ready", self.journal.read_text())
+        # Once the product supplies its own current pixel-ready receipt, native
+        # activation is permitted to inspect the already recovered window.
+        self.journal.write_text(json.dumps(self.event) + "\n")
+        self.assertEqual(phases.replacement_ready(self.context, self.harness, original_pid=17, since=5), self.event)
+        self.harness.native.assert_called_once_with(self.context, "activate")
 
     def test_stale_ready_or_changed_engine_cannot_accept_a_replacement(self):
         self.assertIsNone(phases.replacement_ready(self.context, self.harness, original_pid=17, since=11))

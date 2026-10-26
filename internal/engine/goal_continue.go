@@ -53,8 +53,14 @@ func (rt *runtime) continueGoal(status string) {
 		rt.markGoalCapped(th, capN)
 		return
 	}
-	// Budget still remains: an empty continuation is a loop, not a cap.
-	if last := lastThreadTurn(rt.engine, rt.threadID); last != nil && last.GoalContinue &&
+	last := lastThreadTurn(rt.engine, rt.threadID)
+	if isStoredScheduleClaimMismatch(last) && !rt.engine.allowScheduleClaimGoalRetry(th, last) {
+		rt.reapParked()
+		return
+	}
+	// A failed answer was withheld, not an empty successful continuation.
+	// Its separate durable limit still bounds retries even without tool work.
+	if last != nil && !isStoredScheduleClaimMismatch(last) && last.GoalContinue &&
 		!rt.engine.turnHasCountedGoalActivity(rt.threadID, last.ID) {
 		rt.reapParked()
 		rt.engine.holdGoalIdle(rt.threadID)
@@ -110,7 +116,7 @@ func shouldPursueAfterTurn(status string, runErr error, pursuing bool) bool {
 	if status == store.TurnDone {
 		return true
 	}
-	return pursuing && status == store.TurnError && isRetryableModelError(runErr)
+	return pursuing && status == store.TurnError && (isRetryableModelError(runErr) || isScheduleClaimMismatch(runErr))
 }
 
 func (rt *runtime) pursuingOpenGoal() bool {
@@ -166,7 +172,12 @@ func (e *Engine) blockOpenGoalOnTurnError(threadID string) {
 	}
 	errText := ""
 	if turns, listErr := e.store.ListTurns(threadID); listErr == nil && len(turns) > 0 {
-		errText = turns[len(turns)-1].Error
+		last := &turns[len(turns)-1]
+		if isStoredScheduleClaimMismatch(last) {
+			e.allowScheduleClaimGoalRetry(th, last)
+			return
+		}
+		errText = last.Error
 	}
 	if err := e.BlockThreadGoal(threadID, failedTurnBlockReason(errText)); err != nil {
 		e.log.Warn("could not block the standing objective after a failed turn",

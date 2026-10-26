@@ -44,9 +44,16 @@ func TestRestartRealProcessPreservesTheOriginalUnansweredAsk(t *testing.T) {
 	if err := os.WriteFile(oldBinary, binary, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	runRestartAskProcessAcceptance(t, dir, oldBinary, newBinary, false)
+}
+
+func runRestartAskProcessAcceptance(t *testing.T, dir, oldBinary, newBinary string, crossVersion bool) {
+	t.Helper()
+
 	var mu sync.Mutex
 	managerCalls, invalidResumes := 0, 0
 	reply := &restartProcessFixture{}
+	policyPrompt := scheduleAnswerProcessPrompt(t)
 	fixture := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var input restartModelInput
 		if r.Method != http.MethodPost || r.URL.Path != "/chat/completions" || r.Header.Get("Authorization") != "" || json.NewDecoder(r.Body).Decode(&input) != nil {
@@ -56,6 +63,11 @@ func TestRestartRealProcessPreservesTheOriginalUnansweredAsk(t *testing.T) {
 		if len(input.Tools) == 0 {
 			for _, message := range input.Messages {
 				if message.Role == schema.System && strings.HasPrefix(message.Content, "## Schedule answer claims\n") {
+					if !restartClassificationMatches(input, policyPrompt, "The confirmed direction is retained.") {
+						t.Error("ask classifier used an unknown candidate or protocol")
+						w.WriteHeader(http.StatusBadRequest)
+						return
+					}
 					reply.reply(w, false, `{"claims":[]}`, "", "", nil)
 					return
 				}
@@ -149,8 +161,13 @@ func TestRestartRealProcessPreservesTheOriginalUnansweredAsk(t *testing.T) {
 		return live.Status.AwaitingAnswer && live.Status.TurnID == started.Turn.ID
 	})
 	began := time.Now()
-	shell := startRestartProcess(t, dir, newBinary, "web", "--no-open", "--data-dir", data, "--addr", "127.0.0.1:0")
-	replacement := waitRestartRecord(t, data, oldRecord.PID, 30*time.Second, shell)
+	var replacement lease.Record
+	if crossVersion {
+		_, replacement = handoffUpgradePrivateEngine(t, dir, data, newBinary, old, oldRecord)
+	} else {
+		shell := startRestartProcess(t, dir, newBinary, "web", "--no-open", "--data-dir", data, "--addr", "127.0.0.1:0")
+		replacement = waitRestartRecord(t, data, oldRecord.PID, 30*time.Second, shell)
+	}
 	listenElapsed := time.Since(began)
 	if listenElapsed >= 30*time.Second || replacement.Ino == oldRecord.Ino && replacement.Dev == oldRecord.Dev {
 		t.Fatalf("replacement identity/listen deadline invalid after %s: old=%+v replacement=%+v", listenElapsed, oldRecord, replacement)

@@ -97,6 +97,9 @@ func appOptions(opts Options) application.Options {
 		OnShutdown: opts.OnShutdown,
 		RawMessageHandler: func(window application.Window, message string, origin *application.OriginInfo) {
 			directoryMessageHandler(opts.URL, chooseNativeDirectory)(window, message, origin)
+			if opts.Recovery != nil {
+				recoveryCoverMessageHandler(opts.URL, window, message, origin, updateRecoveryCover)
+			}
 			if opts.rawMessageHandler != nil {
 				opts.rawMessageHandler(window, message, origin)
 			}

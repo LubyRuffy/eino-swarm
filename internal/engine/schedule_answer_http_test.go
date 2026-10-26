@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
@@ -48,10 +49,18 @@ func TestUnverifiedScheduleClaimNeverBecomesLiveOrStoredAnswer(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := waitForTurn(t, e, turn.ID)
+			if mode == "goal-only" {
+				waitScheduleClaimGoalCap(t, e, th.ID)
+				waitSettled(t, e, th.ID)
+			}
 			if got.Status != store.TurnError || !strings.Contains(got.Error, "schedule_claim_unverified") || got.Final != "" {
 				t.Fatalf("unsupported scheduling became success: %+v", got)
 			}
-			if manager.Load() != 2 || checks.Load() != 2 {
+			wantCalls := int32(2)
+			if mode == "goal-only" {
+				wantCalls = 2 * scheduleClaimGoalFailureCap
+			}
+			if manager.Load() != wantCalls || checks.Load() != wantCalls {
 				t.Fatalf("unbounded/missing correction: manager=%d classifier=%d", manager.Load(), checks.Load())
 			}
 			events, err := e.Store().ListTurnEvents(turn.ID)
@@ -117,7 +126,7 @@ func newScheduleAnswerFixture(t *testing.T, mode string, correct bool) (*Engine,
 			if req.Stream || len(req.Tools) != 0 || len(req.Messages) != 2 {
 				t.Errorf("claim extractor has tools/replay: %+v", req)
 			}
-			claims := `{"claims":[{"quote":"` + fixtureScheduleClaim + `","scope":"thread","new":true,"every_s":90}]}`
+			claims := `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureScheduleClaim + `","scope":"thread","new":true,"every_s":90}]}`
 			if correct && n > 1 {
 				claims = `{"claims":[]}`
 			}
@@ -129,6 +138,10 @@ func newScheduleAnswerFixture(t *testing.T, mode string, correct bool) (*Engine,
 			}
 			if mode == "classifier-unavailable" {
 				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if mode == "flaky-classifier" && n == 1 {
+				w.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
 			writeContextFlowReply(w, req.Stream, map[string]any{"content": claims}, "stop")
@@ -190,7 +203,7 @@ func newScheduleAnswerFixture(t *testing.T, mode string, correct bool) (*Engine,
 }
 
 func TestVerifiedSchedulingAndNonClaimsKeepTheirRealMeaning(t *testing.T) {
-	for _, mode := range []string{"success", "negation", "quoted", "hypothetical", "corrected", "invalid-classifier", "classifier-unavailable"} {
+	for _, mode := range []string{"success", "negation", "quoted", "hypothetical", "corrected"} {
 		t.Run(mode, func(t *testing.T) {
 			e, manager, checks := newScheduleAnswerFixture(t, mode, mode == "corrected")
 			th, _ := e.CreateThread("schedule answer", "", "")
@@ -201,10 +214,6 @@ func TestVerifiedSchedulingAndNonClaimsKeepTheirRealMeaning(t *testing.T) {
 			got := waitForTurn(t, e, turn.ID)
 			wantStatus, wantCalls := store.TurnDone, int32(1)
 			if mode == "corrected" {
-				wantCalls = 2
-			}
-			if mode == "invalid-classifier" || mode == "classifier-unavailable" {
-				wantStatus = store.TurnError
 				wantCalls = 2
 			}
 			if got.Status != wantStatus || manager.Load() != wantCalls || checks.Load() != wantCalls {
@@ -218,6 +227,53 @@ func TestVerifiedSchedulingAndNonClaimsKeepTheirRealMeaning(t *testing.T) {
 			}
 			if mode == "corrected" && (strings.Contains(replayDump(t, e, th.ID), fixtureScheduleClaim) || got.Final != "No future check has been arranged.") {
 				t.Fatalf("rejected candidate survived correction: %+v", got)
+			}
+		})
+	}
+}
+
+func TestUnknownScheduleClassificationRetainsTheOriginalTurnAndCorrection(t *testing.T) {
+	for _, mode := range []string{"invalid-classifier", "classifier-unavailable"} {
+		t.Run(mode, func(t *testing.T) {
+			e, managers, checks := newScheduleAnswerFixture(t, mode, false)
+			th, err := e.CreateThread("pending schedule classification", "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			sub := e.Subscribe(th.ID)
+			defer sub.Close()
+			turn, err := e.StartTurn(th.ID, "Inspect the current work.")
+			if err != nil {
+				t.Fatal(err)
+			}
+			deadline := time.NewTimer(5 * time.Second)
+			defer deadline.Stop()
+			for {
+				select {
+				case ev := <-sub.C:
+					if ev.Kind == KindModelBackoff && ev.AgentID == scheduleAnswerAgentID {
+						goto waiting
+					}
+				case <-deadline.C:
+					t.Fatal("policy failure did not retain a visible recovery wait")
+				}
+			}
+		waiting:
+			got, err := e.store.GetTurn(turn.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Status != store.TurnRunning || managers.Load() != 1 || checks.Load() != 1 || scheduleAnswerRetryCount(t, e, turn.ID) != 0 {
+				t.Fatalf("unknown classification became a manager correction: turn=%+v manager=%d policy=%d", got, managers.Load(), checks.Load())
+			}
+			if strings.Contains(replayDump(t, e, th.ID), fixtureScheduleClaim) {
+				t.Fatal("unknown claim reached replay")
+			}
+			if err := e.Interrupt(th.ID); err != nil {
+				t.Fatal(err)
+			}
+			if got := waitForTurn(t, e, turn.ID); got.Status != store.TurnCancelled || got.Final != "" {
+				t.Fatalf("Stop lost pending output: %+v", got)
 			}
 		})
 	}

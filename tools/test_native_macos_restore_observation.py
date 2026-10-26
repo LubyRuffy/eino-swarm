@@ -82,7 +82,7 @@ class RestoreObservationTests(unittest.TestCase):
         (root / "data/engine.json").write_text(json.dumps(dict(pid=42, url=self.context["origin"])))
         for active in (
             patch.object(h.runner, "process_identity", side_effect=self.identity),
-            patch.object(h.subprocess, "run", side_effect=self.native_process),
+            patch.object(h, "_run_native_helper", side_effect=self.native_process),
             patch.object(h.time, "monotonic", side_effect=lambda: self.clock),
             patch.object(h.time, "sleep", side_effect=self.sleep),
         ):
@@ -94,14 +94,14 @@ class RestoreObservationTests(unittest.TestCase):
         return [str(self.context["app"] / "Contents/MacOS/zwai")], "restore-case" if self.owned else "foreign"
 
     def native_process(self, argv, **kwargs):
-        self.assertEqual(kwargs, dict(capture_output=True, text=True, timeout=8))
+        self.assertEqual(kwargs, dict(capture_output=True, timeout=8))
         self.calls.append(("native", argv[1], argv[2], argv[3]))
         effect = self.effects.pop(0) if self.effects else copy.deepcopy(self.snapshot)
         if isinstance(effect, BaseException):
             raise effect
         if isinstance(effect, subprocess.CompletedProcess):
             return effect
-        return subprocess.CompletedProcess(argv, 0, json.dumps(effect), "decoded diagnostic")
+        return subprocess.CompletedProcess(argv, 0, json.dumps(effect).encode("utf-8"), b"binary diagnostic")
 
     def sleep(self, seconds):
         self.clock += seconds
@@ -111,6 +111,18 @@ class RestoreObservationTests(unittest.TestCase):
 
     def verify(self, timeout=.4):
         return h.verify_draft(self.context, self.expected, timeout)
+
+    def fail_observation_write(self, error):
+        original = h.atomic_json
+        def write(path, value):
+            if Path(path).name.startswith("draft-restore-"):
+                raise error
+            return original(path, value)
+        return write
+
+    def assert_binary_summary(self, summary, raw):
+        self.assertEqual(summary, dict(type="bytes", length=len(raw), byte_length=len(raw),
+                                      sha256=hashlib.sha256(raw).hexdigest()))
 
     def test_success_preserves_actual_http_native_call_order_and_marks_not_false(self):
         self.assertEqual(self.verify(), self.expected)
@@ -150,8 +162,7 @@ class RestoreObservationTests(unittest.TestCase):
         self.assertNotIn("private body", json.dumps(row))
         self.assertNotIn("different body", json.dumps(row))
         stream = row["last"]["native_calls"][-1]["stdout"]
-        self.assertEqual(stream["type"], "decoded_text")
-        self.assertIn("sha256", stream)
+        self.assert_binary_summary(stream, json.dumps(dict(self.snapshot, values=["different body"])).encode("utf-8"))
 
     def test_first_false_and_last_are_separate_and_later_invocation_does_not_overwrite(self):
         self.effects = [dict(self.snapshot, textareas=0), self.snapshot, self.snapshot]
@@ -209,14 +220,16 @@ class RestoreObservationTests(unittest.TestCase):
                 row = self.receipts()[-1]["last"]
                 self.assertEqual(row["error"]["origin"], field)
 
-    def test_native_nonzero_is_retried_as_before_with_safe_decoded_stream_summary(self):
-        self.effects = [subprocess.CompletedProcess(["ignored"], 2, "private stdout", "private stderr")] * 3
+    def test_native_nonzero_is_retried_as_before_with_safe_binary_stream_summary(self):
+        self.effects = [subprocess.CompletedProcess(["ignored"], 2, b"private stdout", b"private stderr")] * 3
         with self.assertRaises(TimeoutError):
             self.verify()
         row = self.receipts()[0]["last"]
         self.assertEqual(row["error"]["origin"], "current_shell_native")
         self.assertEqual(row["error"]["type"], "OSError")
         self.assertEqual(row["native_calls"][-1]["returncode"], 2)
+        self.assert_binary_summary(row["native_calls"][-1]["stdout"], b"private stdout")
+        self.assert_binary_summary(row["native_calls"][-1]["stderr"], b"private stderr")
         self.assertNotIn("private stdout", json.dumps(row))
         self.assertNotIn("private stderr", json.dumps(row))
 
@@ -259,10 +272,11 @@ class RestoreObservationTests(unittest.TestCase):
     def test_failed_evidence_serialization_never_replaces_primary_exception(self):
         error = KeyboardInterrupt()
         self.effects = [error]
-        with patch.object(h, "atomic_json", side_effect=TypeError("observation serialization")):
+        with patch.object(h, "atomic_json", side_effect=self.fail_observation_write(TypeError("observation serialization"))) as output:
             with self.assertRaises(KeyboardInterrupt) as caught:
                 self.verify()
         self.assertIs(caught.exception, error)
+        self.assertEqual(sum(Path(call.args[0]).name.startswith("draft-restore-") for call in output.call_args_list), 1)
 
     def test_transient_current_shell_error_is_first_false_and_success_has_no_stale_error(self):
         error = OSError(5, "native read unavailable")
@@ -295,14 +309,14 @@ class RestoreObservationTests(unittest.TestCase):
         self.assertEqual(row["last"], row["first_false"])
         self.assertEqual(row["error"]["type"], "KeyboardInterrupt")
 
-    def test_native_json_failure_preserves_decode_error_origin_and_decoded_summary(self):
-        self.effects = [subprocess.CompletedProcess(["ignored"], 0, "private malformed JSON", "")] * 3
+    def test_native_json_failure_preserves_decode_error_origin_and_binary_summary(self):
+        self.effects = [subprocess.CompletedProcess(["ignored"], 0, b"private malformed JSON", b"")] * 3
         with self.assertRaises(TimeoutError):
             self.verify()
         row = self.receipts()[0]["last"]
         self.assertEqual(row["error"]["type"], "JSONDecodeError")
         self.assertEqual(row["predicates"]["native_textareas"], "error")
-        self.assertEqual(row["native_calls"][0]["stdout"]["type"], "decoded_text")
+        self.assert_binary_summary(row["native_calls"][0]["stdout"], b"private malformed JSON")
         self.assertNotIn("private malformed", json.dumps(row))
 
     def test_missing_lease_is_error_not_false_or_an_additional_api_read(self):
@@ -374,28 +388,48 @@ class RestoreObservationTests(unittest.TestCase):
         cause = RuntimeError("same cause")
         error.__cause__ = cause
         self.effects = [error]
-        with patch.object(h, "atomic_json", side_effect=OSError("disk")), \
+        with patch.object(h, "atomic_json", side_effect=self.fail_observation_write(OSError("disk"))) as output, \
                 patch("builtins.print", side_effect=OSError("stderr")):
             with self.assertRaises(KeyboardInterrupt) as caught:
                 self.verify()
         self.assertIs(caught.exception, error)
         self.assertIs(caught.exception.__cause__, cause)
         self.assertNotIn("_restore_observation", self.context)
+        self.assertEqual(sum(Path(call.args[0]).name.startswith("draft-restore-") for call in output.call_args_list), 1)
 
     def test_success_cannot_pass_if_mandatory_observation_cannot_be_written(self):
-        with patch.object(h, "atomic_json", side_effect=OSError("disk")):
+        with patch.object(h, "atomic_json", side_effect=self.fail_observation_write(OSError("disk"))) as output:
             with self.assertRaisesRegex(OSError, "disk"):
                 self.verify()
         self.assertNotIn("_restore_observation", self.context)
+        self.assertEqual(sum(Path(call.args[0]).name.startswith("draft-restore-") for call in output.call_args_list), 1)
 
     def test_observation_is_only_written_after_original_wait_exits(self):
-        original = h.atomic_json
+        original, original_wait = h.atomic_json, h.wait_for
+        wait_exited, observer_writes, native_writes = False, [], []
+        def wait(check, deadline):
+            nonlocal wait_exited
+            try:
+                return original_wait(check, deadline)
+            finally:
+                wait_exited = True
         def write(path, value):
-            self.assertTrue(self.calls[-1][1].endswith("/files/file-id"))
+            if Path(path).name.startswith("draft-restore-"):
+                self.assertTrue(wait_exited)
+                self.assertEqual(self.calls[-1], ("api", "/api/composer/drafts/thread%3Ath_saved/files/file-id"))
+                observer_writes.append(path)
+            else:
+                self.assertFalse(wait_exited)
+                self.assertEqual(Path(path).parent.parent.name, "native-actions")
+                self.assertEqual(Path(path).name, "receipt.json")
+                self.assertEqual(self.calls[-1], ("native", value["action"], "41", ""))
+                native_writes.append(path)
             return original(path, value)
-        with patch.object(h, "atomic_json", side_effect=write) as output:
+        with patch.object(h, "atomic_json", side_effect=write) as output, patch.object(h, "wait_for", side_effect=wait):
             self.verify()
-        self.assertEqual(output.call_count, 1)
+        self.assertEqual(len(observer_writes), 1)
+        self.assertEqual(len(native_writes), 2)
+        self.assertEqual(output.call_count, 3)
 
     def test_standalone_current_shell_keeps_original_call_contract_without_receipt(self):
         self.assertEqual(h.current_shell(self.context), 41)

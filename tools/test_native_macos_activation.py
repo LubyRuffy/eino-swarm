@@ -413,6 +413,10 @@ int main(int argc,const char **argv) {@autoreleasepool {
             code,row,calls=self.run_mode("smoke",mode)
             self.assertEqual(code,expected)
             self.assertFalse(row["ready"])
+            # An empty AX list must not suppress the already-guarded application
+            # activation. Window raising and input still require a real window.
+            self.assertTrue(row["activation_requested"])
+            self.assertEqual(calls["activations"],1)
             self.assertEqual((calls["raises"],calls["presses"],calls["inputs"]),(0,0,0))
 
     def test_ns_activation_refuses_changed_identity_without_any_ax_work(self):
