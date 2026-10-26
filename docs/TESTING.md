@@ -2696,6 +2696,13 @@ The actual Objective-C entry-point regressions live in
 `tools/test_native_goal_resume_notice_ax.py`. A refused complete traversal
 retains its first predicate, path, attribute status and type without recording
 text content; it does not reveal a target or post input.
+Text extraction follows the actual AX role: `AXStaticText` requires a string
+`AXValue` with the existing title fallback. A WebKit `AXHeading` exposes its
+numeric heading level in `AXValue`, so the helper reads only its string title
+and continues through its actual `AXChildren` for rendered static text. A
+heading level never becomes a text witness. Real-entry regressions retain
+numeric-heading child text and textual titles while rejecting unknown/malformed
+consumed titles or Children and non-string StaticText values without input.
 The unique root remains a real `AXWindow` owned by the private app PID.
 Its complete bounded `AXChildren` graph may include remote-process WebKit
 elements; each must have a real AX type and a successfully sampled positive

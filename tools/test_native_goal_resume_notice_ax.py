@@ -15,7 +15,7 @@ READING_OS_SEAMS = r"""
 #import <ApplicationServices/ApplicationServices.h>
 #include <sys/sysctl.h>
 static NSString *mode;
-static AXUIElementRef app, win, area, web, group, receipt, second, branch, detached;
+static AXUIElementRef app, win, area, web, group, receipt, second, branch, detached, heading;
 static int reveals=0, inputs=0, lookups=0, rootOwnerReads=0;
 static BOOL hitRead=NO;
 @interface ReadingApp:NSObject
@@ -52,6 +52,7 @@ static AXError qa_get(AXUIElementRef e,CFStringRef key,CFTypeRef *out) {
     if (CFEqual(key,kAXWindowsAttribute)) value=[mode isEqual:@"proxy-window"] ? @[@"proxy"] : @[(__bridge id)win];
     if (CFEqual(key,kAXRoleAttribute)) value=CFEqual(e,win) ? ([mode isEqual:@"wrong-window-role"] ? @"AXGroup" : @"AXWindow") :
         ([mode isEqual:@"foreign-root-parent"] && CFEqual(e,detached)) ? @"AXWindow" :
+        CFEqual(e,heading) ? @"AXHeading" :
         CFEqual(e,area) ? @"AXScrollArea" : CFEqual(e,web) ? @"AXWebArea" :
         (CFEqual(e,receipt)||CFEqual(e,second)) ? @"AXStaticText" : @"AXGroup";
     if (CFEqual(key,kAXChildrenAttribute) && CFEqual(e,group) && [mode isEqual:@"children-null"]) {*out=NULL;return kAXErrorSuccess;}
@@ -59,6 +60,20 @@ static AXError qa_get(AXUIElementRef e,CFStringRef key,CFTypeRef *out) {
     if (CFEqual(key,kAXValueAttribute) && [mode isEqual:@"unknown-text"] && CFEqual(e,receipt)) return kAXErrorCannotComplete;
     if (CFEqual(key,kAXValueAttribute) && (CFEqual(e,receipt)||CFEqual(e,second)))
         value=[mode isEqual:@"no-notice"] ? @"other receipt" : @"继续追求目标。";
+    if (CFEqual(e,heading)) {
+        if (CFEqual(key,kAXValueAttribute)) value=@2;
+        if (CFEqual(key,kAXTitleAttribute)) {
+            if ([mode isEqual:@"heading-unknown-title"]) return kAXErrorCannotComplete;
+            value=[mode isEqual:@"heading-wrong-title"] ? @2 : [mode isEqual:@"heading-title"] ? @"Heading textual title" : @"";
+        }
+        if (CFEqual(key,kAXChildrenAttribute) && [mode isEqual:@"heading-unknown-children"]) return kAXErrorCannotComplete;
+        if (CFEqual(key,kAXChildrenAttribute) && [mode isEqual:@"heading-null-children"]) {*out=NULL;return kAXErrorSuccess;}
+    }
+    if (CFEqual(key,kAXValueAttribute) && CFEqual(e,receipt)) {
+        if ([mode isEqual:@"wrong-static-number"]) value=@2;
+        if ([mode isEqual:@"wrong-static-bool"]) value=@YES;
+    }
+    if (CFEqual(key,kAXTitleAttribute) && CFEqual(e,receipt) && [mode hasPrefix:@"wrong-static-"]) value=@"继续追求目标。";
     if (CFEqual(key,kAXParentAttribute) && CFEqual(e,receipt)) {
         if ([mode isEqual:@"unknown-parent"]) return kAXErrorCannotComplete;
         if ([mode isEqual:@"detached-parent"] || [mode isEqual:@"foreign-root-parent"] ||
@@ -76,16 +91,23 @@ static AXError qa_get(AXUIElementRef e,CFStringRef key,CFTypeRef *out) {
         CFEqual(e,branch) ? (__bridge id)web :
         CFEqual(e,group) ? (__bridge id)web : CFEqual(e,web) ? (__bridge id)area :
         CFEqual(e,area) ? (__bridge id)win : nil;
+    if (CFEqual(key,kAXParentAttribute) && [mode hasPrefix:@"heading-"]) {
+        if (CFEqual(e,receipt)) value=(__bridge id)heading;
+        if (CFEqual(e,heading)) value=(__bridge id)group;
+    }
     if (CFEqual(key,kAXChildrenAttribute)) value=CFEqual(e,win) ? @[(__bridge id)area] :
         CFEqual(e,area) ? @[(__bridge id)web] : CFEqual(e,web) ? ([mode isEqual:@"remote-dag"] ? @[(__bridge id)group,(__bridge id)branch] : @[(__bridge id)group]) :
         (CFEqual(e,branch) && [mode isEqual:@"remote-dag"]) ? @[(__bridge id)receipt] :
-        CFEqual(e,group) ? (([mode isEqual:@"two-notices"]||[mode isEqual:@"shared-closing"]) ? @[(__bridge id)receipt,(__bridge id)second] : @[(__bridge id)receipt]) : @[];
+        CFEqual(e,group) ? ([mode hasPrefix:@"heading-"] ? @[(__bridge id)heading] :
+            (([mode isEqual:@"two-notices"]||[mode isEqual:@"shared-closing"]) ? @[(__bridge id)receipt,(__bridge id)second] : @[(__bridge id)receipt])) :
+        CFEqual(e,heading) ? @[(__bridge id)receipt] : @[];
     if (CFEqual(key,kAXPositionAttribute)||CFEqual(key,kAXSizeAttribute)) {
         if ([mode isEqual:@"unknown-ancestor"] && CFEqual(e,group)) return kAXErrorCannotComplete;
         if (([mode isEqual:@"remote-offscreen-unknown-outer"] && CFEqual(e,web)) ||
             ([mode isEqual:@"unknown-target"] && CFEqual(e,receipt))) return kAXErrorCannotComplete;
         CGPoint p=CGPointMake(0,30); CGSize s=CGSizeMake(800,600);
         if (CFEqual(e,group)) {p=CGPointMake(100,100);s=CGSizeMake(500,400);}
+        if (CFEqual(e,heading)) {p=CGPointMake(110,190);s=CGSizeMake(120,40);}
         if (CFEqual(e,receipt)||CFEqual(e,second)) {p=CGPointMake(120,([mode isEqual:@"outside-notice"] || ([mode isEqual:@"detached-after-reveal"] && !reveals))?700:200);s=CGSizeMake(100,20);}
         if ([mode hasPrefix:@"remote-offscreen"] && (!reveals || [mode isEqual:@"remote-offscreen-stays-outside"])) {
             if (CFEqual(e,group)) p.y=800;
@@ -137,12 +159,16 @@ int main(int argc,const char **argv) {@autoreleasepool {
     web=AXUIElementCreateApplication(4);group=AXUIElementCreateApplication(5);
     receipt=AXUIElementCreateApplication(6);second=AXUIElementCreateApplication(7);
     branch=AXUIElementCreateApplication(8);detached=AXUIElementCreateApplication(9);
+    heading=AXUIElementCreateApplication(10);
     setenv("ZWAI_NATIVE_APP","/tmp/reading-private.app",1);setenv("ZWAI_NATIVE_CASE_ID","reading-case",1);
     const char *descriptor=strcmp(argv[2],"inspect-text")==0 ? "{\"witness\":\"继续追求目标。\",\"unique\":true,\"path\":[0,0,0,0]}" :
         "{\"witness\":\"继续追求目标。\",\"unique\":true}";
     if ([mode isEqual:@"shared-closing"]) descriptor="{\"witness\":\"继续追求目标。\",\"unique\":false}";
     if ([mode isEqual:@"wrong-path"]) descriptor="{\"witness\":\"继续追求目标。\",\"unique\":true,\"path\":[9]}";
     if ([mode isEqual:@"malformed-path"]) descriptor="{\"witness\":\"继续追求目标。\",\"unique\":true,\"path\":[false,false,false,false]}";
+    if ([mode hasPrefix:@"heading-"] && strcmp(argv[2],"inspect-text")==0) descriptor="{\"witness\":\"继续追求目标。\",\"unique\":true,\"path\":[0,0,0,0,0]}";
+    if ([mode isEqual:@"heading-level-witness"]) descriptor="{\"witness\":\"2\",\"unique\":true}";
+    if ([mode isEqual:@"heading-title"]) descriptor="{\"witness\":\"Heading textual title\",\"unique\":true,\"path\":[0,0,0,0]}";
     const char *args[]={"reading","123",argv[2],"/tmp/reading-private.app",descriptor};
     int code=reading_actual_main(strstr(argv[2],"-text")?5:4,args);
     fprintf(stderr,"{\"reveals\":%d,\"inputs\":%d}\n",reveals,inputs);return code;
@@ -292,6 +318,40 @@ int main(int argc,const char **argv) {@autoreleasepool {
                 code, row, actions = self.observe("remote-offscreen-stays-outside", action)
                 self.assertEqual((code, actions), (2, {"reveals": 1, "inputs": 0}))
                 self.assertIn("error", row)
+
+    def test_numeric_heading_metadata_does_not_hide_its_actual_child_text(self):
+        for action in ("read-up", "reveal-text", "inspect-text"):
+            with self.subTest(action=action):
+                code, row, actions = self.observe("heading-numeric", action)
+                self.assertEqual((code, actions), (0, {"reveals": int(action != "inspect-text"), "inputs": int(action == "read-up")}))
+                if action == "read-up":
+                    notice.assert_reading_admission(row)
+                else:
+                    notice.assert_target_geometry(row, unique=True)
+                    self.assertEqual(row["selected_path"], [0, 0, 0, 0, 0])
+        code, row, actions = self.observe("heading-level-witness", "reveal-text")
+        self.assertEqual((code, row.get("matched_count"), actions), (2, 0, {"reveals": 0, "inputs": 0}))
+        for action in ("reveal-text", "inspect-text"):
+            code, row, actions = self.observe("heading-title", action)
+            self.assertEqual((code, actions), (0, {"reveals": int(action == "reveal-text"), "inputs": 0}))
+            notice.assert_target_geometry(row, unique=True)
+            self.assertEqual(row["targets"][0]["text"], "Heading textual title")
+
+    def test_heading_titles_children_and_static_text_keep_strict_consumed_read_types(self):
+        for mode, predicate, key in (("heading-unknown-title", "text_read", "AXTitle"),
+                                     ("heading-wrong-title", "text_read", "AXTitle"),
+                                     ("heading-unknown-children", "children_read", "AXChildren"),
+                                     ("heading-null-children", "children_read", "AXChildren"),
+                                     ("wrong-static-number", "text_read", "AXValue"),
+                                     ("wrong-static-bool", "text_read", "AXValue")):
+            with self.subTest(mode=mode):
+                code, row, actions = self.observe(mode)
+                self.assertEqual((code, actions), (2, {"reveals": 0, "inputs": 0}))
+                first = row["first_refusal"]
+                self.assertEqual((first["predicate"], first["key"]), (predicate, key))
+                self.assertEqual(first["role"], "AXStaticText" if mode.startswith("wrong-static-") else "AXHeading")
+                self.assertEqual(first["status"], -25204 if "unknown" in mode else 0)
+                self.assertEqual(first["raw_null"], "unknown" in mode or mode == "heading-null-children")
 
 
 if __name__ == "__main__":

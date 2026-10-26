@@ -193,6 +193,16 @@ static NSString *knownText(AXUIElementRef element, CFStringRef key, BOOL *known,
     return value;
 }
 
+static NSString *knownContent(AXUIElementRef element, NSString *role, BOOL *known, NSMutableDictionary *reading) {
+    // WebKit's Heading AXValue is the heading level, not its rendered text.
+    // Its textual children are collected independently through AXChildren.
+    if ([role isEqual:@"AXHeading"]) return knownText(element, kAXTitleAttribute, known, reading);
+    if (![role isEqual:@"AXStaticText"]) { *known = NO; return @""; }
+    NSString *content = knownText(element, kAXValueAttribute, known, reading);
+    if (!content.length) content = knownText(element, kAXTitleAttribute, known, reading);
+    return content;
+}
+
 static void collect(AXUIElementRef element, NSMutableArray *matches, NSMutableArray *notices,
                     NSMutableArray *targets, NSString *needle, NSArray *path, CFMutableSetRef seen,
                     NSUInteger *visits, BOOL *truncated, NSMutableDictionary *first, pid_t pid, int depth) {
@@ -226,8 +236,7 @@ static void collect(AXUIElementRef element, NSMutableArray *matches, NSMutableAr
         [matches addObject:(__bridge id)element];
     NSString *content = @"";
     if ([@[@"AXStaticText", @"AXHeading"] containsObject:role]) {
-        content = knownText(element, kAXValueAttribute, &known, reading);
-        if (!content.length) content = knownText(element, kAXTitleAttribute, &known, reading);
+        content = knownContent(element, role, &known, reading);
         if (!known) { refuseScan(first, truncated, @"text_read", path, *visits, depth, role, reading, pid); return; }
     }
     // These are localized UI receipts, never the user's objective or answer.
@@ -359,8 +368,11 @@ int main(int argc, const char **argv) { @autoreleasepool {
         CGRect bounds;
         context = scrollContext(target, (__bridge AXUIElementRef)windowOwner, reachable, pid, NO);
         if (!context || !geometry(target, &bounds)) { CFRelease(app); return emit(@{@"error": @"target geometry or ancestry is unknown"}, 2); }
-        NSString *content = text(target, kAXValueAttribute);
-        if (!content.length) content = text(target, kAXTitleAttribute);
+        BOOL known = YES;
+        NSMutableDictionary *reading = [NSMutableDictionary dictionary];
+        NSString *role = knownText(target, kAXRoleAttribute, &known, reading);
+        NSString *content = knownContent(target, role, &known, reading);
+        if (!known) { CFRelease(app); return emit(@{@"error": @"target text readback is unknown", @"reading": reading}, 2); }
         NSDictionary *targetRow = @{@"text": content, @"path": selected[@"path"], @"frame": rectangle(bounds),
             @"viewport": context[@"viewport"], @"ancestors": context[@"ancestors"],
             @"in_view": @(inView(bounds, fromRectangle(context[@"viewport"]))),
