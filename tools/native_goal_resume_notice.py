@@ -23,6 +23,13 @@ NOTICE_TEXTS = {"继续追求目标。", "Continuing the standing objective.", "
 SESSION_SOURCE = Path(__file__).with_name("native_goal_resume_notice_ax.m")
 
 
+def save_private_json(path, row):
+    encoded = json.dumps(row, indent=2) + "\n"
+    with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as output:
+        os.fchmod(output.fileno(), 0o600)
+        output.write(encoded)
+
+
 def validate_session_helper(binary):
     binary = binary.resolve(strict=True)
     receipt = json.loads(Path(str(binary) + ".json").read_text())
@@ -47,7 +54,7 @@ def prepare_session_helper(binary):
         receipt = {"source_name": SESSION_SOURCE.name, "source_sha256": hashlib.sha256(source).hexdigest(),
                    "binary_sha256": hashlib.sha256(candidate.read_bytes()).hexdigest(),
                    "compiler": "/usr/bin/xcrun clang", "flags": smoke.AX_FLAGS}
-        smoke.runner.save_json(Path(str(candidate) + ".json"), receipt)
+        save_private_json(Path(str(candidate) + ".json"), receipt)
         os.replace(candidate, binary)
         os.replace(Path(str(candidate) + ".json"), Path(str(binary) + ".json"))
     return validate_session_helper(binary)
@@ -110,6 +117,43 @@ def assert_work_collapsed(state):
     return folds
 
 
+def finite_rectangle(value):
+    return (isinstance(value, dict) and all(type(value.get(key)) in (int, float) and math.isfinite(value[key])
+            for key in ("x", "y", "width", "height")) and value["width"] > 0 and value["height"] > 0)
+
+
+def assert_reading_admission(row):
+    assert_notice_in_view(row)
+    clip, point = row.get("viewport_frame"), row.get("point", {})
+    assert (row.get("wheel_posted") is True and type(row.get("wheel_count")) is int and row["wheel_count"] == 1
+            and type(row.get("wheel_delta")) is int and row["wheel_delta"] > 0
+            and row.get("notice_reveal_requested") is True and row.get("notice_reveal_status") == 0
+            and row.get("scrollarea_verified") is True and row.get("hit_verified") is True and row.get("hit_status") == 0
+            and finite_rectangle(clip) and all(type(point.get(key)) in (int, float) and math.isfinite(point[key]) for key in ("x", "y"))
+            and clip["x"] < point["x"] < clip["x"] + clip["width"]
+            and clip["y"] < point["y"] < clip["y"] + clip["height"]), "native reading wheel needs one verified transcript target"
+
+
+def assert_target_geometry(row, *, unique):
+    targets, count = row.get("targets"), row.get("target_count")
+    assert isinstance(targets, list) and type(count) is int and count == len(targets) and count > 0, "target readback is incomplete"
+    assert count == 1, "one selected text target is required"
+    matched = row.get("matched_count")
+    assert type(matched) is int and matched > 0 and (not unique or matched == 1), "opening witness must identify one actual text target"
+    assert type(row.get("pid")) is int and row["pid"] > 0, "target owner must be known"
+    visible = False
+    for target in targets:
+        box, clip = target.get("frame"), target.get("viewport")
+        assert (target.get("owner_pid") == row["pid"] and finite_rectangle(box) and finite_rectangle(clip)
+                and type(target.get("in_view")) is bool), "target geometry and owner must be known"
+        inside = (box["x"] >= clip["x"] and box["y"] >= clip["y"] and
+                  box["x"] + box["width"] <= clip["x"] + clip["width"] and
+                  box["y"] + box["height"] <= clip["y"] + clip["height"])
+        assert target["in_view"] == inside, "target visibility disagrees with its actual viewport"
+        visible |= inside
+    assert visible, "target must remain inside its actual transcript viewport"
+
+
 def assert_inline_briefing(row, summary, expanded):
     assert summary.strip(), "briefing must come from a nonempty durable compacted summary"
     assert not any(node.get("AXRole") in ("AXDialog", "AXSheet") for node in row.get("tree", [])), "inline briefing must not open a dialog"
@@ -152,7 +196,7 @@ def eventually(context, deadline, probe, stage):
                 return value
         except (OSError, ValueError, AssertionError, RuntimeError, KeyError) as error:
             last = str(error)
-        smoke.runner.save_json(context["evidence"] / "goal-notice-progress.json", {"stage": stage, "last": last})
+        save_private_json(context["evidence"] / "goal-notice-progress.json", {"stage": stage, "last": last})
         deadline.pause(stage)
 
 
@@ -197,7 +241,7 @@ def prepare_goal_fixture(context, deadline):
     receipt = {"setup": "normal local API /goal with actual offline completion", "thread_request": {"title": title},
                "thread_response": created, "turn_request": request, "turn_response": accepted,
                "thread_id": thread_id, "initial_turn_id": first_id, "workspace": str(workspace)}
-    smoke.runner.save_json(context["evidence"] / "goal-notice-fixture.json", receipt)
+    save_private_json(context["evidence"] / "goal-notice-fixture.json", receipt)
 
     def completed():
         thread = api(context, deadline, "/api/threads/" + thread_id)["thread"]
@@ -208,12 +252,12 @@ def prepare_goal_fixture(context, deadline):
             return None
         trace = api(context, deadline, "/api/trace/" + first_id)
         assert_goal_trace(trace, thread_id, first_id, objective)
-        smoke.runner.save_json(context["evidence"] / "goal-notice-fixture-trace.json", trace)
+        save_private_json(context["evidence"] / "goal-notice-fixture-trace.json", trace)
         return thread, turns[0]
 
     thread, first = eventually(context, deadline, completed, "completed API goal fixture and actual model Trace")
     receipt.update(goal_complete=True, completed_turn=first)
-    smoke.runner.save_json(context["evidence"] / "goal-notice-fixture.json", receipt)
+    save_private_json(context["evidence"] / "goal-notice-fixture.json", receipt)
     return thread, first, title, objective
 
 
@@ -223,14 +267,14 @@ def resume_goal_fixture(context, deadline, thread_id):
     request = {"goal_resume": True}
     acknowledged = api(context, deadline, "/api/threads/" + thread_id, request, "PATCH")
     assert acknowledged.get("thread", {}).get("id") == thread_id, "resume fixture acknowledged another conversation"
-    smoke.runner.save_json(context["evidence"] / "goal-notice-resume-fixture.json",
+    save_private_json(context["evidence"] / "goal-notice-resume-fixture.json",
                            {"setup": "normal local API goal_resume; completed goal has no native Start",
                             "thread_id": thread_id, "request": request, "response": acknowledged})
 
 
 def control(context, deadline, action, value=None):
     smoke.assert_process(context, context["app_pid"], "desktop")
-    smoke.wait_window(context, deadline)
+    wait_window(context, deadline)
     assert hashlib.sha256(context["controls"].read_bytes()).hexdigest() == context["control_sha256"], "prepared control helper changed"
     command = [str(context["controls"]), str(context["app_pid"]), action]
     if value is not None:
@@ -242,11 +286,15 @@ def control(context, deadline, action, value=None):
     return row
 
 
-def run_native_helper(context, deadline, kind, action, command, value=None):
+def run_native_helper(context, deadline, kind, action, command, value=None, limit=8):
     started, failure, result = time.monotonic(), None, None
     try:
+        left = deadline.remaining("native " + action)
+        # A screenshot writer may replace its precreated output. Restrict only
+        # that child; the parent and helper/compiler processes keep their umask.
+        permissions = {"umask": 0o077} if kind == "screenshot" else {}
         result = subprocess.run(command, capture_output=True, text=True,
-                                timeout=min(8, deadline.remaining("native " + action)))
+                                timeout=left if limit is None else min(limit, left), **permissions)
     except subprocess.TimeoutExpired as error:
         failure = error
     def stream(value):
@@ -255,11 +303,12 @@ def run_native_helper(context, deadline, kind, action, command, value=None):
                    "returncode": result.returncode if result else None, "timed_out": failure is not None,
                    "stdout": stream(result.stdout if result else failure.stdout),
                    "stderr": stream(result.stderr if result else failure.stderr),
-                   "elapsed_seconds": time.monotonic() - started}
+                   "started_monotonic": started, "finished_monotonic": time.monotonic()}
+    observation["elapsed_seconds"] = observation["finished_monotonic"] - started
     context["helper_observations"] = context.get("helper_observations", 0) + 1
     try:
         for name in ("goal-notice-helper-%03d.json" % context["helper_observations"], "goal-notice-" + kind + "-last.json"):
-            smoke.runner.save_json(context["evidence"] / name, observation)
+            save_private_json(context["evidence"] / name, observation)
     except OSError as evidence_error:
         if failure is None and result.returncode:
             failure = subprocess.CalledProcessError(result.returncode, command, result.stdout, result.stderr)
@@ -271,16 +320,43 @@ def run_native_helper(context, deadline, kind, action, command, value=None):
     return result, observation
 
 
+def window_snapshot(context, deadline):
+    executable = smoke.assert_process(context, context["app_pid"], "desktop")
+    bundle = executable.parent.parent.parent
+    identity = smoke.validate_helper(context["ax"])
+    assert context.get("ax_identity", identity)["binary_sha256"] == identity["binary_sha256"], "native window helper changed"
+    command = [str(context["ax"]), str(context["app_pid"]), "snapshot", context["case_id"],
+               str(bundle), context["origin"], ""]
+    result, observation = run_native_helper(context, deadline, "window", "snapshot", command)
+    assert result.returncode == 0, "native window snapshot failed: " + result.stdout + result.stderr
+    row = json.loads(result.stdout)
+    assert row.get("origin") == context["origin"] and Path(row["bundle"]).resolve(strict=True) == bundle.resolve(strict=True), "native window snapshot identity differs"
+    row["native_call"] = {"receipt": "goal-notice-helper-%03d.json" % context["helper_observations"],
+                          "started_monotonic": observation["started_monotonic"], "finished_monotonic": observation["finished_monotonic"]}
+    return row
+
+
+def wait_window(context, deadline):
+    # Snapshot only: all target reveals belong to the narrow, path-bound helper.
+    while True:
+        deadline.remaining("native composer")
+        row = window_snapshot(context, deadline)
+        if row.get("ready"):
+            smoke.assert_window(row, context["app_pid"])
+            return row
+        deadline.pause("native composer")
+
+
 def press_available(context, deadline, value):
     while True:
         deadline.remaining("native control " + value)
-        row = smoke.wait_window(context, deadline)
+        row = wait_window(context, deadline)
         matches = [node for node in row.get("tree", [])
                    if node.get("AXRole") in ("AXButton", "AXRadioButton", "AXCheckBox")
                    and any(value in node.get(key, "") for key in ("AXTitle", "AXDescription"))]
         exact = [node for node in matches if value in (node.get("AXTitle"), node.get("AXDescription"))]
         matches = exact or matches
-        smoke.runner.save_json(context["evidence"] / "goal-notice-availability-last.json",
+        save_private_json(context["evidence"] / "goal-notice-availability-last.json",
                                {"value": value, "matches": len(matches), "snapshot": row})
         assert len(matches) <= 1, "native control title is ambiguous: " + value
         if matches and matches[0].get("AXEnabled") is True:
@@ -289,16 +365,18 @@ def press_available(context, deadline, value):
     return control(context, deadline, "press", value)
 
 
-def session_control(context, deadline, action):
+def session_control(context, deadline, action, value=None):
     executable = smoke.assert_process(context, context["app_pid"], "desktop")
-    if action != "startup":
-        smoke.wait_window(context, deadline)
+    if action not in ("startup", "inspect-text", "reveal-text"):
+        wait_window(context, deadline)
     validate_session_helper(context["session_ax"])
     command = [str(context["session_ax"]), str(context["app_pid"]), action, str(executable.parent.parent.parent)]
-    result, observation = run_native_helper(context, deadline, "session", action, command)
+    if value is not None:
+        command.append(value)
+    result, observation = run_native_helper(context, deadline, "session", action, command, value)
     if action == "startup":
         context["startup_observations"] = context.get("startup_observations", 0) + 1
-        smoke.runner.save_json(context["evidence"] / ("goal-notice-startup-%03d.json" % context["startup_observations"]), observation)
+        save_private_json(context["evidence"] / ("goal-notice-startup-%03d.json" % context["startup_observations"]), observation)
     assert result.returncode == 0, "native session control failed: " + result.stdout + result.stderr
     row = json.loads(result.stdout)
     assert (row.get("pid") == context["app_pid"] and row.get("action") == action
@@ -311,6 +389,9 @@ def session_control(context, deadline, action):
     else:
         assert (row.get("ax_error") == 0 and isinstance(row.get("folds"), list)
                 and row.get("pressed") is False), "invalid native session state or identity"
+    if action in ("read-up", "inspect-text", "reveal-text"):
+        row["native_call"] = {"receipt": "goal-notice-helper-%03d.json" % context["helper_observations"],
+                              "started_monotonic": observation["started_monotonic"], "finished_monotonic": observation["finished_monotonic"]}
     return row
 
 
@@ -323,29 +404,59 @@ def wait_registered_application(context, deadline):
 
 
 def capture(context, deadline, name):
-    row = smoke.wait_window(context, deadline)
+    row = wait_window(context, deadline)
     assert_single_notice(row)
     state = session_control(context, deadline, "inspect")
     assert_work_collapsed(state)
-    smoke.runner.save_json(context["evidence"] / (name + ".folds.json"), state)
+    save_private_json(context["evidence"] / (name + ".folds.json"), state)
     visible = session_control(context, deadline, "reveal-notice")
-    smoke.runner.save_json(context["evidence"] / (name + ".viewport.json"), visible)
+    save_private_json(context["evidence"] / (name + ".viewport.json"), visible)
     assert_notice_in_view(visible)
-    row = smoke.wait_window(context, deadline)
+    row = wait_window(context, deadline)
     assert_single_notice(row)
     save_window(context, deadline, name, row)
     return row
 
 
 def save_window(context, deadline, name, row):
-    smoke.runner.save_json(context["evidence"] / (name + ".ax.json"), row)
+    save_private_json(context["evidence"] / (name + ".ax.json"), row)
     image = context["evidence"] / (name + ".png")
-    subprocess.run(["/usr/sbin/screencapture", "-x", "-l", str(row["window_id"]), str(image)],
-                   check=True, capture_output=True, timeout=deadline.remaining("native screenshot"))
+    with os.fdopen(os.open(image, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "wb") as output:
+        os.fchmod(output.fileno(), 0o600)
+    command = ["/usr/sbin/screencapture", "-x", "-l", str(row["window_id"]), str(image)]
+    result, observation = run_native_helper(context, deadline, "screenshot", name, command, limit=None)
+    if result.returncode:
+        raise subprocess.CalledProcessError(result.returncode, command, result.stdout, result.stderr)
+    assert image.stat().st_mode & 0o777 == 0o600, "native screenshot output must remain private"
     dimensions = smoke.png_dimensions(image)
-    smoke.runner.save_json(context["evidence"] / (name + ".image.json"),
+    save_private_json(context["evidence"] / (name + ".image.json"),
                            {"pid": context["app_pid"], "window_id": row["window_id"],
-                            "dimensions": dimensions, "sha256": hashlib.sha256(image.read_bytes()).hexdigest()})
+                            "dimensions": dimensions, "sha256": hashlib.sha256(image.read_bytes()).hexdigest(),
+                            "capture_started_monotonic": observation["started_monotonic"],
+                            "capture_finished_monotonic": observation["finished_monotonic"],
+                            "native_call_receipt": "goal-notice-helper-%03d.json" % context["helper_observations"]})
+
+
+def capture_target(context, deadline, name, expected, *, unique):
+    request = {"witness": expected, "unique": unique}
+    revealed = session_control(context, deadline, "reveal-text", json.dumps(request))
+    save_private_json(context["evidence"] / (name + ".target-reveal.json"), revealed)
+    assert revealed.get("reveal_count") == 1, "target must be revealed exactly once"
+    assert_target_geometry(revealed, unique=unique)
+    path = revealed.get("selected_path")
+    assert isinstance(path, list) and path and all(type(index) is int and index >= 0 for index in path), "revealed target path must be known"
+    request["path"] = path
+    before = session_control(context, deadline, "inspect-text", json.dumps(request))
+    save_private_json(context["evidence"] / (name + ".target-before.json"), before)
+    assert_target_geometry(before, unique=unique)
+    assert before.get("reveal_count") == 0 and before.get("selected_path") == path and before["matched_count"] == revealed["matched_count"], "revealed target identity changed"
+    row = wait_window(context, deadline)
+    save_window(context, deadline, name, row)
+    after = session_control(context, deadline, "inspect-text", json.dumps(request))
+    save_private_json(context["evidence"] / (name + ".target-after.json"), after)
+    assert_target_geometry(after, unique=unique)
+    assert after.get("reveal_count") == 0 and after.get("selected_path") == path and after["matched_count"] == revealed["matched_count"], "captured target identity changed"
+    return row
 
 
 def capture_answers(context, deadline, name, traces):
@@ -353,22 +464,24 @@ def capture_answers(context, deadline, name, traces):
         answer_witnesses(trace.get("turn", {}).get("final"))
     pending = 0
     while True:
-        row = smoke.wait_window(context, deadline)
+        row = wait_window(context, deadline)
         try:
             pairs = assert_default_answers(row, traces)
             break
         except AssertionError as error:
             observation = {"failure": str(error), "snapshot": row}
             if pending == 0:
-                smoke.runner.save_json(context["evidence"] / (name + "-answers-first-pending.json"), observation)
-            smoke.runner.save_json(context["evidence"] / (name + "-answers-last-pending.json"), observation)
+                save_private_json(context["evidence"] / (name + "-answers-first-pending.json"), observation)
+            save_private_json(context["evidence"] / (name + "-answers-last-pending.json"), observation)
             pending += 1
             deadline.pause("selected conversation's completed answers")
+    reading = session_control(context, deadline, "read-up")
+    save_private_json(context["evidence"] / (name + ".reading.json"), reading)
+    assert_reading_admission(reading)
     for index, pair in enumerate(pairs):
         for edge, expected in zip(("opening", "closing"), pair):
-            row = smoke.wait_window(context, deadline, expected=expected)
+            row = capture_target(context, deadline, "%s-answer%d-%s" % (name, index + 1, edge), expected, unique=edge == "opening")
             assert_default_answers(row, traces)
-            save_window(context, deadline, "%s-answer%d-%s" % (name, index + 1, edge), row)
     return pairs
 
 
@@ -387,23 +500,22 @@ def compact_fixture(context, deadline, thread_id, turn_ids):
     assert isinstance(summary, str) and summary.strip(), "normal compact must store its real complete summary"
     turns = api(context, deadline, "/api/threads/" + thread_id + "/turns")["turns"]
     assert [turn["id"] for turn in turns] == turn_ids, "compression must not create another turn"
-    smoke.runner.save_json(context["evidence"] / "goal-notice-compact.json", {"event": fresh[0], "log": after, "turn_ids": turn_ids})
+    save_private_json(context["evidence"] / "goal-notice-compact.json", {"event": fresh[0], "log": after, "turn_ids": turn_ids})
     return summary
 
 
 def exercise_inline_briefing(context, deadline, summary):
-    row = smoke.wait_window(context, deadline)
+    row = wait_window(context, deadline)
     assert_inline_briefing(row, summary, False)
     press_available(context, deadline, "查看压缩后的简报")
-    row = smoke.wait_window(context, deadline)
+    row = wait_window(context, deadline)
     assert_inline_briefing(row, summary, True)
     lines = [line.strip() for line in summary.splitlines() if line.strip()]
     for edge, expected in zip(("opening", "closing"), (lines[0], lines[-1])):
-        row = smoke.wait_window(context, deadline, expected=expected)
+        row = capture_target(context, deadline, "inline-briefing-" + edge, expected, unique=False)
         assert_inline_briefing(row, summary, True)
-        save_window(context, deadline, "inline-briefing-" + edge, row)
     press_available(context, deadline, "收起简报")
-    row = smoke.wait_window(context, deadline)
+    row = wait_window(context, deadline)
     assert_inline_briefing(row, summary, False)
     save_window(context, deadline, "inline-briefing-collapsed", row)
 
@@ -445,8 +557,8 @@ def run(context):
     sequences = assert_resume_events(traced, first["id"], second["id"])
     assert_goal_trace(traces[0], thread["id"], first["id"], objective)
     assert_goal_trace(traces[1], thread["id"], second["id"])
-    smoke.runner.save_json(context["evidence"] / "goal-notice-log.json", log)
-    smoke.runner.save_json(context["evidence"] / "goal-notice-traces.json", {"traces": traces})
+    save_private_json(context["evidence"] / "goal-notice-log.json", log)
+    save_private_json(context["evidence"] / "goal-notice-traces.json", {"traces": traces})
     witnesses = capture_answers(context, deadline, "01-resumed", traces)
     eventually(context, deadline, lambda: capture(context, deadline, "01-resumed"), "one live native notice")
     summary = compact_fixture(context, deadline, thread["id"], [first["id"], second["id"]])
@@ -456,7 +568,7 @@ def run(context):
     # again, just as reopen does, before accepting its historical transcript.
     press_available(context, deadline, title)
     capture_answers(context, deadline, "02-reloaded", traces)
-    assert_inline_briefing(smoke.wait_window(context, deadline), summary, False)
+    assert_inline_briefing(wait_window(context, deadline), summary, False)
     eventually(context, deadline, lambda: capture(context, deadline, "02-reloaded"), "one reloaded native notice")
     old_pid = context["app_pid"]
     control(context, deadline, "close")
@@ -470,7 +582,7 @@ def run(context):
     wait_registered_application(context, deadline)
     press_available(context, deadline, title)
     capture_answers(context, deadline, "03-reopened", traces)
-    assert_inline_briefing(smoke.wait_window(context, deadline), summary, False)
+    assert_inline_briefing(wait_window(context, deadline), summary, False)
     eventually(context, deadline, lambda: capture(context, deadline, "03-reopened"), "one reopened native notice")
     after = api(context, deadline, "/api/threads/" + thread["id"] + "/log?limit=1000")
     assert_resume_events(after["events"], first["id"], second["id"])
@@ -491,7 +603,7 @@ def run(context):
     eventually(context, deadline, lambda: smoke.runner.process_argv(process.pid) is None, "reopened desktop exit")
     receipt["reopened_desktop_exit_code"] = process.wait(timeout=deadline.remaining("reopened desktop reap"))
     assert receipt["reopened_desktop_exit_code"] == 0, "reopened desktop did not close normally"
-    smoke.runner.save_json(context["evidence"] / "native-goal-resume-notice.json", receipt)
+    save_private_json(context["evidence"] / "native-goal-resume-notice.json", receipt)
     return receipt
 
 
@@ -527,7 +639,7 @@ def main(argv=None):
                                  "stdout": decode(error.output), "stderr": decode(error.stderr),
                                  "evidence_error": getattr(error, "evidence_error", None)}
         try:
-            smoke.runner.save_json(context["evidence"] / "native-goal-resume-notice.json", receipt)
+            save_private_json(context["evidence"] / "native-goal-resume-notice.json", receipt)
         except OSError as evidence_error:
             receipt["receipt_evidence_error"] = str(evidence_error)
         print(json.dumps(receipt))

@@ -1,8 +1,10 @@
 import importlib.util
 import hashlib
 import json
+import platform
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -18,6 +20,74 @@ spec.loader.exec_module(notice)
 
 
 class GoalResumeNoticeAssertions(unittest.TestCase):
+    def test_private_json_and_screenshot_keep_mode_0600_without_changing_normal_umask(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            script = '''
+import json, os, sys
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+import native_goal_resume_notice as notice
+root = Path(sys.argv[2])
+receipt = root / "own-receipt.json"
+notice.save_private_json(receipt, {"retained": "first"})
+receipt.chmod(0o644)
+notice.save_private_json(receipt, {"retained": "updated"})
+image = root / "native.png"
+image.write_bytes(b"previous fixture")
+image.chmod(0o644)
+def capture(command, **kwargs):
+    assert image.stat().st_mode & 0o777 == 0o600
+    assert kwargs["umask"] == 0o077
+    image.write_bytes(b"captured fixture")
+    return SimpleNamespace(returncode=0, stdout="capture output", stderr="capture diagnostic")
+with patch.object(notice.subprocess, "run", side_effect=capture), patch.object(notice.smoke, "png_dimensions", return_value=(640, 480)):
+    notice.save_window({"evidence": root, "app_pid": 123}, SimpleNamespace(remaining=lambda _: 5), "native", {"window_id": 456})
+with os.fdopen(os.open(root / "normal-umask", os.O_WRONLY | os.O_CREAT, 0o666), "w") as output:
+    output.write("normal umask remains")
+print(json.dumps({"modes": {path.name: path.stat().st_mode & 0o777 for path in root.iterdir()}, "receipt": json.loads(receipt.read_text())}))
+'''
+            result = subprocess.run([sys.executable, "-c", script, str(MODULE.parent), temporary],
+                                    capture_output=True, text=True, timeout=10, umask=0o022)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            evidence = json.loads(result.stdout)
+            self.assertEqual(evidence["receipt"], {"retained": "updated"})
+            self.assertEqual(evidence["modes"].pop("normal-umask"), 0o644)
+            self.assertTrue(evidence["modes"])
+            self.assertEqual(set(evidence["modes"].values()), {0o600})
+
+    @staticmethod
+    def reading_row():
+        return {"notice_count": 1, "notice_in_view": True, "notice_reveal_requested": True, "notice_reveal_status": 0,
+                "notice_frame": {"x": 110, "y": 190, "width": 20, "height": 20},
+                "wheel_posted": True, "wheel_count": 1, "wheel_delta": 80,
+                "scrollarea_verified": True, "hit_verified": True, "hit_status": 0,
+                "point": {"x": 120, "y": 200},
+                "viewport_frame": {"x": 100, "y": 100, "width": 400, "height": 500}}
+
+    def test_reading_admission_requires_a_verified_single_native_wheel_and_real_geometry(self):
+        area = {"x": 100, "y": 100, "width": 400, "height": 500}
+        good = self.reading_row()
+        notice.assert_reading_admission(good)
+        for change in ({"wheel_posted": False}, {"wheel_count": 2}, {"wheel_delta": -80},
+                       {"hit_verified": False}, {"scrollarea_verified": False},
+                       {"point": {"x": 0, "y": 0}}, {"viewport_frame": {}}):
+            with self.subTest(change=change), self.assertRaises(AssertionError):
+                notice.assert_reading_admission({**good, **change})
+
+    def test_target_geometry_rejects_presence_without_visible_viewport_or_unique_opening(self):
+        rectangle = {"x": 100, "y": 100, "width": 100, "height": 20}
+        target = {"owner_pid": 123, "in_view": True, "frame": rectangle,
+                  "viewport": {"x": 0, "y": 0, "width": 640, "height": 480}}
+        notice.assert_target_geometry({"pid": 123, "matched_count": 1, "target_count": 1, "targets": [target]}, unique=True)
+        for state in ({"pid": 123, "matched_count": 1, "target_count": 0, "targets": []},
+                      {"pid": 123, "matched_count": 2, "target_count": 1, "targets": [target]},
+                      {"pid": 123, "matched_count": 1, "target_count": 1, "targets": [{**target, "in_view": False}]},
+                      {"pid": 123, "matched_count": 1, "target_count": 1, "targets": [{**target, "frame": {**rectangle, "y": 600}}]}):
+            with self.subTest(state=state), self.assertRaises(AssertionError):
+                notice.assert_target_geometry(state, unique=True)
+
     def test_default_answers_require_both_real_final_bodies_even_when_the_answers_are_identical(self):
         traces = [{"turn": {"final": "## Result\n\nRequest: own fixture\n\nFinal observation."}}] * 2
         rows = [{"AXRole": "AXStaticText", "AXValue": text}
@@ -43,8 +113,9 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                                for value in ["Opening actual observation.", "Closing actual observation."] * 2]}
             pauses = []
             deadline = SimpleNamespace(pause=lambda stage: pauses.append(stage))
-            with patch.object(notice.smoke, "wait_window", side_effect=[{"tree": []}, loaded, loaded, loaded, loaded, loaded]) as snapshot, \
-                    patch.object(notice, "save_window") as capture, patch.object(notice, "control") as control:
+            with patch.object(notice, "wait_window", side_effect=[{"tree": []}, loaded, loaded, loaded, loaded, loaded]) as snapshot, \
+                    patch.object(notice, "capture_target", return_value=loaded) as capture, \
+                    patch.object(notice, "session_control", return_value=self.reading_row()), patch.object(notice, "control") as control:
                 notice.capture_answers(context, deadline, "restored", traces)
             self.assertEqual(len(pauses), 1)
             self.assertEqual(capture.call_count, 4)
@@ -58,7 +129,7 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
             context = {"evidence": Path(temporary)}
             traces = [{"turn": {"final": "Opening actual observation.\n\nClosing actual observation."}}]
             deadline = SimpleNamespace(pause=lambda _: (_ for _ in ()).throw(TimeoutError("original answer deadline")))
-            with patch.object(notice.smoke, "wait_window", return_value={"tree": []}), \
+            with patch.object(notice, "wait_window", return_value={"tree": []}), \
                     patch.object(notice, "control") as control, patch.object(notice, "save_window") as capture, \
                     self.assertRaisesRegex(TimeoutError, "original answer deadline"):
                 notice.capture_answers(context, deadline, "missing", traces)
@@ -90,7 +161,7 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
             self.assertEqual((saved["stdout"], saved["stderr"], saved["command"], saved["timed_out"]),
                              ("partial stdout", "original stderr", ["helper", "inspect"], True))
             with patch.object(notice.subprocess, "run", side_effect=failure), \
-                    patch.object(notice.smoke.runner, "save_json", side_effect=OSError("evidence unavailable")), \
+                    patch.object(notice, "save_private_json", side_effect=OSError("evidence unavailable")), \
                     self.assertRaises(subprocess.TimeoutExpired) as raised:
                 notice.run_native_helper(context, deadline, "session", "inspect", ["helper", "inspect"])
             self.assertIs(raised.exception, failure)
@@ -99,7 +170,7 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
         context = {"evidence": Path("unused"), "app_pid": 123}
         deadline = SimpleNamespace(remaining=lambda _: 5)
         with patch.object(notice.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="{}", stderr="")), \
-                patch.object(notice.smoke.runner, "save_json", side_effect=OSError("evidence unavailable")), \
+                patch.object(notice, "save_private_json", side_effect=OSError("evidence unavailable")), \
                 self.assertRaisesRegex(OSError, "evidence unavailable"):
             notice.run_native_helper(context, deadline, "session", "inspect", ["helper", "inspect"])
 
@@ -118,9 +189,9 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
             for caller in (lambda: notice.control(context, deadline, "press", "unique input"),
                            lambda: notice.session_control(context, deadline, "inspect")):
                 with self.subTest(caller=caller), patch.object(notice.smoke, "assert_process", return_value=executable), \
-                        patch.object(notice.smoke, "wait_window"), patch.object(notice, "validate_session_helper"), \
+                        patch.object(notice, "wait_window"), patch.object(notice, "validate_session_helper"), \
                         patch.object(notice.subprocess, "run", return_value=result), \
-                        patch.object(notice.smoke.runner, "save_json", side_effect=OSError("evidence volume unavailable")), \
+                        patch.object(notice, "save_private_json", side_effect=OSError("evidence volume unavailable")), \
                         self.assertRaises(subprocess.CalledProcessError) as raised:
                     caller()
                 self.assertEqual((raised.exception.returncode, raised.exception.output, raised.exception.stderr),
@@ -142,7 +213,7 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                 result = SimpleNamespace(returncode=3, stdout='{"ax_error":-25212}', stderr="the original native refusal")
                 timeout = subprocess.TimeoutExpired([str(files["controls"]), "123", "press", "unique"], 5,
                                                      output=b"original partial stdout", stderr=b"original timeout stderr")
-                save = notice.smoke.runner.save_json
+                save = notice.save_private_json
                 writes = []
                 def save_with_first_failure(path, value):
                     writes.append(str(path))
@@ -151,10 +222,10 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                     return save(path, value)
                 with self.subTest(timed_out=timed_out, permanent=permanent), patch.dict(notice.os.environ, {"ZWAI_NATIVE_SCENARIO_TIMEOUT_SECONDS": "150"}), \
                         patch.object(notice.smoke, "case_context", return_value=dict(context)), \
-                        patch.object(notice.smoke, "assert_process"), patch.object(notice.smoke, "wait_window"), \
+                        patch.object(notice.smoke, "assert_process"), patch.object(notice, "wait_window"), \
                         patch.object(notice, "run", side_effect=lambda target: notice.control(target, deadline, "press", "unique")), \
                         patch.object(notice.subprocess, "run", side_effect=timeout if timed_out else None, return_value=result) as action, \
-                        patch.object(notice.smoke.runner, "save_json", side_effect=save_with_first_failure), redirect_stdout(output):
+                        patch.object(notice, "save_private_json", side_effect=save_with_first_failure), redirect_stdout(output):
                     self.assertEqual(notice.main(argv), 2)
                 self.assertEqual(action.call_count, 1)
                 receipt = json.loads(output.getvalue())
@@ -175,8 +246,9 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
             executable = root / "private.app/Contents/MacOS/zwai"
             executable.parent.mkdir(parents=True)
             executable.write_bytes(b"private fixture executable")
-            context = {"evidence": root, "timeout": 45, "ax": root / "ax", "app_pid": 123,
-                       "app": root / "private.app", "workspace": root, "data": root / "data", "case_id": "owned-case"}
+            context = {"evidence": root, "timeout": 150, "ax": root / "ax", "app_pid": 123,
+                       "session_ax": root / "session", "app": root / "private.app",
+                       "workspace": root, "data": root / "data", "case_id": "owned-case"}
             first, second = {"id": "turn-1", "status": "done"}, {"id": "turn-2", "status": "done"}
             pair = [{"kind": "goal_resumed", "seq": 10, "turn_id": "turn-1", "role": "human"},
                     {"kind": "goal_continued", "seq": 11, "turn_id": "turn-2"}]
@@ -194,22 +266,43 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                     return {"events": pair}
                 trace = self.goal_trace(turn=path.rsplit("/", 1)[-1], objective="objective")
                 trace["events"].append(pair[0 if trace["turn"]["id"] == "turn-1" else 1])
+                trace["turn"]["final"] = "Opening actual " + trace["turn"]["id"] + " observation.\n\nShared actual closing observation."
                 return trace
-            def snapshot(target, _):
+            def snapshot(target, _, expected=""):
+                self.assertNotEqual(expected, "开始目标")
                 buttons = [{"AXRole": "AXButton", "AXTitle": label, "AXEnabled": True}
                            for label in ("对话", "Known title", "开始目标")]
                 if target["app_pid"] == 456:
                     buttons.append({"AXRole": "AXButton", "AXTitle": "对话", "AXEnabled": True})
-                return {"tree": buttons}
+                body = ["Opening actual turn-1 observation.", "Opening actual turn-2 observation.",
+                        "Shared actual closing observation.", "Shared actual closing observation."]
+                return {"window_id": 456, "tree": buttons + [{"AXRole": "AXStaticText", "AXValue": text} for text in body]}
+            helpers = []
+            def native(command, **_):
+                helpers.append(command)
+                row = {"pid": context["app_pid"], "bundle": str(context["app"]), "action": command[2],
+                       "ax_error": 0, "folds": [], "pressed": False}
+                if command[2] == "read-up":
+                    row.update(self.reading_row())
+                else:
+                    self.assertIn(command[2], ("inspect-text", "reveal-text"))
+                    request = json.loads(command[4])
+                    box = {"x": 100, "y": 100, "width": 100, "height": 20}
+                    row.update(matched_count=1, target_count=1, selected_path=[0], reveal_count=int(command[2] == "reveal-text"),
+                               targets=[{"owner_pid": context["app_pid"], "text": request["witness"], "path": [0],
+                               "frame": box, "viewport": box, "in_view": True}])
+                return SimpleNamespace(returncode=0, stdout=json.dumps(row), stderr="actual fixture native streams")
             actions = []
             with patch.object(notice.smoke.runner, "require_guest"), patch.object(notice.smoke, "validate_helper"), \
                     patch.object(notice.smoke, "wait_engine", return_value=("http://127.0.0.1:1", {"pid": 999})), \
-                    patch.object(notice.smoke, "wait_window", side_effect=snapshot), \
+                    patch.object(notice, "wait_window", side_effect=snapshot), \
                     patch.object(notice.smoke.runner, "process_argv", return_value=None), \
                     patch.object(notice, "wait_registered_application"), patch.object(notice, "api", side_effect=api), \
                     patch.object(notice, "prepare_goal_fixture", return_value=({"id": "thread-1"}, first, "Known title", "objective")), \
                     patch.object(notice, "control", side_effect=lambda _, __, action, value=None: actions.append((action, value))), \
-                    patch.object(notice, "capture_answers", return_value=[["opening", "closing"]]), \
+                    patch.object(notice.smoke, "assert_process", return_value=executable), \
+                    patch.object(notice, "validate_session_helper"), patch.object(notice.subprocess, "run", side_effect=native), \
+                    patch.object(notice, "save_window") as pictures, \
                     patch.object(notice, "compact_fixture", return_value="stored real summary"), \
                     patch.object(notice, "exercise_inline_briefing"), patch.object(notice, "assert_inline_briefing"), \
                     patch.object(notice, "capture", return_value={"captured": True}) as capture, \
@@ -218,6 +311,12 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
             self.assertEqual(actions, [("reload", None), ("press", "对话"), ("press", "Known title"),
                                        ("reload", None), ("press", "Known title"), ("close", None), ("press", "Known title"), ("close", None)])
             self.assertEqual([call.args[2] for call in capture.call_args_list], ["01-resumed", "02-reloaded", "03-reopened"])
+            self.assertEqual([call[2] for call in helpers], (["read-up"] + ["reveal-text", "inspect-text", "inspect-text"] * 4) * 3)
+            self.assertEqual([call.args[2] for call in pictures.call_args_list],
+                             [phase + "-answer" + str(turn) + "-" + edge for phase in ("01-resumed", "02-reloaded", "03-reopened")
+                              for turn in (1, 2) for edge in ("opening", "closing")])
+            for phase in ("01-resumed", "02-reloaded", "03-reopened"):
+                self.assertTrue(json.loads((root / (phase + ".reading.json")).read_text())["wheel_posted"])
             self.assertEqual(receipt["native_actions"], ["Conversations tab", "select thread", "expand briefing", "collapse briefing", "reload", "select thread after reload", "close", "reopen", "select thread"])
 
     def test_completed_goal_fixture_uses_recovery_api_after_native_selection_and_never_presses_obsolete_start(self):
@@ -250,7 +349,7 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                     return 5
                 def pause(self, _):
                     pass
-            with patch.object(notice.smoke, "wait_window", side_effect=states) as snapshot, \
+            with patch.object(notice, "wait_window", side_effect=states) as snapshot, \
                     patch.object(notice, "control", return_value={"pressed": True}) as control:
                 self.assertEqual(notice.press_available(context, Deadline(), "Known title"), {"pressed": True})
             self.assertEqual(snapshot.call_count, 3)
@@ -267,7 +366,7 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                 def remaining(self, _):
                     return 5
             for rows in ([suffix, exact], [suffix]):
-                with self.subTest(rows=rows), patch.object(notice.smoke, "wait_window", return_value={"tree": rows}), \
+                with self.subTest(rows=rows), patch.object(notice, "wait_window", return_value={"tree": rows}), \
                         patch.object(notice, "control") as control:
                     notice.press_available(context, Deadline(), "Known title")
                     control.assert_called_once_with(context, unittest.mock.ANY, "press", "Known title")
@@ -281,11 +380,11 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                     return 5
                 def pause(self, _):
                     raise AssertionError("mutation must not retry")
-            with patch.object(notice.smoke, "wait_window", return_value={"tree": [button, button]}), \
+            with patch.object(notice, "wait_window", return_value={"tree": [button, button]}), \
                     patch.object(notice, "control") as control, self.assertRaisesRegex(AssertionError, "ambiguous"):
                 notice.press_available(context, Deadline(), "开始目标")
             control.assert_not_called()
-            with patch.object(notice.smoke, "wait_window", return_value={"tree": [button]}) as snapshot, \
+            with patch.object(notice, "wait_window", return_value={"tree": [button]}) as snapshot, \
                     patch.object(notice, "control", side_effect=AssertionError("press refused")) as control, \
                     self.assertRaisesRegex(AssertionError, "press refused"):
                 notice.press_available(context, Deadline(), "开始目标")
@@ -299,7 +398,7 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                     return 5
                 def pause(self, _):
                     raise TimeoutError("case deadline")
-            with patch.object(notice.smoke, "wait_window", return_value={"tree": []}), \
+            with patch.object(notice, "wait_window", return_value={"tree": []}), \
                     patch.object(notice, "control") as control, self.assertRaisesRegex(TimeoutError, "case deadline"):
                 notice.press_available(context, Deadline(), "Known title")
             control.assert_not_called()
@@ -315,7 +414,7 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                 def remaining(self, _):
                     return 5
             result = SimpleNamespace(returncode=3, stdout='{"matches":0}', stderr="")
-            with patch.object(notice.smoke, "assert_process"), patch.object(notice.smoke, "wait_window"), \
+            with patch.object(notice.smoke, "assert_process"), patch.object(notice, "wait_window"), \
                     patch.object(notice.subprocess, "run", return_value=result), \
                     self.assertRaisesRegex(AssertionError, "native control failed"):
                 notice.control(context, Deadline(), "press", "Known title")
@@ -431,7 +530,7 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                     pass
             results = [SimpleNamespace(returncode=0, stdout=json.dumps(row), stderr="") for row in receipts]
             with patch.object(notice.smoke, "assert_process", return_value=executable) as identity, \
-                    patch.object(notice.smoke, "wait_window") as window, \
+                    patch.object(notice, "wait_window") as window, \
                     patch.object(notice, "validate_session_helper"), \
                     patch.object(notice.subprocess, "run", side_effect=results):
                 self.assertEqual(notice.wait_registered_application(context, Deadline()), receipts[-1])
@@ -520,9 +619,11 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                 def remaining(self, _):
                     return 5
             def screenshot(argv, **_):
+                self.assertEqual(Path(argv[-1]).stat().st_mode & 0o777, 0o600)
                 Path(argv[-1]).write_bytes(b"captured fixture")
+                return SimpleNamespace(returncode=0, stdout="capture stdout", stderr="capture stderr")
             with patch.object(notice, "session_control", side_effect=[{"folds": [{"expanded": False}]}, geometry]) as reveal, \
-                    patch.object(notice.smoke, "wait_window", return_value=row), \
+                    patch.object(notice, "wait_window", return_value=row), \
                     patch.object(notice.smoke, "png_dimensions", return_value=(640, 480)), \
                     patch.object(notice.subprocess, "run", side_effect=screenshot) as capture:
                 self.assertEqual(notice.capture(context, Deadline(), "visible"), row)
@@ -531,6 +632,8 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
             self.assertEqual(json.loads((Path(temporary) / "visible.viewport.json").read_text()), geometry)
             image = json.loads((Path(temporary) / "visible.image.json").read_text())
             self.assertEqual((image["pid"], image["window_id"]), (123, 456))
+            for path in Path(temporary).iterdir():
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600, path.name)
 
     def test_capture_rejects_a_notice_outside_the_viewport_before_taking_a_screenshot(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -544,8 +647,9 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                     return 5
             def screenshot(argv, **_):
                 Path(argv[-1]).write_bytes(b"captured fixture")
+                return SimpleNamespace(returncode=0, stdout="capture stdout", stderr="capture stderr")
             with patch.object(notice, "session_control", side_effect=[{"folds": [{"expanded": False}]}, geometry]), \
-                    patch.object(notice.smoke, "wait_window", return_value=row), \
+                    patch.object(notice, "wait_window", return_value=row), \
                     patch.object(notice.smoke, "png_dimensions", return_value=(640, 480)), \
                     patch.object(notice.subprocess, "run", side_effect=screenshot) as capture, \
                     self.assertRaisesRegex(AssertionError, "notice.*viewport"):
@@ -556,7 +660,7 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             context = {"evidence": Path(temporary), "app_pid": 123}
             row = {"tree": [{"AXRole": "AXStaticText", "AXValue": "继续追求目标。"}]}
-            with patch.object(notice.smoke, "wait_window", return_value=row), \
+            with patch.object(notice, "wait_window", return_value=row), \
                     patch.object(notice, "session_control", return_value={"folds": [{"expanded": True}]}) as control, \
                     self.assertRaisesRegex(AssertionError, "collapsed"):
                 notice.capture(context, object(), "default")
@@ -588,16 +692,80 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
         summary = "Opening durable evidence.\nFinal condition still required."
         hidden = {"tree": []}
         visible = {"tree": [{"AXRole": "AXStaticText", "AXValue": summary}]}
-        with patch.object(notice.smoke, "wait_window", side_effect=[hidden, visible, visible, visible, hidden]), \
+        with patch.object(notice, "wait_window", side_effect=[hidden, visible, hidden]), \
+                patch.object(notice, "capture_target", return_value=visible) as target, \
                 patch.object(notice, "press_available") as press, patch.object(notice, "save_window") as capture:
             notice.exercise_inline_briefing({}, object(), summary)
         self.assertEqual([call.args[2] for call in press.call_args_list], ["查看压缩后的简报", "收起简报"])
-        self.assertEqual([call.args[2] for call in capture.call_args_list],
-                         ["inline-briefing-opening", "inline-briefing-closing", "inline-briefing-collapsed"])
-        with patch.object(notice.smoke, "wait_window", side_effect=[hidden, hidden]), \
+        self.assertEqual([call.args[2] for call in target.call_args_list], ["inline-briefing-opening", "inline-briefing-closing"])
+        self.assertEqual([call.args[2] for call in capture.call_args_list], ["inline-briefing-collapsed"])
+        with patch.object(notice, "wait_window", side_effect=[hidden, hidden]), \
                 patch.object(notice, "press_available") as press, self.assertRaisesRegex(AssertionError, "briefing"):
             notice.exercise_inline_briefing({}, object(), summary)
         self.assertEqual(press.call_count, 1)
+
+    def test_reading_refusal_and_post_capture_drift_keep_first_evidence_without_retry(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            context = {"evidence": root, "app_pid": 123}
+            traces = [{"turn": {"final": "Opening actual observation.\n\nClosing actual observation."}}]
+            loaded = {"tree": [{"AXRole": "AXStaticText", "AXValue": text} for text in notice.answer_witnesses(traces[0]["turn"]["final"])]}
+            with patch.object(notice, "wait_window", return_value=loaded), \
+                    patch.object(notice, "session_control", return_value={"wheel_posted": False}) as native, \
+                    patch.object(notice, "capture_target") as target, self.assertRaisesRegex(AssertionError, "notice.*viewport"):
+                notice.capture_answers(context, object(), "refused", traces)
+            self.assertEqual([call.args[2] for call in native.call_args_list], ["read-up"])
+            target.assert_not_called()
+            self.assertFalse(json.loads((root / "refused.reading.json").read_text())["wheel_posted"])
+            target = {"owner_pid": 123, "in_view": True, "frame": {"x": 10, "y": 20, "width": 100, "height": 20},
+                      "viewport": {"x": 0, "y": 0, "width": 640, "height": 480}}
+            before = {"pid": 123, "matched_count": 1, "target_count": 1, "selected_path": [0], "reveal_count": 1, "targets": [target]}
+            after = {**before, "targets": [{**target, "frame": {**target["frame"], "y": 600}, "in_view": False}]}
+            with patch.object(notice, "wait_window", return_value=loaded) as reveal, \
+                    patch.object(notice, "session_control", side_effect=[before, {**before, "reveal_count": 0}, {**after, "reveal_count": 0}]) as inspect, \
+                    patch.object(notice, "save_window") as screenshot, self.assertRaisesRegex(AssertionError, "remain inside"):
+                notice.capture_target(context, object(), "drift", "Opening actual observation.", unique=True)
+            self.assertEqual(reveal.call_count, 1)
+            self.assertEqual([call.args[2] for call in inspect.call_args_list], ["reveal-text", "inspect-text", "inspect-text"])
+            self.assertEqual([json.loads(call.args[3]).get("path") for call in inspect.call_args_list], [None, [0], [0]])
+            screenshot.assert_called_once()
+            self.assertEqual(json.loads((root / "drift.target-after.json").read_text()), {**after, "reveal_count": 0})
+
+    def test_target_inspection_is_read_only_and_window_and_screenshot_calls_keep_complete_timing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            app = root / "private.app"
+            app.mkdir()
+            context = {"evidence": root, "app_pid": 123, "app": app, "ax": root / "ax", "session_ax": root / "session",
+                       "case_id": "own-case", "origin": "http://127.0.0.1:1"}
+            deadline = SimpleNamespace(remaining=lambda _: 7)
+            row = {"pid": 123, "bundle": str(app), "action": "inspect-text", "folds": [], "pressed": False, "ax_error": 0}
+            def native(command, **_):
+                if command[2] == "snapshot":
+                    return SimpleNamespace(returncode=0, stdout=json.dumps({"bundle": str(app), "origin": context["origin"]}), stderr="window stderr")
+                if command[0] == "/usr/sbin/screencapture":
+                    Path(command[-1]).write_bytes(b"native capture fixture")
+                    return SimpleNamespace(returncode=0, stdout="capture stdout", stderr="capture stderr")
+                return SimpleNamespace(returncode=0, stdout=json.dumps(row), stderr="inspect stderr")
+            with patch.object(notice.smoke, "assert_process", return_value=app / "Contents/MacOS/zwai"), \
+                    patch.object(notice.smoke, "validate_helper", return_value={"binary_sha256": "pinned"}), \
+                    patch.object(notice, "validate_session_helper"), patch.object(notice, "wait_window") as wait, \
+                    patch.object(notice.smoke, "png_dimensions", return_value=(640, 480)), \
+                    patch.object(notice.subprocess, "run", side_effect=native) as calls:
+                notice.session_control(context, deadline, "inspect-text", "unique opening witness")
+                wait.assert_not_called()
+                snapshot = notice.window_snapshot(context, deadline)
+                notice.save_window(context, deadline, "target", {**snapshot, "window_id": 456})
+            receipts = [json.loads(path.read_text()) for path in sorted(root.glob("goal-notice-helper-*.json"))]
+            self.assertEqual([row["stderr"] for row in receipts], ["inspect stderr", "window stderr", "capture stderr"])
+            self.assertEqual(receipts[0]["command"][-1], "unique opening witness")
+            self.assertEqual(receipts[1]["command"][2:], ["snapshot", "own-case", str(app), context["origin"], ""])
+            for receipt in receipts:
+                self.assertGreaterEqual(receipt["finished_monotonic"], receipt["started_monotonic"])
+                self.assertEqual(receipt["elapsed_seconds"], receipt["finished_monotonic"] - receipt["started_monotonic"])
+            self.assertEqual(calls.call_args.kwargs["timeout"], 7)
+            image = json.loads((root / "target.image.json").read_text())
+            self.assertEqual(image["capture_started_monotonic"], receipts[-1]["started_monotonic"])
 
     def test_prepared_session_helper_requires_matching_source_binary_and_flags(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -649,6 +817,170 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
         for events in invalid:
             with self.subTest(events=events), self.assertRaises(AssertionError):
                 notice.assert_resume_events(events, "before", "after")
+
+
+# Compile the complete current helper; only system observations/input are seams.
+READING_OS_SEAMS = r"""
+#import <AppKit/AppKit.h>
+#import <ApplicationServices/ApplicationServices.h>
+#include <sys/sysctl.h>
+static NSString *mode;
+static AXUIElementRef app, win, area, web, group, receipt, second;
+static int reveals=0, inputs=0, lookups=0;
+@interface ReadingApp:NSObject
+@property(readonly) BOOL active;
+@property(readonly) BOOL finishedLaunching;
+@property(readonly) pid_t processIdentifier;
+@property(readonly) NSURL *bundleURL;
++(id)runningApplicationWithProcessIdentifier:(pid_t)pid;
+@end
+@implementation ReadingApp
++(id)runningApplicationWithProcessIdentifier:(pid_t)pid {lookups++; return [self new];}
+-(BOOL)active {return ![mode isEqual:@"inactive"];}
+-(BOOL)finishedLaunching {return YES;}
+-(pid_t)processIdentifier {return 123;}
+-(NSURL *)bundleURL {return [NSURL fileURLWithPath:([mode isEqual:@"refreshed-bundle"] && lookups>1) ? @"/other.app" : @"/tmp/reading-private.app"];}
+@end
+static int qa_vm(const char *n,void *out,size_t *len,void *in,size_t size) {*(int *)out=1;return 0;}
+static bool qa_trusted(void) {return true;}
+static AXUIElementRef qa_application(pid_t pid) {return (AXUIElementRef)CFRetain(app);}
+static AXError qa_owner(AXUIElementRef e,pid_t *pid) {
+    *pid=([mode isEqual:@"wrong-window-owner"] && CFEqual(e,win)) ||
+         ([mode isEqual:@"wrong-notice-owner"] && CFEqual(e,receipt)) ? 999 : 123;
+    return kAXErrorSuccess;
+}
+static AXError qa_get(AXUIElementRef e,CFStringRef key,CFTypeRef *out) {
+    id value=nil;
+    if (CFEqual(key,kAXWindowsAttribute)) value=[mode isEqual:@"proxy-window"] ? @[@"proxy"] : @[(__bridge id)win];
+    if (CFEqual(key,kAXRoleAttribute)) value=CFEqual(e,win) ? ([mode isEqual:@"wrong-window-role"] ? @"AXGroup" : @"AXWindow") :
+        CFEqual(e,area) ? @"AXScrollArea" : CFEqual(e,web) ? @"AXWebArea" :
+        (CFEqual(e,receipt)||CFEqual(e,second)) ? @"AXStaticText" : @"AXGroup";
+    if (CFEqual(key,kAXValueAttribute) && [mode isEqual:@"unknown-text"] && CFEqual(e,receipt)) return kAXErrorCannotComplete;
+    if (CFEqual(key,kAXValueAttribute) && (CFEqual(e,receipt)||CFEqual(e,second)))
+        value=[mode isEqual:@"no-notice"] ? @"other receipt" : @"继续追求目标。";
+    if (CFEqual(key,kAXParentAttribute)) value=CFEqual(e,receipt)||CFEqual(e,second) ? (__bridge id)group :
+        CFEqual(e,group) ? (__bridge id)web : CFEqual(e,web) ? (__bridge id)area :
+        CFEqual(e,area) ? (__bridge id)win : nil;
+    if (CFEqual(key,kAXChildrenAttribute)) value=CFEqual(e,win) ? @[(__bridge id)area] :
+        CFEqual(e,area) ? @[(__bridge id)web] : CFEqual(e,web) ? @[(__bridge id)group] :
+        CFEqual(e,group) ? (([mode isEqual:@"two-notices"]||[mode isEqual:@"shared-closing"]) ? @[(__bridge id)receipt,(__bridge id)second] : @[(__bridge id)receipt]) : @[];
+    if (CFEqual(key,kAXPositionAttribute)||CFEqual(key,kAXSizeAttribute)) {
+        if ([mode isEqual:@"unknown-ancestor"] && CFEqual(e,group)) return kAXErrorCannotComplete;
+        CGPoint p=CGPointMake(0,30); CGSize s=CGSizeMake(800,600);
+        if (CFEqual(e,group)) {p=CGPointMake(100,100);s=CGSizeMake(500,400);}
+        if (CFEqual(e,receipt)||CFEqual(e,second)) {p=CGPointMake(120,[mode isEqual:@"outside-notice"]?700:200);s=CGSizeMake(100,20);}
+        *out=CFEqual(key,kAXPositionAttribute) ? AXValueCreate(kAXValueCGPointType,&p) : AXValueCreate(kAXValueCGSizeType,&s);
+        return kAXErrorSuccess;
+    }
+    if (!value) return kAXErrorNoValue;
+    *out=CFBridgingRetain(value);return kAXErrorSuccess;
+}
+static AXError qa_action(AXUIElementRef e,CFStringRef a) {
+    reveals++; return [mode isEqual:@"reveal-refused"] ? kAXErrorCannotComplete : kAXErrorSuccess;
+}
+static AXError qa_hit(AXUIElementRef e,float x,float y,AXUIElementRef *out) {
+    *out=(AXUIElementRef)CFRetain([mode isEqual:@"different-hit"] ? group : receipt);return kAXErrorSuccess;
+}
+static void qa_post(pid_t pid,CGEventRef event) {
+    if (pid!=123 || CGEventGetType(event)!=kCGEventScrollWheel || CGEventGetIntegerValueField(event,kCGScrollWheelEventDeltaAxis1)<=0) abort();
+    inputs++;
+}
+#define NSRunningApplication ReadingApp
+#define sysctlbyname qa_vm
+#define AXIsProcessTrusted qa_trusted
+#define AXUIElementCreateApplication qa_application
+#define AXUIElementGetPid qa_owner
+#define AXUIElementCopyAttributeValue qa_get
+#define AXUIElementPerformAction qa_action
+#define AXUIElementCopyElementAtPosition qa_hit
+#define CGEventPostToPid qa_post
+#define main reading_actual_main
+"""
+
+
+@unittest.skipUnless(platform.system() == "Darwin", "real Objective-C SDK required")
+class ActualReadingHelper(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temporary = tempfile.TemporaryDirectory(prefix="goal-reading-actual-main-")
+        cls.addClassCleanup(cls.temporary.cleanup)
+        root = Path(cls.temporary.name)
+        source = root / "reading.m"
+        source.write_text(READING_OS_SEAMS + '#include "' + str(notice.SESSION_SOURCE) + '"\n' + r"""
+#undef main
+#undef AXUIElementCreateApplication
+int main(int argc,const char **argv) {@autoreleasepool {
+    if(argc!=3)return 7;mode=@(argv[1]);
+    app=AXUIElementCreateApplication(1);win=AXUIElementCreateApplication(2);area=AXUIElementCreateApplication(3);
+    web=AXUIElementCreateApplication(4);group=AXUIElementCreateApplication(5);
+    receipt=AXUIElementCreateApplication(6);second=AXUIElementCreateApplication(7);
+    setenv("ZWAI_NATIVE_APP","/tmp/reading-private.app",1);setenv("ZWAI_NATIVE_CASE_ID","reading-case",1);
+    const char *descriptor=strcmp(argv[2],"inspect-text")==0 ? "{\"witness\":\"继续追求目标。\",\"unique\":true,\"path\":[0,0,0,0]}" :
+        "{\"witness\":\"继续追求目标。\",\"unique\":true}";
+    if ([mode isEqual:@"shared-closing"]) descriptor="{\"witness\":\"继续追求目标。\",\"unique\":false}";
+    if ([mode isEqual:@"wrong-path"]) descriptor="{\"witness\":\"继续追求目标。\",\"unique\":true,\"path\":[9]}";
+    if ([mode isEqual:@"malformed-path"]) descriptor="{\"witness\":\"继续追求目标。\",\"unique\":true,\"path\":[false,false,false,false]}";
+    const char *args[]={"reading","123",argv[2],"/tmp/reading-private.app",descriptor};
+    int code=reading_actual_main(strstr(argv[2],"-text")?5:4,args);
+    fprintf(stderr,"{\"reveals\":%d,\"inputs\":%d}\n",reveals,inputs);return code;
+}}
+""")
+        cls.binary = root / "reading"
+        built = subprocess.run(["/usr/bin/xcrun", "clang", *notice.smoke.AX_FLAGS, str(source), "-o", str(cls.binary)],
+                               capture_output=True, text=True)
+        if built.returncode:
+            raise RuntimeError(built.stderr)
+        cls.real_binary = root / "unmodified-main"
+        notice.prepare_session_helper(cls.real_binary)
+
+    def test_real_sdk_main_refuses_before_any_target_or_ui_is_requested(self):
+        result = subprocess.run([str(self.real_binary)], capture_output=True, text=True, timeout=3)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(json.loads(result.stdout)["error"],
+                      ("macOS VM required; physical host refused", "expected private pid, action, bundle and optional text"))
+        notice.validate_session_helper(self.real_binary)
+
+    def observe(self, mode="good", action="read-up"):
+        result = subprocess.run([str(self.binary), mode, action], capture_output=True, text=True, timeout=3)
+        return result.returncode, json.loads(result.stdout), json.loads(result.stderr)
+
+    def test_actual_main_posts_one_upward_wheel_only_at_the_unique_notice(self):
+        code, row, actions = self.observe()
+        self.assertEqual((code, actions), (0, {"reveals": 1, "inputs": 1}))
+        notice.assert_reading_admission(row)
+        self.assertEqual(row["viewport_frame"], {"x": 100, "y": 100, "width": 500, "height": 400})
+        self.assertEqual(row["notice_frame"], {"x": 120, "y": 200, "width": 100, "height": 20})
+        self.assertEqual(row["point"], {"x": 170, "y": 210})
+
+    def test_real_window_notice_ancestry_hit_and_refresh_refusals_never_post_input(self):
+        modes = ("proxy-window", "wrong-window-role", "wrong-window-owner", "wrong-notice-owner",
+                 "no-notice", "two-notices", "unknown-text", "unknown-ancestor", "outside-notice", "different-hit",
+                 "reveal-refused", "inactive", "refreshed-bundle")
+        for mode in modes:
+            with self.subTest(mode=mode):
+                code, row, actions = self.observe(mode)
+                self.assertNotEqual(code, 0)
+                self.assertIn("error", row)
+                self.assertEqual(actions["inputs"], 0)
+                self.assertLessEqual(actions["reveals"], 1)
+
+    def test_one_reveal_selects_one_recorded_path_even_for_explicit_common_closing_evidence(self):
+        for mode, matched in (("good", 1), ("shared-closing", 2)):
+            code, row, actions = self.observe(mode, "reveal-text")
+            self.assertEqual((code, actions), (0, {"reveals": 1, "inputs": 0}))
+            self.assertEqual((row["matched_count"], row["selected_path"], row["reveal_count"]), (matched, [0, 0, 0, 0], 1))
+            notice.assert_target_geometry(row, unique=matched == 1)
+        for mode in ("two-notices", "wrong-path", "malformed-path"):
+            code, row, actions = self.observe(mode, "inspect-text" if mode != "two-notices" else "reveal-text")
+            self.assertNotEqual(code, 0)
+            self.assertEqual(actions, {"reveals": 0, "inputs": 0})
+            self.assertIn("error", row)
+
+    def test_actual_inspection_reads_clipped_target_geometry_without_reveal_or_input(self):
+        code, row, actions = self.observe(action="inspect-text")
+        self.assertEqual((code, actions), (0, {"reveals": 0, "inputs": 0}))
+        notice.assert_target_geometry(row, unique=True)
+        self.assertEqual(row["targets"][0]["viewport"], {"x": 100, "y": 100, "width": 500, "height": 400})
 
 
 if __name__ == "__main__":

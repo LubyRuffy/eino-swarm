@@ -2656,6 +2656,26 @@ and briefing text against the private fixture's real Trace and compact receipts.
 Answers require no session-disclosure click. An older visible resume notice
 cannot stand in for the matching continuation check. The helper's
 source and binary hashes must match its preparation receipt.
+Each live, reloaded and reopened answer capture first reveals the unique
+continuation notice once, verifies its actual AX type, PID, clipped ancestor
+viewport and hit target, then posts one upward wheel in the guest to leave
+automatic following. It does not change product follow state through script.
+For each text witness, the narrow `reveal-text` action completes enumeration
+before selecting one recorded AX child-index path and requesting one reveal.
+Opening witnesses must be unique. Repeated closing prose is common tail
+evidence only; it does not identify either turn. `inspect-text` checks the
+same path, complete witness and match count before and after the screenshot,
+without another reveal or input. The generic snapshot receives no expected
+text and performs no target scrolling.
+Every native and screenshot command retains independent
+`goal-notice-helper-NNN.json` evidence with complete stdout/stderr, command,
+return status and monotonic start/end times; image receipts retain their
+capture interval and command-receipt identity. This case writes its own JSON
+and precreated PNG evidence with mode `0600`. Only the screenshot child uses
+umask `077` to keep replacement files private; the parent's normal umask and
+helper/compiler subprocess permissions are unchanged. Evidence-write failures
+retain the original action failure and streams through the final scenario
+receipt, including stdout fallback when that receipt cannot be saved.
 On initial launch and reopen, a read-only `startup` observation distinguishes
 an unregistered application from a registered wrong bundle. Only a null bundle
 with `registered=false` may wait within the original case deadline; each attempt
