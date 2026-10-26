@@ -26,6 +26,7 @@ type backoffGate struct {
 	failures   int
 	next       time.Time
 	probe      bool
+	probeReady bool
 	generation uint64
 	changed    chan struct{}
 }
@@ -51,9 +52,11 @@ func (g *backoffGate) acquire(ctx context.Context, onWait func(int, time.Duratio
 			return nil, err
 		}
 		delay := time.Until(g.next)
-		if g.failures == 0 || (!g.probe && delay <= 0) {
-			isProbe := g.failures > 0
-			g.probe = isProbe
+		if g.failures == 0 || g.probeReady || (!g.probe && delay <= 0) {
+			isProbe := g.failures > 0 && !g.probeReady
+			if isProbe {
+				g.probe = true
+			}
 			ticket := &backoffTicket{gate: g, generation: g.generation, probe: isProbe}
 			g.mu.Unlock()
 			return ticket, nil
@@ -88,6 +91,23 @@ func (g *backoffGate) acquire(ctx context.Context, onWait func(int, time.Duratio
 	}
 }
 
+// Useful decoded output releases concurrency, but the probe still owns health.
+// Do not advance the generation: its final result must settle this same outage.
+func (t *backoffTicket) progress() {
+	if t == nil || t.gate == nil || !t.probe {
+		return
+	}
+	g := t.gate
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if t.generation != g.generation || !g.probe || g.probeReady {
+		return
+	}
+	g.probeReady = true
+	close(g.changed)
+	g.changed = make(chan struct{})
+}
+
 func (t *backoffTicket) finish(outcome backoffOutcome) {
 	if t == nil || t.gate == nil {
 		return
@@ -98,7 +118,7 @@ func (t *backoffTicket) finish(outcome backoffOutcome) {
 		defer g.mu.Unlock()
 		// Only the first failure from the healthy generation and the current
 		// probe own endpoint health. A late parallel reply has no authority.
-		if t.generation != g.generation {
+		if t.generation != g.generation || (!t.probe && g.failures > 0) {
 			return
 		}
 		switch outcome {
@@ -129,7 +149,7 @@ func (t *backoffTicket) finish(outcome backoffOutcome) {
 			g.next = time.Now().Add(g.delay)
 			g.generation++
 		}
-		g.probe = false
+		g.probe, g.probeReady = false, false
 		close(g.changed)
 		g.changed = make(chan struct{})
 	})

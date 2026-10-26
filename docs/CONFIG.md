@@ -179,10 +179,17 @@ unknown or was deleted, the button opens Models without selecting a different
 provider. Raise the wait, let the change save, close Settings and resend the
 request when ready.
 Chat recovery uses a shared origin-level cooldown: 5 → 10 → 20 → 30 seconds,
-then 30 seconds until a complete request succeeds. These policy defaults live
+then 30 seconds until the recovery probe completes successfully. These policy defaults live
 in `internal/config/backoff.go`; they are not new YAML fields or retry counts.
 Provider aliases and models on the same scheme/host/port share one probe;
 settings saves replace clients without clearing failures. Stop cancels waiting.
+After cooldown, only that probe starts until it yields a decoded nonempty body,
+reasoning or tool-call delta. This restores concurrent admission while the stream
+stays open, without resetting failures. Headers, role-only/empty/usage-only deltas
+and error frames do not release waiting calls. Only the probe's final result can
+clear or advance the failure streak; parallel results during it cannot change the
+streak or a later generation. A failed probe renews cooldown without cancelling
+requests already admitted. Non-streaming Generate waits for its complete result.
 The one fresh-connection header retry also waits. The response-header timeout
 starts when each HTTP attempt is sent, after admission; an explicit caller
 deadline includes the cooldown. A Chat Completions streamed probe needs `[DONE]` or an explicit

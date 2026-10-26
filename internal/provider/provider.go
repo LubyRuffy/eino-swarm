@@ -400,6 +400,7 @@ func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts 
 		return nil, modelCallError(err)
 	}
 	ctx, builtin := observeBuiltinTools(ctx, r.rec != nil)
+	progress, _ := ctx.Value(backoffProgressKey{}).(func())
 	start := time.Now()
 	stream, err := r.inner.Stream(ctx, in, opts...)
 	if err != nil {
@@ -457,6 +458,9 @@ func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts 
 				return
 			}
 			if msg != nil {
+				if progress != nil && hasRecoveryContent(msg) {
+					progress()
+				}
 				if msg.ResponseMeta != nil && msg.ResponseMeta.FinishReason != "" {
 					finished = true
 				}

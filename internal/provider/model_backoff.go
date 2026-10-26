@@ -13,6 +13,7 @@ import (
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	einoopenai "github.com/cloudwego/eino-ext/components/model/openai"
+	"github.com/cloudwego/eino/schema"
 	openai "github.com/meguminnnnnnnnn/go-openai"
 )
 
@@ -26,6 +27,7 @@ type BackoffRecord struct {
 
 type backoffObserverKey struct{}
 type reconnectBackoffKey struct{}
+type backoffProgressKey struct{}
 
 func backoffKey(raw string) string {
 	u, err := url.Parse(strings.TrimSpace(raw))
@@ -83,6 +85,11 @@ func (r *recordingModel) admit(ctx context.Context) (context.Context, func(error
 		var err error
 		ticket, err = r.gate.acquire(ctx, onWait)
 		return err
+	})
+	ctx = context.WithValue(ctx, backoffProgressKey{}, func() {
+		if ctx.Err() == nil {
+			ticket.progress()
+		}
 	})
 	return ctx, func(err error) {
 		switch {
@@ -144,4 +151,21 @@ func isBackoffFailure(err error) bool {
 	return strings.Contains(s, "unexpected eof") || strings.Contains(s, "unexpected end of json") ||
 		strings.Contains(s, "invalid character") || strings.Contains(s, "mismatch type ") ||
 		strings.Contains(s, "json: cannot unmarshal")
+}
+
+// Metadata and empty deltas do not demonstrate a generating service. Tool
+// identity/name/argument increments do; index/type alone carry no output.
+func hasRecoveryContent(msg *schema.Message) bool {
+	if msg == nil {
+		return false
+	}
+	if msg.Content != "" || msg.ReasoningContent != "" {
+		return true
+	}
+	for _, call := range msg.ToolCalls {
+		if call.ID != "" || call.Function.Name != "" || call.Function.Arguments != "" {
+			return true
+		}
+	}
+	return false
 }

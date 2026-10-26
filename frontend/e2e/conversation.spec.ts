@@ -549,9 +549,10 @@ test("shows the turn id for troubleshooting", async ({ page }) => {
   const panel = page.getByRole("tabpanel")
   await expect(panel.getByText(/^tn_/)).toBeVisible()
   await expect(page.getByTestId("trace-log")).toHaveCount(0)
-  // the timeline names the agents that took part — behind Full log
+  // Parallel spawns share the registry's sequence; either role may take 1.
+  // The timeline must still show the researcher's actual numbered identity.
   await page.getByTestId("trace-log-toggle").click()
-  await expect(page.getByTestId("trace-log").getByText("researcher-1").first()).toBeVisible()
+  await expect(page.getByTestId("trace-log").getByText(/^researcher-\d+$/, { exact: true }).first()).toBeVisible()
 })
 
 test("switches the thinking level and keeps it after a reload", async ({ page }) => {

@@ -136,6 +136,10 @@ func (s *responsesStreamState) event(e responsesEvent) (bool, error) {
 		}
 		return false, s.function(e.OutputIndex, responsesItem{Type: "function_call", CallID: call.ID, Name: call.Function.Name, Arguments: e.Arguments})
 	case "response.completed":
+		out, err := e.Response.message()
+		if err != nil {
+			return true, err
+		}
 		for i, item := range e.Response.Output {
 			s.observer.item(item)
 			if item.Type == "function_call" {
@@ -143,10 +147,6 @@ func (s *responsesStreamState) event(e responsesEvent) (bool, error) {
 					return true, err
 				}
 			}
-		}
-		out, err := e.Response.message()
-		if err != nil {
-			return true, err
 		}
 		out.ToolCalls = nil
 		out.Content, err = responsesRemaining(s.text, out.Content)

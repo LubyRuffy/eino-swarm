@@ -494,9 +494,14 @@ uploads, downloads and the live event stream have exactly one implementation.
   **Full log** for the on-screen timeline.
   After a chat service fails, manager and subagents on that same service share
   a 5 → 10 → 20 → 30-second capped recovery backoff, including new turns and
-  provider aliases. One probe tests recovery at a time; a complete successful
-  response restores normal concurrency. A Chat Completions stream needs a protocol terminator or
-  explicit finish reason; a truncated connection cannot prove recovery. Stop
+  provider aliases. One probe tests recovery at a time; its first decoded nonempty
+  body, reasoning or tool-call delta lets other requests proceed while it keeps
+  streaming. Headers, empty deltas and usage alone do not release waiting calls.
+  Only that probe's final result resets or advances the failure streak; concurrent
+  calls during it cannot change that decision. Non-streaming requests wait for
+  their complete result. A Chat Completions stream needs a protocol terminator or
+  explicit finish reason; a truncated connection starts cooldown again even after
+  partial content released other calls, without cancelling those calls. Stop
   cancels waiting and the active request. Read-only answer classification
   uses its own candidate recovery and cannot start or wait on this shared gate.
   Trace records `model_backoff` waits separately from actual calls and retries,

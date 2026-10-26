@@ -554,9 +554,16 @@ browser history entries.
 Chat requests obtained from `provider.Pool` share an in-process recovery gate
 by URL origin, across provider IDs, models, roles and turns. Healthy calls stay
 concurrent. A transient service/transport failure starts a 5/10/20/30-second
-capped exponential cooldown; after it expires, one probe may run. A full
-successful Generate or drained stream restores concurrency, while an old
-in-flight reply cannot clear a newer failure. Chat Completions HTTP streams must have an SSE
+capped exponential cooldown; after it expires, one probe may run. A streaming
+probe's first decoded nonempty body, reasoning or tool-call delta restores
+concurrent admission while that stream remains open. Headers, role-only or empty
+deltas, usage-only frames and error frames do not open admission. Only the
+probe's final result changes the failure streak: a complete successful Generate
+or drained stream clears it; a later transient failure advances it and starts
+cooldown again without cancelling requests already admitted. Other calls admitted
+during that probe cannot change its failure streak, including through late results
+after a new generation starts. Non-streaming Generate has no intermediate
+admission point. Chat Completions HTTP streams must have an SSE
 `[DONE]` line or explicit response finish reason; an EOF without either is
 `io.ErrUnexpectedEOF`. A constant-space body observer checks the fixed terminator
 without retaining response content, and the relay preserves usage and errors.
@@ -574,7 +581,7 @@ recorders persist `model_backoff` waits on the original turn separately from
 LLM calls. Origin waits carry `scope: "origin"` and an opaque, process-local
 `cooldown_id` shared by every role waiting in that generation. PC/phone chat
 and replay show one timed notice per conversation/generation and omit unknown
-probe waits (`wait_ms: 0`); Trace retains each original caller observation.
+probe waits before valid content (`wait_ms: 0`); Trace retains each original caller observation.
 Classification recovery instead uses `scope: "schedule_answer"`, candidate ID
 and a failure/deferred code, with separate readable notices. Its isolated
 requests cannot start, recover or wait on this origin gate. Discovery and

@@ -82,6 +82,17 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-130`, `F-160`, `C-029`: relax shared-origin recovery admission after the
+  probe's first decoded nonempty body, reasoning or tool-call delta, so a long
+  successful stream no longer holds other conversations and models until EOF.
+  Headers, role-only/empty/usage-only deltas and error frames still keep the gate
+  closed. Only that probe's final result resets or advances failures; parallel
+  results during it cannot change the streak or later generations. Truncation
+  still returns `io.ErrUnexpectedEOF`, retains usage and renews cooldown without
+  cancelling admitted calls. Non-streaming completion, Stop, isolated scheduling
+  classification, retry/watchdog budgets and zero-wait notice rendering keep
+  their existing boundaries.
+
 - `F-430`, `C-031`: native smoke checks its prepared helper, current caller's
   control permissions and guest console/login state before app copy/launch.
   Classified refusals retain raw evidence within the existing round budget;

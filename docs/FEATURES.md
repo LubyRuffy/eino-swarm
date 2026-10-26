@@ -121,7 +121,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 首字节超时恢复：错误保留实际等待时长；桌面/Web 建议到设置 → 模型调大首字节等待时间，可从错误直接打开失败轮次的提供商并聚焦字段。设置能力和提供商缺失时的行为见 `F-170`；关联契约：`C-009`、`C-012`。
 - 请求前工具参数检查：压缩 middleware 返回状态后检查当前尾部调用的非空 JSON 参数；无效参数在实际模型 HTTP 前拒绝，沿既有有界重试清理，不清除人类 steer 或伪造 worker 创建。不是全历史 JSON 扫描。关联契约：`C-012`；证据：`internal/engine/autocompact.go`、`internal/engine/model_retry.go`、`internal/engine/model_retry_http_test.go`。
 
-- 模型故障退避：同一上游 origin 的 manager、subagent、模型及 provider 别名共享 5→10→20→30 秒封顶冷却，到期仅放行一个恢复探测；完整成功才恢复并发，Chat Completions HTTP 流缺少结束标记及 finish reason 时作为截断错误，保留故障及已收到的 usage。Stop 可取消等待及请求，换轮次或清缓存不能绕过。等待记录进入原 turn 的 Trace，不增加自动重试次数；quiet 报告后的迟到等待不重新显示 Chat 通知。调度答复分类独立重试，不等待或影响此 origin 门。关联契约：`C-029`；实现／测试证据：`internal/provider/backoff.go`、`internal/provider/model_backoff.go`、`internal/provider/stream_completion.go`、`internal/provider/stream_completion_test.go`、`internal/provider/backoff_integration_test.go`、`internal/engine/model_backoff_test.go`、`frontend/src/lib/transcript-backoff.test.ts`。
+- 模型故障退避：同一上游 origin 的 manager、subagent、模型及 provider 别名共享 5→10→20→30 秒封顶冷却，到期仅放行一个恢复探测；探测流交出首段已解码非空正文、推理或工具调用增量后即恢复并发，响应头、role、空 delta、usage 和错误帧不能放行。故障档位仍仅由这条探测的最终结果改变：完整成功才清零，后续截断／空闲超时等服务失败推进冷却，期间并行请求的结果不计入且不能迟到改写后继故障代。非流式 Generate 等完整结果；Chat Completions HTTP 流缺少结束标记及 finish reason 时仍为截断错误，保留已收到的 usage。Stop 可取消等待及请求，换轮次或清缓存不能绕过。等待记录进入原 turn 的 Trace，不增加自动重试次数；quiet 报告后的迟到等待不重新显示 Chat 通知。调度答复分类独立重试，不等待或影响此 origin 门。关联契约：`C-029`；实现／测试证据：`internal/provider/backoff.go`、`internal/provider/model_backoff.go`、`internal/provider/stream_completion.go`、`internal/provider/stream_completion_test.go`、`internal/provider/backoff_integration_test.go`、`internal/engine/model_backoff_test.go`、`frontend/src/lib/transcript-backoff.test.ts`。
 
 ### F-135 Independent task coordination
 
@@ -175,7 +175,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 调度答复校验以原 turn 的 `model_backoff.scope:schedule_answer` 显示候选退避或 `classification_deferred`，与 origin 服务冷却明确区分；分类调用、提供商错误及真实声明纠正归属同一 Trace；无匹配声明的终态错误保持原 code，连续失败停止自动续跑时以独立 goal_capped 原因和 attempt／cap 留痕；待校验候选载荷只在私有存储，不作为公共事件、历史或 Trace 内容曝光；原始工具参数仍沿用既有诊断链。见 `F-150`／`C-009`；实现／验证：`internal/engine/schedule_answer_pending.go`、`internal/engine/schedule_answer_recovery_http_test.go`、`internal/engine/schedule_answer_timeout_test.go`。
 - Worker 创建核验：按真实 turn 的调用、拒绝回执和生命周期事件区分新建、续办／恢复、完成及清理，不从历史名册或模型自述推断本轮创建量。证据：`internal/engine/worker_lifecycle_facts.go`、`internal/engine/worker_lifecycle_facts_test.go`、`frontend/e2e/worker-roster-history.spec.ts`。
 
-- 模型冷却以 `model_backoff.scope:origin`、不含端点的 cooldown_id 保留真实调用者与等待信息，不计作 LLM 请求；PC／手机聊天及历史每会话每代只显示一条有时长的等待，wait_ms:0 不另成行，Trace 保留各角色原始观察；等待状态沿用 `F-130`（`C-029`）。证据：`internal/engine/model_backoff.go`、`internal/engine/model_backoff_test.go`、`frontend/src/lib/transcript-backoff.test.ts`、`mobile/src/lib/transcript-backoff.test.tsx`、`mobile/e2e/api-error.spec.ts`。
+- 模型冷却以 `model_backoff.scope:origin`、不含端点的 cooldown_id 保留真实调用者与等待信息，不计作 LLM 请求；PC／手机聊天及历史每会话每代只显示一条有时长的等待，wait_ms:0 不另成行，Trace 保留各角色原始观察。wait_ms:0 表示探测尚未交出有效内容、等待余时未知；首段有效内容放行并发不代表故障档位已清零，最终结果规则沿用 `F-130`（`C-029`）。证据：`internal/engine/model_backoff.go`、`internal/engine/model_backoff_test.go`、`frontend/src/lib/transcript-backoff.test.ts`、`mobile/src/lib/transcript-backoff.test.tsx`、`mobile/e2e/api-error.spec.ts`。
 - 模型流的错误或 EOF 在本次调用记录回调结束后才交给消费端；部分 usage、调用者及错误类别保持，消费端在保存期间关闭也只记录一次。关联契约：`C-012`；证据：`internal/provider/provider.go`、`internal/provider/stream_terminal_order_test.go`。
 
 ### F-170 Settings and providers
