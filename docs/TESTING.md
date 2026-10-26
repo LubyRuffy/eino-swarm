@@ -1041,6 +1041,15 @@ the actual CLI/runner wiring, refusal before copy/launch, budgets, failure
 evidence and the compiled helper preflight with headless OS seams. These offline
 tests do not accept a real guest or installer.
 
+The typed smoke fixture is one complete sentence containing the current case
+nonce. An unfinished trailing label can create macOS's
+`NSAutocorrectionSuggestion` windows and leave the exact draft behind the
+existing multiple-window refusal. Keep the strict window and draft checks;
+do not dismiss unknown windows, change input settings or relax the round budget
+to accept that state. The run-level regression preserves one fill, exact draft
+readback and one Send, and refuses both honest and incorrectly ready AX-one /
+CG-three snapshots. A corrected fixture still needs a fresh native round.
+
 This single command replaces separate manual preparation, API polling, window
 inspection and cleanup steps. It uses fresh case state, waits for actual
 readiness and completion rather than fixed startup sleeps, verifies a real

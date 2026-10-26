@@ -492,7 +492,7 @@ def run_smoke(context):
     phases["engine_ready_seconds"] = deadline.clock() - deadline.started
     before = wait_window(context, deadline)
     runner.save_json(context["evidence"] / "smoke-window-before.json", before)
-    message = "Inspect this workspace and report findings. native-smoke-" + context["case_id"]
+    message = "Inspect this workspace for case " + context["case_id"] + " and report findings."
     if request_json(origin, "/api/threads", deadline).get("threads") != []:
         raise RuntimeError("native smoke case must start without existing conversations")
     submit_native(context, deadline, message)

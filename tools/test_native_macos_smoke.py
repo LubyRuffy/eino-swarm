@@ -456,6 +456,74 @@ class SmokeTests(unittest.TestCase):
         row = json.loads((self.context["evidence"] / "smoke-window-draft.json").read_text())
         self.assertEqual(row["area_values"], ["exact draft"])
 
+    def test_run_smoke_uses_one_case_sentence_without_relaxing_native_send_guards(self):
+        # Exercise the generated fixture through the actual fill/draft/Send
+        # path; one AX window cannot make three CG windows safe for input.
+        executable = self.context["app"] / "Contents/MacOS/zwai"
+        executable.parent.mkdir(parents=True)
+        executable.write_bytes(b"offline candidate identity")
+        (executable.parent.parent / "Info.plist").write_bytes(smoke.plistlib.dumps({}))
+        expected = "Inspect this workspace for case " + self.context["case_id"] + " and report findings."
+        for extra_windows, helper_ready in ((False, True), (True, False), (True, True)):
+            with self.subTest(extra_windows=extra_windows, helper_ready=helper_ready):
+                context = dict(self.context, ax=self.root / "prepared-helper")
+                clock = mock.Mock(return_value=10)
+                deadline = smoke.Deadline(.4, clock=clock)
+                actions, messages = [], []
+
+                def native(command, **kwargs):
+                    self.assertEqual(command[:2], [str(context["ax"]), "123"])
+                    self.assertEqual(command[3], context["case_id"])
+                    self.assertIn(command[2], ("snapshot", "fill", "send"))
+                    actions.append(command[2])
+                    row = dict(self.native_row(), ready=True)
+                    if command[2] == "fill":
+                        messages.append(command[6])
+                        row["filled"] = True
+                    elif command[2] == "send":
+                        self.assertEqual(command[6], messages[0])
+                        row["submitted"] = True
+                    elif messages:
+                        row.update(area_values=[messages[0]], send_enabled=True)
+                        if actions.count("snapshot") == 2:
+                            row.update(area_values=["partial"], send_enabled=False)
+                        elif extra_windows:
+                            row.update(ready=helper_ready, windows=[dict(id=value, owner_pid=123) for value in (17, 18, 19)])
+                            if not helper_ready:
+                                row.pop("window_id")
+                                row.pop("window_owner_pid")
+                    return subprocess.CompletedProcess(command, 0, json.dumps(row), "")
+
+                with mock.patch.object(smoke, "Deadline", return_value=deadline), \
+                        mock.patch.object(smoke.runner, "require_guest"), \
+                        mock.patch.object(smoke, "validate_helper", return_value={"binary_sha256": "prepared"}), \
+                        mock.patch.object(smoke, "assert_process", return_value=executable), \
+                        mock.patch.object(smoke, "wait_engine", return_value=("http://127.0.0.1:4567", {"pid": 456})), \
+                        mock.patch.object(smoke, "request_json", return_value={"threads": []}), \
+                        mock.patch.object(smoke.subprocess, "run", side_effect=native), \
+                        mock.patch.object(smoke.time, "sleep", side_effect=lambda seconds: setattr(clock, "return_value", clock.return_value + seconds)), \
+                        mock.patch.object(smoke, "wait_trace", side_effect=RuntimeError("Trace boundary reached")) as trace:
+                    expected_error = TimeoutError if extra_windows and not helper_ready else RuntimeError
+                    expected_reason = ("native window lacks" if helper_ready else "native composer") if extra_windows else "Trace boundary reached"
+                    with self.assertRaisesRegex(expected_error, expected_reason):
+                        smoke.run_smoke(context)
+
+                self.assertEqual(messages, [expected])
+                self.assertEqual(messages[0].count(context["case_id"]), 1)
+                self.assertEqual(actions.count("fill"), 1)
+                if extra_windows:
+                    self.assertNotIn("send", actions)
+                    trace.assert_not_called()
+                    last = json.loads((context["evidence"] / "smoke-native-last.json").read_text())
+                    blocked = json.loads(last["stdout"])
+                    self.assertEqual(blocked["window_count"], 1)
+                    self.assertEqual(len(blocked["windows"]), 3)
+                else:
+                    self.assertEqual(actions, ["snapshot", "fill", "snapshot", "snapshot", "send"])
+                    trace.assert_called_once_with(context["origin"], context, expected, deadline)
+                    draft = json.loads((context["evidence"] / "smoke-window-draft.json").read_text())
+                    self.assertEqual(draft["area_values"], [expected])
+
     def test_native_helper_source_contains_only_pid_targeted_keyboard_posts(self):
         source = smoke.AX_SOURCE.read_text()
         self.assertIn("CGEventPostToPid(pid, down)", source)
