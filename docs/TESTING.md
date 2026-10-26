@@ -2721,11 +2721,21 @@ private app PID.
 Before the one reveal, known finite offscreen target/ancestor frames may have
 an empty clipped viewport. The helper still validates every ancestor's geometry
 and exact root binding. After reveal, inspection and wheel admission require
-the nonempty clipped viewport and actual visible target again; unknown frames
+the nonempty native scroller viewport and a target contained by it; unknown frames
 or a detached root never qualify as offscreen content. Real-entry regressions
 start both the target and its local section outside the window, move both into
 view only on the one reveal, and retain refusals for unknown outer geometry,
-detached parents and sections that remain outside after reveal.
+detached parents and real scrollers that remain outside after reveal.
+`viewport_basis: native_window_scrollarea_webarea` limits that geometry to the
+root `AXWindow` intersected with actual `AXScrollArea` and `AXWebArea` ancestors.
+Every ancestor still needs a real type, known positive owner and finite geometry
+and remains in the diagnostic ancestry. Ordinary `AXGroup` frames are layout
+bounds and do not establish clipping: text may extend beyond them. Ancestor
+`used_for_native_clip` flags record which frames participate. These native bounds do
+not prove CSS clipping or final rendered visibility; acceptance also requires
+reviewing the actual target-window PNG. Real-entry regressions allow a text
+target extending 7px past a layout Group while rejecting the same geometry when
+that ancestor is an actual ScrollArea, with unknown viewport geometry refused.
 The initial completed objective is fixture setup through normal local
 `POST /api/threads` and `POST /api/threads/:id/turns` with `/goal` text, inside
 that case's private conversation workspace. It waits for the accepted first
@@ -2753,7 +2763,7 @@ Answers require no session-disclosure click. An older visible resume notice
 cannot stand in for the matching continuation check. The helper's
 source and binary hashes must match its preparation receipt.
 Each live, reloaded and reopened answer capture first reveals the unique
-continuation notice once, verifies its actual AX type, PID, clipped ancestor
+continuation notice once, verifies its actual AX type, PID, native scroller
 viewport and hit target, then posts one upward wheel in the guest to leave
 automatic following. It does not change product follow state through script.
 For each text witness, the narrow `reveal-text` action completes enumeration

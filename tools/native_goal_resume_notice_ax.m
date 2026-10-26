@@ -81,25 +81,28 @@ static NSDictionary *scrollContext(AXUIElementRef element, AXUIElementRef window
         if (CFEqual(parent, window)) {
             if (owner != pid || ![role isEqual:@"AXWindow"] || !scrollOwner) return nil;
             return @{@"element": scrollOwner, @"viewport": rectangle(clip), @"ancestors": ancestors,
+                @"viewport_basis": @"native_window_scrollarea_webarea",
                 @"owner_pid": @(targetOwner), @"binding": @{@"children_reachable": @YES, @"parent_chain_root": @YES,
                     @"root_owner_pid": @(owner), @"root_role": role}};
         }
         if (!CFEqual(parent, element)) {
-            // Overflow divs can be AXGroup rather than AXScrollArea in WebKit.
-            // Clip through every real ancestor instead of treating the whole
-            // native window as the transcript viewport.
+            // AXGroup layout bounds do not establish CSS clipping. Native viewport
+            // geometry cannot establish every CSS clip; retain those bounds for
+            // diagnostics and use the actual window PNG for visual acceptance.
             CGRect bounds;
             if (!geometry(parent, &bounds)) return nil;
             if (!scrollOwner && [role isEqual:@"AXScrollArea"]) scrollOwner = current;
-            clip = CGRectIntersection(clip, bounds);
-            if (CGRectIsEmpty(clip) || CGRectIsNull(clip)) {
-                // A known offscreen paragraph/section still needs one reveal.
-                // Continue validating every ancestor; unknown geometry or a
-                // detached parent must never be mistaken for offscreen content.
-                if (!allowOffscreen) return nil;
-                clip = CGRectZero;
+            BOOL viewportClip = [@[@"AXScrollArea", @"AXWebArea"] containsObject:role];
+            if (viewportClip) {
+                clip = CGRectIntersection(clip, bounds);
+                if (CGRectIsEmpty(clip) || CGRectIsNull(clip)) {
+                    // A known offscreen scroller still needs one reveal, with
+                    // every remaining ancestor's geometry and binding checked.
+                    if (!allowOffscreen) return nil;
+                    clip = CGRectZero;
+                }
             }
-            [ancestors addObject:@{@"role": role, @"owner_pid": @(owner), @"frame": rectangle(bounds)}];
+            [ancestors addObject:@{@"role": role, @"owner_pid": @(owner), @"frame": rectangle(bounds), @"used_for_native_clip": @(viewportClip)}];
         }
         current = attribute(parent, kAXParentAttribute);
     }
@@ -128,10 +131,11 @@ static NSDictionary *readUp(AXUIElementRef app, AXUIElementRef window, AXUIEleme
     }
     CGRect clip = fromRectangle(context[@"viewport"]);
     row[@"notice_frame"] = rectangle(box); row[@"viewport_frame"] = context[@"viewport"];
+    row[@"viewport_basis"] = context[@"viewport_basis"];
     row[@"notice_owner_pid"] = context[@"owner_pid"]; row[@"binding"] = context[@"binding"];
     row[@"ancestors"] = context[@"ancestors"]; row[@"scrollarea_verified"] = @YES;
     row[@"notice_in_view"] = @(inView(box, clip));
-    if (!inView(box, clip)) { row[@"error"] = @"reading notice is outside its clipped ancestry"; return row; }
+    if (!inView(box, clip)) { row[@"error"] = @"reading notice is outside its native scroller viewport"; return row; }
     CGPoint point = CGPointMake(CGRectGetMidX(box), CGRectGetMidY(box));
     AXUIElementRef hit = NULL;
     AXError status = AXUIElementCopyElementAtPosition(app, point.x, point.y, &hit);
@@ -375,6 +379,7 @@ int main(int argc, const char **argv) { @autoreleasepool {
         if (!known) { CFRelease(app); return emit(@{@"error": @"target text readback is unknown", @"reading": reading}, 2); }
         NSDictionary *targetRow = @{@"text": content, @"path": selected[@"path"], @"frame": rectangle(bounds),
             @"viewport": context[@"viewport"], @"ancestors": context[@"ancestors"],
+            @"viewport_basis": context[@"viewport_basis"],
             @"in_view": @(inView(bounds, fromRectangle(context[@"viewport"]))),
             @"owner_pid": context[@"owner_pid"], @"binding": context[@"binding"]};
         [result addEntriesFromDictionary:@{@"matched_count": @(targets.count), @"target_count": @1,
@@ -399,6 +404,7 @@ int main(int argc, const char **argv) { @autoreleasepool {
         [result addEntriesFromDictionary:@{@"notice_count": @(notices.count), @"scroll_requested": visible ? @NO : @YES,
             @"notice_was_in_view": visible ? @YES : @NO, @"notice_in_view": inView(after, clip) ? @YES : @NO,
             @"notice_owner_pid": context[@"owner_pid"], @"binding": context[@"binding"], @"ancestors": context[@"ancestors"],
+            @"viewport_basis": context[@"viewport_basis"],
             @"notice_frame": rectangle(after), @"viewport_frame": rectangle(clip), @"ax_error": @(error)}];
     }
     CFRelease(app);

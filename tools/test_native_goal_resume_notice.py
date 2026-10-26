@@ -59,6 +59,7 @@ print(json.dumps({"modes": {path.name: path.stat().st_mode & 0o777 for path in r
     @staticmethod
     def reading_row(pid=123):
         return {"pid": pid, "root_window": {"role": "AXWindow", "owner_pid": pid},
+                "viewport_basis": notice.VIEWPORT_BASIS,
                 "binding": {"children_reachable": True, "parent_chain_root": True, "root_owner_pid": pid, "root_role": "AXWindow"},
                 "notice_owner_pid": 777, "hit_owner_pid": 777,
                 "notice_count": 1, "notice_in_view": True, "notice_reveal_requested": True, "notice_reveal_status": 0,
@@ -76,14 +77,14 @@ print(json.dumps({"modes": {path.name: path.stat().st_mode & 0o777 for path in r
                        {"hit_verified": False}, {"scrollarea_verified": False},
                        {"point": {"x": 0, "y": 0}}, {"viewport_frame": {}},
                        {"root_window": {}}, {"binding": {}}, {"notice_owner_pid": 0}, {"notice_owner_pid": True},
-                       {"hit_owner_pid": 123}, {"hit_owner_pid": True}):
+                       {"hit_owner_pid": 123}, {"hit_owner_pid": True}, {"viewport_basis": "layout_bounds"}):
             with self.subTest(change=change), self.assertRaises(AssertionError):
                 notice.assert_reading_admission({**good, **change})
 
     def test_target_geometry_rejects_presence_without_visible_viewport_or_unique_opening(self):
         rectangle = {"x": 100, "y": 100, "width": 100, "height": 20}
         binding = self.reading_row()["binding"]
-        target = {"owner_pid": 777, "binding": binding, "in_view": True, "frame": rectangle,
+        target = {"owner_pid": 777, "binding": binding, "viewport_basis": notice.VIEWPORT_BASIS, "in_view": True, "frame": rectangle,
                   "viewport": {"x": 0, "y": 0, "width": 640, "height": 480}}
         good = {"pid": 123, "root_window": self.reading_row()["root_window"], "matched_count": 1, "target_count": 1, "targets": [target]}
         notice.assert_target_geometry(good, unique=True)
@@ -92,7 +93,7 @@ print(json.dumps({"modes": {path.name: path.stat().st_mode & 0o777 for path in r
                    {**good, "root_window": {"role": "AXWindow", "owner_pid": 777}}]
         invalid += [{**good, "targets": [{**target, **change}]} for change in
                     ({"in_view": False}, {"frame": {**rectangle, "y": 600}},
-                     {"owner_pid": 0}, {"owner_pid": -1}, {"owner_pid": True}, {"binding": {}},
+                     {"owner_pid": 0}, {"owner_pid": -1}, {"owner_pid": True}, {"binding": {}}, {"viewport_basis": "layout_bounds"},
                      *({"binding": {**binding, **change}} for change in
                        ({"children_reachable": False}, {"parent_chain_root": False}, {"root_owner_pid": 777},
                         {"root_owner_pid": True}, {"root_role": "AXGroup"})))]
@@ -303,6 +304,7 @@ print(json.dumps({"modes": {path.name: path.stat().st_mode & 0o777 for path in r
                     row.update(matched_count=1, target_count=1, selected_path=[0], reveal_count=int(command[2] == "reveal-text"),
                                root_window=self.reading_row(context["app_pid"])["root_window"],
                                targets=[{"owner_pid": context["app_pid"], "text": request["witness"], "path": [0],
+                               "viewport_basis": notice.VIEWPORT_BASIS,
                                "binding": self.reading_row(context["app_pid"])["binding"],
                                "frame": box, "viewport": box, "in_view": True}])
                 return SimpleNamespace(returncode=0, stdout=json.dumps(row), stderr="actual fixture native streams")
@@ -731,7 +733,7 @@ print(json.dumps({"modes": {path.name: path.stat().st_mode & 0o777 for path in r
             self.assertEqual([call.args[2] for call in native.call_args_list], ["read-up"])
             target.assert_not_called()
             self.assertFalse(json.loads((root / "refused.reading.json").read_text())["wheel_posted"])
-            target = {"owner_pid": 777, "binding": self.reading_row()["binding"], "in_view": True, "frame": {"x": 10, "y": 20, "width": 100, "height": 20},
+            target = {"owner_pid": 777, "binding": self.reading_row()["binding"], "viewport_basis": notice.VIEWPORT_BASIS, "in_view": True, "frame": {"x": 10, "y": 20, "width": 100, "height": 20},
                       "viewport": {"x": 0, "y": 0, "width": 640, "height": 480}}
             before = {"pid": 123, "root_window": self.reading_row()["root_window"], "matched_count": 1, "target_count": 1, "selected_path": [0], "reveal_count": 1, "targets": [target]}
             after = {**before, "targets": [{**target, "frame": {**target["frame"], "y": 600}, "in_view": False}]}

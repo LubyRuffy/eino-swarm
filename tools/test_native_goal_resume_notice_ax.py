@@ -53,7 +53,8 @@ static AXError qa_get(AXUIElementRef e,CFStringRef key,CFTypeRef *out) {
     if (CFEqual(key,kAXRoleAttribute)) value=CFEqual(e,win) ? ([mode isEqual:@"wrong-window-role"] ? @"AXGroup" : @"AXWindow") :
         ([mode isEqual:@"foreign-root-parent"] && CFEqual(e,detached)) ? @"AXWindow" :
         CFEqual(e,heading) ? @"AXHeading" :
-        CFEqual(e,area) ? @"AXScrollArea" : CFEqual(e,web) ? @"AXWebArea" :
+        CFEqual(e,area) || (CFEqual(e,group) && ([mode isEqual:@"narrow-scrollarea"] || [mode isEqual:@"remote-offscreen-stays-outside"])) ? @"AXScrollArea" :
+        CFEqual(e,web) || (CFEqual(e,group) && [mode isEqual:@"narrow-webarea"]) ? @"AXWebArea" :
         (CFEqual(e,receipt)||CFEqual(e,second)) ? @"AXStaticText" : @"AXGroup";
     if (CFEqual(key,kAXChildrenAttribute) && CFEqual(e,group) && [mode isEqual:@"children-null"]) {*out=NULL;return kAXErrorSuccess;}
     if (CFEqual(key,kAXChildrenAttribute) && CFEqual(e,group) && [mode isEqual:@"children-cfnull"]) {*out=CFRetain(kCFNull);return kAXErrorSuccess;}
@@ -102,13 +103,18 @@ static AXError qa_get(AXUIElementRef e,CFStringRef key,CFTypeRef *out) {
             (([mode isEqual:@"two-notices"]||[mode isEqual:@"shared-closing"]) ? @[(__bridge id)receipt,(__bridge id)second] : @[(__bridge id)receipt])) :
         CFEqual(e,heading) ? @[(__bridge id)receipt] : @[];
     if (CFEqual(key,kAXPositionAttribute)||CFEqual(key,kAXSizeAttribute)) {
-        if ([mode isEqual:@"unknown-ancestor"] && CFEqual(e,group)) return kAXErrorCannotComplete;
+        if (([mode isEqual:@"unknown-ancestor"] && CFEqual(e,group)) ||
+            ([mode isEqual:@"unknown-viewport"] && CFEqual(e,area))) return kAXErrorCannotComplete;
         if (([mode isEqual:@"remote-offscreen-unknown-outer"] && CFEqual(e,web)) ||
             ([mode isEqual:@"unknown-target"] && CFEqual(e,receipt))) return kAXErrorCannotComplete;
         CGPoint p=CGPointMake(0,30); CGSize s=CGSizeMake(800,600);
         if (CFEqual(e,group)) {p=CGPointMake(100,100);s=CGSizeMake(500,400);}
         if (CFEqual(e,heading)) {p=CGPointMake(110,190);s=CGSizeMake(120,40);}
         if (CFEqual(e,receipt)||CFEqual(e,second)) {p=CGPointMake(120,([mode isEqual:@"outside-notice"] || ([mode isEqual:@"detached-after-reveal"] && !reveals))?700:200);s=CGSizeMake(100,20);}
+        if ([mode hasPrefix:@"narrow-"]) {
+            if (CFEqual(e,group)) {p=CGPointMake(386,454);s=CGSizeMake(389,73);}
+            if (CFEqual(e,receipt)) {p=CGPointMake(402,456);s=CGSizeMake(380,68);}
+        }
         if ([mode hasPrefix:@"remote-offscreen"] && (!reveals || [mode isEqual:@"remote-offscreen-stays-outside"])) {
             if (CFEqual(e,group)) p.y=800;
             if (CFEqual(e,receipt)) p.y=900;
@@ -197,13 +203,13 @@ int main(int argc,const char **argv) {@autoreleasepool {
         code, row, actions = self.observe()
         self.assertEqual((code, actions), (0, {"reveals": 1, "inputs": 1}))
         notice.assert_reading_admission(row)
-        self.assertEqual(row["viewport_frame"], {"x": 100, "y": 100, "width": 500, "height": 400})
+        self.assertEqual(row["viewport_frame"], {"x": 0, "y": 30, "width": 800, "height": 600})
         self.assertEqual(row["notice_frame"], {"x": 120, "y": 200, "width": 100, "height": 20})
         self.assertEqual(row["point"], {"x": 170, "y": 210})
 
     def test_real_window_notice_ancestry_hit_and_refresh_refusals_never_post_input(self):
         modes = ("proxy-window", "wrong-window-role", "wrong-window-owner", "wrong-hit-owner",
-                 "no-notice", "two-notices", "unknown-text", "unknown-ancestor", "outside-notice", "different-hit",
+                 "no-notice", "two-notices", "unknown-text", "unknown-ancestor", "unknown-viewport", "outside-notice", "different-hit",
                  "reveal-refused", "inactive", "refreshed-bundle")
         for mode in modes:
             with self.subTest(mode=mode):
@@ -246,7 +252,7 @@ int main(int argc,const char **argv) {@autoreleasepool {
         code, row, actions = self.observe(action="inspect-text")
         self.assertEqual((code, actions), (0, {"reveals": 0, "inputs": 0}))
         notice.assert_target_geometry(row, unique=True)
-        self.assertEqual(row["targets"][0]["viewport"], {"x": 100, "y": 100, "width": 500, "height": 400})
+        self.assertEqual(row["targets"][0]["viewport"], {"x": 0, "y": 30, "width": 800, "height": 600})
 
     def test_actual_remote_children_and_canonical_dag_parent_reach_the_same_private_root(self):
         for mode in ("remote-bridge", "remote-dag", "remote-canonical-parent"):
@@ -303,8 +309,9 @@ int main(int argc,const char **argv) {@autoreleasepool {
                 else:
                     notice.assert_notice_in_view(row)
         code, row, actions = self.observe("remote-offscreen", "inspect-text")
-        self.assertEqual((code, actions), (2, {"reveals": 0, "inputs": 0}))
-        self.assertIn("error", row)
+        self.assertEqual((code, actions), (0, {"reveals": 0, "inputs": 0}))
+        with self.assertRaisesRegex(AssertionError, "remain inside"):
+            notice.assert_target_geometry(row, unique=True)
 
     def test_offscreen_is_not_a_substitute_for_known_geometry_or_exact_root_binding(self):
         for mode in ("remote-offscreen-unknown-outer", "remote-offscreen-detached-parent", "unknown-target"):
@@ -352,6 +359,33 @@ int main(int argc,const char **argv) {@autoreleasepool {
                 self.assertEqual(first["role"], "AXStaticText" if mode.startswith("wrong-static-") else "AXHeading")
                 self.assertEqual(first["status"], -25204 if "unknown" in mode else 0)
                 self.assertEqual(first["raw_null"], "unknown" in mode or mode == "heading-null-children")
+
+    def test_layout_group_bounds_do_not_claim_native_scroller_clipping(self):
+        for action in ("read-up", "reveal-text", "inspect-text"):
+            with self.subTest(action=action):
+                code, row, actions = self.observe("narrow-layout-group", action)
+                self.assertEqual((code, actions), (0, {"reveals": int(action != "inspect-text"), "inputs": int(action == "read-up")}))
+                target = row if action == "read-up" else row["targets"][0]
+                self.assertEqual(target["viewport_basis"], "native_window_scrollarea_webarea")
+                self.assertEqual(target["ancestors"][0]["role"], "AXGroup")
+                self.assertFalse(target["ancestors"][0]["used_for_native_clip"])
+                box = row["notice_frame"] if action == "read-up" else target["frame"]
+                layout = target["ancestors"][0]["frame"]
+                self.assertEqual(box["x"] + box["width"] - layout["x"] - layout["width"], 7)
+                if action == "read-up":
+                    notice.assert_reading_admission(row)
+                else:
+                    notice.assert_target_geometry(row, unique=True)
+        for mode in ("narrow-scrollarea", "narrow-webarea"):
+            with self.subTest(mode=mode):
+                code, row, actions = self.observe(mode)
+                self.assertEqual((code, actions), (2, {"reveals": 1, "inputs": 0}))
+                self.assertFalse(row["notice_in_view"])
+                self.assertTrue(row["ancestors"][0]["used_for_native_clip"])
+        for mode in ("unknown-viewport", "unknown-ancestor"):
+            code, row, actions = self.observe(mode)
+            self.assertEqual((code, actions), (2, {"reveals": 0, "inputs": 0}))
+            self.assertIn("error", row)
 
 
 if __name__ == "__main__":

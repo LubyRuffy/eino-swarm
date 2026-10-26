@@ -21,6 +21,7 @@ import native_macos_smoke as smoke
 
 NOTICE_TEXTS = {"继续追求目标。", "Continuing the standing objective.", "Resuming the standing objective."}
 SESSION_SOURCE = Path(__file__).with_name("native_goal_resume_notice_ax.m")
+VIEWPORT_BASIS = "native_window_scrollarea_webarea"
 
 
 def save_private_json(path, row):
@@ -137,6 +138,7 @@ def assert_reading_admission(row):
     assert_root_binding(row, row.get("binding"))
     clip, point = row.get("viewport_frame"), row.get("point", {})
     assert (row.get("wheel_posted") is True and type(row.get("wheel_count")) is int and row["wheel_count"] == 1
+            and row.get("viewport_basis") == VIEWPORT_BASIS
             and type(row.get("wheel_delta")) is int and row["wheel_delta"] > 0
             and row.get("notice_reveal_requested") is True and row.get("notice_reveal_status") == 0
             and row.get("scrollarea_verified") is True and row.get("hit_verified") is True and row.get("hit_status") == 0
@@ -158,13 +160,14 @@ def assert_target_geometry(row, *, unique):
         box, clip = target.get("frame"), target.get("viewport")
         assert_root_binding(row, target.get("binding"))
         assert (type(target.get("owner_pid")) is int and target["owner_pid"] > 0 and finite_rectangle(box) and finite_rectangle(clip)
+                and target.get("viewport_basis") == VIEWPORT_BASIS
                 and type(target.get("in_view")) is bool), "target geometry and owner must be known"
         inside = (box["x"] >= clip["x"] and box["y"] >= clip["y"] and
                   box["x"] + box["width"] <= clip["x"] + clip["width"] and
                   box["y"] + box["height"] <= clip["y"] + clip["height"])
-        assert target["in_view"] == inside, "target visibility disagrees with its actual viewport"
+        assert target["in_view"] == inside, "target containment disagrees with its native scroller viewport"
         visible |= inside
-    assert visible, "target must remain inside its actual transcript viewport"
+    assert visible, "target must remain inside its actual native scroller viewport"
 
 
 def assert_inline_briefing(row, summary, expanded):
