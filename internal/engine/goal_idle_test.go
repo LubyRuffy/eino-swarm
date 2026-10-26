@@ -111,13 +111,15 @@ func TestAContinuationWithToolsKeepsAutoContinue(t *testing.T) {
 	waitSettled(t, e, th.ID)
 }
 
-func TestAHumanMessageClearsAHeldGoal(t *testing.T) {
+func TestAHumanMessagePreservesAHeldGoal(t *testing.T) {
+	provider.SetCompleteOpenGoal(false)
+	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	if err := e.SetThreadGoal(th.ID, "keep going"); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.Store().UpdateThread(th.ID, map[string]any{"goal_idle": true}); err != nil {
+	if err := e.Store().UpdateThread(th.ID, map[string]any{"goal_idle": true, "goal_auto_turns": 3}); err != nil {
 		t.Fatal(err)
 	}
 	turn, err := e.StartTurn(th.ID, "keep going")
@@ -127,13 +129,17 @@ func TestAHumanMessageClearsAHeldGoal(t *testing.T) {
 	waitForTurn(t, e, turn.ID)
 	waitSettled(t, e, th.ID)
 	got, _ := e.Store().GetThread(th.ID)
-	if got.GoalIdle {
-		t.Fatal("a human message must clear the hold")
+	turns, _ := e.Store().ListTurns(th.ID)
+	if !got.GoalIdle || got.GoalAutoTurns != 3 || len(turns) != 1 {
+		t.Fatalf("an ordinary message must preserve idle pursuit and its budget: idle=%v auto=%d turns=%d", got.GoalIdle, got.GoalAutoTurns, len(turns))
 	}
 }
 
 func TestResumeClearsAHeldGoal(t *testing.T) {
+	provider.SetCompleteOpenGoal(false)
+	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
 	e := newTestEngine(t)
+	e.Config().Swarm.GoalMaxAutoTurns = 1
 	th, _ := e.CreateThread("", "", "")
 	if err := e.SetThreadGoal(th.ID, "keep going"); err != nil {
 		t.Fatal(err)
@@ -141,15 +147,21 @@ func TestResumeClearsAHeldGoal(t *testing.T) {
 	if err := e.Store().UpdateThread(th.ID, map[string]any{"goal_idle": true}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.ResumeThreadGoal(th.ID); err != nil {
+	turn, err := e.ResumeThreadGoal(th.ID)
+	if err != nil {
 		t.Fatal(err)
 	}
 	got, _ := e.Store().GetThread(th.ID)
 	if got.GoalIdle {
 		t.Fatal("resume must clear the hold")
 	}
-	_ = e.Interrupt(th.ID)
+	waitForTurn(t, e, turn.ID)
+	turns := waitForTurnCount(t, e, th.ID, 2)
 	waitSettled(t, e, th.ID)
+	got, _ = e.Store().GetThread(th.ID)
+	if !turns[0].GoalContinue || !turns[1].GoalContinue || got.GoalIdle || !got.GoalCapped || got.GoalAutoTurns != 1 {
+		t.Fatalf("explicit resume must grant a new continuation budget: thread=%+v turns=%+v", got, turns)
+	}
 }
 
 func TestGoalContinuesWhenTheManagerStopsCallingTools(t *testing.T) {

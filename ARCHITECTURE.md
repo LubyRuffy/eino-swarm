@@ -18,6 +18,8 @@ engine exits after the idle grace once no presence connection is held, the
 phone hub socket is down, and no turn is running. A host that is killed
 releases `engine.lock`; the next shell takes it and resumes orphaned turns.
 
+Runtime transcript inputs carry explicit provenance: ADK `Extra["zwai_message_source"]` and persisted `messages.source` distinguish `human`, transient `runtime`, `schedule`, and `plan`. Runtime correction cues remain available during their turn and in diagnostics, but future replay, compact summarizer input and session briefing extraction exclude them. Legacy cue compatibility matches complete constants or a validated worker-ID suffix, then preserves any independently evidenced human input. It never classifies similar prose as a correction.
+
 Goal and plan commands retain their complete argument through one engine
 dispatch. An idle PC composer submits the complete command through the existing
 send path; it does not first PATCH metadata and then resubmit the parsed
@@ -220,10 +222,13 @@ mark a standing objective externally blocked or overwrite its block reason.
 Automatic goal continuation retains its existing budget and stops after three
 consecutive same-objective ordinary-pursuit failures of this class, with a distinct durable
 `goal_capped` reason instead of `goal_blocked`. This goal-level cap is separate
-from each turn's one correction and survives engine replacement. Success,
-cancellation, another error class or a new human turn breaks the streak;
-setting/clearing the goal or explicit human resume resets it. Manager reopen
-does not. Failed scheduled checks retain their future-wake ownership instead
+from each turn's one correction and survives engine replacement. Before a cap,
+success, cancellation, another error class or a new human turn during unpaused
+pursuit breaks the streak. Once capped, ordinary PC/phone sends answer only their
+current request, retaining the pause, automatic-turn count and original failure
+diagnostic. Explicit Start / HTTP `goal_resume: true` / phone `resume_goal`
+resumes pursuit and resets its budgets; setting/clearing the goal also resets the
+failure budget. Manager reopen does not. Failed scheduled checks retain their future-wake ownership instead
 of immediately starting another goal turn. `internal/store/goal_cap.go` commits
 the cap and reason event atomically after rechecking the goal, automatic count
 and latest turn. Unknown budget evidence pauses with a distinct recovery-state
@@ -796,7 +801,7 @@ worker before closing SQLite.
    reason and the turn error name which side failed: the model returned a
    tool call that was not valid JSON, or the model service (rate limit,
    unavailable, dropped connection, idle). Interrupt pauses an open goal (`goal_capped`)
-   until the human hits Start or sends a message — the banner Play control
+   until the human explicitly resumes with Start (HTTP `goal_resume` or phone `resume_goal`) — the banner Play control
    is resume, not a gap between auto-continue sessions. A `/goal` turn ends
    when the manager stops calling tools (a final assistant message with no
    further tools). The runtime then starts the next turn, unless a pending
@@ -806,7 +811,7 @@ worker before closing SQLite.
    only to have them killed again. Token pressure
    compact in place; it is not a turn boundary.
    A continuation that finishes with no counted tool activity records
-   `goal_idle` and stops auto-continue until a human message or resume.
+   `goal_idle` and stops auto-continue until explicit resume. A capped, blocked or idle goal stays paused across ordinary human sends. Those sends use the ordinary manager iteration budget and cannot extend a ReAct slice merely because the goal exists. A per-turn System section identifies the human request as the deliverable: tools may answer it, but the paused objective does not authorize new investigative workers. Only unpaused pursuit resets its consecutive auto-turn count on a human send. The open-goal prompt asks once for completion criteria when the objective has no observable deliverable or stopping condition; this is model guidance, not a text classifier or automatic completion rule.
    `swarm.goal_session_max_iterations` is only eino's ReAct slice — hitting
    it extends the same turn (no confirm, no new session, no auto-continue
    spent). In-flight sub-agents are parked
@@ -835,8 +840,9 @@ worker before closing SQLite.
    and folds once. The transcript names that window rejection. A second
    rejection ends the turn. A repeating schedule is paused so the next tick
    cannot send the same prompt. A
-   human message or `PATCH` `goal_resume`
-   clears a block or cap and starts again. An in-place edit (`PATCH` `goal_edit`)
+   explicit `PATCH` `goal_resume` (or Start / phone `resume_goal`)
+   clears a block, cap or idle pause and starts pursuit again. A human message
+   only answers its own turn while the goal remains paused. An in-place edit (`PATCH` `goal_edit`)
    keeps the current status and, if a turn is running, steers the new text in.
    On a project conversation it also carries the project's instruction, its
    notes with how full they are, and an index of its skills — names and

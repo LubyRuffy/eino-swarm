@@ -167,7 +167,7 @@ func (rt *runtime) blockOpenGoalOnTurnError() {
 
 func (e *Engine) blockOpenGoalOnTurnError(threadID string) {
 	th, err := e.store.GetThread(threadID)
-	if err != nil || !pursuingGoal(th) {
+	if err != nil || !pursuingGoal(th) || pausedStandingGoal(th) {
 		return
 	}
 	errText := ""
@@ -205,7 +205,7 @@ func (rt *runtime) pauseOpenGoalOnInterrupt() {
 
 func (e *Engine) pauseOpenGoalOnInterrupt(threadID string) {
 	th, err := e.store.GetThread(threadID)
-	if err != nil || !pursuingGoal(th) || th.GoalCapped {
+	if err != nil || !pursuingGoal(th) || pausedStandingGoal(th) {
 		return
 	}
 	if err := e.store.UpdateThread(threadID, map[string]any{

@@ -92,7 +92,7 @@ func TestGoalCapAndItsDistinctReasonCommitTogether(t *testing.T) {
 }
 
 func TestStaleGoalCapCannotPauseNewHumanWork(t *testing.T) {
-	for _, change := range []string{"goal", "completed", "blocked", "capped", "budget", "newer-turn"} {
+	for _, change := range []string{"goal", "completed", "blocked", "capped", "idle", "budget", "newer-turn"} {
 		t.Run(change, func(t *testing.T) {
 			s := open(t)
 			now := time.Now().UTC()
@@ -114,6 +114,8 @@ func TestStaleGoalCapCannotPauseNewHumanWork(t *testing.T) {
 				fields["goal_blocked"] = true
 			case "capped":
 				fields["goal_capped"] = true
+			case "idle":
+				fields["goal_idle"] = true
 			case "budget":
 				fields["goal_auto_turns"] = 0
 			case "newer-turn":

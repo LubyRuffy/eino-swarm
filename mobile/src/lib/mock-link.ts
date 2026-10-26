@@ -97,6 +97,7 @@ type MockThread = {
   minutesAgo: number
   goal?: string
   goalComplete?: boolean
+  goalCapped?: boolean
   providerID?: string
   model?: string
   reasoning?: string
@@ -235,6 +236,10 @@ export class MockHost {
       } else if (new URLSearchParams(location.search).get("history") === "goal-complete") {
         live.goal = "Verify current work"
         this.seed(live, [{ kind: "goal", text: live.goal }], false)
+      } else if (new URLSearchParams(location.search).get("history") === "goal-paused") {
+        live.goal = "Verify the required artifact."
+        live.goalCapped = true
+        this.seed(live, [{ kind: "goal", text: live.goal }, { kind: "goal_capped", text: '{"auto_turns":1,"cap":1}' }], false)
       } else if (new URLSearchParams(location.search).get("history") === "generation-interruption") {
         this.seed(live, generationHistory(), true)
       } else if (new URLSearchParams(location.search).get("history") === "stopped-workers") {
@@ -553,6 +558,7 @@ export class MockHost {
       goal: th.goal,
       goal_on: Boolean(th.goal),
       goal_complete: th.goalComplete,
+      goal_capped: th.goalCapped,
       waiting: th.waiting,
       wake: th.waiting
         ? { id: "w-" + th.id, next_run_at: new Date(Date.now() + 9 * 60_000).toISOString() }
@@ -904,6 +910,11 @@ export class MockLink {
       case OpResumeGoal: {
         const th = thread()
         if (!th) return this.missing(id)
+        if (req.op === OpResumeGoal) {
+          th.goalCapped = false
+          th.goalComplete = false
+          this.host.push(th, { kind: "goal_resumed" })
+        }
         if (req.op === OpAnswer && th.askUser) {
           const error = this.host.answer(th, req)
           return error ? { v: PROTOCOL_V, id, ok: false, error } : this.ok({ id })

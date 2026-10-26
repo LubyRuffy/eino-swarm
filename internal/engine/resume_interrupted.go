@@ -177,7 +177,7 @@ func (e *Engine) appendInterruptedWorkerCue(threadID string, msgs []adk.Message,
 	if cue == "" {
 		return msgs
 	}
-	return append(msgs, schema.UserMessage(cue))
+	return append(msgs, runtimeUserMessage(cue))
 }
 
 func hasUserPrefix(msgs []adk.Message, prefix string) bool {
@@ -192,12 +192,13 @@ func hasUserPrefix(msgs []adk.Message, prefix string) bool {
 	return false
 }
 
+// These recovery notices are regenerated from current worker state on resume.
 func isEngineOnlyUser(content string) bool {
 	switch content {
 	case resumeCue, resumeWorkersCue, parkedWorkersCue, scheduleAnswerCorrectionCue:
 		return true
 	default:
-		return strings.HasPrefix(content, interruptedWorkersCueLead)
+		return strings.HasPrefix(content, interruptedWorkersCueLead) && legacyRuntimeCue(content)
 	}
 }
 

@@ -95,7 +95,7 @@ func TestInterruptedWorkerCueIsGenericAndNamesTheIds(t *testing.T) {
 	if !strings.Contains(block, "worker-2") || !strings.HasPrefix(block, "these sub-agents are not running") {
 		t.Fatalf("block=%q", block)
 	}
-	if !isEngineOnlyUser(cue) || !isEngineOnlyUser(resumeCue) || isEngineOnlyUser("a real request") {
+	if !legacyRuntimeCue(cue) || !legacyRuntimeCue(resumeCue) || legacyRuntimeCue("a real request") {
 		t.Fatal("the stopped-worker cue must stay off the human transcript")
 	}
 	if hasUserPrefix(nil, "") || hasUserPrefix([]adk.Message{schema.UserMessage("other")}, interruptedWorkersCueLead) {

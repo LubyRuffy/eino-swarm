@@ -261,19 +261,20 @@ uploads, downloads and the live event stream have exactly one implementation.
   tool-round slice keeps the same turn going. In-flight sub-agents survive
   a pursuing turn that ends while they are still running, including when a
   thread wake is the next turn instead of an immediate auto-continue. A continuation
-  that makes no tool progress stops auto-continue until you send a message
-  or hit **Start**. Hitting the auto-continue budget (or a stop) pauses
-  the same way — the banner says this is not an error, and **Start**
-  keeps going. If it hits an
+  that makes no tool progress stops auto-continue until you hit **Start**. Hitting the auto-continue budget (or a stop) pauses
+  the same way, and **Start** keeps going. If it hits an
   obstacle it cannot pass, it calls
   `block_goal` and stops instead of retrying forever — a crashed ordinary turn that
   is not a recoverable model error does the same, and the banner shows the
-  public error. Truncated tool JSON / a `429` / a dropped stream / a
+  public error. An unverified scheduling claim instead gets one correction in
+  that turn; three consecutive turns rejected for that reason pause pursuit with a separate
+  limit and retain each turn's error. Ordinary messages still leave that pause
+  in place; **Start** explicitly resumes it. Truncated tool JSON / a `429` / a dropped stream / a
   mid-stream TCP read timeout retry in-turn, and the transcript names the model service for a rate limit, an outage, or a dropped connection. A concrete API rejection stays as that status and cause. Three consecutive worker lifetime watchdog failures stop automatic resume: the turn errors, its goal blocks and its recurring check pauses. Inspect the worker trace, model and task before an explicit new message or **Start** retries. Provider idle timeouts are separate. A
   context-window rejection is named in the transcript and compacted once;
   if the next call still does not fit, the turn stops. A repeating
   scheduled check is paused so it cannot send the same prompt again.
-  **Start** resumes after a block, a cap, a hold, or a stop. The goal strip
+  **Start** resumes after a block, a cap, a hold, or a stop. An ordinary PC or phone send while paused answers only that message: it preserves the pause and auto-turn count, and does not restart goal work. The paused strip and **Start** remain after that answer. Active pursuit still resets its consecutive auto-turn count when you send a message. If a goal has no observable deliverable or stopping condition, the manager is instructed to use `ask_user` once for that objective text before a new investigation slice; answering that question does not mark the goal complete. The goal strip
   stays available while unfinished, including when parked on a scheduled wait;
   Start does not appear while the objective is still pursuing between
   auto-continue sessions. Resuming an idle goal shows one continuation notice

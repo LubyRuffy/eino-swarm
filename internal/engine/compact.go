@@ -212,6 +212,10 @@ func (e *Engine) compactCandidates(th *store.Thread) ([]store.Message, int64, er
 	if err != nil {
 		return nil, 0, err
 	}
+	rows, err = e.withoutRuntimeRows(rows)
+	if err != nil {
+		return nil, 0, err
+	}
 	all := replayableMessages(rows)
 	keep := e.cfg.SwarmSnapshot().CompactKeep()
 	if keep < 0 {
@@ -272,6 +276,9 @@ func compactInput(previous string, older []store.Message) string {
 }
 
 func compactStoreLine(m store.Message) string {
+	if m.Source == store.MessageSourceRuntime {
+		return ""
+	}
 	var role string
 	switch schema.RoleType(m.Role) {
 	case schema.User:

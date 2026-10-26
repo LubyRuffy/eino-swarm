@@ -81,7 +81,9 @@ func (e *Engine) scheduleClaimGoalFailures(th *store.Thread, last *store.Turn) (
 // A protocol rejection is not an external blocker. Pause automatic pursuit at
 // its own finite limit, or when its durable budget cannot safely be recovered.
 func (e *Engine) allowScheduleClaimGoalRetry(th *store.Thread, last *store.Turn) bool {
-	if th.GoalCapped {
+	// A failed answer during a human-owned pause does not authorize pursuit
+	// or replace that pause when its separate retry evidence is unavailable.
+	if pausedStandingGoal(th) || !pursuingGoal(th) {
 		return false
 	}
 	count, err := e.scheduleClaimGoalFailures(th, last)
@@ -107,7 +109,7 @@ func (e *Engine) allowScheduleClaimGoalRetry(th *store.Thread, last *store.Turn)
 
 func (e *Engine) allowFailedScheduleClaimGoalRetry(turn *store.Turn) bool {
 	th, err := e.store.GetThread(turn.ThreadID)
-	if err != nil || !pursuingGoal(th) {
+	if err != nil || pausedStandingGoal(th) || !pursuingGoal(th) {
 		return false
 	}
 	// The typed runtime failure remains authoritative even if a read of the

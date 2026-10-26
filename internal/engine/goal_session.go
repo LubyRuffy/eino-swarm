@@ -30,7 +30,8 @@ func goalSessionWrapSteer() string {
 
 func isGoalSessionWrapSteer(text string) bool {
 	t := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(text), "[steer]"))
-	return strings.HasPrefix(t, "This work session is ending.")
+	const historical = "This work session is ending. Summarize current progress. Do not start new long-running work. Call complete_goal only if the standing objective is actually satisfied. Otherwise stop this turn without asking the human."
+	return t == goalSessionWrapSteer() || t == historical
 }
 
 // Order the final outcome against abandon/restartTargets under their lock.
@@ -59,7 +60,7 @@ func (rt *runtime) shouldPark(status string) bool {
 		return false
 	}
 	th, err := rt.engine.store.GetThread(rt.threadID)
-	if err == nil && pursuingGoal(th) {
+	if err == nil && pursuingGoal(th) && !pausedStandingGoal(th) {
 		return true
 	}
 	// A scheduled check can hand off unfinished workers to its next armed
@@ -108,11 +109,11 @@ func (rt *runtime) reapParked() bool {
 // human message would reset the auto-continue budget forever.
 func keepHumanSteers(leftover []*schema.Message) (texts []string, images []ImageInput) {
 	for _, m := range leftover {
-		if m == nil || m.Role != schema.User {
+		if m == nil || m.Role != schema.User || isRuntimeMessage(m) {
 			continue
 		}
 		t := strings.TrimSpace(strings.TrimPrefix(userMessageText(m), "[steer] "))
-		if t == "" || isGoalSessionWrapSteer(t) {
+		if t == "" || (messageSource(m) == "" && isGoalSessionWrapSteer(t)) {
 			continue
 		}
 		texts = append(texts, t)

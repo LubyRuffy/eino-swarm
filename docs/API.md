@@ -1181,11 +1181,13 @@ turn fails for a non-recoverable reason outside the isolated scheduled-check
 boundary (progress needs the human or an external change). A truncated
 tool-call JSON, a `429`, or a dropped stream retries inside the same turn twice;
 ordinary goal turns then auto-continue, while failed scheduled checks do not; `goal_capped` is true after consecutive
-auto-continues hit `swarm.goal_max_auto_turns`, or after the human
+auto-continues hit `swarm.goal_max_auto_turns`, after the human
 interrupts a pursuing turn (the banner shows Paused, a line that this is
-not an error, and Start); `goal_idle`
+not an error, and Start), or after three consecutive unsupported scheduling-claim
+failures of the same objective (a distinct verification-failure reason);
+`goal_idle`
 is true after an auto-continue finished with no counted tool activity
-(Start or a human message resumes). The objective text stays in
+(only explicit Start / `goal_resume: true` / phone `resume_goal` resumes). Ordinary sends while capped, blocked or idle answer that message in one turn, retain all pause flags and the auto-turn count, including a scheduling-claim failure cap and its original reason/attempt/cap diagnostic, and do not authorize further goal investigation or automatic continuation. While pursuit is active and not paused, a human message still resets the consecutive auto-turn count. Clients that previously relied on an ordinary message to restart paused pursuit must use the existing explicit resume operation. The objective text stays in
 every case. The banner shows unfinished objectives and hides completed ones;
 setting a new objective resets completion and displays it again. `goal_block_reason` is the optional
 one-line reason from `block_goal`, or the public turn error when a pursuing
@@ -1305,7 +1307,10 @@ running steers the new text into this turn's context, not only the next.
 with `goal` changes the text without reopening pursuit (a completed goal is
 still reopened). A running turn is steered so the new text is in this turn's
 context, not only the next. `goal_resume: true` starts the next turn for an
-open objective (blocked, capped, idle, or completed in error). A missing goal is
+open objective (blocked, capped, idle, or completed in error), resetting both the
+consecutive automatic-turn budget and the independent scheduling-claim failure
+budget. Ordinary sends do not reset either budget while the goal is paused.
+A missing goal is
 rejected. Responds like `GET`.
 
 `plan_mode: true` enters planning while idle (`409 busy` if a turn is running).
@@ -1807,8 +1812,8 @@ shortening only the bounded detail text.
 | `goal_blocked` | the manager called `block_goal`, or a pursuing turn had a non-recoverable failure outside the isolated scheduled-check boundary. A scheduling-answer `no_matching_schedule` refusal does not emit this event or write `goal_block_reason`. Auto-continue stops until the human resumes. `text` is JSON `{reason}` |
 | `goal_resumed` | `role: "human"` marks an explicit human goal-resume request and resets worker watchdog recovery; manager `reopen_goal` does not reset it. The human started pursuit again after a block, a cap, an idle open goal, or a completed objective that finished too early — or the manager called `reopen_goal` after a mistaken `complete_goal`. Same Working-clock rule as `goal_continued` |
 | `goal_continued` | the runtime started the next turn to keep pursuing an open objective. Not a `user_message`. Clients start the Working clock from this event's `created_at` (a `done` has just cleared `status.started_at`) |
-| `goal_capped` | consecutive auto-continues hit `swarm.goal_max_auto_turns` (`text` is JSON `{auto_turns,cap}`), or the human interrupted a pursuing turn (`text` is JSON `{reason:"interrupted"}`), or three consecutive unsupported scheduling-answer failures paused ordinary automatic pursuit of the same goal (`text` is JSON `{reason:"schedule_claim_unverified",code:"no_matching_schedule",attempt:3,cap:3}`). The last case is a verification failure cap, not an external blocker. A later human message or resume resets the budget |
-| `goal_idle` | an engine-started continuation finished with no counted tool activity (`text` is the notice). Auto-continue stops until a human message or resume; the objective stays open |
+| `goal_capped` | consecutive auto-continues hit `swarm.goal_max_auto_turns` (`text` is JSON `{auto_turns,cap}`), or the human interrupted a pursuing turn (`text` is JSON `{reason:"interrupted"}`), or three consecutive unsupported scheduling-answer failures paused ordinary automatic pursuit of the same goal (`text` is JSON `{reason:"schedule_claim_unverified",code:"no_matching_schedule",attempt:3,cap:3}`). The last case is a verification failure cap, not an external blocker. Ordinary messages answer only their current request and retain the cap, auto-turn count and failure diagnostic. Explicit Start / `goal_resume: true` / phone `resume_goal` resumes pursuit and resets its budgets |
+| `goal_idle` | an engine-started continuation finished with no counted tool activity (`text` is the notice). Auto-continue stops until explicit goal resume; ordinary messages retain the hold and the objective stays open |
 | `goal_edited` | the human changed the objective text in place; `text` is the new objective. Status stays put. A running turn is also steered |
 | `plan` | the conversation entered `/plan`; write/edit/exec and similar are unmounted. `text` is `planning` |
 | `plan_updated` | `propose_plan` or a human edit wrote the plan body. `text` is the markdown (also on disk at `$ZWAI_HOME/plans/<thread_id>/PLAN.md`) |
@@ -1852,9 +1857,12 @@ goal externally blocked. A pursuing goal may start another turn within its
 existing automatic budget; three consecutive such ordinary-pursuit failures of the same goal
 stop automatic continuation with the distinct `goal_capped` payload above.
 This durable goal-level cap survives replacement and is separate from the
-single correction allowed within each turn. Success, cancellation, another
-error class or a new human turn breaks the streak. Setting/clearing the goal
-and explicit human resume reset it; manager reopen does not. Failed scheduled
+single correction allowed within each turn. Before a cap, success, cancellation,
+another error class or a new human turn during unpaused pursuit breaks the
+streak. Once capped, an ordinary human reply does not clear the cap, reset its
+failure diagnostic or renew either pursuit budget; only explicit Start /
+`goal_resume: true` / phone `resume_goal` resumes pursuit. Setting/clearing the
+goal and explicit human resume reset the failure budget; manager reopen does not. Failed scheduled
 checks retain their future-wake ownership without an immediate goal retry.
 The capped flag and reason event commit atomically after rechecking the goal
 identity, automatic count and latest turn. Unreadable retry evidence pauses

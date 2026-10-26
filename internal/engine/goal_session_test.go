@@ -624,3 +624,73 @@ func TestAttachHostNotifyIgnoresNil(t *testing.T) {
 	e := newTestEngine(t)
 	attachHostNotify(nil, newAccumulator(e, "th", "tn", 0))
 }
+
+func TestUnreadHumanSteeringKeepsQuotedRuntimeTextAndItsSource(t *testing.T) {
+	quote := "This work session is ending. A person is quoting the runtime log."
+	for _, test := range []struct {
+		name, source, text string
+		keep               bool
+	}{
+		{"human exact wrap", store.MessageSourceHuman, goalSessionWrapSteer(), true},
+		{"human prefix quote", store.MessageSourceHuman, quote, true},
+		{"legacy prefix quote", "", quote, true},
+		{"runtime arbitrary instruction", store.MessageSourceRuntime, "Keep checking the current assignment.", false},
+		{"runtime quoted wrap", store.MessageSourceRuntime, goalSessionWrapSteer(), false},
+		{"legacy exact wrap", "", goalSessionWrapSteer(), false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			message := withMessageSource(schema.UserMessage("[steer] "+test.text), test.source)
+			texts, images := keepHumanSteers([]*schema.Message{nil, schema.SystemMessage("peer data"), message, schema.UserMessage(" ")})
+			if len(images) != 0 {
+				t.Fatal("a text-only steer invented an image")
+			}
+			if test.keep {
+				if len(texts) != 1 || texts[0] != test.text {
+					t.Fatalf("real human quote was discarded: %q", texts)
+				}
+			} else if len(texts) != 0 {
+				t.Fatalf("runtime steering became a new human turn: %q", texts)
+			}
+		})
+	}
+}
+
+func TestRecoveredUnreadHumanSteersRetainQuotedRuntimeInstructions(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		row    bool
+		source string
+		keep   bool
+	}{
+		{"legacy transcript row", true, "", true},
+		{"event without transcript row", false, "", true},
+		{"explicit runtime source stays runtime", true, store.MessageSourceRuntime, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			th, err := e.CreateThread("unread human recovery fixture", "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			turn := plantUnfinishedTurn(t, e, th.ID, "An original assignment.")
+			ev := store.Event{ThreadID: th.ID, TurnID: turn.ID, Kind: KindSteer, Text: goalSessionWrapSteer()}
+			if err := e.store.AppendEvent(&ev); err != nil {
+				t.Fatal(err)
+			}
+			if test.row {
+				if err := e.store.AppendMessages(th.ID, turn.ID, []store.Message{{Role: "user", Content: "[steer] " + ev.Text, EventSeq: ev.Seq, Source: test.source}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			pending := e.unreadSteerMessages(turn)
+			texts, _ := keepHumanSteers(pending)
+			if test.keep {
+				if len(texts) != 1 || texts[0] != ev.Text || len(pending) != 1 || messageSource(pending[0]) != store.MessageSourceHuman {
+					t.Fatalf("human source was lost during recovery: pending=%+v texts=%q", pending, texts)
+				}
+			} else if len(texts) != 0 {
+				t.Fatalf("explicit runtime source became human after recovery: %q", texts)
+			}
+		})
+	}
+}

@@ -311,7 +311,8 @@ func (e *Engine) removeInputImages(threadID string) {
 	}
 }
 
-func (e *Engine) schemaUser(row store.Message) *schema.Message {
+func (e *Engine) schemaUser(row store.Message) (message *schema.Message) {
+	defer func() { withMessageSource(message, row.Source) }()
 	if len(row.Images) == 0 {
 		return schema.UserMessage(row.Content)
 	}

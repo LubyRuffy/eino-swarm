@@ -23,7 +23,7 @@ func reviewEventLine(ev store.Event) (role, text string, ok bool) {
 	text = strings.TrimSpace(ev.Text)
 	switch ev.Kind {
 	case KindUser, KindSteer:
-		if text == "" || isGoalSessionWrapSteer(text) {
+		if text == "" {
 			return "", "", false
 		}
 		return "human", text, true

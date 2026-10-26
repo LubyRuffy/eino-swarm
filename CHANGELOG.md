@@ -80,6 +80,9 @@ co-working app built on it. The library API is unchanged except where noted
   inline briefing disclosure; failed compression and other notice cards remain
   visible. Preserve history order, completion footers, search and live activity
   (Issue #113).
+- `F-150`, `F-220`, `C-009`, `C-006`: ordinary PC/phone messages no longer resume capped, blocked or idle standing goals. They answer only the current request, retain the pause and auto-turn count, including a scheduling-claim failure cap and its diagnostic, and leave Start available. Explicit goal resume starts pursuit again; unpaused human steering still resets the consecutive count. Paused replies use ordinary iteration limits and cannot borrow goal worker ownership.
+- `F-150`, `C-009`: guide open-ended goals to ask once for observable completion criteria before a new investigation slice, without changing continuation limits, idle tool accounting or `complete_goal` completion evidence.
+
 - `F-430`, `C-010`: prepare source batch `0.1.41` for the scheduling-answer fix and previously accepted mobile work. macOS publishes independently; Android/iOS release-package acceptance and publication remain pending.
 
 - `F-430`, `C-034`: withdraw the fixed-duration soak agreement for Issue #94 at
@@ -236,6 +239,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-150`, `C-009`: preserve an existing pause when a human reply fails schedule-claim verification, including unavailable terminal receipts; an idle pause also wins over a stale cap decision inside the storage transaction.
+
+- `F-130`, `F-410`, `C-008`: mark runtime corrections and persist input provenance, excluding transient instructions from later replay, compact inputs and session briefings. Exact legacy cue compatibility preserves independently evidenced human quotations; same-turn correction and worker collection still run.
+
 - `F-150`, `F-160`, `C-009`, `C-003`, `C-012`: classify scheduling assertions
   with explicit stance, time and attribution so denials, status-only reports,
   relayed human prohibitions and ended/cancelled historical waits do not become
@@ -244,7 +251,9 @@ co-working app built on it. The library API is unchanged except where noted
   Repeated `no_matching_schedule` failures keep their error and empty final
   without blocking the standing objective as an external dependency. Existing
   goal budgets continue, with a durable cap after three consecutive failures
-  of that class. Desktop/Web show the completed correction request and terminal
+  of that class. Once capped, ordinary messages answer only that request and retain
+  the pause and failure diagnostic; explicit Start/API/RPC resume resets the
+  pursuit budgets. Desktop/Web show the completed correction request and terminal
   refusal on separate rows. Classifier outages and malformed output still retry
   only the original candidate without replaying manager work or tools.
 

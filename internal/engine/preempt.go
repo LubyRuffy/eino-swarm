@@ -17,6 +17,7 @@ import (
 // persistSteer records the timeline row before the UI can retract it, tags
 // the inbox message with that seq, and stores the model-visible copy.
 func (e *Engine) persistSteer(threadID, turnID string, msg *schema.Message, text string, refs []store.ImageRef) error {
+	withMessageSource(msg, store.MessageSourceHuman)
 	ev := store.Event{
 		ThreadID: threadID, TurnID: turnID,
 		Kind: KindSteer, AgentID: swarm.DefaultManagerID, Text: text,
@@ -32,7 +33,7 @@ func (e *Engine) persistSteer(threadID, turnID string, msg *schema.Message, text
 	}
 	swarm.SetSteerSeq(msg, ev.Seq)
 	if err := e.store.AppendMessages(threadID, turnID, []store.Message{
-		{Role: string(schema.User), Content: "[steer] " + text, Images: refs, EventSeq: ev.Seq},
+		{Role: string(schema.User), Content: "[steer] " + text, Images: refs, EventSeq: ev.Seq, Source: store.MessageSourceHuman},
 	}); err != nil {
 		e.log.Warn("could not persist a steer message", "turn", turnID, "err", err)
 	}
@@ -343,6 +344,9 @@ func (e *Engine) unreadSteerMessages(turn *store.Turn, snapshots ...*restoreSnap
 		}
 		if msg == nil {
 			continue
+		}
+		if messageSource(msg) == "" {
+			withMessageSource(msg, store.MessageSourceHuman)
 		}
 		swarm.SetSteerSeq(msg, ev.Seq)
 		out = append(out, msg)

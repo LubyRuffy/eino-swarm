@@ -5,6 +5,43 @@ recording the normal compiler/test subprocess umask; a restrictive logging-only
 mask must not silently change executable-mode fixtures or be reported as a
 product regression without a controlled comparison.
 
+## Paused goal replies and runtime provenance (`F-150`, `F-220`, `C-008`, `C-009`)
+
+`internal/engine/goal_paused_schedule_claim_test.go` crosses the real Registry/HTTP boundary for capped, blocked and idle human replies rejected by schedule verification, with and without a durable terminal error receipt. The original pause, reason and auto-turn count must survive with no new goal turn. `internal/store/goal_cap_test.go` also makes an idle pause win inside the cap transaction, after an older snapshot was read. Active pursuit and explicit resume retain the separate three-failure schedule-claim cap.
+
+`goal_test.go` changes the old cap-reset expectation: cap 1 admits a human turn
+and one automatic turn; another ordinary message adds only its answer turn.
+`goal_paused_message_test.go` and `goal_idle_test.go` cover blocked/idle, explicit
+resume, active-pursuit reset, failed replies, Stop and independent wake ownership.
+The independent scheduling-claim failure cap follows the same paused-send rule:
+ordinary replies retain its cap, automatic count and original failure diagnostic;
+Start / HTTP `goal_resume` / phone `resume_goal` explicitly restores pursuit and
+resets the budgets.
+`prompt_goal_pause_test.go` inspects actual manager HTTP input for the source-bound
+human deliverable and checks generic completion-criteria guidance. No incident
+request, objective, title or conversation ID is a positive prompt expectation.
+
+`goal_pause_integration_test.go` crosses both PC HTTP send/PATCH and phone RPC
+send/resume_goal for capped, blocked and idle. Desktop Playwright keeps the
+paused banner and Start after sending/reloading, then observes pursuit after
+Start. Phone tests retain the same projection through send until resume_goal.
+`ordinary_worker_completion_test.go` uses the actual worker/manager boundary:
+the same-turn correction is consumed and collection completes, then the real
+next StartTurn excludes it and older GoalContinueText. `runtime_cues_test.go`
+also captures compact input, retains human quotations and filters session
+briefing input; legacy compatibility matches complete known cues only.
+
+```bash
+go test -race ./internal/engine ./internal/store ./internal/server ./internal/remote
+ZWAI_E2E_GOAL_PAUSE=1 ZWAI_E2E_PORT=18964 ZWAI_E2E_DATA_DIR=/absolute/unique-pause-data \
+  npm --prefix frontend run e2e -- goal-pause.spec.ts --output /absolute/unique-pause-output
+(cd mobile && ZWAI_MOBILE_E2E_PORT=14196 npm run e2e -- goal-pause.spec.ts --output /absolute/unique-phone-pause-output)
+```
+
+Each concurrent run needs its own port, data/output directories and built dist.
+The fixtures use loopback HTTP without provider credentials and disposable test
+workspaces. They do not read or modify an active user's data directory.
+
 ## Chat Completions reasoning fields (`F-170`, `F-230`, `C-009`)
 
 `internal/provider/reasoning_fields_test.go` runs both Generate and Stream through
@@ -208,9 +245,12 @@ protocol and runtime boundary, not an external model's semantic accuracy.
 path for failed and corrected scheduling claims, automatic goal continuation
 and a durable three-failure cap. It keeps `goal_blocked` false, the original
 terminal error and empty final intact, and the existing automatic budget.
-Successful/cancelled/different-error turns and new human input break the
-streak; goal changes and explicit human resume reset it, manager reopen does
-not. Scheduled errors retain future-wake ownership without immediate retry.
+Before a cap, successful/cancelled/different-error turns and human input during
+unpaused pursuit break the streak. Once capped, ordinary human replies retain
+the cap, automatic-turn count and original failure diagnostic without granting
+more pursuit budget. Explicit Start / HTTP `goal_resume` / phone `resume_goal`
+restores pursuit and resets the budgets; goal changes reset the failure budget,
+manager reopen does not. Scheduled errors retain future-wake ownership without immediate retry.
 `internal/store/goal_cap_test.go` checks atomic cap/reason rollback on failed
 reads and writes, deleted owners, changed goals, budget resets and newer turns;
 a stale decision cannot pause new human work. Unreadable retry evidence has a
@@ -3791,8 +3831,8 @@ stopping tools starts the next turn with no `goal_session`;
 continuation records `goal_idle` instead of looping, and a live
 `wait_agents` does not;
 `TestHoldGoalIdleIsIdempotentAndSkipsMissingThreads` /
-`TestAHumanMessageClearsAHeldGoal` / `TestResumeClearsAHeldGoal` are why
-the hold is sticky until a human message or Start;
+`TestAHumanMessagePreservesAHeldGoal` / `TestResumeClearsAHeldGoal` are why
+the hold survives ordinary messages and only explicit Start resumes pursuit;
 `TestParkedWorkersStayVisibleBetweenGoalSessions` is why Agents still
 sees in-flight sub-agents after the manager yields.
 `TestHostNotifyKeepsWorkerEventsAfterRunReturns` /
@@ -4175,7 +4215,7 @@ Several things are tested here, some as pure logic and some in jsdom:
   turn, not a frozen 1s. An `error` then `goal_blocked` idles the composer
   and marks the objective blocked, so a crashed `/goal` turn is not still
   Working — a real refusal, not truncated tool JSON / `429` / a dropped
-  stream (those `model_retry` then auto-continue). A `goal_idle` event holds the banner until a human message or Start.
+  stream (those `model_retry` then auto-continue). A `goal_idle` event holds the banner across ordinary sends until explicit Start.
   Split from `app.test.ts` so neither file crosses 1000 lines.
 - **`src/store/app-plan.ts`**: `/plan` enters planning and starts a turn with
   an argument (not during a run, not when the argument is empty); a human

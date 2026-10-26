@@ -24,7 +24,7 @@ func (s *Store) CapGoalAfterTurn(scope GoalTurnScope, autoTurns int, ev *Event) 
 		if err := tx.First(&th, "id = ?", scope.ThreadID).Error; err != nil {
 			return err
 		}
-		if !sameGoal(&th, scope) || th.Goal == "" || th.GoalComplete || th.GoalBlocked || th.GoalCapped || th.GoalAutoTurns != autoTurns {
+		if !sameGoal(&th, scope) || th.Goal == "" || th.GoalComplete || th.GoalBlocked || th.GoalCapped || th.GoalIdle || th.GoalAutoTurns != autoTurns {
 			return nil
 		}
 		var last Turn

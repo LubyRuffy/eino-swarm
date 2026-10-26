@@ -157,6 +157,9 @@ func sessionMemorySource(previous string, events, history []store.Event) (string
 	var picked []item
 	used := 0
 	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Kind == KindGoalContinued {
+			continue // a runtime instruction is not durable conversation knowledge
+		}
 		role, text, ok := reviewEventLine(events[i])
 		if !ok {
 			continue

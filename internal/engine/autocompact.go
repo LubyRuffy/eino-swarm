@@ -275,7 +275,7 @@ func compactLines(msgs []*schema.Message) string {
 }
 
 func compactSchemaLine(m *schema.Message) string {
-	if m == nil {
+	if m == nil || isRuntimeMessage(m) {
 		return ""
 	}
 	var role string
