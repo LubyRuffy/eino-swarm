@@ -257,6 +257,9 @@ E2E suite.
   an existing different owner must fail before model input, never remain a no-op.
 - Run with `-race`. The engine, the event bus and the HTTP server run
   concurrently, and every serious bug found here so far has been an ordering bug.
+- Open private evidence files with explicit mode `0600` while preserving the
+  normal test/build subprocess umask; record that environment and demonstrate
+  any compiler-mode difference before attributing it to a product regression.
 - Local startup must not wait for optional phone-hub registration. Keep remote
   startup cancellable and serialize Stop/Reload; a late registration must not
   revive a stopped host. Keep orphaned-turn/parked-worker restoration ordered
@@ -341,6 +344,12 @@ E2E suite.
   launch deadline after acknowledged handoff. Regress restoration exceeding 30s,
   durable Stop before runtime occupation, a shared per-conversation snapshot and
   one indexed checkpoint read; Trace diagnostics cannot claim restored on error.
+  Include a real pending human ask: its validated call identity must reach the
+  waiter and cancellation cleanup without another full-turn body read. Freeze
+  query counters only after the current attempt's live/parked workers have each
+  made a real resumed request and the actual ask waiter is armed, before HTTP
+  Trace/log observers can add reads. Regress the observer with actual full-query and
+  failed-write counterexamples; self-reported counts alone are insufficient.
   Regress real process replacement, original turn/worker identities, human
   pauses and Stop, storage failure, and tool results arriving after shutdown.
   Unknown external effects require verification before retry; a model summary
@@ -569,6 +578,15 @@ E2E suite.
   turn's persisted schedule and its current state before publishing that
   success claim. Failed, denied, cancelled and historical schedules must not
   become a new armed wait through prose or replay.
+- Classify composer commands before wrapping selected-text annotations. A
+  recognized `/goal` or `/plan` with a nonblank quotation must visibly refuse
+  on the phone before clearing text/quotes/files or calling submit/steer and
+  its upload/RPC path. Preserve the current draft for explicit correction and
+  retry; never strip `<user_request>` or discard `<selected_text>` to make a
+  command appear successful. Reuse the pure shared slash parser and Go fixture
+  corpus; regress Send/Steer/Enter, original File retention, and literal
+  commands in paths, quoted text and code. Local draft retention is not proof
+  of durable PC storage or native acceptance.
 - Memory quality tests must not treat prior notes, old reviewer output, or model
   agreement as truth. Freeze source evidence and follow-up checks before comparing
   final facts, missed explicit corrections, conflicts and task behavior. Optional

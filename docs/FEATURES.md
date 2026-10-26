@@ -40,7 +40,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 - PC 恢复交互：恢复时显式禁用目标编辑／清除／开始，包括已聚焦编辑框的键盘和失焦保存；目标编辑只在成功 ACK 后关闭，拒绝保留本会话输入，就绪不自动重发，导航后旧 ACK 不影响新会话。页面 reload 按现有首页契约重选原对话后保留其已存草稿并继续显示恢复进度。关联契约：`C-001`；证据：`frontend/e2e/engine-startup.spec.ts`、`frontend/e2e/goal-restoring.spec.ts`、`frontend/src/components/app/goal-banner-restoring.test.tsx`、`frontend/src/components/app/composer-goal-restoring.test.tsx`。
 
-- 启动恢复：数据库和配置可用即发布可连接的 `restoring` 引擎，PC／手机显示恢复进度，成功后自动移除；running／parked 部分失败统一显示数量并保留原 turn 失败诊断，其余工作继续可用；创建日程只有成功 ACK 后关闭，恢复拒绝保留输入；历史、Trace、事件流、草稿、在线登记和 Stop 可用，新工作及日程变更等待 `ready`。ACK 后的替换进程不会被原交接截止时间杀掉；冷等待到期仍活着的本次 child 即使尚未 Acquire 也保留，并以 PID／日志和归属未确认错误报告，不能把竞争者的锁当成自己的；人工取消只回收本次子进程。每对话共用一次恢复快照，包括 manager 纠正预算；保留预算消耗与人工续行回执，新的人类 Continue 读取新回执。原 turn Trace 包含 `engine_restore` 耗时与扫描量。关联契约：`C-001`、`C-027`、`C-012`；实现／测试：`internal/app/startup.go`、`internal/engine/restore.go`、`internal/server/startup_test.go`、`internal/remote/startup_test.go`、`cmd/zwai/engine_restore_process_test.go`。
+- 启动恢复：数据库和配置可用即发布可连接的 `restoring` 引擎，PC／手机显示恢复进度，成功后自动移除；running／parked 部分失败统一显示数量并保留原 turn 失败诊断，其余工作继续可用；创建日程只有成功 ACK 后关闭，恢复拒绝保留输入；历史、Trace、事件流、草稿、在线登记和 Stop 可用，新工作及日程变更等待 `ready`。ACK 后的替换进程不会被原交接截止时间杀掉；冷等待到期仍活着的本次 child 即使尚未 Acquire 也保留，并以 PID／日志和归属未确认错误报告，不能把竞争者的锁当成自己的；人工取消只回收本次子进程。每对话共用一次恢复快照，包括 manager 纠正预算及已经验证的原人类提问 call 身份；提问恢复等待／Stop 不重读完整 turn 检查点；保留预算消耗与人工续行回执，新的人类 Continue 读取新回执。原 turn Trace 包含 `engine_restore` 耗时与扫描量。关联契约：`C-001`、`C-027`、`C-012`；实现／测试：`internal/app/startup.go`、`internal/engine/restore.go`、`internal/server/startup_test.go`、`internal/remote/startup_test.go`、`cmd/zwai/engine_restore_process_test.go`。
 
 
 - 目的：从原生窗口、网页或终端使用同一引擎；使用者：PC 用户；入口：`zwai desktop`, `zwai web`, `zwai tui`；输入：本机配置和对话；输出：同源的对话和状态；前置条件：本机引擎可启动；失败表现：启动或连接错误；关联契约：`C-001`, `C-005`, `C-027`；实现证据：`cmd/zwai`, `internal/app`, `internal/desktop`, `frontend/src`。
@@ -148,6 +148,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 暂停后的单轮回答：capped／blocked／idle 目标遇普通 PC／手机发送时保留暂停标志和自动续轮计数，仅回答当前消息；System 段携带人类来源与当前 turn 请求，工具限于该回答，暂停目标不授权新调查 worker。显式 Start、HTTP `goal_resume`、RPC `resume_goal` 才恢复追求；未暂停时人话仍归零连续计数。开放目标缺少可观察交付物或停止条件时，提示模型先对同一目标文本用一次 `ask_user` 明确完成判据，不逐轮重问；完成仍需 `complete_goal`。关联契约：`C-009`、`C-006`、`C-008`；实现／验证：`internal/engine/goal.go`、`internal/engine/prompt_goal_pause.go`、`internal/engine/goal_test.go`、`internal/engine/prompt_goal_pause_test.go`、`internal/server/goal_pause_integration_test.go`、`frontend/e2e/goal-pause.spec.ts`。
 
+- 手机引用命令准入：正文经 PC／手机共享的纯解析器识别为 `/goal` 或 `/plan`，且存在至少一条去空白后非空引用时，提交前显示本地拒绝提示；正文、引用和所选文件保留，不先封装引用、清稿、上传或调用发送／插话 RPC。用户修正正文或移除有效引用后自行重试，纯文本继续原有命令语义；未知命令、路径及引用／代码内的字面命令保持普通消息。关联契约：`C-009`、`C-033`、`C-011`；实现／验证：`frontend/src/lib/slash-core.ts`、`mobile/src/components/composer.tsx`、`mobile/src/components/composer-quoted-command.test.tsx`、`mobile/e2e/quoted-goal.spec.ts`；变更类型：Fixed；来源：Issue #111。
 - 显式命令参数：PC 目标与计划仅发送一次完整命令，命令参数中的 `/goal`、`/plan` 字面量保持原文，空闲到运行／待答的竞争不把命令当成跟进或回答。目标可更新并保留原待答问题；计划只创建新轮次，转忙时拒绝且保留草稿；裸计划与忙碌更新保持原有边界。关联契约：`C-002`、`C-009`、`C-033`；实现／验证：`frontend/src/store/app.ts`、`frontend/src/store/app-plan.ts`、`frontend/src/store/app-goal.test.ts`、`frontend/src/store/app-plan.test.ts`、`internal/engine/turn.go`、`internal/engine/slash_command_once_http_test.go`、`frontend/e2e/trailing-goal.spec.ts`、`frontend/e2e/plan.spec.ts`。
 - 显式目标命令：`<objective> /goal` 使用前置正文激活新持续目标，清除旧目标的完成状态；PC、HTTP 和手机发送／插话共用命令语义，普通消息、含中文的路径、引用及代码中的字面命令保持普通内容。关联契约：`C-009`；实现／验证：`internal/slash/trailing.go`、`internal/slash/trailing_goal_test.go`、`internal/slash/testdata/trailing-goal.json`、`internal/engine/slash_steer_test.go`、`internal/remote/slash_goal_test.go`、`frontend/src/lib/slash.ts`、`frontend/src/components/app/composer-trailing-goal.test.tsx`、`frontend/e2e/trailing-goal.spec.ts`。
 - 目标完成展示：桌面/Web 与配对手机在目标 `complete` 后立即隐藏输入框上方目标条，刷新或重新进入已完成会话仍不显示；保留持久化目标、完成状态、结果和历史记录，不自动清空或重新执行。桌面与手机对话历史保留 `goal_complete` 完成通知；桌面/Web 的完成通知置于已折叠目标会话外，早于或晚于最终回答到达都可见；新设 `/goal` 后重新显示目标条。未完成的暂停、受阻和计划等待继续保留状态及相应控制；已完成目标不再通过目标条显示 Start。关联契约：`C-009`、`C-003`；实现／验证证据：`frontend/src/components/app/goal-banner.tsx`、`frontend/src/components/app/goal-banner.test.tsx`、`frontend/src/lib/transcript.ts`、`frontend/src/components/app/transcript-session.tsx`、`frontend/src/components/app/transcript-session.test.tsx`、`frontend/e2e/goal-resume.spec.ts`、`frontend/e2e/goal-schedule.spec.ts`、`mobile/src/components/status-banners.tsx`、`mobile/src/components/thread-screen.test.tsx`、`mobile/src/lib/transcript.ts`、`mobile/src/lib/transcript-goal.test.ts`、`mobile/e2e/goal-completion.spec.ts`。
@@ -224,6 +225,7 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-221 Quote PC conversation text
 
 - 目的：从手机对话选择原文并附在下一条消息；使用者：手机用户；入口：选中对话正文 → 选区附近的 Add to chat／加入对话，系统复制／全选菜单仍可用；输入：选区及可选请求；输出：可查看、编辑、移除引用，发送或插入后显示独立的引用块；前置条件：打开 PC 对话，选区在正文中；失败表现：无效选区不显示操作，发送失败恢复草稿；关联契约：`C-011`, `C-017`；实现证据：`mobile/src/components/thread-screen.tsx`, `mobile/src/components/composer.tsx`, `mobile/src/lib/quote.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/e2e/composer-layout.spec.ts`。
+- 引用与目标／计划命令同时存在时，按 `F-150` 的提交前拒绝与完整保稿边界处理，不通过丢弃引用激活命令。
 
 ### F-222 Inspect sub-agents on the phone
 
@@ -311,6 +313,10 @@ This is the current user-facing capability map. The code and tests named below a
 - SIGKILL 清理回归以本测试真实私有进程库存执行故障和恢复，并在失败时保留 runner 首错与证据；测试命名空间不代替生产完整 collector 验收。关联契约：`C-031`；证据：`tools/test_native_macos_fault_cleanup.py`、`tools/test_native_macos_resilience_fault.py`。
 
 - 原生 helper 每次调用保存独立完整字节收据及执行时间；自动继任验收先观察产品自己的新像素 ready，再激活检查窗口，避免 QA 动作制造恢复成功。关联契约：`C-031`、`C-034`；证据：`tools/native_macos_resilience.py`、`tools/native_macos_resilience_phases.py`、`tools/test_native_macos_native_evidence.py`、`tools/test_native_macos_resilience_phases.py`。
+
+- 原生工具可显式选择验证阶段；阶段成功与完整 profile 成功分开记录。Issue #94 的固定长测时长约定已撤销，停止的任务不会因工具 profile 自动恢复，也不改动其他任务的验收范围。关联契约：`C-031`、`C-034`；证据：`tools/native_macos_resilience.py`、`docs/TESTING.md`。
+
+- 原生 case 的内部 `prepare` 接缝在原真实锁、未清理回执及私有进程清单下完成有限登录／power 交接；App 发布前执行最终准入，scenario 用同 birth 三类断言确认接管。登录仅接收一次内存凭据，缺失 SDK lock 字段保持 unknown，仍须本次新鲜桌面图批准；未提供回调的公共 CLI 不变。关联契约：`C-031`；实现／验证：`tools/native_macos_case.py`、`tools/native_macos_case_power.py`、`tools/native_macos_prepare_login.py`、`tools/native_macos_prepare_login_client.py`、`tools/native_macos_prepare_login.swift`、`tools/test_native_macos_case_prepare.py`、`tools/test_native_macos_case_power.py`、`tools/test_native_macos_prepare_login.py`。HOST 回归不代表来宾窗口或恢复验收。
 
 - 显式紧急发布使用 `tools/release.py --urgent-reason <reason>`，保留当前人类授权原因，仅放宽常规批次等待及 TestFlight 日发布频率；原生与交付验收仍独立生效。关联契约：`C-010`；证据：`tools/test_release_urgent.py`、`tools/test_release_ios_urgent.py`。
 

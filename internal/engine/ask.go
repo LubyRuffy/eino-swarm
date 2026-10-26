@@ -260,13 +260,19 @@ func (rt *runtime) currentTurnID() string {
 	return rt.turnID
 }
 
-// waitAsk pauses the in-flight tool until the human answers, interrupts, or
-// the process dies. The channel is armed before we look up the call id so a
-// client that already saw tool_call cannot land on AnswerTurn with nobody
-// listening. A reply that arrived first is taken from the stash.
+// waitAsk identifies a new live tool call. A reply that arrives before its
+// waiter is armed remains in the call-attributed stash.
 func (rt *runtime) waitAsk(ctx context.Context, questions []AskQuestion) (AskAnswers, error) {
+	return rt.waitAskCall(ctx, questions, "")
+}
+
+// Recovery already validated this identity against its shared snapshot.
+// Carry it into the same waiter instead of rereading checkpoint bodies.
+func (rt *runtime) waitAskCall(ctx context.Context, questions []AskQuestion, callID string) (AskAnswers, error) {
 	ch := make(chan askReply, 1)
-	callID := rt.peekAskCallID()
+	if callID == "" {
+		callID = rt.peekAskCallID()
+	}
 	rt.mu.Lock()
 	if rt.askStash != nil && (rt.askStashCallID == "" || callID == "" || rt.askStashCallID == callID) {
 		reply := *rt.askStash
@@ -290,13 +296,18 @@ func (rt *runtime) waitAsk(ctx context.Context, questions []AskQuestion) (AskAns
 		}
 	}
 	defer func() {
-		done := rt.peekAskCallID()
+		done := callID
 		rt.mu.Lock()
 		if rt.ask != nil && rt.ask.callID != "" {
 			done = rt.ask.callID
 		}
 		if done == "" {
-			done = callID
+			rt.mu.Unlock()
+			done = rt.peekAskCallID()
+			rt.mu.Lock()
+			if rt.ask != nil && rt.ask.callID != "" {
+				done = rt.ask.callID
+			}
 		}
 		rt.ask = nil
 		rt.askCompletedCallID = done
@@ -559,7 +570,7 @@ func (rt *runtime) resolveOrphanedAsk(ctx context.Context, turn *store.Turn, mes
 				return messages, err
 			}
 		}
-		answers, werr = rt.waitAsk(waitCtx, questions)
+		answers, werr = rt.waitAskCall(waitCtx, questions, open.ToolCallID)
 	}
 	body := FormatAskResult(answers)
 	if werr != nil {

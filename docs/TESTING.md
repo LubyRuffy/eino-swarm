@@ -1,5 +1,10 @@
 # Testing
 
+Create private evidence files with explicit mode `0600` while preserving and
+recording the normal compiler/test subprocess umask; a restrictive logging-only
+mask must not silently change executable-mode fixtures or be reported as a
+product regression without a controlled comparison.
+
 ## Paused goal replies and runtime provenance (`F-150`, `F-220`, `C-008`, `C-009`)
 
 `goal_test.go` changes the old cap-reset expectation: cap 1 admits a human turn
@@ -191,8 +196,8 @@ Trace、窗口截图及完整 cleanup。正常离线脚本的窗口验收不能�
 Issue #103 starts from a completed objective and no active thread wake.
 Shared fixtures in `internal/slash/testdata/trailing-goal.json` cover ASCII,
 CJK/IME slash, whitespace, multiline objectives and literal paths, quotations
-and code, including CJK paths ending in `/goal`. Go and PC parsers use the
-same cases. `frontend/src/components/app/composer-trailing-goal.test.tsx` checks
+and code, including CJK paths ending in `/goal`. Go, PC and phone command
+admission use the same cases. `frontend/src/components/app/composer-trailing-goal.test.tsx` checks
 Send/Enter, idle/running admission, menu completion and literal drafts. Leading
 commands retain their whole argument even when it ends with `/goal`; UI/HTTP
 regressions check that a second interpretation cannot rewrite the objective.
@@ -338,6 +343,73 @@ before goal mutation, including busy sends and steering.
 `mobile/src/components/composer-goal-refusal.test.tsx` checks that a refused
 send preserves the original draft and decodable PNG/file bytes for correction
 and resubmission through the actual phone client.
+
+Issue #111 checks quotations before command wrapping. The phone imports the
+pure `frontend/src/lib/slash-core.ts` parser; `frontend/src/lib/slash.ts` keeps
+the existing desktop exports and localization. The actual Composer tests in
+`mobile/src/components/composer-quoted-command.test.tsx` cover Send/Steer/form
+submission, prefix/trailing and CJK commands, the shared Go corpus, local alert,
+unchanged text/quotes/File selection and no submit/steer callback. They also
+cover ordinary quoted requests, unknown names, paths, URLs and literal markers
+so a quotation does not become a blanket command ban.
+`mobile/e2e/quoted-goal.spec.ts` selects real transcript text, attempts a quoted
+goal, verifies the visible refusal and preserved draft, then removes the quote
+and explicitly submits the original command. It runs in both the phone and
+`iphone-layout` WebKit projects. This offline host E2E accepts that UI boundary,
+not a newly configured engine goal or packaged native iOS/Android behavior;
+existing real Engine/Pairlink command tests remain the goal-semantic evidence.
+Never unwrap `<user_request>` or drop selected context to turn the refusal into
+an apparent success. Attachment-only goal refusal retains its existing path.
+
+Packaged native entry points for the same quoted-command boundary are
+`mobile/e2e/ios-quoted-command.swift` and
+`mobile/android/app/src/androidTest/java/com/lubyruffy/zwai/QuotedCommandTest.java`.
+For iOS, first build/copy the current phone assets through the existing offline
+fixture flow. From `mobile`, select an explicitly owned simulator UDID in
+`IOS_LAYOUT_SIMULATOR`, create the disposable layout fixture, and replace only
+that fixture's test file:
+
+```bash
+ios_quoted_fixture="$(IOS_LAYOUT_QUERY='/?mock=1&tick=0' python3 scripts/ios-layout-fixture.py)"
+cp e2e/ios-quoted-command.swift "$ios_quoted_fixture/mobile/ios/App/AppUITests/BindFlowTests.swift"
+xcodebuild -project "$ios_quoted_fixture/mobile/ios/App/App.xcodeproj" \
+  -scheme App -configuration Debug \
+  -destination "platform=iOS Simulator,id=$IOS_LAYOUT_SIMULATOR" \
+  -derivedDataPath "$ios_quoted_fixture/DerivedData" CODE_SIGNING_ALLOWED=NO \
+  -only-testing:AppUITests/BindFlowTests -parallel-testing-enabled NO \
+  -resultBundlePath "$ios_quoted_fixture/quoted-command.xcresult" test
+```
+
+Do not replace the checkout's `AppUITests/BindFlowTests.swift`. Android reuses
+the disposable offline APK/test-APK flow below, with an owned headless emulator
+and explicit `android_test_device`. Run each method separately, stopping only
+the owned fixture app between methods so WebView/AX state cannot leak:
+
+```bash
+for quoted_method in quotedGoalKeepsDraftUntilQuoteIsRemoved ordinaryQuotedMessageStillSends; do
+  adb -s "$android_test_device" shell am force-stop com.lubyruffy.zwai
+  adb -s "$android_test_device" shell am instrument -w \
+    -e class "com.lubyruffy.zwai.QuotedCommandTest#$quoted_method" \
+    com.lubyruffy.zwai.test/androidx.test.runner.AndroidJUnitRunner
+done
+```
+
+Both cases must reach the actual packaged screen, use the system long-press
+selection and Add to chat action, and verify the quoted-goal refusal with the
+original text/quotation retained and no new message bubble. After removing the
+quotation, submit the complete original command once; also verify an ordinary
+quoted message still sends with its quotation. Count only actual transcript
+messages: a textarea's nested accessibility StaticText is not a sent bubble.
+Retain exact source/target and test-package hashes, action/DOM/accessibility
+evidence, screenshots, result/exit status and owned-device cleanup. MockLink
+does not prove an engine goal was stored in SQLite.
+
+A DOM alert or native action acknowledgement does not prove visible rendering.
+Synchronize the WebView's presented frame with a bounded wait inside the same
+case deadline before capturing the refusal; inspect the actual screenshot for
+the visible message. Preserve the original stale-frame screenshot and failure
+separately. Do not repeat Send or other product input to repair capture evidence,
+and do not claim native visual acceptance from DOM/AX state alone.
 
 The PC and phone trailing-goal E2E specs exercise a completed objective followed
 by a new suffix command. The scheduling admission browser regression runs with:
@@ -601,6 +673,61 @@ Finder, a browser or a simulator to the foreground for a test. Builds and
 headless unit/browser tests may run on the host. Use background guest control
 (SSH when available) and guest-side screenshots/accessibility. An unavailable
 guest is a pending native check, never permission to test on the host.
+
+### Case-owned preparation and finite power handoff (Issue #94)
+
+The Python API `main(argv=None, *, prepare=None)` supports an internal callback,
+not an extra CLI mode. The runner first holds its real case lock, saves an
+incomplete cleanup receipt, creates private directories and a `ProcessScope`,
+then calls `prepare(lock, receipt, environment, processes, scope, work_deadline)`.
+Return `None` or `CasePreparation(before_launch, handoff)`. `before_launch()`
+runs immediately before App Popen; `handoff(scenario, deadline)` runs after the
+actual scenario starts. Neither callback may allocate a fresh work budget.
+A process-local monotonic value is not a portable deadline: the guest Python
+3.9 producer and child were measured with different monotonic origins. Shared
+work expiry is a single conservative projection of the original local budget
+onto system `CLOCK_MONOTONIC_RAW`; frames also retain their wall expiry. A
+receiver maps the original remaining time once to its local monotonic clock. Later checks read the same expiry, never allocate another TTL.
+
+`native_macos_case_power.make_prepare` registers its finite setup bridge in the
+original process list before invoking the login/admission callback. The scenario
+calls `start_setup_hold` at entry and publishes its actual birth and assertion
+owner. The driver independently checks that owner's PID, birth, executable,
+direct parent and three IOPM assertions, reaps its bridge, then publishes the
+handoff commit. No ACK, malformed/partial ACK, a changed identity or cancellation
+fails the case and follows the original cleanup. For an idle observation, start
+the measured `-d -i` owner, prove its two assertions with no `UserIsActive`, and
+call `release_setup_hold` before recording t0. Power is never login evidence.
+
+`native_macos_prepare_login.make_before_app` creates a callback which returns
+a final admission closure after Root approves the desktop. Power retains that
+closure for `CasePreparation.before_launch`; preliminary approval cannot replace
+this final check. The callback binds the original runner/case,
+source/package, exact helper/client bytes and current session. The caller must
+also verify the complete candidate inputs. The actor publishes current PNG and
+ready receipts under `prepare-login/`. Root must inspect each current image:
+only a strict locked result plus a ci/US/empty-password frame permits the one
+input; a missing SDK flag stays unknown and does not load a credential. The
+actor checks the sender's exact kernel/argv, case marker and birth. The pinned
+client checks the case-root inode, actor/server identity, source and relative
+socket, prints READY, then accepts one memory stdin payload within the original
+eight seconds. A new desktop frame and approval are mandatory after input;
+raw locked=true always refuses. Both approvals expire at the original capture
+plus 60 seconds, checked again at final App publication. No password is written,
+hashed, logged or put in argv/environment. Login source is read by explicit
+interpreters; a LaunchServices executable entry still needs its own mode check.
+
+HOST regressions exercise the actual runner main, real flock, real headless
+children and sockets, cancellation/partial input/ACK and preparation cleanup.
+OS leaves are replaced only for headless tests. Run:
+
+```bash
+python3 -B -m unittest discover -s tools -p 'test_native_macos_case*.py'
+python3 -B -m unittest discover -s tools -p 'test_native_macos_prepare_login.py'
+swiftc -typecheck tools/native_macos_prepare_login.swift
+```
+
+These checks do not demonstrate a guest login, window, fault recovery or release.
 
 ### Access evidence and maintenance exclusion (Issue #97)
 
@@ -1290,15 +1417,19 @@ and the unchanged versioned ZIP from the clean pushed source:
 ```bash
 python3 tools/native_macos_resilience.py launch \
   --zip /absolute/zwai-X.Y.Z-darwin-arm64.zip --source FULL_40_CHARACTER_SHA \
-  --evidence /absolute/new-campaign --soak-seconds 64800 --sleep-cycles 3 \
+  --evidence /absolute/new-campaign --sleep-cycles 3 \
   --interval 60 --stage-timeout 180 \
-  --phases baseline renderer gpu exhaustion sleepwake soak
+  --phases baseline renderer gpu exhaustion sleepwake
 python3 tools/native_macos_resilience.py status --evidence /absolute/new-campaign
 ```
 
 The driver supports baseline, renderer stall, GPU stall, exhaustion, sleep/wake
-and an 18-hour soak. `selection_complete` and an exit status of zero mean only the
-selected stages passed; overall `passed` requires real evidence for all six.
+and an optional long-run profile. The fixed-duration soak agreement for Issue #94
+has been withdrawn, and that task is stopped. The example selects only the five
+listed stages; it does not authorize resuming that task. The legacy optional
+soak profile retains its tool-defined input limits. `selection_complete` and an
+exit status of zero mean only the selected stages passed; the driver's full-profile
+`passed` still requires real evidence for all six.
 Selection and the full plan are immutable within one evidence directory;
 removing pending stages cannot produce acceptance. Exhaustion's case budget is
 at least 360 seconds. Each stage runs via
@@ -1647,9 +1778,10 @@ Editing, saving and restoration share one action deadline; immediate UI input
 does not imply the debounced durable save has finished. Both wall and monotonic
 clocks must remain ordered and within `interval + stage-timeout` between ticks;
 a tick itself must finish within the action timeout. The interval cannot exceed
-that timeout. Independent acceptance requires at least eighteen hours between
-the first and last successful real ticks, checks every gap, and hashes the tick
-ledger. A long wall-clock gap, missing ticks or an elapsed summary alone fails.
+that timeout. A separately selected long-run observation retains its actual
+duration, checks every gap and hashes the tick ledger. It is not a fixed-duration
+obligation for Issue #94. A long wall-clock gap, missing ticks or an elapsed
+summary alone cannot establish successful observations.
 
 ## Local startup readiness (F-110 / C-001 / C-027)
 
@@ -1740,6 +1872,43 @@ without an established product cause.
 ```bash
 go test -race -count=1 ./internal/app ./internal/server ./internal/remote ./internal/engine -run 'TestDeferredRestore|TestRestoringEngine|TestStopBeforeRestore|TestRecoveryServes|TestPhoneRecovery'
 go test -race -count=1 ./cmd/zwai -run 'TestReplacementListensWhileRecoveryExceedsThirtySeconds|TestAcknowledgedReplacement|TestForwardReplacement'
+```
+
+### Mixed worker roster and human-pause replacement (Issue #102)
+
+`cmd/zwai/engine_large_roster_process_test.go` and its fixture exercise actual
+old and replacement processes, SQLite, the Registry and a keyless loopback model.
+349 historical finished workers are explicitly seeded as historical events;
+two live/parked workers and the human question are created through real tools.
+The old engine's actual `PrepareRestart` must checkpoint all 351 identities.
+The tests retain task/call identities, historical results and the future wake,
+verify an uncertain write by a real read before completion, and reject duplicate
+answers. The second case explicitly stops its identified restoring child after
+model work is observed, then cold-recovers the same data without reseeding.
+This is explicit cancellation, not a post-ACK deadline kill or a product crash.
+
+The test-only helper records real indexed-checkpoint, filtered and full-body
+query counts and stage timings. Counters remain active through the resumed
+bootstrap; the parent requires fresh live/parked worker requests beyond that
+attempt's baseline and waits for the actual ask waiter via the read-only thread
+list, then receives the counter-freeze acknowledgement before requesting Trace.
+`engine_large_roster_probe_checks_test.go` challenges the observer with real
+full-thread/turn queries and failed generation writes. Restored ask lookup and
+Stop separately regress zero repeated body reads in
+`internal/engine/restore_ask_reads_test.go`. Early accepted answers and successive
+questions retain the existing restart-answer replay regressions.
+
+Handoff/listener readiness keeps its shared 30-second target; restoration and
+total work are measured separately. This mixed-roster cardinality case does not
+reproduce the large payload benchmark below and does not accept a native window
+or installer. Keep each failed attempt, model inputs, original/new process logs,
+Trace, probe and cleanup receipts separately from a later successful run.
+`ZWAI_LARGE_ROSTER_EVIDENCE` optionally retains those private files; omit it for
+ordinary disposable test data. No real model or host GUI is used.
+
+```bash
+go test -race -count=1 -timeout 8m ./cmd/zwai -run 'TestReplacementRestoresLargeRosterWithLiveParkedAndHumanPause|TestCancelledLargeRestoreReapsOwnedChildAndColdRecoversSameWork|TestLargeRestoreProbeCounts'
+go test -race -count=1 ./internal/engine -run 'TestRestoreBindsTheOriginalQuestion|TestRestartReplaysAnAnswerAccepted|TestRestartReplaysAnAcceptedAnswer|TestRestartDoesNotApplyAnEarlierAcceptedAnswer|TestLateAskAnswer'
 ```
 
 ### Large-history restoration measurement

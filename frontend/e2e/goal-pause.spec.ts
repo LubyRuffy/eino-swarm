@@ -42,7 +42,7 @@ test("a human send answers once and keeps a capped goal paused until Start", asy
     await reloadOpenConversation(page)
     await expect(page.getByTestId("goal-banner")).toContainText("Paused")
     await expect(page.getByTestId("goal-start")).toBeVisible()
-    await page.screenshot({ path: info.outputPath("paused-after-human-send.png"), animations: "disabled" })
+    await writeFile(info.outputPath("paused-after-human-send.png"), await page.screenshot({ animations: "disabled" }), { mode: 0o600 })
 
     fixture.hold()
     const resumeRequest = page.waitForRequest((req) => req.method() === "PATCH" && req.url().endsWith(`/api/threads/${threadId}`))
@@ -50,7 +50,7 @@ test("a human send answers once and keeps a capped goal paused until Start", asy
     expect((await resumeRequest).postDataJSON()).toEqual({ goal_resume: true })
     await expect(page.getByTestId("goal-banner")).toContainText("Pursuing")
     await expect(page.getByTestId("goal-start")).toHaveCount(0)
-    await page.screenshot({ path: info.outputPath("pursuing-after-start.png"), animations: "disabled" })
+    await writeFile(info.outputPath("pursuing-after-start.png"), await page.screenshot({ animations: "disabled" }), { mode: 0o600 })
     fixture.release()
     await expect.poll(async () => {
       const { turns } = await (await request.get(`/api/threads/${threadId}/turns`)).json()
