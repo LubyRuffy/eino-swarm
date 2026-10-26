@@ -15,33 +15,9 @@ static NSString *text(AXUIElementRef element, CFStringRef key) {
     return [value isKindOfClass:NSString.class] ? value : @"";
 }
 
-static CGRect frame(AXUIElementRef element) {
-    id position = attribute(element, kAXPositionAttribute), size = attribute(element, kAXSizeAttribute);
-    CGPoint origin = CGPointZero; CGSize extent = CGSizeZero;
-    if (position && CFGetTypeID((__bridge CFTypeRef)position) == AXValueGetTypeID())
-        AXValueGetValue((__bridge AXValueRef)position, kAXValueCGPointType, &origin);
-    if (size && CFGetTypeID((__bridge CFTypeRef)size) == AXValueGetTypeID())
-        AXValueGetValue((__bridge AXValueRef)size, kAXValueCGSizeType, &extent);
-    return (CGRect){origin, extent};
-}
-
 static NSDictionary *rectangle(CGRect value) {
     return @{@"x": @(value.origin.x), @"y": @(value.origin.y),
              @"width": @(value.size.width), @"height": @(value.size.height)};
-}
-
-static CGRect viewport(AXUIElementRef notice, AXUIElementRef window) {
-    CGRect clip = frame(window);
-    id current = attribute(notice, kAXParentAttribute);
-    for (int depth = 0; current && depth < 45; depth++) {
-        AXUIElementRef parent = (__bridge AXUIElementRef)current;
-        if (CFEqual(parent, window)) return clip;
-        if ([@[@"AXScrollArea", @"AXWebArea"] containsObject:text(parent, kAXRoleAttribute)])
-            clip = CGRectIntersection(clip, frame(parent));
-        if (CGRectIsEmpty(clip) || CGRectIsNull(clip)) return CGRectZero;
-        current = attribute(parent, kAXParentAttribute);
-    }
-    return CGRectZero;
 }
 
 static BOOL inView(CGRect notice, CGRect clip) {
@@ -61,10 +37,10 @@ static NSString *normalized(NSString *value) {
     return [parts componentsJoinedByString:@" "];
 }
 
-static BOOL realElement(id value, pid_t pid) {
-    pid_t owner = 0;
+static BOOL realElement(id value, pid_t *owner) {
+    *owner = 0;
     return value && CFGetTypeID((__bridge CFTypeRef)value) == AXUIElementGetTypeID() &&
-        AXUIElementGetPid((__bridge AXUIElementRef)value, &owner) == kAXErrorSuccess && owner == pid;
+        AXUIElementGetPid((__bridge AXUIElementRef)value, owner) == kAXErrorSuccess && *owner > 0;
 }
 
 static BOOL geometry(AXUIElementRef element, CGRect *out) {
@@ -83,18 +59,31 @@ static BOOL geometry(AXUIElementRef element, CGRect *out) {
 
 // Follow the actual target's ancestry, never an arbitrary scroll area from the
 // page. The innermost area also identifies whether a hit belongs to a nested box.
-static NSDictionary *scrollContext(AXUIElementRef element, AXUIElementRef window, pid_t pid) {
-    CGRect clip;
-    if (!geometry(window, &clip)) return nil;
+// WebKit may expose remote-process children and canonical parents from another
+// Children branch. Bind the selected node through both actual graphs instead
+// of assuming that every descendant shares the native window's owner PID.
+static NSDictionary *scrollContext(AXUIElementRef element, AXUIElementRef window, NSSet *reachable, pid_t pid, BOOL allowOffscreen) {
+    if (!CFSetContainsValue((__bridge CFSetRef)reachable, element)) return nil;
+    CGRect clip, targetBounds;
+    if (!geometry(window, &clip) || !geometry(element, &targetBounds)) return nil;
     id current = (__bridge id)element, scrollOwner = nil;
     NSMutableArray *ancestors = [NSMutableArray array];
+    NSMutableSet *parents = CFBridgingRelease(CFSetCreateMutable(kCFAllocatorDefault, 0, &kCFTypeSetCallBacks));
+    pid_t targetOwner = 0;
     for (int depth = 0; current && depth < 45; depth++) {
-        if (!realElement(current, pid)) return nil;
+        pid_t owner = 0;
+        if (!realElement(current, &owner) || CFSetContainsValue((__bridge CFSetRef)parents, (__bridge CFTypeRef)current)) return nil;
+        CFSetAddValue((__bridge CFMutableSetRef)parents, (__bridge CFTypeRef)current);
+        if (!depth) targetOwner = owner;
         AXUIElementRef parent = (__bridge AXUIElementRef)current;
-        if (CFEqual(parent, window))
-            return scrollOwner ? @{@"element": scrollOwner, @"viewport": rectangle(clip), @"ancestors": ancestors} : nil;
         NSString *role = text(parent, kAXRoleAttribute);
         if (!role.length) return nil;
+        if (CFEqual(parent, window)) {
+            if (owner != pid || ![role isEqual:@"AXWindow"] || !scrollOwner) return nil;
+            return @{@"element": scrollOwner, @"viewport": rectangle(clip), @"ancestors": ancestors,
+                @"owner_pid": @(targetOwner), @"binding": @{@"children_reachable": @YES, @"parent_chain_root": @YES,
+                    @"root_owner_pid": @(owner), @"root_role": role}};
+        }
         if (!CFEqual(parent, element)) {
             // Overflow divs can be AXGroup rather than AXScrollArea in WebKit.
             // Clip through every real ancestor instead of treating the whole
@@ -103,8 +92,14 @@ static NSDictionary *scrollContext(AXUIElementRef element, AXUIElementRef window
             if (!geometry(parent, &bounds)) return nil;
             if (!scrollOwner && [role isEqual:@"AXScrollArea"]) scrollOwner = current;
             clip = CGRectIntersection(clip, bounds);
-            if (CGRectIsEmpty(clip) || CGRectIsNull(clip)) return nil;
-            [ancestors addObject:@{@"role": role, @"owner_pid": @(pid), @"frame": rectangle(bounds)}];
+            if (CGRectIsEmpty(clip) || CGRectIsNull(clip)) {
+                // A known offscreen paragraph/section still needs one reveal.
+                // Continue validating every ancestor; unknown geometry or a
+                // detached parent must never be mistaken for offscreen content.
+                if (!allowOffscreen) return nil;
+                clip = CGRectZero;
+            }
+            [ancestors addObject:@{@"role": role, @"owner_pid": @(owner), @"frame": rectangle(bounds)}];
         }
         current = attribute(parent, kAXParentAttribute);
     }
@@ -116,29 +111,36 @@ static CGRect fromRectangle(NSDictionary *value) {
                       [value[@"width"] doubleValue], [value[@"height"] doubleValue]);
 }
 
-static NSDictionary *readUp(AXUIElementRef app, AXUIElementRef window, AXUIElementRef notice, pid_t pid) {
+static NSDictionary *readUp(AXUIElementRef app, AXUIElementRef window, AXUIElementRef notice, NSSet *reachable, pid_t pid) {
     // Reveal the unique receipt once so the wheel can hit that exact native
     // node. A window-wide scroll area is not enough to exclude the sidebar.
-    AXError reveal = AXUIElementPerformAction(notice, CFSTR("AXScrollToVisible"));
     NSMutableDictionary *row = [@{@"wheel_posted": @NO, @"wheel_count": @0,
-        @"notice_count": @1, @"notice_reveal_requested": @YES, @"notice_reveal_status": @(reveal)} mutableCopy];
+        @"notice_count": @1, @"notice_reveal_requested": @NO} mutableCopy];
+    NSDictionary *context = scrollContext(notice, window, reachable, pid, YES);
+    if (!context) { row[@"error"] = @"actual notice has no verified root binding"; return row; }
+    AXError reveal = AXUIElementPerformAction(notice, CFSTR("AXScrollToVisible"));
+    row[@"notice_reveal_requested"] = @YES; row[@"notice_reveal_status"] = @(reveal);
     if (reveal) { row[@"error"] = @"unique reading notice could not be revealed"; return row; }
-    NSDictionary *context = scrollContext(notice, window, pid);
+    context = scrollContext(notice, window, reachable, pid, NO);
     CGRect box;
     if (!context || !geometry(notice, &box)) {
         row[@"error"] = @"actual notice has no verified transcript viewport"; return row;
     }
     CGRect clip = fromRectangle(context[@"viewport"]);
     row[@"notice_frame"] = rectangle(box); row[@"viewport_frame"] = context[@"viewport"];
+    row[@"notice_owner_pid"] = context[@"owner_pid"]; row[@"binding"] = context[@"binding"];
     row[@"ancestors"] = context[@"ancestors"]; row[@"scrollarea_verified"] = @YES;
     row[@"notice_in_view"] = @(inView(box, clip));
     if (!inView(box, clip)) { row[@"error"] = @"reading notice is outside its clipped ancestry"; return row; }
     CGPoint point = CGPointMake(CGRectGetMidX(box), CGRectGetMidY(box));
     AXUIElementRef hit = NULL;
     AXError status = AXUIElementCopyElementAtPosition(app, point.x, point.y, &hit);
-    BOOL verified = !status && realElement((__bridge id)hit, pid) && CFEqual(hit, notice);
+    pid_t hitOwner = 0;
+    BOOL verified = !status && realElement((__bridge id)hit, &hitOwner) && CFEqual(hit, notice) &&
+        hitOwner == [context[@"owner_pid"] intValue];
     row[@"point"] = @{@"x": @(point.x), @"y": @(point.y)};
     row[@"hit_verified"] = @(verified); row[@"hit_status"] = @(status);
+    row[@"hit_owner_pid"] = hitOwner > 0 ? @(hitOwner) : NSNull.null;
     if (hit) CFRelease(hit);
     if (!verified) { row[@"error"] = @"reading point did not hit the unique actual notice"; return row; }
     // Refresh without activation or focus. Revalidate bundle identity immediately
@@ -150,6 +152,11 @@ static NSDictionary *readUp(AXUIElementRef app, AXUIElementRef window, AXUIEleme
         ![running.bundleURL.path.stringByResolvingSymlinksInPath isEqual:bundle]) {
         row[@"error"] = @"reading wheel requires the already-active private app"; return row;
     }
+    NSDictionary *wheelContext = scrollContext(notice, window, reachable, pid, NO);
+    if (!wheelContext || ![wheelContext[@"owner_pid"] isEqual:context[@"owner_pid"]]) {
+        row[@"error"] = @"reading notice root binding changed before the wheel"; return row;
+    }
+    row[@"binding"] = wheelContext[@"binding"]; row[@"ancestors"] = wheelContext[@"ancestors"];
     CGEventRef event = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 1, 80);
     if (!event) { row[@"error"] = @"native wheel allocation failed"; return row; }
     CGEventSetLocation(event, point); CGEventSetFlags(event, 0);
@@ -193,7 +200,7 @@ static void collect(AXUIElementRef element, NSMutableArray *matches, NSMutableAr
     BOOL typed = element && CFGetTypeID(element) == AXUIElementGetTypeID();
     pid_t owner = 0;
     AXError ownerStatus = typed ? AXUIElementGetPid(element, &owner) : kAXErrorInvalidUIElement;
-    if (!typed || ownerStatus || owner != pid) {
+    if (!typed || ownerStatus || owner <= 0) {
         NSMutableDictionary *details = [readDetails(CFSTR("AXPID"), ownerStatus, element) mutableCopy];
         details[@"observed_pid"] = ownerStatus ? NSNull.null : @(owner);
         refuseScan(first, truncated, typed ? @"node_owner" : @"node_type", path, *visits + 1, depth, nil, details, pid); return;
@@ -305,7 +312,7 @@ int main(int argc, const char **argv) { @autoreleasepool {
     NSUInteger visits = 0; BOOL truncated = NO;
     NSMutableDictionary *first = [NSMutableDictionary dictionary];
     collect((__bridge AXUIElementRef)windows[0], matches, notices, targets, needle, @[], seen, &visits, &truncated, first, pid, 0);
-    CFRelease(seen);
+    NSSet *reachable = CFBridgingRelease(seen);
     if (truncated) {
         CFRelease(app);
         return emit(@{@"error": @"complete bounded AX traversal required", @"first_refusal": first,
@@ -324,10 +331,11 @@ int main(int argc, const char **argv) { @autoreleasepool {
     }
     AXError error = kAXErrorSuccess;
     NSMutableDictionary *result = [@{@"pid": @(pid), @"bundle": bundle, @"action": action,
+                             @"root_window": @{@"role": @"AXWindow", @"owner_pid": @(owner)},
                              @"folds": folds, @"pressed": @NO, @"ax_error": @(error)} mutableCopy];
     if ([action isEqual:@"read-up"]) {
         if (notices.count != 1) { CFRelease(app); return emit(@{@"error": @"one actual continuation notice required before reading", @"wheel_posted": @NO}, 2); }
-        [result addEntriesFromDictionary:readUp(app, (__bridge AXUIElementRef)windowOwner, (__bridge AXUIElementRef)notices[0], pid)];
+        [result addEntriesFromDictionary:readUp(app, (__bridge AXUIElementRef)windowOwner, (__bridge AXUIElementRef)notices[0], reachable, pid)];
     }
     if (textAction) {
         if (!targets.count || ([unique boolValue] && targets.count != 1)) {
@@ -345,15 +353,18 @@ int main(int argc, const char **argv) { @autoreleasepool {
         if (!selected) { CFRelease(app); return emit(@{@"error": @"revealed target path no longer matches its witness"}, 2); }
         AXUIElementRef target = (__bridge AXUIElementRef)selected[@"element"];
         BOOL revealText = [action isEqual:@"reveal-text"];
+        NSDictionary *context = scrollContext(target, (__bridge AXUIElementRef)windowOwner, reachable, pid, revealText);
+        if (!context) { CFRelease(app); return emit(@{@"error": @"target has no verified root binding"}, 2); }
         if (revealText) error = AXUIElementPerformAction(target, CFSTR("AXScrollToVisible"));
         CGRect bounds;
-        NSDictionary *context = scrollContext(target, (__bridge AXUIElementRef)windowOwner, pid);
+        context = scrollContext(target, (__bridge AXUIElementRef)windowOwner, reachable, pid, NO);
         if (!context || !geometry(target, &bounds)) { CFRelease(app); return emit(@{@"error": @"target geometry or ancestry is unknown"}, 2); }
         NSString *content = text(target, kAXValueAttribute);
         if (!content.length) content = text(target, kAXTitleAttribute);
         NSDictionary *targetRow = @{@"text": content, @"path": selected[@"path"], @"frame": rectangle(bounds),
             @"viewport": context[@"viewport"], @"ancestors": context[@"ancestors"],
-            @"in_view": @(inView(bounds, fromRectangle(context[@"viewport"]))), @"owner_pid": @(pid)};
+            @"in_view": @(inView(bounds, fromRectangle(context[@"viewport"]))),
+            @"owner_pid": context[@"owner_pid"], @"binding": context[@"binding"]};
         [result addEntriesFromDictionary:@{@"matched_count": @(targets.count), @"target_count": @1,
             @"selected_path": selected[@"path"], @"selection": [unique boolValue] ? @"unique opening" : @"common prose evidence",
             @"reveal_count": revealText ? @1 : @0, @"targets": @[targetRow], @"ax_error": @(error)}];
@@ -363,13 +374,19 @@ int main(int argc, const char **argv) { @autoreleasepool {
             CFRelease(app); return emit(@{@"error": @"one visible continuation notice required before reveal"}, 2);
         }
         AXUIElementRef notice = (__bridge AXUIElementRef)notices[0];
-        CGRect before = frame(notice), clip = viewport(notice, (__bridge AXUIElementRef)windows[0]);
+        NSDictionary *context = scrollContext(notice, (__bridge AXUIElementRef)windowOwner, reachable, pid, YES);
+        CGRect before;
+        if (!context || !geometry(notice, &before)) { CFRelease(app); return emit(@{@"error": @"notice geometry or root binding is unknown"}, 2); }
+        CGRect clip = fromRectangle(context[@"viewport"]);
         BOOL visible = inView(before, clip);
         if (!visible) error = AXUIElementPerformAction(notice, CFSTR("AXScrollToVisible"));
-        CGRect after = frame(notice);
-        clip = viewport(notice, (__bridge AXUIElementRef)windows[0]);
+        CGRect after;
+        context = scrollContext(notice, (__bridge AXUIElementRef)windowOwner, reachable, pid, NO);
+        if (!context || !geometry(notice, &after)) { CFRelease(app); return emit(@{@"error": @"notice geometry or root binding is unknown after reveal"}, 2); }
+        clip = fromRectangle(context[@"viewport"]);
         [result addEntriesFromDictionary:@{@"notice_count": @(notices.count), @"scroll_requested": visible ? @NO : @YES,
             @"notice_was_in_view": visible ? @YES : @NO, @"notice_in_view": inView(after, clip) ? @YES : @NO,
+            @"notice_owner_pid": context[@"owner_pid"], @"binding": context[@"binding"], @"ancestors": context[@"ancestors"],
             @"notice_frame": rectangle(after), @"viewport_frame": rectangle(clip), @"ax_error": @(error)}];
     }
     CFRelease(app);

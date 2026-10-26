@@ -2696,6 +2696,29 @@ The actual Objective-C entry-point regressions live in
 `tools/test_native_goal_resume_notice_ax.py`. A refused complete traversal
 retains its first predicate, path, attribute status and type without recording
 text content; it does not reveal a target or post input.
+The unique root remains a real `AXWindow` owned by the private app PID.
+Its complete bounded `AXChildren` graph may include remote-process WebKit
+elements; each must have a real AX type and a successfully sampled positive
+owner PID. Every reveal/input target must be identity-reachable in that graph
+and have a fresh, bounded, cycle-free `AXParent` chain ending at that exact root.
+Canonical parents may use another branch, including a parent absent from the
+Children graph; individual Children edges need not be reciprocal. The helper
+records actual target/ancestor owner PIDs and explicit root-binding metadata.
+Regressions exercise remote bridges, duplicate DAG children and canonical
+parents through the real entry point, plus zero-action refusal for unknown
+child owners, detached/cyclic/foreign-root parents and changed root identity.
+Reveals and the native refresh require fresh binding readback before wheel
+input. The hit must equal the exact notice with its actual sampled owner;
+a wrong hit receives no wheel, and the one wheel still targets the original
+private app PID.
+Before the one reveal, known finite offscreen target/ancestor frames may have
+an empty clipped viewport. The helper still validates every ancestor's geometry
+and exact root binding. After reveal, inspection and wheel admission require
+the nonempty clipped viewport and actual visible target again; unknown frames
+or a detached root never qualify as offscreen content. Real-entry regressions
+start both the target and its local section outside the window, move both into
+view only on the one reveal, and retain refusals for unknown outer geometry,
+detached parents and sections that remain outside after reveal.
 The initial completed objective is fixture setup through normal local
 `POST /api/threads` and `POST /api/threads/:id/turns` with `/goal` text, inside
 that case's private conversation workspace. It waits for the accepted first

@@ -122,13 +122,26 @@ def finite_rectangle(value):
             for key in ("x", "y", "width", "height")) and value["width"] > 0 and value["height"] > 0)
 
 
+def assert_root_binding(row, binding):
+    root = row.get("root_window", {})
+    assert (type(row.get("pid")) is int and row["pid"] > 0 and isinstance(root, dict)
+            and type(root.get("owner_pid")) is int and root["owner_pid"] == row["pid"]
+            and root.get("role") == "AXWindow" and isinstance(binding, dict)
+            and binding.get("children_reachable") is True and binding.get("parent_chain_root") is True
+            and type(binding.get("root_owner_pid")) is int and binding["root_owner_pid"] == root["owner_pid"]
+            and binding.get("root_role") == root["role"]), "target must be bound to the exact private root window"
+
+
 def assert_reading_admission(row):
     assert_notice_in_view(row)
+    assert_root_binding(row, row.get("binding"))
     clip, point = row.get("viewport_frame"), row.get("point", {})
     assert (row.get("wheel_posted") is True and type(row.get("wheel_count")) is int and row["wheel_count"] == 1
             and type(row.get("wheel_delta")) is int and row["wheel_delta"] > 0
             and row.get("notice_reveal_requested") is True and row.get("notice_reveal_status") == 0
             and row.get("scrollarea_verified") is True and row.get("hit_verified") is True and row.get("hit_status") == 0
+            and type(row.get("notice_owner_pid")) is int and row["notice_owner_pid"] > 0
+            and type(row.get("hit_owner_pid")) is int and row["hit_owner_pid"] == row["notice_owner_pid"]
             and finite_rectangle(clip) and all(type(point.get(key)) in (int, float) and math.isfinite(point[key]) for key in ("x", "y"))
             and clip["x"] < point["x"] < clip["x"] + clip["width"]
             and clip["y"] < point["y"] < clip["y"] + clip["height"]), "native reading wheel needs one verified transcript target"
@@ -140,11 +153,11 @@ def assert_target_geometry(row, *, unique):
     assert count == 1, "one selected text target is required"
     matched = row.get("matched_count")
     assert type(matched) is int and matched > 0 and (not unique or matched == 1), "opening witness must identify one actual text target"
-    assert type(row.get("pid")) is int and row["pid"] > 0, "target owner must be known"
     visible = False
     for target in targets:
         box, clip = target.get("frame"), target.get("viewport")
-        assert (target.get("owner_pid") == row["pid"] and finite_rectangle(box) and finite_rectangle(clip)
+        assert_root_binding(row, target.get("binding"))
+        assert (type(target.get("owner_pid")) is int and target["owner_pid"] > 0 and finite_rectangle(box) and finite_rectangle(clip)
                 and type(target.get("in_view")) is bool), "target geometry and owner must be known"
         inside = (box["x"] >= clip["x"] and box["y"] >= clip["y"] and
                   box["x"] + box["width"] <= clip["x"] + clip["width"] and
