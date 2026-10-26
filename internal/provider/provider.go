@@ -11,6 +11,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
@@ -75,9 +76,10 @@ type builder func(ctx context.Context, p config.Provider) (model.BaseChatModel, 
 // same endpoint at once, and one shared client means one shared connection
 // pool instead of a dozen.
 type Pool struct {
-	cfg   *config.Config
-	build builder
-	mock  bool
+	cfg       *config.Config
+	build     builder
+	mock      bool
+	mockDelay time.Duration
 
 	mu       sync.Mutex
 	cache    map[string]model.BaseChatModel
@@ -95,11 +97,20 @@ func New(cfg *config.Config) *Pool {
 // output, and a full manager/worker swarm exercise. This is what `--mock`
 // runs on and what the end-to-end tests drive.
 func NewMock(cfg *config.Config) *Pool {
+	return NewMockWithStreamDelay(cfg, mockStreamDelay(testing.Testing()))
+}
+
+// NewMockWithStreamDelay preserves a fixture's explicit per-chunk pacing across
+// every role. Use it when exercising stream coalescing or actions during a turn.
+func NewMockWithStreamDelay(cfg *config.Config, delay time.Duration) *Pool {
 	return &Pool{
-		cfg:   cfg,
-		build: func(context.Context, config.Provider) (model.BaseChatModel, error) { return newMockModel(""), nil },
-		mock:  true,
-		cache: map[string]model.BaseChatModel{},
+		cfg: cfg,
+		build: func(context.Context, config.Provider) (model.BaseChatModel, error) {
+			return newMockModelWithStreamDelay("", delay), nil
+		},
+		mock:      true,
+		mockDelay: delay,
+		cache:     map[string]model.BaseChatModel{},
 	}
 }
 
@@ -264,7 +275,7 @@ func (p *Pool) ModelBuilder(ctx context.Context, id, modelName, effort string, r
 	limit := p.cfg.SwarmSnapshot().CompletionTokenLimit()
 	if p.mock {
 		return func(role, agentID string) model.BaseChatModel {
-			return wrap(newMockModel(role), agentID, prov, effort, limit, rec)
+			return wrap(newMockModelWithStreamDelay(role, p.mockDelay), agentID, prov, effort, limit, rec)
 		}, nil
 	}
 	if !prov.Ready() {

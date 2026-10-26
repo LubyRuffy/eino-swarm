@@ -416,7 +416,7 @@ def recover_renderer_faults(evidence, receipt, bundle, *, require_exit=False):
         return False
 
 
-def run_case(app, evidence, timeout, command, *, budget=60, prepare=None):
+def run_case(app, evidence, timeout, command, *, budget=60, prepare=None, preflight=None):
     started = time.monotonic()
     evidence = evidence.absolute()
     # Evidence is durable and must never be recursively copied with the source app.
@@ -430,7 +430,7 @@ def run_case(app, evidence, timeout, command, *, budget=60, prepare=None):
                "cleanup_reserve_seconds": min(5, budget / 10) if math.isfinite(budget) and budget > 0 else 0,
                "budget_exceeded": False,
                "timings_seconds": {name: 0 for name in
-                                   ("guest_gate", "prepare", "launch", "scenario", "cleanup", "total")},
+                                   ("guest_gate", "preflight", "prepare", "launch", "scenario", "cleanup", "total")},
                "native_behavior": "scenario assertions and window evidence required"}
     code = 2
     try:
@@ -438,6 +438,8 @@ def run_case(app, evidence, timeout, command, *, budget=60, prepare=None):
             raise ValueError("provide a positive finite case budget")
         if prepare is not None and not callable(prepare):
             raise ValueError("case preparation must be callable")
+        if preflight is not None and not callable(preflight):
+            raise ValueError("case preflight must be callable")
         work_deadline = started + receipt["budget_seconds"] - receipt["cleanup_reserve_seconds"]
         with measure_phase(receipt, "guest_gate"):
             require_guest()
@@ -446,6 +448,12 @@ def run_case(app, evidence, timeout, command, *, budget=60, prepare=None):
             raise ValueError("provide a scenario command and a positive finite timeout")
         work_remaining(started, receipt, "preparation")
         with case_lock() as lock:
+            if preflight is not None:
+                # No private process scope exists yet. This read-only hook must
+                # reap its synchronous probes and leave the previous latch intact.
+                with measure_phase(receipt, "preflight"):
+                    preflight(lock, receipt, evidence, work_deadline)
+                work_remaining(started, receipt, "preparation")
             root = Path(tempfile.mkdtemp(prefix="zwai-native-" + receipt["case_id"] + "-")).resolve()
             bundle, data = root / "app-not-copied", root / "data"
             processes, scenario, scope, preparation = [], None, None, None
@@ -569,6 +577,11 @@ def run_case(app, evidence, timeout, command, *, budget=60, prepare=None):
     except KeyboardInterrupt:
         code = 130
         receipt["failure"] = "interrupted"
+    except subprocess.TimeoutExpired as error:
+        code = 2
+        receipt["failure"] = "subprocess timeout during preflight"
+        receipt.setdefault("failure_kind", "subprocess_timeout")
+        record_timeout(evidence, receipt, "preflight", error)
     except (OSError, ValueError, RuntimeError) as error:
         code = 2
         receipt["failure"] = str(error)
@@ -577,7 +590,7 @@ def run_case(app, evidence, timeout, command, *, budget=60, prepare=None):
     return code
 
 
-def main(argv=None, *, prepare=None):
+def main(argv=None, *, prepare=None, preflight=None):
     parser = argparse.ArgumentParser(description=__doc__, epilog=(
         "Scenario environment: HOME (isolated home/cache, parent unchanged), "
         "ZWAI_HOME / ZWAI_NATIVE_DATA (isolated data), "
@@ -602,7 +615,8 @@ def main(argv=None, *, prepare=None):
         raise KeyboardInterrupt
     handlers = {sig: signal.signal(sig, interrupt) for sig in (signal.SIGTERM, signal.SIGINT)}
     try:
-        return run_case(args.app, args.evidence, args.timeout, command, budget=args.budget, prepare=prepare)
+        return run_case(args.app, args.evidence, args.timeout, command, budget=args.budget,
+                        prepare=prepare, preflight=preflight)
     except (OSError, ValueError) as error:
         parser.exit(2, str(error) + "\n")
     finally:

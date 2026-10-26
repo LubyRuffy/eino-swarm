@@ -1695,6 +1695,11 @@ and offline stage revalidation live in `tools/native_macos_input_evidence.py`,
 which belongs to the same frozen runtime dependency set as the scenario modules.
 
 `make native-smoke` runs `tools/native_macos_smoke.py` through that same lifecycle.
+Its `--case` entry validates the prepared helper and probes current invocation
+permissions and console/login state under the case exclusion lock, before any
+app copy or launch. The probe shares the original work budget and saves a
+classified `native-preflight.json`; missing lock state stays unknown and a
+ready route still needs the scenario's actual window and behavior evidence.
 It combines readiness, an offline worker/tool run, Trace assertions, native
 accessibility checks and a window screenshot into one guest command. The runner
 records phase/total timings under a default 60-second round budget, reserving

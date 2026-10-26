@@ -32,13 +32,26 @@ import (
 // frame.
 const mockChunkDelay = 18 * time.Millisecond
 
+// Unit fixtures need the same asynchronous chunks, not demo-speed token pacing.
+// Executables (including Playwright's go run server) retain the visible stream.
+func mockStreamDelay(isTest bool) time.Duration {
+	if isTest {
+		return time.Millisecond
+	}
+	return mockChunkDelay
+}
+
 // newMockModel returns a scripted model for one agent. The manager script
 // fans work out and collects it, the reviewer curates a project's memory, and
 // every other role is a worker that does one tool call and reports back.
 func newMockModel(role string) model.BaseChatModel {
+	return newMockModelWithStreamDelay(role, mockStreamDelay(testing.Testing()))
+}
+
+func newMockModelWithStreamDelay(role string, delay time.Duration) model.BaseChatModel {
 	switch role {
 	case managerRole, "":
-		return &mockModel{script: managerScript, role: managerRole}
+		return &mockModel{script: managerScript, role: managerRole, chunkDelay: delay}
 	case reviewerRole:
 		// Catalog tidy is a synchronous HTTP click. Pacing tokens like the
 		// manager would hold the Memory panel on "Asking the model" for
@@ -53,14 +66,14 @@ func newMockModel(role string) model.BaseChatModel {
 			return schema.AssistantMessage(`{"claims":[]}`, nil)
 		}, instant: true, role: role}
 	case titleRole:
-		return &mockModel{script: titleNamerScript, role: titleRole}
+		return &mockModel{script: titleNamerScript, role: titleRole, chunkDelay: delay}
 	case compactRole, sessionMemoryRole:
 		// Briefings are not a chat stream. Pacing them like the manager
 		// would add seconds of fake tokens to every /compact and session
 		// refresh in --mock and the test suite.
 		return &mockModel{script: compactSummarizerScript, instant: true, role: role}
 	default:
-		return &mockModel{script: workerScript(role), role: role}
+		return &mockModel{script: workerScript(role), role: role, chunkDelay: delay}
 	}
 }
 
@@ -91,9 +104,10 @@ const (
 type mockScript func(turn int, msgs []*schema.Message) *schema.Message
 
 type mockModel struct {
-	script  mockScript
-	instant bool
-	role    string
+	script     mockScript
+	instant    bool
+	role       string
+	chunkDelay time.Duration
 
 	mu   sync.Mutex
 	turn int
@@ -144,7 +158,7 @@ func (m *mockModel) Stream(ctx context.Context, in []*schema.Message, _ ...model
 				select {
 				case <-ctx.Done():
 					return false
-				case <-time.After(mockChunkDelay):
+				case <-time.After(m.chunkDelay):
 				}
 			}
 			return !sw.Send(msg, nil)

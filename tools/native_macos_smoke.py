@@ -15,6 +15,7 @@ import plistlib
 import re
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -95,6 +96,85 @@ def prepare_helper(binary):
         os.replace(candidate, binary)
         os.replace(receipt_path, helper_manifest_path(binary))
     return validate_helper(binary)
+
+
+def readiness_blockers(row, case_id):
+    if (not isinstance(row, dict) or type(row.get("schema_version")) is not int
+            or row["schema_version"] != 1 or row.get("case_id") != case_id
+            or type(row.get("uid")) is not int or row["uid"] != os.getuid()
+            or "locked" not in row
+            or any(type(row.get(key)) is not bool for key in
+                   ("ax_trusted", "screen_capture_allowed", "lock_key_present"))
+            or (row["lock_key_present"] and type(row.get("locked")) is not bool)
+            or (not row["lock_key_present"] and row.get("locked") is not None)):
+        raise ValueError("native preflight has malformed or mismatched current observations")
+    blockers = []
+    if not row["ax_trusted"]:
+        blockers.append("current_invocation_accessibility_unavailable")
+    if not row["screen_capture_allowed"]:
+        blockers.append("current_invocation_screen_capture_unavailable")
+    if (type(row.get("session_uid")) is not int or row["session_uid"] != row["uid"]
+            or row.get("on_console") is not True or row.get("login_done") is not True):
+        blockers.append("current_console_login_unready")
+    if row.get("locked") is True:
+        blockers.append("current_guest_locked")
+    return blockers
+
+
+def save_preflight(path, value):
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        json.dump(value, stream, indent=2)
+        stream.write("\n")
+
+
+def case_preflight(binary, receipt, evidence, deadline):
+    """Fail this invocation before copying/launching; no observations are reused."""
+    result = dict(scope="current_invocation", status="failed", case_id=receipt["case_id"],
+                  native_behavior_accepted=False)
+    receipt["preflight"] = result
+    try:
+        identity = validate_helper(binary)
+        result["helper"] = identity
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise runner.CaseBudgetExpired("native case work budget exhausted before readiness probe")
+        command = [identity["binary"], "--preflight", receipt["case_id"]]
+        result.update(command=command, timeout_seconds=min(5, remaining))
+        probe_started = time.monotonic()
+        try:
+            probe = subprocess.run(command, capture_output=True, text=True, timeout=result["timeout_seconds"])
+        finally:
+            result["elapsed_seconds"] = time.monotonic() - probe_started
+        result.update(returncode=probe.returncode, stdout=probe.stdout, stderr=probe.stderr)
+        if probe.returncode:
+            raise RuntimeError("current invocation native readiness probe failed")
+        row = json.loads(probe.stdout)
+        blockers = readiness_blockers(row, receipt["case_id"])
+        result.update(observation=row, blockers=blockers,
+                      login_lock_state="unknown" if row["locked"] is None else "locked" if row["locked"] else "unlocked")
+        if blockers:
+            result["status"] = "blocked"
+            raise RuntimeError("native smoke prerequisites unavailable: " + ", ".join(blockers))
+        # An absent SDK lock flag stays unknown. Only the later real window and
+        # behavior assertions can accept the case, including after session changes.
+        result["status"] = "ready_for_attempt"
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        result["failure"] = str(error)
+        receipt["failure_kind"] = "native_preflight"
+        if isinstance(error, (subprocess.TimeoutExpired, runner.CaseBudgetExpired)):
+            raise
+        raise RuntimeError(str(error) + "; inspect native-preflight.json for this invocation") from error
+    finally:
+        primary_error = sys.exc_info()[1]
+        try:
+            save_preflight(evidence / "native-preflight.json", result)
+        except (OSError, ValueError, TypeError) as write_error:
+            receipt["preflight_evidence_error"] = str(write_error)
+            if primary_error is None:
+                result.update(status="failed", failure="native preflight evidence could not be saved")
+                receipt["failure_kind"] = "native_preflight"
+                raise RuntimeError(result["failure"]) from write_error
 
 
 def case_context(environment):
@@ -445,7 +525,23 @@ def main(argv=None):
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--prepare-ax", type=Path, help="prepare/reuse the tracked direct AX helper before starting a case")
     mode.add_argument("--ax", type=Path, help="prepared direct AX helper, with its adjacent .json identity receipt")
+    parser.add_argument("--case", action="store_true", help="run the isolated smoke lifecycle with a fresh pre-copy readiness probe")
+    parser.add_argument("--app", type=Path)
+    parser.add_argument("--evidence", type=Path)
+    parser.add_argument("--timeout", type=float, default=50)
+    parser.add_argument("--budget", type=float, default=60)
     args = parser.parse_args(argv)
+    if args.case:
+        if args.ax is None or args.app is None or args.evidence is None:
+            parser.error("--case requires --ax, --app and --evidence")
+        binary = args.ax.absolute()
+        return runner.main(["--app", str(args.app), "--evidence", str(args.evidence),
+                            "--timeout", str(args.timeout), "--budget", str(args.budget), "--",
+                            sys.executable, str(Path(__file__).resolve()), "--ax", str(binary)],
+                           preflight=lambda lock, receipt, evidence, deadline:
+                           case_preflight(binary, receipt, evidence, deadline))
+    if args.app is not None or args.evidence is not None:
+        parser.error("--app and --evidence require --case")
     context = None
     try:
         if args.prepare_ax is not None:

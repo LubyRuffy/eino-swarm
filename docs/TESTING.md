@@ -1021,6 +1021,26 @@ the guest:
 make native-smoke APP=/absolute/candidate/zwai.app EVIDENCE=/absolute/private/new-round
 ```
 
+The Make entry uses `native_macos_smoke.py --case` and checks the prepared
+helper's identity and the current invocation's control prerequisites under the
+existing case lock, before allocating state, copying or launching the app.
+The noninteractive probe reads Accessibility/screen-capture permission and the
+current console user/login/lock observations; it never requests permission or
+performs input. `native-preflight.json` retains the helper identity, case,
+command, deadline, raw streams and classified blockers. Its maximum five seconds
+come from the same round budget. A timeout retains its original streams in the
+runner timeout receipt and cannot become a scenario timeout. A blocked probe
+leaves the previous cleanup latch unchanged and launches nothing.
+An absent lock flag remains unknown; `ready_for_attempt` still requires the
+existing real window, pixels and behavior checks. This result describes only
+the actual invocation: an SSH denial does not reject an authorized Terminal
+route. Each invocation probes afresh; a failure should first resolve its
+recorded prerequisite or use the existing authorized route rather than repeat
+the same expensive case. `tools/test_native_macos_smoke_preflight.py` exercises
+the actual CLI/runner wiring, refusal before copy/launch, budgets, failure
+evidence and the compiled helper preflight with headless OS seams. These offline
+tests do not accept a real guest or installer.
+
 This single command replaces separate manual preparation, API polling, window
 inspection and cleanup steps. It uses fresh case state, waits for actual
 readiness and completion rather than fixed startup sleeps, verifies a real
@@ -3767,6 +3787,20 @@ the prefix before task coordination took about 19m10s and its corrected
 individual test, provider timeout, worker budget or native acceptance budget.
 An indefinitely waiting fixture must still be diagnosed and fixed; extending
 the package deadline cannot accept it.
+
+The scripted provider keeps each asynchronous reasoning, text, tool and usage
+chunk, but Go test fixtures pace chat chunks at 1ms instead of the executable's
+18ms demonstration speed. `go run`, packaged applications and Playwright retain
+18ms pacing. A test whose assertion depends on visible streaming across the
+engine's coalescing interval uses `provider.NewMockWithStreamDelay` to retain
+the original 18ms interval; `TestFullTurnRunsTheWholeSwarm` keeps its live-delta
+assertions this way. Explicit worker fixture delays, real HTTP timeout tests,
+provider retry budgets and race detection remain unchanged.
+`internal/provider/mock_pacing_test.go` checks both modes, unchanged ordered
+chunks, real pacing/cancellation and independent per-pool overrides. Run the
+same test selection with `-race -count=1 -json` before and after a change;
+compare package/test elapsed times and retain failures as well as successes.
+Historical full-suite measurements above are not a current before/after pair.
 
 ```bash
 go test -race -cover -timeout 25m ./...       # everything

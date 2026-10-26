@@ -116,6 +116,8 @@ func TestCreateThreadMakesWorkspace(t *testing.T) {
 // workers, they write files into the workspace, and the answer comes back.
 func TestFullTurnRunsTheWholeSwarm(t *testing.T) {
 	e := newTestEngine(t)
+	// This case accepts the live coalesced stream as well as final state.
+	e.pool = provider.NewMockWithStreamDelay(e.cfg, 18*time.Millisecond)
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
 		t.Fatal(err)
