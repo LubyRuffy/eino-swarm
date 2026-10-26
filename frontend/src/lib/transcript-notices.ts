@@ -78,7 +78,7 @@ export function modelRetryNotice(text?: string): string {
       case "scheduled_no_activity":
         return "Continuing the scheduled check."
       case "schedule_claim_unverified":
-        return "Checking the schedule before reporting it as arranged."
+        return "The previous answer contained an unverified schedule claim. One correction was requested."
       case "workers_uncollected":
         return "Collecting delegated work before completing this turn."
       case "context_overflow":
@@ -109,6 +109,9 @@ export function goalCappedNotice(text?: string): string {
     const body = JSON.parse(text ?? "") as { reason?: string }
     if (body.reason === "interrupted") {
       return "Standing objective paused. Press Start on the goal to keep going."
+    }
+    if (body.reason === "schedule_claim_unverified") {
+      return "Stopped auto-continuing: consecutive schedule claims could not be verified. Press Start on the goal to keep going."
     }
   } catch {
     /* cap payload is {auto_turns,cap}; ignore junk */

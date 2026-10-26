@@ -262,12 +262,14 @@ uploads, downloads and the live event stream have exactly one implementation.
   a pursuing turn that ends while they are still running, including when a
   thread wake is the next turn instead of an immediate auto-continue. A continuation
   that makes no tool progress stops auto-continue until you hit **Start**. Hitting the auto-continue budget (or a stop) pauses
-  the same way — the banner says this is not an error, and **Start**
-  keeps going. If it hits an
+  the same way, and **Start** keeps going. If it hits an
   obstacle it cannot pass, it calls
   `block_goal` and stops instead of retrying forever — a crashed ordinary turn that
   is not a recoverable model error does the same, and the banner shows the
-  public error. Truncated tool JSON / a `429` / a dropped stream / a
+  public error. An unverified scheduling claim instead gets one correction in
+  that turn; three consecutive turns rejected for that reason pause pursuit with a separate
+  limit and retain each turn's error. Ordinary messages still leave that pause
+  in place; **Start** explicitly resumes it. Truncated tool JSON / a `429` / a dropped stream / a
   mid-stream TCP read timeout retry in-turn, and the transcript names the model service for a rate limit, an outage, or a dropped connection. A concrete API rejection stays as that status and cause. Three consecutive worker lifetime watchdog failures stop automatic resume: the turn errors, its goal blocks and its recurring check pauses. Inspect the worker trace, model and task before an explicit new message or **Start** retries. Provider idle timeouts are separate. A
   context-window rejection is named in the transcript and compacted once;
   if the next call still does not fit, the turn stops. A repeating

@@ -27,13 +27,15 @@ const KindGoalContinued = "goal_continued"
 // turn. The objective stays open until an explicit resume resets the budget.
 // An ordinary human message answers once without reopening pursuit.
 // Interrupt payload is JSON {reason:"interrupted"};
-// a budget cap is {auto_turns,cap}.
+// a budget cap is {auto_turns,cap}. Unsupported schedule answers have a
+// separate {reason:"schedule_claim_unverified",code,attempt,cap} limit.
 const KindGoalCapped = "goal_capped"
 
 // KindGoalBlocked is recorded when the manager calls block_goal, or when
 // a pursuing turn fails for a reason that is not a recoverable model error.
 // Truncated tool JSON / 429 / a dropped stream / a mid-stream TCP read
-// timeout auto-continue instead.
+// timeout auto-continue instead. Unsupported schedule answers also retain
+// pursuit, bounded by their own automatic-retry cap rather than a blocker.
 // Auto-continue stops until the human resumes.
 const KindGoalBlocked = "goal_blocked"
 

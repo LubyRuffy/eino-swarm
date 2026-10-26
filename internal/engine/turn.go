@@ -714,8 +714,13 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	// Close the claimed fire even when FinishTurn missed (deleted thread):
 	// leaving status=running sticks HasRunningRun and a CountRunningRuns slot.
 	e.finishScheduledRun(turn, status, res.Final, errText)
+	allowGoalRetry := true
 	if status == store.TurnError && !isolatedScheduledFailure(turn, status, runErr) && !isRetryableModelError(runErr) {
-		rt.blockOpenGoalOnTurnError()
+		if isScheduleClaimMismatch(runErr) {
+			allowGoalRetry = e.allowFailedScheduleClaimGoalRetry(turn)
+		} else {
+			rt.blockOpenGoalOnTurnError()
+		}
 	}
 	if status == store.TurnCancelled {
 		rt.pauseOpenGoalOnInterrupt()
@@ -728,7 +733,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	// rather than sit there looking stuck. Compact still waits on the
 	// same gate if the next Generate actually needs the briefing.
 	e.scheduleSessionAndReview(rt.threadID, turn, status, pc, res.Final)
-	pursue := !(turn.ScheduleContinue && status == store.TurnError) && shouldPursueAfterTurn(status, runErr, rt.pursuingOpenGoal())
+	pursue := allowGoalRetry && !(turn.ScheduleContinue && status == store.TurnError) && shouldPursueAfterTurn(status, runErr, rt.pursuingOpenGoal())
 	started := false
 	if pursue {
 		started = rt.runLateSteerMessages(store.TurnDone, leftover)

@@ -74,9 +74,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
-- `F-150`, `F-220`, `C-009`, `C-006`: ordinary PC/phone messages no longer resume capped, blocked or idle standing goals. They answer only the current request, retain the pause and auto-turn count, and leave Start available. Explicit goal resume starts pursuit again; unpaused human steering still resets the consecutive count. Paused replies use ordinary iteration limits and cannot borrow goal worker ownership.
+- `F-150`, `F-220`, `C-009`, `C-006`: ordinary PC/phone messages no longer resume capped, blocked or idle standing goals. They answer only the current request, retain the pause and auto-turn count, including a scheduling-claim failure cap and its diagnostic, and leave Start available. Explicit goal resume starts pursuit again; unpaused human steering still resets the consecutive count. Paused replies use ordinary iteration limits and cannot borrow goal worker ownership.
 - `F-150`, `C-009`: guide open-ended goals to ask once for observable completion criteria before a new investigation slice, without changing continuation limits, idle tool accounting or `complete_goal` completion evidence.
-
 - `F-430`, `C-034`: withdraw the fixed-duration soak agreement for Issue #94 at
   the user's request and stop that investigation. Retain existing failure and
   cleanup evidence; optional harness profiles and other tasks remain unchanged.
@@ -231,7 +230,23 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-150`, `C-009`: preserve an existing pause when a human reply fails schedule-claim verification, including unavailable terminal receipts; an idle pause also wins over a stale cap decision inside the storage transaction.
+
 - `F-130`, `F-410`, `C-008`: mark runtime corrections and persist input provenance, excluding transient instructions from later replay, compact inputs and session briefings. Exact legacy cue compatibility preserves independently evidenced human quotations; same-turn correction and worker collection still run.
+
+- `F-150`, `F-160`, `C-009`, `C-003`, `C-012`: classify scheduling assertions
+  with explicit stance, time and attribution so denials, status-only reports,
+  relayed human prohibitions and ended/cancelled historical waits do not become
+  current armed-wait claims. Unsupported affirmative claims retain one
+  same-turn correction; a corrected answer without the claim publishes.
+  Repeated `no_matching_schedule` failures keep their error and empty final
+  without blocking the standing objective as an external dependency. Existing
+  goal budgets continue, with a durable cap after three consecutive failures
+  of that class. Once capped, ordinary messages answer only that request and retain
+  the pause and failure diagnostic; explicit Start/API/RPC resume resets the
+  pursuit budgets. Desktop/Web show the completed correction request and terminal
+  refusal on separate rows. Classifier outages and malformed output still retry
+  only the original candidate without replaying manager work or tools.
 
 - `F-115`, `C-034`, `C-012`: coordinate successor focus from the still-foreground
   parent after its private handoff, avoiding a system-refused self-activation

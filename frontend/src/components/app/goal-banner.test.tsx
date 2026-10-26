@@ -75,7 +75,8 @@ describe("GoalBanner", () => {
   it("marks a capped objective", () => {
     render(<GoalBanner goal="keep going" capped onResume={vi.fn()} onClear={vi.fn()} />)
     expect(screen.getByTestId("goal-banner").textContent).toContain("Paused")
-    expect(screen.getByTestId("goal-reason").textContent).toMatch(/not an error/)
+    expect(screen.getByTestId("goal-reason").textContent).toMatch(/Auto-continue paused/)
+    expect(screen.getByTestId("goal-reason").textContent).not.toMatch(/not an error/)
     expect(screen.getByTestId("goal-reason").textContent).toMatch(/Press Start/)
     expect(screen.getByRole("button", { name: "Start goal" })).toBeInTheDocument()
   })

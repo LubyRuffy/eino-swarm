@@ -8,10 +8,11 @@ type Input = { messages: { role: string; content?: string }[]; stream?: boolean;
 
 // An actor/step protocol, independent of the human task. The correction waits
 // at the fixture boundary until the browser has observed its live SSE notice.
-export async function startScheduleAnswerFixture({ secondPolicyDelayMS = 0, secondPolicyFailures = [], unavailable = false }: {
+export async function startScheduleAnswerFixture({ secondPolicyDelayMS = 0, secondPolicyFailures = [], unavailable = false, uncorrected = false }: {
   secondPolicyDelayMS?: number
   secondPolicyFailures?: number[]
   unavailable?: boolean
+  uncorrected?: boolean
 } = {}) {
   const errors: string[] = []
   let managerRequests = 0
@@ -47,7 +48,8 @@ export async function startScheduleAnswerFixture({ secondPolicyDelayMS = 0, seco
           // Delay headers to exercise the configured non-streaming first-byte
           // budget, independently of the shorter response-body idle budget.
           if (checks === secondPolicyFailures.length + 2 && secondPolicyDelayMS > 0) await delay(secondPolicyDelayMS)
-          policy(res, { claims: [{ quote: checks === 1 ? unsupportedScheduleAnswer : verifiedScheduleAnswer, scope: "thread", new: true, every_s: 90 }] })
+          policy(res, { claims: [{ quote: checks === 1 || uncorrected ? unsupportedScheduleAnswer : verifiedScheduleAnswer, scope: "thread", new: true, every_s: 90,
+            stance: "affirmed", temporal: "current", attribution: "assistant" }] })
           return
         }
         if (system.startsWith("## Thread wake authorization classification")) {
@@ -56,6 +58,12 @@ export async function startScheduleAnswerFixture({ secondPolicyDelayMS = 0, seco
           return
         }
         managerRequests += 1
+        if (uncorrected) {
+          if (managerRequests > 6) throw new Error(`Unbounded goal correction: ${managerRequests}`)
+          if (managerRequests === 2) await arm
+          response(res, { role: "assistant", content: unsupportedScheduleAnswer })
+          return
+        }
         if (managerRequests === 1) {
           response(res, { role: "assistant", content: unsupportedScheduleAnswer })
         } else if (managerRequests === 2) {

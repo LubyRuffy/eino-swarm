@@ -935,7 +935,8 @@ describe("Composer slash commands", () => {
   it("starts a paused standing objective from the banner", () => {
     const onResumeGoal = vi.fn()
     renderComposer({ goal: "keep going", goalCapped: true, onResumeGoal })
-    expect(screen.getByTestId("goal-reason").textContent).toMatch(/not an error/)
+    expect(screen.getByTestId("goal-reason").textContent).toMatch(/Auto-continue paused/)
+    expect(screen.getByTestId("goal-reason").textContent).not.toMatch(/not an error/)
     fireEvent.click(screen.getByRole("button", { name: "Start goal" }))
     expect(onResumeGoal).toHaveBeenCalled()
   })

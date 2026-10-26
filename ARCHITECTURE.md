@@ -191,7 +191,14 @@ flowchart LR
 
 Manager prose admission for scheduled-work claims lives in
 `internal/engine/schedule_answer.go` and `manager_answer_buffer.go`. A tool-free
-policy call extracts claims from candidate prose; code checks them against
+policy call classifies candidate assertions by stance, time and attribution.
+Only affirmed, current, assistant-owned assertions enter schedule verification;
+denials, status-only reports, relayed human prohibitions and ended/cancelled
+historical waits do not assert an armed wait. Quotes retain their contiguous
+semantic context rather than isolating an affirmative fragment. Missing or
+invalid classification fields retry the original candidate as malformed output.
+The classifier still interprets prose; these structural checks do not prove
+an external model's semantic accuracy. Code checks eligible claims against
 persisted schedule rows, current state and turn ownership before publishing
 the buffered text. `schedule_answer_pending.go` first stores the candidate's
 original identity, pending events, final answer and transcript in the private
@@ -209,8 +216,26 @@ and body-idle budgets without an extra 30-second total deadline.
 
 A confirmed unsupported scheduling claim still gets one correction in the
 same turn. Its durable `model_retry` receipt preserves that allowance across
-restart; another unsupported claim fails explicitly. Unreadable private state,
-correction receipts or failed storage writes also fail explicitly instead of
+restart; another unsupported claim fails explicitly. Removing the claim lets
+the corrected answer publish. A `no_matching_schedule` terminal error does not
+mark a standing objective externally blocked or overwrite its block reason.
+Automatic goal continuation retains its existing budget and stops after three
+consecutive same-objective ordinary-pursuit failures of this class, with a distinct durable
+`goal_capped` reason instead of `goal_blocked`. This goal-level cap is separate
+from each turn's one correction and survives engine replacement. Before a cap,
+success, cancellation, another error class or a new human turn during unpaused
+pursuit breaks the streak. Once capped, ordinary PC/phone sends answer only their
+current request, retaining the pause, automatic-turn count and original failure
+diagnostic. Explicit Start / HTTP `goal_resume: true` / phone `resume_goal`
+resumes pursuit and resets its budgets; setting/clearing the goal also resets the
+failure budget. Manager reopen does not. Failed scheduled checks retain their future-wake ownership instead
+of immediately starting another goal turn. `internal/store/goal_cap.go` commits
+the cap and reason event atomically after rechecking the goal, automatic count
+and latest turn. Unknown budget evidence pauses with a distinct recovery-state
+reason; failed persistence never grants another automatic attempt.
+The retry notice records the completed correction request; a terminal refusal
+has its own row and no longer reads as an active verification wait.
+Unreadable private state, correction receipts or failed storage writes also fail explicitly instead of
 pretending recovery is durable. `model_backoff` and classifier LLM records
 belong to the original turn's Trace; private candidate prose is not a public
 event, ordinary history or compaction input.
