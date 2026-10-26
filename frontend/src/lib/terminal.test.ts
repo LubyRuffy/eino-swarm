@@ -7,7 +7,44 @@ import {
   terminalSocketURL,
   terminalTabLabel,
   terminalTarget,
+  terminalQuote,
+  terminalSelectionRect,
 } from "./terminal"
+import { formatQuotedMessage, parseQuotedMessage } from "./quote"
+
+describe("terminal quotations", () => {
+  it("retains the actual terminal source through the existing send format", () => {
+    const text = terminalQuote(" command\r\noutput ", {
+      id: "term_2", threadId: "th_source", cwd: "/tmp/work \n", shell: "/bin/shell",
+    })
+    expect(text).toContain('Source: integrated terminal\n\ncommand\noutput\n\nSession: "term_2"')
+    expect(text).toContain('Conversation: "th_source"')
+    expect(text).toContain('Initial directory: "/tmp/work \\n"')
+    expect(text).toContain('Shell: "/bin/shell"')
+    expect(parseQuotedMessage(formatQuotedMessage([text], "Investigate"))).toEqual({
+      quotes: [text], body: "Investigate",
+    })
+  })
+
+  it("does not invent a command, current directory or unknown shell", () => {
+    const text = terminalQuote("failure", { id: "term_1", projectId: "pj_source" })
+    expect(text).toContain('Project: "pj_source"')
+    expect(text).not.toMatch(/Command:|Current directory:|Initial directory:|Shell:/)
+    expect(terminalQuote(" \r\n ", { id: "term_1" })).toBe("")
+  })
+
+  it("anchors the menu to visible terminal cells including wrapped selections", () => {
+    const bounds = { top: 100, left: 20, width: 800, height: 240 }
+    expect(terminalSelectionRect({ start: { x: 2, y: 10 }, end: { x: 8, y: 10 } }, 10, 80, 12, bounds))
+      .toEqual({ top: 100, bottom: 120, left: 40, width: 60, height: 20 })
+    expect(terminalSelectionRect({ start: { x: 2, y: 9 }, end: { x: 0, y: 13 } }, 10, 80, 12, bounds))
+      .toEqual({ top: 100, bottom: 160, left: 20, width: 800, height: 60 })
+    expect(terminalSelectionRect({ start: { x: 2, y: 10 }, end: { x: 0, y: 11 } }, 10, 80, 12, bounds))
+      .toEqual({ top: 100, bottom: 120, left: 40, width: 780, height: 20 })
+    expect(terminalSelectionRect({ start: { x: 0, y: 0 }, end: { x: 5, y: 1 } }, 10, 80, 12, bounds)).toBeNull()
+    expect(terminalSelectionRect({ start: { x: 0, y: 30 }, end: { x: 5, y: 31 } }, 10, 80, 12, bounds)).toBeNull()
+  })
+})
 
 describe("terminalTarget", () => {
   it("prefers the open conversation over a selected project", () => {

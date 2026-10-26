@@ -13,6 +13,14 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-180`, `C-011`: select integrated-terminal text and use **Add to chat**
+  to attach it to the current composer with its source tab, conversation/project,
+  initial directory and shell. References use the existing editable, durable
+  quote draft and selected-text message format; commands are included only
+  when selected, without guessing later directories or exit status.
+  Streaming output in another pane preserves the settled selection menu.
+  Desktop publication: `v0.1.43`; mobile version/build remain unchanged.
+
 - `F-430`, `C-031`: add internal case-owned preparation and final App admission,
   with bounded login/frame approval and a same-birth power handoff. Preparation
   children share the original lock, deadlines and cleanup; cross-process expiry

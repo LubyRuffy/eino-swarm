@@ -3,7 +3,13 @@ import { Terminal } from "@xterm/xterm"
 import { useEffect, useRef } from "react"
 
 import type { TerminalSession } from "@/store/terminal"
-import { terminalSocketURL } from "@/lib/terminal"
+import {
+  TERMINAL_SELECTION_EVENT,
+  terminalQuote,
+  terminalSelectionRect,
+  terminalSocketURL,
+  type TerminalSelection,
+} from "@/lib/terminal"
 import { cn } from "@/lib/utils"
 
 import "@xterm/xterm/css/xterm.css"
@@ -49,6 +55,8 @@ export function TerminalSessionView({
   const wsRef = useRef<WebSocket | undefined>(undefined)
   const onReadyRef = useRef(onReady)
   onReadyRef.current = onReady
+  const visibleRef = useRef(visible)
+  visibleRef.current = visible
 
   useEffect(() => {
     const host = hostRef.current
@@ -73,6 +81,29 @@ export function TerminalSessionView({
     ws.binaryType = "arraybuffer"
     wsRef.current = ws
 
+    let cwd: string | undefined
+    let shell: string | undefined
+    const publishSelection = () => {
+      const text = terminalQuote(term.getSelection(), { ...session, cwd, shell })
+      const range = term.getSelectionPosition()
+      const screen = host.querySelector(".xterm-screen")
+      const rect = visibleRef.current && text && range && screen
+        ? terminalSelectionRect(
+          range, term.buffer.active.viewportY, term.cols, term.rows,
+          screen.getBoundingClientRect(),
+        )
+        : null
+      document.dispatchEvent(new CustomEvent<TerminalSelection>(TERMINAL_SELECTION_EVENT, {
+        detail: {
+          source: host,
+          selection: rect ? { text, rect } : null,
+          clear: () => term.clearSelection(),
+        },
+      }))
+    }
+    const selectionSub = term.onSelectionChange(publishSelection)
+    host.addEventListener("mouseup", publishSelection)
+
     const encoder = new TextEncoder()
     const dataSub = term.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -86,9 +117,14 @@ export function TerminalSessionView({
           const msg = JSON.parse(ev.data) as {
             type?: string
             cwd?: string
+            shell?: string
             error?: string
           }
-          if (msg.type === "ready" && msg.cwd) onReadyRef.current(msg.cwd)
+          if (msg.type === "ready") {
+            cwd = msg.cwd
+            shell = msg.shell
+            if (cwd) onReadyRef.current(cwd)
+          }
           if (msg.type === "error" && msg.error) {
             term.write(`\r\n${msg.error}\r\n`)
           }
@@ -105,6 +141,11 @@ export function TerminalSessionView({
     }
 
     return () => {
+      selectionSub.dispose()
+      host.removeEventListener("mouseup", publishSelection)
+      document.dispatchEvent(new CustomEvent<TerminalSelection>(TERMINAL_SELECTION_EVENT, {
+        detail: { source: host, selection: null, clear: () => {} },
+      }))
       dataSub.dispose()
       ws.close()
       term.dispose()
@@ -113,6 +154,10 @@ export function TerminalSessionView({
       wsRef.current = undefined
     }
   }, [session.id, session.threadId, session.projectId])
+
+  useEffect(() => {
+    if (!visible) termRef.current?.clearSelection()
+  }, [visible])
 
   useEffect(() => {
     const host = hostRef.current
