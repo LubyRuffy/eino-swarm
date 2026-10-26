@@ -1616,6 +1616,12 @@ starts `$SHELL` there, and the first text frame is
 `{"type":"ready","cwd":"…","shell":"…"}` so the tab label is the path the
 server chose. Eight sessions per process.
 
+Open terminal tabs follow the app's light/dark mode and named colour palette,
+including hidden tabs, by updating xterm's resolved theme without replacing
+the terminal or its PTY connection. The System appearance preference listens
+for OS colour-scheme changes while the app is running; explicit Light and Dark
+preferences remain fixed.
+
 `TerminalSessionView` reads xterm's selection API rather than DOM ranges and
 offers the same selection menu. The resulting `Quote.text` starts with
 `Source: integrated terminal` and records `Session` (the client tab ID), the
