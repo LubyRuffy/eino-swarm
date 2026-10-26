@@ -74,6 +74,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430`, `C-010`: prepare source batch `0.1.41` for the scheduling-answer fix and previously accepted mobile work. macOS publishes independently; Android/iOS release-package acceptance and publication remain pending.
+
 - `F-430`, `C-034`: withdraw the fixed-duration soak agreement for Issue #94 at
   the user's request and stop that investigation. Retain existing failure and
   cleanup evidence; optional harness profiles and other tasks remain unchanged.
