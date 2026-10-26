@@ -436,6 +436,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-031 Native desktop tests own their guest lifecycle
 
+- `make native-smoke` checks fresh current-invocation helper/permission/session observations under the existing exclusion lock before allocating state or copying/launching an app. The bounded probe shares the original work budget, retains classified failures and raw streams, and leaves the previous cleanup latch unchanged on refusal. An absent lock flag stays unknown; a ready route is only permission to attempt existing native behavior assertions. SSH and Terminal observations never substitute for each other. 实现 `tools/native_macos_smoke.py`, `tools/native_macos_case.py`, `tools/native_macos_ax.m`; 回归 `tools/test_native_macos_smoke_preflight.py`; 关联 `F-430`。
 
 - 状态：active
 - 类型：lifecycle / security / consistency

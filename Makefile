@@ -140,7 +140,7 @@ native-smoke-prepare:
 .PHONY: native-smoke
 native-smoke:
 	@test -n "$(APP)" -a -n "$(EVIDENCE)" || (echo "APP and a new EVIDENCE directory are required" >&2; exit 2)
-	python3 "$(CURDIR)/tools/native_macos_case.py" --app "$(APP)" --evidence "$(EVIDENCE)" --timeout 50 --budget 60 -- python3 "$(CURDIR)/tools/native_macos_smoke.py" --ax "$(CURDIR)/bin/native-macos-ax"
+	python3 "$(CURDIR)/tools/native_macos_smoke.py" --case --app "$(APP)" --evidence "$(EVIDENCE)" --timeout 50 --budget 60 --ax "$(CURDIR)/bin/native-macos-ax"
 
 .PHONY: check
 check: fmt-check vet docs-check test e2e

@@ -88,6 +88,18 @@ co-working app built on it. The library API is unchanged except where noted
   inline briefing disclosure; failed compression and other notice cards remain
   visible. Preserve history order, completion footers, search and live activity
   (Issue #113).
+
+- `F-430`, `C-031`: native smoke checks its prepared helper, current caller's
+  control permissions and guest console/login state before app copy/launch.
+  Classified refusals retain raw evidence within the existing round budget;
+  an unknown lock state or a ready probe cannot accept native behavior.
+
+- Pace offline Go functional-test streams at 1ms per unchanged asynchronous
+  chunk; application and Playwright demonstrations retain 18ms. Dedicated
+  live-stream tests explicitly retain their original pacing, with chunk-order,
+  cancellation and per-pool isolation regressions. Runtime deadlines and test
+  coverage are unchanged.
+
 - `F-150`, `F-220`, `C-009`, `C-006`: ordinary PC/phone messages no longer resume capped, blocked or idle standing goals. They answer only the current request, retain the pause and auto-turn count, including a scheduling-claim failure cap and its diagnostic, and leave Start available. Explicit goal resume starts pursuit again; unpaused human steering still resets the consecutive count. Paused replies use ordinary iteration limits and cannot borrow goal worker ownership.
 - `F-150`, `C-009`: guide open-ended goals to ask once for observable completion criteria before a new investigation slice, without changing continuation limits, idle tool accounting or `complete_goal` completion evidence.
 

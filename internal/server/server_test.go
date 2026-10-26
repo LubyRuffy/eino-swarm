@@ -381,7 +381,7 @@ func TestContinueTurnEndpoint(t *testing.T) {
 // The stream has to replay history and then go live from one subscription, or
 // everything that happens between the two is lost.
 func TestEventStreamReplaysThenGoesLive(t *testing.T) {
-	h := newHarness(t)
+	h := newStreamingHarness(t)
 	// The namer records after `done`. This test is about the turn's own
 	// timeline; a title event landing between the live close and the
 	// resume would look like a duplicate.

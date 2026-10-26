@@ -172,10 +172,32 @@ static BOOL waitForActivation(NSRunningApplication *running, double deadline) {
     }
 }
 
+static id sessionBoolean(NSDictionary *session, NSString *key) {
+    id value = session[key];
+    return value && CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()
+        ? value : NSNull.null;
+}
+
+static int preflight(NSString *caseID) {
+    if (!caseID.length) return fail(@"preflight requires the current case identity");
+    NSDictionary *session = CFBridgingRelease(CGSessionCopyCurrentDictionary()) ?: @{};
+    // These reads never request permission, activate a window, or synthesize input.
+    emit(@{@"schema_version": @1, @"case_id": caseID, @"uid": @(getuid()),
+        @"session_uid": session[@"kCGSSessionUserIDKey"] ?: NSNull.null,
+        @"on_console": sessionBoolean(session, @"kCGSSessionOnConsoleKey"),
+        @"login_done": sessionBoolean(session, @"kCGSessionLoginDoneKey"),
+        @"lock_key_present": [NSNumber numberWithBool:session[@"CGSSessionScreenIsLocked"] != nil],
+        @"locked": sessionBoolean(session, @"CGSSessionScreenIsLocked"),
+        @"ax_trusted": [NSNumber numberWithBool:AXIsProcessTrusted()],
+        @"screen_capture_allowed": [NSNumber numberWithBool:CGPreflightScreenCaptureAccess()]});
+    return 0;
+}
+
 int main(int argc, const char **argv) { @autoreleasepool {
     int virtualized = 0; size_t size = sizeof(virtualized);
     if (sysctlbyname("kern.hv_vmm_present", &virtualized, &size, NULL, 0) || virtualized != 1)
         return fail(@"macOS VM required; physical host refused");
+    if (argc == 3 && !strcmp(argv[1], "--preflight")) return preflight(@(argv[2]));
     if (argc != 7) return fail(@"expected pid action case-id bundle origin value");
     char *tail = NULL; long parsed = strtol(argv[1], &tail, 10);
     if (!tail || *tail || parsed <= 0 || parsed > INT_MAX) return fail(@"invalid private app PID");
