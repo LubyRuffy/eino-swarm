@@ -227,22 +227,24 @@ attention. Legacy rows need no output-ID or cause migration.
 | `ordinal` | int64, unique with `turn_id` | assigned as that turn's `MAX(ordinal)+1` inside the save transaction. Determines insertion/recovery order; caller values, clock rollback and equal timestamps cannot change it |
 | `kind` | text | `answer` or `report` |
 | `payload` | text | latest answer's private versioned JSON while the turn is running; contains original answer ID, candidate text/events, Final/Transcript and max-iteration state. Reports retain their distinct committed-rearm IDs and original tool-call/result receipt. Cleared by the successful terminal transaction |
-| `state` | text | `pending`, `accepted` or `rejected`; terminal turns retain only lightweight decision receipts, with pending changed to rejected |
+| `state` | text | `pending`, `deferred`, `accepted` or `rejected`; deferred releases candidate execution after the request-failure cap while retaining unpublished bytes. Terminal turns retain lightweight receipts, with pending/deferred changed to rejected |
 | `created_at` | time | immutable wall-clock diagnostic; does not decide candidate order |
 | `attempts` | int | persisted classifier recovery count, never decreased by a stale retry write |
-| `retry_at` | time | next candidate retry time; restart waits out the remaining delay |
+| `classification_failures` | int | consecutive `classification_unavailable` request failures; invalid output resets it. Saved atomically with the retry time and deferred decision; local storage/configuration failures do not consume it |
+| `retry_at` | time | next pending-candidate retry time; restart waits out the remaining delay. A deferred candidate is not retried |
 
 Saving checks the owning thread, running turn and durable Stop receipt in the
 same transaction. Reusing an ID cannot replace its owner, kind or payload and
 does not reset its ordinal, decision or retry state. Reads include every state
 ordered by the private ordinal, separate from public event sequence numbers.
-Saving a new `answer` retains only its full transcript: prior answers of that
-turn become lightweight receipts, with old pending decisions rejected. Report
-payloads and other turns remain unchanged. Insertion and this cleanup share
+Saving a new `answer` retains only its full transcript. Prior pending answers
+become rejected lightweight receipts; prior deferred answers retain their text,
+events and final while only the growing transcript is removed. Report payloads
+and other turns remain unchanged. Insertion and this cleanup share
 one transaction, so failure preserves the previously recoverable transcript.
-This bounds retained answer text during a long turn that crosses many manager
-slices instead of storing every growing transcript prefix. Private payloads are not events,
-Trace, SSE, search/replay messages or compaction inputs. Failed persistence
+This bounds retained full transcripts during a long turn instead of storing
+every growing prefix; deferred private prose remains until terminal cleanup.
+Private payloads are not events, Trace, SSE, search/replay messages or compaction inputs. Failed persistence
 cannot be treated as a recoverable durable wait.
 
 Admission checks current scheduling evidence and ownership again, then commits
@@ -251,15 +253,22 @@ An empty public answer still commits its candidate decision. Repeating an
 accepted ID returns `ErrScheduleAnswerAlreadyAdmitted` without another write
 or broadcast; a batch mixing accepted and pending IDs is refused.
 `FinishTurn` writes the terminal turn fields and clears every candidate payload
-of that turn in the same transaction. Pending decisions become rejected;
-accepted/rejected identity, creation time and retry diagnostics remain. A
+of that turn in the same transaction. Pending and deferred decisions become
+rejected; accepted/rejected identity, creation time and retry diagnostics remain. A
 failed terminal or cleanup write rolls back both changes and retains complete
 payloads for recovery. This avoids retaining another full transcript for every
 finished candidate; other turns' private data is untouched. Thread and
 project deletion remove all candidate states transactionally. Rewind removes
 the candidates of every deleted turn, including private payloads created
 before the cut event in that same turn; late writes cannot recreate a deleted
-owner. This table is independent of planned engine-handoff checkpoints.
+owner. This table is independent of planned engine-handoff checkpoints. Three
+consecutive request failures atomically move a pending candidate to deferred;
+ordinary retry writes cannot revive it. Recovery does not use a deferred
+candidate's older transcript in place of a newer checkpoint. For legacy rows
+whose new counter is zero, the engine derives only a contiguous suffix of
+candidate-bound `classification_unavailable` receipts ending at `attempts`;
+invalid output, gaps or origin waits cannot establish more failures. The
+recovered counter/deferral commits before further classification.
 For reports, the schedule action commits before the separate private save.
 An existing original-call receipt prevents repeating that action during
 classification recovery. If the process dies before the private save, this
@@ -269,7 +278,8 @@ rejected decisions needed to identify original calls. It excludes full answer
 transcripts and terminal receipts whose payload has already been cleared.
 
 Implementation and transaction regressions: `internal/store/schedule_answer_pending.go`,
-`internal/store/schedule_answer.go`, `internal/store/schedule_answer_pending_test.go`.
+`internal/store/schedule_answer.go`, `internal/store/schedule_answer_pending_test.go`,
+`internal/store/schedule_answer_deferred_test.go`.
 Engine payload and recovery: `internal/engine/schedule_answer_pending.go`,
 `internal/engine/schedule_answer_restore.go`.
 
@@ -346,14 +356,22 @@ stream still walks forward.
 | `images` | JSON array of `{id,name,mime}` on `user_message` and `steer` when the send carried pasted images. Never the pixels |
 | `created_at` | UTC; the timeline offsets are computed against the turn's `started_at` |
 
-`model_backoff` stores `{attempt,wait_ms}` on the original turn and caller:
-the remaining cooldown observed before sending, or `0` while waiting for an
-active recovery probe. It is a wait observation, not a retry allowance or an
-LLM request; a later failure can extend it. No migration or new column is needed.
-Scheduling-candidate recovery adds optional `code` (`classification_unavailable`
-or `classification_invalid`) and `candidate_id` to this event's JSON. These
-retain semantic-classification failure attribution without copying its private
-payload or inventing an LLM transport failure; ordinary provider waits omit them.
+`model_backoff` remains an event-text JSON envelope, with no new event column.
+Origin observations contain `{scope:"origin",cooldown_id,attempt,wait_ms}` on
+the actual turn/caller. The opaque process-local cooldown ID is shared by all
+roles in that service generation and contains no endpoint. `wait_ms` is the
+observed remaining delay, or `0` for an active probe with unknown remaining
+time; a later failure can extend it. Chat and replay show one timed notice per
+conversation/generation and omit zero-delay probe notices; Trace keeps each
+caller record. This event grants no retry allowance and is not an LLM request.
+
+Candidate recovery contains `{scope:"schedule_answer",attempt,wait_ms,code,
+candidate_id}`. Codes are `classification_unavailable`, `classification_invalid`
+and `classification_deferred` (with `wait_ms:0` at the cap). Candidate attempts
+are independent of origin generations. Classifier calls bypass the origin gate
+and implicit HTTP reconnect entirely. These events contain identity/decision
+metadata, never the private candidate payload. Older events may omit scope or
+cooldown_id; a candidate_id still identifies legacy candidate recovery.
 
 `workers_retained` is an additive event kind using the existing `events.text`
 JSON payload, without a schema migration or new column:

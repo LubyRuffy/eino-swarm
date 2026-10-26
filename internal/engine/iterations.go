@@ -131,6 +131,13 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	if restoreFailure != nil {
 		return res, restoreFailure
 	}
+	if pending != nil && pending.State == "deferred" {
+		messages, budget, err = rt.continueAfterDeferredAnswer(ctx, turn, reg, swarm.RunResult{}, messages, used, budget, paused != nil && proceed)
+		if err != nil {
+			return res, err
+		}
+		pending = nil
+	}
 	for {
 		answer := newManagerAnswerBuffer(acc)
 		var candidate *pendingScheduleAnswer
@@ -208,6 +215,22 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 				messages = dropTrailingIncompleteToolCalls(messages)
 				continue
 			}
+		}
+		if !admitted && failure != nil && failure.Code == "classification_deferred" {
+			res = answer.reject(res)
+			reg.SetHistory(res.Transcript)
+			// A report can yield before this answer's own verification. That
+			// unexamined answer must not regain execution priority on restart.
+			if row != nil && row.State == "pending" {
+				if err := rt.rejectPendingScheduleAnswer(turn, row); err != nil {
+					return res, err
+				}
+			}
+			messages, budget, err = rt.continueAfterDeferredAnswer(ctx, turn, reg, res, messages, used, budget, false)
+			if err != nil {
+				return res, err
+			}
+			continue
 		}
 		// Existing completion eligibility precedes answer admission. A failed
 		// scheduled check is not an ordinary successful final with worker debt.
@@ -372,11 +395,16 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 // extends it, declines, or interrupts. The channel is installed before the
 // event is recorded so a client that reacts to the event cannot land on
 // ContinueTurn before anyone is listening.
-func (rt *runtime) waitToExtend(ctx context.Context, turn *store.Turn, used, extend int) bool {
+func (rt *runtime) waitToExtend(ctx context.Context, turn *store.Turn, used, extend int, steered ...*swarm.Registry) bool {
 	ch := make(chan bool, 1)
 	rt.mu.Lock()
 	rt.continueCh = ch
 	rt.acceptedContinue = nil
+	// Steering holds the same runtime lock. Check after installing the
+	// waiter so guidance queued as policy verification ends cannot be lost.
+	if len(steered) > 0 && steered[0].HasPendingSteers() {
+		rt.signalContinueLocked(true)
+	}
 	rt.mu.Unlock()
 	defer func() {
 		rt.mu.Lock()

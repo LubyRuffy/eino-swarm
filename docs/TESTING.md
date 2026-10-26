@@ -267,13 +267,45 @@ service failures through the real loopback adapter, preserving one manager
 request, the original candidate/turn, recovery backoff and a single published
 answer. A legal HTTP 200 with invalid classification JSON retains
 `model_backoff.code:classification_invalid` and the original `candidate_id`,
-even though its LLM transport call succeeded. Other service failures retain
-`classification_unavailable`; provider-only backoff payloads remain compatible.
-A persistent outage keeps the turn running; Stop cancels its actual
-HTTP request without exposing private prose or publishing a terminal success.
-`internal/engine/schedule_answer_pending.go` separates that classifier retry
-path from the original single manager correction for a confirmed unsupported
-claim. Neither service failure nor a retry creates a new goal turn.
+even though its LLM transport call succeeded. Request failures retain
+`classification_unavailable`; local storage/configuration failures have distinct
+codes. A retry does not repeat the manager/tools or consume the single
+same-turn correction for a confirmed unsupported claim.
+
+`internal/provider/isolated_recovery_test.go` crosses the real HTTP adapter:
+classification header timeouts use one full request budget with no implicit
+reconnect; another model on the same origin remains responsive with no origin
+backoff. Classification failure cannot start a cooldown, and success cannot
+clear an existing ordinary-request cooldown. Stop cancels the real header wait.
+Ordinary request failures retain the existing single-probe gate tests in
+`internal/provider/backoff_http_test.go`, `backoff_integration_test.go` and
+`backoff_responses_test.go`.
+
+`internal/engine/schedule_answer_deferred_http_test.go` holds an actual worker
+HTTP stream while the classifier repeatedly withholds response headers. After
+three consecutive failures, the same turn/Registry continues manager work with
+that worker and its original tool receipt; the private candidate stays withheld.
+A second conversation using another model at the same origin remains usable
+before, between and after failures with no model-backoff event. The continued
+manager makes a new tool call, and a real handoff preserves that newer checkpoint.
+Cold database reopen keeps the durable deferral and resumes user work instead
+of classifying the old candidate or replacing new work with its transcript. These are
+in-process engine/HTTP regressions, not native-window acceptance.
+`internal/store/schedule_answer_deferred_test.go` checks atomic failure-count
+and deferred-state persistence, stale/invalid/unowned writes, legacy consumed
+budget restoration, private prose retention with only one full transcript,
+compaction rollback, and terminal/deletion cleanup. The request-failure cap is
+separate from malformed-output retries, claim correction and worker watchdogs.
+`internal/engine/schedule_answer_deferred_test.go` checks legacy exhausted and
+broken-streak budgets, storage-read/write refusal, and ordinary turns without
+an executable owner: Continue, an already approved pause, queued human steer,
+decline and Stop retain their existing semantics without duplicate continuation
+or losing an input arriving before pause installation.
+`internal/engine/schedule_answer_deferred_restore_test.go` crosses real engine
+and HTTP boundaries: a restored ordinary pause needs only one human Continue,
+and a deferred report retains its actual tool receipt while rejecting an
+unexamined manager answer before further authorized work. Old prose stays out
+of the next model input, and exhausted candidates do not regain execution.
 `internal/engine/schedule_answer_restart_test.go` holds the real corrective
 model request across PrepareRestart and cold resume of the same turn. The
 persisted correction allowance stays consumed; event writes and budget reads
@@ -296,7 +328,7 @@ distinct report receipts intact. New insertion and previous-answer compaction
 must roll back together on refusal or an ignored write. Per-turn ordinals
 preserve latest-candidate recovery through clock rollback, equal timestamps,
 caller-supplied ordinal values and re-saving an existing identity.
-The report-recovery query is checked against all three decision states,
+The report-recovery query includes the pending/deferred/accepted/rejected states,
 another thread and terminal empty-payload receipts; it must not load the
 current answer's full transcript while discovering original report calls.
 
@@ -347,7 +379,10 @@ exercise unsupported claims through the three-failure goal cap, separate
 correction-request and terminal-error rows, reload, and 503/429 classification
 failures followed by a response delayed beyond 30 seconds, named live backoff
 events, the original manager/tool request
-counts, actual scheduling facts and replay after reload. Its Stop case keeps
+counts, actual scheduling facts and replay after reload. Candidate waits carry
+`scope:schedule_answer` and appear with answer-verification copy, without an
+origin cooldown notice; the normal API-error suite checks `scope:origin` and
+opaque cooldown IDs through actual HTTP and Trace. Its Stop case keeps
 the fixture alive past the pending retry time and checks no delayed request
 escapes cancellation. The case retains screenshots and original-turn Trace;
 its offline HTTP model does not call an external provider.
@@ -356,6 +391,14 @@ its offline HTTP model does not call an external provider.
 `frontend/src/lib/schedule-claim-notice.test.ts` and
 `mobile/src/lib/transcript-schedule-claim.test.ts` check the correction notice
 and Chinese display without exposing internal JSON or claiming a wait exists.
+`frontend/src/lib/transcript-backoff.test.ts` and
+`mobile/src/lib/transcript-backoff.test.tsx` check one origin notice across roles
+and turns per cooldown ID, separate candidates/deferral, zero-delay probe
+suppression and replay without inventing classifier workers. The phone's
+`mobile/e2e/api-error.spec.ts` drives Chinese/English history and reload on
+Chrome and iPhone WebKit using `mobile/src/lib/mock-backoff.ts`; it checks the
+actual rendered notices without candidate IDs/JSON. This MockLink case verifies
+phone projection, not an engine/database outage or a packaged native app.
 The desktop component checks distinct notice/error rows in live and history
 projections; the terminal error says the final was withheld and does not imply
 verification is still running.
@@ -455,9 +498,18 @@ ZWAI_E2E_SCHEDULE_ANSWER=1 ZWAI_E2E_PORT=19306 ZWAI_E2E_DATA_DIR=.e2e-data-answe
 named `model_retry` SSE subscription paints the notice, then releases a real
 successful `schedule_wake` call. It verifies the saved schedule, paired tool
 receipt, Trace and reload without the rejected prose. Each concurrent run
-must choose its own port, data directory and output directory.
+must choose its own port, data directory and output directory. The normal
+origin-wait and phone-projection cases can run separately with:
 
-Native acceptance uses an identified candidate in an isolated `ci-macOS`
+```bash
+ZWAI_E2E_MODEL_API_ERROR=1 ZWAI_E2E_PORT=19307 ZWAI_E2E_DATA_DIR=/tmp/zwai-api-isolated \
+  npm --prefix frontend run e2e -- --output=/tmp/zwai-api-evidence
+ZWAI_MOBILE_E2E_PORT=14307 npm --prefix mobile run e2e -- api-error.spec.ts \
+  --output=/tmp/zwai-phone-api-evidence
+```
+
+Each Vite preview owns its built dist until exit; do not rebuild that directory
+while serving a case. Native acceptance uses an identified candidate in an isolated `ci-macOS`
 case; Web E2E or successful SSH access does not accept the native window.
 
 ## Generation interruption and recovery (Issue #95 / C-035)

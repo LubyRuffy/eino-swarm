@@ -11,6 +11,7 @@ import (
 	"time"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
+	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -58,6 +59,7 @@ func (e *Engine) verifyScheduleAnswer(ctx context.Context, turn *store.Turn, tex
 	if len(text) == 0 {
 		return nil, nil
 	}
+	ctx = provider.WithIsolatedRecovery(ctx)
 	body, _ := json.Marshal(struct {
 		Messages []string `json:"messages"`
 		Now      string   `json:"now"`
@@ -69,11 +71,13 @@ func (e *Engine) verifyScheduleAnswer(ctx context.Context, turn *store.Turn, tex
 	// and replay manager work that has already executed.
 	th, err := e.store.GetThread(turn.ThreadID)
 	if err != nil {
+		failure.Code = "answer_storage_failed"
 		failure.Cause = err
 		return nil, failure
 	}
 	build, err := e.pool.ModelBuilder(ctx, th.ProviderID, th.Model, th.ReasoningEffort, e.callRecorder(turn.ThreadID, turn.ID))
 	if err != nil {
+		failure.Code = "classification_configuration_unavailable"
 		failure.Cause = err
 		return nil, failure
 	}

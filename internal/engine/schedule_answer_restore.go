@@ -31,6 +31,11 @@ func (e *Engine) restorePendingScheduleAnswer(turn *store.Turn) (*store.PendingS
 		if failure != nil {
 			return nil, nil, failure
 		}
+		// Deferral releases the candidate's execution claim. Its private
+		// transcript may predate later tool calls in the real checkpoint.
+		if row.State == "deferred" {
+			return row, nil, nil
+		}
 		return row, payload, nil
 	}
 	return nil, nil, nil
@@ -40,7 +45,7 @@ func decodeRestoredScheduleAnswer(turn *store.Turn, row *store.PendingScheduleAn
 	invalid := func(err error) (*pendingScheduleAnswer, *scheduleAnswerError) {
 		return nil, &scheduleAnswerError{Code: "answer_restore_invalid", Cause: err}
 	}
-	decision := row.State == "pending" || row.State == "accepted" || row.Kind == "report" && row.State == "rejected"
+	decision := row.State == "pending" || row.State == "deferred" || row.State == "accepted" || row.Kind == "report" && row.State == "rejected"
 	if row.ThreadID != turn.ThreadID || row.TurnID != turn.ID || !decision {
 		return invalid(fmt.Errorf("private answer owner or decision mismatch"))
 	}

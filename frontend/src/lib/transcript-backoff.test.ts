@@ -63,11 +63,55 @@ describe("model request backoff", () => {
     expect(state.lastSeq).toBe(3)
   })
 
-  it.each(["", "broken", "null", "{}", '{"wait_ms":"5000"}', '{"wait_ms":0}', '{"wait_ms":-1}', '{"wait_ms":1e400}'])
+  it.each(["", "broken", "null", "{}", '{"wait_ms":"5000"}', '{"wait_ms":-1}', '{"wait_ms":1e400}'])
     ("keeps malformed payload %j out of the chat", (text) => {
       const state = reduceEvent(emptyTranscript(), backoff(text))
       expect(state.agents[MANAGER_ID].blocks[0].text).toBe("Waiting before retrying the model request.")
       expect(localizeNotice(state.agents[MANAGER_ID].blocks[0].text, "zh"))
         .toBe("等待后重试模型请求。")
     })
+
+  it("shows one cooldown explanation across roles and turns while retaining every stored sequence", () => {
+    const events = [
+      backoff('{"scope":"origin","cooldown_id":"service-a:1","attempt":1,"wait_ms":4999}', "manager", 2),
+      backoff('{"scope":"origin","cooldown_id":"service-a:1","attempt":1,"wait_ms":2000}', "worker-a", 3),
+      { ...backoff('{"scope":"origin","cooldown_id":"service-a:1","attempt":1,"wait_ms":0}', "worker-b", 4), turn_id: "tn_2" },
+      backoff('{"scope":"origin","cooldown_id":"service-a:2","attempt":2,"wait_ms":10000}', "manager", 5),
+      backoff('{"scope":"origin","cooldown_id":"service-b:1","attempt":1,"wait_ms":5000}', "manager", 6),
+    ]
+    const live = reduceEvents(emptyTranscript(), events)
+    expect(live.agents[MANAGER_ID].blocks.map((block) => block.text)).toEqual([
+      "Waiting 5s before retrying the model request.",
+      "Waiting 10s before retrying the model request.",
+      "Waiting 5s before retrying the model request.",
+    ])
+    expect(live.lastSeq).toBe(6)
+    expect(live.agentOrder).toEqual([MANAGER_ID])
+    expect(reduceEvents(emptyTranscript(), events)).toEqual(live)
+    expect(reduceEvent(live, events[0]).agents[MANAGER_ID].blocks).toEqual(live.agents[MANAGER_ID].blocks)
+  })
+
+  it("does not invent an unknown-delay chat row for an active probe", () => {
+    const state = reduceEvent(emptyTranscript(), backoff('{"attempt":1,"wait_ms":0}'))
+    expect(state.agentOrder).toEqual([])
+    expect(state.lastSeq).toBe(2)
+  })
+
+  it("distinguishes candidate retries and retained answers from a service cooldown", () => {
+    const state = reduceEvents(emptyTranscript(), [
+      backoff('{"scope":"schedule_answer","candidate_id":"answer-a","code":"classification_unavailable","attempt":1,"wait_ms":5000}', "schedule-answer-policy", 1),
+      backoff('{"scope":"schedule_answer","candidate_id":"answer-a","code":"classification_deferred","attempt":3,"wait_ms":0}', "schedule-answer-policy", 2),
+    ])
+    const notices = state.agents[MANAGER_ID].blocks.map((block) => block.text)
+    expect(notices).toEqual([
+      "Waiting 5s before checking the unpublished answer again.",
+      "Answer verification is unavailable. The unpublished answer is retained.",
+    ])
+    expect(notices.map((notice) => localizeNotice(notice, "zh"))).toEqual([
+      "等待 5 秒后重试未发布答复的核对。",
+      "答复核对暂不可用，未发布候选已保留。",
+    ])
+    expect(JSON.stringify(state.agents)).not.toContain("answer-a")
+    expect(state.agentOrder).toEqual([MANAGER_ID])
+  })
 })

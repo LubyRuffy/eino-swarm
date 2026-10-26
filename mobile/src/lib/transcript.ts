@@ -12,6 +12,7 @@ import type { RemoteEvent } from "./rpc"
 import { t } from "./i18n"
 import { flatten, jsonPreview, looksPacked } from "./tool-preview"
 import { scheduleToolNotice } from "./inbox-preview"
+import { modelBackoffNotice } from "../../../frontend/src/lib/transcript-backoff"
 
 export type BlockKind =
   | "user"
@@ -46,11 +47,19 @@ export type CompactBlock = {
   messageId?: string
   writing?: boolean
   sourceSeq?: number
+  cooldownId?: string
   generation?: GenerationInterruption
 }
 
 export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlock[] {
   if (ev.kind === "engine_restore") return blocks
+  if (ev.kind === "model_backoff") {
+    const notice = modelBackoffNotice(ev.text)
+    if (!notice || notice.cooldownId && blocks.some((block) => block.cooldownId === notice.cooldownId)) return blocks
+    const id = blockId(ev)
+    if (blocks.some((block) => block.id === id)) return blocks
+    return blocks.concat({ id, kind: "notice", text: notice.text, cooldownId: notice.cooldownId })
+  }
   if (ev.kind === "resumed" || ev.kind === "restart_resumed") {
     const owners = [...new Set(blocks.map((b) => b.agentId))]
     let next = blocks.slice()

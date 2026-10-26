@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,8 +19,9 @@ import (
 // BackoffRecord describes a wait before a request, not a model call. The
 // recorder binds it to the actual agent and turn without storing request data.
 type BackoffRecord struct {
-	Attempt int   `json:"attempt"`
-	WaitMS  int64 `json:"wait_ms"`
+	Attempt    int    `json:"attempt"`
+	WaitMS     int64  `json:"wait_ms"`
+	CooldownID string `json:"cooldown_id,omitempty"`
 }
 
 type backoffObserverKey struct{}
@@ -53,20 +55,23 @@ func (p *Pool) backoffFor(baseURL string) *backoffGate {
 }
 
 func (r *recordingModel) admit(ctx context.Context) (context.Context, func(error), error) {
+	if ctx.Value(isolatedRecoveryKey{}) == true {
+		return ctx, func(error) {}, nil
+	}
 	if r.rec != nil {
-		ctx = context.WithValue(ctx, backoffObserverKey{}, func(attempt int, delay time.Duration) {
+		ctx = context.WithValue(ctx, backoffObserverKey{}, func(attempt int, delay time.Duration, generation uint64) {
 			waitMS := delay.Milliseconds()
 			if delay > 0 && waitMS == 0 {
 				waitMS = 1 // Zero means an active probe with no known remaining wait.
 			}
 			r.rec(CallRecord{AgentID: r.agentID, ProviderID: r.providerID, Model: r.model,
-				Backoff: &BackoffRecord{Attempt: attempt, WaitMS: waitMS}})
+				Backoff: &BackoffRecord{Attempt: attempt, WaitMS: waitMS, CooldownID: r.gate.id + ":" + strconv.FormatUint(generation, 10)}})
 		})
 	}
 	if r.gate == nil {
 		return ctx, func(error) {}, nil
 	}
-	onWait, _ := ctx.Value(backoffObserverKey{}).(func(int, time.Duration))
+	onWait, _ := ctx.Value(backoffObserverKey{}).(func(int, time.Duration, uint64))
 	ticket, err := r.gate.acquire(ctx, onWait)
 	if err != nil {
 		return ctx, nil, err

@@ -92,7 +92,7 @@ func (t *idleTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	resp, err := t.roundTrip(req)
-	if err == nil || !headerWaitTimedOut(err) || req.GetBody == nil {
+	if err == nil || !headerWaitTimedOut(err) || req.GetBody == nil || req.Context().Value(isolatedRecoveryKey{}) == true {
 		return resp, err
 	}
 	if wait, ok := req.Context().Value(reconnectBackoffKey{}).(func() error); ok {

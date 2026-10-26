@@ -27,6 +27,8 @@ type pendingScheduleAnswer struct {
 	ToolResult     string            `json:"tool_result,omitempty"`
 }
 
+const scheduleAnswerDeferredCue = "The runtime deferred read-only verification of an unpublished answer after repeated request failures. That candidate remains private and is not a delivered answer or evidence. Continue the authorized task in this same turn from actual tool receipts and existing workers. Do not rerun completed tools, recreate workers, or repeat scheduling changes to reconstruct the withheld answer. This is not a finding that its claims were false."
+
 func (e *Engine) savePendingScheduleAnswer(turn *store.Turn, kind, id string, payload pendingScheduleAnswer) (*store.PendingScheduleAnswer, *scheduleAnswerError) {
 	payload.Version = 1
 	body, err := json.Marshal(payload)
@@ -73,7 +75,19 @@ func scheduleAnswerRecoveryDelay(attempt int) time.Duration {
 // tools and workers retain their identities until recovery or cancellation.
 func (rt *runtime) verifyPendingScheduleAnswer(ctx context.Context, turn *store.Turn, row *store.PendingScheduleAnswer, candidate *pendingScheduleAnswer) ([]store.Schedule, *scheduleAnswerError) {
 	e := rt.engine
+	if ctx.Err() != nil {
+		return nil, interruptedScheduleAnswer(ctx)
+	}
+	if failure := e.restoreScheduleAnswerFailureBudget(turn, row); failure != nil {
+		return nil, failure
+	}
 	for {
+		if ctx.Err() != nil {
+			return nil, interruptedScheduleAnswer(ctx)
+		}
+		if row.State == "deferred" {
+			return nil, &scheduleAnswerError{Code: "classification_deferred"}
+		}
 		if delay := time.Until(row.RetryAt); delay > 0 {
 			timer := time.NewTimer(delay)
 			select {
@@ -94,13 +108,26 @@ func (rt *runtime) verifyPendingScheduleAnswer(ctx context.Context, turn *store.
 			return evidence, failure
 		}
 		row.Attempts++
+		if failure.Code == "classification_unavailable" {
+			row.ClassificationFailures++
+		} else {
+			row.ClassificationFailures = 0
+		}
 		delay := scheduleAnswerRecoveryDelay(row.Attempts)
 		row.RetryAt = time.Now().UTC().Add(delay)
-		if err := e.store.SetScheduleAnswerRetry(row.ID, row.Attempts, row.RetryAt); err != nil {
+		deferred := row.ClassificationFailures >= config.DefaultScheduleAnswerFailures
+		if err := e.store.SetScheduleAnswerRecovery(row.ID, row.Attempts, row.ClassificationFailures, row.RetryAt, deferred); err != nil {
 			return nil, &scheduleAnswerError{Code: "answer_storage_failed", Cause: err}
 		}
-		body, _ := json.Marshal(map[string]any{"attempt": row.Attempts, "wait_ms": delay.Milliseconds(), "code": failure.Code, "candidate_id": row.ID})
+		code, waitMS := failure.Code, delay.Milliseconds()
+		if deferred {
+			row.State, code, waitMS = "deferred", "classification_deferred", 0
+		}
+		body, _ := json.Marshal(map[string]any{"scope": "schedule_answer", "attempt": row.Attempts, "wait_ms": waitMS, "code": code, "candidate_id": row.ID})
 		e.record(store.Event{ThreadID: turn.ThreadID, TurnID: turn.ID, AgentID: scheduleAnswerAgentID, Kind: KindModelBackoff, Text: string(body)})
+		if deferred {
+			return nil, &scheduleAnswerError{Code: code, Cause: failure}
+		}
 	}
 }
 

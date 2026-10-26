@@ -152,6 +152,34 @@ func TestBackoffShortCooldownIsNotReportedAsAnUnknownProbeWait(t *testing.T) {
 	})
 }
 
+func TestBackoffCooldownIdentityIsSharedAcrossRolesButNotGenerationsOrOrigins(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		gate := newBackoffGate(5*time.Second, 30*time.Second)
+		mustAcquireBackoff(t, gate, nil).finish(backoffFailure)
+		var ids []string
+		recordWait := func(gate *backoffGate, role string) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			r := &recordingModel{gate: gate, agentID: role, rec: func(record CallRecord) {
+				ids = append(ids, record.Backoff.CooldownID)
+			}}
+			if _, _, err := r.admit(ctx); !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("expected a canceled cooldown wait, got %v", err)
+			}
+		}
+		recordWait(gate, "manager")
+		recordWait(gate, "worker")
+		mustAcquireBackoff(t, gate, nil).finish(backoffFailure)
+		recordWait(gate, "manager")
+		other := newBackoffGate(5*time.Second, 30*time.Second)
+		mustAcquireBackoff(t, other, nil).finish(backoffFailure)
+		recordWait(other, "manager")
+		if len(ids) != 4 || ids[0] == "" || ids[0] != ids[1] || ids[0] == ids[2] || ids[0] == ids[3] {
+			t.Fatalf("cooldown identities must follow the actual gate generation: %v", ids)
+		}
+	})
+}
+
 func TestBackoffAdmissionWithoutGateAndCanceledWait(t *testing.T) {
 	ctx := context.Background()
 	plain := &recordingModel{}

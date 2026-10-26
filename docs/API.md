@@ -1803,7 +1803,7 @@ shortening only the bounded detail text.
 | `memory_review` | the post-turn review of a project's memory finished (see below) |
 | `max_iterations` | the manager hit `swarm.manager_max_iterations`; `text` is `{"limit":N,"extend_by":N}` and the turn is still running |
 | `max_iterations_continued` | the human extended the turn; `text` names how many extra rounds |
-| `model_backoff` | a model request is waiting for shared upstream recovery or scheduling-candidate verification. `agent_id` is the actual caller; `text` is JSON `{attempt,wait_ms}` (consecutive service failure generation and remaining cooldown at observation, with positive sub-millisecond waits recorded as `1`; `0` means waiting for an already active probe with unknown remaining time). This is neither a sent request nor a new retry allowance. For the shared provider gate, multiple waiters can record the same generation and only one probe is admitted after cooldown. Scheduling-candidate recovery instead counts that candidate's verification failures and may add `code` and `candidate_id` as described below. A later failure can extend the wait. Stored in the same turn Trace and shown in the desktop Full log. |
+| `model_backoff` | a wait observation or private-candidate deferral, not a sent request or new retry allowance. Origin JSON is `{scope:"origin",cooldown_id,attempt,wait_ms}` on the actual caller/turn: cooldown_id is an opaque process-local service-generation identity shared across roles, with no endpoint; positive wait_ms is observed remaining cooldown (sub-millisecond waits use 1), and 0 means an already active probe with unknown remaining time. Only one recovery probe is admitted after cooldown. PC/phone chat and history show one timed row per conversation/generation and omit zero-delay probe rows; Trace keeps each caller observation. Candidate JSON instead uses `{scope:"schedule_answer",attempt,wait_ms,code,candidate_id}` as described below. Legacy rows may omit the added fields. |
 | `model_retry` | the manager hit a recoverable ChatModel failure and re-entered this turn. `text` is JSON `{attempt,cap,reason?}`. `reason` selects the transcript notice: `invalid_tool_json` (the model returned a tool call that was not valid JSON), `model_response_invalid` (the SDK cannot decode the model HTTP response or stream, including a wrong field type; the turn did not reach a tool), `rate_limited`, `model_unavailable` (HTTP 500/502/503/504/529), `model_transport` (dropped stream, connection reset, mid-stream read timeout), `model_idle` (silence after the first byte). Older rows omit `reason` and keep the generic retry line. `reason: "context_overflow"` is separate: the endpoint rejected the call because the prompt plus the requested output does not fit the window. That notice names the window, the turn compacts once, and a second rejection ends the turn with `the prompt plus the requested output exceeds this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry`. A repeating schedule that ends that way is paused. When the in-turn retries are exhausted, the turn error is the same class: `the model returned a tool call that was not valid JSON`, `the model service is rate limiting requests`, `the model service is unavailable`, `the model service returned a response that could not be decoded`, or `the connection to the model service dropped`. An exhausted idle timeout keeps the sentence that names how long the model sent no data. A trailing tool call whose arguments are not valid JSON is refused before the next model request and then dropped, so that payload is not sent and a `400 Unterminated string` cannot repeat. `reason: "scheduled_no_activity"` is the scheduled-check continuation, not a model failure |
 | `title` | the conversation was named; `text` is the new title, `agent_id` is `title-namer`. Not rendered in the transcript |
 | `session_memory` | the rolling session briefing was refreshed from the event log; `text` is JSON `{summary,through_seq}`. `agent_id` is `session-memory`. Not rendered in the transcript; compact and the reviewer read the thread fields. Post-turn refresh is background work: a queued follow-up starts as soon as the turn is `done` or `error`, and does not wait for this event |
@@ -1872,27 +1872,40 @@ authorize another automatic request. Desktop/Web retain the historical
 correction request and terminal refusal as separate rows; a terminal row says
 that no final answer was published instead of implying verification continues.
 
-An unavailable or malformed classification instead keeps the same turn
-running and retries the original durable candidate, with 5/10/20/30-second
-capped backoff. It does not rerun the manager or its tools, consume that
-correction allowance or create another goal turn. Waiting is reported through
-`model_backoff` (`agent_id: "schedule-answer-policy"`, JSON `text` containing
-`attempt` and `wait_ms`, with optional `code` and `candidate_id`). For candidate
-recovery, `code` is `classification_unavailable` or `classification_invalid`
-and `candidate_id` binds the original private answer/report. This also diagnoses
-an HTTP 200 response whose classifier JSON is invalid even when the LLM-call
-transport error is empty. Other provider backoff events keep their existing
-`attempt`/`wait_ms` payload. Actual classifier calls and their errors remain in
-the original turn's Trace. Private candidate payloads are excluded from Trace,
-SSE and ordinary history. Stop cancels the classifier or wait; a superseding
-human steer discards the old unpublished candidate. Existing worker ownership
-and its independent lifetime limits remain in force.
+Classification uses the provider's full `first_byte_timeout_seconds` and
+body-silence `timeout_seconds`, without an extra total deadline. It completely
+bypasses origin admission/health updates and the HTTP adapter's implicit
+header reconnect. Its request failure cannot block unrelated calls or emit
+origin cooldown observations. Request failures (`classification_unavailable`)
+and malformed output (`classification_invalid`) retry the original durable
+candidate with 5/10/20/30-second capped delay, retaining the same turn, Registry,
+workers and actual tool receipts. Invalid output resets the separate consecutive
+request-failure counter; local storage/configuration errors use distinct
+`answer_storage_failed` / `classification_configuration_unavailable` codes.
+These retries neither repeat manager/tools nor consume schedule-claim correction.
 
-Each non-streaming policy request honors `first_byte_timeout_seconds` for
-response headers and `timeout_seconds` for body silence, with no extra
-30-second total deadline. Candidate retry count and next retry time survive
-restart. Saving/reading private state or admission receipts can still fail
-explicitly; unavailable classification alone is not a terminal task failure.
+Three consecutive request failures atomically defer that candidate and retain
+its unpublished bytes. The old candidate is not retried. An executable goal or
+active same-thread wake continues the next user-work slice within the same turn
+and Registry; without such an owner, the existing human Continue/Stop pause
+controls further work. Deferral does not prove the schedule claim false, publish
+its prose or grant another claim correction. Attempts, next retry time, failure
+count and deferral survive restart. A deferred candidate cannot reclaim the
+critical path or overwrite a newer checkpoint with its old transcript. Legacy
+attempts derive a failure budget only from contiguous candidate-bound durable
+unavailable receipts, not generic origin waits.
+
+Candidate `model_backoff` records have `agent_id:"schedule-answer-policy"` and
+JSON `{scope:"schedule_answer",attempt,wait_ms,code,candidate_id}`. Normal retries
+use `classification_unavailable` or `classification_invalid`; the durable cap
+uses `classification_deferred` with `wait_ms:0`. Chat distinguishes these from
+service cooldowns. HTTP 200 with invalid classifier JSON remains diagnosable
+even if its LLM-call transport error is empty. Actual classification calls and
+errors remain in the original Trace; private prose stays out of events, SSE,
+Trace, ordinary history, compaction and subsequent manager input. Stop cancels
+a request or wait, and a superseding human steer retires its unpublished
+candidate. Existing worker lifetime/resource limits still apply. Private
+state and admission read/write failures remain explicit failures.
 Public answer events, replay messages and the accepted candidate decision
 commit together, preventing duplicate publication after restart. The policy
 model interprets prose; the schedule database remains the source of facts.

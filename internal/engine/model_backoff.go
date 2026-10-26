@@ -12,7 +12,10 @@ import (
 const KindModelBackoff = "model_backoff"
 
 func (e *Engine) recordModelBackoff(threadID, turnID string, r provider.CallRecord) {
-	body, _ := json.Marshal(r.Backoff) // Only integers; no unsupported JSON values.
+	body, _ := json.Marshal(struct {
+		*provider.BackoffRecord
+		Scope string `json:"scope"`
+	}{r.Backoff, "origin"})
 	e.record(store.Event{
 		ThreadID: threadID, TurnID: turnID, AgentID: r.AgentID,
 		Kind: KindModelBackoff, Text: string(body),

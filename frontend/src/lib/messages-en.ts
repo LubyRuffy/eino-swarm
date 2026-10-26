@@ -399,6 +399,9 @@ export const en = {
   "notice.modelRetry": "Retrying after a model error.",
   "notice.modelBackoff": "Waiting {seconds}s before retrying the model request.",
   "notice.modelBackoffUnknown": "Waiting before retrying the model request.",
+  "notice.scheduleAnswerBackoff": "Waiting {seconds}s before checking the unpublished answer again.",
+  "notice.scheduleAnswerBackoffUnknown": "Waiting to check the unpublished answer again.",
+  "notice.scheduleAnswerDeferred": "Answer verification is unavailable. The unpublished answer is retained.",
   "notice.modelRetryToolJSON":
     "The model returned a tool call that was not valid JSON. Retrying.",
   "notice.modelRetryRateLimited":

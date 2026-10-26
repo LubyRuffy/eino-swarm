@@ -165,8 +165,8 @@ func TestScheduleAnswerRetainsConfiguredFirstByteTimeoutAndItsTrace(t *testing.T
 	if failure == nil || failure.Code != "classification_unavailable" || !errors.As(failure, &timeout) || timeout.Wait != time.Second {
 		t.Fatalf("configured provider timeout was lost: failure=%+v timeout=%+v", failure, timeout)
 	}
-	if checks.Load() != 2 {
-		t.Fatalf("provider reconnect count=%d, want its bounded two attempts", checks.Load())
+	if checks.Load() != 1 {
+		t.Fatalf("classification retried outside its durable candidate policy: requests=%d", checks.Load())
 	}
 	calls, err := e.store.ListLLMCalls(turn.ID)
 	if err != nil {
