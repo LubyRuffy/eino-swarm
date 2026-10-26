@@ -2630,6 +2630,10 @@ collapsed process details, inline briefing and both original turns' Trace events
 through reload and close/reopen without another turn, retaining window evidence and cleanup
 receipts outside the isolated case data. Its assertion regressions are in
 `tools/test_native_goal_resume_notice.py`.
+The actual Objective-C entry-point regressions live in
+`tools/test_native_goal_resume_notice_ax.py`. A refused complete traversal
+retains its first predicate, path, attribute status and type without recording
+text content; it does not reveal a target or post input.
 The initial completed objective is fixture setup through normal local
 `POST /api/threads` and `POST /api/threads/:id/turns` with `/goal` text, inside
 that case's private conversation workspace. It waits for the accepted first

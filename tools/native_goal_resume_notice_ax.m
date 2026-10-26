@@ -159,9 +159,27 @@ static NSDictionary *readUp(AXUIElementRef app, AXUIElementRef window, AXUIEleme
     return row;
 }
 
-static NSString *knownText(AXUIElementRef element, CFStringRef key, BOOL *known) {
+static NSDictionary *readDetails(CFStringRef key, AXError status, CFTypeRef raw) {
+    return @{@"key": (__bridge NSString *)key, @"status": @(status), @"raw_null": @(raw == NULL),
+             @"cf_null": @(raw && CFGetTypeID(raw) == CFNullGetTypeID()),
+             @"cf_type": raw ? @(CFGetTypeID(raw)) : NSNull.null};
+}
+
+static void refuseScan(NSMutableDictionary *first, BOOL *truncated, NSString *predicate,
+                       NSArray *path, NSUInteger visits, int depth, NSString *role,
+                       NSDictionary *details, pid_t expected) {
+    *truncated = YES;
+    if (first.count) return;
+    [first addEntriesFromDictionary:@{@"predicate": predicate, @"path": path, @"visit": @(visits),
+        @"depth": @(depth), @"visit_cap": @5000, @"depth_cap": @45,
+        @"role": role ?: NSNull.null, @"expected_pid": @(expected), @"observed_pid": NSNull.null}];
+    [first addEntriesFromDictionary:details];
+}
+
+static NSString *knownText(AXUIElementRef element, CFStringRef key, BOOL *known, NSMutableDictionary *reading) {
     CFTypeRef raw = NULL;
     AXError status = AXUIElementCopyAttributeValue(element, key, &raw);
+    if (*known) { [reading removeAllObjects]; [reading addEntriesFromDictionary:readDetails(key, status, raw)]; }
     id value = CFBridgingRelease(raw);
     if (status == kAXErrorNoValue || status == kAXErrorAttributeUnsupported) return @"";
     if (status || ![value isKindOfClass:NSString.class]) { *known = NO; return @""; }
@@ -170,21 +188,29 @@ static NSString *knownText(AXUIElementRef element, CFStringRef key, BOOL *known)
 
 static void collect(AXUIElementRef element, NSMutableArray *matches, NSMutableArray *notices,
                     NSMutableArray *targets, NSString *needle, NSArray *path, CFMutableSetRef seen,
-                    NSUInteger *visits, BOOL *truncated, pid_t pid, int depth) {
+                    NSUInteger *visits, BOOL *truncated, NSMutableDictionary *first, pid_t pid, int depth) {
     if (*truncated) return;
-    if (!realElement((__bridge id)element, pid)) { *truncated = YES; return; }
-    if (++*visits > 5000) { *truncated = YES; return; }
+    BOOL typed = element && CFGetTypeID(element) == AXUIElementGetTypeID();
+    pid_t owner = 0;
+    AXError ownerStatus = typed ? AXUIElementGetPid(element, &owner) : kAXErrorInvalidUIElement;
+    if (!typed || ownerStatus || owner != pid) {
+        NSMutableDictionary *details = [readDetails(CFSTR("AXPID"), ownerStatus, element) mutableCopy];
+        details[@"observed_pid"] = ownerStatus ? NSNull.null : @(owner);
+        refuseScan(first, truncated, typed ? @"node_owner" : @"node_type", path, *visits + 1, depth, nil, details, pid); return;
+    }
+    if (++*visits > 5000) { refuseScan(first, truncated, @"visit_limit", path, *visits, depth, nil, @{}, pid); return; }
     if (CFSetContainsValue(seen, element)) return;
-    if (depth > 45) { *truncated = YES; return; }
+    if (depth > 45) { refuseScan(first, truncated, @"depth_limit", path, *visits, depth, nil, @{}, pid); return; }
     CFSetAddValue(seen, element);
     BOOL known = YES;
-    NSString *role = knownText(element, kAXRoleAttribute, &known);
-    if (!known || !role.length) { *truncated = YES; return; }
+    NSMutableDictionary *reading = [NSMutableDictionary dictionary];
+    NSString *role = knownText(element, kAXRoleAttribute, &known, reading);
+    if (!known || !role.length) { refuseScan(first, truncated, @"role_read", path, *visits, depth, nil, reading, pid); return; }
     NSString *label = @"";
     if ([role isEqual:@"AXButton"]) {
-        label = knownText(element, kAXTitleAttribute, &known);
-        if (!label.length) label = knownText(element, kAXDescriptionAttribute, &known);
-        if (!known) { *truncated = YES; return; }
+        label = knownText(element, kAXTitleAttribute, &known, reading);
+        if (!label.length) label = knownText(element, kAXDescriptionAttribute, &known, reading);
+        if (!known) { refuseScan(first, truncated, @"button_label_read", path, *visits, depth, role, reading, pid); return; }
     }
     BOOL workLabel = [label isEqual:@"Thought"] || [label isEqual:@"思考"] ||
         [label hasPrefix:@"Thought · "] || [label hasPrefix:@"思考 · "] ||
@@ -193,9 +219,9 @@ static void collect(AXUIElementRef element, NSMutableArray *matches, NSMutableAr
         [matches addObject:(__bridge id)element];
     NSString *content = @"";
     if ([@[@"AXStaticText", @"AXHeading"] containsObject:role]) {
-        content = knownText(element, kAXValueAttribute, &known);
-        if (!content.length) content = knownText(element, kAXTitleAttribute, &known);
-        if (!known) { *truncated = YES; return; }
+        content = knownText(element, kAXValueAttribute, &known, reading);
+        if (!content.length) content = knownText(element, kAXTitleAttribute, &known, reading);
+        if (!known) { refuseScan(first, truncated, @"text_read", path, *visits, depth, role, reading, pid); return; }
     }
     // These are localized UI receipts, never the user's objective or answer.
     if ([@[@"AXStaticText", @"AXHeading"] containsObject:role] &&
@@ -207,9 +233,11 @@ static void collect(AXUIElementRef element, NSMutableArray *matches, NSMutableAr
     AXError status = AXUIElementCopyAttributeValue(element, kAXChildrenAttribute, &value);
     id children = CFBridgingRelease(value);
     if (status == kAXErrorNoValue || status == kAXErrorAttributeUnsupported) return;
-    if (status || ![children isKindOfClass:NSArray.class]) { *truncated = YES; return; }
+    if (status || ![children isKindOfClass:NSArray.class]) {
+        refuseScan(first, truncated, @"children_read", path, *visits, depth, role, readDetails(kAXChildrenAttribute, status, (__bridge CFTypeRef)children), pid); return;
+    }
     for (NSUInteger index = 0; index < [children count]; index++)
-        collect((__bridge AXUIElementRef)children[index], matches, notices, targets, needle, [path arrayByAddingObject:@(index)], seen, visits, truncated, pid, depth + 1);
+        collect((__bridge AXUIElementRef)children[index], matches, notices, targets, needle, [path arrayByAddingObject:@(index)], seen, visits, truncated, first, pid, depth + 1);
 }
 
 int main(int argc, const char **argv) { @autoreleasepool {
@@ -275,11 +303,13 @@ int main(int argc, const char **argv) { @autoreleasepool {
     NSMutableArray *matches = [NSMutableArray array], *notices = [NSMutableArray array], *targets = [NSMutableArray array];
     CFMutableSetRef seen = CFSetCreateMutable(kCFAllocatorDefault, 0, &kCFTypeSetCallBacks);
     NSUInteger visits = 0; BOOL truncated = NO;
-    collect((__bridge AXUIElementRef)windows[0], matches, notices, targets, needle, @[], seen, &visits, &truncated, pid, 0);
+    NSMutableDictionary *first = [NSMutableDictionary dictionary];
+    collect((__bridge AXUIElementRef)windows[0], matches, notices, targets, needle, @[], seen, &visits, &truncated, first, pid, 0);
     CFRelease(seen);
     if (truncated) {
         CFRelease(app);
-        return emit(@{@"error": @"complete bounded AX traversal required"}, 2);
+        return emit(@{@"error": @"complete bounded AX traversal required", @"first_refusal": first,
+                      @"pid": @(pid), @"action": action, @"pressed": @NO, @"wheel_posted": @NO, @"reveal_count": @0}, 2);
     }
     NSMutableArray *folds = [NSMutableArray array];
     for (id candidate in matches) {
