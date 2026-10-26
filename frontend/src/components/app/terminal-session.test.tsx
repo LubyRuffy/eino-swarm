@@ -1,4 +1,5 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import type { ITerminalOptions } from "@xterm/xterm"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { SelectionMenu } from "./selection-menu"
@@ -26,7 +27,7 @@ const mocks = vi.hoisted(() => {
       this.range = undefined
       if (hadSelection) this.emitSelection()
     })
-    constructor() { MockTerminal.instances.push(this) }
+    constructor(public options: ITerminalOptions) { MockTerminal.instances.push(this) }
     open(host: HTMLElement) {
       const terminalScreen = document.createElement("div")
       terminalScreen.className = "xterm-screen"
@@ -106,6 +107,82 @@ afterEach(() => {
   cleanup()
   removeListeners.splice(0).forEach((remove) => remove())
   vi.unstubAllGlobals()
+})
+
+describe("TerminalSessionView appearance", () => {
+  const root = document.documentElement
+  let originalClass: string
+  let originalStyle: string | null
+  let originalPalette: string | undefined
+  const tokens = (background: string, foreground: string) => {
+    root.style.setProperty("--card", background)
+    root.style.setProperty("--foreground", foreground)
+    root.style.setProperty("--accent", background)
+    root.style.setProperty("--accent-foreground", foreground)
+  }
+
+  beforeEach(() => {
+    originalClass = root.className
+    originalStyle = root.getAttribute("style")
+    originalPalette = root.dataset.palette
+    root.classList.remove("dark")
+    tokens("0 0% 100%", "240 10% 8%")
+  })
+
+  afterEach(() => {
+    root.className = originalClass
+    if (originalStyle === null) root.removeAttribute("style")
+    else root.setAttribute("style", originalStyle)
+    if (originalPalette === undefined) delete root.dataset.palette
+    else root.dataset.palette = originalPalette
+  })
+
+  it("recolours an open terminal without restarting its shell or dropping output", async () => {
+    render(<TerminalSessionView session={source} visible onReady={vi.fn()} />)
+    const terminal = mocks.MockTerminal.instances[0]
+    const socket = mocks.MockSocket.instances[0]
+    act(() => socket.receive("existing output"))
+    expect(terminal.options.theme?.background).toBe("hsl(0 0% 100%)")
+    tokens("240 7% 9%", "0 0% 95%")
+    root.classList.add("dark")
+    await waitFor(() => expect(terminal.options.theme).toMatchObject({
+      background: "hsl(240 7% 9%)",
+      foreground: "hsl(0 0% 95%)",
+      cursor: "hsl(0 0% 95%)",
+      cursorAccent: "hsl(240 7% 9%)",
+      selectionBackground: "hsl(240 7% 9%)",
+      selectionForeground: "hsl(0 0% 95%)",
+    }))
+    tokens("0 0% 100%", "240 10% 8%")
+    root.classList.remove("dark")
+    await waitFor(() => expect(terminal.options.theme?.background).toBe("hsl(0 0% 100%)"))
+    expect(mocks.MockTerminal.instances).toHaveLength(1)
+    expect(mocks.MockSocket.instances).toHaveLength(1)
+    expect(terminal.write).toHaveBeenCalledWith("existing output")
+    expect(terminal.dispose).not.toHaveBeenCalled()
+    expect(socket.close).not.toHaveBeenCalled()
+  })
+
+  it("updates hidden terminal tabs when the named palette changes", async () => {
+    render(<TerminalSessionView session={source} visible={false} onReady={vi.fn()} />)
+    const terminal = mocks.MockTerminal.instances[0]
+    tokens("222 47% 8%", "210 40% 96%")
+    root.dataset.palette = "fofa"
+    await waitFor(() => expect(terminal.options.theme?.background).toBe("hsl(222 47% 8%)"))
+    expect(mocks.MockSocket.instances).toHaveLength(1)
+    expect(terminal.dispose).not.toHaveBeenCalled()
+  })
+
+  it("stops observing appearance after the terminal closes", async () => {
+    const { unmount } = render(<TerminalSessionView session={source} visible onReady={vi.fn()} />)
+    const terminal = mocks.MockTerminal.instances[0]
+    const initial = terminal.options.theme
+    unmount()
+    tokens("240 7% 9%", "0 0% 95%")
+    await act(async () => { root.classList.add("dark") })
+    expect(terminal.options.theme).toBe(initial)
+    expect(terminal.dispose).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe("TerminalSessionView quoting", () => {

@@ -42,11 +42,12 @@ import { terminalShortcut, terminalTarget } from "@/lib/terminal"
 import { isWelcomePane, visibleManagerBlockCount } from "@/lib/welcome"
 import type { Project, SkillInfo } from "@/lib/types"
 import { startSidebarSync } from "@/lib/sidebar-sync"
+import { observeSystemTheme } from "@/lib/system-theme"
 import { askingThreadIds } from "@/lib/thread-title"
 import { toggleLocalePref } from "@/lib/use-t"
 import { isMac, readSidebarOpen, writeSidebarOpen } from "@/lib/utils"
 import { desktopShell, openLinksNatively } from "@/lib/shell"
-import { useApp } from "@/store/app"
+import { applyTheme, useApp } from "@/store/app"
 import { waitingThreadIds } from "@/store/app-schedule"
 import { useTraceFocus } from "@/store/trace-focus"
 import { projectOf, useProjects } from "@/store/projects"
@@ -154,6 +155,7 @@ function AppShell() {
   const newThread = useApp((s) => s.newThread)
   const setTheme = useApp((s) => s.setTheme)
   const theme = useApp((s) => s.theme)
+  useEffect(() => observeSystemTheme(theme, applyTheme), [theme])
   const setLocale = useApp((s) => s.setLocale)
   const setAppearance = useApp((s) => s.setAppearance)
   const selectAgent = useApp((s) => s.selectAgent)

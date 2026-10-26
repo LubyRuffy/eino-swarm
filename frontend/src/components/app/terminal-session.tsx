@@ -75,6 +75,16 @@ export function TerminalSessionView({
     termRef.current = term
     fitRef.current = fit
 
+    // xterm stores resolved colours, so CSS changes need an explicit update.
+    // Keep the existing terminal/PTY alive, including tabs hidden by the panel.
+    const appearance = new MutationObserver(() => {
+      term.options.theme = terminalTheme()
+    })
+    appearance.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "data-palette"],
+    })
+
     const cols = Math.max(term.cols, 10)
     const rows = Math.max(term.rows, 5)
     const ws = new WebSocket(terminalSocketURL(session, cols, rows))
@@ -141,6 +151,7 @@ export function TerminalSessionView({
     }
 
     return () => {
+      appearance.disconnect()
       selectionSub.dispose()
       host.removeEventListener("mouseup", publishSelection)
       document.dispatchEvent(new CustomEvent<TerminalSelection>(TERMINAL_SELECTION_EVENT, {
