@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
 import { Transcript } from "./transcript"
-import { sessionPreview, splitSessionBlocks, responseClockBlockId } from "./transcript-session"
+import { splitSessionBlocks, responseClockBlockId } from "./transcript-session"
 import type { AgentState, Block, TranscriptState } from "@/lib/transcript"
 import { emptyTranscript } from "@/lib/transcript"
 
@@ -88,26 +88,6 @@ describe("responseClockBlockId", () => {
   })
 })
 
-describe("sessionPreview", () => {
-  it("flattens an answer onto one line", () => {
-    expect(sessionPreview([block({ kind: "answer", text: "foo\n\nbar   baz" })])).toBe(
-      "foo bar baz",
-    )
-  })
-
-  it("prefers a failed turn's error over the last answer", () => {
-    expect(
-      sessionPreview(
-        [
-          block({ kind: "answer", text: "progress so far" }),
-          block({ kind: "error", text: "the endpoint refused the connection" }),
-        ],
-        { id: "tn_s", userText: "", status: "error", agentIds: [], error: "ignored" },
-      ),
-    ).toBe("the endpoint refused the connection")
-  })
-})
-
 describe("splitSessionBlocks", () => {
   it("keeps the user bubble out of the folded work", () => {
     const { leading, work, trailing } = splitSessionBlocks([
@@ -171,74 +151,92 @@ describe("splitSessionBlocks", () => {
   })
 })
 
-describe("goal session fold", () => {
-  it.each([false, true])("keeps completion visible outside folded work (before answer=%s)", (beforeAnswer) => {
+describe("goal session answers", () => {
+  it.each([false, true])("keeps completion and the answer visible (before answer=%s)", (beforeAnswer) => {
     const state = sessionState()
     const blocks = state.agents.manager.blocks
     blocks.splice(beforeAnswer ? 0 : blocks.length, 0,
       block({ id: "complete", kind: "notice", text: "Standing objective completed.", seq: beforeAnswer ? 1 : 3 }),
     )
     render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
-    const row = screen.getByTestId("goal-session")
-    expect(row).toHaveAttribute("aria-expanded", "false")
-    expect(screen.getByText("Standing objective completed.")).toBeVisible()
-    fireEvent.click(row)
+    expect(screen.queryByTestId("goal-session")).not.toBeInTheDocument()
+    expect(screen.getByText("progress so far")).toBeVisible()
     expect(screen.getAllByText("Standing objective completed.")).toHaveLength(1)
   })
 
-  it("collapses a finished session behind Worked for", () => {
+  it("shows a finished session answer without opening a session row", () => {
     render(<Transcript state={sessionState()} loaded onSelectAgent={() => {}} />)
-    const row = screen.getByTestId("goal-session")
-    expect(row).toHaveAttribute("aria-expanded", "false")
-    expect(row.querySelector(".whitespace-nowrap")).toHaveTextContent("Worked for 9s")
-    expect(row.querySelector(".truncate")).toHaveTextContent("progress so far")
-    fireEvent.click(row)
-    expect(row).toHaveAttribute("aria-expanded", "true")
-    expect(row.querySelector(".truncate")).toBeNull()
-    expect(screen.getByText("progress so far")).toBeInTheDocument()
+    expect(screen.queryByTestId("goal-session")).not.toBeInTheDocument()
+    expect(screen.getByText("progress so far")).toBeVisible()
+    expect(screen.getByTestId("turn-boundary")).toHaveTextContent("Worked for 9s")
   })
 
-  it("does not mount folded work until the row is opened", () => {
-    render(<Transcript state={sessionState()} loaded onSelectAgent={() => {}} />)
-    expect(document.querySelector(".md")).toBeNull()
-    fireEvent.click(screen.getByTestId("goal-session"))
-    expect(document.querySelector(".md")).toBeTruthy()
-  })
-
-  it("leaves the user message visible when the work is folded", () => {
+  it("keeps the user request and its whole answer visible together", () => {
     render(
       <Transcript
-        state={sessionState({ user: "keep going on the import" })}
+        state={sessionState({ user: "continue checking the pending changes" })}
         loaded
         onSelectAgent={() => {}}
       />,
     )
-    expect(screen.getByTestId("user-message")).toHaveTextContent("keep going on the import")
-    expect(screen.getByTestId("goal-session")).toHaveAttribute("aria-expanded", "false")
-    expect(screen.getByTestId("goal-session").querySelector(".truncate")).toHaveTextContent(
-      "progress so far",
-    )
+    expect(screen.getByTestId("user-message")).toHaveTextContent("continue checking the pending changes")
+    expect(screen.getByText("progress so far")).toBeVisible()
+    expect(document.querySelector(".md")).not.toBeNull()
   })
 
-  it("keeps a long CJK preview on the same line as the duration", () => {
-    const wall =
-      "两个解包目录都是今天早上生成的且 sql 大小对不上旧记录需要继续核对用户表和附件路径".repeat(4)
+  it("renders a long answer as paragraphs instead of a truncated session preview", () => {
+    const paragraph = "完成的结果需要完整保留，下一轮仍然能够直接阅读。".repeat(20)
     render(
       <Transcript
-        state={sessionState({ answer: `XenForo\n\n${wall}` })}
+        state={sessionState({ answer: `Current result\n\n${paragraph}` })}
         loaded
         onSelectAgent={() => {}}
       />,
     )
-    const row = screen.getByTestId("goal-session")
-    expect(row.querySelector(".whitespace-nowrap")).toHaveTextContent("Worked for 9s")
-    const preview = row.querySelector(".truncate")
-    expect(preview).toHaveClass("truncate")
-    expect(preview).toHaveTextContent(/^XenForo /)
-    expect(preview?.textContent).not.toMatch(/\n/)
+    expect(screen.getByText("Current result")).toBeVisible()
+    expect(screen.getByText(paragraph)).toBeVisible()
+    expect(screen.queryByTestId("goal-session")).not.toBeInTheDocument()
   })
 
-  it("folds when a live session finishes", () => {
+  it("keeps every answer visible while mounting process bodies only on demand", () => {
+    const state = sessionState({ answer: "first result" })
+    state.agents.manager.blocks = [
+      block({ id: "r1", kind: "reasoning", text: "first private reasoning", seq: 1 }),
+      block({ id: "k1", kind: "tool", text: "read", seq: 2,
+        tool: { callId: "c1", name: "read", args: '{"file_path":"first.txt"}', result: "first tool output", pending: false } }),
+      block({ id: "a1", kind: "answer", text: "first result", seq: 3 }),
+      block({ id: "r2", kind: "reasoning", text: "second private reasoning", seq: 4 }),
+      block({ id: "k2", kind: "tool", text: "read", seq: 5,
+        tool: { callId: "c2", name: "read", args: '{"file_path":"second.txt"}', result: "second tool output", pending: false } }),
+      block({ id: "a2", kind: "answer", text: "second result", seq: 6 }),
+    ]
+    render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+    expect(screen.getByText("first result")).toBeVisible()
+    expect(screen.getByText("second result")).toBeVisible()
+    const folds = screen.getAllByTestId("work-fold")
+    expect(folds).toHaveLength(2)
+    for (const fold of folds) expect(fold).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByTestId("thought-toggle")).not.toBeInTheDocument()
+    expect(screen.queryByText("first tool output")).not.toBeInTheDocument()
+    fireEvent.click(folds[0])
+    expect(screen.getByTestId("thought-toggle")).toBeInTheDocument()
+    expect(screen.queryByText("first tool output")).not.toBeInTheDocument()
+    expect(screen.getByText("second result")).toBeVisible()
+  })
+
+  it("keeps earlier session answers visible as the next session progresses", () => {
+    const state = sessionState({ answer: "earlier session result" })
+    state.running = true
+    state.turns.push({ id: "tn_next", userText: "", status: "running", session: true, agentIds: [] })
+    state.agents.manager.blocks.push(
+      block({ id: "next-answer", kind: "answer", text: "latest session progress", seq: 3, turnId: "tn_next", streaming: true }),
+    )
+    render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+    expect(screen.getByText("earlier session result")).toBeVisible()
+    expect(screen.getByText("latest session progress")).toBeVisible()
+  })
+
+  it("does not hide the answer when a live session finishes", () => {
     const running: TranscriptState = {
       ...sessionState({ answer: "still working" }),
       running: true,
@@ -246,121 +244,59 @@ describe("goal session fold", () => {
     running.agents.manager = { ...running.agents.manager, status: "running" }
     running.turns = [{ ...running.turns[0], status: "running", endedAt: undefined }]
     const { rerender } = render(<Transcript state={running} loaded onSelectAgent={() => {}} />)
+    expect(screen.getByText("still working")).toBeVisible()
+    rerender(<Transcript state={sessionState({ answer: "still working" })} loaded onSelectAgent={() => {}} />)
+    expect(screen.getByText("still working")).toBeVisible()
     expect(screen.queryByTestId("goal-session")).not.toBeInTheDocument()
-    rerender(
-      <Transcript
-        state={sessionState({ answer: "still working" })}
-        loaded
-        onSelectAgent={() => {}}
-      />,
-    )
-    expect(screen.getByTestId("goal-session")).toHaveAttribute("aria-expanded", "false")
   })
 
-  it("keeps a failed session open so the error is not behind Worked for", () => {
-    const state = sessionState({ answer: "progress so far" })
-    state.turns = [
-      {
-        ...state.turns[0],
-        status: "error",
-        error: "the endpoint refused the connection",
-      },
-    ]
+  it("keeps both a failed session's partial answer and its actionable error visible", () => {
+    const state = sessionState({ answer: "partial result" })
+    state.turns = [{ ...state.turns[0], status: "error", error: "the endpoint refused the connection" }]
     state.agents.manager = {
       ...state.agents.manager,
       status: "failed",
-      blocks: [
-        ...state.agents.manager.blocks,
-        block({
-          id: "e",
-          kind: "error",
-          text: "the endpoint refused the connection",
-          seq: 3,
-        }),
+      blocks: [...state.agents.manager.blocks,
+        block({ id: "e", kind: "error", text: "the endpoint refused the connection", seq: 3 }),
       ],
     }
     render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
-    const row = screen.getByTestId("goal-session")
-    expect(row).toHaveAttribute("aria-expanded", "true")
-    expect(row).toHaveAttribute("aria-invalid", "true")
-    expect(row.querySelector(".whitespace-nowrap")).toHaveTextContent("Stopped after 9s")
-    expect(screen.getByText("the endpoint refused the connection")).toBeInTheDocument()
-    expect(row.querySelector(".truncate")).toBeNull()
+    expect(screen.getByText("partial result")).toBeVisible()
+    expect(screen.getByText("the endpoint refused the connection")).toBeVisible()
+    expect(screen.getByTestId("turn-boundary")).toHaveTextContent("Stopped after 9s")
   })
 
-  it("keeps an armed wait visible while the session is folded", () => {
-    const state = sessionState({ answer: "progress so far" })
-    state.agents.manager = {
-      ...state.agents.manager,
-      blocks: [
-        block({
-          id: "w",
-          kind: "notice",
-          text: "A wait is armed.",
-          detail: "sch_ab12",
-          seq: 1,
-        }),
-        ...state.agents.manager.blocks,
-      ],
-    }
+  it("keeps an armed wait visible after the full answer", () => {
+    const state = sessionState()
+    state.agents.manager.blocks.unshift(
+      block({ id: "w", kind: "notice", text: "A wait is armed.", detail: "sch_ab12", seq: 1 }),
+    )
     render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
-    expect(screen.getByTestId("goal-session")).toHaveAttribute("aria-expanded", "false")
-    expect(document.querySelector(".md")).toBeNull()
-    expect(screen.getByTestId("schedule-notice")).toHaveTextContent("A wait is armed")
+    const answer = screen.getByText("progress so far")
+    const wait = screen.getByTestId("schedule-notice")
+    expect(answer).toBeVisible()
+    expect(wait).toHaveTextContent("A wait is armed")
+    expect(answer.compareDocumentPosition(wait) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it("keeps a budget-cap notice visible while the session is folded", () => {
-    const state = sessionState({ answer: "progress so far" })
-    state.agents.manager = {
-      ...state.agents.manager,
-      blocks: [
-        ...state.agents.manager.blocks,
-        block({
-          id: "c",
-          kind: "notice",
-          text: "Stopped auto-continuing: the standing objective is still open. Press Start on the goal to keep going.",
-          seq: 3,
-        }),
-      ],
-    }
+  it("keeps the budget-cap notice visible beside the full answer", () => {
+    const state = sessionState()
+    state.agents.manager.blocks.push(
+      block({ id: "c", kind: "notice", text: "Stopped auto-continuing: the standing objective is still open. Press Start on the goal to keep going.", seq: 3 }),
+    )
     render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
-    expect(screen.getByTestId("goal-session")).toHaveAttribute("aria-expanded", "false")
-    expect(document.querySelector(".md")).toBeNull()
+    expect(screen.getByText("progress so far")).toBeVisible()
     expect(screen.getByTestId("memory-notice")).toHaveTextContent("Press Start on the goal")
   })
 
-  it("keeps a running session expanded", () => {
-    const state: TranscriptState = {
-      ...emptyTranscript(),
-      running: true,
-      agentOrder: ["manager"],
-      agents: {
-        manager: {
-          id: "manager",
-          role: "manager",
-          status: "running",
-          activity: "",
-          blocks: [
-            block({
-              kind: "notice",
-              text: "Continuing the standing objective.",
-            }),
-          ],
-        },
-      },
-      turns: [
-        {
-          id: "tn_s",
-          userText: "",
-          status: "running",
-          session: true,
-          agentIds: [],
-        },
-      ],
-    }
+  it("keeps a running session's notice visible", () => {
+    const state = sessionState()
+    state.running = true
+    state.turns[0] = { ...state.turns[0], status: "running", endedAt: undefined }
+    state.agents.manager.blocks = [block({ kind: "notice", text: "Continuing the standing objective." })]
     render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
     expect(screen.queryByTestId("goal-session")).not.toBeInTheDocument()
-    expect(screen.getByText("Continuing the standing objective.")).toBeInTheDocument()
+    expect(screen.getByText("Continuing the standing objective.")).toBeVisible()
   })
 
   it("does not leave Planning next moves on a turn that is no longer the live one", () => {

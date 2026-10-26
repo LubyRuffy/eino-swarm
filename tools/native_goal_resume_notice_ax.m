@@ -62,8 +62,10 @@ static void collect(AXUIElementRef element, NSMutableArray *matches, NSMutableAr
     CFSetAddValue(seen, element);
     NSString *label = text(element, kAXTitleAttribute);
     if (!label.length) label = text(element, kAXDescriptionAttribute);
-    if ([text(element, kAXRoleAttribute) isEqual:@"AXButton"] &&
-        ([label hasPrefix:@"Worked for "] || [label hasPrefix:@"工作了 "]))
+    BOOL workLabel = [label isEqual:@"Thought"] || [label isEqual:@"思考"] ||
+        [label hasPrefix:@"Thought · "] || [label hasPrefix:@"思考 · "] ||
+        [label rangeOfString:@"^[0-9]+ (tools?|个工具)$" options:NSRegularExpressionSearch].location != NSNotFound;
+    if ([text(element, kAXRoleAttribute) isEqual:@"AXButton"] && workLabel)
         [matches addObject:(__bridge id)element];
     NSString *content = text(element, kAXValueAttribute);
     if (!content.length) content = text(element, kAXTitleAttribute);
@@ -86,7 +88,7 @@ int main(int argc, const char **argv) { @autoreleasepool {
         return emit(@{@"error": @"invalid private app PID"}, 2);
     pid_t pid = (pid_t)parsed;
     NSString *action = @(argv[2]);
-    if (![@[@"startup", @"inspect", @"expand", @"reveal-notice"] containsObject:action])
+    if (![@[@"startup", @"inspect", @"reveal-notice"] containsObject:action])
         return emit(@{@"error": @"unsupported session action"}, 2);
     NSString *bundle = [@(argv[3]) stringByResolvingSymlinksInPath];
     NSString *expected = NSProcessInfo.processInfo.environment[@"ZWAI_NATIVE_APP"];
@@ -109,29 +111,42 @@ int main(int argc, const char **argv) { @autoreleasepool {
     AXUIElementRef app = AXUIElementCreateApplication(pid);
     AXUIElementSetMessagingTimeout(app, 2);
     NSArray *windows = attribute(app, kAXWindowsAttribute);
-    if (windows.count != 1) { CFRelease(app); return emit(@{@"error": @"one private native window required"}, 2); }
+    if (![windows isKindOfClass:NSArray.class] || windows.count != 1) {
+        CFRelease(app); return emit(@{@"error": @"one private native window required"}, 2);
+    }
+    __attribute__((objc_precise_lifetime)) id windowOwner = windows[0];
+    pid_t owner = 0;
+    if (CFGetTypeID((__bridge CFTypeRef)windowOwner) != AXUIElementGetTypeID() ||
+        ![text((__bridge AXUIElementRef)windowOwner, kAXRoleAttribute) isEqual:@"AXWindow"] ||
+        AXUIElementGetPid((__bridge AXUIElementRef)windowOwner, &owner) != kAXErrorSuccess || owner != pid) {
+        CFRelease(app); return emit(@{@"error": @"private AX window type, role or owner refused"}, 2);
+    }
     NSMutableArray *matches = [NSMutableArray array], *notices = [NSMutableArray array];
     CFMutableSetRef seen = CFSetCreateMutable(kCFAllocatorDefault, 0, &kCFTypeSetCallBacks);
     NSUInteger visits = 0; BOOL truncated = NO;
     collect((__bridge AXUIElementRef)windows[0], matches, notices, seen, &visits, &truncated, 0);
     CFRelease(seen);
-    if (truncated || matches.count != 1) {
+    if (truncated) {
         CFRelease(app);
-        return emit(@{@"error": @"one completed session disclosure required within bounded AX traversal"}, 2);
+        return emit(@{@"error": @"complete bounded AX traversal required"}, 2);
     }
-    AXUIElementRef session = (__bridge AXUIElementRef)matches[0];
-    id expanded = attribute(session, kAXExpandedAttribute);
-    if (!expanded || CFGetTypeID((__bridge CFTypeRef)expanded) != CFBooleanGetTypeID()) {
-        CFRelease(app); return emit(@{@"error": @"session lacks a boolean AXExpanded state"}, 2);
+    NSMutableArray *folds = [NSMutableArray array];
+    for (id candidate in matches) {
+        AXUIElementRef fold = (__bridge AXUIElementRef)candidate;
+        id expanded = attribute(fold, kAXExpandedAttribute);
+        if (!expanded || CFGetTypeID((__bridge CFTypeRef)expanded) != CFBooleanGetTypeID()) {
+            CFRelease(app); return emit(@{@"error": @"work disclosure lacks a boolean AXExpanded state"}, 2);
+        }
+        NSString *label = text(fold, kAXTitleAttribute);
+        if (!label.length) label = text(fold, kAXDescriptionAttribute);
+        [folds addObject:@{@"label": label, @"expanded": expanded}];
     }
-    BOOL pressed = [action isEqual:@"expand"] && ![expanded boolValue];
-    AXError error = pressed ? AXUIElementPerformAction(session, kAXPressAction) : kAXErrorSuccess;
+    AXError error = kAXErrorSuccess;
     NSMutableDictionary *result = [@{@"pid": @(pid), @"bundle": bundle, @"action": action,
-                             @"expanded": [expanded boolValue] ? @YES : @NO,
-                             @"pressed": pressed ? @YES : @NO, @"ax_error": @(error)} mutableCopy];
+                             @"folds": folds, @"pressed": @NO, @"ax_error": @(error)} mutableCopy];
     if ([action isEqual:@"reveal-notice"]) {
-        if (![expanded boolValue] || notices.count != 1) {
-            CFRelease(app); return emit(@{@"error": @"one notice in expanded work required before reveal"}, 2);
+        if (notices.count != 1) {
+            CFRelease(app); return emit(@{@"error": @"one visible continuation notice required before reveal"}, 2);
         }
         AXUIElementRef notice = (__bridge AXUIElementRef)notices[0];
         CGRect before = frame(notice), clip = viewport(notice, (__bridge AXUIElementRef)windows[0]);

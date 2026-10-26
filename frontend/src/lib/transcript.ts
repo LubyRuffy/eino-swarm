@@ -84,6 +84,8 @@ export interface Block {
   text: string
   /** Source goal event for chat projection; the original receipt stays in Trace. */
   goalNoticeKind?: "goal_resumed" | "goal_continued"
+  /** Only successful/in-flight compaction receives secondary status styling. */
+  compacted?: boolean
   /** One model output can span several manager turns and durable checkpoints. */
   messageId?: string
   /** Still being streamed. Complete blocks stop showing a cursor and can be
@@ -92,8 +94,7 @@ export interface Block {
   /** A review the user asked not to see in the transcript. It still exists
    *  so the Trace tab's Full log and resume point do not lose the event. */
   quiet?: boolean
-  /** Extra body a notice can open. Compact keeps the briefing here so the
-   *  chat row stays a one-liner instead of pasting the next prompt. */
+  /** Extra body a notice can expand without replacing the original messages. */
   detail?: string
   /** Structured reviewer diagnostics, formatted when the UI language changes. */
   review?: ReviewOutcome
@@ -422,6 +423,7 @@ export function reduceEvent(
   }
   if (ev.kind === "compacted") {
     const row = block(ev, "notice", compactNotice(ev))
+    row.compacted = !ev.err
     const briefing = compactBriefing(ev)
     if (briefing) row.detail = briefing
     append(touchAgent(next, MANAGER_ID), row)

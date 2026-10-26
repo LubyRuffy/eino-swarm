@@ -902,7 +902,7 @@ test("compact folds earlier turns without rewriting the transcript", async ({
     await composer(page).fill("/compact")
     await composer(page).press("Enter")
     await expect(page.getByTestId("transcript")).toContainText(
-      "Earlier turns were folded into a briefing",
+      "Context compressed",
     )
     await expect(page.getByTestId("user-message")).toHaveCount(before)
     await page.getByTestId("compact-briefing-open").last().click()
@@ -910,6 +910,9 @@ test("compact folds earlier turns without rewriting the transcript", async ({
     await expect(briefing).toBeVisible()
     await expect(briefing).not.toContainText("through_seq")
     await expect(briefing).not.toHaveText(/^\s*$/)
+    await expect(page.getByRole("dialog")).toHaveCount(0)
+    await page.getByRole("button", { name: "Hide briefing", exact: true }).last().click()
+    await expect(briefing).toHaveCount(0)
   } finally {
     await request.put("/api/settings", { data: { swarm: settings.swarm } })
   }

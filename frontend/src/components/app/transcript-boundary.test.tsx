@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
 import { emptyTranscript, reduceEvents } from "@/lib/transcript"
@@ -47,7 +47,6 @@ describe("late post-turn events", () => {
     expect(failure).toBeVisible()
     expect(footers[1].compareDocumentPosition(failure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.queryByText("internal briefing")).toBeNull()
-    if (session) fireEvent.click(screen.getByTestId("goal-session"))
     expect(screen.getByText("original answer")).toBeVisible()
     expect(screen.getByText("latest answer")).toBeVisible()
   })
@@ -75,7 +74,8 @@ describe("late post-turn events", () => {
     const failure = screen.getByText(/Memory review failed/)
     expect(failure).toBeVisible()
     expect(footer.compareDocumentPosition(failure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(screen.getByTestId("goal-session")).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByTestId("goal-session")).not.toBeInTheDocument()
+    expect(screen.getByText("original answer")).toBeVisible()
   })
 
   it("keeps the running turn's progress visible when an older review arrives", () => {

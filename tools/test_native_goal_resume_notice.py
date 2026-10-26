@@ -2,10 +2,13 @@ import importlib.util
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+from contextlib import redirect_stdout
+import io
 
 
 MODULE = Path(__file__).with_name("native_goal_resume_notice.py")
@@ -15,6 +18,157 @@ spec.loader.exec_module(notice)
 
 
 class GoalResumeNoticeAssertions(unittest.TestCase):
+    def test_default_answers_require_both_real_final_bodies_even_when_the_answers_are_identical(self):
+        traces = [{"turn": {"final": "## Result\n\nRequest: own fixture\n\nFinal observation."}}] * 2
+        rows = [{"AXRole": "AXStaticText", "AXValue": text}
+                for text in ("Request: own fixture", "Final observation.")]
+        with self.assertRaisesRegex(AssertionError, "answer"):
+            notice.assert_default_answers({"tree": rows}, traces)
+        self.assertEqual(len(notice.assert_default_answers({"tree": rows * 2}, traces)), 2)
+        with self.assertRaisesRegex(AssertionError, "final"):
+            notice.assert_default_answers({"tree": rows * 2}, [{"turn": {"final": ""}}])
+
+    def test_default_tools_need_actual_boolean_collapsed_disclosures(self):
+        notice.assert_work_collapsed({"folds": [{"label": "思考 · 3 个工具", "expanded": False}]})
+        for state in ({"folds": []}, {"folds": [{"expanded": True}]},
+                      {"folds": [{"expanded": 0}]}, {"folds": [{"expanded": None}]}):
+            with self.subTest(state=state), self.assertRaisesRegex(AssertionError, "collapsed"):
+                notice.assert_work_collapsed(state)
+
+    def test_selected_conversation_waits_read_only_for_both_answers_on_the_same_deadline(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = {"evidence": Path(temporary)}
+            traces = [{"turn": {"final": "## Result\n\nOpening actual observation.\n\nClosing actual observation."}}] * 2
+            loaded = {"tree": [{"AXRole": "AXStaticText", "AXValue": value}
+                               for value in ["Opening actual observation.", "Closing actual observation."] * 2]}
+            pauses = []
+            deadline = SimpleNamespace(pause=lambda stage: pauses.append(stage))
+            with patch.object(notice.smoke, "wait_window", side_effect=[{"tree": []}, loaded, loaded, loaded, loaded, loaded]) as snapshot, \
+                    patch.object(notice, "save_window") as capture, patch.object(notice, "control") as control:
+                notice.capture_answers(context, deadline, "restored", traces)
+            self.assertEqual(len(pauses), 1)
+            self.assertEqual(capture.call_count, 4)
+            self.assertTrue(all(call.args[1] is deadline for call in snapshot.call_args_list))
+            control.assert_not_called()
+            first = json.loads((Path(temporary) / "restored-answers-first-pending.json").read_text())
+            self.assertEqual(first["snapshot"], {"tree": []})
+
+    def test_missing_answers_expire_without_repeating_navigation_or_allocating_a_new_deadline(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = {"evidence": Path(temporary)}
+            traces = [{"turn": {"final": "Opening actual observation.\n\nClosing actual observation."}}]
+            deadline = SimpleNamespace(pause=lambda _: (_ for _ in ()).throw(TimeoutError("original answer deadline")))
+            with patch.object(notice.smoke, "wait_window", return_value={"tree": []}), \
+                    patch.object(notice, "control") as control, patch.object(notice, "save_window") as capture, \
+                    self.assertRaisesRegex(TimeoutError, "original answer deadline"):
+                notice.capture_answers(context, deadline, "missing", traces)
+            control.assert_not_called()
+            capture.assert_not_called()
+
+    def test_inline_briefing_requires_every_summary_character_and_no_dialog(self):
+        summary = "First recorded constraint.\nA final distinct condition survives."
+        tree = [{"AXRole": "AXStaticText", "AXValue": "First recorded constraint."},
+                {"AXRole": "AXStaticText", "AXValue": "A final distinct condition survives."}]
+        notice.assert_inline_briefing({"tree": tree}, summary, True)
+        for rows in (tree[:1], tree + [{"AXRole": "AXDialog"}],
+                     [{"AXRole": "AXStaticText", "AXValue": summary[:-1]}]):
+            with self.subTest(rows=rows), self.assertRaisesRegex(AssertionError, "briefing|dialog"):
+                notice.assert_inline_briefing({"tree": rows}, summary, True)
+        notice.assert_inline_briefing({"tree": []}, summary, False)
+        with self.assertRaisesRegex(AssertionError, "hidden"):
+            notice.assert_inline_briefing({"tree": tree}, summary, False)
+
+    def test_helper_timeouts_keep_original_streams_command_and_exception_even_if_evidence_write_fails(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = {"evidence": Path(temporary), "app_pid": 123}
+            deadline = SimpleNamespace(remaining=lambda _: 5)
+            failure = subprocess.TimeoutExpired(["helper", "inspect"], 5, output=b"partial stdout", stderr=b"original stderr")
+            with patch.object(notice.subprocess, "run", side_effect=failure), self.assertRaises(subprocess.TimeoutExpired) as raised:
+                notice.run_native_helper(context, deadline, "session", "inspect", ["helper", "inspect"])
+            self.assertIs(raised.exception, failure)
+            saved = json.loads((Path(temporary) / "goal-notice-helper-001.json").read_text())
+            self.assertEqual((saved["stdout"], saved["stderr"], saved["command"], saved["timed_out"]),
+                             ("partial stdout", "original stderr", ["helper", "inspect"], True))
+            with patch.object(notice.subprocess, "run", side_effect=failure), \
+                    patch.object(notice.smoke.runner, "save_json", side_effect=OSError("evidence unavailable")), \
+                    self.assertRaises(subprocess.TimeoutExpired) as raised:
+                notice.run_native_helper(context, deadline, "session", "inspect", ["helper", "inspect"])
+            self.assertIs(raised.exception, failure)
+
+    def test_success_without_durable_helper_streams_cannot_pass(self):
+        context = {"evidence": Path("unused"), "app_pid": 123}
+        deadline = SimpleNamespace(remaining=lambda _: 5)
+        with patch.object(notice.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="{}", stderr="")), \
+                patch.object(notice.smoke.runner, "save_json", side_effect=OSError("evidence unavailable")), \
+                self.assertRaisesRegex(OSError, "evidence unavailable"):
+            notice.run_native_helper(context, deadline, "session", "inspect", ["helper", "inspect"])
+
+    def test_actual_control_and_session_failures_survive_evidence_storage_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            app = root / "private.app"
+            executable = app / "Contents/MacOS/zwai"
+            executable.parent.mkdir(parents=True)
+            controls = root / "controls"
+            controls.write_bytes(b"pinned control")
+            context = {"evidence": root, "app_pid": 123, "app": app, "controls": controls,
+                       "session_ax": root / "session", "control_sha256": hashlib.sha256(controls.read_bytes()).hexdigest()}
+            result = SimpleNamespace(returncode=3, stdout='{"matches":0,"ax_error":-25212}', stderr="original AX refusal")
+            deadline = SimpleNamespace(remaining=lambda _: 5)
+            for caller in (lambda: notice.control(context, deadline, "press", "unique input"),
+                           lambda: notice.session_control(context, deadline, "inspect")):
+                with self.subTest(caller=caller), patch.object(notice.smoke, "assert_process", return_value=executable), \
+                        patch.object(notice.smoke, "wait_window"), patch.object(notice, "validate_session_helper"), \
+                        patch.object(notice.subprocess, "run", return_value=result), \
+                        patch.object(notice.smoke.runner, "save_json", side_effect=OSError("evidence volume unavailable")), \
+                        self.assertRaises(subprocess.CalledProcessError) as raised:
+                    caller()
+                self.assertEqual((raised.exception.returncode, raised.exception.output, raised.exception.stderr),
+                                 (3, result.stdout, result.stderr))
+                self.assertEqual(raised.exception.evidence_error, "evidence volume unavailable")
+
+    def test_main_failure_receipt_keeps_actual_control_refusal_or_timeout_when_helper_evidence_first_fails(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            files = {name: root / name for name in ("ax", "session", "controls")}
+            for path in files.values():
+                path.write_bytes(b"prepared fixture")
+            context = {"evidence": root, "app_pid": 123, "app": root, "case_id": "owned-case"}
+            deadline = SimpleNamespace(remaining=lambda _: 5)
+            argv = ["--ax", str(files["ax"]), "--session-ax", str(files["session"]),
+                    "--controls", str(files["controls"]), "--control-sha256", hashlib.sha256(files["controls"].read_bytes()).hexdigest()]
+            for timed_out, permanent in ((False, False), (False, True), (True, False), (True, True)):
+                output = io.StringIO()
+                result = SimpleNamespace(returncode=3, stdout='{"ax_error":-25212}', stderr="the original native refusal")
+                timeout = subprocess.TimeoutExpired([str(files["controls"]), "123", "press", "unique"], 5,
+                                                     output=b"original partial stdout", stderr=b"original timeout stderr")
+                save = notice.smoke.runner.save_json
+                writes = []
+                def save_with_first_failure(path, value):
+                    writes.append(str(path))
+                    if len(writes) == 1 or permanent:
+                        raise OSError("first helper evidence unavailable")
+                    return save(path, value)
+                with self.subTest(timed_out=timed_out, permanent=permanent), patch.dict(notice.os.environ, {"ZWAI_NATIVE_SCENARIO_TIMEOUT_SECONDS": "150"}), \
+                        patch.object(notice.smoke, "case_context", return_value=dict(context)), \
+                        patch.object(notice.smoke, "assert_process"), patch.object(notice.smoke, "wait_window"), \
+                        patch.object(notice, "run", side_effect=lambda target: notice.control(target, deadline, "press", "unique")), \
+                        patch.object(notice.subprocess, "run", side_effect=timeout if timed_out else None, return_value=result) as action, \
+                        patch.object(notice.smoke.runner, "save_json", side_effect=save_with_first_failure), redirect_stdout(output):
+                    self.assertEqual(notice.main(argv), 2)
+                self.assertEqual(action.call_count, 1)
+                receipt = json.loads(output.getvalue())
+                if permanent:
+                    self.assertEqual(receipt["receipt_evidence_error"], "first helper evidence unavailable")
+                else:
+                    self.assertEqual(receipt, json.loads((root / "native-goal-resume-notice.json").read_text()))
+                helper = receipt["helper"]
+                self.assertEqual(helper["timed_out"], timed_out)
+                self.assertEqual(helper["evidence_error"], "first helper evidence unavailable")
+                self.assertEqual((helper["stdout"], helper["stderr"]),
+                                 ("original partial stdout", "original timeout stderr") if timed_out else (result.stdout, result.stderr))
+                self.assertEqual(helper["returncode"], None if timed_out else 3)
+
     def test_reopened_chats_pane_selects_its_visible_title_without_pressing_ambiguous_navigation(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -31,6 +185,9 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                     return {"threads": []}
                 if path == "/api/settings":
                     return {"settings": {"ui": {}, "swarm": {}, "memory": {}}}
+                if path == "/api/threads/thread-1" and method == "PATCH":
+                    self.assertEqual(body, {"goal_resume": True})
+                    return {"thread": {"id": "thread-1"}}
                 if path.endswith("/turns"):
                     return {"turns": [first, second]}
                 if "/log?" in path:
@@ -52,15 +209,18 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                     patch.object(notice, "wait_registered_application"), patch.object(notice, "api", side_effect=api), \
                     patch.object(notice, "prepare_goal_fixture", return_value=({"id": "thread-1"}, first, "Known title", "objective")), \
                     patch.object(notice, "control", side_effect=lambda _, __, action, value=None: actions.append((action, value))), \
+                    patch.object(notice, "capture_answers", return_value=[["opening", "closing"]]), \
+                    patch.object(notice, "compact_fixture", return_value="stored real summary"), \
+                    patch.object(notice, "exercise_inline_briefing"), patch.object(notice, "assert_inline_briefing"), \
                     patch.object(notice, "capture", return_value={"captured": True}) as capture, \
                     patch.object(notice.subprocess, "Popen", return_value=SimpleNamespace(pid=456, wait=lambda **_: 0)):
                 receipt = notice.run(context)
             self.assertEqual(actions, [("reload", None), ("press", "对话"), ("press", "Known title"),
-                                       ("press", "开始目标"), ("close", None), ("press", "Known title"), ("close", None)])
-            self.assertEqual([call.args[2] for call in capture.call_args_list], ["01-resumed", "02-reopened"])
-            self.assertEqual(receipt["native_actions"], ["Conversations tab", "select thread", "Start goal", "close", "reopen", "select thread"])
+                                       ("reload", None), ("press", "Known title"), ("close", None), ("press", "Known title"), ("close", None)])
+            self.assertEqual([call.args[2] for call in capture.call_args_list], ["01-resumed", "02-reloaded", "03-reopened"])
+            self.assertEqual(receipt["native_actions"], ["Conversations tab", "select thread", "expand briefing", "collapse briefing", "reload", "select thread after reload", "close", "reopen", "select thread"])
 
-    def test_api_fixture_is_selected_from_the_native_conversations_tab_before_start(self):
+    def test_completed_goal_fixture_uses_recovery_api_after_native_selection_and_never_presses_obsolete_start(self):
         with tempfile.TemporaryDirectory() as temporary:
             context = {"evidence": Path(temporary), "timeout": 45, "ax": Path("fixture")}
             actions = []
@@ -77,7 +237,7 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                     self.assertRaisesRegex(StopIteration, "resume observation"):
                 notice.run(context)
             self.assertEqual(actions, [("reload", None), ("available press", "对话"),
-                                       ("available press", "Known title"), ("available press", "开始目标")])
+                                       ("available press", "Known title")])
 
     def test_native_button_waits_read_only_for_one_enabled_match_then_presses_once(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -224,6 +384,21 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                 notice.prepare_goal_fixture(context, object())
             self.assertEqual(request.call_count, 2)
 
+    def test_completed_goal_recovery_uses_its_normal_api_identity_without_any_native_start_action(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = {"evidence": Path(temporary)}
+            acknowledged = {"thread": {"id": "own-thread", "goal_complete": False}}
+            with patch.object(notice, "api", return_value=acknowledged) as api, \
+                    patch.object(notice, "control", side_effect=AssertionError("obsolete native Start must never be pressed")) as control:
+                notice.resume_goal_fixture(context, object(), "own-thread")
+            self.assertEqual(api.call_args.args[2:], ("/api/threads/own-thread", {"goal_resume": True}, "PATCH"))
+            control.assert_not_called()
+            saved = json.loads((Path(temporary) / "goal-notice-resume-fixture.json").read_text())
+            self.assertEqual((saved["request"], saved["response"]), ({"goal_resume": True}, acknowledged))
+            with patch.object(notice, "api", return_value={"thread": {"id": "another-thread"}}), \
+                    self.assertRaisesRegex(AssertionError, "another conversation"):
+                notice.resume_goal_fixture(context, object(), "own-thread")
+
     def test_completed_goal_requires_its_own_successful_model_and_paired_completion_trace(self):
         good = self.goal_trace()
         notice.assert_goal_trace(good, "thread-1", "turn-1", "fixture objective")
@@ -346,13 +521,12 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                     return 5
             def screenshot(argv, **_):
                 Path(argv[-1]).write_bytes(b"captured fixture")
-            with patch.object(notice, "expand_session", return_value=row), \
-                    patch.object(notice, "session_control", return_value=geometry) as reveal, \
+            with patch.object(notice, "session_control", side_effect=[{"folds": [{"expanded": False}]}, geometry]) as reveal, \
                     patch.object(notice.smoke, "wait_window", return_value=row), \
                     patch.object(notice.smoke, "png_dimensions", return_value=(640, 480)), \
                     patch.object(notice.subprocess, "run", side_effect=screenshot) as capture:
                 self.assertEqual(notice.capture(context, Deadline(), "visible"), row)
-            self.assertEqual(reveal.call_args.args[2], "reveal-notice")
+            self.assertEqual([call.args[2] for call in reveal.call_args_list], ["inspect", "reveal-notice"])
             self.assertEqual(capture.call_args.args[0][3], "456")
             self.assertEqual(json.loads((Path(temporary) / "visible.viewport.json").read_text()), geometry)
             image = json.loads((Path(temporary) / "visible.image.json").read_text())
@@ -370,8 +544,7 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                     return 5
             def screenshot(argv, **_):
                 Path(argv[-1]).write_bytes(b"captured fixture")
-            with patch.object(notice, "expand_session", return_value=row), \
-                    patch.object(notice, "session_control", return_value=geometry), \
+            with patch.object(notice, "session_control", side_effect=[{"folds": [{"expanded": False}]}, geometry]), \
                     patch.object(notice.smoke, "wait_window", return_value=row), \
                     patch.object(notice.smoke, "png_dimensions", return_value=(640, 480)), \
                     patch.object(notice.subprocess, "run", side_effect=screenshot) as capture, \
@@ -379,57 +552,52 @@ class GoalResumeNoticeAssertions(unittest.TestCase):
                 notice.capture(context, Deadline(), "outside")
             capture.assert_not_called()
 
-    def test_external_resumed_notice_does_not_hide_a_second_folded_continuation(self):
-        outside = {"AXRole": "AXStaticText", "AXValue": "继续追求目标。"}
-        folded = {"tree": [{"AXRole": "AXButton", "AXTitle": "工作了 3秒 · verification"}, outside]}
-        expanded = {"tree": [*folded["tree"], dict(outside)]}
-        with patch.object(notice.smoke, "wait_window", side_effect=[folded, expanded]), \
-                patch.object(notice, "session_control", side_effect=[{"expanded": False}, {}, {"expanded": True}]) as control, \
-                self.assertRaisesRegex(AssertionError, "found 2"):
-            notice.assert_single_notice(notice.expand_session({}, object()))
-        self.assertEqual([call.args[2] for call in control.call_args_list], ["inspect", "expand", "inspect"])
+    def test_default_notice_capture_refuses_expanded_work_without_pressing_a_disclosure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = {"evidence": Path(temporary), "app_pid": 123}
+            row = {"tree": [{"AXRole": "AXStaticText", "AXValue": "继续追求目标。"}]}
+            with patch.object(notice.smoke, "wait_window", return_value=row), \
+                    patch.object(notice, "session_control", return_value={"folds": [{"expanded": True}]}) as control, \
+                    self.assertRaisesRegex(AssertionError, "collapsed"):
+                notice.capture(context, object(), "default")
+            self.assertEqual([call.args[2] for call in control.call_args_list], ["inspect"])
 
-    def test_session_selector_requires_one_actual_disclosure_button(self):
-        for label in ("Worked for 3s · verification", "工作了 3秒 · verification"):
-            row = {"tree": [{"AXRole": "AXStaticText", "AXValue": label},
-                            {"AXRole": "AXButton", "AXTitle": label}]}
-            self.assertEqual(notice.session_summary_label(row), label)
-        description = {"tree": [{"AXRole": "AXButton", "AXDescription": "工作了 3秒 · verification"}]}
-        self.assertEqual(notice.session_summary_label(description), "工作了 3秒 · verification")
+    def test_compact_fixture_uses_normal_endpoint_and_the_new_durable_summary_without_a_turn(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = {"evidence": Path(temporary)}
+            old = {"kind": "compacted", "seq": 1, "text": json.dumps({"summary": "older summary"})}
+            fresh = {"kind": "compacted", "seq": 9, "text": json.dumps({"summary": "complete new durable summary"})}
+            replies = [{"settings": {"swarm": {"compact_keep_messages": 6}}}, {}, {"events": []}, {},
+                       {"events": [fresh]}, {"turns": [{"id": "first"}, {"id": "second"}]}]
+            with patch.object(notice, "api", side_effect=replies) as api:
+                self.assertEqual(notice.compact_fixture(context, object(), "own-thread", ["first", "second"]),
+                                 "complete new durable summary")
+            self.assertEqual(api.call_args_list[3].args[2:], ("/api/threads/own-thread/compact", {}, "POST"))
+            saved = json.loads((Path(temporary) / "goal-notice-compact.json").read_text())
+            self.assertEqual(saved["event"], fresh)
+            with patch.object(notice, "api", side_effect=[*replies[:2], {"events": [old]}]) as api, \
+                    self.assertRaisesRegex(AssertionError, "no earlier compacted"):
+                notice.compact_fixture(context, object(), "own-thread", ["first", "second"])
+            self.assertEqual(api.call_count, 3)
+            for bad in ({**fresh, "err": "failed"}, {**fresh, "text": '{"summary":""}'}, old):
+                with self.subTest(bad=bad), patch.object(notice, "api", side_effect=[*replies[:4], {"events": [bad, bad]} if bad is old else {"events": [bad]}, replies[-1]]), \
+                        self.assertRaises(AssertionError):
+                    notice.compact_fixture(context, object(), "own-thread", ["first", "second"])
 
-    def test_missing_or_ambiguous_session_button_is_rejected(self):
-        button = {"AXRole": "AXButton", "AXTitle": "Worked for 3s · verification"}
-        for rows in ([], [dict(button, AXRole="AXStaticText")], [button, button]):
-            with self.subTest(rows=rows), self.assertRaisesRegex(AssertionError, "one completed session disclosure"):
-                notice.session_summary_label({"tree": rows})
-
-    def test_folded_session_is_pressed_and_visible_content_is_read_again(self):
-        folded = {"tree": [{"AXRole": "AXButton", "AXTitle": "工作了 3秒 · verification"}]}
-        expanded = {"tree": [{"AXRole": "AXStaticText", "AXValue": "继续追求目标。"}]}
-        with patch.object(notice.smoke, "wait_window", side_effect=[folded, expanded]) as snapshot, \
-                patch.object(notice, "session_control", side_effect=[{"expanded": False}, {}, {"expanded": True}]) as control:
-            self.assertEqual(notice.expand_session({}, object()), expanded)
-        self.assertEqual(snapshot.call_count, 2)
-        self.assertEqual([call.args[2] for call in control.call_args_list], ["inspect", "expand", "inspect"])
-
-    def test_control_success_without_expanded_content_cannot_accept_the_session(self):
-        folded = {"tree": [{"AXRole": "AXButton", "AXTitle": "Worked for 3s · verification"}]}
-        class Deadline:
-            def pause(self, _):
-                raise TimeoutError("expanded content absent")
-        with patch.object(notice.smoke, "wait_window", return_value=folded), \
-                patch.object(notice, "session_control", return_value={"expanded": False}) as control, \
-                self.assertRaisesRegex(TimeoutError, "expanded content absent"):
-            notice.expand_session({}, Deadline())
-        self.assertEqual([call.args[2] for call in control.call_args_list], ["inspect", "expand", "inspect"])
-
-    def test_already_expanded_session_does_not_toggle_closed(self):
-        expanded = {"tree": [{"AXRole": "AXButton", "AXTitle": "工作了 3秒"},
-                             {"AXRole": "AXStaticText", "AXValue": "继续追求目标。"}]}
-        with patch.object(notice.smoke, "wait_window", return_value=expanded), \
-                patch.object(notice, "session_control", return_value={"expanded": True}) as control:
-            self.assertEqual(notice.expand_session({}, object()), expanded)
-        self.assertEqual([call.args[2] for call in control.call_args_list], ["inspect"])
+    def test_inline_briefing_presses_each_toggle_once_and_checks_the_complete_body(self):
+        summary = "Opening durable evidence.\nFinal condition still required."
+        hidden = {"tree": []}
+        visible = {"tree": [{"AXRole": "AXStaticText", "AXValue": summary}]}
+        with patch.object(notice.smoke, "wait_window", side_effect=[hidden, visible, visible, visible, hidden]), \
+                patch.object(notice, "press_available") as press, patch.object(notice, "save_window") as capture:
+            notice.exercise_inline_briefing({}, object(), summary)
+        self.assertEqual([call.args[2] for call in press.call_args_list], ["查看压缩后的简报", "收起简报"])
+        self.assertEqual([call.args[2] for call in capture.call_args_list],
+                         ["inline-briefing-opening", "inline-briefing-closing", "inline-briefing-collapsed"])
+        with patch.object(notice.smoke, "wait_window", side_effect=[hidden, hidden]), \
+                patch.object(notice, "press_available") as press, self.assertRaisesRegex(AssertionError, "briefing"):
+            notice.exercise_inline_briefing({}, object(), summary)
+        self.assertEqual(press.call_count, 1)
 
     def test_prepared_session_helper_requires_matching_source_binary_and_flags(self):
         with tempfile.TemporaryDirectory() as temporary:

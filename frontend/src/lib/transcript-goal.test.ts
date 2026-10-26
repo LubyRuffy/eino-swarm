@@ -305,6 +305,7 @@ describe("standing objective and compact notices", () => {
     expect(manager(state).blocks[0].text).not.toMatch(/through_seq/)
     expect(manager(state).blocks[0].text).not.toMatch(/Prior work/)
     expect(manager(state).blocks[0].detail).toBe("Prior work: folded")
+    expect(manager(state).blocks[0].compacted).toBe(true)
     expect(state.agents["compact-summarizer"]).toBeUndefined()
   })
 
@@ -319,6 +320,7 @@ describe("standing objective and compact notices", () => {
     ])
     expect(manager(starting).blocks[0].text).toBe("Compressing conversation context…")
     expect(manager(starting).blocks[0].detail).toBeUndefined()
+    expect(manager(starting).blocks[0].compacted).toBe(true)
     expect(
       compactIsStarting({
         text: '{"auto":true,"phase":"start","tokens_before":91200}',
@@ -345,6 +347,7 @@ describe("standing objective and compact notices", () => {
     expect(manager(done).blocks[0].text).not.toMatch(/folded work/)
     expect(manager(done).blocks[0].text).not.toMatch(/through_seq/)
     expect(manager(done).blocks[0].detail).toBe("folded work")
+    expect(manager(done).blocks[0].compacted).toBe(true)
   })
 
   it("surfaces a failed compact as the recorded error", () => {
@@ -355,6 +358,7 @@ describe("standing objective and compact notices", () => {
       "the model returned nothing usable as a briefing",
     )
     expect(manager(state).blocks[0].detail).toBeUndefined()
+    expect(manager(state).blocks[0].compacted).not.toBe(true)
   })
 
   it("hides a session wrap-up steer so it does not look like human guidance", () => {

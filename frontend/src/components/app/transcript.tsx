@@ -1,8 +1,6 @@
 import { GenerationNotice } from "./generation-notice"
 import {
-  Brain,
   ChevronDown,
-  ChevronRight,
   Loader2,
   Pencil,
   Users,
@@ -25,9 +23,9 @@ import { isScheduleNotice, ScheduleNotice } from "@/components/app/schedule-noti
 import { MemoMarkdown } from "@/components/app/markdown"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Disclosure } from "@/components/ui/collapsible"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ToolRow } from "@/components/app/tool-row"
+import { Reasoning } from "@/components/app/transcript-reasoning"
 import { MarqueeText } from "@/components/app/marquee"
 import {
   GoalSessionTurn,
@@ -39,11 +37,6 @@ import { TurnNav } from "@/components/app/turn-nav"
 import { CopyButton } from "@/components/app/copy-button"
 import { TranscriptError } from "@/components/app/transcript-error"
 import { InputThumbs } from "@/components/app/input-thumbs"
-import {
-  thoughtExpanded,
-  thoughtFollowsStream,
-  thoughtHasHiddenPrefix,
-} from "@/lib/thought-scroll"
 import { FIND_REPAINT_MS, revealBlockIds } from "@/lib/find"
 import {
   applyFindHighlights,
@@ -67,6 +60,8 @@ import { MANAGER_ID, liveWorkers, splitQueuedSteers } from "@/lib/transcript"
 import { useApp } from "@/store/app"
 import { turnSlices } from "@/lib/turn-boundary"
 import { visibleGoalNotices } from "@/lib/goal-notice"
+
+export { Reasoning } from "@/components/app/transcript-reasoning"
 
 const EMPTY_BLOCKS: Block[] = []
 
@@ -106,6 +101,7 @@ export function Transcript({
   const scrollerRef = useRef<HTMLDivElement>(null)
   const blocks = useMemo(() => visibleGoalNotices(manager?.blocks ?? EMPTY_BLOCKS), [manager?.blocks])
   const apiTurns = useApp((s) => s.turns)
+  const collapseProcess = useApp((s) => s.transcriptMode === "user")
   const navItems = useMemo(
     () => resolveTurnNavItems(blocks, apiTurns),
     [blocks, apiTurns],
@@ -238,7 +234,7 @@ export function Transcript({
           {historyHasMore ? (
             <div ref={sentinelRef} data-testid="history-sentinel" className="h-4" />
           ) : null}
-          {groups.map(({ turnId, blocks: turnBlocks, showFooter, afterCompletion }, i) => {
+          {groups.map(({ turnId, blocks: turnBlocks, showFooter }, i) => {
             const clockAnswerId = responseClockBlockId(turnBlocks)
             const turn = turnById.get(turnId)
             const live = i === liveAt
@@ -254,11 +250,11 @@ export function Transcript({
                 turn={turn}
                 live={live}
                 showFooter={showFooter}
-                afterCompletion={afterCompletion}
                 renderBlock={(b) => (
                   <BlockView
                     key={b.id}
                     block={b}
+                    collapseProcess={collapseProcess}
                     threadId={threadId}
                     reveal={revealIds.has(b.id)}
                     showClock={b.kind === "user" || b.id === clockAnswerId}
@@ -307,6 +303,7 @@ const BlockView = memo(function BlockView({
   threadId,
   reveal,
   showClock,
+  collapseProcess,
   onSelectAgent,
   onResendUser,
   retry,
@@ -318,6 +315,7 @@ const BlockView = memo(function BlockView({
   threadId?: string
   reveal?: boolean
   showClock?: boolean
+  collapseProcess?: boolean
   onSelectAgent: (id: string) => void
   onResendUser?: (text: string, seq: number) => void
   retry?: { text: string; seq: number }
@@ -361,7 +359,7 @@ const BlockView = memo(function BlockView({
       )
 
     case "reasoning":
-      return <Reasoning block={block} reveal={reveal} />
+      return <Reasoning block={block} reveal={reveal} defaultCollapsed={collapseProcess} />
 
     case "answer":
       return <Answer block={block} showClock={showClock} />
@@ -380,7 +378,7 @@ const BlockView = memo(function BlockView({
       if (block.tool?.name === "wait_agents" && block.tool.pending) {
         return <WaitProgress block={block} onSelect={onSelectAgent} />
       }
-      return <ToolRow block={block} reveal={reveal} />
+      return <ToolRow block={block} reveal={reveal} defaultCollapsed={collapseProcess} />
 
     case "question":
       return block.question ? <AskCardView card={block.question} /> : null
@@ -462,107 +460,6 @@ function IterationLimitCard({ block }: { block: Block }) {
             : t("transcript.limitStopped", { limit })}
         </p>
       )}
-    </div>
-  )
-}
-
-export function Reasoning({ block, reveal }: { block: Block; reveal?: boolean }) {
-  const t = useT()
-  const [choice, setChoice] = useState<boolean | null>(null)
-  // Live thoughts start open so you can watch them. The click has to win
-  // though — `open || streaming` locked the chevron until the model stopped.
-  // Find keeps a matching thought open so the highlight has a node to paint.
-  const expanded = thoughtExpanded(Boolean(block.streaming), choice) || Boolean(reveal)
-  return (
-    <Disclosure
-      open={expanded}
-      onOpenChange={(next) => setChoice(next)}
-      testId="thought-toggle"
-      summary={
-        <>
-          {block.streaming ? (
-            <Loader2 className="size-3.5 shrink-0 animate-spin" />
-          ) : (
-            <Brain className="size-3.5 shrink-0" />
-          )}
-          {block.streaming ? (
-            <MarqueeText text={t("transcript.thinking")} active className="flex-none w-fit text-[13px]" />
-          ) : (
-            <span className="text-[13px]">{t("transcript.thought")}</span>
-          )}
-          {expanded ? (
-            <ChevronDown className="size-3.5 opacity-60" />
-          ) : (
-            <ChevronRight className="size-3.5 opacity-60" />
-          )}
-        </>
-      }
-    >
-      <ThoughtBody text={block.text} streaming={block.streaming} />
-    </Disclosure>
-  )
-}
-
-/** Live thoughts follow the newest tokens inside a 10-line window. A finished
- *  thought that the user opens starts at the top, because they came back to
- *  read it, not to watch it grow. */
-function ThoughtBody({ text, streaming }: { text: string; streaming?: boolean }) {
-  const t = useT()
-  const scrollerRef = useRef<HTMLDivElement>(null)
-  const pinnedRef = useRef(Boolean(streaming))
-  const followRaf = useRef(0)
-  const [fadeTop, setFadeTop] = useState(false)
-
-  const sync = useCallback(() => {
-    const el = scrollerRef.current
-    if (!el) return
-    setFadeTop(thoughtHasHiddenPrefix(el.scrollTop))
-    pinnedRef.current = thoughtFollowsStream(el.scrollHeight, el.scrollTop, el.clientHeight)
-  }, [])
-
-  useEffect(() => {
-    const el = scrollerRef.current
-    if (!el) return
-    el.addEventListener("scroll", sync, { passive: true })
-    sync()
-    return () => el.removeEventListener("scroll", sync)
-  }, [sync])
-
-  useEffect(() => {
-    if (streaming) pinnedRef.current = true
-  }, [streaming])
-
-  useEffect(() => {
-    if (!pinnedRef.current) return
-    const el = scrollerRef.current
-    if (!el) return
-    followRaf.current = window.requestAnimationFrame(() => {
-      if (!pinnedRef.current) return
-      el.scrollTop = el.scrollHeight
-      sync()
-    })
-    return () => window.cancelAnimationFrame(followRaf.current)
-  }, [text, streaming, sync])
-
-  return (
-    <div className="relative isolate">
-      {fadeTop ? (
-        <div
-          aria-hidden
-          data-testid="thought-fade"
-          className="thought-fade pointer-events-none absolute inset-x-0 top-0 z-[1] h-10"
-        />
-      ) : null}
-      <div
-        ref={scrollerRef}
-        data-testid="thought-scroll"
-        data-overflow-top={fadeTop ? "true" : undefined}
-        role="region"
-        aria-label={streaming ? t("transcript.thinking") : t("transcript.thought")}
-        className="thought-scroll thin-scrollbar border-l-2 border-border pl-3"
-      >
-        <p className="stream-text text-[13px] leading-6 text-muted-foreground">{text}</p>
-      </div>
     </div>
   )
 }

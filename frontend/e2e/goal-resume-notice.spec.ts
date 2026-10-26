@@ -10,16 +10,10 @@ type Event = { seq: number; kind: string; turn_id: string; text?: string; role?:
 type Turn = { id: string; status: string }
 type Log = { events: Event[]; has_more: boolean }
 
-async function expandSessions(page: Page) {
-  for (const session of await page.getByTestId("goal-session").all()) {
-    if (await session.getAttribute("aria-expanded") === "false") await session.click()
-  }
-}
-
 async function expectContinuationNotices(page: Page, count: number) {
+  await expect(page.getByTestId("goal-session")).toHaveCount(0)
   const notices = page.getByTestId("transcript").getByTestId("memory-notice")
   await expect.poll(async () => {
-    await expandSessions(page)
     return {
       total: await notices.filter({ hasText: /^(Resuming|Continuing) the standing objective\.$/ }).count(),
       resumed: await notices.filter({ hasText: /^Resuming the standing objective\.$/ }).count(),

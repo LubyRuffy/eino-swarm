@@ -74,6 +74,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-120`, `F-130`, `F-150`, `C-003`, `C-008`, `C-022`: keep every PC goal-session
+  answer visible by default while reasoning and tool details start collapsed in
+  user view. Successful compaction becomes secondary status with a labelled
+  inline briefing disclosure; failed compression and other notice cards remain
+  visible. Preserve history order, completion footers, search and live activity
+  (Issue #113).
+
 - `F-430`, `C-034`: withdraw the fixed-duration soak agreement for Issue #94 at
   the user's request and stop that investigation. Retain existing failure and
   cleanup evidence; optional harness profiles and other tasks remain unchanged.

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react"
+import { act, render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
 import { Transcript } from "./transcript"
@@ -74,15 +74,17 @@ describe("human goal resume notices", () => {
     expect(screen.getAllByText("继续追求目标。")).toHaveLength(3)
   })
 
-  it("keeps the single notice visible in a completed session's expanded work", () => {
+  it("keeps the single notice and answer visible in a completed session", () => {
     act(() => useApp.setState({ locale: "zh" }))
     const state = reduceEvents(emptyTranscript(), [
       event("goal_resumed", 1, { role: "human" }),
       event("goal_continued", 2, { turn_id: "next" }),
-      event("done", 3, { turn_id: "next", text: "progress" }),
+      event("agent_message", 3, { turn_id: "next", text: "progress" }),
+      event("done", 4, { turn_id: "next", text: "progress" }),
     ])
     render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
-    fireEvent.click(screen.getByTestId("goal-session"))
+    expect(screen.getByText("progress")).toBeVisible()
+    expect(screen.queryByTestId("goal-session")).not.toBeInTheDocument()
     expect(screen.getAllByText("继续追求目标。")).toHaveLength(1)
     expect(notices(state)).toHaveLength(2)
   })

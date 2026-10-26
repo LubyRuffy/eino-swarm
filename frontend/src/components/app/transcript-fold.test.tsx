@@ -121,18 +121,56 @@ describe("user transcript mode", () => {
     expect(screen.getByText("here is the result")).toBeInTheDocument()
   })
 
-  it("shows a single live thought directly and lets one click fold it", () => {
-    render(
-      <Transcript
-        state={reasoningState("first pass\nthen a closer look", true)}
-        loaded
-        onSelectAgent={() => {}}
-      />,
+  it("keeps a single live thought folded until the reader opens it", () => {
+    const view = render(
+      <Transcript state={reasoningState("first pass\nthen a closer look", true)} loaded onSelectAgent={() => {}} />,
     )
     expect(screen.queryByTestId("work-fold")).toBeNull()
+    expect(screen.queryByTestId("thought-scroll")).toBeNull()
+    expect(screen.getByTestId("thought-toggle")).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(screen.getByTestId("thought-toggle"))
     expect(screen.getByTestId("thought-scroll")).toHaveTextContent("then a closer look")
+    view.rerender(<Transcript state={reasoningState("first pass\nthen a closer look\nnext thought", true)} loaded onSelectAgent={() => {}} />)
+    expect(screen.getByTestId("thought-scroll")).toHaveTextContent("next thought")
     fireEvent.click(screen.getByTestId("thought-toggle"))
     expect(screen.queryByTestId("thought-scroll")).toBeNull()
+    view.rerender(<Transcript state={reasoningState("first pass\nthen a closer look\nnext thought\nlast thought", true)} loaded onSelectAgent={() => {}} />)
+    expect(screen.getByTestId("thought-toggle")).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByTestId("thought-scroll")).toBeNull()
+  })
+
+  it("keeps a single pending tool body folded while the answer stays visible", () => {
+    const state = mixedWorkState()
+    const tool = state.agents.manager.blocks[1]!
+    tool.tool = { ...tool.tool!, result: "live tool output", pending: true }
+    state.agents.manager.blocks = [tool, state.agents.manager.blocks[2]!]
+    const view = render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+    expect(screen.getByRole("button", { name: /read/ })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByText("live tool output", { selector: "pre" })).not.toBeInTheDocument()
+    expect(screen.getByText("here is the result")).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: /read/ }))
+    expect(screen.getByText("live tool output", { selector: "pre" })).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: /read/ }))
+    const updated = {
+      ...state,
+      agents: { ...state.agents, manager: { ...state.agents.manager, blocks: [
+        { ...tool, tool: { ...tool.tool!, result: "live tool output\nmore output" } },
+        state.agents.manager.blocks[1]!,
+      ] } },
+    }
+    view.rerender(<Transcript state={updated} loaded onSelectAgent={() => {}} />)
+    expect(screen.getByRole("button", { name: /read/ })).toHaveAttribute("aria-expanded", "false")
+    expect(document.querySelector("pre")).toBeNull()
+  })
+
+  it("reveals a folded tool body when Find matches its result", () => {
+    const state = mixedWorkState()
+    const tool = state.agents.manager.blocks[1]!
+    tool.tool = { ...tool.tool!, result: "searchable tool needle", pending: true }
+    state.agents.manager.blocks = [tool, state.agents.manager.blocks[2]!]
+    render(<Transcript state={state} loaded findQuery="needle" onSelectAgent={() => {}} />)
+    expect(screen.getByRole("button", { name: /read/ })).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByText("searchable tool needle", { selector: "pre" })).toBeVisible()
   })
 
   it("opens a single finished thought with one click", () => {

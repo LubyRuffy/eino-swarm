@@ -2290,8 +2290,9 @@ cd frontend && ZWAI_E2E_PORT=18996 ZWAI_E2E_DATA_DIR=.e2e-data-goal-resume npm r
 These browser checks do not replace acceptance in the actual desktop window.
 `tools/native_goal_resume_notice.py` runs through `tools/native_macos_case.py`
 with an identified candidate and prepared AX helpers in `ci-macOS`. It checks
-the native Start action, one visible notice, both original turns' Trace events
-and close/reopen without another turn, retaining window evidence and cleanup
+two real goal turns, default-visible answers, one visible continuation notice,
+collapsed process details, inline briefing and both original turns' Trace events
+through reload and close/reopen without another turn, retaining window evidence and cleanup
 receipts outside the isolated case data. Its assertion regressions are in
 `tools/test_native_goal_resume_notice.py`.
 The initial completed objective is fixture setup through normal local
@@ -2300,22 +2301,25 @@ that case's private conversation workspace. It waits for the accepted first
 turn's real offline model calls, paired `complete_goal` result, goal completion
 and manager finish; `goal-notice-fixture.json` and
 `goal-notice-fixture-trace.json` retain those identities and receipts. After
-reload, the native window opens Conversations, selects that conversation and
-clicks Start once. After reopen it selects the title directly from the restored
-conversation list.
+reload, the native window opens Conversations and selects that conversation.
+A normal `PATCH /api/threads/:id` with `goal_resume: true` supplies the second
+real turn as fixture setup; a completed goal intentionally has no native Start
+button. After reopen it selects the title from the restored conversation list.
 Each control is observed as uniquely available and enabled before one press;
 missing controls wait within the same deadline, ambiguous controls or failed
 presses fail without retry. `goal-notice-availability-last.json` retains the
-requested label, match count and raw snapshot. The scenario never resumes
-through the API or inserts lifecycle events.
-Native acceptance covers this Start action, the expanded visible notice,
-Trace retention and close/reopen. Initial slash typing is covered by the browser
+requested label, match count and raw snapshot. Fixture restoration uses the normal goal-resume API and never inserts
+lifecycle events or fabricates model output.
+Native acceptance covers default-visible answers and
+continuation notice, collapsed process details, inline briefing controls,
+Trace retention, reload and close/reopen. Initial slash typing is covered by the browser
 E2E above, so this case does not depend on unrelated system input candidates.
 Prepare its narrow `tools/native_goal_resume_notice_ax.m` helper before the case
 with `python3 tools/native_goal_resume_notice.py --prepare-session-ax /absolute/private/native-goal-session-ax`.
-The helper reads the completed session's actual `AXExpanded` state; the scenario
-expands folded work and confirms it is expanded before counting notices.
-An older visible resume notice cannot stand in for that check. The helper's
+The helper reads actual process-disclosure `AXExpanded` state and checks answer
+and briefing text against the private fixture's real Trace and compact receipts.
+Answers require no session-disclosure click. An older visible resume notice
+cannot stand in for the matching continuation check. The helper's
 source and binary hashes must match its preparation receipt.
 On initial launch and reopen, a read-only `startup` observation distinguishes
 an unregistered application from a registered wrong bundle. Only a null bundle
@@ -2325,12 +2329,20 @@ A wrong nonempty bundle or helper failure is fatal. This wait neither opens a
 window nor relaxes the later Accessibility, session and screenshot assertions.
 The generic helper's single-window, exact-draft and Send safety checks are
 unchanged; this dedicated case has no composer/Escape workaround. Its
-45-second scenario cap is unchanged.
-Before each screenshot, `reveal-notice` selects the unique localized UI receipt,
+feature scenario has an explicit 150-second action deadline and 180-second
+whole-case success budget, including cleanup. Its measured scope is two real
+offline goal turns, default-visible answer observations, collapsed process
+details, a normal compact request, native inline briefing expansion/collapse,
+reload and close/reopen. The daily smoke round retains its separate 60-second
+whole-round budget.
+Before each continuation-notice screenshot, `reveal-notice` selects the unique localized UI receipt,
 uses `AXScrollToVisible` when needed, and checks its whole frame against the
 window and ancestor scroll viewports. The scenario independently rejects
 missing, nonfinite, empty or offscreen geometry before taking a screenshot;
-`01-resumed.viewport.json` and `02-reopened.viewport.json` retain that evidence.
+`01-resumed.viewport.json`, `02-reloaded.viewport.json` and
+`03-reopened.viewport.json` retain that evidence. Answer and briefing captures
+use their expected text, actual native scroll-to-visible geometry and decoded
+PNG evidence; inspect those images before accepting visible content.
 An AX node count alone cannot accept a notice outside the captured viewport.
 
 ## Late review turn boundaries (F-120 / F-130 / C-003)
@@ -2343,12 +2355,12 @@ and late notices for a turn that has already ended.
 `frontend/src/components/app/transcript-boundary.test.tsx` renders the real
 transcript to retain the original answers while preventing
 duplicate or metadata-only footers; late review notices remain visible outside
-completed goal-session folds. A finished tool followed by an answer establishes
+completed goal-session process disclosures. A finished tool followed by an answer establishes
 the current turn's live planning status before an older review arrives; that
 status must remain visible without adding a footer for the running turn.
 `frontend/e2e/late-review-footer.spec.ts` exercises
 the browser transcript with delayed review events, paged history and reload,
-including opening the original goal session and its stored tool result. These are
+including default-visible original goal-session answers and opening their stored tool result. These are
 regression scopes; a browser check does not replace native-window acceptance.
 
 ```bash
@@ -3720,17 +3732,15 @@ Several things are tested here, some as pure logic and some in jsdom:
   a conversation marks every unread fire on that thread; wait rows are
   `shrink-0`). A `session_memory` event is
   quiet on the manager like a generated title — no chat row, no extra worker.
-  Finished `goal_session` /
-  `goal_continued` turns fold behind a one-line Worked-for row in
-  `transcript-session.test.tsx` (CJK preview truncates; duration does not wrap;
-  an armed wait and a budget-cap notice stay visible outside the fold;
-  the hover clock is the last finished answer, not every answer in the turn).
-  A `goal_capped` / `goal_idle` / `goal_blocked` notice after that work stays
-  outside the fold so a budget pause cannot hide behind Worked-for.
-  A failed session stays expanded as Stopped-after with the error visible,
-  and a collapsed preview prefers that error over the last answer.
-  Folded successful work is not mounted until the row is opened, so a long `/goal`
-  cannot re-parse every past answer on each streamed token.
+  Finished `goal_session` / `goal_continued` turns keep every answer visible
+  in `transcript-session.test.tsx`, including the live-to-finished transition
+  and multiple answer/process groups. Reasoning and tool contents remain
+  collapsed by default in the main user view; developer/Agents inspection and
+  Find expansion retain their behavior. Armed waits, goal completion, budget
+  holds and errors remain visible, with one completion footer and the hover
+  clock on only the last finished answer. `MemoMarkdown` reuses unchanged
+  completed answer text when another turn streams. Paged history and late
+  review feedback keep their original ordering in `e2e/late-review-footer.spec.ts`.
 - **`src/lib/turn-nav.ts`**, **`src/lib/use-turn-jump.ts`** and **`src/components/app/turn-nav.tsx`**: human
   `user_message` rows become jump targets (steering does not; `goal_continue`
   and `schedule_continue` share the last human tick even when `user_text` is
@@ -3985,8 +3995,11 @@ Several things are tested here, some as pure logic and some in jsdom:
   `copy` event (`copy-text.test.ts`); a silent `true` is not Copied; edit opens
   the bubble in place and Send restarts from that `user_message` seq, clearing
   everything below (`transcript-user.test.tsx`).
-  A compact notice stays a one-liner; `compact-notice.test.tsx` opens the
-  briefing from the icon without pasting it into the row.
+  Successful compact notices use secondary text status; `compact-notice.test.tsx`
+  covers labelled inline briefing expansion/collapse, complete whitespace-preserved
+  content, token counts, Chinese/English labels and unchanged error/other notice
+  cards. `transcript-goal.test.ts` verifies compaction identity survives replay;
+  `e2e/conversation.spec.ts` covers the real compact API and inline disclosure.
   Each user send carries `data-turn-nav` so the rail can jump (the thought
   fold is not inside that target); one turn
   keeps the rail hidden, two turns show it. A live thought's top fade is
@@ -4505,7 +4518,7 @@ long enough for Steer; unit tests leave it unset.
 | `e2e/agent-roster.spec.ts` | Agents opens on last update, newest first; Name flips between Z to A and A to Z and the rows follow the label; Created flips between oldest and newest |
 | `e2e/worker-roster-history.spec.ts` | opt-in loopback model adapter: a later turn queries an existing finished worker, emits no new spawn call/event, survives reload and exposes its Trace |
 | `e2e/work-fold.spec.ts` | user-mode work folded behind one live ticker (`work-fold` with the spinner, not every finished fold); click expands the thought box and click again collapses it |
-| `e2e/conversation.spec.ts` | a full swarm turn, user-mode work folded behind one live ticker (`work-fold` + `swap-line` + `MarqueeText` shimmer or left-to-right scroll), a live status line marked as sweeping while the turn runs, opening a sub-agent (back control beside the scroller, not sticky on it; system prompt from the chrome; log at the live edge; a collapsed `write` opens to the file body, not `Updated file`), a generated sidebar title from the opening message (not the raw request, not a transcript row), a chart in the scripted answer with Chart/Table tabs (reload returns to the home page with nothing selected; reopening the row replays the chart), scrolling up mid-stream leaving the viewport put and a jump-to-latest control returning to the live edge (developer view, so spawn rows exist to overflow), switching conversations landing at the latest turn rather than the top of the history (latest jump-rail tick current), context carried across turns, jumping to an earlier user message from the left rail (latest tick current while idle at the live edge), Enter while `wait_agents` is pending queuing a follow-up until the turn finishes, the corner button swapping from Stop to Send once that draft is typed and the click queueing without leaving Working, **Steer** on that queued row injecting and emptying the tray, **Steer** after Stop starting that leftover row as the next user turn, pulling a queued row into the composer and Enter queueing that edit at the back of the FIFO, a pencil on unread steering doing the same, **Steer** (⌘Enter while `wait_agents` is pending) pinning unread steering under the working line with Interrupt and Delete, retracting an unread steer so the turn stays Working, Interrupt aborting the current tool without cancelling the turn, **Stop** while a tool is in flight leaving no spinner next to the interrupted banner, hovering a user request or the last finished answer fading in the reserved event clock without a layout jump, copying or editing a sent message in place so Send restarts from that bubble and clears everything below, file upload appearing in the Files panel with the user bubble naming `uploads/brief.txt`, collapsing a workspace directory in Files and filtering to a nested file, dropping a file and an image onto the composer (overlay, then a workspace chip vs a vision thumb), the turn id on the Trace summary with the event log folded until Full log, an IME-confirming Enter leaving the draft in the box, the manager tool-round cap pausing for Continue/Stop instead of dumping eino's iteration error, and switching the catalog model from a grouped searchable picker (Refresh models / Edit providers) so a reload still sends that name, and the composer context ring plus Trace usage after a turn (reload keeps the ring; the snapshot never lands as a transcript row), `/` listing goal, plan and compact without a 0% hint on an empty chat, pinning a standing objective, starting it from the banner without a human message, editing it in place, compacting without rewriting user bubbles (an icon opens the briefing), auto-compacting at a low token budget with a visible compressed notice and the same briefing icon, a scripted run hiding its completed goal strip while preserving the completion notice, and a one-round ReAct slice leaving a standing objective running until completion instead of pausing it as two Worked-for sessions, `/plan` (`e2e/plan.spec.ts`) showing a Planning banner and an `ask_user` dialog that spans the conversation column (**Your answer needed**, still `border-ask`, no ring or ping on the card; **Your turn** on the title bar with a pinging `ask-mark`; a numbered choice then Submit continues the same turn), then Implement remounting work and leaving planning |
+| `e2e/conversation.spec.ts` | a full swarm turn, user-mode work folded behind one live ticker (`work-fold` + `swap-line` + `MarqueeText` shimmer or left-to-right scroll), a live status line marked as sweeping while the turn runs, opening a sub-agent (back control beside the scroller, not sticky on it; system prompt from the chrome; log at the live edge; a collapsed `write` opens to the file body, not `Updated file`), a generated sidebar title from the opening message (not the raw request, not a transcript row), a chart in the scripted answer with Chart/Table tabs (reload returns to the home page with nothing selected; reopening the row replays the chart), scrolling up mid-stream leaving the viewport put and a jump-to-latest control returning to the live edge (developer view, so spawn rows exist to overflow), switching conversations landing at the latest turn rather than the top of the history (latest jump-rail tick current), context carried across turns, jumping to an earlier user message from the left rail (latest tick current while idle at the live edge), Enter while `wait_agents` is pending queuing a follow-up until the turn finishes, the corner button swapping from Stop to Send once that draft is typed and the click queueing without leaving Working, **Steer** on that queued row injecting and emptying the tray, **Steer** after Stop starting that leftover row as the next user turn, pulling a queued row into the composer and Enter queueing that edit at the back of the FIFO, a pencil on unread steering doing the same, **Steer** (⌘Enter while `wait_agents` is pending) pinning unread steering under the working line with Interrupt and Delete, retracting an unread steer so the turn stays Working, Interrupt aborting the current tool without cancelling the turn, **Stop** while a tool is in flight leaving no spinner next to the interrupted banner, hovering a user request or the last finished answer fading in the reserved event clock without a layout jump, copying or editing a sent message in place so Send restarts from that bubble and clears everything below, file upload appearing in the Files panel with the user bubble naming `uploads/brief.txt`, collapsing a workspace directory in Files and filtering to a nested file, dropping a file and an image onto the composer (overlay, then a workspace chip vs a vision thumb), the turn id on the Trace summary with the event log folded until Full log, an IME-confirming Enter leaving the draft in the box, the manager tool-round cap pausing for Continue/Stop instead of dumping eino's iteration error, and switching the catalog model from a grouped searchable picker (Refresh models / Edit providers) so a reload still sends that name, and the composer context ring plus Trace usage after a turn (reload keeps the ring; the snapshot never lands as a transcript row), `/` listing goal, plan and compact without a 0% hint on an empty chat, pinning a standing objective, starting it from the banner without a human message, editing it in place, compacting without rewriting user bubbles (a labelled disclosure expands the briefing inline), auto-compacting at a low token budget with a secondary compressed status and the same briefing control, a scripted run hiding its completed goal strip while preserving the completion notice, and a one-round ReAct slice leaving a standing objective running until completion instead of pausing it as two Worked-for sessions, `/plan` (`e2e/plan.spec.ts`) showing a Planning banner and an `ask_user` dialog that spans the conversation column (**Your answer needed**, still `border-ask`, no ring or ping on the card; **Your turn** on the title bar with a pinging `ask-mark`; a numbered choice then Submit continues the same turn), then Implement remounting work and leaving planning |
 | `e2e/quotes.spec.ts` | quoting selected transcript text into the next send as an editable composer annotation (count chip at rest, hover for the snippet, not `<selected_text>` tags in the bubble), and Add to chat still landing while a turn is streaming (user-mode work fold, not the inner thought box) |
 | `e2e/skill-copy.spec.ts` | a skill copied from one project into another stays on its own file: the copy names where it came from, **Update** brings a later source change across, **Cancel** keeps a local edit when both sides changed, **Replace with source** then takes the source text, and the source file does not gain the local edit |
 | `e2e/library-skills.spec.ts` | a conversation outside a project adds a skill under Shared skills (no Notes); the test identifies that skill from this turn's `memory_review` trace even when other reviews write at the same time, then Copy puts it into a project whose origin says it came from the shared skill library |

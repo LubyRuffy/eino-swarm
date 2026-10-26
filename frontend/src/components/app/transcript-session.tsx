@@ -1,8 +1,6 @@
-import { ChevronRight } from "lucide-react"
-import { useEffect, useState, type ReactNode } from "react"
-import { Disclosure } from "@/components/ui/collapsible"
+import type { ReactNode } from "react"
 import { TurnBlockList } from "@/components/app/work-fold"
-import { cn, formatDuration, formatTurnTime } from "@/lib/utils"
+import { formatDuration, formatTurnTime } from "@/lib/utils"
 import { isArmedWaitNotice, isGoalHoldNotice } from "@/lib/transcript-notices"
 import { useT } from "@/lib/use-t"
 import type { Block, TurnState } from "@/lib/transcript"
@@ -14,7 +12,6 @@ export function GoalSessionTurn({
   renderBlock,
   live = false,
   showFooter = true,
-  afterCompletion = false,
 }: {
   blocks: Block[]
   turn?: TurnState
@@ -25,106 +22,26 @@ export function GoalSessionTurn({
    *  not keep Planning next moves after the conversation has moved on. */
   live?: boolean
   showFooter?: boolean
-  afterCompletion?: boolean
 }) {
-  const t = useT()
-  const failed = turn?.status === "error"
-  const finishedSession = Boolean(turn?.session) && turn?.status !== "running" && !afterCompletion
-  const [open, setOpen] = useState(!finishedSession || failed)
-  useEffect(() => {
-    if (turn?.status === "running") setOpen(true)
-    else if (finishedSession && !failed) setOpen(false)
-  }, [failed, finishedSession, turn?.status])
-
-  const pinAfter = Boolean(turn?.status && turn.status !== "running")
-  const split = pinAfter || finishedSession ? splitSessionBlocks(blocks) : null
-
-  if (!finishedSession) {
-    const ordered = split ? [...split.leading, ...split.work, ...split.trailing] : blocks
-    return (
-      <div className="flex flex-col gap-1">
-        <TurnBlockList
-          blocks={ordered}
-          revealIds={revealIds}
-          renderBlock={renderBlock}
-          running={live}
-        />
-        {showFooter ? <TurnFooter turn={turn} /> : null}
-      </div>
-    )
-  }
-
-  // Folded work stays unmounted. An 18h /goal is dozens of sessions; creating
-  // every BlockView on each token is what froze the composer mid-IME.
-  const { leading, work, trailing } = splitSessionBlocks(blocks)
-  const ms =
-    turn?.endedAt && turn.startedAt
-      ? new Date(turn.endedAt).getTime() - new Date(turn.startedAt).getTime()
-      : 0
-  const preview = open ? "" : sessionPreview(work, turn)
-  const durationLabel =
-    turn?.status === "done" ? t("transcript.workedFor") : t("transcript.stoppedAfter")
+  // Answer text remains mounted when a session completes. TurnBlockList folds
+  // only process rows and keeps their heavier bodies unmounted until opened.
+  const split = turn?.status && turn.status !== "running" ? splitSessionBlocks(blocks) : null
+  const ordered = split ? [...split.leading, ...split.work, ...split.trailing] : blocks
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <TurnBlockList
-        blocks={leading}
+        blocks={ordered}
         revealIds={revealIds}
         renderBlock={renderBlock}
-      />
-      {work.length > 0 ? (
-        <Disclosure
-          open={open}
-          onOpenChange={setOpen}
-          failed={failed}
-          testId="goal-session"
-          summaryClassName="gap-1.5 py-0.5 text-xs"
-          summary={
-            <>
-              <ChevronRight
-                className={cn("size-3 shrink-0 opacity-60 transition-transform", open && "rotate-90")}
-              />
-              <span data-find-ignore="" className="shrink-0 whitespace-nowrap tabular-nums">
-                {durationLabel} {formatDuration(Math.max(ms, 0))}
-              </span>
-              {!open && preview ? (
-                <>
-                  <span className="shrink-0 opacity-40">·</span>
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 truncate",
-                      failed ? "" : "text-muted-foreground/80",
-                    )}
-                  >
-                    {preview}
-                  </span>
-                </>
-              ) : null}
-            </>
-          }
-        >
-          {open ? (
-            <div className="flex flex-col gap-1">
-              <TurnBlockList
-                blocks={work}
-                revealIds={revealIds}
-                renderBlock={renderBlock}
-              />
-            </div>
-          ) : null}
-        </Disclosure>
-      ) : null}
-      <TurnBlockList
-        blocks={trailing}
-        revealIds={revealIds}
-        renderBlock={renderBlock}
+        running={live}
       />
       {showFooter ? <TurnFooter turn={turn} /> : null}
     </div>
   )
 }
 
-/** User / steer and goal completion stay visible when the work folds.
- *  A cap / idle / block notice after the work also stays actionable. */
+/** Completed turns keep armed waits and completion controls below their
+ *  answers, so a long result cannot bury the next actionable state. */
 export function splitSessionBlocks(blocks: Block[]): {
   leading: Block[]
   work: Block[]
@@ -149,26 +66,6 @@ export function splitSessionBlocks(blocks: Block[]): {
     holds.unshift(work.pop() as Block)
   }
   return { leading, work, trailing: [...trailing, ...holds] }
-}
-
-function flattenPreview(text: string): string {
-  return text.replace(/\s+/g, " ").trim()
-}
-
-/** Collapsed session rows are one line. A raw answer with newlines would
- *  otherwise blow the header into a paragraph. A failed session must not
- *  preview the last answer and look like it finished cleanly. */
-export function sessionPreview(blocks: Block[], turn?: TurnState): string {
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    const row = blocks[i]
-    if (row?.kind === "error") return flattenPreview(row.text)
-  }
-  if (turn?.error?.trim()) return flattenPreview(turn.error)
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    const row = blocks[i]
-    if (row?.kind === "answer") return flattenPreview(row.text)
-  }
-  return ""
 }
 
 /** Hover clock lives under the user request and under the last finished

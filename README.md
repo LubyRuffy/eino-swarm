@@ -35,10 +35,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   reading light a jump-to-latest control; click it to return and follow again.
 - **Completed turns keep one end marker.** Each visible finished turn has one
   duration and local completion time after its last pre-completion content.
-  Original answers and tool results remain available through their existing
-  controls. A late memory-review notice stays at its event position, including
+  Every answer stays visible, including finished goal sessions. Reasoning and
+  tool details start collapsed and open from their own work rows. A late memory-review notice stays at its event position, including
   after a newer turn, without repeating the old end marker or hiding inside
-  that completed goal session's work fold. It also leaves the running turn's
+  a completed goal session's process details. It also leaves the running turn's
   live activity visible.
 - **A ring on the composer shows how full the last manager prompt is.** Hover
   it for the compact count against this model's window, plus this-turn billed
@@ -272,8 +272,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   its turn's Trace tab and `zwai trace <turn-id>`. The
   text is editable in place, and a live turn is told immediately. The
   runtime starts the next turn itself; a queued follow-up still wins. **compact** folds earlier turns into a briefing for later
-  prompts; the transcript you see does not change. An icon on the notice
-  opens the briefing. Old tool results that can
+  prompts; the transcript you see does not change. A secondary **Context
+  compressed** status offers **View compressed briefing** to expand the full
+  briefing in place; **Hide briefing** collapses it again. Old tool results that can
   be re-read are cleared first. The briefing prefers a rolling session
   summary extracted from the event log, so a long `/goal` does not teach
   the project's memory from a compacted view. The same fold also runs
@@ -314,8 +315,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   setting is needed; a nonempty legacy field wins when both are returned.
   **User view** (the default) shows a lone thought or tool call with its own
   disclosure: one click opens its content, with no outer group. A live lone
-  thought starts open. Multiple adjacent work rows fold into one live ticker.
-  Answers stay on screen and split the fold. The current
+  thought and tool details start collapsed, including while running. Multiple
+  adjacent work rows fold into one live ticker. Answers stay on screen and
+  split the fold, including after a goal session finishes. The current
   activity swaps in vertically, and
   the line itself still scrolls left-to-right when it does not fit:
   thinking text (or **Thinking**), **Planning next moves** between model

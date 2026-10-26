@@ -806,8 +806,9 @@ worker before closing SQLite.
    the human sees does not change: compact is a view, the event log stays
    the extract source. A live `compacted` event (`seq` 0,
    `phase: start`) is the compressing notice; the stored event has
-   `auto: true` and the token counts. The notice stays a one-liner; an
-   icon opens `summary`. It spawns sub-agents, which run
+   `auto: true` and the token counts. Successful compaction is secondary
+   text status, with token counts when present; a labelled disclosure expands
+   the full `summary` inline. Failed compression retains its notice card. It spawns sub-agents, which run
    concurrently under `MaxConcurrent`, each with a watchdog timeout. The
    manager tools refuse a spawn or resume that would pass the cap, so a
    larger batch does not sit on the roster waiting for a slot. The cap is
@@ -1129,7 +1130,7 @@ event or showing a duplicate:
   notices for the same turn. Only the last slice with visible pre-completion
   content owns that non-quiet turn's footer; hidden title/session-memory
   metadata cannot create an empty slice or footer. Late memory-review notices
-  remain visible outside a completed goal session's work fold. Live activity
+  remain visible independently of a completed goal session's process details. Live activity
   belongs to the last slice of the newest running turn, so older feedback at
   the transcript tail cannot suppress current progress. This projection
   changes neither stored events nor the turn's Trace.
@@ -1257,17 +1258,20 @@ Those pages used to paint the error at the top of their own scrollport.
 A live thought is a 10-line scrolling box (`frontend/src/lib/thought-scroll.ts`)
 that follows new tokens and fades at the top once earlier lines have left the
 viewport; the **Thinking** label uses `MarqueeText` so it sweeps rather than
-sitting frozen. It starts open; a click on the row hides it even while tokens
-are still arriving (`thoughtExpanded`) — streaming must not force it back open.
+sitting frozen. Developer view and the Agents inspection surface start live
+thoughts open. In the main user view thoughts and tool details start collapsed;
+a click opens them, and streaming must preserve the user's disclosure choice.
 `ui.transcript_mode` (`user` default, `developer`) changes what the main
 transcript shows: user view folds consecutive reasoning, tool, and spawn
 blocks behind one `WorkFold` (`frontend/src/lib/work-fold.ts`). A group with
 one reasoning or visible tool block renders that block directly in
 `frontend/src/components/app/work-fold.tsx`, keeping its own disclosure and
-live behavior. Pending registry calls retain the ticker because their own
+live behavior, with process content initially collapsed in user view.
+Pending registry calls retain the ticker because their own
 tool rows are hidden. Multi-row groups use `WorkFold`,
 whose live summary is a one-line `SwapLine` (`frontend/src/components/app/swap-line.tsx`).
-Answers stay visible and split the fold.
+Answers stay visible and split the fold, including completed goal-session
+answers; there is no outer session disclosure hiding answer text.
 A new activity slides the previous line up; the current line is always
 `MarqueeText`, so overflow still scrolls left-to-right. The copy is the
 latest thought line (or **Thinking**), **Planning next moves** under a
@@ -1377,9 +1381,10 @@ inserted on the next task; doing it in the paste microtask wrote the text
 and then the browser wrote it again. A `usage` pulse updates only the
 ring (`ComposerContextMeter`), not the textarea — rewriting a controlled
 field mid-composition is what made typing feel stuck during a live turn.
-Finished `/goal` sessions stay folded and **unmounted** until opened
-(`GoalSessionTurn`); mounting every past answer on each token is what
-starved the composer on a long objective.
+Finished `/goal` sessions render their answers through the same block list
+as ordinary turns (`GoalSessionTurn`). Process details stay unmounted behind
+work disclosures. `MemoMarkdown` reuses unchanged completed answer text so a
+new streamed token does not reparse earlier answers.
 A ring on the composer (`frontend/src/components/app/context-meter.tsx`) shows
 how full the last manager prompt was versus this model's token window. Hover
 it for the compact count and this-turn billed in/out/cached/thinking. The window

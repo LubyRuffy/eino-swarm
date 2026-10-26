@@ -438,7 +438,10 @@ export const en = {
   "notice.autoCompacted":
     "Context compressed ({before} → {after} tokens). The transcript is unchanged.",
   "notice.autoCompactedPlain": "Context compressed. The transcript is unchanged.",
+  "notice.compactStatus": "Context compressed",
+  "notice.compactStatusTokens": "Context compressed ({before} → {after} tokens)",
   "notice.briefing": "View compressed briefing",
+  "notice.briefingHide": "Hide briefing",
   "notice.briefingTitle": "Compressed briefing",
   "notice.briefingHint":
     "What later turns will see instead of the folded messages.",
