@@ -400,17 +400,20 @@ func TestSteerDuringAskStaysInTheInbox(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = waitAskToolCall(t, sub, 15*time.Second)
+	call := waitAskToolCall(t, sub, 15*time.Second)
+	rt, waiting, reg := waitSteerAskArmed(t, e, turn, call)
 	if err := e.Steer(th.ID, "prefer the safer path"); err != nil {
 		t.Fatal(err)
 	}
 	if !e.Status(th.ID).AwaitingAnswer {
 		t.Fatal("a steer must not swallow the questionnaire")
 	}
-	rt := e.runtimeFor(th.ID)
 	rt.mu.Lock()
-	reg := rt.reg
+	sameAsk := rt.running && rt.turnID == turn.ID && rt.reg == reg && rt.ask == waiting
 	rt.mu.Unlock()
+	if !sameAsk {
+		t.Fatal("steer replaced this turn's armed questionnaire")
+	}
 	if reg == nil || !reg.HasPendingSteers() {
 		t.Fatal("steer vanished instead of sitting in the inbox")
 	}

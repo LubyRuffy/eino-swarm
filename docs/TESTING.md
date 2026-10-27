@@ -3814,7 +3814,14 @@ turn until an answer, idle answers are `ErrIdle`, a wrong `call_id` is
 `ErrAskMismatch`, interrupt cancels the wait, resume re-arms an orphaned
 questionnaire instead of swallowing it, a worker call fails in JSON, and
 `AwaitingAnswer()` lists only the blocked conversation (a working turn is
-not an ask; answering clears the list). `internal/server/ask_test.go` is why
+not an ask; answering clears the list). Steering acceptance waits within the
+existing two-second readiness budget for this turn's real waiter/channel and
+matching durable call ID, then checks that Steer retains that same question,
+Registry and pending inbox. `internal/engine/ask_steer_order_test.go` holds the
+actual AskUserTool callback just before entering runtime.waitAsk: after call
+publication there is no waiter until release, then the real runtime waiter arms.
+This distinguishes notification readiness from question readiness without
+extending the budget or changing production behavior. `internal/server/ask_test.go` is why
 the thread listing marks `awaiting_answer` while the questionnaire is open.
 `internal/engine/schedule_tool_test.go` is why `schedule_wake` upserts on
 this conversation (including when the model omits `id`), and
