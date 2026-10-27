@@ -116,6 +116,69 @@ class HostValidationLeaseTests(unittest.TestCase):
         with self.lease(self.second, timeout=.3):
             pass
 
+    def test_waiting_cooperating_python_cli_is_not_an_active_validation_worker(self):
+        # Admission must not wait for a cooperating controller that is itself
+        # blocked on this exact inode and has not started any heavy command.
+        waiting_evidence = self.directory / "waiting-cli-evidence"
+        script = self.second / "release.py"
+        script.write_text(
+            "import os,sys,subprocess\nfrom pathlib import Path\n"
+            "sys.path.insert(0,sys.argv[1])\n"
+            "from release_host_lease import HostValidationLease\n"
+            "real_run=subprocess.run\n"
+            "def fixture_inventory(args,*a,**kw):\n"
+            " if args[0]=='/bin/ps': args=['/bin/ps','-p',str(os.getpid()),'-o','pid=,comm=']\n"
+            " return real_run(args,*a,**kw)\n"
+            "subprocess.run=fixture_inventory\n"
+            "with HostValidationLease(Path.cwd(),Path(sys.argv[2]),lock_root=Path(sys.argv[3]),timeout=8):\n"
+            " print('admitted',flush=True)\n"
+        )
+        waiter, observed = [], []
+        def actual_inventory(root, module):
+            if not waiter:
+                process = subprocess.Popen([sys.executable, "-B", str(script), str(self.tools),
+                                            str(waiting_evidence), str(self.locks), "--verify"],
+                                           cwd=self.second, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                waiter.append(process)
+                self.addCleanup(self.stop_fixture, process)
+                end = time.monotonic() + 3
+                while time.monotonic() < end:
+                    queued = self.retained(waiting_evidence)
+                    if any(row.get("wait_reason") == "cooperating_verification_active" for row in queued):
+                        break
+                    if process.poll() is not None:
+                        self.fail("owned CLI ended before contending on the holder's flock")
+                    time.sleep(.01)
+                self.assertTrue(any(row.get("wait_reason") == "cooperating_verification_active"
+                                    for row in self.retained(waiting_evidence)))
+            # Narrow only the OS inventory selection to our real child. Every
+            # ps, kernel birth, argv/cwd and classification read remains real;
+            # unrelated host permission unknowns are not this fixture's state.
+            real_run = subprocess.run
+            def fixture_inventory(args, *a, **kw):
+                if args[0] == "/bin/ps":
+                    args = ["/bin/ps", "-p", str(waiter[0].pid), "-o", "pid=,comm="]
+                return real_run(args, *a, **kw)
+            with mock.patch.object(lease_module.subprocess, "run", side_effect=fixture_inventory):
+                row = lease_module.active_validations(root, module)
+            observed.append(row)
+            return row
+        try:
+            with self.lease(timeout=1.2, inventory=actual_inventory):
+                self.assertIsNone(waiter[0].poll())
+                self.assertEqual(observed[-1]["status"], "clear", observed)
+        except lease_module.HostLeaseBlocked:
+            self.fail("waiting CLI was treated as active work: " + json.dumps(observed[-1]))
+        output, _ = self.finish(waiter[0])
+        self.assertEqual(waiter[0].returncode, 0)
+        self.assertEqual(output.strip(), "admitted")
+
+    def test_release_controllers_are_not_workers_but_actual_checks_remain_classified(self):
+        self.assertIsNone(lease_module.validation_kind(["python3", "release.py", "--verify"]))
+        self.assertIsNone(lease_module.validation_kind(["make", "release-verify"]))
+        self.assertEqual(lease_module.validation_kind(["go", "test", "-race", "./..."]), "go_test")
+        self.assertEqual(lease_module.validation_kind(["python3", "-m", "unittest", "discover"]), "python_suite")
+
     def test_cancelled_wait_does_not_signal_owner_and_allows_later_admission(self):
         holder = self.start_holder()
         event = threading.Event()

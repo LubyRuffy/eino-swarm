@@ -62,11 +62,12 @@ def validation_kind(argv):
             tokens = tokens[2:]
         return "go_test" if tokens[:1] == ["test"] else None
     if executable in ("make", "gmake"):
-        heavy = {"test", "test-go", "test-web", "test-mobile", "check", "e2e", "release-verify"}
+        heavy = {"test", "test-go", "test-web", "test-mobile", "check", "e2e"}
         return "make_validation" if any(token in heavy for token in tokens) else None
     if executable.startswith("python") or executable in ("Python", "pypy", "pypy3"):
-        if "--verify" in tokens and any(Path(token).name == "release.py" for token in tokens):
-            return "release_verification"
+        # A release controller can be waiting on this mutex without doing work.
+        # Actual Go/Node/unittest workers are observed independently; classifying
+        # the controller would make the owner wait for its own queued contender.
         if "-m" in tokens:
             index = tokens.index("-m")
             if tokens[index+1:index+2] == ["unittest"] and "discover" in tokens[index+2:]:

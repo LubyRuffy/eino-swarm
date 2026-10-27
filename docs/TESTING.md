@@ -12,8 +12,14 @@ manual commands that bypass the protocol; `make test/check` remain unwrapped.
 `tools/test_release_host_lease.py` uses unique temporary modules and lock roots,
 real competing lock holders and one small owned unittest process. It checks
 cross-copy exclusion, stale receipt versus live process, cancellation, PID reuse,
-foreign-project exclusion and private evidence. `tools/test_release_verify.py`
-checks the actual entry refuses before preflight/heavy commands on host conflict.
+foreign-project exclusion and private evidence.
+The waiting-CLI fixture holds the actual inode while a second real Python release
+controller waits on it, then samples the current processes and confirms the
+holder admits and releases normally; OS inventory selection is limited to the
+owned fixture PIDs while identity/cwd/classification reads stay real. A controller
+without a heavy worker is not an active-test conflict; manual workers remain
+subject to the admission guard. `tools/test_release_verify.py` checks the actual
+entry refuses before preflight/heavy commands on host conflict.
 These lightweight fixtures do not require a VM, GUI or a full Go/Node suite.
 
 ## Release verification tooling (`F-430`, `C-010`, `C-031`)

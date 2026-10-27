@@ -34,8 +34,10 @@ module hash; the inode is never unlinked. The current owner and queue evidence
 use mode `0600`, retain PID/birth and timing, and never contain full argv or
 environment values. A released historical owner row does not prove an idle host.
 After taking the mutex, a fresh read-only OS inventory checks existing same-user
-Go tests, Vitest/Playwright, full unittest discovery, make test/check and legacy
-release verification. It binds actual process identity twice, current/effective
+Go tests, Vitest/Playwright, full unittest discovery and make test/check. A Python
+`release.py --verify` or `make release-verify` controller alone is not heavy work: it may be waiting on
+this same mutex. Its actual test workers are observed independently. The guard
+binds actual process identity twice, current/effective
 working directory and module; known `-C`, `--prefix`, test-root/config switches
 are interpreted in memory. Active or unreadable/unknown state waits within the
 original bounded admission budget, then returns `blocked` before heavy work.
