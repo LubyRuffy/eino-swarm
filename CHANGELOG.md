@@ -24,6 +24,14 @@ co-working app built on it. The library API is unchanged except where noted
   `-slow` variant. The report adds cached tokens and cache hit rate per caller,
   a delegated-versus-solo split (duration, tokens, correctness) and the
   manager's own tool calls made while a worker was running.
+- Eval tasks `spec-modules`, `spec-modules-selfreview` and `spec-modules-review`
+  measure whether an independent worker's review of a manager's work catches
+  README rules the author misses, against the author re-checking itself and
+  against no review. Rule tests stay outside the workspace: a `command` check's
+  `argv` may use `{task_dir}` for files kept beside the task. On `glm-5.3-flash`
+  every finished run met every rule, including the unreviewed ones, so review
+  cost about 2.3 times the tokens for no change; delegation policy is unchanged
+  (details in `docs/TESTING.md`).
 
 - `F-170`: `swarm.policy_reasoning_effort` (Settings → Swarm → Policy check
   thinking) sets the reasoning level for the schedule-claim and wake-permission
@@ -150,6 +158,12 @@ co-working app built on it. The library API is unchanged except where noted
 - The manager prompt asks it to verify delegated work from the evidence workers
   cite and spot-check deciding or conflicting claims, rather than rereading
   every source a worker already covered.
+- The manager prompt names the workspace directory after all generic text
+  instead of in the middle of it, so the generic prompt is one prefix shared
+  by every conversation. On the eval provider a conversation's first manager
+  call had 4480 of about 6900 prompt tokens cached (65%) across 149 runs and
+  5760 (83%) across ten back-to-back runs after the change. The eval report
+  adds the first-call cached share.
 - The manager's fixed prefix (system prompt plus tool schemas) is about 1.6K
   characters (5%) shorter on every model call: the delegation and ask sections no
   longer restate what the tool descriptions already say, and workspace tools

@@ -821,6 +821,12 @@ worker before closing SQLite.
    workspace path, the concurrency limits, and a snapshot of the host
    (OS, architecture, kernel, shell, date, timezone, user, home).    It is
    task-agnostic: no example task, filename or domain word is baked into it.
+   Everything before the `## Workspace path` section is the same for every
+   conversation on a host and day; that section, then the personality, project
+   and goal text below, are the only conversation-specific bytes. A provider
+   that caches by prefix can therefore serve a new conversation's first call
+   from another's (`TestManagerPromptSharesItsPrefixAcrossConversations`); the
+   path used to sit mid-prompt and ended the shared prefix there.
    Answers are markdown. When two or more comparable quantities would be
    easier to see as a plot, the manager is told to emit a `chart` fence,
    keep the prose to the takeaway, and not restate the same series as a

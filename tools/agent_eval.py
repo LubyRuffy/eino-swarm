@@ -334,7 +334,7 @@ def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict 
         phase("review")
         outcome = settled_outcome(outcome, traces)
         answer = grade.final_answer(traces)
-        checks = grade.run_checks(task["checks"], workspace, answer, traces, baseline_hashes)
+        checks = grade.run_checks(grade.expand_task_dir(task["checks"], task["dir"]), workspace, answer, traces, baseline_hashes)
         record.update({
             "outcome": outcome,
             "checks": checks,

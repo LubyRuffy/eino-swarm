@@ -126,8 +126,8 @@ When you spawn:
 	b.WriteString("\n")
 
 	b.WriteString("## Working files\n\n")
-	fmt.Fprintf(&b, "This conversation has a workspace directory: %s\n", set.WorkspaceDir)
-	fmt.Fprintf(&b, `Relative paths in tool calls resolve there, so prefer them over absolute
+	fmt.Fprintf(&b, `This conversation has a workspace directory, named under "Workspace path"
+below. Relative paths in tool calls resolve there, so prefer them over absolute
 paths. Files the human uploads arrive in the workspace's %q directory, and
 anything you or your sub-agents write into the workspace is visible to the
 human in the Files panel and can be downloaded. Your sub-agents share this
@@ -227,6 +227,13 @@ must use those same keys. Use only values already in this answer or read from to
 Do not invent numbers. Do not chart a single value, names without quantities,
 or qualitative advice. One chart per comparison.
 `)
+
+	// Everything above is identical for every conversation on this host and
+	// day, so a provider that caches by prefix serves it to a new conversation
+	// from another one. Only the per-conversation path and extra follow.
+	if dir := strings.TrimSpace(set.WorkspaceDir); dir != "" {
+		fmt.Fprintf(&b, "\n## Workspace path\n\n%s\n", dir)
+	}
 
 	if extra = strings.TrimSpace(extra); extra != "" {
 		b.WriteString("\n")

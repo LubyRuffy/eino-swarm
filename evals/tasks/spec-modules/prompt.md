@@ -1,0 +1,1 @@
+三个目录 durations/、semver/、ranges/ 各有一份 README.md 写明了模块的需求规则，以及只覆盖基础用例的 test_basic.py。请在每个目录里实现 README 对应的模块文件（文件名与目录名相同，例如 durations/durations.py），使基础测试通过，并满足 README 的每一条规则。按目录逐个完成：一个目录实现并让它的 test_basic.py 通过后，再做下一个。不要修改 README.md 和 test_basic.py。

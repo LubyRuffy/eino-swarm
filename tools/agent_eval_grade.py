@@ -369,6 +369,12 @@ def extract_metrics(traces: list[dict]) -> dict:
         "total_tokens": sum(v["total_tokens"] for v in by_cat.values()),
         "manager_prompt_chars": int(manager_calls[0].get("input_chars") or 0) if manager_calls else 0,
         "manager_calls": len(manager_calls),
+        # The first call of a run has no earlier call of its own to reuse, so
+        # what the provider cached there is the prefix shared with other runs.
+        "manager_first_call": {
+            "prompt_tokens": int(manager_calls[0].get("prompt_tokens") or 0),
+            "cached_tokens": int(manager_calls[0].get("cached_tokens") or 0),
+        } if manager_calls else {"prompt_tokens": 0, "cached_tokens": 0},
         "workers": workers,
         "spawn_calls": tools_manager.get("spawn_agent", 0),
         "manager_tools_while_workers_run": manager_tools_while_workers_run(events),
@@ -385,6 +391,21 @@ def extract_metrics(traces: list[dict]) -> dict:
 
 
 # --------------------------------------------------------------- checks
+
+
+def expand_task_dir(checks: list[dict], task_dir: Path) -> list[dict]:
+    """Copies of checks with `{task_dir}` in command argv replaced by the task
+    directory, so a hidden test can live beside the task instead of in the
+    workspace the agent reads. The task's own spec is left as written."""
+    out = []
+    for check in checks:
+        check = dict(check)
+        if "argv" in check:
+            check["argv"] = [str(a).replace("{task_dir}", str(task_dir)) for a in check["argv"]]
+        if "checks" in check:
+            check["checks"] = expand_task_dir(check["checks"], task_dir)
+        out.append(check)
+    return out
 
 
 def run_checks(checks: list[dict], workspace: Path, answer: str, traces: list[dict],
@@ -610,7 +631,11 @@ def summarize(results: list[dict]) -> dict:
             prompt_by_cat[cat] += slot["prompt_tokens"]
             cached_by_cat[cat] += slot.get("cached_tokens", 0)
     graded_all = [r for r in results if not r.get("harness_error")]
+    first_prompt = sum(r["metrics"].get("manager_first_call", {}).get("prompt_tokens", 0) for r in graded_all)
+    first_cached = sum(r["metrics"].get("manager_first_call", {}).get("cached_tokens", 0) for r in graded_all)
     return {
+        "first_call_cache": {"prompt_tokens": first_prompt, "cached_tokens": first_cached,
+                             "hit": round(first_cached / first_prompt, 3) if first_prompt else 0},
         "runs": len(results),
         "passed": sum(1 for r in graded_all if r.get("passed")),
         "harness_errors": len(results) - len(graded_all),
@@ -698,7 +723,11 @@ def render_markdown(meta: dict, summary: dict, results: list[dict]) -> str:
         lines.append(f"| {cat} | {n} | {summary['token_share_by_category'].get(cat, 0)} | "
                      f"{summary['cached_tokens_by_category'].get(cat, 0)} | "
                      f"{summary['cache_hit_by_category'].get(cat, 0)} |")
-    lines += ["", "## Failures", ""]
+    first = summary.get("first_call_cache") or {}
+    lines += ["", f"First manager call of each run: {first.get('cached_tokens', 0)} of "
+              f"{first.get('prompt_tokens', 0)} prompt tokens cached ({first.get('hit', 0)}). Only a prefix "
+              "shared with another conversation can be cached there.",
+              "", "## Failures", ""]
     any_fail = False
     for r in results:
         if r.get("passed"):

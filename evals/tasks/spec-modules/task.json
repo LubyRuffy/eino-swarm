@@ -1,0 +1,69 @@
+{
+  "id": "spec-modules",
+  "purpose": "Three small modules to write from a README of numbered rules, with visible tests that cover only the plain cases. The rule tests are hidden, so this measures how many README rules a single agent honours without being asked to re-check; the baseline arm of the review pair.",
+  "expect_delegation": "optional",
+  "generate": "generate.py",
+  "timeout_s": 1200,
+  "checks": [
+    {
+      "name": "durations meets every README rule",
+      "type": "command",
+      "argv": [
+        "python3",
+        "{task_dir}/../spec-modules/hidden/run_hidden.py",
+        "durations"
+      ],
+      "timeout_s": 60
+    },
+    {
+      "name": "semver meets every README rule",
+      "type": "command",
+      "argv": [
+        "python3",
+        "{task_dir}/../spec-modules/hidden/run_hidden.py",
+        "semver"
+      ],
+      "timeout_s": 60
+    },
+    {
+      "name": "ranges meets every README rule",
+      "type": "command",
+      "argv": [
+        "python3",
+        "{task_dir}/../spec-modules/hidden/run_hidden.py",
+        "ranges"
+      ],
+      "timeout_s": 60
+    },
+    {
+      "name": "durations/README.md unchanged",
+      "type": "file_unchanged",
+      "path": "durations/README.md"
+    },
+    {
+      "name": "durations/test_basic.py unchanged",
+      "type": "file_unchanged",
+      "path": "durations/test_basic.py"
+    },
+    {
+      "name": "semver/README.md unchanged",
+      "type": "file_unchanged",
+      "path": "semver/README.md"
+    },
+    {
+      "name": "semver/test_basic.py unchanged",
+      "type": "file_unchanged",
+      "path": "semver/test_basic.py"
+    },
+    {
+      "name": "ranges/README.md unchanged",
+      "type": "file_unchanged",
+      "path": "ranges/README.md"
+    },
+    {
+      "name": "ranges/test_basic.py unchanged",
+      "type": "file_unchanged",
+      "path": "ranges/test_basic.py"
+    }
+  ]
+}

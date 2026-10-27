@@ -3616,6 +3616,14 @@ python3 tools/agent_eval.py --mock --runs 1     # harness smoke test, no model
   kilobytes, the same question). `multi-module-bugfix` is the parallelism
   case: six unrelated packages, each its own read-fix-verify loop with
   nothing shared.
+  `spec-modules`, `spec-modules-selfreview` and `spec-modules-review` are the
+  review triple: the same three modules to write from a README of numbered
+  rules, graded by rule tests the agent never sees (only plain-case tests are
+  in the workspace). The arms differ only in one closing sentence: nothing,
+  re-check your own work against the rules, or have an independent worker
+  that gets only the README and the code review it. Reading them together
+  says whether a fresh context finds what the author's own second pass does
+  not, which is the evidence for or against requiring independent review.
 - **Isolation**: every run gets a new temporary data directory and its own
   `zwai engine` child (`bin/zwai-eval`, built by the target). The harness reads
   one provider from `~/.zwai-swarm/config.yaml` (or `--config`) without writing
@@ -3624,8 +3632,9 @@ python3 tools/agent_eval.py --mock --runs 1     # harness smoke test, no model
   connection, stops only its own child and deletes that directory, key
   included. The user's engine and data directory are not touched.
 - **Grading** is deterministic: files, JSON values, unchanged test files,
-  commands run in the workspace, answer patterns, chart values, tool and event
-  counts. A conversation that asks a question (`ask_user`), hits the tool-round
+  commands run in the workspace (a checker kept beside the task is named with
+  the `{task_dir}` placeholder in `argv`, so hidden tests never enter the
+  workspace), answer patterns, chart values, tool and event counts. A conversation that asks a question (`ask_user`), hits the tool-round
   cap or times out is interrupted and recorded as that outcome. A task with
   `allow_wait` follows one parked `schedule_wake` until it fires.
 - **Metrics** come from `GET /api/trace/:turn` for every turn: duration, calls
@@ -3645,7 +3654,10 @@ python3 tools/agent_eval.py --mock --runs 1     # harness smoke test, no model
   side with one or two runs is an anecdote; its `own calls` column is the
   duplicate-investigation signal (manager tool calls while a worker was
   still running). *Tokens by caller* adds cached tokens and the hit rate, so
-  a cheap-looking run with a cold prefix is not mistaken for a cheap one.
+  a cheap-looking run with a cold prefix is not mistaken for a cheap one. The
+  line under it gives the cached share of each run's first manager call: that
+  call has no earlier call of its own to reuse, so it shows what the prompt
+  layout shares with other conversations.
 - **Evidence** goes to `output/agent-eval/<timestamp>/` (ignored by git):
   `report.md`, `report.json` and, per run, `result.json`, `answer.md`,
   `traces.json`, `engine.log` and a workspace copy. Every file is redacted for
@@ -3659,7 +3671,88 @@ redaction through the actual run path, every check type, the poll loop's
 question/cap/wait/timeout handling, each generated task's answer key
 recomputed from its data, the large survey's filler never stating a port or
 a current team, and every `multi-module-bugfix` defect being fixable (the
-working sources pass) and caught by its own tests.
+working sources pass) and caught by its own tests. The review triple is
+checked the same way: the reference solutions pass every hidden rule, a
+plain-case solution that satisfies the visible tests fails at least four rules
+per module, a missing module reports an import failure instead of crashing,
+and the three prompts differ only in the review request.
+
+### Cost measurements and what they decided
+
+Read from 225 runs of the 13 tasks on one provider (`glm-5.3-flash`); the model
+chose whether to delegate, so these are descriptions, not controlled
+comparisons. Each line says what was measured and what it decided.
+
+- **Fixed prefix.** The manager's first request is about 7.1K prompt tokens:
+  a 12.0K-character system prompt (Delegating 4.8K, Waiting 2.4K, Answering
+  2.4K, Working files 1.3K) and 23 tool schemas totalling 16.0K characters, no
+  tool larger than 1.5K. Across runs the prefix is 63% of manager prompt tokens
+  (98% on one-shot tasks) and 66% of manager prompt tokens were cached. Decision:
+  put everything conversation-specific after the generic text, so the first
+  call of a new conversation shares the prefix (first-call cache 65% to 83%).
+  Not done: moving Waiting/Answering into skills. Each is at most 8% of the
+  prefix, a skill costs a round trip, and removing "Do not" rules needs a
+  second model to show they only compensate for this one.
+- **Tool deferral.** Eight tools were never called by the manager in the 150
+  runs that recorded tool counts (`resume_agent`, `close_agent`, `ask_user`,
+  `schedule_task`, `send_task_message`, `read_task_messages`, `web_fetch`,
+  `web_search`), 5.3K of the 16.0K schema characters. The tasks never create the
+  situations those tools serve, so absence of calls is not evidence they are
+  unneeded, and the schemas are cached after the first call. Not done: this ADK
+  has no tool-search step, so a deferred tool would be one the model cannot ask
+  for. Revisit when the toolset grows well past 30.
+- **Memory review.** 215 post-turn reviews changed something 9 times (4%). The
+  206 that changed nothing cost a median 3.4K tokens and 67% of all reviewer
+  tokens; the 9 that changed something cost a median 25.8K, and eight of them
+  saved a skill. Five of the nine came from scheduled-check turns. Not done: a
+  gate on turn structure (no tool calls, scheduled turn) would also drop those
+  procedures and the notes the review exists for, and the eval cannot measure
+  what a saved note is later worth. The reviewer's cache hit is 3.8% although its own
+  requests are byte-stable from one call to the next, so the miss is not the
+  prompt layout.
+- **Polling.** A 90-second background job (`deferred-check`) took a median 17
+  manager calls and 143K manager tokens; 66% was scheduled turns of about three
+  calls and 25K tokens each, and five `exec` probes. The interval (a third of
+  the remaining estimate, with the configured floor) trades latency for that
+  cost and is policy, not a defect. Not done: a blocking wait tool, which the
+  Waiting section forbids.
+
+### Independent review: measured, no change to delegation policy
+
+The review triple, four runs per arm on `glm-5.3-flash` (12 runs, binary built
+from the commit before the prompt-layout change; a first attempt whose prompt
+asked for all three modules at once was discarded, its runs mostly ending in
+the output-budget error below). The prompts now ask for one directory at a time.
+
+| arm | turns that finished | passed every hidden rule | output-budget `turn_error` | median tokens of passed runs |
+|---|---|---|---|---|
+| no review | 4 of 4 | 4 | 0 | 419K |
+| re-check against the rules | 2 of 4 | 2 | 2 | 702K (two runs: 421K, 983K) |
+| independent worker review | 1 of 4 | 1 | 3 | 981K (one run) |
+
+- **No review run had a mistake to catch.** Every turn that finished passed all
+  of the hidden rule tests, including the arm that had no review at all. The
+  one run where the independent reviewer finished reported nothing to fix.
+  So this fixture and model measure the cost of review, not its benefit:
+  roughly 2.3 times the tokens of the median unreviewed run, for no change in
+  the result. It cannot show that review never helps; it shows it did not
+  here.
+- **The failures are not rule misses.** All five failed runs ended with
+  `the model used its whole output budget before it produced an answer`: one
+  generation exhausted the 16384-token output cap before any module file
+  existed (the rule checks fail with `ModuleNotFoundError`, not a wrong
+  behaviour). They are split 0, 2 and 3 across arms that share the same
+  opening, so with four runs each the split is not evidence about review.
+- **The reviewer's own run hit the same cap** once and was resumed one
+  directory at a time by the manager.
+- The traces never opened the hidden tests (no read of the task directory or
+  of `test_*.py` names outside the workspace); the words "hidden test" in the
+  transcripts are the model guessing what would be checked.
+
+Decision: keep the delegation policy as it is, with no automatic independent
+review step. Re-open it with a fixture where an unreviewed run misses rules
+(a weaker model, or rules the model cannot derive from the README), run through
+the same triple; the harness needs no change for that.
 
 ## The scripted offline provider
 
