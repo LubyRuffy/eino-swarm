@@ -372,6 +372,15 @@ func TestSteerDuringAskStaysInTheInbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = waitAskToolCall(t, sub, 15*time.Second)
+	// The call notification precedes waitAsk. Steer must exercise an armed
+	// questionnaire, rather than racing the executor before it starts waiting.
+	ready := time.Now().Add(2 * time.Second)
+	for !e.Status(th.ID).AwaitingAnswer && time.Now().Before(ready) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !e.Status(th.ID).AwaitingAnswer {
+		t.Fatal("the questionnaire did not start waiting before steering")
+	}
 	if err := e.Steer(th.ID, "prefer the safer path"); err != nil {
 		t.Fatal(err)
 	}
