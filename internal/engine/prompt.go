@@ -228,11 +228,11 @@ Do not invent numbers. Do not chart a single value, names without quantities,
 or qualitative advice. One chart per comparison.
 `)
 
-	// Everything above is identical for every conversation on this host and
-	// day, so a provider that caches by prefix serves it to a new conversation
-	// from another one. Only the per-conversation path and extra follow.
-	if dir := strings.TrimSpace(set.WorkspaceDir); dir != "" {
-		fmt.Fprintf(&b, "\n## Workspace path\n\n%s\n", dir)
+	// Everything above is identical for conversations with the same tool
+	// configuration on this host and day, so a provider that caches by prefix
+	// serves it to a new conversation from another one. Only the path and extra follow.
+	if strings.TrimSpace(set.WorkspaceDir) != "" {
+		fmt.Fprintf(&b, "\n## Workspace path\n\n%s\n", set.WorkspaceDir)
 	}
 
 	if extra = strings.TrimSpace(extra); extra != "" {

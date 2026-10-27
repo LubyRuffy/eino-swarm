@@ -358,6 +358,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- Preserve the selected workspace path verbatim in the manager's shared-prefix
+  prompt layout, including trailing spaces or tabs; a trimmed sibling is a
+  different directory (`C-004`).
+
 - Distant valid RFC3339 timestamps no longer pass the schedule-claim one-minute
   window when time subtraction saturates.
 - Noisy `exec` results remain complete JSON even when both streams contain
