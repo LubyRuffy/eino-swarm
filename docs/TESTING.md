@@ -3648,7 +3648,10 @@ python3 tools/agent_eval.py --mock --runs 1     # harness smoke test, no model
   side with one or two runs is an anecdote; its `own calls` column is the
   duplicate-investigation signal (manager tool calls while a worker was
   still running). *Tokens by caller* adds cached tokens and the hit rate, so
-  a cheap-looking run with a cold prefix is not mistaken for a cheap one.
+  a cheap-looking run with a cold prefix is not mistaken for a cheap one. The
+  line under it gives the cached share of each run's first manager call: that
+  call has no earlier call of its own to reuse, so it shows what the prompt
+  layout shares with other conversations.
 - **Evidence** goes to `output/agent-eval/<timestamp>/` (ignored by git):
   `report.md`, `report.json` and, per run, `result.json`, `answer.md`,
   `traces.json`, `engine.log` and a workspace copy. Every file is redacted for
@@ -3667,6 +3670,46 @@ checked the same way: the reference solutions pass every hidden rule, a
 plain-case solution that satisfies the visible tests fails at least four rules
 per module, a missing module reports an import failure instead of crashing,
 and the three prompts differ only in the review request.
+
+### Cost measurements and what they decided
+
+Read from 225 runs of the 13 tasks on one provider (`glm-5.3-flash`); the model
+chose whether to delegate, so these are descriptions, not controlled
+comparisons. Each line says what was measured and what it decided.
+
+- **Fixed prefix.** The manager's first request is about 7.1K prompt tokens:
+  a 12.0K-character system prompt (Delegating 4.8K, Waiting 2.4K, Answering
+  2.4K, Working files 1.3K) and 23 tool schemas totalling 16.0K characters, no
+  tool larger than 1.5K. Across runs the prefix is 63% of manager prompt tokens
+  (98% on one-shot tasks) and 66% of manager prompt tokens were cached. Decision:
+  put everything conversation-specific after the generic text, so the first
+  call of a new conversation shares the prefix (first-call cache 65% to 83%).
+  Not done: moving Waiting/Answering into skills. Each is at most 8% of the
+  prefix, a skill costs a round trip, and removing "Do not" rules needs a
+  second model to show they only compensate for this one.
+- **Tool deferral.** Eight tools were never called by the manager in the 150
+  runs that recorded tool counts (`resume_agent`, `close_agent`, `ask_user`,
+  `schedule_task`, `send_task_message`, `read_task_messages`, `web_fetch`,
+  `web_search`), 5.3K of the 16.0K schema characters. The tasks never create the
+  situations those tools serve, so absence of calls is not evidence they are
+  unneeded, and the schemas are cached after the first call. Not done: this ADK
+  has no tool-search step, so a deferred tool would be one the model cannot ask
+  for. Revisit when the toolset grows well past 30.
+- **Memory review.** 215 post-turn reviews changed something 9 times (4%). The
+  206 that changed nothing cost a median 3.4K tokens and 67% of all reviewer
+  tokens; the 9 that changed something cost a median 25.8K, and eight of them
+  saved a skill. Five of the nine came from scheduled-check turns. Not done: a
+  gate on turn structure (no tool calls, scheduled turn) would also drop those
+  procedures and the notes the review exists for, and the eval cannot measure
+  what a saved note is later worth. The reviewer's cache hit is 3.8% although its own
+  requests are byte-stable from one call to the next, so the miss is not the
+  prompt layout.
+- **Polling.** A 90-second background job (`deferred-check`) took a median 17
+  manager calls and 143K manager tokens; 66% was scheduled turns of about three
+  calls and 25K tokens each, and five `exec` probes. The interval (a third of
+  the remaining estimate, with the configured floor) trades latency for that
+  cost and is policy, not a defect. Not done: a blocking wait tool, which the
+  Waiting section forbids.
 
 ## The scripted offline provider
 

@@ -192,6 +192,7 @@ class TraceMetricsTest(unittest.TestCase):
         self.assertEqual(m["calls"]["schedule-answer-policy"]["calls"], 1)
         self.assertEqual(m["total_tokens"], 212)
         self.assertEqual(m["manager_prompt_chars"], 5000)
+        self.assertEqual(m["manager_first_call"], {"prompt_tokens": 100, "cached_tokens": 0})
         self.assertEqual(m["workers"], ["a-1", "b-2"])
         self.assertEqual((m["spawn_calls"], m["fork_context"]), (2, 1))
         self.assertEqual(m["skill_view"], 1)
@@ -775,6 +776,9 @@ class ReportTest(unittest.TestCase):
         self.assertIn("## Delegated vs solo", md)
         self.assertIn("| t | 2 | 30.0 | 200 | 3 | 70.0 | 800 | 6 |", md)
         self.assertIn("| manager | 2800 | 1.0 | 800 | 0.286 |", md)
+        # One call per run here, so every call is a run's first call.
+        self.assertEqual(s["first_call_cache"], {"prompt_tokens": 2800, "cached_tokens": 800, "hit": 0.286})
+        self.assertIn("First manager call of each run: 800 of 2800 prompt tokens cached (0.286)", md)
 
     def test_a_task_that_never_delegated_has_an_empty_delegated_side(self):
         m = grade.extract_metrics([trace([], [call("manager", 10, 1000)])])

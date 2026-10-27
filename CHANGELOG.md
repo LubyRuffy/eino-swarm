@@ -147,6 +147,12 @@ co-working app built on it. The library API is unchanged except where noted
 - The manager prompt asks it to verify delegated work from the evidence workers
   cite and spot-check deciding or conflicting claims, rather than rereading
   every source a worker already covered.
+- The manager prompt names the workspace directory after all generic text
+  instead of in the middle of it, so the generic prompt is one prefix shared
+  by every conversation. On the eval provider a conversation's first manager
+  call had 4480 of about 6900 prompt tokens cached (65%) across 149 runs and
+  5760 (83%) across ten back-to-back runs after the change. The eval report
+  adds the first-call cached share.
 - The manager's fixed prefix (system prompt plus tool schemas) is about 1.6K
   characters (5%) shorter on every model call: the delegation and ask sections no
   longer restate what the tool descriptions already say, and workspace tools
