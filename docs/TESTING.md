@@ -201,6 +201,19 @@ make docs-check
 
 ## Ordinary completion collects delegated work (F-130 / C-019 / C-012)
 
+PC transcript/store and Worker completion E2E regress the persisted decline,
+cleanup, terminal error and late cancelled-finish sequence through live events,
+Reload and older pages. The decline JSON must remain available in Trace while
+adding no chat card or reviving stopped work. Phone collection regressions inject
+the complete lifecycle sequence through its shared live/cold/paged reducer and
+MockLink. The real host watcher also forwards the original decline event and
+sequence through the shared desktop/phone kind list. The phone reducer already
+ignores this internal event, so forwarding it adds no chat card or new fallback;
+the terminal status and real worker lifecycle events remain authoritative.
+`internal/remote/worker_collection_decline_test.go` crosses the actual engine,
+HTTP worker and encrypted phone watcher, then checks ready/log replay and
+cursor progress across receipt-only pages without dropping mixed visible pages.
+
 `internal/engine/ordinary_worker_completion_test.go` 使用真实 Registry／ADK／
 loopback HTTP：原 worker 请求保持运行，主管提前给出 final，候选正文必须在
 live、保存回答和下次模型输入中缺席；纠正后真实 `wait_agents` 收到同一 worker

@@ -34,6 +34,7 @@ var PushKinds = []string{
 	"max_iterations",
 	"max_iterations_continued",
 	"workers_collection_resumed",
+	"workers_collection_declined",
 	"model_retry",
 	"model_backoff",
 	"title",

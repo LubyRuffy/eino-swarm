@@ -3,9 +3,10 @@ import { askStatusFromTranscript } from "@/lib/transcript-ask"
 import { deskDest, listDestForThread, setDeskDest } from "@/lib/desk-nav"
 import { LIBRARY_ID } from "@/lib/library"
 import { subscribeEvents } from "@/lib/stream"
+import type { TranscriptState } from "@/lib/transcript"
 import { setThreadRunning, upsertThread } from "@/lib/thread-title"
 import { logPageSize, type ThreadLog } from "@/lib/thread-log"
-import type { SwarmEvent, Thread } from "@/lib/types"
+import type { SwarmEvent, Thread, ThreadStatus } from "@/lib/types"
 import { queueEvent } from "./app-stream"
 import { bumpFollowups, isFollowupGeneration } from "./followup-sync"
 import { useProjects } from "./projects"
@@ -14,6 +15,17 @@ import type { AppState } from "./app"
 import { beginTurnsRead, isCurrentTurnsRead } from "./turns-sync"
 
 type SetApp = (patch: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void
+
+/** A decline owns only its matching waiting flag, never the snapshot's running
+ *  state. A newer wait or ready watermark can describe different work. */
+function afterCollectionDecline(status: ThreadStatus, transcript: TranscriptState, through: number): ThreadStatus {
+  const card = transcript.agents.manager?.blocks.filter((block) => block.confirm).at(-1)
+  const pause = card?.confirm
+  if (!pause || pause.reason !== "workers_uncollected" || !pause.waitId || pause.pending ||
+    pause.continued !== false || pause.declinedSeq === undefined || status.turn_id !== card.turnId ||
+    !(through <= pause.declinedSeq)) return status
+  return { ...status, awaiting_continue: false }
+}
 
 /** An opening snapshot may fill unchanged metadata, but cannot undo a live
  *  title, goal, completion or context mutation that arrived during its read. */
@@ -57,7 +69,9 @@ export async function loadOpenedThread(
       const stale = contextAdvanced || rewound
       const unchangedStatus = !liveStatus && !rewound &&
         s.status.running === baseline.status.running && s.status.turn_id === baseline.status.turn_id
-      const effectiveStatus = askStatusFromTranscript(s.transcript, unchangedStatus ? { ...status, waiting: s.status.waiting ?? status.waiting } : s.status)
+      const openedStatus = unchangedStatus ? afterCollectionDecline(
+        { ...status, waiting: s.status.waiting ?? status.waiting }, s.transcript, 0) : s.status
+      const effectiveStatus = askStatusFromTranscript(s.transcript, openedStatus)
       const merged = mergeOpenedThread(thread, s.threads.find((row) => row.id === id), originalThread, stale)
       return {
         status: effectiveStatus,
@@ -105,11 +119,12 @@ export async function loadOpenedThread(
         }
         queueEvent(set, get, id, ev)
       },
-      onReady: ({ status: live }) => {
+      onReady: ({ seq, status: live }) => {
         if (!current()) return
         if (live) liveStatus = true
         set((s) => {
-          const effective = live ? askStatusFromTranscript(s.transcript, { ...live, waiting: live.waiting ?? s.status.waiting }) : s.status
+          const effective = live ? askStatusFromTranscript(s.transcript,
+            afterCollectionDecline({ ...live, waiting: live.waiting ?? s.status.waiting }, s.transcript, seq ?? Infinity)) : s.status
           return {
             loaded: true,
             connected: true,

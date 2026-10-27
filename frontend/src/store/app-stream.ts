@@ -10,7 +10,7 @@ import {
 } from "@/lib/transcript"
 import { MEMORY_WRITE_TOOLS, memoryWriteLanded } from "@/lib/tool-view"
 import { parseUsage } from "@/lib/usage"
-import { isCurrentWorkerCollectionResume } from "@/lib/transcript-pulse"
+import { isCurrentWorkerCollectionDecline, isCurrentWorkerCollectionResume } from "@/lib/transcript-pulse"
 import type {
   Followup,
   Schedule,
@@ -85,7 +85,7 @@ export function queueEvent(
   }
   queued.push(ev)
   if (ev.kind === "done" || ev.kind === "error" || ev.kind === "user_message" ||
-      ev.kind === "max_iterations" || ev.kind === "max_iterations_continued" || ev.kind === "workers_collection_resumed" ||
+      ev.kind === "max_iterations" || ev.kind === "max_iterations_continued" || ev.kind === "workers_collection_resumed" || ev.kind === "workers_collection_declined" ||
       ev.kind === "model_retry" || ev.kind === "title" ||
       ev.kind === "resumed" || ev.kind === "goal" || ev.kind === "goal_complete" ||
       ev.kind === "goal_continued" || ev.kind === "goal_capped" || ev.kind === "goal_blocked" ||
@@ -146,6 +146,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
     applied.push(ev)
     const collectionResumed = ev.kind === "workers_collection_resumed" &&
       isCurrentWorkerCollectionResume(transcript.agents.manager, ev)
+    const collectionDeclined = isCurrentWorkerCollectionDecline(transcript.agents.manager, ev)
     transcript = foldLiveEvent(transcript, ev)
     if (ev.kind === "user_message" || ev.kind === "resumed") {
       status = withRunningClock(status, {
@@ -166,6 +167,9 @@ function flushQueued(set: StreamSet, get: StreamGet) {
     }
     if (ev.kind === "max_iterations_continued" || collectionResumed && ev.turn_id === status.turn_id) {
       status = { ...status, running: true, awaiting_continue: false }
+    }
+    if (collectionDeclined && ev.turn_id === status.turn_id) {
+      status = { ...status, awaiting_continue: false }
     }
     if (ev.kind === "tool_call" || ev.kind === "tool_result" || ev.kind === "ask_recovered") {
       status = askStatusFromTranscript(transcript, status)

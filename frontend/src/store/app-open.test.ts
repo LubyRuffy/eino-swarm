@@ -2,11 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { api } from "@/lib/api"
 import type { SwarmEvent, Thread, ThreadStatus } from "@/lib/types"
 import { emptyTranscript } from "@/lib/transcript"
+import { collectionDecision, stoppedCollectionEvents } from "@/test/worker-collection-events"
 import { useApp } from "./app"
 
 const fake = vi.hoisted(() => ({ subscriptions: [] as Array<{ id: string; since: number; handlers: {
   onEvent: (event: SwarmEvent) => void
-  onReady: (ready: { status?: ThreadStatus }) => void
+  onReady: (ready: { seq?: number; status?: ThreadStatus }) => void
   onClose: (reason: string) => void
 } }> }))
 vi.mock("@/lib/api", () => ({ api: {
@@ -92,6 +93,136 @@ describe("opening a conversation without waiting for context replay", () => {
     expect(useApp.getState().status).toMatchObject({ running: false, turn_id: "turn-1" })
     expect(useApp.getState().threads.find((t) => t.id === "a")?.title).toBe("Live title")
     expect(useApp.getState().transcript).toBe(transcript)
+  })
+
+  it("does not restore an opening snapshot's wait after a live Stop decision", async () => {
+    const detail = deferred<Detail>()
+    const events = stoppedCollectionEvents().map((event) => ({ ...event, thread_id: "a" }))
+    vi.mocked(api.thread).mockReturnValue(detail.promise)
+    vi.mocked(api.threadLog).mockResolvedValue({ events: events.slice(0, 5), has_more: false })
+    const opening = useApp.getState().openThread("a")
+    await tick()
+    // The tail and its live subscription are ready before the stale detail.
+    // Do not send onReady: that separate status witness would hide this race.
+    fake.subscriptions.at(-1)!.handlers.onEvent(events[5])
+    detail.resolve({ thread: thread("a"), status: { running: false, turn_id: "turn", awaiting_continue: true } })
+    await opening
+    expect(useApp.getState().status.running).toBe(false)
+    expect(useApp.getState().status.awaiting_continue).not.toBe(true)
+    expect(useApp.getState().transcript.agents.manager.blocks.find((block) => block.confirm)?.confirm).toMatchObject({ pending: false, continued: false })
+  })
+
+  it.each([
+    { name: "a different wait", text: '{"wait_id":"other-wait"}', declined: false },
+    { name: "a different turn", turn_id: "another-turn", text: collectionDecision, declined: false },
+    { name: "a worker actor", agent_id: "worker-1", text: collectionDecision, declined: false },
+    { name: "malformed metadata", text: "{", declined: false },
+    { name: "the current wait", text: collectionDecision, declined: true },
+  ])("preserves the opening detail's running state after a decline for $name", async ({ name: _name, declined, ...extra }) => {
+    const detail = deferred<Detail>()
+    const events = stoppedCollectionEvents().map((event) => ({ ...event, thread_id: "a" }))
+    vi.mocked(api.thread).mockReturnValue(detail.promise)
+    vi.mocked(api.threadLog).mockResolvedValue({ events: events.slice(0, 5), has_more: false })
+    const opening = useApp.getState().openThread("a")
+    await tick()
+    fake.subscriptions.at(-1)!.handlers.onEvent({ ...events[5], ...extra })
+    detail.resolve({ thread: thread("a"), status: { running: true, turn_id: "turn", awaiting_continue: true, started_at: "2026-01-01T00:00:00Z" } })
+    await opening
+    expect(useApp.getState().status).toMatchObject({ running: true, turn_id: "turn", awaiting_continue: !declined, started_at: "2026-01-01T00:00:00Z" })
+    expect(useApp.getState().transcript.running).toBe(true)
+    expect(useApp.getState().threads.find((thread) => thread.id === "a")?.running).toBe(true)
+    expect(useApp.getState().transcript.agents.manager.blocks.find((block) => block.confirm)?.confirm?.pending).toBe(!declined)
+  })
+
+  it.each([13, 14])("does not restore a declined wait from a late ready snapshot at seq %s", async (seq) => {
+    const events = stoppedCollectionEvents().map((event) => ({ ...event, thread_id: "a" }))
+    vi.mocked(api.threadLog).mockResolvedValue({ events: events.slice(0, 5), has_more: false })
+    await useApp.getState().openThread("a")
+    const handlers = fake.subscriptions.at(-1)!.handlers
+    handlers.onEvent(events[5])
+    handlers.onReady({ seq, status: { running: true, turn_id: "turn", awaiting_continue: true, workers: 1 } })
+    expect(useApp.getState().status).toMatchObject({ running: true, turn_id: "turn", awaiting_continue: false, workers: 1 })
+    expect(useApp.getState().transcript.running).toBe(true)
+    expect(useApp.getState().transcript.agents.manager.blocks.find((block) => block.confirm)?.confirm?.pending).toBe(false)
+  })
+
+  it.each([15, undefined])("keeps a later or unknown ready watermark authoritative: %s", async (seq) => {
+    const events = stoppedCollectionEvents().map((event) => ({ ...event, thread_id: "a" }))
+    vi.mocked(api.threadLog).mockResolvedValue({ events: events.slice(0, 5), has_more: false })
+    await useApp.getState().openThread("a")
+    const handlers = fake.subscriptions.at(-1)!.handlers
+    handlers.onEvent(events[5])
+    handlers.onReady({ seq, status: { running: true, turn_id: "turn", awaiting_continue: true } })
+    expect(useApp.getState().status).toMatchObject({ running: true, turn_id: "turn", awaiting_continue: true })
+  })
+
+  it.each([13, 15, undefined])("keeps ready at seq %s authoritative when opening detail arrives afterwards", async (seq) => {
+    const detail = deferred<Detail>()
+    const events = stoppedCollectionEvents().map((event) => ({ ...event, thread_id: "a" }))
+    vi.mocked(api.thread).mockReturnValue(detail.promise)
+    vi.mocked(api.threadLog).mockResolvedValue({ events: events.slice(0, 5), has_more: false })
+    const opening = useApp.getState().openThread("a")
+    await tick()
+    const handlers = fake.subscriptions.at(-1)!.handlers
+    handlers.onEvent(events[5])
+    handlers.onReady({ seq, status: { running: true, turn_id: "turn", awaiting_continue: true, workers: 1 } })
+    detail.resolve({ thread: thread("a"), status: { running: false, turn_id: "turn", awaiting_continue: true, workers: 0 } })
+    await opening
+    expect(useApp.getState().status).toMatchObject({ running: true, turn_id: "turn", awaiting_continue: seq !== 13, workers: 1 })
+  })
+
+  it.each(["next-turn", undefined])("does not apply a prior decline to opening detail with a different or unknown turn: %s", async (turn_id) => {
+    const detail = deferred<Detail>()
+    const events = stoppedCollectionEvents().map((event) => ({ ...event, thread_id: "a" }))
+    vi.mocked(api.thread).mockReturnValue(detail.promise)
+    vi.mocked(api.threadLog).mockResolvedValue({ events: events.slice(0, 5), has_more: false })
+    const opening = useApp.getState().openThread("a")
+    await tick()
+    fake.subscriptions.at(-1)!.handlers.onEvent(events[5])
+    detail.resolve({ thread: thread("a"), status: { running: true, turn_id, awaiting_continue: true } })
+    await opening
+    expect(useApp.getState().status).toMatchObject({ running: true, turn_id, awaiting_continue: true })
+  })
+
+  it("merges the declined waiting flag already present in the opening tail", async () => {
+    const detail = deferred<Detail>()
+    const events = stoppedCollectionEvents().map((event) => ({ ...event, thread_id: "a" }))
+    vi.mocked(api.thread).mockReturnValue(detail.promise)
+    vi.mocked(api.threadLog).mockResolvedValue({ events: events.slice(0, 6), has_more: false })
+    const opening = useApp.getState().openThread("a")
+    await tick()
+    expect(fake.subscriptions.at(-1)?.since).toBe(14)
+    detail.resolve({ thread: thread("a"), status: { running: true, turn_id: "turn", awaiting_continue: true } })
+    await opening
+    expect(useApp.getState().status).toMatchObject({ running: true, turn_id: "turn", awaiting_continue: false })
+  })
+
+  it.each([13, 15])("keeps a newer wait pending when ready at seq %s follows an older decline", async (seq) => {
+    const events = stoppedCollectionEvents().map((event) => ({ ...event, thread_id: "a" }))
+    vi.mocked(api.threadLog).mockResolvedValue({ events: events.slice(0, 5), has_more: false })
+    await useApp.getState().openThread("a")
+    const handlers = fake.subscriptions.at(-1)!.handlers
+    handlers.onEvent(events[5])
+    handlers.onEvent({ ...events[4], seq: 15, text: events[4].text!.replace("wait-1", "wait-2") })
+    handlers.onReady({ seq, status: { running: true, turn_id: "turn", awaiting_continue: true } })
+    expect(useApp.getState().status).toMatchObject({ running: true, turn_id: "turn", awaiting_continue: true })
+    expect(useApp.getState().transcript.agents.manager.blocks.filter((block) => block.confirm).at(-1)?.confirm)
+      .toMatchObject({ waitId: "wait-2", pending: true })
+  })
+
+  it("continues paging past a tail containing only an internal Stop decision", async () => {
+    const older = deferred<Awaited<ReturnType<typeof api.threadLog>>>()
+    const events = stoppedCollectionEvents().map((event) => ({ ...event, thread_id: "a" }))
+    vi.mocked(api.threadLog)
+      .mockResolvedValueOnce({ events: [events[5]], has_more: true })
+      .mockReturnValueOnce(older.promise)
+    const opening = useApp.getState().openThread("a")
+    await tick()
+    expect(api.threadLog).toHaveBeenLastCalledWith("a", { before: 14, limit: 80 })
+    expect(useApp.getState().transcript.agents.manager?.blocks ?? []).toHaveLength(0)
+    older.resolve({ events: [events[0]], has_more: false })
+    await opening
+    expect(useApp.getState().transcript.agents.manager.blocks.map((block) => block.text)).toEqual([events[0].text])
   })
 
   it("discards first visit responses after A to B to A", async () => {

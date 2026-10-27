@@ -74,6 +74,7 @@ const wireKinds: EventKind[] = [
   "max_iterations",
   "max_iterations_continued",
   "workers_collection_resumed",
+  "workers_collection_declined",
   "model_retry",
   "model_backoff",
   "title",
@@ -107,6 +108,7 @@ const wireKinds: EventKind[] = [
 describe("the event stream", () => {
   it("subscribes to every kind the server sends", () => {
     subscribeEvents("th_1", { onEvent: vi.fn() })
+    expect([...FakeEventSource.last.listeners.keys()]).toEqual([...KINDS, "ready"])
     for (const kind of wireKinds) {
       expect(KINDS).toContain(kind)
       expect(FakeEventSource.last.listeners.has(kind)).toBe(true)
@@ -158,6 +160,18 @@ describe("the event stream", () => {
     FakeEventSource.last.deliver("engine_restore", { kind: "engine_restore", seq: 13, turn_id: "turn", text: '{"phase":"restored","duration_ms":8,"scanned_events":50,"checkpoint_reads":1}' })
     expect(onEvent).toHaveBeenCalledOnce()
     expect(onEvent.mock.calls[0][0]).toMatchObject({ kind: "engine_restore", seq: 13, turn_id: "turn" })
+  })
+
+  it("delivers a worker collection Stop decision by its actual named SSE listener", () => {
+    const onEvent = vi.fn()
+    subscribeEvents("thread", { onEvent })
+    expect(KINDS).toContain("workers_collection_declined")
+    expect(FakeEventSource.last.listeners.has("workers_collection_declined")).toBe(true)
+    FakeEventSource.last.deliver("workers_collection_declined", {
+      seq: 14, turn_id: "turn", agent_id: "manager", text: '{"wait_id":"wait-1"}',
+    })
+    expect(onEvent).toHaveBeenCalledOnce()
+    expect(onEvent.mock.calls[0][0]).toMatchObject({ kind: "workers_collection_declined", seq: 14, turn_id: "turn" })
   })
 
   // The event name is the authority: a payload whose kind disagrees with the

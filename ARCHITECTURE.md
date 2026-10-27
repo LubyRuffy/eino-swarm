@@ -298,6 +298,11 @@ waits to a wait ID and exact generations. `settlement_wait.go` observes completi
 without consuming results. The durable `workers_collection_resumed` event is
 distinct from human continuation, and restart checkpoints retain its budget and
 original wait. PC and phone render the wait reason separately from iteration caps.
+The durable `workers_collection_declined` receipt remains diagnostic control
+data in Trace. PC SSE, initial history and older-page reducers settle only its
+matching wait without rendering the receipt JSON; phone history also keeps it
+out of chat. Its worker snapshot records the decision time and cannot revive
+a stopped worker when cleanup, terminal events or cancelled finishes arrive.
 
 `internal/engine/worker_completion.go` checks delegated work before admitted
 completion prose is published. `Registry.PendingAgents` includes both running

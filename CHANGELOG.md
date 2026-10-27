@@ -358,6 +358,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-130`, `C-003`, `C-019` (Issue #120): keep worker-collection decline
+  receipts in Trace without adding a raw JSON chat card after Reload or older
+  history loads. PC live events settle the matching wait without changing
+  worker lifecycle; Stop and late cancellation receipts retain their identity.
+  The shared phone event list forwards the same internal receipt and sequence,
+  while the phone's existing renderer keeps it out of chat.
+
 - Preserve the selected workspace path verbatim in the manager's shared-prefix
   prompt layout, including trailing spaces or tabs; a trimmed sibling is a
   different directory (`C-004`).

@@ -1,6 +1,6 @@
 import type { SwarmEvent } from "./types"
 import type { AgentStatus, Pulse } from "./transcript"
-import type { AgentState } from "./transcript"
+import type { AgentState, TranscriptState } from "./transcript"
 
 export interface ManagerPause {
   limit: number
@@ -9,6 +9,8 @@ export interface ManagerPause {
   automaticResume?: boolean
   waitId?: string
   sourceSeq?: number
+  /** The validated Stop decision, replayed from its actual stored receipt. */
+  declinedSeq?: number
   pending: boolean
   continued?: boolean
 }
@@ -41,7 +43,26 @@ export function isCurrentWorkerCollectionResume(agent: AgentState | undefined, e
   return false
 }
 
-export function settleWorkerCollectionPause(agent: AgentState, ev: SwarmEvent) {
+export function isCurrentWorkerCollectionDecline(agent: AgentState | undefined, ev: SwarmEvent): boolean {
+  return ev.kind === "workers_collection_declined" &&
+    (!ev.agent_id || ev.agent_id === "manager") && (!ev.role || ev.role === "manager") &&
+    isCurrentWorkerCollectionResume(agent, ev)
+}
+
+export function applyWorkerCollectionDecline(state: TranscriptState, ev: SwarmEvent): boolean {
+  if (ev.kind !== "workers_collection_declined") return false
+  // This internal decision settles its existing card without creating a chat
+  // row or agent. Its pre-Stop snapshot cannot change worker lifecycle state.
+  const manager = state.agents.manager
+  if (manager && isCurrentWorkerCollectionDecline(manager, ev)) {
+    const settled = { ...manager }
+    settleWorkerCollectionPause(settled, ev, false)
+    state.agents.manager = settled
+  }
+  return true
+}
+
+export function settleWorkerCollectionPause(agent: AgentState, ev: SwarmEvent, continued = true) {
   const waitId = resumedWaitId(ev)
   if (!waitId) return
   let index = agent.blocks.length - 1
@@ -50,7 +71,7 @@ export function settleWorkerCollectionPause(agent: AgentState, ev: SwarmEvent) {
     agent.blocks[index].confirm?.pending && ev.seq > (agent.blocks[index].confirm?.sourceSeq ?? agent.blocks[index].seq))) index--
   if (index < 0) return
   agent.blocks = agent.blocks.map((block, i) => i === index
-    ? { ...block, confirm: { ...block.confirm!, pending: false, continued: true } }
+    ? { ...block, confirm: { ...block.confirm!, pending: false, continued, ...(!continued ? { declinedSeq: ev.seq } : {}) } }
     : block)
 }
 

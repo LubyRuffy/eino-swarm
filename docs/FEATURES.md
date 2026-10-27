@@ -86,6 +86,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
+- 收取暂停后选择停止，实时聊天与 Reload／分页历史保持相同的停止展示；内部 `workers_collection_declined` 回执留在 Trace，不额外显示原始 JSON，也不依据其中的历史 running 字段复活子代理。关联 `C-003`、`C-019`；证据：`frontend/src/store/app-stream-worker-collection.test.ts`、`frontend/e2e/worker-completion.spec.ts`。
+
 - 收取等待与工具轮数暂停分别显示原因；精确 wait_id 的 `workers_collection_resumed` 结清对应等待卡片，实时、重开与手机重放保持一致，不能把自动唤醒显示为人工 Continue 或已经收取成功。保留 worker 的模型调用在发起准入后冻结活跃 turn 归属，跨轮单次流仍归开始轮，辅助任务不迁移。关联 `C-012`、`C-019`；证据：`internal/engine/worker_accounting_test.go`、`frontend/e2e/worker-completion.spec.ts`。
 
 - 普通回合完成门禁：没有当前可执行 goal 或活动同对话 wake 时，主管必须用真实 `wait_agents` 结果收取每个 worker 当前 generation，或用 `close_agent` 明确放弃，才可发布完成答复；已完成未收取仍待处理，wait 超时、未知 ID 和旧 generation 回执不结清。提前结束只自动纠正一次，再次提前结束保持原 turn 与 worker 请求；仅全为已知运行代且本 turn 未用自动唤醒时，等全部绑定 generation 结束后自动继续一次收取，否则等待人工 Continue／Stop；Continue 再授予一次尝试，Stop／拒绝取消。重启保留收取状态、纠正额度及人工暂停。Trace 与 PC／手机提示保留 `workers_uncollected` 的真实原因。关联契约：`C-019`、`C-002`、`C-012`、`C-027`；实现证据：`settlement.go`、`internal/engine/worker_completion.go`、`internal/engine/iterations.go`；测试：`settlement_http_test.go`、`internal/engine/ordinary_worker_completion_test.go`、`internal/engine/worker_completion_budget_test.go`、`internal/engine/worker_completion_replay_test.go`。

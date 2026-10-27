@@ -750,6 +750,15 @@ thread wait is parked. Goal, schedule, `turn`, `done` and `error` event
 frames carry that `status` too so a parked `/goal` does not look idle after
 `done`.
 With `include_detail: true`, `ready` also carries the existing `open` `detail`.
+Worker-collection decline receipts retain their original kind and sequence
+in push and paged history; their wait ID and worker-generation payload follows
+the existing event-text and frame limits. They are
+internal control evidence, not chat notices; the phone ignores them when
+rendering, and their historical running snapshot cannot override terminal
+status or real worker lifecycle events.
+Older-page reads continue past pages containing only these internal receipts,
+using the existing hidden-page cursor behavior rather than stopping on a
+page that renders no phone content.
 Header, status and tail share the frame budget; packing keeps the newest events
 and sets `more` if it removes older ones. Metadata alone exceeding the budget
 returns `too_large` and leaves no new watch. A new phone talking to an older

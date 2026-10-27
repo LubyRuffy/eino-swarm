@@ -16,7 +16,7 @@ import { modelBackoffNotice } from "./transcript-backoff"
 import { recordRecovery, type RecoveryEvent } from "./transcript-recovery"
 import { askCardFromEvent, askRecoveryCard, applyAskRecovery, settleAskCard, type AskCard } from "./transcript-ask"
 import { isPlanEvent, planNotice } from "./transcript-plan"
-import { parseIterationLimit, parsePulse, settleWorkerCollectionPause, updateWorkerCollectionPause, type ManagerPause } from "./transcript-pulse"
+import { applyWorkerCollectionDecline, parseIterationLimit, parsePulse, settleWorkerCollectionPause, updateWorkerCollectionPause, type ManagerPause } from "./transcript-pulse"
 import {
   dropRetractedSteer,
   isRetractedSteer,
@@ -275,6 +275,7 @@ export function reduceEvent(
   if (ev.kind === "generation_started" || ev.kind === "generation_completed") return next
   // Recovery state is trace evidence, not a chat message or a new agent.
   if (ev.kind === "engine_restart_checkpoint") return next
+  if (applyWorkerCollectionDecline(next, ev)) return next
   if (ev.kind === "ask_recovered") {
     const card = askRecoveryCard(ev)
     if (card) applyAskRecovery(touchAgent(next, MANAGER_ID), ev, card)

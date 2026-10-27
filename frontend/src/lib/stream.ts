@@ -11,9 +11,9 @@ export interface StreamHandlers {
   onClose?: (reason: "error" | "closed") => void
 }
 
-/** The event-stream kinds the app renders. EventSource delivers by name, so
- *  each one has to be subscribed explicitly: a kind missing from this list is
- *  stored, traceable, and invisible until the page is reloaded. */
+/** The event-stream kinds shared with the phone's remote PushKinds list.
+ *  EventSource delivers by name, so each one has to be subscribed explicitly:
+ *  stored control receipts must reach the reducer through the same contract. */
 export const KINDS = [
   "user_message",
   "agent_message",
@@ -46,6 +46,7 @@ export const KINDS = [
   "max_iterations",
   "max_iterations_continued",
   "workers_collection_resumed",
+  "workers_collection_declined",
   "model_retry",
   "model_backoff",
   "title",

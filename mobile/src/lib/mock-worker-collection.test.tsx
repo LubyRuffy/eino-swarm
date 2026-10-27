@@ -26,7 +26,8 @@ for (const locale of ["en", "zh"] as const) {
           reason: "workers_uncollected", automatic_resume: state !== "paused",
         })
         if (state === "stopped") {
-          expect(events.at(-1)).toMatchObject({ kind: "error", err: "stopped before collecting worker results" })
+          expect(events.find((event) => event.kind === "error")).toMatchObject({ err: "stopped before collecting worker results" })
+          expect(events.at(-1)).toMatchObject({ kind: "finished", agent_id: "worker-1" })
           expect(events.some((event) => event.kind === "workers_collection_resumed" || event.kind === "done")).toBe(false)
         }
         const blocks = events.reduce<CompactBlock[]>((all, event) => applyEvent(all, event), [])

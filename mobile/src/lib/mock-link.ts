@@ -1,7 +1,7 @@
 import { restartAskHistory } from "./mock-ask-restart"
 import { generationHistory } from "./mock-generation"
 import { backoffHistory } from "./mock-backoff"
-import { workerCollectionHistory } from "./mock-worker-collection"
+import { workerCollectionHistory, workerCollectionStopHistory, workerCollectionPaged } from "./mock-worker-collection"
 import { scriptedTurn, type Step } from "./mock-turn"
 import {
   OpAnswer,
@@ -250,7 +250,7 @@ export class MockHost {
         this.seed(live, stopReplayStart(), true)
       } else if (new URLSearchParams(location.search).get("history") === "worker-collection") {
         const state = new URLSearchParams(location.search).get("collection")
-        this.seed(live, workerCollectionHistory(state), state !== "done" && state !== "stopped")
+        this.seed(live, workerCollectionHistory(state, new URLSearchParams(location.search).get("stop_order")), state !== "done" && state !== "stopped")
       } else if (new URLSearchParams(location.search).get("history") === "streamed-agents") {
         this.seed(live, [
           { kind: "agent_message", agentID: "manager", text: "Older manager answer" },
@@ -580,7 +580,7 @@ export class MockHost {
   }
 
   snapshot(th: MockThread) {
-    const hiddenHistory = new URLSearchParams(location.search).get("history") === "hidden" && th.id === "t-live"
+    const hiddenHistory = (new URLSearchParams(location.search).get("history") === "hidden" || workerCollectionPaged()) && th.id === "t-live"
     const streamedAgents = new URLSearchParams(location.search).get("history") === "streamed-agents" && th.id === "t-live"
     return {
       events: hiddenHistory ? th.events.slice(-2) : streamedAgents ? th.events.slice(1).filter((event) => event.seq > 0) : th.events,
@@ -639,6 +639,8 @@ export class MockHost {
     const params = new URLSearchParams(location.search)
     if (params.get("history") === "stopped-workers" && th.id === "t-live") {
       for (const step of stopReplayEnd(params.get("stop_order"))) this.push(th, step)
+    } else if (params.get("history") === "worker-collection" && params.get("collection") === "stopping" && th.id === "t-live") {
+      for (const step of workerCollectionStopHistory(params.get("stop_order"))) this.push(th, step)
     }
   }
 
@@ -901,13 +903,13 @@ export class MockLink {
         this.watcher = { threadID: th.id, deliver: (r) => this.onPush?.(r) }
         this.host.watch(this.watcher)
         return this.ok({ id, op: OpReady, thread_id: th.id, detail: req.include_detail ? this.host.detail(th) : undefined,
-          more: ["hidden", "streamed-agents"].includes(new URLSearchParams(location.search).get("history") ?? "") && th.id === "t-live",
+          more: (["hidden", "streamed-agents"].includes(new URLSearchParams(location.search).get("history") ?? "") || workerCollectionPaged()) && th.id === "t-live",
           ...this.host.snapshot(th) })
       }
       case OpLog: {
         const th = thread()
         const hiddenHistory = ["hidden", "streamed-agents"].includes(new URLSearchParams(location.search).get("history") ?? "") && th?.id === "t-live"
-        return this.ok({ id, thread_id: th?.id, events: hiddenHistory ? th.events.slice(0, 1) : [], more: false })
+        return this.ok({ id, thread_id: th?.id, events: workerCollectionPaged() && th?.id === "t-live" ? th.events.slice(0, -2).filter((event) => !req.before || event.seq < req.before) : hiddenHistory ? th.events.slice(0, 1) : [], more: false })
       }
       case OpStart:
         return this.ok({ id, threads: [this.host.view(this.host.begin(req.text ?? ""))] })
