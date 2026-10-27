@@ -247,7 +247,7 @@ class StageRunner:
         except BaseException:
             stream.close()
             if row['status'] == 'waiting':
-                row['status'] = 'interrupted'
+                row['status'] = 'cancelled' if self.cancel.is_set() else 'interrupted'
             raise
         finally:
             row['ended'] = _stamp()

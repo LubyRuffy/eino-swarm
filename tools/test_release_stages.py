@@ -439,6 +439,58 @@ class StageEvidenceTests(unittest.TestCase):
                 with StageRunner(evidence, self.identity, [next_stage], lock_path=lock_path):
                     self.fail('pending cleanup was bypassed')
 
+    def test_signal_cancellation_marks_the_waiting_pipeline_cancelled(self):
+        # Exercise the CLI's real signal handler while StageRunner is blocked in
+        # its actual flock/Event wait; a programmatic Event alone misses this path.
+        import fcntl
+        import signal
+        lock = self.root / 'checkout.lock'
+        ready = self.root / 'waiting'
+        evidence = self.root / 'signal-evidence'
+        code = '''import json,sys,threading
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from release_stages import StageRunner
+from release_verify import cancellation, Cancelled
+class QueueEvent(threading.Event):
+    def wait(self, timeout=None):
+        Path(sys.argv[4]).touch()
+        return super().wait(timeout)
+event = QueueEvent()
+try:
+    with cancellation(event):
+        with StageRunner(Path(sys.argv[2]), json.loads(sys.argv[5]), [],
+                         lock_path=Path(sys.argv[3]), lock_timeout=5, cancel=event):
+            raise AssertionError('held checkout lock was acquired')
+except Cancelled as error:
+    raise SystemExit(128 + error.signum)
+'''
+        with lock.open('a') as holder:
+            fcntl.flock(holder, fcntl.LOCK_EX)
+            child = subprocess.Popen([sys.executable, '-B', '-c', code,
+                str(Path(__file__).parent), str(evidence), str(lock), str(ready),
+                json.dumps(self.identity)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                deadline = time.monotonic() + 5
+                while not ready.exists() and child.poll() is None and time.monotonic() < deadline:
+                    time.sleep(.01)
+                self.assertTrue(ready.exists(), 'child never reached the real lock wait')
+                child.send_signal(signal.SIGTERM)
+                stdout, stderr = child.communicate(timeout=5)
+                self.assertEqual(child.returncode, 143, (stdout, stderr))
+                queues = list(evidence.glob('queue-*.json'))
+                self.assertEqual(len(queues), 1)
+                receipt = json.loads(queues[0].read_text())
+                self.assertEqual(receipt['status'], 'cancelled', receipt)
+                self.assertGreaterEqual(receipt['queue_seconds'], 0)
+                self.assertEqual(list(evidence.glob('*/*/result.json')), [])
+            finally:
+                if child.poll() is None:
+                    child.terminate()
+                child.communicate(timeout=5)
+        with StageRunner(evidence, self.identity, [], lock_path=lock):
+            pass
+
 
 if __name__ == '__main__':
     unittest.main()
