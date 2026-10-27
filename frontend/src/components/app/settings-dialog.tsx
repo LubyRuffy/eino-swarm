@@ -46,9 +46,12 @@ import { errorMessage, toastError, useToasts } from "@/store/toasts"
  *  `overflow-y-auto` does not replace TabsContent's `overflow-hidden`
  *  (twMerge treats them as different groups), so a 1px outline at the
  *  bottom is clipped. `overflow-auto` does replace it; `pb-1` keeps the
- *  last outline inside the clip edge. */
+ *  last outline inside the clip edge. `relative` keeps the hidden native
+ *  `<select>` Radix adds inside the form positioned in this scrollport;
+ *  otherwise one below the fold overflows the fixed sheet and scrolls the
+ *  rail with Back to app off screen. */
 const settingsScrollTab =
-  "thin-scrollbar min-h-0 flex-1 overflow-auto pb-1"
+  "thin-scrollbar relative min-h-0 flex-1 overflow-auto pb-1"
 
 function sections(t: Translate) {
   return [
