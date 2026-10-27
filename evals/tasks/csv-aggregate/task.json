@@ -1,0 +1,13 @@
+{
+  "id": "csv-aggregate",
+  "purpose": "Exact aggregation over a generated CSV. Measures whether numbers are computed rather than estimated.",
+  "expect_delegation": "none",
+  "generate": "generate.py",
+  "timeout_s": 600,
+  "checks": [
+    {"name": "total_units", "type": "json_equals", "path": "report.json", "pointer": "/total_units", "value": 5015},
+    {"name": "revenue_by_region", "type": "json_equals", "path": "report.json", "pointer": "/revenue_by_region",
+     "value": {"north": 22989.62, "south": 19244.46, "east": 26362.41, "west": 22675.55}, "tolerance": 0.011},
+    {"name": "top_product_by_units", "type": "json_equals", "path": "report.json", "pointer": "/top_product_by_units", "value": "P-500"}
+  ]
+}

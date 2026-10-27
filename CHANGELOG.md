@@ -13,6 +13,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `make eval EVAL_PROVIDER=<id>`: opt-in task-completion evals against a real
+  model (`tools/agent_eval.py`, tasks in `evals/tasks/`). Each run owns a
+  temporary data directory and engine, grades files and answers
+  deterministically, and reports duration, tokens per caller (manager,
+  workers, host-side policy/review/title calls), delegation and skill use.
+  Not part of `make check` or CI; see `docs/TESTING.md`.
+
 - `F-170`: `swarm.policy_reasoning_effort` (Settings → Swarm → Policy check
   thinking) sets the reasoning level for the schedule-claim and wake-permission
   classifiers, defaulting to `low` rather than the conversation's level.

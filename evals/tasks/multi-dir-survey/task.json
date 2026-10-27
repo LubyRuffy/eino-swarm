@@ -1,0 +1,16 @@
+{
+  "id": "multi-dir-survey",
+  "purpose": "Four independent directories with distractors. Parallel workers could help; measures whether they do, and at what cost.",
+  "expect_delegation": "parallel",
+  "generate": "generate.py",
+  "timeout_s": 900,
+  "checks": [
+    {"name": "survey", "type": "json_equals", "path": "survey.json", "pointer": "",
+     "value": {
+       "auth": {"port": 9101, "team": "identity"},
+       "billing": {"port": 9204, "team": "payments"},
+       "search": {"port": 9310, "team": "discovery"},
+       "notify": {"port": 9420, "team": "messaging"}
+     }}
+  ]
+}

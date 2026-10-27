@@ -14,6 +14,7 @@ make frontend                      # rebuild frontend/dist if the TypeScript sou
 make build                         # ./bin/zwai (rebuilds the bundle first)
 make check                         # formatting + vet + test + e2e
 make fmt                           # gofmt the tree; `make fmt-check` only reports
+make eval EVAL_PROVIDER=<id>       # opt-in task evals on a real model; a measurement, not a finishing check
 cd mobile && npm test              # Capacitor phone unit tests (includes native iOS/Android trees)
 cd mobile && npm run e2e           # phone scan/paste Playwright
 make mobile-sync                   # rebuild the phone web bundle and copy into iOS/Android

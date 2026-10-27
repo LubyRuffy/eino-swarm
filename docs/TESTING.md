@@ -3573,6 +3573,59 @@ SIGTERM with SIGKILL. `TestSameEngineIsTheBinaryThatWasStarted`
 is the match (version plus executable identity). `assembleTUI` / `buildTUISwarm` still build an in-process
 swarm for renderer tests. The window itself is verified by hand — see below.
 
+## Agent task evals (opt-in, real model)
+
+The layers above prove the code is correct; they cannot say whether a prompt,
+delegation or harness change makes a real model finish tasks better, faster or
+cheaper. `make eval` answers that, and only that. It calls a real model, so it
+is never part of `make test`, `make check`, CI or the before-finishing checks,
+and its results are measurements rather than pass/fail gates.
+
+```bash
+make eval EVAL_PROVIDER=default                 # every task, 2 runs each
+make eval EVAL_PROVIDER=default EVAL_RUNS=3 EVAL_TASKS=direct-lookup,noisy-log
+python3 tools/agent_eval.py --mock --runs 1     # harness smoke test, no model
+```
+
+- **Tasks** live in `evals/tasks/<id>/`: `prompt.md` (the human message),
+  `task.json` (checks, `expect_delegation`, timeouts, optional seeded skills
+  and wait permission), a static `fixture/` and/or a seeded `generate.py`
+  that writes large inputs into the workspace. Fixtures are synthetic; task
+  wording never enters a product prompt, default or test expectation.
+- **Isolation**: every run gets a new temporary data directory and its own
+  `zwai engine` child (`bin/zwai-eval`, built by the target). The harness reads
+  one provider from `~/.zwai-swarm/config.yaml` (or `--config`) without writing
+  it, scrubs inherited `ZWAI_*` / `OPENAI_*` variables, writes a one-provider
+  `config.yaml` (mode `0600`) into the temporary directory, holds a presence
+  connection, stops only its own child and deletes that directory, key
+  included. The user's engine and data directory are not touched.
+- **Grading** is deterministic: files, JSON values, unchanged test files,
+  commands run in the workspace, answer patterns, chart values, tool and event
+  counts. A conversation that asks a question (`ask_user`), hits the tool-round
+  cap or times out is interrupted and recorded as that outcome. A task with
+  `allow_wait` follows one parked `schedule_wake` until it fires.
+- **Metrics** come from `GET /api/trace/:turn` for every turn: duration, calls
+  and tokens split into manager, workers and each host-side caller
+  (`title-namer`, `memory-reviewer`, `schedule-answer-policy`,
+  `thread-wake-policy`, `session-memory`, `compact-summarizer`), the first
+  manager request's `input_chars` (system prompt size), spawns, `fork_context`,
+  tool counts, `skill_view`, `model_retry` reasons and errors. The harness waits
+  up to `--review-wait` seconds (default 240) for the post-turn memory review so
+  its cost is attributed; a review the engine reports as still running at
+  shutdown is counted as cut off, and its tokens are only a lower bound.
+- **Evidence** goes to `output/agent-eval/<timestamp>/` (ignored by git):
+  `report.md`, `report.json` and, per run, `result.json`, `answer.md`,
+  `traces.json`, `engine.log` and a workspace copy. Every file is redacted for
+  the provider key before it is written. A harness failure keeps the first
+  error; nothing is retried to turn a run green.
+
+Compare architectures by task, not only by the total: look at which runs
+flipped, and run each task more than once. `tools/test_agent_eval.py` (part of
+`make docs-check`) covers the harness offline: provider extraction, key
+redaction through the actual run path, every check type, the poll loop's
+question/cap/wait/timeout handling, and each generated task's answer key
+recomputed from its data.
+
 ## The scripted offline provider
 
 `--mock` (or `provider.NewMock`) replaces the model with a script that behaves

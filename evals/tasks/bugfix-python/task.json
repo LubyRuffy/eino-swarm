@@ -1,0 +1,10 @@
+{
+  "id": "bugfix-python",
+  "purpose": "Three independent defects behind one failing suite. Measures a fix-and-verify loop without editing the tests.",
+  "expect_delegation": "optional",
+  "timeout_s": 900,
+  "checks": [
+    {"name": "tests pass", "type": "command", "argv": ["python3", "-m", "unittest", "discover", "-s", "tests", "-t", ".", "-q"], "timeout_s": 60},
+    {"name": "test file unchanged", "type": "file_unchanged", "path": "tests/test_discount.py"}
+  ]
+}

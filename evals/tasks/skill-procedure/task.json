@@ -1,0 +1,15 @@
+{
+  "id": "skill-procedure",
+  "purpose": "A recorded skill holds the house format; the request does not name it. Measures whether progressive disclosure triggers skill_view and whether the procedure is followed.",
+  "expect_delegation": "none",
+  "timeout_s": 600,
+  "skills": [{"name": "incident-report-format", "file": "skills/incident-report-format.md"}],
+  "checks": [
+    {"name": "skill opened", "type": "tool_count", "tool": "skill_view", "min": 1},
+    {"name": "report path", "type": "file_exists", "path": "reports/INCIDENT-20260314-*.md"},
+    {"name": "format line", "type": "file_regex", "path": "reports/INCIDENT-20260314-*.md", "pattern": "\\Aformat: ir-3\\s*\\n"},
+    {"name": "sections in order", "type": "file_regex", "path": "reports/INCIDENT-20260314-*.md", "pattern": "^## Impact\\s*$.*^## Timeline\\s*$.*^## Follow-ups\\s*$", "flags": "ms"},
+    {"name": "timeline bullets", "type": "file_regex", "path": "reports/INCIDENT-20260314-*.md", "pattern": "^- 14:05 UTC [—–-] ", "flags": "m"},
+    {"name": "follow-up checkboxes", "type": "file_regex", "path": "reports/INCIDENT-20260314-*.md", "pattern": "^- \\[ \\] .+\\(owner: \\w+\\)\\s*$", "flags": "m"}
+  ]
+}

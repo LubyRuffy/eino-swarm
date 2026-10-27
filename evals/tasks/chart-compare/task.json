@@ -1,0 +1,10 @@
+{
+  "id": "chart-compare",
+  "purpose": "Comparable quantities in the answer. Measures whether the always-loaded chart guidance is followed and correct.",
+  "expect_delegation": "none",
+  "timeout_s": 300,
+  "checks": [
+    {"name": "names the best config", "type": "answer_regex", "pattern": "pooled-cache"},
+    {"name": "chart of p95", "type": "answer_chart", "expect": {"baseline": 182.4, "pooled": 141.7, "pooled-cache": 96.3, "async": 118.9}, "tolerance": 0.05}
+  ]
+}

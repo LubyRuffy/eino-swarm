@@ -1,0 +1,15 @@
+raw notes, cleaned up later
+
+started around 14:05 UTC on 2026-03-14, checkout requests timing out
+14:05 first alert, p95 latency on checkout over 8s
+14:12 on-call (mira) confirms db connection pool exhausted on payments-db
+14:20 rolled back the pool size change deployed at 13:50
+14:31 latency back to normal, error rate under 0.1%
+14:45 incident closed
+
+impact: about 26 minutes of degraded checkout, roughly 1,900 failed orders, no data loss
+
+todo:
+- add an alert on pool saturation, mira
+- require load test for pool config changes, devon
+- write customer comms for failed orders, lee

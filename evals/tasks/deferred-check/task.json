@@ -1,0 +1,12 @@
+{
+  "id": "deferred-check",
+  "purpose": "Work gated on time. Either an in-turn poll or a real schedule_wake may deliver the result; measures whether a wait is real and what the scheduling-claim verification costs.",
+  "expect_delegation": "none",
+  "timeout_s": 900,
+  "allow_wait": true,
+  "wait_timeout_s": 420,
+  "checks": [
+    {"name": "job produced its result", "type": "file_regex", "path": "result.txt", "pattern": "\\Ajob-[0-9a-f]{16}\\s*\\Z"},
+    {"name": "answer reports the result", "type": "answer_contains_file", "path": "result.txt"}
+  ]
+}

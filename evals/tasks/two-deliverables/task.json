@@ -1,0 +1,18 @@
+{
+  "id": "two-deliverables",
+  "purpose": "Two unrelated outputs from two inputs. Independent pieces that a worker could take; measures completeness and delegation cost.",
+  "expect_delegation": "optional",
+  "generate": "generate.py",
+  "timeout_s": 900,
+  "checks": [
+    {"name": "city means", "type": "json_equals", "path": "stats.json", "pointer": "",
+     "value": {"oslo": 1.6, "lisbon": 15.9, "cairo": 25.4, "lima": 18.8, "perth": 22.9}, "tolerance": 0.0001},
+    {"name": "GET /v1/items", "type": "file_regex", "path": "endpoints.md", "pattern": "^\\|\\s*GET\\s*\\|\\s*`?/v1/items`?\\s*\\|", "flags": "m"},
+    {"name": "POST /v1/items", "type": "file_regex", "path": "endpoints.md", "pattern": "^\\|\\s*POST\\s*\\|\\s*`?/v1/items`?\\s*\\|", "flags": "m"},
+    {"name": "GET /v1/items/{id}", "type": "file_regex", "path": "endpoints.md", "pattern": "^\\|\\s*GET\\s*\\|\\s*`?/v1/items/\\{id\\}`?\\s*\\|", "flags": "m"},
+    {"name": "PUT /v1/items/{id}", "type": "file_regex", "path": "endpoints.md", "pattern": "^\\|\\s*PUT\\s*\\|\\s*`?/v1/items/\\{id\\}`?\\s*\\|", "flags": "m"},
+    {"name": "DELETE /v1/items/{id}", "type": "file_regex", "path": "endpoints.md", "pattern": "^\\|\\s*DELETE\\s*\\|\\s*`?/v1/items/\\{id\\}`?\\s*\\|", "flags": "m"},
+    {"name": "GET /healthz", "type": "file_regex", "path": "endpoints.md", "pattern": "^\\|\\s*GET\\s*\\|\\s*`?/healthz`?\\s*\\|", "flags": "m"},
+    {"name": "no table row for the removed endpoint", "type": "file_regex", "path": "endpoints.md", "pattern": "^\\|[^\\n]*/v0/items", "flags": "m", "negate": true}
+  ]
+}

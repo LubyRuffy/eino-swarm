@@ -1,0 +1,17 @@
+{
+  "id": "noisy-log",
+  "purpose": "A large noisy input with level-sensitive distractors. Measures exact extraction and whether context isolation is used.",
+  "expect_delegation": "optional",
+  "generate": "generate.py",
+  "timeout_s": 900,
+  "checks": [
+    {"name": "errors", "type": "json_equals", "path": "errors.json", "pointer": "",
+     "value": {
+       "E101": {"count": 59, "first_seen": "2026-04-09T06:03:35Z"},
+       "E205": {"count": 55, "first_seen": "2026-04-09T06:01:32Z"},
+       "E307": {"count": 54, "first_seen": "2026-04-09T06:15:52Z"},
+       "E412": {"count": 22, "first_seen": "2026-04-09T06:42:34Z"},
+       "E550": {"count": 16, "first_seen": "2026-04-09T06:22:45Z"}
+     }}
+  ]
+}

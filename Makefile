@@ -28,6 +28,7 @@ help:
 	@echo "make release      publish only affected, pending Mac/Android/iOS platforms"
 	@echo "make check      formatting, vet, test, e2e"
 	@echo "make docs-check  validate feature and contract references"
+	@echo "make eval EVAL_PROVIDER=<id>  opt-in task evals against a real model (not in check)"
 	@echo "make native-smoke APP=... EVIDENCE=...  one isolated ci-macOS round, 60s budget"
 	@echo "make native-smoke-prepare  build the native AX helper once with the candidate"
 
@@ -131,6 +132,15 @@ vet:
 docs-check:
 	python3 tools/docs_check.py
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p 'test_*.py'
+
+# Opt-in task-completion evals against a real model; never part of `check`.
+# The engine serves the API without the UI, so a plain build is enough.
+EVAL_RUNS ?= 2
+.PHONY: eval
+eval:
+	@test -n "$(EVAL_PROVIDER)" || (echo "EVAL_PROVIDER=<provider id in ~/.zwai-swarm/config.yaml> is required" >&2; exit 2)
+	go build -ldflags "$(LDFLAGS)" -o bin/zwai-eval ./cmd/zwai
+	python3 tools/agent_eval.py --provider "$(EVAL_PROVIDER)" --runs "$(EVAL_RUNS)" $(if $(EVAL_TASKS),--tasks "$(EVAL_TASKS)")
 
 # The candidate is built/transferred once; each invocation still owns fresh state.
 .PHONY: native-smoke-prepare

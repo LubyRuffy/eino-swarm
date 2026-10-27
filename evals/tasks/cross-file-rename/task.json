@@ -1,0 +1,12 @@
+{
+  "id": "cross-file-rename",
+  "purpose": "A precise rename across six files, with a similarly named function that must stay. Measures edit precision and verification.",
+  "expect_delegation": "none",
+  "timeout_s": 900,
+  "checks": [
+    {"name": "tests pass", "type": "command", "argv": ["python3", "-m", "unittest", "discover", "-s", "tests", "-t", ".", "-q"], "timeout_s": 60},
+    {"name": "old name gone", "type": "command", "argv": ["sh", "-c", "! grep -rnw --include='*.py' norm_ws ."]},
+    {"name": "new name defined", "type": "file_regex", "path": "textkit/core.py", "pattern": "^def normalize_whitespace\\(", "flags": "m"},
+    {"name": "sibling function kept", "type": "file_regex", "path": "textkit/core.py", "pattern": "^def norm_ws_count\\(", "flags": "m"}
+  ]
+}
