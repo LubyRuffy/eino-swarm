@@ -115,6 +115,12 @@ co-working app built on it. The library API is unchanged except where noted
   identities into briefing and successful review inputs (Issue #120).
   Rewind also removes metadata owned by deleted turns when it was recorded
   before their user event, preserving earlier retained turns' evidence.
+- A successful `schedule_wake` / `schedule_task` receipt carries a `cadence`
+  note saying whether the armed wait is one-shot or recurring. A manager that
+  armed a single `delay_s` wake and then described it as a repeating check was
+  refused by the answer check, re-armed the same wake and was refused again;
+  the contract is unchanged (a recurring claim still needs an `every_s` or cron
+  wait), the manager is now told what it armed.
 - The manager prompt tells the manager to do only work no worker was given
   while workers run, and not to repeat a worker's investigation; it waits when
   the next step depends on their results. The `schedule_wake` tool text states

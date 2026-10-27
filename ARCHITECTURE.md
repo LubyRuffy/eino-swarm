@@ -703,7 +703,10 @@ worker before closing SQLite.
    `schedule_wake` is honored only when it names a live wait on this
    conversation. Any other leftover id is not a name and does not fail the
    arm. An id that names another conversation, or a wait that is no longer
-   active, still fails.
+   active, still fails. The success receipt carries a `cadence` note saying
+   whether the armed wait is one-shot (`delay_s`) or recurring (`every_s`,
+   cron), so the manager does not later describe a single wake as a repeating
+   check; the answer check reads only `ok` and `id` from it.
    `schedule_task` fails unless the current turn is
    human-originated (`!GoalContinue && !ScheduleContinue && !ImplementPlan`).
    `report_schedule` fails unless `ScheduleContinue`; empty findings are

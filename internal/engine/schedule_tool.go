@@ -278,7 +278,7 @@ func (e *Engine) scheduleWakeContextJSON(ctx context.Context, threadID, turnID, 
 			if err != nil {
 				return goalScheduleFailure(err), nil
 			}
-			return scheduleArmedOK(row.ID), nil
+			return scheduleArmedOK(row), nil
 		}
 		if !errors.Is(err, store.ErrNotFound) {
 			return scheduleToolFailure("%s", err.Error()), nil
@@ -291,7 +291,7 @@ func (e *Engine) scheduleWakeContextJSON(ctx context.Context, threadID, turnID, 
 	if found != "" {
 		row, err := e.replaceThreadWake(threadID, found, in, scope)
 		if err == nil {
-			return scheduleArmedOK(row.ID), nil
+			return scheduleArmedOK(row), nil
 		}
 		if !errors.Is(err, store.ErrNotFound) {
 			return goalScheduleFailure(err), nil
@@ -301,7 +301,7 @@ func (e *Engine) scheduleWakeContextJSON(ctx context.Context, threadID, turnID, 
 	if err != nil {
 		return goalScheduleFailure(err), nil
 	}
-	return scheduleArmedOK(row.ID), nil
+	return scheduleArmedOK(row), nil
 }
 
 // openThreadWakeID is the live wake on this conversation, if any. Omitting
@@ -401,7 +401,7 @@ func (e *Engine) scheduleTaskJSON(threadID, turnID, args string) (string, error)
 	if err != nil {
 		return scheduleToolFailure("%s", err.Error()), nil
 	}
-	return scheduleArmedOK(row.ID), nil
+	return scheduleArmedOK(row), nil
 }
 
 func (e *Engine) requireHumanOriginatedTurn(threadID, turnID string) error {
@@ -495,9 +495,31 @@ func (e *Engine) scheduleForTurn(turn *store.Turn) *store.Schedule {
 	return sch
 }
 
-func scheduleArmedOK(id string) string {
-	body, _ := json.Marshal(map[string]any{"ok": true, "id": id})
+// scheduleArmedOK is the receipt for an armed wait. cadence says what was
+// armed in the model's own terms: a one-shot delay is easily described
+// afterwards as a repeating check, and the answer check refuses a recurring
+// claim that only a one-shot backs. The answer check reads ok and id only.
+func scheduleArmedOK(row *store.Schedule) string {
+	out := map[string]any{"ok": true, "id": row.ID}
+	if note := scheduleCadenceNote(row); note != "" {
+		out["cadence"] = note
+	}
+	body, _ := json.Marshal(out)
 	return string(body)
+}
+
+func scheduleCadenceNote(row *store.Schedule) string {
+	switch {
+	case row == nil:
+		return ""
+	case row.Cron != "":
+		return fmt.Sprintf("recurring: fires on cron %q until cancelled, max_runs or until_at.", row.Cron)
+	case row.EveryS > 0:
+		return fmt.Sprintf("recurring: fires every %ds until cancelled, max_runs or until_at.", row.EveryS)
+	case row.DelayS > 0:
+		return fmt.Sprintf("one-shot: fires once, %ds from now. It does not repeat; a further check needs another %s call, or arm every_s for a repeating wait.", row.DelayS, ToolScheduleWake)
+	}
+	return ""
 }
 
 func scheduleToolFailure(format string, args ...any) string {
