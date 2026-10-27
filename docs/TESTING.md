@@ -3711,6 +3711,43 @@ comparisons. Each line says what was measured and what it decided.
   cost and is policy, not a defect. Not done: a blocking wait tool, which the
   Waiting section forbids.
 
+### Independent review: measured, no change to delegation policy
+
+The review triple, four runs per arm on `glm-5.3-flash` (12 runs, binary built
+from the commit before the prompt-layout change; a first attempt whose prompt
+asked for all three modules at once was discarded, its runs mostly ending in
+the output-budget error below). The prompts now ask for one directory at a time.
+
+| arm | turns that finished | passed every hidden rule | output-budget `turn_error` | median tokens of passed runs |
+|---|---|---|---|---|
+| no review | 4 of 4 | 4 | 0 | 419K |
+| re-check against the rules | 2 of 4 | 2 | 2 | 702K (two runs: 421K, 983K) |
+| independent worker review | 1 of 4 | 1 | 3 | 981K (one run) |
+
+- **No review run had a mistake to catch.** Every turn that finished passed all
+  of the hidden rule tests, including the arm that had no review at all. The
+  one run where the independent reviewer finished reported nothing to fix.
+  So this fixture and model measure the cost of review, not its benefit:
+  roughly 2.3 times the tokens of the median unreviewed run, for no change in
+  the result. It cannot show that review never helps; it shows it did not
+  here.
+- **The failures are not rule misses.** All five failed runs ended with
+  `the model used its whole output budget before it produced an answer`: one
+  generation exhausted the 16384-token output cap before any module file
+  existed (the rule checks fail with `ModuleNotFoundError`, not a wrong
+  behaviour). They are split 0, 2 and 3 across arms that share the same
+  opening, so with four runs each the split is not evidence about review.
+- **The reviewer's own run hit the same cap** once and was resumed one
+  directory at a time by the manager.
+- The traces never opened the hidden tests (no read of the task directory or
+  of `test_*.py` names outside the workspace); the words "hidden test" in the
+  transcripts are the model guessing what would be checked.
+
+Decision: keep the delegation policy as it is, with no automatic independent
+review step. Re-open it with a fixture where an unreviewed run misses rules
+(a weaker model, or rules the model cannot derive from the README), run through
+the same triple; the harness needs no change for that.
+
 ## The scripted offline provider
 
 `--mock` (or `provider.NewMock`) replaces the model with a script that behaves

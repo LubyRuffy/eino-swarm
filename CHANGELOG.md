@@ -28,7 +28,10 @@ co-working app built on it. The library API is unchanged except where noted
   measure whether an independent worker's review of a manager's work catches
   README rules the author misses, against the author re-checking itself and
   against no review. Rule tests stay outside the workspace: a `command` check's
-  `argv` may use `{task_dir}` for files kept beside the task.
+  `argv` may use `{task_dir}` for files kept beside the task. On `glm-5.3-flash`
+  every finished run met every rule, including the unreviewed ones, so review
+  cost about 2.3 times the tokens for no change; delegation policy is unchanged
+  (details in `docs/TESTING.md`).
 
 - `F-170`: `swarm.policy_reasoning_effort` (Settings → Swarm → Policy check
   thinking) sets the reasoning level for the schedule-claim and wake-permission
