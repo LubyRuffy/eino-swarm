@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"unicode/utf8"
 
+	einoexec "github.com/LubyRuffy/eino-tools/exec"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 )
@@ -16,6 +17,7 @@ import (
 type resultCap struct {
 	inner tool.InvokableTool
 	limit int
+	exec  bool
 }
 
 func wrapResultCap(t tool.BaseTool, limit int) tool.BaseTool {
@@ -23,7 +25,8 @@ func wrapResultCap(t tool.BaseTool, limit int) tool.BaseTool {
 	if !ok || limit <= 0 {
 		return t
 	}
-	return &resultCap{inner: inv, limit: limit}
+	info, _ := t.Info(context.Background())
+	return &resultCap{inner: inv, limit: limit, exec: info != nil && info.Name == einoexec.ToolName}
 }
 
 func (c *resultCap) Info(ctx context.Context) (*schema.ToolInfo, error) {
@@ -32,7 +35,87 @@ func (c *resultCap) Info(ctx context.Context) (*schema.ToolInfo, error) {
 
 func (c *resultCap) InvokableRun(ctx context.Context, args string, opts ...tool.Option) (string, error) {
 	out, err := c.inner.InvokableRun(ctx, args, opts...)
+	if c.exec {
+		return capExecResult(out, c.limit), err
+	}
 	return capToolResult(out, c.limit), err
+}
+
+// capExecResult shrinks text inside exec's flat JSON envelope, not the encoded
+// document. Keep status/error metadata intact, even when a tiny configured cap
+// cannot hold that envelope. The full command is also in the call's arguments;
+// only shorten its result copy if metadata alone would otherwise exceed the cap.
+func capExecResult(out string, limit int) string {
+	if len(out) <= limit || utf8.RuneCountInString(out) <= limit {
+		return out
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal([]byte(out), &fields) != nil || fields == nil {
+		return capToolResult(out, limit)
+	}
+	fields["truncated"] = json.RawMessage("true")
+	type textField struct {
+		key   string
+		runes []rune
+	}
+	var texts []textField
+	add := func(key string) {
+		var text string
+		if json.Unmarshal(fields[key], &text) == nil {
+			texts = append(texts, textField{key: key, runes: []rune(text)})
+		}
+	}
+	add("stdout")
+	add("stderr")
+	encode := func(keep int) []byte {
+		for _, field := range texts {
+			fields[field.key], _ = json.Marshal(clipExecText(field.runes, keep))
+		}
+		encoded, _ := json.Marshal(fields)
+		return encoded
+	}
+	minimum := encode(0)
+	if utf8.RuneCount(minimum) > limit {
+		add("full_command")
+		minimum = encode(0)
+	}
+	// Status, error and path fields form the soft minimum for exec. They must
+	// not disappear or turn a failed command into an unparseable text fragment.
+	limit = max(limit, utf8.RuneCount(minimum))
+	best := minimum
+	upper := 0
+	for _, field := range texts {
+		upper = max(upper, len(field.runes))
+	}
+	// Measure actual encoded characters: quotes, controls and HTML characters
+	// expand in JSON. A shared text allowance keeps both streams represented.
+	for lower := 0; lower <= upper; {
+		keep := lower + (upper-lower)/2
+		candidate := encode(keep)
+		if utf8.RuneCount(candidate) <= limit {
+			best = candidate
+			lower = keep + 1
+		} else {
+			upper = keep - 1
+		}
+	}
+	return string(best)
+}
+
+func clipExecText(text []rune, keep int) string {
+	if len(text) <= keep {
+		return string(text)
+	}
+	if keep == 0 {
+		return ""
+	}
+	const marker = "\n[output truncated]\n"
+	if keep < len(marker) {
+		return "…"
+	}
+	budget := keep - len(marker)
+	head := budget * 2 / 3
+	return string(text[:head]) + marker + string(text[len(text)-(budget-head):])
 }
 
 // capToolResult keeps the head and the tail: a listing's first entries and a
@@ -51,7 +134,7 @@ func capToolResult(s string, limit int) string {
 
 // execOutputBudget gives exec a per-stream byte budget derived from the result
 // cap when the call names none, so exec clips a noisy stream itself and flags
-// truncated, instead of the generic cap cutting through its JSON.
+// truncated. The outer cap then accounts for the complete JSON encoding.
 type execOutputBudget struct {
 	inner tool.InvokableTool
 	kb    int
@@ -70,7 +153,7 @@ func (g *execOutputBudget) InvokableRun(ctx context.Context, args string, opts .
 }
 
 // execOutputKB splits the cap across stdout and stderr. Bytes never undercount
-// characters, so both full streams still fit the cap before JSON escaping.
+// characters before JSON escaping; capExecResult handles the encoded size.
 func execOutputKB(limit int) int {
 	if kb := limit / 2 / 1024; kb > 0 {
 		return kb
