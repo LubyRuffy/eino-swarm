@@ -24,6 +24,11 @@ co-working app built on it. The library API is unchanged except where noted
   `-slow` variant. The report adds cached tokens and cache hit rate per caller,
   a delegated-versus-solo split (duration, tokens, correctness) and the
   manager's own tool calls made while a worker was running.
+- Eval tasks `spec-modules`, `spec-modules-selfreview` and `spec-modules-review`
+  measure whether an independent worker's review of a manager's work catches
+  README rules the author misses, against the author re-checking itself and
+  against no review. Rule tests stay outside the workspace: a `command` check's
+  `argv` may use `{task_dir}` for files kept beside the task.
 
 - `F-170`: `swarm.policy_reasoning_effort` (Settings → Swarm → Policy check
   thinking) sets the reasoning level for the schedule-claim and wake-permission

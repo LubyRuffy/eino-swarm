@@ -387,6 +387,21 @@ def extract_metrics(traces: list[dict]) -> dict:
 # --------------------------------------------------------------- checks
 
 
+def expand_task_dir(checks: list[dict], task_dir: Path) -> list[dict]:
+    """Copies of checks with `{task_dir}` in command argv replaced by the task
+    directory, so a hidden test can live beside the task instead of in the
+    workspace the agent reads. The task's own spec is left as written."""
+    out = []
+    for check in checks:
+        check = dict(check)
+        if "argv" in check:
+            check["argv"] = [str(a).replace("{task_dir}", str(task_dir)) for a in check["argv"]]
+        if "checks" in check:
+            check["checks"] = expand_task_dir(check["checks"], task_dir)
+        out.append(check)
+    return out
+
+
 def run_checks(checks: list[dict], workspace: Path, answer: str, traces: list[dict],
                baseline: dict[str, str]) -> list[dict]:
     return [_run_check(c, workspace, answer, traces, baseline) for c in checks]

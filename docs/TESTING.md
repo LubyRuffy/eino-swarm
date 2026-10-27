@@ -3610,6 +3610,14 @@ python3 tools/agent_eval.py --mock --runs 1     # harness smoke test, no model
   kilobytes, the same question). `multi-module-bugfix` is the parallelism
   case: six unrelated packages, each its own read-fix-verify loop with
   nothing shared.
+  `spec-modules`, `spec-modules-selfreview` and `spec-modules-review` are the
+  review triple: the same three modules to write from a README of numbered
+  rules, graded by rule tests the agent never sees (only plain-case tests are
+  in the workspace). The arms differ only in one closing sentence: nothing,
+  re-check your own work against the rules, or have an independent worker
+  that gets only the README and the code review it. Reading them together
+  says whether a fresh context finds what the author's own second pass does
+  not, which is the evidence for or against requiring independent review.
 - **Isolation**: every run gets a new temporary data directory and its own
   `zwai engine` child (`bin/zwai-eval`, built by the target). The harness reads
   one provider from `~/.zwai-swarm/config.yaml` (or `--config`) without writing
@@ -3618,8 +3626,9 @@ python3 tools/agent_eval.py --mock --runs 1     # harness smoke test, no model
   connection, stops only its own child and deletes that directory, key
   included. The user's engine and data directory are not touched.
 - **Grading** is deterministic: files, JSON values, unchanged test files,
-  commands run in the workspace, answer patterns, chart values, tool and event
-  counts. A conversation that asks a question (`ask_user`), hits the tool-round
+  commands run in the workspace (a checker kept beside the task is named with
+  the `{task_dir}` placeholder in `argv`, so hidden tests never enter the
+  workspace), answer patterns, chart values, tool and event counts. A conversation that asks a question (`ask_user`), hits the tool-round
   cap or times out is interrupted and recorded as that outcome. A task with
   `allow_wait` follows one parked `schedule_wake` until it fires.
 - **Metrics** come from `GET /api/trace/:turn` for every turn: duration, calls
@@ -3653,7 +3662,11 @@ redaction through the actual run path, every check type, the poll loop's
 question/cap/wait/timeout handling, each generated task's answer key
 recomputed from its data, the large survey's filler never stating a port or
 a current team, and every `multi-module-bugfix` defect being fixable (the
-working sources pass) and caught by its own tests.
+working sources pass) and caught by its own tests. The review triple is
+checked the same way: the reference solutions pass every hidden rule, a
+plain-case solution that satisfies the visible tests fails at least four rules
+per module, a missing module reports an import failure instead of crashing,
+and the three prompts differ only in the review request.
 
 ## The scripted offline provider
 

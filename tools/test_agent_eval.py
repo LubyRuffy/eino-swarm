@@ -291,6 +291,22 @@ class ChecksTest(unittest.TestCase):
         self.assertFalse(grade.values_equal(True, 1, 0.1))
         self.assertTrue(grade.values_equal([1, {"a": 2}], [1.0, {"a": 2}], 1e-9))
 
+    def test_command_argv_can_name_a_checker_kept_beside_the_task(self):
+        # A hidden test must not sit in the workspace the agent can read, so a
+        # command check names it through the task directory placeholder.
+        task_dir = self.ws.parent / (self.ws.name + "-task")
+        task_dir.mkdir()
+        self.addCleanup(shutil.rmtree, task_dir)
+        (task_dir / "check.py").write_text("import sys\nsys.exit(0 if open('keep.txt').read() == 'same' else 1)\n")
+        spec = {"type": "command", "argv": ["python3", "{task_dir}/check.py"]}
+        expanded = grade.expand_task_dir([spec, {"type": "any_of", "checks": [spec]}], task_dir)
+        self.assertEqual(expanded[0]["argv"][1], f"{task_dir}/check.py")
+        self.assertEqual(expanded[1]["checks"][0]["argv"][1], f"{task_dir}/check.py")
+        self.assertEqual(spec["argv"][1], "{task_dir}/check.py", "the task's own spec must not be rewritten")
+        self.assertTrue(grade.run_checks(expanded, self.ws, "", [], self.baseline)[0]["ok"])
+        (self.ws / "keep.txt").write_text("other")
+        self.assertFalse(grade.run_checks(expanded, self.ws, "", [], self.baseline)[0]["ok"])
+
     def test_file_unchanged_detects_edits_and_deletion(self):
         spec = {"type": "file_unchanged", "path": "keep.txt"}
         self.assertTrue(self.check(spec)["ok"])
@@ -334,7 +350,7 @@ class ChecksTest(unittest.TestCase):
 class TaskCatalogTest(unittest.TestCase):
     def test_every_task_loads_and_is_well_formed(self):
         tasks = agent_eval.load_tasks([])
-        self.assertGreaterEqual(len(tasks), 13)
+        self.assertGreaterEqual(len(tasks), 16)
         for t in tasks:
             self.assertTrue(t["prompt"], t["id"])
             self.assertIn(t["expect_delegation"], grade.DELEGATION)
@@ -520,6 +536,112 @@ class TaskCatalogTest(unittest.TestCase):
         base_spec = grade.load_task(agent_eval.TASKS_DIR / "multi-module-bugfix")
         self.assertEqual([c["name"] for c in slow_spec["checks"]], [c["name"] for c in base_spec["checks"]])
         self.assertEqual(slow_spec["prompt"], base_spec["prompt"])
+
+    # The review pair is a measurement only if the hidden rules reach past the
+    # plain cases an agent sees: a solution that satisfies the visible tests
+    # must still miss rules, or every arm would pass and show nothing.
+    PLAIN_CASE_SOLUTIONS = {
+        "durations": """import re
+def parse_duration(text):
+    size = {"d": 86400, "h": 3600, "m": 60, "s": 1}
+    return sum(int(n) * size[u] for n, u in re.findall(r"(\\d+)([dhms])", text))
+def format_duration(seconds):
+    out = ""
+    for u, size in (("d", 86400), ("h", 3600), ("m", 60), ("s", 1)):
+        n, seconds = divmod(seconds, size)
+        if n:
+            out += "%d%s" % (n, u)
+    return out
+""",
+        "semver": """def parse(text):
+    core, _, pre = text.partition("-")
+    a, b, c = (int(x) for x in core.split("."))
+    return (a, b, c, tuple(pre.split(".")) if pre else ())
+def compare(x, y):
+    px, py = parse(x), parse(y)
+    return (px > py) - (px < py)
+def sort_versions(vs):
+    return sorted(vs, key=parse)
+""",
+        "ranges": """def parse_ranges(text, max_page):
+    pages = set()
+    for item in text.split(","):
+        a, _, b = item.partition("-")
+        pages.update(range(int(a), int(b or a) + 1))
+    return sorted(pages)
+def format_ranges(pages):
+    pages = sorted(set(pages))
+    out, i = [], 0
+    while i < len(pages):
+        j = i
+        while j + 1 < len(pages) and pages[j + 1] == pages[j] + 1:
+            j += 1
+        out.append("%d-%d" % (pages[i], pages[j]) if j > i else str(pages[i]))
+        i = j + 1
+    return ",".join(out)
+""",
+    }
+
+    def spec_modules_check(self, ws, module):
+        hidden = agent_eval.TASKS_DIR / "spec-modules" / "hidden" / "run_hidden.py"
+        return subprocess.run([sys.executable, str(hidden), module], cwd=ws, capture_output=True, text=True,
+                              env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+
+    def test_spec_modules_reference_meets_every_hidden_rule(self):
+        task = grade.load_task(agent_eval.TASKS_DIR / "spec-modules")
+        broken = self.prepared("spec-modules")
+        fixed = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, fixed)
+        subprocess.run([sys.executable, str(task["dir"] / "generate.py"), str(fixed), "--fixed"], check=True)
+        results = grade.run_checks(grade.expand_task_dir(task["checks"], task["dir"]), fixed, "", [],
+                                   grade.hash_tree(broken))
+        self.assertTrue(all(r["ok"] for r in results), [r for r in results if not r["ok"]])
+
+    def test_spec_modules_starts_without_a_solution_and_hides_its_rule_tests(self):
+        task = grade.load_task(agent_eval.TASKS_DIR / "spec-modules")
+        ws = self.prepared("spec-modules")
+        names = sorted(p.relative_to(ws).as_posix() for p in ws.rglob("*") if p.is_file())
+        self.assertEqual(names, sorted(f"{m}/{f}" for m in ("durations", "semver", "ranges")
+                                       for f in ("README.md", "test_basic.py")))
+        results = grade.run_checks(grade.expand_task_dir(task["checks"], task["dir"]), ws, "", [],
+                                   grade.hash_tree(ws))
+        self.assertEqual([r["ok"] for r in results[:3]], [False] * 3, "nothing written yet must not pass")
+        self.assertTrue(all(r["ok"] for r in results[3:]), "the untouched README and tests are the baseline")
+
+    def test_spec_modules_hidden_rules_reject_a_plain_case_solution(self):
+        for module, source in self.PLAIN_CASE_SOLUTIONS.items():
+            ws = self.prepared("spec-modules")
+            (ws / module / f"{module}.py").write_text(source)
+            basic = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", module, "-q"], cwd=ws,
+                                   capture_output=True, env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+            self.assertEqual(basic.returncode, 0, f"{module}: the plain solution must satisfy the visible tests")
+            hidden = self.spec_modules_check(ws, module)
+            self.assertEqual(hidden.returncode, 1, module)
+            failed = hidden.stdout.strip().splitlines()[-1].removeprefix("failed rules: ").split(",")
+            self.assertGreaterEqual(len(failed), 4, f"{module}: only {failed} are beyond the plain cases")
+
+    def test_spec_modules_reports_a_missing_module_instead_of_crashing(self):
+        ws = self.prepared("spec-modules")
+        out = self.spec_modules_check(ws, "durations")
+        self.assertEqual(out.returncode, 1)
+        self.assertIn("failed rules: import", out.stdout)
+
+    def test_review_arms_differ_only_in_the_request_for_a_check(self):
+        base = grade.load_task(agent_eval.TASKS_DIR / "spec-modules")
+        selfreview = grade.load_task(agent_eval.TASKS_DIR / "spec-modules-selfreview")
+        independent = grade.load_task(agent_eval.TASKS_DIR / "spec-modules-review")
+        files = lambda ws: {p.relative_to(ws).as_posix(): p.read_bytes() for p in ws.rglob("*") if p.is_file()}
+        reference = files(self.prepared("spec-modules"))
+        self.assertEqual(files(self.prepared("spec-modules-selfreview")), reference)
+        self.assertEqual(files(self.prepared("spec-modules-review")), reference)
+        for arm in (selfreview, independent):
+            self.assertTrue(arm["prompt"].startswith(base["prompt"]))
+            self.assertGreater(len(arm["prompt"]), len(base["prompt"]))
+        self.assertIn("worker", independent["prompt"])
+        self.assertNotIn("worker", selfreview["prompt"])
+        self.assertEqual(selfreview["checks"], base["checks"])
+        self.assertEqual(independent["checks"][:-1], base["checks"])
+        self.assertEqual(independent["checks"][-1]["tool"], "spawn_agent")
 
     def test_bugfix_fixture_starts_broken(self):
         self.assertNotEqual(self.unittest_in(self.prepared("bugfix-python")), 0)
