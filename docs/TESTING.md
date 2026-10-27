@@ -3604,6 +3604,12 @@ python3 tools/agent_eval.py --mock --runs 1     # harness smoke test, no model
   and wait permission), a static `fixture/` and/or a seeded `generate.py`
   that writes large inputs into the workspace. Fixtures are synthetic; task
   wording never enters a product prompt, default or test expectation.
+  Some tasks exist as a pair so a delegation change can be read against
+  scale: `multi-dir-survey` (four small services, everything fits one
+  context) and `multi-dir-survey-large` (twelve services of about fifty
+  kilobytes, the same question). `multi-module-bugfix` is the parallelism
+  case: six unrelated packages, each its own read-fix-verify loop with
+  nothing shared.
 - **Isolation**: every run gets a new temporary data directory and its own
   `zwai engine` child (`bin/zwai-eval`, built by the target). The harness reads
   one provider from `~/.zwai-swarm/config.yaml` (or `--config`) without writing
@@ -3619,12 +3625,21 @@ python3 tools/agent_eval.py --mock --runs 1     # harness smoke test, no model
 - **Metrics** come from `GET /api/trace/:turn` for every turn: duration, calls
   and tokens split into manager, workers and each host-side caller
   (`title-namer`, `memory-reviewer`, `schedule-answer-policy`,
-  `thread-wake-policy`, `session-memory`, `compact-summarizer`), the first
-  manager request's `input_chars` (system prompt size), spawns, `fork_context`,
-  tool counts, `skill_view`, `model_retry` reasons and errors. The harness waits
+  `thread-wake-policy`, `session-memory`, `compact-summarizer`), cached
+  prompt tokens per caller, the first manager request's `input_chars` (system
+  prompt size), spawns, `fork_context`, the manager's own tool calls made
+  while a spawned worker had not yet finished, tool counts, `skill_view`,
+  `model_retry` reasons and errors. The harness waits
   up to `--review-wait` seconds (default 240) for the post-turn memory review so
   its cost is attributed; a review the engine reports as still running at
   shutdown is counted as cut off, and its tokens are only a lower bound.
+- **Reading the report.** *Delegated vs solo* splits each task's runs by
+  whether the manager spawned workers and gives medians for time and tokens
+  on each side. The model chooses, so the groups are not randomized and a
+  side with one or two runs is an anecdote; its `own calls` column is the
+  duplicate-investigation signal (manager tool calls while a worker was
+  still running). *Tokens by caller* adds cached tokens and the hit rate, so
+  a cheap-looking run with a cold prefix is not mistaken for a cheap one.
 - **Evidence** goes to `output/agent-eval/<timestamp>/` (ignored by git):
   `report.md`, `report.json` and, per run, `result.json`, `answer.md`,
   `traces.json`, `engine.log` and a workspace copy. Every file is redacted for
@@ -3635,8 +3650,10 @@ Compare architectures by task, not only by the total: look at which runs
 flipped, and run each task more than once. `tools/test_agent_eval.py` (part of
 `make docs-check`) covers the harness offline: provider extraction, key
 redaction through the actual run path, every check type, the poll loop's
-question/cap/wait/timeout handling, and each generated task's answer key
-recomputed from its data.
+question/cap/wait/timeout handling, each generated task's answer key
+recomputed from its data, the large survey's filler never stating a port or
+a current team, and every `multi-module-bugfix` defect being fixable (the
+working sources pass) and caught by its own tests.
 
 ## The scripted offline provider
 

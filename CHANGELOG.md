@@ -19,6 +19,12 @@ co-working app built on it. The library API is unchanged except where noted
   deterministically, and reports duration, tokens per caller (manager,
   workers, host-side policy/review/title calls), delegation and skill use.
   Not part of `make check` or CI; see `docs/TESTING.md`.
+- Eval tasks for delegation economics: `multi-dir-survey-large` (twelve
+  services, ~555 KB), `multi-module-bugfix` (six independent packages) and its
+  `-slow` variant. The report adds cached tokens and cache hit rate per caller,
+  a delegated-versus-solo split (duration, tokens, correctness) and the
+  manager's own tool calls made while a worker was running.
+
 
 - `F-170`: `swarm.policy_reasoning_effort` (Settings → Swarm → Policy check
   thinking) sets the reasoning level for the schedule-claim and wake-permission
