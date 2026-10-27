@@ -350,6 +350,9 @@ func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectCo
 		instruction = memory.LibraryReviewPrompt()
 		description = "records reusable procedures from a conversation that belongs to no project"
 	}
+	if turn.Status != store.TurnError {
+		instruction += "\n" + workerLifecycleGuidance + "\n"
+	}
 	effort, optionalEffort := e.cfg.Memory.ReviewEffort(turn.ReasoningEffort)
 	e.driveReviewer(reviewRun{
 		threadID:       threadID,

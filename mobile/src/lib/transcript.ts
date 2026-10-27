@@ -346,7 +346,7 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
       })
       return next
     case "error":
-      next.push({ id: blockId(ev), kind: ev.err === "interrupted" ? "notice" : "error", text: ev.err || ev.text })
+      next.push({ id: blockId(ev), kind: ev.err === "interrupted" || ev.err === "stopped before collecting worker results" ? "notice" : "error", text: ev.err || ev.text })
       next.push({ id: `${blockId(ev)}:end`, kind: "turn_end", text: ev.created_at })
       return next
     case "done":
@@ -355,6 +355,20 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
     case "goal_complete":
       next.push({ id: blockId(ev), kind: "notice", text: t("notice.goalCompleted") })
       return next
+    case "workers_collection_resumed":
+      next.push({ id: blockId(ev), kind: "notice", text: t("notice.collectionContinued") })
+      return next
+    case "max_iterations": {
+      try {
+        const pause = JSON.parse(ev.text ?? "") as { reason?: unknown; automatic_resume?: unknown }
+        if (pause?.reason === "workers_uncollected") {
+          next.push({ id: blockId(ev), kind: "notice", text: t(pause.automatic_resume === true ? "notice.collectionWaiting" : "notice.collectionPaused") })
+          return next
+        }
+      } catch { /* Older pause events may contain plain text. */ }
+      if (ev.text && !looksPacked(ev.text)) next.push({ id: blockId(ev), kind: "notice", text: ev.text })
+      return next
+    }
     case "goal":
     case "goal_capped":
     case "goal_idle":
@@ -366,7 +380,6 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
     case "plan_updated":
     case "plan_implemented":
     case "plan_cancelled":
-    case "max_iterations":
     case "max_iterations_continued":
     case "compacted":
       // Packed JSON here is a pulse/cap/retry envelope. Desktop never

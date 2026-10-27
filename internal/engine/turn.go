@@ -42,7 +42,8 @@ type runtime struct {
 	// continueCh is set only while the manager is paused at its tool-round
 	// cap. true extends the run; false (or interrupt) ends it. Buffered so
 	// Interrupt cannot block on a receiver that has not reached the select.
-	continueCh chan bool
+	continueCh      chan bool
+	collectionPause *workerCollectionPause
 	// ask is set only while ask_user is blocked waiting for the human.
 	ask                *pendingAsk
 	askStash           *askReply
@@ -66,7 +67,8 @@ type runtime struct {
 	planted []swarm.FinishedWorker
 	// parked is a swarm left running across /goal sessions or scheduled
 	// wakes so in-flight sub-agents survive the manager's turn boundary.
-	parked *swarm.Registry
+	parked           *swarm.Registry
+	workerAccounting *workerAccounting
 }
 
 // release marks the runtime idle. It runs before the turn's terminal event is
@@ -88,6 +90,9 @@ func (rt *runtime) release(cancel context.CancelFunc, idle chan struct{}, turnID
 	rt.running = false
 	rt.cancel = nil
 	rt.reg = nil
+	if rt.parked == nil {
+		rt.workerAccounting = nil
+	}
 	rt.mu.Unlock()
 	if wasRunning {
 		close(idle)
@@ -179,6 +184,7 @@ func (rt *runtime) occupy(reg *swarm.Registry, cancel context.CancelFunc, turnID
 	if rt.running {
 		return false
 	}
+	rt.bindWorkerAccountingLocked(reg, turnID)
 	rt.reg, rt.cancel, rt.turnID, rt.startedAt, rt.running, rt.idle = reg, cancel, turnID, time.Now(), true, idle
 	rt.abandoned = false
 	rt.restore, rt.planted = nil, nil
@@ -205,6 +211,7 @@ func (rt *runtime) close() {
 	parked := rt.parked
 	rt.reg = nil
 	rt.parked = nil
+	rt.workerAccounting = nil
 	rt.mu.Unlock()
 	if reg != nil {
 		reg.Close()

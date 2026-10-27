@@ -153,9 +153,19 @@ func TestReviewSourceDoesNotMutatePersistedSteerAndMarksDerivedText(t *testing.T
 		}
 	}
 	for _, text := range []string{strings.Repeat("界", 500), strings.Repeat("x", 500)} {
-		body := renderReviewFromEvents([]store.Event{{Seq: 1, Kind: KindUser, Text: text}}, "", "")
-		if strings.Contains(body, "omitted") {
+		source := []store.Event{{Seq: 1, Kind: KindUser, Text: text}}
+		input := selectReviewInputWithHistory(source, source, "", "")
+		body := input.Transcript
+		// The lifecycle guidance can discuss omitted identities even when
+		// this source is complete. Only the selector's marker reports loss.
+		if strings.Contains(body, reviewSourceOmitted) {
 			t.Fatal("a short complete source was reported as incomplete")
+		}
+		if !strings.Contains(body, "human: "+text+"\n\n") || input.Events[1].Text != text {
+			t.Fatal("a supposedly complete source lost text or writable authority")
+		}
+		if !strings.HasPrefix(body, workerEvidenceStart) || !strings.Contains(body, workerEvidenceEnd) || utf8.RuneCountInString(body) > reviewMaxChars {
+			t.Fatal("complete source displaced lifecycle evidence or exceeded the shared budget")
 		}
 	}
 }

@@ -26,6 +26,10 @@ export const zh: Record<MessageKey, string> = {
   "pcTimeouts.rejected": "电脑拒绝了这些超时数值。",
   "pcTimeouts.disconnected": "请连接此电脑后编辑超时。",
   "notice.peerTask": "协作任务 {id}：{text}",
+  "notice.collectionWaiting": "正在等待委派工作结束。主管会自动继续一次，收取结果。",
+  "notice.collectionPaused": "委派结果尚未收齐，主管已暂停。",
+  "notice.collectionContinued": "正在继续收取委派结果。",
+  "notice.collectionStopped": "已停止，委派结果未收齐。",
   "scan.title": "扫码绑定这台 PC",
   "scan.hint":
     "打开 zwai 设置 → 手机，把配对二维码放进取景框。没有摄像头时粘贴同一条 URI。",

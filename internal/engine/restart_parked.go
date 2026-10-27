@@ -117,6 +117,7 @@ func (e *Engine) resumeParkedThreadContext(ctx context.Context, th *store.Thread
 		return 0, nil
 	}
 	rt.parked, rt.turnID, rt.abandoned = reg, turn.ID, false
+	rt.bindWorkerAccountingLocked(reg, turn.ID)
 	rt.mu.Unlock()
 	reg.SetHistory(checkpoint.ManagerHistory)
 	for _, msg := range checkpoint.ManagerInbox {

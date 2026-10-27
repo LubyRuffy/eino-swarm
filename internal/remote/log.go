@@ -102,6 +102,16 @@ func hasPhoneContent(events []store.Event) bool {
 			continue
 		}
 		if ev.Kind == "max_iterations" || ev.Kind == "max_iterations_continued" || ev.Kind == "compacted" {
+			// Unlike ordinary packed cap metadata, worker-collection pauses
+			// render a localized explanation on the phone, including in history.
+			if ev.Kind == "max_iterations" {
+				var pause struct {
+					Reason string `json:"reason"`
+				}
+				if json.Unmarshal([]byte(ev.Text), &pause) == nil && pause.Reason == "workers_uncollected" {
+					return true
+				}
+			}
 			body := strings.TrimSpace(ev.Text)
 			if strings.HasPrefix(body, "{") || strings.HasPrefix(body, "[") {
 				continue

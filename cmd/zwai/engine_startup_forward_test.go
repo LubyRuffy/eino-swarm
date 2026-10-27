@@ -43,23 +43,28 @@ func TestAcknowledgedReplacementKeepsItsStartingChildAtColdWaitLimit(t *testing.
 	t.Setenv("ZWAI_ENGINE_STARTUP_DELAY", "5s")
 	t.Setenv("GORACE", "atexit_sleep_ms=0")
 	dir := acknowledgedStartingEngine(t)
-	t.Cleanup(func() { stopStartupHelper(t, dir) })
+	childPID := 0
+	t.Cleanup(func() { stopStartupHelper(t, dir, childPID) })
 	beforeLauncher, beforeWait := launchEngine, engineBootWait
 	launchEngine, engineBootWait = spawnEngineContext, 300*time.Millisecond
 	t.Cleanup(func() { launchEngine, engineBootWait = beforeLauncher, beforeWait })
 	url, err := ensureEngine(dir, "127.0.0.1:0", true)
-	body, pidErr := os.ReadFile(filepath.Join(dir, "startup-helper.pid"))
-	pid, _ := strconv.Atoi(string(body))
-	if url != "" || !errors.Is(err, context.DeadlineExceeded) || pidErr != nil || !lease.Busy(dir) {
-		t.Fatalf("startup deadline killed the sole replacement: url=%q err=%v pid=%d pidErr=%v held=%v", url, err, pid, pidErr, lease.Busy(dir))
-	}
 	var pending *engineStartupPendingError
-	if !errors.As(err, &pending) || pending.PID != pid || pending.LogPath != filepath.Join(dir, "engine.log") {
+	if errors.As(err, &pending) {
+		childPID = pending.PID
+	}
+	if url != "" || !errors.Is(err, context.DeadlineExceeded) || pending == nil || pending.PID <= 0 || pending.LogPath != filepath.Join(dir, "engine.log") {
 		t.Fatalf("startup did not identify the surviving replacement: %v", err)
 	}
-	if !strings.Contains(err.Error(), fmt.Sprint(pid)) || !strings.Contains(err.Error(), filepath.Join(dir, "engine.log")) {
+	if !strings.Contains(err.Error(), fmt.Sprint(childPID)) || !strings.Contains(err.Error(), filepath.Join(dir, "engine.log")) {
 		t.Fatalf("pending startup omitted the process or its log: %v", err)
 	}
+	// The cold wait includes scheduling the child runtime. Its expiry need not
+	// imply that Acquire has run yet; observe that separate boundary explicitly.
+	waitRestartCondition(t, 5*time.Second, "the identified replacement acquiring its own lease after the cold wait", func() bool {
+		body, err := os.ReadFile(filepath.Join(dir, "startup-helper.pid"))
+		return err == nil && string(body) == strconv.Itoa(childPID) && lease.Busy(dir)
+	})
 }
 
 // The test helper owns a real lock in another process; only its HTTP restart
@@ -82,8 +87,12 @@ func acknowledgedStartingEngine(t *testing.T) string {
 	return dir
 }
 
-func stopUnconfirmedStartupAttempt(t *testing.T, dir string) {
+func stopUnconfirmedStartupAttempt(t *testing.T, dir string, ownedPID ...int) {
 	t.Helper()
+	if len(ownedPID) > 0 && ownedPID[0] > 0 {
+		stopStartupHelperPID(t, ownedPID[0])
+		return
+	}
 	deadline := time.Now().Add(5 * time.Second)
 	for startupBudgetGoroutines("spawnEngineContext.func1(") != 0 && time.Now().Before(deadline) {
 		body, err := os.ReadFile(filepath.Join(dir, "startup-helper-attempt.pid"))
@@ -93,15 +102,42 @@ func stopUnconfirmedStartupAttempt(t *testing.T, dir string) {
 				t.Errorf("invalid startup attempt identity %q: %v", body, err)
 				return
 			}
-			process, err := os.FindProcess(pid)
-			if err == nil {
-				_ = process.Kill()
-			}
+			stopStartupHelperPID(t, pid)
 			break
 		}
 		time.Sleep(time.Millisecond)
 	}
 	waitForStartupBudgetGoroutines(t, "spawnEngineContext.func1(", 0)
+}
+
+// A cold-start wait may finish before the child has acquired its lease.
+// Cleanup must still reap this launch's child and its original Wait goroutine.
+func TestStartupCleanupReapsHelperBeforeLeasePublication(t *testing.T) {
+	t.Setenv("ZWAI_ENGINE_STARTUP_HELPER", "1")
+	t.Setenv("GORACE", "atexit_sleep_ms=0")
+	dir := t.TempDir()
+	t.Setenv("ZWAI_ENGINE_BEFORE_ACQUIRE_RELEASE_FILE", filepath.Join(dir, "acquire-release"))
+	t.Cleanup(func() { stopUnconfirmedStartupAttempt(t, dir) })
+	before := engineBootWait
+	engineBootWait = 200 * time.Millisecond
+	t.Cleanup(func() { engineBootWait = before })
+	ctx := context.WithValue(t.Context(), engineStartupPolicyKey{}, engineStartupPolicy{owner: t.Context(), forwardOnly: true})
+	_, err := spawnEngineContext(ctx, dir, "127.0.0.1:0", true)
+	var pending *engineStartupPendingError
+	if !errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &pending) {
+		t.Fatalf("gated child did not outlive the bounded launcher wait: %v", err)
+	}
+	waitRestartCondition(t, 5*time.Second, "owned helper reaching its pre-acquire gate", func() bool {
+		body, err := os.ReadFile(filepath.Join(dir, "startup-helper-attempt.pid"))
+		return err == nil && string(body) == strconv.Itoa(pending.PID)
+	})
+	if _, err := os.Stat(filepath.Join(dir, "startup-helper.pid")); !os.IsNotExist(err) || lease.Busy(dir) {
+		t.Fatalf("fixture passed the lease boundary before release: pidErr=%v held=%v", err, lease.Busy(dir))
+	}
+	stopStartupHelper(t, dir)
+	if remaining := startupBudgetGoroutines("spawnEngineContext.func1("); remaining != 0 {
+		t.Fatalf("cleanup without a lease pidfile left %d original child waiters", remaining)
+	}
 }
 
 // A real detached child publishes after the original 30s handoff deadline.
@@ -189,27 +225,38 @@ func TestForwardReplacementPreservesExplicitCancellationCause(t *testing.T) {
 
 func TestForwardReplacementExpiryDoesNotClaimOrStopACompetingHolder(t *testing.T) {
 	t.Setenv("ZWAI_ENGINE_STARTUP_HELPER", "1")
-	t.Setenv("ZWAI_ENGINE_BEFORE_ACQUIRE_DELAY", "500ms")
 	t.Setenv("GORACE", "atexit_sleep_ms=0")
 	dir := t.TempDir()
+	release := filepath.Join(dir, "acquire-release")
+	t.Setenv("ZWAI_ENGINE_BEFORE_ACQUIRE_RELEASE_FILE", release)
 	holder := startLeaseHolder(t, dir)
 	// Register after the holder so a failing assertion stops our delayed child
 	// before releasing the competing lock. Otherwise that child could acquire
 	// it during cleanup and recreate the directory after TempDir removes it.
-	t.Cleanup(func() { stopUnconfirmedStartupAttempt(t, dir) })
+	childPID := 0
+	t.Cleanup(func() { stopUnconfirmedStartupAttempt(t, dir, childPID) })
 	before := engineBootWait
 	engineBootWait = 200 * time.Millisecond
 	t.Cleanup(func() { engineBootWait = before })
 	ctx := context.WithValue(t.Context(), engineStartupPolicyKey{}, engineStartupPolicy{owner: t.Context(), forwardOnly: true})
 	_, err := spawnEngineContext(ctx, dir, "127.0.0.1:0", true)
 	var pending *engineStartupPendingError
+	if errors.As(err, &pending) {
+		childPID = pending.PID
+	}
 	if !errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &pending) || pending.PID <= 0 || pending.PID == holder.Process.Pid || !strings.Contains(err.Error(), "ownership unconfirmed") || !lease.Busy(dir) {
 		t.Fatalf("a failed child claimed or stopped the competing lease: err=%v held=%v", err, lease.Busy(dir))
 	}
+	waitRestartCondition(t, 5*time.Second, "the identified child waiting before its competing lease attempt", func() bool {
+		body, err := os.ReadFile(filepath.Join(dir, "startup-helper-attempt.pid"))
+		return err == nil && string(body) == strconv.Itoa(childPID)
+	})
+	if err := os.WriteFile(release, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	waitForStartupBudgetGoroutines(t, "spawnEngineContext.func1(", 0)
-	body, readErr := os.ReadFile(filepath.Join(dir, "startup-helper-attempt.pid"))
-	if readErr != nil || string(body) != strconv.Itoa(pending.PID) {
-		t.Fatalf("unconfirmed error did not identify this launch's child: pid=%d attempt=%q err=%v", pending.PID, body, readErr)
+	if !lease.Busy(dir) || !strings.Contains(engineLogTail(filepath.Join(dir, "engine.log"), 0), lease.ErrHeld.Error()) {
+		t.Fatalf("the losing child did not refuse the competing holder: held=%v log=%q", lease.Busy(dir), engineLogTail(filepath.Join(dir, "engine.log"), 0))
 	}
 }
 
@@ -217,23 +264,41 @@ func TestForwardReplacementExpiryDoesNotClaimOrStopACompetingHolder(t *testing.T
 // owner receipt. A forward-only wait cannot turn missing evidence into a kill.
 func TestForwardReplacementExpiryPreservesChildWhoseOwnershipIsNotYetKnown(t *testing.T) {
 	t.Setenv("ZWAI_ENGINE_STARTUP_HELPER", "1")
-	t.Setenv("ZWAI_ENGINE_BEFORE_ACQUIRE_DELAY", "500ms")
 	t.Setenv("GORACE", "atexit_sleep_ms=0")
 	dir := t.TempDir()
-	t.Cleanup(func() { stopStartupHelper(t, dir) })
-	t.Cleanup(func() { stopUnconfirmedStartupAttempt(t, dir) })
+	release := filepath.Join(dir, "acquire-release")
+	t.Setenv("ZWAI_ENGINE_BEFORE_ACQUIRE_RELEASE_FILE", release)
+	childPID := 0
+	t.Cleanup(func() { stopStartupHelper(t, dir, childPID) })
+	t.Cleanup(func() { stopUnconfirmedStartupAttempt(t, dir, childPID) })
 	before := engineBootWait
 	engineBootWait = 200 * time.Millisecond
 	t.Cleanup(func() { engineBootWait = before })
 	ctx := context.WithValue(t.Context(), engineStartupPolicyKey{}, engineStartupPolicy{owner: t.Context(), forwardOnly: true})
 	_, err := spawnEngineContext(ctx, dir, "127.0.0.1:0", true)
+	var pending *engineStartupPendingError
+	if errors.As(err, &pending) {
+		childPID = pending.PID
+	}
+	if !errors.Is(err, context.DeadlineExceeded) || pending == nil || childPID <= 0 {
+		t.Fatalf("unconfirmed child was not preserved: %v", err)
+	}
+	waitRestartCondition(t, 5*time.Second, "the identified child waiting before lease acquisition", func() bool {
+		body, err := os.ReadFile(filepath.Join(dir, "startup-helper-attempt.pid"))
+		return err == nil && string(body) == strconv.Itoa(childPID)
+	})
+	if lease.Busy(dir) {
+		t.Fatal("the gated unconfirmed child already acquired the lease")
+	}
+	if err := os.WriteFile(release, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	var rec lease.Record
 	waitRestartCondition(t, 5*time.Second, "unconfirmed child publishing its real lease after the cold wait", func() bool {
 		var discoverErr error
 		rec, discoverErr = lease.Discover(dir, true)
 		return discoverErr == nil
 	})
-	var pending *engineStartupPendingError
 	if !errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &pending) || pending.PID != rec.PID || !strings.Contains(err.Error(), "ownership unconfirmed") || !strings.Contains(err.Error(), filepath.Join(dir, "engine.log")) {
 		t.Fatalf("missing ownership evidence became a claimed lease or omitted its diagnostics: %v", err)
 	}

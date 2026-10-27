@@ -432,7 +432,9 @@ print(json.dumps(sample))
         parent.write_text('''import json,os,subprocess,sys,time
 import native_macos_case_power as power
 time.sleep(.35)
-deadline=time.monotonic()+.30
+# Real CLT startup belongs to the live preparation budget. Keep the short
+# expired case separate from the positive clock-domain preservation check.
+deadline=time.monotonic()+(.30 if sys.argv[2]=='expired' else 2)
 raw=time.clock_gettime(time.CLOCK_MONOTONIC_RAW)
 raw_deadline=raw+(deadline-time.monotonic())
 environment=dict(os.environ,ZWAI_NATIVE_PREPARE_DEADLINE=str(deadline),
@@ -450,14 +452,15 @@ print(out.decode().strip())
 
     def test_real_clt39_parent_prefix_and_new_exec_cannot_extend_original_raw_budget(self):
         row = self.clt_clock_transfer(False)
-        self.assertTrue(row["admitted"])
-        self.assertGreater(row["remaining"], 0)
-        self.assertLessEqual(row["remaining"], row["original_raw_remaining"] + .02)
+        self.assertTrue(row["admitted"], row)
+        self.assertGreater(row["remaining"], 0, row)
+        self.assertLessEqual(row["remaining"], 2, row)
+        self.assertLessEqual(row["remaining"], row["original_raw_remaining"] + .02, row)
 
     def test_real_clt39_expired_parent_budget_refuses_before_native_spawn(self):
         row = self.clt_clock_transfer(True)
-        self.assertFalse(row["admitted"])
-        self.assertIn("deadline", row["error"])
+        self.assertFalse(row["admitted"], row)
+        self.assertIn("deadline", row["error"], row)
 
     def test_clt_clock_regression_explicitly_skips_when_the_runtime_is_unavailable(self):
         with mock.patch.object(sys, "platform", "linux"), mock.patch.object(subprocess, "check_output") as spawn:

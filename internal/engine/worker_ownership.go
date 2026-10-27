@@ -97,6 +97,9 @@ func (rt *runtime) reapUnownedParked() {
 	reg, turnID := rt.parked, rt.turnID
 	rt.recordParkedStop(reg, turnID)
 	rt.parked = nil
+	if rt.workerAccounting != nil && rt.workerAccounting.registry == reg {
+		rt.workerAccounting = nil
+	}
 	rt.mu.Unlock()
 	reg.Cleanup()
 	reg.Close()

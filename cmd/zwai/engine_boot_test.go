@@ -35,6 +35,17 @@ func runStartupHelper() int {
 		return 3
 	}
 	_ = os.WriteFile(filepath.Join(*dir, "startup-helper-attempt.pid"), []byte(strconv.Itoa(os.Getpid())), 0o600)
+	if release := os.Getenv("ZWAI_ENGINE_BEFORE_ACQUIRE_RELEASE_FILE"); release != "" {
+		for {
+			if _, err := os.Stat(release); err == nil {
+				break
+			} else if !os.IsNotExist(err) {
+				fmt.Fprintln(os.Stderr, err)
+				return 7
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
 	beforeAcquire, _ := time.ParseDuration(os.Getenv("ZWAI_ENGINE_BEFORE_ACQUIRE_DELAY"))
 	time.Sleep(beforeAcquire)
 	hold, err := lease.Acquire(*dir)
@@ -104,17 +115,25 @@ func TestSpawnEngineAcceptsSlowReadinessBeyondFifteenSeconds(t *testing.T) {
 	}
 }
 
-func stopStartupHelper(t *testing.T, dir string) {
+func stopStartupHelper(t *testing.T, dir string, ownedPID ...int) {
 	t.Helper()
-	body, err := os.ReadFile(filepath.Join(dir, "startup-helper.pid"))
-	if err != nil {
+	pid := 0
+	if len(ownedPID) > 0 {
+		pid = ownedPID[0]
+	}
+	if pid == 0 {
+		for _, name := range []string{"startup-helper.pid", "startup-helper-attempt.pid"} {
+			body, err := os.ReadFile(filepath.Join(dir, name))
+			if err == nil {
+				pid, _ = strconv.Atoi(string(body))
+				break
+			}
+		}
+	}
+	if pid == 0 {
 		return
 	}
-	pid, _ := strconv.Atoi(string(body))
-	if pid > 0 && pid != os.Getpid() {
-		process, _ := os.FindProcess(pid)
-		_ = process.Kill()
-	}
+	stopStartupHelperPID(t, pid)
 	deadline := time.Now().Add(time.Second)
 	for lease.Busy(dir) && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
@@ -122,6 +141,20 @@ func stopStartupHelper(t *testing.T, dir string) {
 	if lease.Busy(dir) {
 		t.Error("startup helper retained its lease after cleanup")
 	}
+}
+
+func stopStartupHelperPID(t *testing.T, pid int) {
+	t.Helper()
+	if pid <= 0 || pid == os.Getpid() {
+		t.Errorf("invalid owned startup helper PID %d", pid)
+		return
+	}
+	process, err := os.FindProcess(pid)
+	if err == nil {
+		_ = process.Kill()
+	}
+	// Lease release alone does not join the launcher's original cmd.Wait.
+	waitForStartupBudgetGoroutines(t, "spawnEngineContext.func1(", 0)
 }
 
 func TestSpawnEngineFailureUsesOnlyItsOwnLogAndExitStatus(t *testing.T) {

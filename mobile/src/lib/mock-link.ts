@@ -1,6 +1,7 @@
 import { restartAskHistory } from "./mock-ask-restart"
 import { generationHistory } from "./mock-generation"
 import { backoffHistory } from "./mock-backoff"
+import { workerCollectionHistory } from "./mock-worker-collection"
 import { scriptedTurn, type Step } from "./mock-turn"
 import {
   OpAnswer,
@@ -247,6 +248,9 @@ export class MockHost {
         this.seed(live, backoffHistory(), true)
       } else if (new URLSearchParams(location.search).get("history") === "stopped-workers") {
         this.seed(live, stopReplayStart(), true)
+      } else if (new URLSearchParams(location.search).get("history") === "worker-collection") {
+        const completed = new URLSearchParams(location.search).get("collection") === "done"
+        this.seed(live, workerCollectionHistory(completed), !completed)
       } else if (new URLSearchParams(location.search).get("history") === "streamed-agents") {
         this.seed(live, [
           { kind: "agent_message", agentID: "manager", text: "Older manager answer" },

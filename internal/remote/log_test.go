@@ -201,6 +201,54 @@ func TestLogFindsEarlierAnswerPastHiddenSubagentBookkeeping(t *testing.T) {
 	}
 }
 
+// Worker collection pauses now paint a reason on the phone. Earlier paging
+// must stop on that page rather than silently skip it as packed cap metadata.
+func TestLogKeepsWorkerCollectionPausesInEarlierPages(t *testing.T) {
+	for _, automatic := range []bool{false, true} {
+		t.Run(map[bool]string{false: "human", true: "automatic"}[automatic], func(t *testing.T) {
+			e := testEngine(t)
+			th, err := e.CreateThread("worker collection history", "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			pause, _ := json.Marshal(map[string]any{"reason": "workers_uncollected", "automatic_resume": automatic})
+			for _, ev := range []store.Event{
+				{Kind: "agent_message", Text: "earlier answer"},
+				{Kind: "tool_call", Text: "spawn_agent({})"},
+				{Kind: "max_iterations", Text: string(pause)},
+				{Kind: "tool_result", Text: "worker bookkeeping"},
+				{Kind: "agent_message", Text: "newer answer"},
+			} {
+				ev.ThreadID = th.ID
+				if err := e.Store().AppendEvent(&ev); err != nil {
+					t.Fatal(err)
+				}
+			}
+			resp := Handle(e, config.RemoteConfig{WatchEvents: 2}, Request{
+				ID: "earlier", Op: OpLog, ThreadID: th.ID, Before: 5,
+			}, "relay", "session")
+			if !resp.OK || !resp.More || len(resp.Events) != 2 || resp.Events[0].Kind != "max_iterations" || resp.Events[0].Text != string(pause) {
+				t.Fatalf("Earlier skipped the collection reason: %+v", resp)
+			}
+		})
+	}
+}
+
+func TestPhoneHistoryRecognizesOnlyTheWorkerCollectionPauseReason(t *testing.T) {
+	for _, body := range []string{
+		`{"limit":400}`, `{"reason":"other"}`, `{"reason":false}`,
+		`{"reason":"workers_uncollected_typo"}`, `{"reason":"workers_uncollected"`,
+		`[{"reason":"workers_uncollected"}]`,
+	} {
+		if hasPhoneContent([]store.Event{{Kind: "max_iterations", Text: body}}) {
+			t.Fatalf("hidden or malformed pause became visible: %q", body)
+		}
+	}
+	if !hasPhoneContent([]store.Event{{Kind: "max_iterations", Text: `{"reason":"workers_uncollected"}`}}) {
+		t.Fatal("valid worker-collection notice is visible on the phone")
+	}
+}
+
 func TestLogRejectsUnknownThreadAndMissingThread(t *testing.T) {
 	e := testEngine(t)
 	missing := Handle(e, config.RemoteConfig{}, Request{ID: "1", Op: OpLog, ThreadID: "nope", Before: 2}, "relay", "s")

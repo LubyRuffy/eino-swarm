@@ -1430,7 +1430,9 @@ command semantics (`C-009`, `C-033`).
 
 `from_event_seq`, when set, names a stored `user_message` to replace. That
 event and everything after it is deleted (later turns, their messages and
-model-call rows, and any queued follow-up). A compact briefing whose
+model-call rows, and any queued follow-up). Metadata attributed to a removed
+turn is removed even if its event preceded that turn's user message; earlier
+retained turns keep their evidence. A compact briefing whose
 `compact_through_seq` landed in the deleted range is cleared, and so is a
 session briefing whose `session_memory_through_seq` did. Sequence
 counters are **not** wound back, so a live `Last-Event-ID` still lands on new
@@ -1616,9 +1618,12 @@ with a short "stopped after N tool rounds" rather than eino's graph error.
 Steering while paused also continues. `409 idle` when the turn is not waiting.
 
 普通回合因未收取 worker 而重复提前结束时，也使用同一 `max_iterations`
-人工暂停。暂停保留同一 running turn 与原 worker 请求；`continue:true` 或
-人工 steer 只再授予一次收取纠正尝试，`false`／Stop 仍取消。重启恢复人工暂停，
-不能在没有新的人类继续指令时自动获得更多纠正额度。
+收取暂停，`reason:workers_uncollected`，保留同一 running turn 与原 worker 请求。
+仅当全部 pending 是已知运行 generation 且本 turn 尚未自动唤醒时，等待
+所有绑定 generation 终态并持久化 `workers_collection_resumed`，自动继续一次
+收取；这不结清结果，也不重置纠正额度。其他情况等待人工；`continue:true`／
+steer 再授予一次纠正，`false`／Stop 取消。重启保留等待身份与自动额度，不能
+把恢复当作新的 Continue。普通步数暂停保持人工继续。
 
 ```json
 {"continued": true}
@@ -1802,8 +1807,10 @@ shortening only the bounded detail text.
 | `progress` | a pulse while the turn runs (see below); `seq` is 0, not stored |
 | `usage` | a live token snapshot after each model call (see below); `seq` is 0, not stored |
 | `memory_review` | the post-turn review of a project's memory finished (see below) |
-| `max_iterations` | the manager hit `swarm.manager_max_iterations`; `text` is `{"limit":N,"extend_by":N}` and the turn is still running |
+| `max_iterations` | manager pause, turn still running. `reason:"iterations"` identifies the ordinary cap; `reason:"workers_uncollected"` adds `wait_id`, `worker_ids`, exact `workers` generations and `automatic_resume`. The latter is collection waiting, not evidence that the displayed iteration allowance was exhausted; `automatic_resume_refusal` may explain changed identities. Old payloads without reason retain cap semantics |
 | `max_iterations_continued` | the human extended the turn; `text` names how many extra rounds |
+| `workers_collection_resumed` | one generation-bound automatic completion wake for this turn; JSON contains the original `wait_id`, `worker_ids` and terminal `workers`. It only resumes collection, is not a wait-result receipt, and does not renew correction or automatic-wake allowances |
+| `workers_collection_declined` | internal durable refusal of this exact worker-collection wait before acknowledging a human decline; contains `wait_id`, `worker_ids` and `workers`. Cold recovery cannot turn the old automatic wait back on. Not a completion or model-call receipt |
 | `model_backoff` | a wait observation or private-candidate deferral, not a sent request or new retry allowance. Origin JSON is `{scope:"origin",cooldown_id,attempt,wait_ms}` on the actual caller/turn: cooldown_id is an opaque process-local service-generation identity shared across roles, with no endpoint; positive wait_ms is observed remaining cooldown (sub-millisecond waits use 1), and 0 means an active probe has not yet yielded valid content and its remaining wait is unknown. Only one recovery probe is admitted after cooldown; its first decoded nonempty body, reasoning or tool-call delta admits other requests while the stream stays open. Headers, role-only/empty/usage-only deltas and error frames do not admit them. Only the probe's final result resets or advances failures; concurrent results during that probe cannot change the streak or a later generation. A failed probe renews cooldown without cancelling already admitted requests; non-streaming Generate waits for its complete result. PC/phone chat and history show one timed row per conversation/generation and omit zero-delay probe rows; Trace keeps each caller observation. Candidate JSON instead uses `{scope:"schedule_answer",attempt,wait_ms,code,candidate_id}` as described below. Legacy rows may omit the added fields. |
 | `model_retry` | the manager hit a recoverable ChatModel failure and re-entered this turn. `text` is JSON `{attempt,cap,reason?}`. `reason` selects the transcript notice: `invalid_tool_json` (the model returned a tool call that was not valid JSON), `model_response_invalid` (the SDK cannot decode the model HTTP response or stream, including a wrong field type; the turn did not reach a tool), `rate_limited`, `model_unavailable` (HTTP 500/502/503/504/529), `model_transport` (dropped stream, connection reset, mid-stream read timeout), `model_idle` (silence after the first byte). Older rows omit `reason` and keep the generic retry line. `reason: "context_overflow"` is separate: the endpoint rejected the call because the prompt plus the requested output does not fit the window. That notice names the window, the turn compacts once, and a second rejection ends the turn with `the prompt plus the requested output exceeds this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry`. A repeating schedule that ends that way is paused. When the in-turn retries are exhausted, the turn error is the same class: `the model returned a tool call that was not valid JSON`, `the model service is rate limiting requests`, `the model service is unavailable`, `the model service returned a response that could not be decoded`, or `the connection to the model service dropped`. An exhausted idle timeout keeps the sentence that names how long the model sent no data. A trailing tool call whose arguments are not valid JSON is refused before the next model request and then dropped, so that payload is not sent and a `400 Unterminated string` cannot repeat. `reason: "scheduled_no_activity"` is the scheduled-check continuation, not a model failure |
 | `title` | the conversation was named; `text` is the new title, `agent_id` is `title-namer`. Not rendered in the transcript |

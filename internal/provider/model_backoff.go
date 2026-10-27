@@ -60,13 +60,13 @@ func (r *recordingModel) admit(ctx context.Context) (context.Context, func(error
 	if ctx.Value(isolatedRecoveryKey{}) == true {
 		return ctx, func(error) {}, nil
 	}
-	if r.rec != nil {
+	if recorder := r.backoffRecorder(ctx); recorder != nil {
 		ctx = context.WithValue(ctx, backoffObserverKey{}, func(attempt int, delay time.Duration, generation uint64) {
 			waitMS := delay.Milliseconds()
 			if delay > 0 && waitMS == 0 {
 				waitMS = 1 // Zero means an active probe with no known remaining wait.
 			}
-			r.rec(CallRecord{AgentID: r.agentID, ProviderID: r.providerID, Model: r.model,
+			recorder(CallRecord{AgentID: r.agentID, ProviderID: r.providerID, Model: r.model,
 				Backoff: &BackoffRecord{Attempt: attempt, WaitMS: waitMS, CooldownID: r.gate.id + ":" + strconv.FormatUint(generation, 10)}})
 		})
 	}

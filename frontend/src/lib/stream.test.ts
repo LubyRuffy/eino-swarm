@@ -73,6 +73,7 @@ const wireKinds: EventKind[] = [
   "memory_review",
   "max_iterations",
   "max_iterations_continued",
+  "workers_collection_resumed",
   "model_retry",
   "model_backoff",
   "title",

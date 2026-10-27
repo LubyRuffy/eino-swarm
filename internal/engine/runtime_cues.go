@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/schema"
 )
@@ -63,6 +64,27 @@ func legacyRuntimeCue(text string) bool {
 	if suffix, ok := strings.CutPrefix(text, workerCollectionCorrectionCue+"\nUncollected worker IDs: "); ok {
 		var ids []string
 		return json.Unmarshal([]byte(suffix), &ids) == nil && workerCollectionCue(ids) == text
+	}
+	if suffix, ok := strings.CutPrefix(text, workerCollectionStateHead); ok {
+		var groups workerCollectionGroups
+		if json.Unmarshal([]byte(suffix), &groups) != nil {
+			return false
+		}
+		workers := make([]swarm.PendingAgent, 0, len(groups.Running)+len(groups.Finished))
+		seen := map[string]bool{}
+		for _, group := range []struct {
+			workers []swarm.PendingAgent
+			running bool
+		}{{groups.Running, true}, {groups.Finished, false}} {
+			for _, w := range group.workers {
+				if w.AgentID == "" || strings.TrimSpace(w.AgentID) != w.AgentID || seen[w.AgentID] || w.Generation <= 0 || w.Running != group.running {
+					return false
+				}
+				seen[w.AgentID] = true
+				workers = append(workers, w)
+			}
+		}
+		return workerCollectionStateCue(workers) == text
 	}
 	lead := formatInterruptedWorkersCue([]stoppedWorker{{ID: ""}})
 	if suffix, ok := strings.CutPrefix(text, lead); ok && suffix != "" {

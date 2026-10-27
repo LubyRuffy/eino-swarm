@@ -193,7 +193,18 @@ state below; they do not consume that correction (`C-009`, `C-012`).
 提前完成的主管候选正文同样不能进入保存回答、压缩输入或后续模型输入。
 原 turn 的 manager `model_retry` 事件保存
 `{attempt:1,cap:1,reason:"workers_uncollected",worker_ids:[...]}`；消费一次纠正后
-再提前结束，保留 running turn 和原 worker，在既有 `max_iterations` 等待人工。
+再提前结束，保留 running turn 和原 worker，写入 `max_iterations` 的
+`reason:workers_uncollected`、`wait_id`、`workers` generation 集合与
+`automatic_resume`。仅全为已知运行代、且本 turn 未消费自动唤醒时，等全部真实
+终态后先写 `workers_collection_resumed` 再继续收取，每 turn 至多一次；该回执
+不证明结果已收取、不重置纠正额度。身份变化或不可验证时保留人工等待。
+重启 checkpoint 的 `pause:worker_collection` 保留原等待；恢复查询保留暂停与
+自动唤醒回执，不能因进程更换重复授予。 人工拒绝在 ACK 前写入
+`workers_collection_declined` 的精确等待身份；Stop 的持久意图优先于自动许可，
+checkpoint 之后的新继续／唤醒／拒绝回执优先于旧暂停快照。 typed Continue 的
+plain `max_iterations_continued` 与已消费的 `model_retry` 在同一非终态事件事务
+提交后才 ACK、广播；第二条写失败不得留下只有续额的半个决定。live 与 cold
+恢复使用相同已消费额度，不在下一模型请求前另留消费窗口。
 `max_iterations_continued` 是授予一次新尝试的人类继续依据；重启读取相同事件
 恢复额度，读写失败不得重置额度或授予新的请求（`C-019`、`C-027`）。
 `/compact` is a second, optional fold: older

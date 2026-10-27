@@ -70,9 +70,9 @@ type ordinaryLifecycleFixture struct {
 
 func newOrdinaryLifecycleFixture(t *testing.T, mode string) *ordinaryLifecycleFixture {
 	t.Helper()
-	restarting := mode == "restart" || mode == "restart-collect"
+	restarting := mode == "restart" || mode == "restart-collect" || mode == "wake-restart"
 	f := &ordinaryLifecycleFixture{mode: mode, count: 1, candidate: make(chan struct{}), corrected: make(chan struct{}), allowBody: make(chan struct{}), policy: make(chan struct{}), allowPolicy: make(chan struct{}), resumed: make(chan struct{}), resumedCancelled: make(chan struct{})}
-	if mode == "partial" {
+	if mode == "partial" || mode == "wake-all" {
 		f.count = 2
 	}
 	f.ids = make([]string, f.count)
@@ -117,7 +117,7 @@ func newOrdinaryLifecycleFixture(t *testing.T, mode string) *ordinaryLifecycleFi
 				_, _ = fmt.Fprint(w, "data: {\"id\":\"ordinary-restored\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"reasoning_content\":\"Continuing the assigned operation.\"},\"finish_reason\":null}]}\n\n")
 				w.(http.Flusher).Flush()
 				close(f.resumed)
-				if mode == "restart-collect" {
+				if mode == "restart-collect" || mode == "wake-restart" {
 					select {
 					case <-f.release[0]:
 						writeContextFlowReply(w, true, map[string]any{"content": f.result(0)}, "stop")
@@ -197,10 +197,10 @@ func newOrdinaryLifecycleFixture(t *testing.T, mode string) *ordinaryLifecycleFi
 				t.Error("corrective model request did not carry the runtime collection cue")
 			}
 			close(f.corrected)
-			if restarting {
+			if restarting && mode != "wake-restart" {
 				<-r.Context().Done()
 				return
-			} else if mode == "repeat" || mode == "continue" {
+			} else if mode == "repeat" || mode == "continue" || mode == "wake-restart" || mode == "wake-all" || mode == "wake-ignore" {
 				writeContextFlowReply(w, true, map[string]any{"content": ordinaryPrematureAnswer}, "stop")
 			} else if mode == "close" {
 				call("lifecycle-close", "close_agent", map[string]any{"agent_id": f.workerIDs()[0]})
@@ -212,8 +212,12 @@ func newOrdinaryLifecycleFixture(t *testing.T, mode string) *ordinaryLifecycleFi
 				call("lifecycle-wait", "wait_agents", map[string]any{"agent_ids": f.workerIDs(), "timeout_s": timeout})
 			}
 		case 3:
-			if mode == "continue" || mode == "restart-collect" {
+			if mode == "continue" || mode == "restart-collect" || mode == "wake-restart" || mode == "wake-all" {
 				call("lifecycle-wait", "wait_agents", map[string]any{"agent_ids": f.workerIDs(), "timeout_s": 30})
+				return
+			}
+			if mode == "wake-ignore" {
+				writeContextFlowReply(w, true, map[string]any{"content": ordinaryPrematureAnswer}, "stop")
 				return
 			}
 			if mode == "restart" {
@@ -269,7 +273,7 @@ func newOrdinaryLifecycleFixture(t *testing.T, mode string) *ordinaryLifecycleFi
 			}
 			writeContextFlowReply(w, true, map[string]any{"content": answer}, "stop")
 		case 4:
-			if mode != "continue" && mode != "restart-collect" {
+			if mode != "continue" && mode != "restart-collect" && mode != "wake-restart" && mode != "wake-all" {
 				t.Errorf("fixture received an unexpected manager attempt: %d", step)
 			}
 			found := false
@@ -281,7 +285,10 @@ func newOrdinaryLifecycleFixture(t *testing.T, mode string) *ordinaryLifecycleFi
 				if err := json.Unmarshal([]byte(message.Content), &wait); err != nil {
 					t.Error(err)
 				}
-				found = len(wait.Agents) == 1 && wait.Agents[0].AgentID == f.workerIDs()[0] && wait.Agents[0].Status == "done" && wait.Agents[0].Result == f.result(0)
+				found = len(wait.Agents) == f.count
+				for i, result := range wait.Agents {
+					found = found && result.AgentID == f.workerIDs()[i] && result.Status == "done" && result.Result == f.result(i)
+				}
 			}
 			if !found {
 				t.Error("human extension did not collect the original worker's actual result")
@@ -506,7 +513,7 @@ func TestOrdinaryDecliningContinuationCancelsItsRealWorker(t *testing.T) {
 		t.Fatal(err)
 	}
 	finished := waitForTurn(t, f.e, f.turn.ID)
-	if finished.Status != store.TurnCancelled || finished.Final != "" || !strings.Contains(finished.Error, "tool rounds") || f.managers.Load() != 3 || ordinaryCorrectionCount(t, f.e, f.turn.ID) != 1 {
+	if finished.Status != store.TurnCancelled || finished.Final != "" || !strings.Contains(finished.Error, "worker results") || f.managers.Load() != 3 || ordinaryCorrectionCount(t, f.e, f.turn.ID) != 1 {
 		t.Fatalf("declined extension retried or exposed an uncollected answer: %+v", finished)
 	}
 	ordinaryAwait(t, f.cancelled[0], "declined extension did not cancel the worker's actual HTTP request")

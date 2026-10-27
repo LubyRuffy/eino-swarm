@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
@@ -20,10 +21,14 @@ import (
 // past the manager's tool-round cap. Distinct from eino's NodeRunError so
 // the transcript can say what happened without looking like a crash.
 type limitStopError struct {
-	Used int
+	Used   int
+	Reason string
 }
 
 func (e limitStopError) Error() string {
+	if e.Reason == "workers_uncollected" {
+		return "stopped before collecting worker results"
+	}
 	return fmt.Sprintf("stopped after %d tool rounds", e.Used)
 }
 
@@ -54,7 +59,27 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	rt.restartCap = nil
 	rt.mu.Unlock()
 	proceed := true
-	if paused != nil {
+	collectionPause, _, stateErr := e.workerCollectionWaitState(turn, snapshots...)
+	if stateErr != nil {
+		return swarm.RunResult{}, stateErr
+	}
+	// Durable tail decisions supersede an older handoff checkpoint.
+	if paused != nil && paused.Pause == "worker_collection" && collectionPause == nil {
+		paused = nil
+	}
+	if collectionPause != nil && collectionPause.Decision != nil {
+		proceed = *collectionPause.Decision
+	} else if collectionPause != nil && (paused == nil || paused.CapDecision == nil) {
+		if err := rt.restorePendingScheduleWorkers(ctx, reg); err != nil {
+			return swarm.RunResult{}, err
+		}
+		var err error
+		proceed, _, err = rt.waitForWorkerCollection(ctx, turn, reg, collectionPause)
+		if err != nil {
+			return swarm.RunResult{}, err
+		}
+		snapshots = nil
+	} else if paused != nil {
 		if paused.CapDecision != nil {
 			proceed = *paused.CapDecision
 		} else {
@@ -68,7 +93,17 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		if ctx.Err() != nil {
 			return swarm.RunResult{}, ctx.Err()
 		}
-		return swarm.RunResult{}, limitStopError{Used: paused.CapUsed}
+		used := 0
+		if paused != nil {
+			used = paused.CapUsed
+		} else if collectionPause != nil {
+			used = collectionPause.Limit
+		}
+		reason := ""
+		if collectionPause != nil {
+			reason = "workers_uncollected"
+		}
+		return swarm.RunResult{}, limitStopError{Used: used, Reason: reason}
 	}
 	var th *store.Thread
 	if got, err := e.store.GetThread(rt.threadID); err == nil {
@@ -79,7 +114,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		return swarm.RunResult{}, err
 	}
 	instruction := ManagerPrompt(toolset, e.cfg, JoinPromptSections(taskCoordinationPrompt,
-		managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID)), humanReply))
+		managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID)), humanReply, rt.finalGoalWorkerSection(th)))
 	// Fresh slice: pc.managerTools may return the workspace toolset's
 	// backing array, and appending complete_goal / block_goal in place
 	// would hand them to every sub-agent.
@@ -113,6 +148,9 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		budget = e.cfg.SwarmSnapshot().GoalSessionIterations()
 	}
 	used := 0
+	if collectionPause != nil {
+		used = collectionPause.Limit
+	}
 	modelRetries := 0
 	overflowRetries := 0
 	forceCompact := false
@@ -139,6 +177,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		pending = nil
 	}
 	for {
+		var modelRounds atomic.Int32
 		answer := newManagerAnswerBuffer(acc)
 		var candidate *pendingScheduleAnswer
 		var row *store.PendingScheduleAnswer
@@ -162,10 +201,15 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 			res, runErr = reg.RunWith(answerCtx, swarm.RunConfig{
 				Instruction: instruction, Messages: messages, ManagerTools: managerTools, MaxIterations: budget,
 				RestoreWorkers: restore, FinishedWorkers: planted, ManagerMiddlewares: middlewares,
-			}, swarm.Callback(answer.onNotify))
+			}, swarm.Callback(func(n swarm.Notification) {
+				if n.Kind == swarm.NotifyGenerationStarted && isManagerAgent(n.AgentID) {
+					modelRounds.Add(1)
+				}
+				answer.onNotify(n)
+			}))
 		}
 		forceCompact = false
-		used += budget
+		used += int(modelRounds.Load())
 		if ctx.Err() != nil {
 			return answer.reject(res), ctx.Err()
 		}
@@ -271,7 +315,11 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 					th = got
 				}
 				if runErr == nil {
-					if ids := rt.uncollectedWorkerIDs(reg); len(ids) > 0 {
+					if workers := rt.uncollectedWorkers(reg); len(workers) > 0 {
+						ids := make([]string, 0, len(workers))
+						for _, worker := range workers {
+							ids = append(ids, worker.AgentID)
+						}
 						if err := rt.rejectPendingScheduleAnswer(turn, row); err != nil {
 							return answer.reject(res), err
 						}
@@ -279,19 +327,31 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 						reg.SetHistory(res.Transcript)
 						if collectionContinued {
 							extend := e.cfg.SwarmSnapshot().ManagerIterations()
-							if !rt.waitToExtend(ctx, turn, used, extend) {
+							pause, err := rt.newWorkerCollectionPause(turn, workers, used, extend)
+							if err != nil {
+								return res, err
+							}
+							proceed, _, err := rt.waitForWorkerCollection(ctx, turn, reg, pause)
+							if err != nil {
+								return res, err
+							}
+							if !proceed {
 								if ctx.Err() != nil {
 									return res, ctx.Err()
 								}
-								return res, limitStopError{Used: used}
+								return res, limitStopError{Used: used, Reason: "workers_uncollected"}
 							}
 							budget = extend
+							// Both automatic and human decisions have already consumed
+							// their durable allowance before returning from the wait.
+							messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()), runtimeUserMessage(workerCollectionStateCue(reg.PendingAgents())))
+							continue
 						}
 						if err := rt.recordWorkerCollectionRetry(turn, ids); err != nil {
 							return res, err
 						}
 						collectionContinued = true
-						messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()), runtimeUserMessage(workerCollectionCue(ids)))
+						messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()), runtimeUserMessage(workerCollectionStateCue(reg.PendingAgents())))
 						continue
 					}
 				}
@@ -414,7 +474,7 @@ func (rt *runtime) waitToExtend(ctx context.Context, turn *store.Turn, used, ext
 
 	// Two ints: fmt keeps this branch-free. encoding/json cannot fail here
 	// and a failure would stall the turn with no event for the UI to answer.
-	body := fmt.Sprintf(`{"limit":%d,"extend_by":%d}`, used, extend)
+	body := fmt.Sprintf(`{"limit":%d,"extend_by":%d,"reason":"iterations"}`, used, extend)
 	rt.engine.record(store.Event{
 		ThreadID: rt.threadID, TurnID: turn.ID,
 		Kind: KindMaxIterations, AgentID: swarm.DefaultManagerID,
@@ -456,6 +516,34 @@ func (e *Engine) ContinueTurn(threadID string, proceed bool) error {
 	if !rt.status().Running {
 		return ErrIdle
 	}
+	rt.mu.Lock()
+	if pause := rt.collectionPause; pause != nil {
+		if rt.continueCh == nil || rt.acceptedContinue != nil || rt.userStopped || rt.abandoned {
+			rt.mu.Unlock()
+			return ErrIdle
+		}
+		turn := &store.Turn{ThreadID: rt.threadID, ID: rt.turnID}
+		var decisionErr error
+		if proceed {
+			decisionErr = rt.saveWorkerCollectionContinue(turn, pause)
+		} else {
+			decisionErr = rt.saveWorkerPauseEvent(turn, KindWorkersCollectionDeclined, workerCollectionReceipt{pause.WaitID, pause.WorkerIDs, pause.Workers})
+		}
+		if decisionErr != nil {
+			pause.failure, pause.AutomaticResume = decisionErr, false
+			rt.signalContinueLocked(false)
+			rt.mu.Unlock()
+			return decisionErr
+		}
+		pause.Decision = &proceed
+		accepted := rt.signalContinueLocked(proceed)
+		rt.mu.Unlock()
+		if !accepted {
+			return ErrIdle
+		}
+		return nil
+	}
+	rt.mu.Unlock()
 	if !rt.signalContinue(proceed) {
 		return ErrIdle
 	}

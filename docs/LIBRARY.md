@@ -227,6 +227,12 @@ discards the result or requests cancellation for that generation. Spawn/resume
 receipts and known wait/close entries include additive JSON `generation`.
 The app engine uses this state for `C-019` ordinary-turn completion admission.
 
+`Registry.WaitPendingCompletion(ctx, expected)` observes all exact pending
+generations reaching a terminal state, without returning results or settling
+them. Empty, duplicate, unknown, replaced or no-longer-pending identities return
+`ErrPendingGenerationChanged`; cancellation returns its context cause. An engine
+still must call the actual wait/close tools to collect or discard those results.
+
 ## Guarantees
 
 - Steering itself never interrupts an in-flight model call or tool; messages

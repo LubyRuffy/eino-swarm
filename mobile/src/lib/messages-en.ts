@@ -25,6 +25,10 @@ export const en = {
   "pcTimeouts.disconnected": "Connect to this PC to edit its timeouts.",
 
   "notice.peerTask": "Peer task {id}: {text}",
+  "notice.collectionWaiting": "Waiting for delegated work to finish. The manager will resume once to collect the results.",
+  "notice.collectionPaused": "Delegated results have not been collected. The manager is paused.",
+  "notice.collectionContinued": "Continuing to collect delegated results.",
+  "notice.collectionStopped": "Stopped before collecting delegated results.",
   "scan.title": "Scan to bind this PC",
   "scan.hint":
     "Open zwai Settings → Phone and hold the pairing QR in the frame. Paste is the same URI when there is no camera.",

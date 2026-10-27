@@ -335,6 +335,13 @@ project working directory, not a scratch folder.
 
 ## `zwai trace`
 
+Retained workers bill each recorded model request to the turn owning it when the
+provider admits the request after shared backoff. A response spanning turns stays
+on its starting turn; a parked gap keeps the latest owner. Backoff observations
+use the owner at occurrence. Background briefing/review calls retain their
+original turn. Worker-collection pauses and automatic completion wakes remain
+separate timeline receipts, and are not additional model calls.
+
 The one-id troubleshooting path. Copy a turn id from the UI header, or a
 conversation id, and get everything back:
 

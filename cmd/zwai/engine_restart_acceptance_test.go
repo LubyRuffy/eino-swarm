@@ -74,12 +74,22 @@ func runRestartProcessAcceptance(t *testing.T, dir, oldBinary, newBinary string,
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
+	oldStarted := time.Now()
 	old := startRestartProcess(t, dir, oldBinary, "engine", "--data-dir", dataDir, "--addr", "127.0.0.1:0")
 	oldRecord := waitRestartRecord(t, dataDir, 0, 15*time.Second, old)
 	waitRestartReady(t, oldRecord.URL, 15*time.Second)
 	if oldRecord.PID != old.cmd.Process.Pid {
 		t.Fatalf("old engine published another process: %+v", oldRecord)
 	}
+	// Discovery intentionally admits the restoring listener. Initial writes
+	// need recovery to finish; this is outside the later 30s handoff budget.
+	waitRestartCondition(t, 15*time.Second-time.Since(oldStarted), "old engine to finish initial recovery", func() bool {
+		var meta struct {
+			Startup string `json:"startup"`
+		}
+		restartJSON(t, http.MethodGet, oldRecord.URL+"/api/meta", nil, http.StatusOK, &meta)
+		return meta.Startup == "ready"
+	})
 	if legacySchema {
 		assertUpgradePrivateTable(t, cfg.DBPath(), false)
 	}

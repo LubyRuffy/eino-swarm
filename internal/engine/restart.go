@@ -51,17 +51,18 @@ type restartState struct {
 }
 
 type restartCheckpoint struct {
-	Version        int                      `json:"version"`
-	Pause          string                   `json:"pause,omitempty"`
-	AskCallID      string                   `json:"ask_call_id,omitempty"`
-	CapUsed        int                      `json:"cap_used,omitempty"`
-	CapExtend      int                      `json:"cap_extend,omitempty"`
-	CapDecision    *bool                    `json:"cap_decision,omitempty"`
-	Answer         *restartAskAnswer        `json:"answer,omitempty"`
-	HumanStopped   bool                     `json:"human_stopped,omitempty"`
-	ManagerHistory []*schema.Message        `json:"manager_history,omitempty"`
-	ManagerInbox   []*schema.Message        `json:"manager_inbox,omitempty"`
-	Workers        []swarm.WorkerCheckpoint `json:"workers,omitempty"`
+	Version         int                      `json:"version"`
+	Pause           string                   `json:"pause,omitempty"`
+	AskCallID       string                   `json:"ask_call_id,omitempty"`
+	CapUsed         int                      `json:"cap_used,omitempty"`
+	CapExtend       int                      `json:"cap_extend,omitempty"`
+	CapDecision     *bool                    `json:"cap_decision,omitempty"`
+	CollectionPause *workerCollectionPause   `json:"worker_collection,omitempty"`
+	Answer          *restartAskAnswer        `json:"answer,omitempty"`
+	HumanStopped    bool                     `json:"human_stopped,omitempty"`
+	ManagerHistory  []*schema.Message        `json:"manager_history,omitempty"`
+	ManagerInbox    []*schema.Message        `json:"manager_inbox,omitempty"`
+	Workers         []swarm.WorkerCheckpoint `json:"workers,omitempty"`
 }
 
 type restartAskAnswer struct {
@@ -329,6 +330,14 @@ func (e *Engine) restartTargets(ctx context.Context) ([]*restartTarget, error) {
 		if rt.continueCh != nil || rt.running && rt.acceptedContinue != nil && !*rt.acceptedContinue {
 			target.checkpoint.Pause = "cap"
 			target.checkpoint.CapDecision = rt.acceptedContinue
+			if rt.collectionPause != nil {
+				copy := *rt.collectionPause
+				copy.Workers = append([]swarm.PendingAgent(nil), copy.Workers...)
+				copy.WorkerIDs = append([]string(nil), copy.WorkerIDs...)
+				target.checkpoint.Pause = "worker_collection"
+				target.checkpoint.CollectionPause = &copy
+				target.checkpoint.CapUsed, target.checkpoint.CapExtend = copy.Limit, copy.Extend
+			}
 		}
 		rt.abandoned = true
 		rt.mu.Unlock()
