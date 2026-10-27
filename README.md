@@ -267,7 +267,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   a pursuing turn that ends while they are still running, including when a
   thread wake is the next turn instead of an immediate auto-continue. A continuation
   that makes no tool progress stops auto-continue until you hit **Start**. Hitting the auto-continue budget (or a stop) pauses
-  the same way, and **Start** keeps going. If it hits an
+  the same way, and **Start** keeps going. The final automatic continuation
+  requires collecting or explicitly discarding pending workers when no active
+  conversation wake will take over. If it hits an
   obstacle it cannot pass, it calls
   `block_goal` and stops instead of retrying forever — a crashed ordinary turn that
   is not a recoverable model error does the same, and the banner shows the
@@ -802,10 +804,14 @@ collect each worker's current result with `wait_agents`, or explicitly discard
 that work with `close_agent`, before it can complete. A finished worker still
 needs collection; a wait timeout is insufficient. If the manager ends early,
 the engine withholds that answer and lets it correct once in the same turn.
-A repeated early ending pauses for **Continue** or **Stop**, retaining the
-original workers. Continue grants one further attempt; Stop cancels them.
-Restart preserves this pause and the correction allowance. The turn's Trace
-records `workers_uncollected` and the affected worker IDs.
+A repeated early ending retains the original workers and shows why collection
+is waiting. Once per turn, if every pending worker was still running, their
+completion can automatically resume collection; the manager must still receive
+the actual results. Other collection pauses require **Continue** or **Stop**.
+Continue grants one further attempt without renewing the automatic wake; Stop
+cancels them. Restart preserves the wait identities and consumed allowance.
+The turn's Trace records `workers_uncollected`, the wait identity and the
+affected worker generations.
 A request with independent parts is one way to benefit:
 
 > Go through the three files I just uploaded, pull out every deadline, and leave me
@@ -1009,7 +1015,7 @@ when it is older than the loaded transcript tail. Rejected proposal text and quo
 not added to that diagnostic history. Older review events remain readable.
 These checks verify source
 identity, exact quotes and numeric spelling; they do not prove semantic truth.
-Set **Settings → Memory → Review thinking** to choose a separate reasoning level for automatic review and **Review now**. The default **Inherit conversation** preserves the reviewed turn's choice; **Low** is an optional latency profile for models that support it. It does not change conversation work, catalog tidy, the model, or the output cap.
+Set **Settings → Memory → Review thinking** to choose a separate reasoning level for automatic review and **Review now**. The default uses **Low**; choose **Inherit conversation** explicitly to preserve the reviewed turn's choice. Only the default is optional: if the endpoint rejects it with HTTP 400, review retries once without `reasoning_effort`. An explicitly chosen or inherited level keeps the endpoint's error. This setting does not change conversation work, catalog tidy, the model, or the output cap.
 See [the review contract](docs/CONTRACTS.md#c-025-memory-review-evidence-and-commit).
 The panel says when it is reading, and what it decided — including when it kept
 nothing. A write that landed is also named in the transcript itself

@@ -1,3 +1,4 @@
+import { IterationLimitCard } from "./iteration-limit-card"
 import { GenerationNotice } from "./generation-notice"
 import {
   ChevronDown,
@@ -418,51 +419,6 @@ const BlockView = memo(function BlockView({
       )
   }
 })
-
-function IterationLimitCard({ block }: { block: Block }) {
-  const t = useT()
-  const extendTurn = useApp((s) => s.extendTurn)
-  const running = useApp((s) => s.transcript.running)
-  const limit = block.confirm?.limit ?? 0
-  const extendBy = block.confirm?.extendBy ?? 0
-  const pending = Boolean(block.confirm?.pending && running)
-  const continued = block.confirm?.continued
-  return (
-    <div
-      data-testid="iteration-limit"
-      className="my-2 rounded-lg border border-border bg-muted/50 px-3 py-3 text-sm"
-    >
-      <p className="text-foreground">
-        {t("transcript.limitAsk", { limit, extendBy })}
-      </p>
-      {pending ? (
-        <div className="mt-3 flex gap-2">
-          <Button
-            size="sm"
-            aria-label={t("transcript.continueAria")}
-            onClick={() => void extendTurn(true)}
-          >
-            {t("transcript.continue")}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            aria-label={t("transcript.stopAria")}
-            onClick={() => void extendTurn(false)}
-          >
-            {t("transcript.stop")}
-          </Button>
-        </div>
-      ) : (
-        <p className="mt-2 text-[13px] text-muted-foreground">
-          {continued
-            ? t("transcript.limitContinued", { extendBy })
-            : t("transcript.limitStopped", { limit })}
-        </p>
-      )}
-    </div>
-  )
-}
 
 /** Clock + actions sit under the request and the last finished answer.
  *  Height is reserved; pointers fade the ink in. Touch keeps it up.

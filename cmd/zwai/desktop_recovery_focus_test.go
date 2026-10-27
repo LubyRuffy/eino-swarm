@@ -206,15 +206,26 @@ func TestRecoveryParentFocusCancellationAndChildExitJoinObservation(t *testing.T
 }
 
 func TestRecoveryParentFocusPendingCannotBlockRealReadyAndJoinsBeforeCommit(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+	// Guard the whole child protocol, including process startup. The causal
+	// gate, rather than cold-start speed, proves Ready bypasses pending focus.
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	command, boundary := recoveryFocusChild(t, "ready")
+	command, boundary := recoveryFocusChild(t, "focus_then_ready")
 	joined := make(chan struct{})
+	checked := make(chan error, 1)
 	replaceRecoverySuccessorFocus(t, func(actual context.Context, _ int, _ string) error {
 		defer close(joined)
+		// Only an entered observer releases the child's actual Ready frame,
+		// while the observer itself remains pending until the parent cancels it.
+		if err := os.WriteFile(boundary+".focus", []byte("release ready"), 0600); err != nil {
+			checked <- err
+			return err
+		}
 		<-actual.Done()
 		if _, err := os.Stat(boundary + ".commit"); !os.IsNotExist(err) {
-			return errors.New("parent committed before cancelling its focus observer")
+			checked <- errors.New("parent committed before cancelling its focus observer")
+		} else {
+			checked <- nil
 		}
 		return actual.Err()
 	})
@@ -225,6 +236,9 @@ func TestRecoveryParentFocusPendingCannotBlockRealReadyAndJoinsBeforeCommit(t *t
 	case <-joined:
 	default:
 		t.Fatal("real Ready left the focus observation detached")
+	}
+	if err := <-checked; err != nil {
+		t.Fatal(err)
 	}
 	if _, err := os.Stat(boundary + ".commit"); err != nil {
 		t.Fatal("real Ready did not complete the original commit exchange", err)

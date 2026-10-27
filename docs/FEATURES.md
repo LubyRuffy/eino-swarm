@@ -86,7 +86,9 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
-- 普通回合完成门禁：没有当前可执行 goal 或活动同对话 wake 时，主管必须用真实 `wait_agents` 结果收取每个 worker 当前 generation，或用 `close_agent` 明确放弃，才可发布完成答复；已完成未收取仍待处理，wait 超时、未知 ID 和旧 generation 回执不结清。提前结束只自动纠正一次，再次提前结束则保持原 turn 与 worker 请求，等待人工 Continue／Stop；Continue 再授予一次尝试，Stop／拒绝取消。重启保留收取状态、纠正额度及人工暂停。Trace 与 PC／手机提示保留 `workers_uncollected` 的真实原因。关联契约：`C-019`、`C-002`、`C-012`、`C-027`；实现证据：`settlement.go`、`internal/engine/worker_completion.go`、`internal/engine/iterations.go`；测试：`settlement_http_test.go`、`internal/engine/ordinary_worker_completion_test.go`、`internal/engine/worker_completion_budget_test.go`、`internal/engine/worker_completion_replay_test.go`。
+- 收取等待与工具轮数暂停分别显示原因；精确 wait_id 的 `workers_collection_resumed` 结清对应等待卡片，实时、重开与手机重放保持一致，不能把自动唤醒显示为人工 Continue 或已经收取成功。保留 worker 的模型调用在发起准入后冻结活跃 turn 归属，跨轮单次流仍归开始轮，辅助任务不迁移。关联 `C-012`、`C-019`；证据：`internal/engine/worker_accounting_test.go`、`frontend/e2e/worker-completion.spec.ts`。
+
+- 普通回合完成门禁：没有当前可执行 goal 或活动同对话 wake 时，主管必须用真实 `wait_agents` 结果收取每个 worker 当前 generation，或用 `close_agent` 明确放弃，才可发布完成答复；已完成未收取仍待处理，wait 超时、未知 ID 和旧 generation 回执不结清。提前结束只自动纠正一次，再次提前结束保持原 turn 与 worker 请求；仅全为已知运行代且本 turn 未用自动唤醒时，等全部绑定 generation 结束后自动继续一次收取，否则等待人工 Continue／Stop；Continue 再授予一次尝试，Stop／拒绝取消。重启保留收取状态、纠正额度及人工暂停。Trace 与 PC／手机提示保留 `workers_uncollected` 的真实原因。关联契约：`C-019`、`C-002`、`C-012`、`C-027`；实现证据：`settlement.go`、`internal/engine/worker_completion.go`、`internal/engine/iterations.go`；测试：`settlement_http_test.go`、`internal/engine/ordinary_worker_completion_test.go`、`internal/engine/worker_completion_budget_test.go`、`internal/engine/worker_completion_replay_test.go`。
 
 - 结构化提问：PC 与配对手机在实时和历史重放中按主机规则解析选项 ID；省略或归一化后为空的 ID 从 label 生成，保留选项文字，选择提交后继续同一 turn。关联契约：`C-002`；证据：`internal/engine/ask.go`、`frontend/src/lib/transcript-ask.test.ts`、`mobile/src/lib/ask.test.ts`、`frontend/e2e/plan.spec.ts`。
 - 未答提问的交接恢复：重启保留原 turn/call 和人类等待，回答前不调用主管模型；匹配未答检查点的旧未知结果可恢复，真实答案优先。PC 与手机按明确的 `ask_recovered` 通知恢复同一表单，重复回放和迟到未知结果不会覆盖已确认答案。关联契约：`C-002`、`C-003`、`C-027`、`C-012`；验证：`internal/server/restart_ask_http_test.go`、`cmd/zwai/engine_restart_ask_acceptance_test.go`。
@@ -147,6 +149,8 @@ This is the current user-facing capability map. The code and tests named below a
 - 每份草稿正文与引用合计最多 1 MiB，最多 32 个附件、附件总量 256 MiB；视觉图片另遵守最多 8 张、单张 8 MiB。此限制约束草稿保存，不改变工作区上传的单文件上限。
 
 ### F-150 Goals and scheduled waits
+
+- 最后一轮自动续跑且无活动同对话 wake 时，Goal 明确要求本轮收齐或显式放弃 pending worker，不能承诺下一自动轮接管；历史 finished 与 running 分组提示。运行代完成唤醒遵循 `C-019` 的每 turn 一次额度及重启身份边界。证据：`internal/engine/prompt_goal_worker.go`、`internal/engine/worker_completion_wake_test.go`。
 
 - 暂停后的单轮回答：capped／blocked／idle 目标遇普通 PC／手机发送时保留暂停标志和自动续轮计数（包括调度声明连续失败封顶及其原 reason／attempt／cap），仅回答当前消息；System 段携带人类来源与当前 turn 请求，工具限于该回答，暂停目标不授权新调查 worker。显式 Start、HTTP `goal_resume`、RPC `resume_goal` 才恢复追求；未暂停时人话仍归零连续计数。开放目标缺少可观察交付物或停止条件时，提示模型先对同一目标文本用一次 `ask_user` 明确完成判据，不逐轮重问；完成仍需 `complete_goal`。关联契约：`C-009`、`C-006`、`C-008`；实现／验证：`internal/engine/goal.go`、`internal/engine/prompt_goal_pause.go`、`internal/engine/goal_test.go`、`internal/engine/prompt_goal_pause_test.go`、`internal/server/goal_pause_integration_test.go`、`frontend/e2e/goal-pause.spec.ts`。
 
@@ -289,6 +293,8 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：让 Go 程序嵌入 manager 与 sub-agent；使用者：Go 开发者；入口：模块公开 API；输入：registry、provider 和任务；输出：结果与通知；前置条件：依赖可编译；失败表现：Go 错误或结构化工具错误；关联契约：`C-003`；实现证据：`swarm.go`, `run.go`, `docs/LIBRARY.md`, `examples`。
 
 ### F-410 Local conversation storage and search
+
+- 会话摘要与成功记忆复核从完整持久历史获得当前 worker ID、generation、生命周期和独立收取状态；早期完成事件即使落在正文尾窗外仍有身份事实，同 ID 续办不沿用旧代完成。快照整行限额并明确省略数量，不自动改写旧摘要或笔记。关联 `C-008`、`C-012`；证据：`internal/engine/worker_lifecycle_identity_test.go`。
 
 - 运行时纠偏来源：同轮 ADK 和持久化消息显式保留来源，下一轮回放、compact 与 session briefing 排除 runtime 指令；旧行仅按完整常量及合法 worker-ID 后缀兼容，真实人类引用保留。关联契约：`C-008`；实现／验证：`internal/engine/runtime_cues.go`、`internal/store/message_source.go`、`internal/engine/ordinary_worker_completion_test.go`。
 

@@ -100,6 +100,17 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-130`, `F-150`, `F-410`, `C-008`, `C-009`, `C-012`, `C-019`: align final
+  goal-continuation prompts with worker ownership; separate running and finished
+  pending results. A generation-bound collection wait can resume once per turn
+  after all bound workers finish, without renewing correction allowances or
+  bypassing real collection; Stop, ordinary cap pauses and restart retain their
+  boundaries. Attribute retained worker model requests at request admission,
+  preserve auxiliary-call attribution, and carry bounded generation/collection
+  identities into briefing and successful review inputs (Issue #120).
+  Rewind also removes metadata owned by deleted turns when it was recorded
+  before their user event, preserving earlier retained turns' evidence.
+
 - `F-420`, `C-025`: `memory.review_reasoning_effort` blank now means the
   background default `low` instead of the conversation's level; set `inherit`
   to keep the previous behaviour. Only that default is optional: an endpoint

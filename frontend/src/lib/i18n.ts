@@ -12,6 +12,7 @@ export const LOCALE_KEY = "zwai.locale"
 const catalogs: Record<Locale, Record<MessageKey, string>> = { en, zh }
 
 const NOTICE_EXACT: Record<string, MessageKey> = {
+  "stopped before collecting worker results": "transcript.collectionStopped",
   "Stop requested by the user.": "notice.userStopRequested",
   "Preparing task handoff before restarting.": "notice.restartPreparing",
   "Task handoff saved; waiting for the replacement engine.": "notice.restartReady",

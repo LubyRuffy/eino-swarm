@@ -291,6 +291,14 @@ and reasoning remain; filtering does not mutate the original private history.
 
 ## Ordinary turn completion
 
+`prompt_goal_worker.go` identifies the last automatic goal continuation without
+an active same-thread wake. Its prompt requires collection before yielding rather
+than promising another automatic turn. `worker_completion_wait.go` binds typed
+waits to a wait ID and exact generations. `settlement_wait.go` observes completion
+without consuming results. The durable `workers_collection_resumed` event is
+distinct from human continuation, and restart checkpoints retain its budget and
+original wait. PC and phone render the wait reason separately from iteration caps.
+
 `internal/engine/worker_completion.go` checks delegated work before admitted
 completion prose is published. `Registry.PendingAgents` includes both running
 workers and finished results that the manager has not collected. Actual
@@ -308,9 +316,16 @@ semantics and cannot be converted into a worker-collection pause.
 Without a currently executable goal or active same-thread wake, an early final
 is withheld and receives one same-turn correction with the original worker IDs.
 `model_retry` reason `workers_uncollected` durably records the consumed allowance
-and IDs in the original Trace. A second early final uses the existing human
-Continue/Stop pause while the turn and worker requests remain live. Continue
-allows one further attempt; Stop or declining cancels. Checkpoints and event
+and IDs in the original Trace. A second early final uses a typed worker-collection
+pause while the turn and
+worker requests remain live. If all pending entries are known running generations,
+the engine may wait for that exact set to finish and durably consume one automatic
+wake per turn. It then continues collection without renewing the correction
+allowance; actual wait/close receipts are still required. Finished uncollected
+entries, changed/unknown identities or an already consumed wake require human
+Continue/Stop. Ordinary iteration pauses remain human-only. Continue allows one
+further attempt but does not renew the automatic wake; Stop or declining cancels.
+Checkpoints and event
 replay retain collection state, the allowance and an existing human pause across
 restart. Legacy finished rosters without generation identity remain historically
 finished; legacy running work still requires collection. Ownership is reread
@@ -1020,10 +1035,13 @@ worker before closing SQLite.
    restart leave those rows waiting until an authorized later turn or Steer.
    `worker_lifecycle_facts.go` separately derives worker counts from the full
    persisted history, scoped to at most the four newest turns being summarized.
-   Its `persisted_worker_lifecycle` JSON rows lead the bounded input and the
-   stored briefing: first-seen IDs are new, repeated IDs are resumed/restored,
+   Its `persisted_worker_lifecycle` JSON rows lead the bounded input and stored
+   briefing: first-seen IDs are new, repeated IDs are resumed/restored,
    finished IDs are counted once per turn, and refused manager calls require
-   paired error receipts. Cleanup counts events, not killed workers. Direct
+   paired error receipts. The newest row also includes a bounded current-generation
+   snapshot with separate collection status. Whole identities are omitted with an
+   explicit count at the fact budget, preserving valid JSON and briefing space.
+   Cleanup counts events, not killed workers. Direct
    goal-session wrap-up merges use the same evidence. Earlier briefings and
    model-written prose remain labelled claims; no user-specific word filter
    rewrites the historical transcript or memory files.
@@ -1783,6 +1801,13 @@ identities across all loaded head, tail and attention rows, preserving newer
 results verified by a concurrent read reply (`C-007`).
 
 ## Model generation lifecycle
+
+Retained Registry workers share a mutable accounting owner updated only on a
+successful runtime claim. `worker_accounting.go` and the provider request context
+freeze each recorded model request to its owner after shared backoff admission; later
+stream completion does not move the bill. Parked gaps retain the last owner,
+backoff observations sample their occurrence owner, and auxiliary post-turn
+models retain their original fixed turn. Trace queries use those recorded IDs.
 
 A streamed model output has its own identity and lifecycle, independent of
 its manager turn and worker lifetime. Durable generation start/completion

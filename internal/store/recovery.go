@@ -34,7 +34,7 @@ func (s *Store) LatestEventOfKind(ctx context.Context, threadID, kind string, va
 // ListRecoveryEvents reads lifecycle evidence once. Tool/output bodies older
 // than the accepted checkpoint and token deltas are not recovery inputs.
 func (s *Store) ListRecoveryEvents(ctx context.Context, threadID string, checkpointSeq int64, pendingCallIDs ...string) ([]Event, error) {
-	lifecycle := []string{"spawned", "finished", "cleanup", "workers_retained", "error", "done", "user_message", "goal_resumed", "user_stop_requested", "generation_started", "generation_completed", "generation_interrupted", "generation_recovered", "steer", "steer_retracted", "steer_consumed", "steer_revised", "steer_preempted", "goal_continued", "schedule_fired", "model_retry", "max_iterations_continued"}
+	lifecycle := []string{"spawned", "finished", "cleanup", "workers_retained", "error", "done", "user_message", "goal_resumed", "user_stop_requested", "generation_started", "generation_completed", "generation_interrupted", "generation_recovered", "steer", "steer_retracted", "steer_consumed", "steer_revised", "steer_preempted", "goal_continued", "schedule_fired", "model_retry", "max_iterations", "max_iterations_continued", "workers_collection_resumed", "workers_collection_declined"}
 	content := []string{"tool_call", "tool_result", "agent_message"}
 	var events []Event
 	condition := "kind IN ? OR (seq > ? AND kind IN ?)"

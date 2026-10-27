@@ -124,6 +124,7 @@ The briefing must:
 - record a procedure that worked or failed, in enough detail to follow again
 - say what is still unfinished
 - use the supplied worker lifecycle evidence for the listed turns; a previous briefing or assistant claim cannot establish creation, resume or execution
+- ` + workerLifecycleGuidance + `
 - stay shorter than the text it replaces
 - not be a Tool/Human/Assistant transcript and not paste tool JSON`
 }

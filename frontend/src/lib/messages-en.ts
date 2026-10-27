@@ -329,6 +329,12 @@ export const en = {
   "transcript.limitContinued":
     "Continuing for another {extendBy} tool rounds.",
   "transcript.limitStopped": "Stopped after {limit} tool rounds.",
+  "transcript.collectionWaiting": "Waiting for delegated work to finish. The manager will resume once to collect the results.",
+  "transcript.collectionPaused": "Delegated results have not been collected. Continue to collect them, or Stop.",
+  "transcript.collectionContinued": "Continuing to collect delegated results.",
+  "transcript.collectionStopped": "Stopped before collecting delegated results.",
+  "transcript.collectionContinue": "Continue to collect delegated results",
+  "transcript.collectionStop": "Stop waiting for delegated results",
   "transcript.outputBudgetHint":
     "You can raise the per-request output limit in Settings.",
   "transcript.outputBudgetSettings": "Max completion tokens",

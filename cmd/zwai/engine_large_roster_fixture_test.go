@@ -274,48 +274,90 @@ func (f *largeRosterFixture) serve(w http.ResponseWriter, r *http.Request) {
 // or accept a quoted/user-supplied prefix as the classifier's authority.
 func largeFixtureProtocol(t *testing.T, file, name string) string {
 	t.Helper()
-	tree, err := parser.ParseFile(token.NewFileSet(), filepath.Join("..", "..", "internal", "engine", file), nil, parser.SkipObjectResolution)
+	var files []*ast.File
+	for _, source := range []string{file, "worker_lifecycle_facts.go"} {
+		tree, err := parser.ParseFile(token.NewFileSet(), filepath.Join("..", "..", "internal", "engine", source), nil, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, tree)
+	}
+	text, err := largeProtocolString(files, name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, decl := range tree.Decls {
-		if function, ok := decl.(*ast.FuncDecl); ok && function.Name.Name == name && function.Body != nil && len(function.Body.List) == 1 {
-			returned, ok := function.Body.List[0].(*ast.ReturnStmt)
-			if !ok || len(returned.Results) != 1 {
-				t.Fatalf("%s is not a literal protocol return", name)
-			}
-			literal, ok := returned.Results[0].(*ast.BasicLit)
-			if !ok || literal.Kind != token.STRING {
-				t.Fatalf("%s is not a literal protocol", name)
-			}
-			text, err := strconv.Unquote(literal.Value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			return text
-		}
-		group, ok := decl.(*ast.GenDecl)
-		if !ok || group.Tok != token.CONST {
-			continue
-		}
-		for _, spec := range group.Specs {
-			value, ok := spec.(*ast.ValueSpec)
-			if !ok || len(value.Names) != 1 || value.Names[0].Name != name || len(value.Values) != 1 {
+	return text
+}
+
+func largeProtocolString(files []*ast.File, name string) (string, error) {
+	constants := map[string]ast.Expr{}
+	for _, tree := range files {
+		for _, decl := range tree.Decls {
+			group, ok := decl.(*ast.GenDecl)
+			if !ok || group.Tok != token.CONST {
 				continue
 			}
-			literal, ok := value.Values[0].(*ast.BasicLit)
-			if !ok || literal.Kind != token.STRING {
-				t.Fatalf("%s is not a literal protocol", name)
+			for _, spec := range group.Specs {
+				value := spec.(*ast.ValueSpec)
+				if len(value.Names) == len(value.Values) {
+					for i, id := range value.Names {
+						constants[id.Name] = value.Values[i]
+					}
+				}
 			}
-			text, err := strconv.Unquote(literal.Value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			return text
 		}
 	}
-	t.Fatalf("actual protocol %s missing", name)
-	return ""
+	for _, tree := range files {
+		for _, decl := range tree.Decls {
+			function, ok := decl.(*ast.FuncDecl)
+			if !ok || function.Name.Name != name {
+				continue
+			}
+			if function.Body == nil || len(function.Body.List) != 1 {
+				return "", fmt.Errorf("%s is not a constant protocol return", name)
+			}
+			returned, ok := function.Body.List[0].(*ast.ReturnStmt)
+			if !ok || len(returned.Results) != 1 {
+				return "", fmt.Errorf("%s is not a constant protocol return", name)
+			}
+			return largeProtocolStringExpr(returned.Results[0], constants, map[string]bool{})
+		}
+	}
+	return largeProtocolStringExpr(ast.NewIdent(name), constants, map[string]bool{})
+}
+
+// Only compile-time strings are accepted. A dynamic expression must not turn
+// this fixture into a prefix match or silently omit part of the real protocol.
+func largeProtocolStringExpr(expr ast.Expr, constants map[string]ast.Expr, visiting map[string]bool) (string, error) {
+	switch value := expr.(type) {
+	case *ast.BasicLit:
+		if value.Kind == token.STRING {
+			return strconv.Unquote(value.Value)
+		}
+	case *ast.Ident:
+		definition, found := constants[value.Name]
+		if !found || visiting[value.Name] {
+			return "", fmt.Errorf("unknown or cyclic protocol constant %s", value.Name)
+		}
+		visiting[value.Name] = true
+		defer delete(visiting, value.Name)
+		return largeProtocolStringExpr(definition, constants, visiting)
+	case *ast.ParenExpr:
+		return largeProtocolStringExpr(value.X, constants, visiting)
+	case *ast.BinaryExpr:
+		if value.Op == token.ADD {
+			left, err := largeProtocolStringExpr(value.X, constants, visiting)
+			if err != nil {
+				return "", err
+			}
+			right, err := largeProtocolStringExpr(value.Y, constants, visiting)
+			if err != nil {
+				return "", err
+			}
+			return left + right, nil
+		}
+	}
+	return "", fmt.Errorf("unsupported constant protocol expression %T", expr)
 }
 
 func largeFixtureRefusals(t *testing.T, dir string) {

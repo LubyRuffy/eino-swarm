@@ -201,6 +201,8 @@ function localizeNotice(text: string): string {
   const answerBackoff = /^Waiting (\d+)s before checking the unpublished answer again\.$/.exec(text)
   if (answerBackoff) return t("notice.scheduleAnswerBackoff", { seconds: answerBackoff[1] })
   switch (text) {
+    case "stopped before collecting worker results":
+      return t("notice.collectionStopped")
     case "Waiting before retrying the model request.":
       return t("notice.modelBackoffUnknown")
     case "Waiting to check the unpublished answer again.":

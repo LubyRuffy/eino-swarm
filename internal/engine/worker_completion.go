@@ -15,7 +15,36 @@ func workerCollectionCue(ids []string) string {
 	return workerCollectionCorrectionCue + "\nUncollected worker IDs: " + string(body)
 }
 
+type workerCollectionGroups struct {
+	Running  []swarm.PendingAgent `json:"running"`
+	Finished []swarm.PendingAgent `json:"finished"`
+}
+
+const workerCollectionStateHead = workerCollectionCorrectionCue + "\nCollect finished results separately, then wait only for running IDs; any finished ID makes a mixed wait return immediately.\nPending worker generations: "
+
+func workerCollectionStateCue(workers []swarm.PendingAgent) string {
+	groups := workerCollectionGroups{Running: []swarm.PendingAgent{}, Finished: []swarm.PendingAgent{}}
+	for _, worker := range workers {
+		if worker.Running {
+			groups.Running = append(groups.Running, worker)
+		} else {
+			groups.Finished = append(groups.Finished, worker)
+		}
+	}
+	body, _ := json.Marshal(groups)
+	return workerCollectionStateHead + string(body)
+}
+
 func (rt *runtime) uncollectedWorkerIDs(reg *swarm.Registry) []string {
+	pending := rt.uncollectedWorkers(reg)
+	ids := make([]string, 0, len(pending))
+	for _, worker := range pending {
+		ids = append(ids, worker.AgentID)
+	}
+	return ids
+}
+
+func (rt *runtime) uncollectedWorkers(reg *swarm.Registry) []swarm.PendingAgent {
 	pending := reg.PendingAgents()
 	if len(pending) == 0 {
 		return nil
@@ -23,11 +52,7 @@ func (rt *runtime) uncollectedWorkerIDs(reg *swarm.Registry) []string {
 	if _, owner := rt.workerOwner(); owner != "" {
 		return nil
 	}
-	ids := make([]string, 0, len(pending))
-	for _, worker := range pending {
-		ids = append(ids, worker.AgentID)
-	}
-	return ids
+	return pending
 }
 
 // This allowance belongs to the durable turn, not one RunWith invocation or

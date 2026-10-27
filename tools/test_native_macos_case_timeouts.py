@@ -99,9 +99,9 @@ class NativeCaseTimeoutTests(unittest.TestCase):
             rows.append("%s %s %s %s S %s" % (pid, parent, group, uid, born))
         return "\n".join(rows)
 
-    def run_case(self, script="import time;time.sleep(120)", timeout=180, budget=240):
+    def run_case(self, script="import time;time.sleep(120)", timeout=180, budget=240, prepare=None):
         code = runner.run_case(self.app, self.evidence, timeout,
-                               [sys.executable, "-c", script], budget=budget)
+                               [sys.executable, "-c", script], budget=budget, prepare=prepare)
         return code, json.loads((self.evidence / "cleanup.json").read_text())
 
     def inventory_failure(self, first, cleanup=None, started=False):
@@ -110,18 +110,34 @@ class NativeCaseTimeoutTests(unittest.TestCase):
         def sample(scope):
             nonlocal issued
             if len(scope.processes) == 2 and not issued:
-                if started:
-                    until = time.monotonic() + 3
-                    while not (self.evidence / "actor-started").exists():
-                        if time.monotonic() >= until:
-                            self.fail("actual scenario did not publish its startup marker")
-                        time.sleep(.005)
+                # Readiness failure belongs to this first observation too;
+                # cleanup must never enter the scenario startup wait again.
                 issued = True
+                if started:
+                    self.wait_actor_started()
                 raise first
             if issued and cleanup is not None:
                 raise cleanup
             return original(scope)
         return mock.patch.object(runner.ProcessScope, "sample", sample)
+
+    def wait_actor_started(self):
+        until = time.monotonic() + 3
+        while not (self.evidence / "actor-started").exists():
+            if time.monotonic() >= until:
+                self.fail("actual scenario did not publish its startup marker")
+            time.sleep(.005)
+
+    def test_fixture_readiness_failure_is_not_reentered_during_owned_child_cleanup(self):
+        first = self.failureException("first fixture startup failure")
+        overwritten = self.failureException("cleanup replaced the fixture startup failure")
+        with self.inventory_failure(subprocess.TimeoutExpired(PS, 5), started=True), \
+                mock.patch.object(self, "wait_actor_started", side_effect=[first, overwritten]) as wait:
+            with self.assertRaises(self.failureException) as caught:
+                self.run_case()
+        self.assertIs(caught.exception, first)
+        self.assertEqual(wait.call_count, 1, "cleanup reentered scenario readiness")
+        self.assert_held_reaped()
 
     def timeout_rows(self):
         return [json.loads(path.read_text()) for path in sorted(self.evidence.glob("runner-timeout-*.json"))]
@@ -309,11 +325,29 @@ class NativeCaseTimeoutTests(unittest.TestCase):
                         return _wait(*args, **kwargs)
                     process.wait = recorded
             return original(*args, **kwargs)
-        with self.inventory_failure(subprocess.TimeoutExpired(PS, 5), started=True), \
+        def both_ready(scenario, deadline):
+            # Interpreter startup/scheduling is not a TERM/KILL grace. Admit
+            # this fault only after both real children installed SIG_IGN,
+            # using the existing scenario deadline rather than another timer.
+            markers = [self.evidence / "app-started", self.evidence / "actor-started"]
+            while not all(path.exists() for path in markers):
+                exited = [(process.pid, process.poll()) for process in self.processes if process.poll() is not None]
+                if exited:
+                    raise RuntimeError("fixture child exited before signal-handler readiness: %r" % exited)
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("fixture readiness exceeded the original scenario deadline")
+                time.sleep(.005)
+            self.assertEqual(markers[1].read_text(), str(scenario.pid))
+        def prepare(*args):
+            return runner.CasePreparation(lambda: None, both_ready)
+        with self.inventory_failure(subprocess.TimeoutExpired(PS, 5)), \
                 mock.patch.object(runner, "recover_renderer_faults", side_effect=record_waits):
             script = self.actor(ignore_term=True).replace("(e/'actor-started').write_text",
                 "\nwhile not (e/'app-started').exists(): time.sleep(.005)\n(e/'actor-started').write_text")
-            code, receipt = self.run_case(script)
+            # Prove readiness may cross the old fixture-only 3s gate without
+            # granting either child another TERM or KILL grace.
+            script = "import time\ntime.sleep(3.1)\n" + script
+            code, receipt = self.run_case(script, prepare=prepare)
         self.assertEqual(code, 2, receipt)
         self.assertEqual(len(waits), 4)
         self.assertGreater(waits[0][1], 1.8)

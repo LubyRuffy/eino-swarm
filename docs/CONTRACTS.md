@@ -139,6 +139,10 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-008 Durable local data
 
+- 回退归属：删除 turn 时，同事务删除其全部事件证据，包括在该 turn 的 user_message 之前落库的标题等元数据；不能留下指向已删除 turn 的孤儿事件，较早保留 turn 的证据不受影响；收件游标只下调到实际剩余日志上限，不得越过保留的未读消息。证据：`internal/store/rewind_ownership_test.go`、`internal/engine/rewind_test.go`；关联 `F-130`、`F-410`；变更类型：Fixed。
+
+- Worker 身份事实：保留各 turn 历史计数，最新事实行额外保存 `worker_state_through_seq` 与会话当前 `workers:[{agent_id,generation,status,collection}]`。完成与收取分离，同 ID 的新 generation 覆盖旧代状态；finished／stopped 不得写成仍运行，collected／discarded 不得写成结果待收取，pending／unknown 不得冒称已收取。事实块限额时整条省略身份并记录 `omitted_workers`，不能切碎 JSON，也不能以省略推断不存在。最多四个 turn 的计数及有界快照优先于旧摘要，失败 human-only review 保持原范围；提示词不承诺任意模型必然遵从。证据：`internal/engine/worker_lifecycle_identity_test.go`；关联 `F-410`、`F-420`；变更类型：Added。
+
 - 运行时输入来源：`messages.source` 与 ADK `Extra["zwai_message_source"]` 显式区分 human／runtime／schedule／plan。runtime 纠偏可在同轮执行与诊断中保留，不进入下一轮 replay、compact 摘要输入和 session briefing；真实人类即使完整引用纠偏原文也保留。未标记旧行仅按现有完整常量或有效 worker-ID 后缀判定候选，并优先核对同轮原始 human 事件／非自动 turn 输入，原始输入只绑定首个 user 行，不能替后续同文纠偏证明来源；不得按关键词、前缀相似或业务内容删除人话。此兼容只过滤读取，不删除历史事件或改写旧摘要。关联功能：`F-130`、`F-150`、`F-410`；证据：`internal/engine/runtime_cues.go`、`internal/store/message_source.go`、`internal/engine/ordinary_worker_completion_test.go`；变更类型：Added / Fixed。
 
 - 状态：active；类型：data；作用范围：store、search、engine 会话摘要与记忆复核；关联功能：`F-120`、`F-130`、`F-150`、`F-410`、`F-420`。
@@ -153,6 +157,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 摘要／复核证据：实现 `internal/engine/worker_lifecycle_facts.go`、`internal/engine/session_memory.go`、`internal/engine/review_source.go`、`internal/engine/review.go`；测试 `internal/engine/worker_lifecycle_facts_test.go`、`internal/engine/session_memory_bound_test.go`、`internal/engine/review_source_test.go`；变更规则：同步摘要、目标收尾、复核及事实裁剪回归；来源：GitHub Issue #78。
 
 ## C-009 Editable configuration and scheduled waits
+
+- 末轮目标收取：自动计数已到 cap 且没有 active 同对话 wake 时，不再授予跨轮 worker 归属；Goal 提示必须说明没有下一自动轮承接，结束前真实 wait 收取当前代终态或显式 close 放弃。运行中与已结束待收取项分组携带 generation；不得为绕过收取临时编造 wake，也不得把历史归档当作收取。证据：`internal/engine/prompt_goal_worker.go`、`internal/engine/worker_completion.go`、`internal/engine/worker_completion_wake_test.go`；关联 `C-019`、`F-150`；变更类型：Fixed。
 
 - 暂停与声明纠偏交互：普通回答的调度声明验证失败或其终态回执不可读时，不得给 capped／blocked／idle 目标分配重试，不得用 capped 覆盖既有 idle；存储事务也必须重新检查 idle，以拒绝快照读取后迟到的封顶。活动追求与显式恢复保留独立三次纠偏上限。关联功能：`F-150`；证据：`internal/engine/goal_schedule_claim.go`、`internal/engine/goal_paused_schedule_claim_test.go`、`internal/store/goal_cap.go`、`internal/store/goal_cap_test.go`；变更类型：Fixed。
 
@@ -224,6 +230,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-012 One-ID troubleshooting
 
+- 跨轮 worker 账单：保留的 Registry 在成功占用新 turn 后更新 worker 归属；每条被记录的模型请求在共享退避准入完成、调用底层模型前冻结当时 turn_id，流结束、错误、取消及 SDK 内部重连均沿用它，不按完成时刻迁移。可选推理档位拒绝后的显式 fallback 保持既有独立请求计数，辅助模型的这些请求仍归原轮。停泊空窗仍归最近关联轮；退避观察按实际发生时的归属记录，不能增加 llm_calls。manager、后台 session-memory／memory-reviewer 等辅助调用仍绑定原轮。历史账单不静默重写。证据：`internal/engine/worker_accounting.go`、`internal/provider/call_recording.go`、`internal/engine/worker_accounting_test.go`；关联 `F-130`、`F-150`；变更类型：Fixed。
+
 - 状态：active；类型：compatibility；作用范围：engine、server、CLI、Trace、PC 子代理详情；关联功能：`F-130`, `F-150`, `F-160`, `F-170`, `F-310`, `F-320`, `F-420`。
 - 契约内容：一个 turn id 可在 CLI、API 和 Trace 面板还原输入、事件、模型与工具调用、错误及结果；新增事件类型需进入这一路径。
 - 记忆整理失败：CLI trace --full 必须在错误之外保留完整 memory_review payload，包括已保存的部分写入和陈旧候选；部分写入不伪造 promote/demote 完成。实现 `cmd/zwai/trace.go`；测试 `cmd/zwai/cli_trace_memory_test.go`。
@@ -286,7 +294,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-019 Proactive delegation for time or quality
 
-- 普通完成边界：没有当前可执行持续目标或活动同对话 wake 的 engine turn，主管自然结束而非工具切片耗尽时，只有全部 worker 当前执行 generation 已由真实 `wait_agents` 的终态结果收取，或由成功 `close_agent` 明确放弃后，才能正常完成并发布主管候选正文。运行中及已完成未收取都属于 pending；wait 超时／running／unknown、错误 ID、其他调用者、无配对调用及旧 generation 的回执不得结清。显式关闭已结束的 worker 可以放弃其结果，必须保留 `already_finished:true,cancelled:false`，不能伪造取消；运行中 close 的取消只绑定该 generation，unknown 拒绝不改变状态。新 spawn／resume 开始新 generation，查询／归档不消费结果；checkpoint 的 `Generation`、`Collected`、`CloseRequested` 与冷回放保留原事实，不得用文字相似或旧 worker ID 猜测收取。缺 generation 身份的旧 finished roster 兼容为已结束，不追溯要求收取；旧 running 仍待收取，新 `generation>0` 严格保留执行状态。提前完成正文不得进入 live、保存的回答或后续模型输入；第一次只在原 turn 自动纠正一次，先持久化 manager `model_retry` 的 `reason:"workers_uncollected"` 与 `worker_ids`，再次提前完成进入既有人工 Continue／Stop 暂停，turn 保持 running、原 worker 请求继续，不伪造 done 或提前 cleanup。人工 Continue 再授予一次尝试，Stop／拒绝仍取消；restart 保留已消费额度和人工暂停，额度读写失败不得授予新的模型请求。完成门禁以调度策略验证后的 fresh owner 检查为判定点；此前撤销最后 owner 时，不能用旧归属绕过收取。该点已有有效 owner 时可正常 yield，之后显式撤销最后 owner 仍按 `C-009`／`C-027` 的原取消与收尾边界处理，不回滚已经发布的答复。资源／ReAct 切片终止及外部显式完成／阻断目标仍沿原收尾边界；不能把它们或最终 `done` 单独当成 wait 收取凭证。关联 `C-002`、`C-012`；实现：`settlement.go`、`tools.go`、`handoff.go`、`restore.go`、`internal/engine/worker_completion.go`、`internal/engine/iterations.go`；测试：`settlement_http_test.go`、`internal/engine/ordinary_worker_completion_test.go`、`internal/engine/worker_completion_budget_test.go`、`internal/engine/worker_completion_replay_test.go`；变更类型：Changed；来源：Issue #103 及用户对普通回合完成前收取／明确取消的补充要求。
+- 普通完成边界：没有当前可执行持续目标或活动同对话 wake 的 engine turn，主管自然结束而非工具切片耗尽时，只有全部 worker 当前执行 generation 已由真实 `wait_agents` 的终态结果收取，或由成功 `close_agent` 明确放弃后，才能正常完成并发布主管候选正文。运行中及已完成未收取都属于 pending；wait 超时／running／unknown、错误 ID、其他调用者、无配对调用及旧 generation 的回执不得结清。显式关闭已结束的 worker 可以放弃其结果，必须保留 `already_finished:true,cancelled:false`，不能伪造取消；运行中 close 的取消只绑定该 generation，unknown 拒绝不改变状态。新 spawn／resume 开始新 generation，查询／归档不消费结果；checkpoint 的 `Generation`、`Collected`、`CloseRequested` 与冷回放保留原事实，不得用文字相似或旧 worker ID 猜测收取。缺 generation 身份的旧 finished roster 兼容为已结束，不追溯要求收取；旧 running 仍待收取，新 `generation>0` 严格保留执行状态。提前完成正文不得进入 live、保存的回答或后续模型输入；第一次只在原 turn 自动纠正一次，先持久化 manager `model_retry` 的 `reason:"workers_uncollected"` 与 `worker_ids`，再次提前完成进入带 `reason:workers_uncollected` 的收取暂停，turn 保持 running、原 worker 请求继续，不伪造 done 或提前 cleanup。仅当 pending 全为已知 running generation、且本 turn 尚未消费自动完成唤醒时，绑定 wait_id 和完整 generation 集合等待全部真实终态；持久化一次 `workers_collection_resumed` 后才授予一次收取请求，仍须真实 wait／close，不重置纠正额度。每 turn 最多一次自动唤醒，人工 Continue 不续发该自动额度；已结束未收取、身份变化／未知或额度耗尽时等待人工。普通步数暂停不监听 worker 完成；Stop／拒绝仍取消，重启保留原等待身份及已消费额度，不能借重启直接授予模型请求。typed Continue 的续额回执与本次尝试消费必须同事务提交后才 ACK／广播，live 和 cold 不得分配不同请求数；已持久化的人类 steer 在等待器安装前到达时沿同一原子续额路径，worker／runtime 消息不能授予人工额度；人工拒绝在 ACK 前持久化精确等待身份，Stop 的持久意图先于自动许可；checkpoint 不得覆盖其后的继续／唤醒／拒绝回执。存储失败不得冒称唤醒成功。人工 Continue 再授予一次尝试，Stop／拒绝仍取消；restart 保留已消费额度和人工暂停，额度读写失败不得授予新的模型请求。完成门禁以调度策略验证后的 fresh owner 检查为判定点；此前撤销最后 owner 时，不能用旧归属绕过收取。该点已有有效 owner 时可正常 yield，之后显式撤销最后 owner 仍按 `C-009`／`C-027` 的原取消与收尾边界处理，不回滚已经发布的答复。资源／ReAct 切片终止及外部显式完成／阻断目标仍沿原收尾边界；不能把它们或最终 `done` 单独当成 wait 收取凭证。关联 `C-002`、`C-012`；实现：`settlement.go`、`tools.go`、`handoff.go`、`restore.go`、`internal/engine/worker_completion.go`、`internal/engine/iterations.go`；测试：`settlement_http_test.go`、`internal/engine/ordinary_worker_completion_test.go`、`internal/engine/worker_completion_budget_test.go`、`internal/engine/worker_completion_replay_test.go`；变更类型：Changed；来源：Issue #103 及用户对普通回合完成前收取／明确取消的补充要求。
 
 - Fork 角色边界：新 worker 继承 manager 对话时，保留非 System 的用户、assistant 和工具正文作为明确标注的历史上下文；不继承 manager 的 System 消息（含 personality、编排角色和运行时状态）。worker 使用自己的 system instruction、当前分配任务和工具集合，不把历史 manager 工作流当作自己的角色。不得改写 manager 原消息；同一 worker 的 resume 历史不应用跨角色过滤。证据：`resume.go` 的 `forkContext`、`swarm.go` 的两个 fork 入口、`fork_context_test.go` 的实际 Registry→ADK→模型输入回归。
 

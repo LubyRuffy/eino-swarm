@@ -8,7 +8,7 @@ type Input = { messages: { role: string; content?: string; tool_call_id?: string
 
 // The worker owns one real HTTP stream across the manager's premature yield.
 // Release is controlled by observed UI state, never by matching the task text.
-export async function startWorkerCompletionFixture() {
+export async function startWorkerCompletionFixture(options: { repeatFinal?: boolean } = {}) {
   const errors: string[] = []
   let managerRequests = 0
   let workerRequests = 0
@@ -62,8 +62,12 @@ export async function startWorkerCompletionFixture() {
         } else if (managerRequests === 3) {
           if (!input.messages.some((message) => message.role === "user" && message.content?.startsWith("The manager's completion attempt was withheld because worker results have not been collected"))) throw new Error("Missing runtime collection cue")
           if (input.messages.some((message) => message.role === "assistant" && message.content?.includes(prematureWorkerAnswer))) throw new Error("Rejected prose survived into the next input")
+          if (options.repeatFinal) reply(res, { role: "assistant", content: prematureWorkerAnswer })
+          else tool(res, "collect-original-worker", "wait_agents", { agent_ids: [workerID], timeout_s: 30 })
+        } else if (managerRequests === 4 && options.repeatFinal) {
+          if (!resultReleased) throw new Error("The manager resumed before the worker finished")
           tool(res, "collect-original-worker", "wait_agents", { agent_ids: [workerID], timeout_s: 30 })
-        } else if (managerRequests === 4) {
+        } else if (managerRequests === (options.repeatFinal ? 5 : 4)) {
           const receipt = JSON.parse(input.messages.find((message) => message.tool_call_id === "collect-original-worker")?.content ?? "{}")
           if (receipt.agents?.length !== 1 || receipt.agents[0].agent_id !== workerID || receipt.agents[0].status !== "done" || receipt.agents[0].result !== workerCompletionResult) throw new Error("The original worker result was not collected")
           reply(res, { role: "assistant", content: collectedWorkerAnswer })

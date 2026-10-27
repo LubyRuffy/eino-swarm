@@ -211,8 +211,20 @@ live、保存回答和下次模型输入中缺席；纠正后真实 `wait_agents
 
 `internal/engine/worker_completion_budget_test.go` 验证原 turn 的持久化纠正额度及存储失败边界。
 首次 `model_retry` reason 为 `workers_uncollected`，携带 `worker_ids`；再次
-提前 final 进入人工 Continue／Stop 暂停，保持同一 running turn 和 worker 请求。
+提前 final 进入带原因的收取暂停，保持同一 running turn 和 worker 请求。
+`worker_completion_wake_test.go` 与 `settlement_wait_test.go` 覆盖绑定所有运行
+generation 完成后每 turn 至多一次自动唤醒，仍须真实 wait 收取；自动回执不
+重置纠正额度，历史 finished 未收取与普通 cap 保持人工暂停，Stop／拒绝和
+身份变化不授予自动请求。恢复保留原等待、wait_id 与已消费额度。
 Continue 只增加一次尝试；Stop／拒绝取消，重启保持原收取状态、额度和人工暂停。
+
+`worker_accounting_test.go` 使用真实 HTTP 检查跨轮下一请求、停泊空窗、跨轮
+单次流、错误／取消和退避，辅助摘要／复核继续归原轮。`worker_lifecycle_identity_test.go`
+在实际 session-memory／reviewer 模型输入断言长尾以外的完成身份，独立收取
+状态、同 ID 新 generation、checkpoint、cleanup、legacy unknown 及整条预算省略。
+PC `worker-completion.spec.ts` 验证真实 SSE 完成唤醒、候选正文被扣留及刷新重放；
+手机 `worker-collection.spec.ts` 验证等待／恢复文案与重开，remote `OpLog` 回归
+保证 Earlier 页不会跳过新的可见暂停原因。
 门禁针对主管自然完成；`goal_session_test.go` 的外部 Complete／Block 中途终止与
 ReAct 切片耗尽沿原边界收尾，不能因为这类结束新增收取确认卡。
 有当前有效 goal／wake 时保留原停泊行为，policy 请求期间撤销最后 owner 后必须

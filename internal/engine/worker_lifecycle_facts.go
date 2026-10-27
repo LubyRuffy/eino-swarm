@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -9,24 +10,40 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
-const workerFactTurnLimit = 4
+const (
+	workerFactTurnLimit = 4
+	// Keep the whole evidence block below the stored briefing's cap, leaving
+	// room for prose. Worker identities are omitted whole, never string-clipped.
+	workerFactMaxRunes = compactSummaryMaxRunes * 3 / 4
+)
 
 const (
-	workerEvidenceStart = "<zwai-worker-lifecycle-evidence>\n"
-	workerEvidenceEnd   = "</zwai-worker-lifecycle-evidence>\n\n"
-	workerBriefingLabel = "Conversation briefing (model-written claims, not execution evidence):\n"
+	workerEvidenceStart     = "<zwai-worker-lifecycle-evidence>\n"
+	workerEvidenceEnd       = "</zwai-worker-lifecycle-evidence>\n\n"
+	workerBriefingLabel     = "Conversation briefing (model-written claims, not execution evidence):\n"
+	workerLifecycleGuidance = "Worker states describe the latest known generation as of worker_state_through_seq; historical turn counts do not describe current state. Finished does not mean collected, or that the delegated task succeeded. Do not describe a listed finished/stopped generation as still running. A pending result may still need collection; a collected or explicitly discarded result is not awaiting collection. A later generation supersedes an earlier completion for the same agent_id. An unknown collection state or an omitted worker is not evidence of collection, absence or completion. Correct conflicting previous briefing claims using these identities."
 )
 
 type workerTurnFacts struct {
-	Source         string `json:"source"`
-	TurnID         string `json:"turn_id"`
-	ThroughSeq     int64  `json:"through_seq"`
-	New            int    `json:"new_workers"`
-	Resumed        int    `json:"resumed_workers"`
-	Finished       int    `json:"finished_workers"`
-	RejectedSpawn  int    `json:"rejected_spawn_calls"`
-	RejectedResume int    `json:"rejected_resume_calls"`
-	CleanupEvents  int    `json:"cleanup_events"`
+	Source          string                 `json:"source"`
+	TurnID          string                 `json:"turn_id"`
+	ThroughSeq      int64                  `json:"through_seq"`
+	New             int                    `json:"new_workers"`
+	Resumed         int                    `json:"resumed_workers"`
+	Finished        int                    `json:"finished_workers"`
+	RejectedSpawn   int                    `json:"rejected_spawn_calls"`
+	RejectedResume  int                    `json:"rejected_resume_calls"`
+	CleanupEvents   int                    `json:"cleanup_events"`
+	StateThroughSeq int64                  `json:"worker_state_through_seq,omitempty"`
+	Workers         []workerLifecycleState `json:"workers,omitempty"`
+	OmittedWorkers  int                    `json:"omitted_workers,omitempty"`
+}
+
+type workerLifecycleState struct {
+	AgentID    string `json:"agent_id"`
+	Generation int    `json:"generation"`
+	Status     string `json:"status"`
+	Collection string `json:"collection"`
 }
 
 // Only persisted lifecycle events can establish worker creation. A repeated
@@ -108,18 +125,109 @@ func workerLifecycleFacts(history []store.Event, turns []string) string {
 			}
 		}
 	}
-	var b strings.Builder
-	b.WriteString(workerEvidenceStart)
-	b.WriteString("Worker lifecycle evidence (authoritative only for the listed turns, from the full persisted event log). Counts use distinct worker IDs; a repeated ID is resumed/restored, not new. Rejected calls created no worker. Briefings, answers, worker prose and files are claims, not execution evidence; do not carry conflicting lifecycle claims forward.\n")
+	rows := make([]workerTurnFacts, 0, len(turns))
 	for i := len(turns) - 1; i >= 0; i-- {
 		c := byTurn[turns[i]]
 		c.row.New, c.row.Resumed, c.row.Finished = len(c.created), len(c.resumed), len(c.done)
 		c.row.TurnID = clip(c.row.TurnID, 128)
-		raw, _ := json.Marshal(c.row)
-		b.Write(raw)
-		b.WriteByte('\n')
+		rows = append(rows, c.row)
 	}
-	return b.String() + workerEvidenceEnd
+	states, through := workerLifecycleStates(history)
+	rows[0].StateThroughSeq = through
+	return boundWorkerFacts(rows, states)
+}
+
+// Reuse recovery's lifecycle and generation-aware tool-receipt reducer. The
+// briefing does not need model/tool bodies, which would only build unused seeds.
+func workerLifecycleStates(history []store.Event) ([]workerLifecycleState, int64) {
+	var events []store.Event
+	var through int64
+	lifecycleSeq := map[string]int64{}
+	for _, ev := range history {
+		through = max(through, ev.Seq)
+		switch ev.Kind {
+		case swarm.NotifySpawned.String(), swarm.NotifyFinished.String():
+			lifecycleSeq[ev.AgentID] = max(lifecycleSeq[ev.AgentID], ev.Seq)
+			ev.Text = ""
+		case KindCleanup, KindRestartCheckpoint:
+		case swarm.NotifyToolCall.String(), swarm.NotifyToolResult.String():
+			if !isManagerAgent(ev.AgentID) {
+				continue
+			}
+		default:
+			continue
+		}
+		events = append(events, ev)
+	}
+	running, finished := orphanedWorkers(events)
+	states := make([]workerLifecycleState, 0, len(running)+len(finished))
+	for _, w := range running {
+		states = append(states, workerLifecycleState{w.ID, w.Generation, "running", "pending"})
+	}
+	for _, w := range finished {
+		state := workerLifecycleState{w.ID, w.Generation, "finished", "pending"}
+		switch {
+		case w.CloseRequested:
+			state.Status, state.Collection = "stopped", "discarded"
+		case w.Collected:
+			state.Collection = "collected"
+		case w.Generation == 0:
+			state.Collection = "unknown"
+		}
+		if w.Err != nil && w.Err.Error() == cleanedUpWorkerErr {
+			state.Status = "stopped"
+		}
+		states = append(states, state)
+	}
+	// Live and pending generations lead. Within each group, recent lifecycle
+	// identities must survive before old results, even if their IDs sort last.
+	// A checkpoint or a tool receipt alone does not create a new lifecycle.
+	sort.Slice(states, func(i, j int) bool {
+		priority := func(w workerLifecycleState) int {
+			if w.Status == "running" {
+				return 0
+			}
+			if w.Collection == "pending" {
+				return 1
+			}
+			return 2
+		}
+		pi, pj := priority(states[i]), priority(states[j])
+		if pi != pj {
+			return pi < pj
+		}
+		if si, sj := lifecycleSeq[states[i].AgentID], lifecycleSeq[states[j].AgentID]; si != sj {
+			return si > sj
+		}
+		return states[i].AgentID < states[j].AgentID
+	})
+	return states, through
+}
+
+func boundWorkerFacts(rows []workerTurnFacts, states []workerLifecycleState) string {
+	prefix := workerEvidenceStart + "Worker lifecycle evidence from the full persisted event log. Historical counts are authoritative only for the listed turns, using distinct IDs; repeated IDs are resumed/restored, not new. Rejected calls created no worker. The newest row also carries the conversation worker-state snapshot. Briefings, answers, worker prose and files are claims, not execution evidence; do not carry conflicting lifecycle claims forward.\n" + workerLifecycleGuidance + "\n"
+	rows[0].OmittedWorkers = len(states)
+	rawRows := make([]string, len(rows))
+	used := utf8.RuneCountInString(prefix + workerEvidenceEnd)
+	for i, row := range rows {
+		raw, _ := json.Marshal(row)
+		rawRows[i] = string(raw) + "\n"
+		used += utf8.RuneCountInString(rawRows[i])
+	}
+	for _, state := range states {
+		rows[0].Workers = append(rows[0].Workers, state)
+		rows[0].OmittedWorkers--
+		raw, _ := json.Marshal(rows[0])
+		candidate := string(raw) + "\n"
+		next := used - utf8.RuneCountInString(rawRows[0]) + utf8.RuneCountInString(candidate)
+		if next > workerFactMaxRunes {
+			rows[0].Workers = rows[0].Workers[:len(rows[0].Workers)-1]
+			rows[0].OmittedWorkers++
+			continue
+		}
+		used, rawRows[0] = next, candidate
+	}
+	return prefix + strings.Join(rawRows, "") + workerEvidenceEnd
 }
 
 func workerFactTurns(events []store.Event) []string {

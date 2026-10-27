@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -26,6 +27,7 @@ func TestRuntimeCueSourcesKeepHumanQuotesThroughTheRealNextTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	cues := []string{GoalContinueText(), workerCollectionCorrectionCue, workerCollectionCue([]string{"worker-a", "worker-b"}), modelRetryCue, scheduleCompletionCue, scheduleAnswerCorrectionCue, resumeCue, resumeWorkersCue, parkedWorkersCue}
+	cues = append(cues, workerCollectionStateCue([]swarm.PendingAgent{{AgentID: "worker-a", Generation: 1, Running: true}, {AgentID: "worker-b", Generation: 2}}))
 	rows := []store.Message{{Role: "user", Content: old.UserText}}
 	for _, cue := range cues {
 		rows = append(rows, store.Message{Role: "user", Content: cue})
@@ -119,7 +121,7 @@ func TestRuntimeCueSourcesKeepHumanQuotesThroughTheRealNextTurn(t *testing.T) {
 }
 
 func TestRuntimeCueMarkersControlSameTurnCompaction(t *testing.T) {
-	for _, cue := range []string{GoalContinueText(), workerCollectionCue([]string{"worker-a"}), modelRetryCue, resumeCue, scheduleCompletionCue} {
+	for _, cue := range []string{GoalContinueText(), workerCollectionCue([]string{"worker-a"}), workerCollectionStateCue([]swarm.PendingAgent{{AgentID: "worker-a", Generation: 1, Running: true}}), modelRetryCue, resumeCue, scheduleCompletionCue} {
 		runtime := runtimeUserMessage(cue)
 		human := withMessageSource(schema.UserMessage(cue), store.MessageSourceHuman)
 		if !isRuntimeMessage(runtime) || isRuntimeMessage(human) || isRuntimeMessage(nil) {
@@ -145,6 +147,15 @@ func TestLegacyRuntimeCueMatchingRequiresTheWholeKnownCue(t *testing.T) {
 	for _, cue := range []string{GoalContinueText(), workerCollectionCorrectionCue, workerCollectionCue([]string{"worker-a"}), modelRetryCue, resumeCue, resumeWorkersCue, parkedWorkersCue, scheduleCompletionCue, scheduleAnswerCorrectionCue, goalSessionWrapSteer(), "[steer] " + goalSessionWrapSteer()} {
 		if !legacyRuntimeCue(cue) || legacyRuntimeCue("quoted: "+cue) || legacyRuntimeCue(cue+" human suffix") {
 			t.Fatalf("legacy matching must use exact runtime structures: %q", cue)
+		}
+	}
+	structured := workerCollectionStateCue([]swarm.PendingAgent{{AgentID: "worker-a", Generation: 1, Running: true}, {AgentID: "worker-b", Generation: 2}})
+	if !legacyRuntimeCue(structured) {
+		t.Fatal("complete structured collection cue was not identified")
+	}
+	for _, bad := range []string{structured + " human suffix", "quoted: " + structured, workerCollectionStateHead + "{broken", strings.Replace(structured, `"generation":1`, `"generation":0`, 1), strings.Replace(structured, `"running":true`, `"running":false`, 1)} {
+		if legacyRuntimeCue(bad) {
+			t.Fatalf("malformed or quoted structured cue consumed human input: %s", bad)
 		}
 	}
 	interrupted := formatInterruptedWorkersCue([]stoppedWorker{{ID: "worker-a"}, {ID: "worker-b"}})

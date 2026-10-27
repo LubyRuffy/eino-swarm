@@ -16,7 +16,7 @@ import { modelBackoffNotice } from "./transcript-backoff"
 import { recordRecovery, type RecoveryEvent } from "./transcript-recovery"
 import { askCardFromEvent, askRecoveryCard, applyAskRecovery, settleAskCard, type AskCard } from "./transcript-ask"
 import { isPlanEvent, planNotice } from "./transcript-plan"
-import { parseIterationLimit, parsePulse } from "./transcript-pulse"
+import { parseIterationLimit, parsePulse, settleWorkerCollectionPause, updateWorkerCollectionPause, type ManagerPause } from "./transcript-pulse"
 import {
   dropRetractedSteer,
   isRetractedSteer,
@@ -122,13 +122,8 @@ export interface Block {
   askRecovery?: SwarmEvent
   /** Spawn blocks only: which sub-agent was started. */
   spawn?: { agentId: string; role: string }
-  /** Confirm blocks only: the manager hit its tool-round cap. */
-  confirm?: {
-    limit: number
-    extendBy: number
-    pending: boolean
-    continued?: boolean
-  }
+  /** A manager pause, with worker collection distinct from iteration limits. */
+  confirm?: ManagerPause
   turnId: string
   seq: number
   at: string
@@ -665,9 +660,11 @@ export function reduceEvent(
 
     case "max_iterations": {
       const payload = parseIterationLimit(ev)
+      if (updateWorkerCollectionPause(touchAgent(next, MANAGER_ID), ev, payload)) break
       append(touchAgent(next, MANAGER_ID), {
         ...block(ev, "confirm", ev.text ?? ""),
         confirm: {
+          ...payload,
           limit: payload?.limit ?? 0,
           extendBy: payload?.extendBy ?? 0,
           pending: true,
@@ -675,6 +672,10 @@ export function reduceEvent(
       })
       break
     }
+
+    case "workers_collection_resumed":
+      settleWorkerCollectionPause(touchAgent(next, MANAGER_ID), ev)
+      break
 
     case "max_iterations_continued":
       settlePendingConfirm(touchAgent(next, MANAGER_ID), true, ev.text)
@@ -700,7 +701,7 @@ export function reduceEvent(
     case "done":
     case "error": {
       const failed = ev.kind === "error"
-      const cancelled = failed && ev.err === "interrupted"
+      const cancelled = failed && (ev.err === "interrupted" || ev.err === "stopped before collecting worker results")
       upsertTurn(next, ev.turn_id, {
         status: cancelled ? "cancelled" : failed ? "error" : "done",
         endedAt: ev.created_at,

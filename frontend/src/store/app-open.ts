@@ -141,7 +141,7 @@ function changesReplay(event: SwarmEvent): boolean {
 
 function changesStatus(event: SwarmEvent): boolean {
   return event.kind === "user_message" || event.kind === "resumed" || event.kind === "done" ||
-    event.kind === "error" || event.kind === "max_iterations" || event.kind === "max_iterations_continued" ||
+    event.kind === "error" || event.kind === "max_iterations" || event.kind === "max_iterations_continued" || event.kind === "workers_collection_resumed" ||
     event.kind === "tool_call" || event.kind === "tool_result" || event.kind === "ask_recovered" || event.kind === "compacted" ||
     event.kind === "goal_resumed" || event.kind === "goal_continued" || event.kind === "plan_implemented" ||
     event.kind === "schedule" || event.kind === "schedule_fired" || event.kind === "schedule_cancelled"

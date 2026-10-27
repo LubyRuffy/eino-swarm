@@ -384,11 +384,12 @@ func (r *recordingModel) generate(ctx context.Context, in []*schema.Message, opt
 	if err != nil {
 		return nil, modelCallError(err)
 	}
-	ctx, builtin := observeBuiltinTools(ctx, r.rec != nil)
+	recorder := r.requestRecorder(ctx)
+	ctx, builtin := observeBuiltinTools(ctx, recorder != nil)
 	start := time.Now()
 	out, err := r.inner.Generate(ctx, in, opts...)
 	finish(err)
-	if r.rec == nil {
+	if recorder == nil {
 		return out, modelCallError(err)
 	}
 	rec := r.base(in, start)
@@ -398,7 +399,7 @@ func (r *recordingModel) generate(ctx context.Context, in []*schema.Message, opt
 		rec.OutputChars = len(out.Content) + len(out.ReasoningContent)
 		applyUsage(&rec, tokenUsageOf(out))
 	}
-	r.rec(rec)
+	recorder(rec)
 	return out, modelCallError(err)
 }
 
@@ -417,21 +418,22 @@ func (r *recordingModel) stream(ctx context.Context, in []*schema.Message, opts 
 	if err != nil {
 		return nil, modelCallError(err)
 	}
-	ctx, builtin := observeBuiltinTools(ctx, r.rec != nil)
+	recorder := r.requestRecorder(ctx)
+	ctx, builtin := observeBuiltinTools(ctx, recorder != nil)
 	progress, _ := ctx.Value(backoffProgressKey{}).(func())
 	start := time.Now()
 	stream, err := r.inner.Stream(ctx, in, opts...)
 	if err != nil {
 		finish(err)
 	}
-	if r.rec == nil && (r.gate == nil || err != nil) {
+	if recorder == nil && (r.gate == nil || err != nil) {
 		return stream, modelCallError(err)
 	}
 	if err != nil {
 		rec := r.base(in, start)
 		rec.BuiltinTools = builtin.snapshot()
 		rec.Err = err
-		r.rec(rec)
+		recorder(rec)
 		return nil, modelCallError(err)
 	}
 	// A streamed call is not over when Stream returns, it is over when the
@@ -467,8 +469,8 @@ func (r *recordingModel) stream(ctx context.Context, in []*schema.Message, opts 
 				}
 				// The consumer may shut down storage after this terminal result.
 				// Finish recording the call before allowing that shutdown to race it.
-				if r.rec != nil {
-					r.rec(rec)
+				if recorder != nil {
+					recorder(rec)
 				}
 				if rec.Err != nil {
 					sw.Send(nil, modelCallError(recvErr))
@@ -490,8 +492,8 @@ func (r *recordingModel) stream(ctx context.Context, in []*schema.Message, opts 
 				rec.BuiltinTools = builtin.snapshot()
 				rec.OutputChars = chars
 				applyUsage(&rec, usage)
-				if r.rec != nil {
-					r.rec(rec)
+				if recorder != nil {
+					recorder(rec)
 				}
 				return
 			}

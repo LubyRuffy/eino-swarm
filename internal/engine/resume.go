@@ -211,7 +211,7 @@ func (e *Engine) resumeTurn(restoreCtx context.Context, turn *store.Turn, snapsh
 	}
 	rt.setWorkerRestore(e.workersFromThread(turn.ThreadID, snapshot))
 	if checkpoint := e.checkpointForTurn(turn.ID, snapshot); checkpoint != nil {
-		if checkpoint.Pause == "cap" {
+		if checkpoint.Pause == "cap" || checkpoint.Pause == "worker_collection" {
 			rt.mu.Lock()
 			rt.restartCap = checkpoint
 			rt.mu.Unlock()

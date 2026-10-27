@@ -10,8 +10,9 @@ import (
 
 // TruncateFromEventSeq drops the named event and everything after it: later
 // turns, their model messages, their model-call records, and any queued
-// follow-up. Earlier turns stay. Sequence counters are not wound back, so a
-// live subscriber's Last-Event-ID still lands on new events instead of
+// follow-up. Metadata owned by a removed turn is also dropped even if it
+// precedes that turn's user event. Earlier turns stay. Sequence counters are
+// not wound back, so a live subscriber's Last-Event-ID still lands on new events instead of
 // colliding with a seq that just vanished.
 func (s *Store) TruncateFromEventSeq(threadID string, fromSeq int64) error {
 	if fromSeq <= 0 {
@@ -38,15 +39,17 @@ func (s *Store) TruncateFromEventSeq(threadID string, fromSeq int64) error {
 		for _, t := range later {
 			ids = append(ids, t.ID)
 		}
-		if err := tx.Where("thread_id = ? AND seq >= ?", threadID, fromSeq).Delete(&Event{}).Error; err != nil {
+		if err := tx.Where("thread_id = ? AND (seq >= ? OR turn_id IN ?)", threadID, fromSeq, ids).Delete(&Event{}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("thread_id = ? AND event_seq >= ?", threadID, fromSeq).Delete(&ThreadWakeDecision{}).Error; err != nil {
 			return err
 		}
 		// After restart, event numbering starts above the remaining timeline.
-		// A cursor into removed history would hide new inbox messages.
-		if err := tx.Model(&Thread{}).Where("id = ? AND task_message_through_seq >= ?", threadID, fromSeq).
+		// Owned events can precede the cut. Clamp to what actually remains,
+		// without advancing a cursor past retained unread inbox messages.
+		if err := tx.Model(&Thread{}).
+			Where("id = ? AND task_message_through_seq > COALESCE((SELECT MAX(seq) FROM events WHERE thread_id = ?), 0)", threadID, threadID).
 			UpdateColumn("task_message_through_seq", gorm.Expr("COALESCE((SELECT MAX(seq) FROM events WHERE thread_id = ?), 0)", threadID)).Error; err != nil {
 			return err
 		}

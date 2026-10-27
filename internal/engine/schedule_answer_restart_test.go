@@ -92,7 +92,7 @@ func TestUnreadableScheduleAnswerBudgetPreventsTheActualModelRequest(t *testing.
 		if tx.Statement.Table != "events" {
 			return
 		}
-		// Fail the turn-scoped receipt read used by scheduleAnswerContinued,
+		// Fail the turn-scoped receipt reads shared by completion guards,
 		// after startup's conversation history has loaded successfully.
 		// Rejecting every events query would stop StartTurn before this guard.
 		where, ok := tx.Statement.Clauses["WHERE"].Expression.(clause.Where)
@@ -108,7 +108,8 @@ func TestUnreadableScheduleAnswerBudgetPreventsTheActualModelRequest(t *testing.
 	}); err != nil {
 		t.Fatal(err)
 	}
-	defer e.store.DB().Callback().Query().Remove(name)
+	// This callback belongs to the private Store until Close. A terminal row
+	// does not join the turn's remaining finalization queries.
 	if _, err := e.scheduleAnswerContinued(&store.Turn{ID: "unreadable-budget", ThreadID: th.ID}); err == nil || err.Code != "correction_state_unavailable" || !errors.Is(err, cause) || isRetryableModelError(err) {
 		t.Fatalf("unreadable budget lost its terminal origin or cause: %+v", err)
 	}
@@ -117,11 +118,10 @@ func TestUnreadableScheduleAnswerBudgetPreventsTheActualModelRequest(t *testing.
 		t.Fatal(err)
 	}
 	finished := waitRestartReplayTurn(t, e, turn.ID)
-	if finished.Status != store.TurnError || !strings.Contains(finished.Error, "correction_state_unavailable") || managers.Load() != 0 || policies.Load() != 0 {
+	// Either guard may detect the unreadable shared log first; its concrete
+	// storage cause and the lack of actual model requests are the invariant.
+	if finished.Status != store.TurnError || finished.Final != "" || !strings.Contains(finished.Error, cause.Error()) || managers.Load() != 0 || policies.Load() != 0 {
 		t.Fatalf("an unreadable budget granted a model attempt: turn=%+v manager=%d policy=%d", finished, managers.Load(), policies.Load())
-	}
-	if err := e.store.DB().Callback().Query().Remove(name); err != nil {
-		t.Fatal(err)
 	}
 	waitSettled(t, e, th.ID)
 	turns, _ := e.store.ListTurns(th.ID)
