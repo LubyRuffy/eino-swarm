@@ -147,6 +147,9 @@ type memoryView struct {
 	Enabled        bool               `json:"enabled"`
 	Memory         memory.Snapshot    `json:"memory"`
 	Skills         []memory.SkillInfo `json:"skills"`
+	// SkillIndex is what the listed skills add to every prompt that carries
+	// the index, so dead weight is visible next to the usage counts.
+	SkillIndex memory.SkillIndexCost `json:"skill_index"`
 	// NeedsTidy is true when the catalog still holds a same-subject family.
 	// The panel uses it to mark the tidy control, not to fold on load — a
 	// GET must not rewrite files the user came to read.
@@ -191,6 +194,7 @@ func (s *Server) memoryViewOf(p *store.Project) (memoryView, error) {
 		Enabled:        s.engine.MemoryEnabled(p),
 		Memory:         snap,
 		Skills:         skills,
+		SkillIndex:     memory.IndexCost(skills, s.engine.Config().Memory.IndexMax()),
 		NeedsTidy:      len(families) > 0,
 	}, nil
 }

@@ -65,6 +65,12 @@ test("skill usage and the editable stale threshold are visible in the memory pan
     await expect(oldCard.getByText("Stale candidate", { exact: true })).toBeVisible()
     await expect(currentCard.getByTestId("skill-usage")).toContainText("Never viewed")
     await expect(currentCard.getByText("Stale candidate", { exact: true })).toHaveCount(0)
+    await expect(currentCard.getByTestId("skill-cost")).toHaveText(/^Index \d+ chars · body \d+ chars$/)
+    // Only the never-opened skill counts toward the unviewed part of the index.
+    const listed = await (await request.get(`/api/projects/${project.id}/memory`)).json()
+    const unviewed = listed.memory.skills.find((s: { name: string }) => s.name === "current-procedure").index_chars
+    expect(listed.memory.skill_index).toMatchObject({ listed: 2, unviewed_chars: unviewed })
+    await expect(page.getByTestId("skill-index-cost")).toContainText(`; ${unviewed} of it is skills no agent has opened`)
     await page.screenshot({ path: info.outputPath("memory-usage-en.png"), animations: "disabled" })
 
     await page.getByRole("button", { name: "Settings", exact: true }).click()

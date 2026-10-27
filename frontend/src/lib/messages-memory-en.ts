@@ -136,6 +136,8 @@ export const memoryEn = {
   "skill.lastViewed": "Last viewed {when}",
   "skill.neverViewed": "Never viewed",
   "skill.stale": "Stale candidate",
+  "skill.cost": "Index {index} chars · body {body} chars",
+  "memory.skillIndexCost": "The skill index adds {chars} chars to every prompt; {unviewed} of it is skills no agent has opened.",
   "memory.tidyStaleCandidates": "Stale candidates reviewed",
   "memory.tidyReviewed": "Memory catalog reviewed.",
   "memory.tidyLibrary": "Tidy skills",

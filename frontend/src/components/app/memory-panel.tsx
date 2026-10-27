@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { api } from "@/lib/api"
 import { LIBRARY_ID } from "@/lib/library"
 import type { Project, ProjectMemory, ReviewOutcome, Skill, SkillInfo, SkillOrigin, SkillTidyReport, TidyLive } from "@/lib/types"
+import { formatChars } from "@/lib/skill-usage"
 import { useT } from "@/lib/use-t"
 
 export interface MemoryPanelProps {
@@ -286,6 +287,14 @@ export function MemoryPanel({
         <p className="text-xs text-muted-foreground">
           {t(library ? "memory.tidyLibraryHint" : "memory.tidyHint")}
         </p>
+        {memory?.skill_index && memory.skill_index.listed > 0 ? (
+          <p data-testid="skill-index-cost" className="text-xs text-muted-foreground">
+            {t("memory.skillIndexCost", {
+              chars: formatChars(memory.skill_index.chars),
+              unviewed: formatChars(memory.skill_index.unviewed_chars),
+            })}
+          </p>
+        ) : null}
         {copyNotice ? (
           <p data-testid="skill-copy-notice" className="text-xs text-muted-foreground">
             {copyNotice}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { skillIsStale, skillLastViewed } from "./skill-usage"
+import { formatChars, skillIsStale, skillLastViewed } from "./skill-usage"
 import type { SkillInfo } from "./types"
 
 const now = Date.parse("2026-10-23T12:00:00Z")
@@ -22,6 +22,14 @@ describe("skill usage", () => {
     expect(skillIsStale(candidate, 10, now - 1)).toBe(false)
     expect(skillIsStale(candidate, 10, now)).toBe(true)
     expect(skillIsStale({ ...candidate, last_viewed_at: new Date(now - day).toISOString() }, 10, now)).toBe(false)
+  })
+
+  it("keeps character counts short enough for a meta line", () => {
+    expect(formatChars(undefined)).toBe("0")
+    expect(formatChars(-3)).toBe("0")
+    expect(formatChars(940)).toBe("940")
+    expect(formatChars(1234)).toBe("1.2K")
+    expect(formatChars(18_400)).toBe("18K")
   })
 
   it("uses modification time only for skills with no actual views", () => {

@@ -945,7 +945,9 @@ is saved before deleting the source, so failure may leave duplicates. Retry
 reuses an identical target and never overwrites different content. Post-turn
 review and workers cannot move memory; the shared library has no notes.
 
-The Memory panel shows agent view counts and the last view time. Settings →
+The Memory panel shows agent view counts and the last view time, what each
+skill costs (its index line in every prompt, its body per view) and how much of
+the index comes from skills no agent has opened. Settings →
 Memory controls the stale-candidate threshold (`memory.skill_stale_days`,
 default 90 days). Stale skills are candidates for review, never automatically
 deleted. Usage is local to a skill copy and does not rewrite its content.

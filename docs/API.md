@@ -946,7 +946,8 @@ Body `{"ids": ["pj_a", "pj_b"]}`. Pins that order in the sidebar. Unknown ids ar
   "memory": {"text": "…", "entries": ["…"], "chars": 412, "limit": 2200, "rev": "a1b2c3d4e5f6"},
   "skills": [{"name": "weekly-rollup", "description": "…", "updated_at": "…"}],
   "needs_tidy": false,
-  "skill_stale_days": 90
+  "skill_stale_days": 90,
+  "skill_index": {"listed": 1, "chars": 48, "unviewed_chars": 0}
 }}
 ```
 
@@ -963,7 +964,14 @@ Project and library memory responses include `skill_stale_days`, the configured
 advisory threshold. Each skill also includes `views` (number) and
 `last_viewed_at` (UTC timestamp; zero time means never viewed). Agent
 `skill_view` increments usage; HTTP reads, list and copy calls do not. The
-prompt index omits these fields, and copies start at zero.
+prompt index omits these fields, and copies start at zero. Each skill also
+reports what it costs: `index_chars` is the length, in characters, of its line
+in the prompt's skill index and `body_chars` the length of the body a
+`skill_view` returns. `skill_index` totals the index the next prompt carries:
+`listed` is how many skills fit under `memory.skills_index_max`, `chars` their
+index lines and `unviewed_chars` the part from skills no agent has viewed.
+Catalog tidy shows the reviewer the same index/body sizes for each stale
+candidate.
 
 ### `PUT /api/projects/:id/memory`
 

@@ -88,6 +88,24 @@ describe("Memory panel", () => {
     expect(screen.getByText("Stale candidate")).toBeInTheDocument()
   })
 
+  // Pruning weighs use against cost; a skill that is never opened but rides in
+  // every prompt is the one worth removing.
+  it("shows what each skill and the whole index cost the prompt", () => {
+    renderPanel({ memory: {
+      ...memory,
+      skills: [{ ...memory.skills[0], views: 0, index_chars: 64, body_chars: 12_400 }],
+      skill_index: { listed: 1, chars: 64, unviewed_chars: 64 },
+    } })
+    expect(screen.getByTestId("skill-cost")).toHaveTextContent("Index 64 chars · body 12K chars")
+    expect(screen.getByTestId("skill-index-cost")).toHaveTextContent("adds 64 chars to every prompt; 64 of it")
+  })
+
+  it("omits cost lines a server did not report", () => {
+    renderPanel()
+    expect(screen.queryByTestId("skill-cost")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("skill-index-cost")).not.toBeInTheDocument()
+  })
+
   it("uses a never-viewed skill's modification time for the configured age threshold", () => {
     renderPanel({ memory: {
       ...memory, skill_stale_days: 30,

@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge"
-import { skillIsStale, skillLastViewed } from "@/lib/skill-usage"
+import { formatChars, skillIsStale, skillLastViewed } from "@/lib/skill-usage"
 import type { SkillInfo } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 
@@ -16,6 +16,11 @@ export function SkillUsage({ skill, staleDays }: { skill: SkillInfo; staleDays?:
           {t("skill.lastViewed", { when: new Date(lastViewed).toLocaleString(t.locale === "zh" ? "zh-CN" : "en-US") })}
         </time>
       )}
+      {skill.index_chars !== undefined ? (
+        <span data-testid="skill-cost">
+          {t("skill.cost", { index: formatChars(skill.index_chars), body: formatChars(skill.body_chars) })}
+        </span>
+      ) : null}
       {skillIsStale(skill, staleDays) ? (
         <Badge variant="warning">{t("skill.stale")}</Badge>
       ) : null}

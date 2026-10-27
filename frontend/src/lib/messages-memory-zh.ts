@@ -128,6 +128,8 @@ export const memoryZh: { [K in keyof typeof memoryEn]: string } = {
   "skill.lastViewed": "最近查看 {when}",
   "skill.neverViewed": "从未查看",
   "skill.stale": "陈旧候选",
+  "skill.cost": "索引 {index} 字 · 正文 {body} 字",
+  "memory.skillIndexCost": "技能索引给每次提示增加 {chars} 字，其中 {unviewed} 字来自从未被打开的技能。",
   "memory.tidyStaleCandidates": "已审阅的陈旧候选",
   "memory.tidyReviewed": "已审阅记忆目录。",
   "memory.tidyLibrary": "整理技能",

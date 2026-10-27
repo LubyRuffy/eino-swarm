@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // SkillInfo is what the prompt's skills index and the Memory panel list: the
@@ -19,6 +20,11 @@ type SkillInfo struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 	Views        int64     `json:"views"`
 	LastViewedAt time.Time `json:"last_viewed_at"`
+	// IndexChars is what this skill's index line adds to every manager and
+	// worker prompt that lists it; BodyChars is what each skill_view adds.
+	// Characters, not tokens: the host has no tokenizer for every endpoint.
+	IndexChars int `json:"index_chars"`
+	BodyChars  int `json:"body_chars"`
 	// Origin is set when this file was copied from another project. It is not
 	// part of the procedure: skill_view does not return it, and the prompt
 	// index does not list it.
@@ -91,6 +97,8 @@ func (s *Store) readSkill(name string) (Skill, error) {
 		skill.Origin = origin
 	}
 	skill.ContentDigest = SkillDigest(skill.Description, skill.Body)
+	skill.IndexChars = utf8.RuneCountInString(skillIndexLine(skill.Name, skill.Description))
+	skill.BodyChars = utf8.RuneCountInString(skill.Body)
 	if info, statErr := os.Stat(s.skillPath(name)); statErr == nil {
 		skill.UpdatedAt = info.ModTime().UTC()
 	}

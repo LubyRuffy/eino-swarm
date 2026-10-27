@@ -43,6 +43,7 @@ func (s *Server) libraryView() (memoryView, error) {
 		Enabled:        s.engine.Config().Memory.Enabled,
 		Memory:         snap,
 		Skills:         skills,
+		SkillIndex:     memory.IndexCost(skills, s.engine.Config().Memory.IndexMax()),
 		NeedsTidy:      len(families) > 0,
 	}, nil
 }

@@ -141,6 +141,10 @@ export interface SkillOrigin {
 export interface SkillInfo {
   views?: number
   last_viewed_at?: string
+  /** Characters this skill's index line adds to every prompt that lists it. */
+  index_chars?: number
+  /** Characters each skill_view of this skill adds. */
+  body_chars?: number
   name: string
   description: string
   updated_at: string
@@ -160,6 +164,13 @@ export interface SkillCopySkip {
   code?: string
 }
 
+export interface SkillIndexCost {
+  listed: number
+  chars: number
+  /** The part of chars that comes from skills no agent has opened. */
+  unviewed_chars: number
+}
+
 export interface SkillCopyResult {
   copied: SkillCopyHit[]
   skipped: SkillCopySkip[]
@@ -177,6 +188,8 @@ export interface ProjectMemory {
   enabled: boolean
   memory: MemoryEntries
   skills: SkillInfo[]
+  /** What the listed skills add to every prompt carrying the index. */
+  skill_index?: SkillIndexCost
   /** True when a same-subject family is still on disk. Folding is a click,
    *  not a side effect of opening the tab. */
   needs_tidy?: boolean

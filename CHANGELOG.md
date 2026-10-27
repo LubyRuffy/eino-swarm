@@ -55,6 +55,11 @@ co-working app built on it. The library API is unchanged except where noted
   added no catches, and review cost two to four times the tokens.
   Independent review stays the manager's choice; there is no automatic
   review step (details in `docs/TESTING.md`).
+- The Memory panel shows what each skill costs (its index line in every
+  prompt, its body per view) and how much of the skill index comes from
+  skills no agent has opened. Memory responses carry `index_chars`,
+  `body_chars` and `skill_index`; catalog tidy shows the reviewer the same
+  sizes for each stale candidate.
 
 - `F-170`: `swarm.policy_reasoning_effort` (Settings → Swarm → Policy check
   thinking) sets the reasoning level for the schedule-claim and wake-permission

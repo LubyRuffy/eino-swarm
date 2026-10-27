@@ -176,13 +176,44 @@ func formatSkillBullets(skills []SkillInfo, indexMax int, intro string) string {
 	}
 	b.WriteString(intro)
 	for _, s := range shown {
-		fmt.Fprintf(&b, "- %s — %s\n", s.Name, s.Description)
+		b.WriteString(skillIndexLine(s.Name, s.Description))
 	}
 	if len(skills) > len(shown) {
 		fmt.Fprintf(&b, "- … and %d more\n", len(skills)-len(shown))
 	}
 	fmt.Fprintf(&b, "\nCall %s(name) to read one in full before doing work it may already cover.\n", ToolSkillView)
 	return b.String()
+}
+
+// skillIndexLine is one skill's entry in the prompt index. Its length is the
+// skill's standing cost, so SkillInfo.IndexChars counts this exact text.
+func skillIndexLine(name, description string) string {
+	return fmt.Sprintf("- %s — %s\n", name, description)
+}
+
+// SkillIndexCost is what the listed skills add to every prompt that carries
+// the index, and how much of that comes from skills no agent has opened.
+type SkillIndexCost struct {
+	Listed        int `json:"listed"`
+	Chars         int `json:"chars"`
+	UnviewedChars int `json:"unviewed_chars"`
+}
+
+// IndexCost measures the index as formatSkillBullets lists it: by name, at
+// most indexMax entries.
+func IndexCost(skills []SkillInfo, indexMax int) SkillIndexCost {
+	shown := skills
+	if indexMax > 0 && len(shown) > indexMax {
+		shown = shown[:indexMax]
+	}
+	cost := SkillIndexCost{Listed: len(shown)}
+	for _, s := range shown {
+		cost.Chars += s.IndexChars
+		if s.Views == 0 {
+			cost.UnviewedChars += s.IndexChars
+		}
+	}
+	return cost
 }
 
 func skillViewWorkspaceRule() string {
@@ -267,9 +298,9 @@ func CatalogTidyMessage(catalog string, staleDays int, stale []SkillInfo, notes 
 	var b strings.Builder
 	b.WriteString("Catalog to curate:\n\n" + catalog)
 	if len(stale) > 0 {
-		fmt.Fprintf(&b, "\n\nStale skill candidates (not viewed for at least %d days; never-viewed skills use their content modification time). Inactivity is not proof of obsolescence. Inspect applicability before deciding to keep, merge or delete:\n", staleDays)
+		fmt.Fprintf(&b, "\n\nStale skill candidates (not viewed for at least %d days; never-viewed skills use their content modification time). Inactivity is not proof of obsolescence. Inspect applicability before deciding to keep, merge or delete. Each line gives what the skill costs: its index line in every prompt, and its body on each view:\n", staleDays)
 		for _, sk := range stale {
-			fmt.Fprintf(&b, "- %s\n", sk.Name)
+			fmt.Fprintf(&b, "- %s (index %d chars, body %d chars, %d views)\n", sk.Name, sk.IndexChars, sk.BodyChars, sk.Views)
 		}
 	}
 	if notes != nil {
