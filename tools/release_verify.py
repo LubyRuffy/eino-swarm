@@ -23,13 +23,22 @@ E2E_PROFILES = ("REASONING_FIELDS", "MODEL_API_ERROR", "WORKER_ROSTER", "SCHEDUL
                 "MEMORY_REVIEW", "BUILTIN_TOOLS", "SCHEDULE_WORKER_OWNERSHIP", "GENERATION_INTERRUPTION")
 
 
+class Cancelled(KeyboardInterrupt):
+    def __init__(self, signum):
+        self.signum = signum
+
+
 @contextmanager
 def cancellation(cancel):
     """Signal only our owned commands; let the stage runner retain and reap them."""
     previous = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+    def interrupt(signum, _frame):
+        cancel.signum = signum
+        cancel.set()
+        raise Cancelled(signum)
     try:
         for sig in previous:
-            signal.signal(sig, lambda *_: cancel.set())
+            signal.signal(sig, interrupt)
         yield
     finally:
         for sig, handler in previous.items():
@@ -129,10 +138,13 @@ def verify(root, version, evidence, *, jobs=2, e2e_port=None, lock_timeout=30):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise ValueError("another verification owns this evidence directory") from None
-        return verification_attempt(root, version, evidence, jobs=jobs, e2e_port=e2e_port, lock_timeout=lock_timeout)
+        cancel = threading.Event()
+        with cancellation(cancel):
+            return verification_attempt(root, version, evidence, jobs=jobs, e2e_port=e2e_port,
+                                        lock_timeout=lock_timeout, cancel=cancel)
 
 
-def verification_attempt(root, version, evidence, *, jobs=2, e2e_port=None, lock_timeout=30):
+def verification_attempt(root, version, evidence, *, jobs=2, e2e_port=None, lock_timeout=30, cancel=None):
     attempt = uuid.uuid4().hex
     current = evidence / "verification.json"
     if current.is_symlink():
@@ -142,7 +154,7 @@ def verification_attempt(root, version, evidence, *, jobs=2, e2e_port=None, lock
     private_json(current, dict(status="running", attempt=attempt, version=version, native_status=NATIVE_PENDING))
     code = 1
     try:
-        code = _verify(root, version, evidence, jobs=jobs, e2e_port=e2e_port, lock_timeout=lock_timeout)
+        code = _verify(root, version, evidence, jobs=jobs, e2e_port=e2e_port, lock_timeout=lock_timeout, cancel=cancel)
         row = json.loads(current.read_text())
         if row.get("status") == "running":
             row["status"] = "blocked" if code == 2 else "failed"
@@ -151,7 +163,8 @@ def verification_attempt(root, version, evidence, *, jobs=2, e2e_port=None, lock
         private_json(evidence / "history" / (attempt + ".json"), row)
         return code
     except BaseException as error:
-        failure = dict(status="failed", attempt=attempt, version=version, exit_code=1,
+        failure = dict(status="cancelled" if isinstance(error, Cancelled) else "failed", attempt=attempt,
+                       version=version, exit_code=128 + error.signum if isinstance(error, Cancelled) else 1,
                        error_type=type(error).__name__, native_status=NATIVE_PENDING)
         try:
             private_json(current, failure)
@@ -171,7 +184,7 @@ def harness_fingerprint():
             for name in ("release.py", "release_verify.py", "release_stages.py", "release_preflight.py")}
 
 
-def _verify(root, version, evidence, *, jobs=2, e2e_port=None, lock_timeout=30):
+def _verify(root, version, evidence, *, jobs=2, e2e_port=None, lock_timeout=30, cancel=None):
     from release_preflight import collect_preflight, stable_inputs
     from release_stages import StageRunner, StageSpec, mark_queued, interval_union_seconds
     root, evidence = Path(root).resolve(strict=True), Path(evidence).absolute()
@@ -216,14 +229,16 @@ def _verify(root, version, evidence, *, jobs=2, e2e_port=None, lock_timeout=30):
                                timeout=1800, env=overrides,
                                owned_data=evidence / "e2e-data" if name == "pc-e2e" else None))
     results = {}
-    cancel = threading.Event()
-    with cancellation(cancel), StageRunner(evidence, identity=identity, stages=specs, lock_timeout=lock_timeout,
+    cancel = cancel or threading.Event()
+    with StageRunner(evidence, identity=identity, stages=specs, lock_timeout=lock_timeout,
                      lock_path=root / ".git/zwai-release-verification.lock", cancel=cancel) as runner:
         # Check again after queueing: another owner may have changed source or dependencies.
         latest = collect_preflight(root, source, projects=("frontend", "mobile"), collect_e2e=True)
         if latest["status"] != "passed" or stable_inputs(latest) != binding:
             raise ValueError("verification inputs changed while waiting for the checkout lock")
         results["frontend-build"] = runner.run("frontend-build")
+        if cancel.is_set():
+            raise Cancelled(getattr(cancel, "signum", signal.SIGINT))
         if results["frontend-build"]["status"] not in ("passed", "reused"):
             private_json(evidence / "verification.json", dict(status="failed", identity=identity, stages=results))
             return 1
@@ -235,6 +250,8 @@ def _verify(root, version, evidence, *, jobs=2, e2e_port=None, lock_timeout=30):
             private_json(evidence / "verification.json", dict(status="failed", identity=identity, stages=results))
             return 1
         results["package"] = runner.run("package")
+        if cancel.is_set():
+            raise Cancelled(getattr(cancel, "signum", signal.SIGINT))
         if results["package"]["status"] not in ("passed", "reused"):
             private_json(evidence / "verification.json", dict(status="failed", identity=identity, stages=results))
             return 1

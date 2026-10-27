@@ -413,6 +413,9 @@ def main():
 if __name__ == '__main__':
     try:
         sys.exit(main())
+    except KeyboardInterrupt as error:
+        print('Local verification cancelled', file=sys.stderr)
+        sys.exit(128 + getattr(error, 'signum', 2))
     except (OSError, ValueError, RuntimeError) as error:
         print(str(error), file=sys.stderr)
         sys.exit(1)

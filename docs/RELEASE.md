@@ -15,6 +15,8 @@ is saved before the first build and rechecked after taking the checkout lock.
 Preflight does not install or repair dependencies. It rejects missing development
 tools, dependency self-links or links outside the checkout, wrong installed
 versions, core module loading failures and failed local Playwright collection.
+This entry uses the default toolchain: custom `CC`, `CXX`, `GOROOT` or non-local
+`GOTOOLCHAIN` overrides are refused until their selected tools can be bound.
 Prepare dependencies independently from the committed lockfiles and npm cache
 using `npm ci --include=dev`; do not copy an unchecked `node_modules`, edit a
 lockfile to pass an environment check, or accept a failing collection by retrying.
@@ -30,7 +32,7 @@ directory and one isolated port (`E2E_PORT` can select it explicitly). The
 evidence path must use letters, digits, dot, slash, underscore or hyphen; the entry
 rejects spaces and shell metacharacters before writes because the existing E2E
 server command interpolates its data path. The checkout is locked across different
-evidence directories, so no build can replace
+evidence directories, so no concurrent verification build can replace
 the served `dist` during E2E. Signals cancel and reap this pipeline's command
 groups before the lock is released.
 E2E additionally uses the existing private process inventory to track and reap

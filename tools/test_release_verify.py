@@ -10,6 +10,7 @@ from unittest import mock
 import subprocess
 import os
 import stat
+import signal
 
 sys.path.insert(0, str(Path(__file__).parent))
 import release
@@ -17,6 +18,44 @@ import release_verify
 
 
 class VerificationEntryTests(unittest.TestCase):
+    def test_sigterm_during_preflight_is_recorded_and_releases_evidence_lock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, evidence = Path(directory) / "source", Path(directory) / "evidence"
+            root.mkdir()
+            previous = signal.getsignal(signal.SIGTERM)
+            def interrupted(*args, **kwargs):
+                signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+            with mock.patch.object(release_verify, "_verify", side_effect=interrupted), \
+                 self.assertRaises(release_verify.Cancelled):
+                release_verify.verify(root, "1.2.3", evidence)
+            self.assertEqual(signal.getsignal(signal.SIGTERM), previous)
+            row = json.loads((evidence / "verification.json").read_text())
+            self.assertEqual((row["status"], row["exit_code"]), ("cancelled", 143))
+            with mock.patch.object(release_verify, "_verify", return_value=2):
+                self.assertEqual(release_verify.verify(root, "1.2.3", evidence), 2)
+
+    def test_stage_cancelled_by_sigterm_keeps_cancellation_instead_of_build_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, evidence = Path(directory) / "source", Path(directory) / "evidence"
+            (root / ".git").mkdir(parents=True)
+            report = {"status": "passed", "inputs": {}, "toolchain": {}}
+            def stopped_stage(*_args, **_kwargs):
+                # The real stage runner records/reaps on KeyboardInterrupt before
+                # returning its cancelled row. The pipeline must retain the cause.
+                try:
+                    signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+                except release_verify.Cancelled:
+                    return {"status": "cancelled"}
+            with mock.patch("release_preflight.collect_preflight", return_value=report), \
+                 mock.patch("release_preflight.stable_inputs", return_value={"toolchain": {}}), \
+                 mock.patch.object(release_verify, "source_revision", return_value="a" * 40), \
+                 mock.patch("release_stages.StageRunner.run", side_effect=stopped_stage), \
+                 mock.patch.object(release_verify.platform, "system", return_value="Darwin"), \
+                 self.assertRaises(release_verify.Cancelled):
+                release_verify.verify(root, "1.2.3", evidence, e2e_port=12345)
+            row = json.loads((evidence / "verification.json").read_text())
+            self.assertEqual((row["status"], row["exit_code"]), ("cancelled", 143))
+
     def test_verification_plan_keeps_full_race_ui_and_native_gates_without_execution(self):
         output = io.StringIO()
         with mock.patch.object(release, "execute") as publish, \
