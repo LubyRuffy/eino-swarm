@@ -268,6 +268,23 @@ def validate_peer(connection, ready, ready_path, ready_sha, pins):
     return sampled
 
 
+def validate_login_target(target, frame, hint=None):
+    """Approve a point on this captured frame, never an earlier layout guess."""
+    keys = {"width", "height", "password_x", "password_y", "known_us_empty_ci_field"}
+    if (not isinstance(target, dict) or set(target) != keys
+            or target.get("known_us_empty_ci_field") is not True
+            or any(type(target.get(key)) is not int or target[key] <= 0 for key in ("width", "height"))
+            or any(type(target.get(key)) not in (int, float)
+                   or (type(target[key]) is float and not math.isfinite(target[key]))
+                   for key in ("password_x", "password_y"))
+            or (target["width"], target["height"]) != (frame["width"], frame["height"])
+            or not 0 <= target["password_x"] < target["width"]
+            or not 0 <= target["password_y"] < target["height"]
+            or (hint is not None and any(target.get(key) != value for key, value in hint.items()))):
+        raise RuntimeError("preparation approved login target differs from current frame")
+    return dict(target)
+
+
 def receive(server, ready, ready_path, pins, deadline, revalidate):
     """One admission and one envelope. No retry after a partial/invalid sender."""
     frame = ready["frame"]
@@ -302,13 +319,16 @@ def receive(server, ready, ready_path, pins, deadline, revalidate):
             payload = json.loads(raw)
         finally:
             raw.clear()
-        keys = {"frame_sha256", "approval"} | ({"credential"} if ready["stage"] == "before" else set())
+        keys = {"frame_sha256", "approval"} | ({"credential", "login_target"} if ready["stage"] == "before" else set())
         expected = "ci-us-empty-password" if ready["stage"] == "before" else "ci-desktop"
         if (not isinstance(payload, dict) or set(payload) != keys
                 or payload.get("frame_sha256") != frame["sha256"] or payload.get("approval") != expected
                 or ("credential" in keys and (not isinstance(payload["credential"], str)
                     or not payload["credential"] or not payload["credential"].isascii()))):
             raise RuntimeError("preparation Root frame approval differs")
+        if ready["stage"] == "before":
+            payload["login_target"] = validate_login_target(payload["login_target"], frame,
+                                                           ready.get("login_target_hint"))
         revalidate()
         validate_frame(frame, end)
         if process_identity(peer["pid"]) != peer:
@@ -318,11 +338,22 @@ def receive(server, ready, ready_path, pins, deadline, revalidate):
 
 
 def make_before_app(binding, *, helper_path, helper_sha256, client_path, client_sha256,
-                    source_sha256, app_source, package_path, client_kernel, login_target, ops=None):
-    """Construct an inert callback; only the actual runner supplies its case FD."""
+                    source_sha256, app_source, package_path, client_kernel, login_target=None, ops=None):
+    """Construct an inert callback; points are approved only after its new frame.
+
+    An optional legacy target is a disclosed hint, never input authorization.
+    The sender must approve that same target in the frame-bound RAM envelope.
+    """
     if (not isinstance(binding, dict) or set(binding) != set(FIXED_BINDINGS)
             or any(binding[key] in (None, "", {}) for key in FIXED_BINDINGS)):
         raise ValueError("preparation fixed binding is incomplete")
+    if login_target is not None:
+        login_target = dict(login_target)
+        keys = {"width", "height", "password_x", "password_y"}
+        if (set(login_target) not in (keys, keys | {"known_us_empty_ci_field"})
+                or ("known_us_empty_ci_field" in login_target
+                    and login_target["known_us_empty_ci_field"] is not True)):
+            raise ValueError("preparation login target hint has unknown or missing fields")
     pins = dict(actor=dict(path=str(Path(__file__).resolve()), sha256=source_sha256),
                 client=dict(path=str(Path(client_path).absolute()), sha256=client_sha256),
                 helper=dict(path=str(Path(helper_path).absolute()), sha256=helper_sha256))
@@ -368,13 +399,15 @@ def make_before_app(binding, *, helper_path, helper_sha256, client_path, client_
                 image = evidence / (stage + ".png")
                 native.capture(context, image, deadline)
                 frame = frame_record(image, began, wall, raw_began)
-                if (frame["width"], frame["height"]) != (login_target["width"], login_target["height"]):
-                    raise RuntimeError("preparation display geometry differs")
+                if login_target is not None:
+                    validate_login_target(dict(login_target, known_us_empty_ci_field=True), frame)
                 ready = dict(schema=1, stage=stage, binding=context["power_binding"],
                              actor=process_identity(os.getpid()), root=str(root), root_identity=root_identity,
                              socket=endpoint.name, socket_inode=endpoint.lstat().st_ino,
                              pins=pins, client_kernel=client_kernel, frame=frame,
                              prepare_deadline=deadline, prepare_deadline_raw=deadline_raw, session=observed)
+                if stage == "before":
+                    ready["login_target_hint"] = login_target
                 ready_path = evidence / ("ready-" + stage + ".json")
                 write_new(ready_path, ready)
                 def revalidate():
@@ -388,11 +421,12 @@ def make_before_app(binding, *, helper_path, helper_sha256, client_path, client_
                         # Re-check the same capture immediately before this single input.
                         revalidate()
                         validate_frame(frame, deadline)
-                        target = dict(login_target, session=binding["session"],
+                        approved = validate_login_target(payload["login_target"], frame, login_target)
+                        target = dict(approved, session=binding["session"],
                                       captured_raw=frame["captured_raw"], captured_wall=frame["captured_wall"])
                         write_new(evidence / "input-launch-attempt.json",
                                   dict(binding=context["power_binding"], frame_sha256=frame["sha256"],
-                                       helper=pins["helper"], credential_recorded=False,
+                                       login_target=approved, helper=pins["helper"], credential_recorded=False,
                                        native_input_confirmed=None))
                         result = native.input(context, target, payload["credential"], deadline)
                         input_attempted = True

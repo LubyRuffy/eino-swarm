@@ -13,6 +13,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-430`, `C-010`, `C-031`: resumable local release verification with offline
+  dependency/source preflight, exact-input headless receipts, bounded parallel
+  stages and queue/execution timing. Ordinary native startup has a distinct
+  engine/window/pixel entry; one-shot login approvals bind current-frame points.
+  Existing native and publication gates remain required.
+
 - `make eval EVAL_PROVIDER=<id>`: opt-in task-completion evals against a real
   model (`tools/agent_eval.py`, tasks in `evals/tasks/`). Each run owns a
   temporary data directory and engine, grades files and answers

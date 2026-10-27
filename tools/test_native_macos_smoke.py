@@ -266,7 +266,8 @@ class SmokeTests(unittest.TestCase):
         context = dict(self.context, ax=self.root / "unused-helper", origin="http://127.0.0.1:4567")
         pending = dict(pid=123, origin=context["origin"], bundle=str(context["app"]),
                        requested_bundle=str(context["app"]), ready=False,
-                       registration_pending=True, bundle_verified=False, case_verified=False)
+                       registration_pending=True, bundle_verified=False, case_verified=False,
+                       window_count=0, windows=[])
         ready = dict(self.native_row(), ready=True)
         clock = mock.Mock(return_value=10)
         deadline = smoke.Deadline(1, clock=clock)
@@ -284,7 +285,8 @@ class SmokeTests(unittest.TestCase):
     def test_registration_pending_cannot_reset_the_existing_window_deadline(self):
         context = dict(self.context, ax=self.root / "unused-helper", origin="http://127.0.0.1:4567")
         pending = dict(pid=123, origin=context["origin"], bundle=str(context["app"]), ready=False,
-                       registration_pending=True, bundle_verified=False, case_verified=False)
+                       registration_pending=True, bundle_verified=False, case_verified=False,
+                       window_count=0, windows=[])
         clock = mock.Mock(return_value=10)
         deadline = smoke.Deadline(.2, clock=clock)
         response = subprocess.CompletedProcess([], 0, json.dumps(pending), "")
@@ -499,12 +501,13 @@ class SmokeTests(unittest.TestCase):
                         mock.patch.object(smoke, "validate_helper", return_value={"binary_sha256": "prepared"}), \
                         mock.patch.object(smoke, "assert_process", return_value=executable), \
                         mock.patch.object(smoke, "wait_engine", return_value=("http://127.0.0.1:4567", {"pid": 456})), \
+                        mock.patch.object(smoke, "capture_window", return_value=dict(content_visible=True)), \
                         mock.patch.object(smoke, "request_json", return_value={"threads": []}), \
                         mock.patch.object(smoke.subprocess, "run", side_effect=native), \
                         mock.patch.object(smoke.time, "sleep", side_effect=lambda seconds: setattr(clock, "return_value", clock.return_value + seconds)), \
                         mock.patch.object(smoke, "wait_trace", side_effect=RuntimeError("Trace boundary reached")) as trace:
-                    expected_error = TimeoutError if extra_windows and not helper_ready else RuntimeError
-                    expected_reason = ("native window lacks" if helper_ready else "native composer") if extra_windows else "Trace boundary reached"
+                    expected_error = RuntimeError
+                    expected_reason = "native window lacks" if extra_windows else "Trace boundary reached"
                     with self.assertRaisesRegex(expected_error, expected_reason):
                         smoke.run_smoke(context)
 

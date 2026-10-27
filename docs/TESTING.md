@@ -1,5 +1,44 @@
 # Testing
 
+## Release verification tooling (`F-430`, `C-010`, `C-031`)
+
+The existing release entry exposes `--verify` / `make release-verify` for
+candidate-bound, resumable local checks without publication. See
+[RELEASE.md](RELEASE.md#local-verification-before-publication) for the commands,
+exit statuses, dependency preparation and final-package/native boundaries.
+Regression fixtures cover dependency self-links and outside module resolution,
+bad core entries, source/lock/toolchain/config changes, changed output trees,
+failed receipts, queue/cancellation cleanup and overlapping interval accounting:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p 'test_release_*.py'
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest test_native_macos_prepare_login.FrameTargetTests test_native_macos_prepare_login.PrepareLoginTests
+```
+
+Ordinary native readiness uses `native_macos_smoke.wait_initial_ready` and the
+existing shared deadline for engine identity, real AX window and nonblank pixels.
+It does not read a recovery journal. Recovery successor readiness and cold-start
+source/launch assertions remain separate scenario contracts. Only explicit
+registration/window/content pending observations may be polled; unknown helper
+outcomes, identity/permission refusal, failed pixels and business assertions stop
+the round. Every native helper attempt retains complete original streams and
+timing before parsing, including timeout output. These headless regressions do
+not accept an actual guest window or recovery.
+
+The one-shot login preparation accepts `login_target=None`: publish the fresh
+before-frame first, then approve its exact SHA and `login_target` in the single
+RAM envelope. The target contains `width`, `height`, `password_x`, `password_y`
+and `known_us_empty_ci_field: true`; malformed/out-of-frame points refuse input.
+An explicit frozen target is only a hint and must be confirmed by that envelope.
+Older frame-only login senders now refuse. After-desktop approval carries neither
+target nor credential. Credentials remain RAM-only, absent from argv and receipts.
+
+The existing 1500ms offline worker hold is intentional: Steer/wait fixtures need
+an observable running worker. This change does not shorten it, add E2E shards,
+weaken coverage/race/GUI gates, or create a VM pool. Parallel-stage timing alone
+cannot establish a speed gain or VM contention; measure comparable candidates
+before changing those policies.
+
 Create private evidence files with explicit mode `0600` while preserving and
 recording the normal compiler/test subprocess umask; a restrictive logging-only
 mask must not silently change executable-mode fixtures or be reported as a

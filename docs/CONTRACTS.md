@@ -189,6 +189,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-010 Build artifacts and update channel
 
+- 本地验证可恢复性：`tools/release.py --verify --platform macos` 不触发发布或修改交付账本；同 checkout 跨 evidence 目录互斥，来源证明在首次构建前生成并在持锁后复查。复用只限完整 candidate/version、lockfile、依赖、toolchain、config 与 stage 输入／输出／原日志字节相同的 headless 成功结果；未知／失败证据、来源变化及最终 ZIP 字节变化拒绝继承。签名／公证／装订造成的新字节必须重新绑定实际原生验收，GUI 不自动复用。阶段执行、排队、重试／返工原因和失败各自保留，重叠时间不累计。证据：`tools/release_verify.py`、`tools/release_preflight.py`、`tools/release_stages.py` 及同名测试；入口与边界见 `docs/RELEASE.md`。
+
 - 显式紧急发布：当前人类要求立即发布时，`tools/release.py --urgent-reason <非空授权原因>` 仅可放宽批次聚合等待和 TestFlight 北京日发布次数策略。实际发布回执保留原因；历史原因不授权后续调用。完整源码、收口工作集、原生验收、签名、不可变版本及 Apple 可安装状态门禁仍适用；普通调用继续执行原有两项策略。实现／验证：`tools/release.py`、`tools/release_ios.py`、`tools/test_release_urgent.py`、`tools/test_release_ios_urgent.py`；变更类型：Changed；来源：用户 2026-10-25 明确立即发布手机体验修复。
 
 - TestFlight 组关联使用本应用的配置组白名单，完整分页核对 `GET betaGroups/{group}/builds` 与公开 `GET betaGroups?filter[builds]={build}` 的两个查询方向；不把重复同源列表伪造为反向响应，不调用未支持的 build→betaGroups GET，也不组合 app/build 两个关系过滤器。首次公开证明继续使用 schema 1，旧证明不迁移或重写；VALID／未过期、全部配置组、内外测、审核及源码/build/IPA 身份门禁不变。证据：`tools/release_ios.py`, `tools/test_release_ios_groups.py`, `tools/test_release_public_recovery.py`；变更类型：Fixed；来源：GitHub Issue #92。

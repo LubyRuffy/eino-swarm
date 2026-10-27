@@ -7,6 +7,7 @@ from pathlib import Path
 import plistlib
 import select
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,7 @@ import threading
 import time
 import unittest
 from unittest import mock
+from types import SimpleNamespace
 
 import native_macos_prepare_login as login
 import native_macos_case as runner
@@ -27,7 +29,7 @@ SESSION = dict(user="ci", uid=os.getuid(), on_console=True, login_done=True,
 
 class InertOS:
     def __init__(self, locked=None):
-        self.locked, self.inputs, self.frames = locked, [], []
+        self.locked, self.inputs, self.frames, self.targets = locked, [], [], []
 
     def session(self, context, deadline):
         login.remaining(deadline)
@@ -41,6 +43,7 @@ class InertOS:
     def input(self, context, target, credential, deadline):
         login.remaining(deadline)
         self.inputs.append(credential)
+        self.targets.append(target)
         self.locked = None
         return dict(input_attempted=True, helper_exit=1)
 
@@ -126,6 +129,146 @@ class PrepareLoginTests(unittest.TestCase):
                 login.write_new(path, dict(replaced=True))
             self.assertEqual(path.read_bytes(), original)
             self.assertEqual(list(Path(directory).iterdir()), [path])
+
+
+class FrameTargetTests(unittest.TestCase):
+    """OS seams keep target admission testable without a guest or local sockets."""
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="frame-target-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.frame = dict(width=7, height=5, sha256="f"*64, expires_monotonic=time.monotonic()+5)
+        self.target = dict(width=7, height=5, password_x=3, password_y=2,
+                           known_us_empty_ci_field=True)
+
+    def receive(self, payload, hint=None, stage="before"):
+        ready = dict(stage=stage, frame=self.frame, binding={}, client_kernel="/fixture/python",
+                     login_target_hint=hint)
+        pins = {"client": dict(path="/fixture/client", sha256="c"*64)}
+        attempt = self.root / str(time.monotonic_ns())
+        attempt.mkdir(mode=0o700)
+        path = attempt / "ready-before.json"
+        path.write_text("{}")
+        connection = mock.MagicMock()
+        connection.__enter__.return_value = connection
+        connection.recv.side_effect = [json.dumps(payload).encode(), b""]
+        server = mock.Mock()
+        server.accept.return_value = (connection, None)
+        peer = dict(pid=1234)
+        with mock.patch.object(login.select, "select", return_value=([server], [], [])), \
+             mock.patch.object(login, "validate_peer", return_value=peer), \
+             mock.patch.object(login, "validate_frame"), \
+             mock.patch.object(login, "process_identity", return_value=peer):
+            result = login.receive(server, ready, path, pins, time.monotonic()+4, mock.Mock())
+        self.assertIn(mock.call(b"ACCEPTED\n"), connection.sendall.call_args_list)
+        return result
+
+    def payload(self, **changes):
+        return dict(dict(frame_sha256=self.frame["sha256"], approval="ci-us-empty-password",
+                         credential="syntheticsecret", login_target=self.target), **changes)
+
+    def test_receive_refuses_frame_only_approval_before_accepting_an_envelope(self):
+        payload = self.payload()
+        del payload["login_target"]
+        with self.assertRaisesRegex(RuntimeError, "approval"):
+            self.receive(payload)
+
+    def test_receive_accepts_only_current_frame_target_with_explicit_empty_us_field(self):
+        accepted = self.receive(self.payload())
+        self.assertEqual(accepted["login_target"], self.target)
+        self.assertIsNot(accepted["login_target"], self.target)
+
+    def test_receive_refuses_stale_frame_and_unsafe_or_unapproved_points(self):
+        variants = [dict(self.target, password_x=-1), dict(self.target, password_x=7),
+                    dict(self.target, password_y=5), dict(self.target, password_y=True),
+                    dict(self.target, width=True), dict(self.target, height=6),
+                    dict(self.target, password_y=float("nan")), dict(self.target, password_x=float("inf")),
+                    dict(self.target, password_x=10**1000),
+                    dict(self.target, known_us_empty_ci_field=False),
+                    {key: value for key, value in self.target.items() if key != "known_us_empty_ci_field"},
+                    dict(self.target, unapproved="value")]
+        for target in variants:
+            with self.subTest(target=target), self.assertRaisesRegex(RuntimeError, "target"):
+                self.receive(self.payload(login_target=target))
+        with self.assertRaisesRegex(RuntimeError, "approval"):
+            self.receive(self.payload(frame_sha256="0"*64))
+
+    def test_receive_requires_confirmation_of_disclosed_legacy_hint(self):
+        hint = dict(self.target)
+        del hint["known_us_empty_ci_field"]
+        self.assertEqual(self.receive(self.payload(), hint)["login_target"], self.target)
+        with self.assertRaisesRegex(RuntimeError, "target"):
+            self.receive(self.payload(login_target=dict(self.target, password_y=1)), hint)
+
+    def test_after_frame_approval_accepts_no_target_or_credential(self):
+        payload = dict(frame_sha256=self.frame["sha256"], approval="ci-desktop")
+        self.assertEqual(self.receive(payload, stage="after"), payload)
+        with self.assertRaisesRegex(RuntimeError, "approval"):
+            self.receive(dict(payload, login_target=self.target), stage="after")
+
+    def callback(self, target=None, hint=None):
+        root = self.root / str(time.monotonic_ns())
+        root.mkdir(mode=0o700)
+        evidence = root / "evidence"
+        evidence.mkdir()
+        endpoint = root / "prepare-login.sock"
+        original_lstat = Path.lstat
+        original_unlink = Path.unlink
+        binding = dict(execution_id="1", launch_id="2", source_sha="3", package_sha256="4",
+                       phase="idle", session=SESSION)
+        context = dict(receipt={}, environment={"ZWAI_NATIVE_EVIDENCE": str(evidence)},
+                       power_binding=dict(binding, case_id="fixture"))
+        operations = self.operations = InertOS(True)
+        original_target = (dict(self.target, width=1, height=1, password_x=0, password_y=0)
+                           if target is None else target)
+        def deliver(server, ready, path, pins, deadline, revalidate):
+            self.assertTrue(path.exists())
+            revalidate()
+            self.assertEqual(ready["frame"]["width"], 1)
+            if ready["stage"] == "before":
+                self.assertEqual(ready["login_target_hint"], hint)
+                payload = dict(credential="syntheticsecret")
+                if original_target != "missing":
+                    payload["login_target"] = original_target
+                return payload
+            self.assertNotIn("login_target_hint", ready)
+            return {}
+        def lstat(path, *args, **kwargs):
+            if path == endpoint:
+                return SimpleNamespace(st_ino=42, st_mode=stat.S_IFSOCK | 0o600)
+            return original_lstat(path, *args, **kwargs)
+        with mock.patch.object(login, "validate_context", return_value=root), \
+             mock.patch.object(login.socket, "socket"), \
+             mock.patch.object(login, "receive", side_effect=deliver), \
+             mock.patch.object(Path, "lstat", lstat), \
+             mock.patch.object(Path, "unlink", lambda path, *a, **k: None if path == endpoint else original_unlink(path, *a, **k)), \
+             mock.patch.object(login.os, "chmod"):
+            callback = login.make_before_app(binding, helper_path=__file__, helper_sha256="fixture",
+                client_path=__file__, client_sha256="fixture", source_sha256="fixture",
+                app_source=root, package_path=root, client_kernel="/fixture/python", ops=operations,
+                login_target=hint)
+            final_admission = callback(context, time.monotonic()+4)
+            final_admission()
+        return evidence, operations, original_target
+
+    def test_real_callback_inputs_only_the_target_approved_after_its_fresh_frame(self):
+        evidence, operations, original_target = self.callback()
+        self.assertEqual(len(operations.inputs), 1)
+        self.assertEqual(operations.targets[0]["password_x"], original_target["password_x"])
+        receipt = json.loads((evidence / "prepare-login/input-launch-attempt.json").read_text())
+        self.assertEqual(receipt["login_target"], original_target)
+        self.assertFalse(receipt["credential_recorded"])
+        self.assertTrue((evidence / "prepare-login/admitted.json").exists())
+        for path in (evidence / "prepare-login").iterdir():
+            self.assertNotIn(b"syntheticsecret", path.read_bytes())
+
+    def test_real_callback_refuses_changed_geometry_or_hint_before_input(self):
+        hint = dict(width=1, height=1, password_x=0, password_y=0)
+        for target, configured in [(dict(self.target), None),
+                                    (dict(self.target, width=1, height=1, password_x=.5, password_y=0), hint)]:
+            with self.subTest(target=target), self.assertRaisesRegex(RuntimeError, "target"):
+                self.callback(target, configured)
+            self.assertEqual(self.operations.inputs, [])
 
 
 class LoginCaseTests(unittest.TestCase):
@@ -234,6 +377,9 @@ class LoginCaseTests(unittest.TestCase):
                                    approval="ci-us-empty-password" if stage == "before" else "ci-desktop")
                     if stage == "before":
                         payload["credential"] = "syntheticsecret"
+                        payload["login_target"] = dict(width=ready["frame"]["width"],
+                            height=ready["frame"]["height"], password_x=0.0, password_y=0.0,
+                            known_us_empty_ci_field=True)
                     if transform:
                         transform(payload)
                     child.stdin.write(json.dumps(payload).encode())
@@ -311,6 +457,34 @@ class LoginCaseTests(unittest.TestCase):
         self.assertFalse(row["launched"])
         self.assertEqual(operations.inputs, [])
         self.assertEqual(self.sender_errors, ["RuntimeError"])
+
+    def test_observed_frame_selects_login_target_without_frozen_coordinates(self):
+        operations = InertOS(True)
+        target = dict(width=1, height=1, password_x=0.0, password_y=0.0,
+                      known_us_empty_ci_field=True)
+        def approve(payload):
+            if "credential" in payload:
+                payload["login_target"] = target
+        thread = self.start_sender(["before", "after"], transform=approve)
+        code, row = self.run_case(self.callback(operations, login_target=None))
+        thread.join(timeout=3)
+        self.assertEqual(self.sender_errors, [])
+        self.assertEqual(code, 0)
+        self.assertTrue(row["launched"])
+        self.assertEqual(len(operations.inputs), 1)
+        receipt = json.loads((self.evidence / "prepare-login/input-launch-attempt.json").read_text())
+        self.assertEqual(receipt["login_target"], target)
+        before = json.loads((self.evidence / "prepare-login/ready-before.json").read_text())
+        self.assertEqual(receipt["frame_sha256"], before["frame"]["sha256"])
+
+    def test_locked_frame_approval_without_target_never_inputs_or_launches(self):
+        operations = InertOS(True)
+        thread = self.start_sender(["before"], transform=lambda payload: payload.pop("login_target"))
+        code, row = self.run_case(self.callback(operations), budget=1)
+        thread.join(timeout=3)
+        self.assertEqual(code, 2)
+        self.assertFalse(row["launched"])
+        self.assertEqual(operations.inputs, [])
 
     def test_wrong_phase_refuses_before_any_frame(self):
         operations = InertOS()
