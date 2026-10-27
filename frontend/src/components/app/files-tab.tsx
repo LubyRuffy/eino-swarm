@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 
 import { CopyButton } from "@/components/app/copy-button"
 import { ConfirmDeleteDialog } from "@/components/app/confirm-delete-dialog"
+import { FilePreviewDialog } from "@/components/app/file-preview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -66,11 +67,13 @@ export function FilesTab({
 }) {
   const t = useT()
   const inputRef = useRef<HTMLInputElement>(null)
+  const treeRef = useRef<HTMLDivElement>(null)
   const userTouched = useRef(false)
   const [filter, setFilter] = useState("")
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [focused, setFocused] = useState<string>()
   const [doomed, setDoomed] = useState<string>()
+  const [preview, setPreview] = useState<{ threadId: string; path: string }>()
   const tree = useMemo(() => buildFileTree(files), [files])
   const rows = useMemo(
     () => visibleRows(tree, expanded, filter),
@@ -82,6 +85,7 @@ export function FilesTab({
     userTouched.current = false
     setFilter("")
     setFocused(undefined)
+    setPreview(undefined)
   }, [threadId])
 
   useEffect(() => {
@@ -98,7 +102,7 @@ export function FilesTab({
   }
 
   const openFile = (path: string) => {
-    if (canReveal) onReveal(path)
+    if (threadId) setPreview({ threadId, path })
   }
 
   return (
@@ -166,12 +170,14 @@ export function FilesTab({
         </p>
       ) : (
         <div
+          ref={treeRef}
           data-testid="file-tree"
           role="tree"
           aria-label={t("files.tree")}
           tabIndex={0}
           className="thin-scrollbar min-h-0 flex-1 overflow-y-auto px-1 pb-2 outline-none"
           onKeyDown={(e) => {
+            if ((e.target as HTMLElement).closest("button, a")) return
             const action = fileTreeKey(e.key, rows, focused, expanded, filtering)
             if (!action) return
             e.preventDefault()
@@ -203,6 +209,17 @@ export function FilesTab({
           ))}
         </div>
       )}
+      {preview && preview.threadId === threadId ? (
+        <FilePreviewDialog
+          key={`${preview.threadId}/${preview.path}`}
+          threadId={preview.threadId}
+          path={preview.path}
+          canReveal={canReveal}
+          onReveal={onReveal}
+          onClose={() => setPreview(undefined)}
+          onReturnFocus={() => treeRef.current?.focus()}
+        />
+      ) : null}
       <ConfirmDeleteDialog
         open={Boolean(doomed)}
         title={t("file.deleteTitle", {
@@ -267,9 +284,7 @@ function FileRow({
       onClick={() => {
         onFocus(node.path)
         if (node.dir) onToggle(node.path)
-      }}
-      onDoubleClick={() => {
-        if (!node.dir) onOpen(node.path)
+        else onOpen(node.path)
       }}
     >
       <span className="flex size-3.5 shrink-0 items-center justify-center">

@@ -5863,6 +5863,26 @@ go test -race ./internal/engine -run 'TestToolJSONGuard|TestInvalidTrailingToolC
 
 Directory identity regressions in `internal/engine/project_workdir_identity_test.go`, `project-dialog.test.tsx` and `frontend/e2e/workdir.spec.ts` cover a selected trailing-space folder with and without its trimmed sibling, create/edit/readback/runtime resolution, and deletion after a real selection before Save. Manual non-empty paths are literal; all-whitespace remains managed. Native acceptance must repeat create/edit through the actual system picker against the same candidate binary; browser bridge fixtures alone are insufficient.
 
+## PC workspace file preview (F-140 / C-005)
+
+`frontend/src/lib/file-preview.test.ts` checks actual streamed-byte limits,
+UTF-8/binary classification, safe image MIME selection, cancellation and failed
+HTTP reads. The file-preview hook/component and Files-tab unit tests cover
+loading, refresh, conversation ownership, closing and safe text rendering.
+`frontend/e2e/file-preview.spec.ts` creates conversations and uploads fixture
+bytes through the real loopback API without a model turn. It opens Markdown
+from the file tree by click and Enter, checks rendered/source switching, syntax
+highlighting and Escape focus return, keeps HTML/SVG as source, verifies a
+PNG's decoded dimensions, saved MIME and unchanged download bytes, and tests
+refresh after deletion/replacement and after equal-size writes with the same
+Last-Modified time. A short-window case waits for the entrance animation to
+finish, checks that long GFM tables stay inside the preview, and captures the
+reached screen.
+
+Run with an exclusive port, data directory and evidence output, as described
+in the concurrent Playwright section above. These browser checks exercise the
+shared desktop/Web React flow; they do not establish native Wails acceptance.
+
 ## Decodable image input and sent-image preview (F-140 / C-028)
 
 `frontend/e2e/fixtures/vision-photo.jpg` is a valid JPEG (684 bytes, 16x12), not a three-byte magic marker. `frontend/e2e/image-input.spec.ts` checks MIME and unchanged base64 through submission, exact stored bytes, Trace references, natural dimensions and reload. `composer-image-drop.test.tsx` owns the corresponding component behavior; the large conversation/composer suites keep their other responsibilities. A visible img element or src alone does not prove decoding. The default offline provider does not prove image semantics; independent keyless loopback acceptance can inspect actual OpenAI image_url transport without using a real model.

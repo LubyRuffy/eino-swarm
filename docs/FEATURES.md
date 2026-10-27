@@ -135,6 +135,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：让对话使用工作区文件和附件；使用者：PC 用户；入口：文件面板、上传及下载 API；输入：文件或图片；输出：文件、预览或模型视觉输入；前置条件：工作区和权限可用；失败表现：上传或工具错误；关联契约：`C-004`, `C-005`；实现证据：`internal/server`, `internal/tools`, `frontend/src/components/app`。
 - 图片输入：png/jpeg/gif/webp 文件在空 MIME、通用 binary 或 UTI 标签下仍进入视觉输入；显式 text/PDF 保持文件附件。客户端只归一化 MIME 声明，不改原字节，服务端继续执行真实类型与声明匹配校验。关联契约：`C-028`；证据：`frontend/src/lib/paste-image.ts`、`frontend/src/lib/paste-image.test.ts`、`frontend/src/components/app/composer-image-drop.test.tsx`、`frontend/e2e/image-input.spec.ts`。
 - 已发送图片预览：桌面与 Web 对话中的图片缩略图可点击或通过 Enter／Space 打开放大层，多图时打开点选的图片。预览沿用已保存图片地址，按原比例适配窗口；显示加载及失败状态，可通过 Esc、遮罩或关闭按钮关闭并回到缩略图焦点，刷新重载后仍可打开。关闭预览不停止正在运行的任务。关联契约：`C-028`；证据：`frontend/src/components/app/input-thumbs.tsx`、`frontend/src/components/app/input-thumbs.test.tsx`、`frontend/e2e/image-input.spec.ts`。
+- 工作区文件预览：桌面与 Web 文件树单击文件或按 Enter 打开宽幅内容窗；Markdown 默认显示文档，可切换源码，普通 UTF-8 文本与已知源码显示完整文本及适用的语法高亮，png/jpeg/gif/webp 图片按比例显示。提供复制文本、刷新、原文件下载，原生桌面仍可在文件管理器中显示文件。Esc／关闭后焦点回到文件树，切换对话或关闭取消旧读取。预览读取最多 8 MiB，超过 256 Ki 字符回退完整纯文本；文件过大、不支持或读取失败明确显示，保留下载入口。HTML/SVG 只作为转义源码，MDX 不求值；暂不解析相对当前文档目录的链接和图片资源。关联契约：`C-004`、`C-005`；证据：`frontend/src/components/app/file-preview.tsx`、`frontend/src/lib/file-preview.ts`、`frontend/src/lib/use-file-preview.ts`、`frontend/src/components/app/files-tab.test.tsx`、`frontend/src/lib/file-preview.test.ts`、`frontend/e2e/file-preview.spec.ts`。
 
 ### F-145 Durable composer drafts
 
@@ -316,6 +317,8 @@ This is the current user-facing capability map. The code and tests named below a
 - 失败时 transcript 与 Memory 面板显示停止原因、提案次数、拒绝类别及可用容量数字，区分未提交 notes 与已落盘 skills；Trace 记录有界 attempts 安全元数据，不保存被拒提案正文、原文引句或旧条目。容量反馈向模型保留 usage/over_by/current_entries/matched，原容量、来源、数字、revision 校验不变，只能在原预算内先有依据地缩短或替换相关条目再新增，不能清理无关记忆；无法安全提交时明确失败，旧事件缺新增字段仍兼容。失败 Trace 按钮会打开侧栏并加载原回合，历史聚焦不冒用最新 token 用量；切换后返回原会话时恢复手动复盘结果，结果落在已加载 tail 之外时只读一次已知 turn 的 Trace，并校验点击代次、线程、回合和事件起点，不轮询。入口：回合自动复盘、Memory 的 Review now、同 turn Trace；关联契约：`C-025`、`C-012`；实现证据：`internal/engine/review_diagnostics.go`、`internal/engine/review_diagnostics_test.go`、`internal/engine/review_finalize_test.go`、`internal/server/review_diagnostics_test.go`、`frontend/src/lib/review-diagnostics.ts`、`frontend/src/lib/review-diagnostics.test.ts`、`frontend/e2e/memory-review.spec.ts`、`frontend/src/lib/transcript-review.ts`。
 
 ### F-430 Build and release paths
+
+- 发布版本建议：`python3 tools/next_release_version.py` 只读查询远端数字 tags、含 draft 的全部 Release 和已分配批次，按数字组件建议下一个有效 patch 版本；未知基线、无效台账或远端读取失败明确拒绝。建议不占用版本、不改源码或台账；发布重试复用已冻结版本，实际发布仍须原生验收与并发版本预检。关联契约：`C-010`；证据：`tools/next_release_version.py`、`tools/test_next_release_version.py`、`docs/RELEASE.md`。
 
 - 原生 case 区分真实场景截止与子命令观测超时，保留首错原始流；库存失败仍取消并等待已持有的直接子进程，未知后代继续保留清理拒绝标记与私有数据。草稿验收再次读回持久文本、附件原字节与真实输入框值，不依赖正常保存时已隐藏的提示。关联契约：`C-031`、`C-033`；证据：`tools/native_macos_case.py`、`tools/test_native_macos_case.py`、`tools/test_native_macos_case_timeouts.py`、`tools/native_macos_resilience.py`、`tools/test_native_macos_resilience.py`。
 - SIGKILL 清理回归以本测试真实私有进程库存执行故障和恢复，并在失败时保留 runner 首错与证据；测试命名空间不代替生产完整 collector 验收。关联契约：`C-031`；证据：`tools/test_native_macos_fault_cleanup.py`、`tools/test_native_macos_resilience_fault.py`。

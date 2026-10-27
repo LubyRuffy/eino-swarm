@@ -31,6 +31,14 @@ co-working app built on it. The library API is unchanged except where noted
   structural `unmatched` diagnosis (scope, stated fields, candidate count, the
   closest row's mismatches) so Trace explains it without the claim's text.
 
+- `F-140`, `C-004`, `C-005` (Issue #119, macOS `v0.1.45`): open workspace files from the PC Files tree
+  to view Markdown, UTF-8 text/source and common raster images. Markdown
+  supports rendered/source views; the preview provides copy, refresh, download
+  and native file-manager reveal. Reads are bounded to 8 MiB, HTML/SVG stay
+  escaped source, and closing or changing conversation cancels the old read.
+  The shared pending batch aligns mobile version metadata to `0.1.45`;
+  this desktop publication leaves mobile native acceptance and uploads pending.
+
 - `F-180`, `C-011`: select integrated-terminal text and use **Add to chat**
   to attach it to the current composer with its source tab, conversation/project,
   initial directory and shell. References use the existing editable, durable

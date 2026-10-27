@@ -41,6 +41,25 @@ push the complete main and record its version/SHA in the delivery ledger.
 Only mobile batches require `mobile/package.json` to match the new version.
 Desktop-only releases leave the mobile version/build number unchanged.
 
+Select the next version before freezing a candidate:
+
+```bash
+python3 tools/next_release_version.py
+python3 tools/next_release_version.py --plain
+```
+
+This read-only selector compares fresh `origin` numeric tags, every GitHub Release
+(including drafts), and assigned versions in the existing delivery ledger. It
+suggests the next patch numerically, carrying patch/minor at the existing
+two-decimal `versionCode` boundary. It does not reserve a version, write the
+ledger, modify source, build or publish. Freeze the selected version in the
+reviewed candidate/batch, then rerun publication preflight; a concurrent
+allocation or remote release can invalidate the suggestion. `--state` (or
+`DELIVERY_STATE`) selects the ledger; `--source-dir` selects the checkout.
+`tools/test_next_release_version.py` covers numeric ordering, draft and allocated
+versions, rollover, invalid evidence and the actual read-only command adapter
+without network access.
+
 An explicit human request for an immediate release can override only the batch
 aggregation wait and TestFlight's local Beijing daily limit. Pass the current
 authorization as a nonempty reason on every invocation:

@@ -1,8 +1,18 @@
 import { fireEvent, render, screen, within } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { FilesTab } from "./files-tab"
 import type { FileEntry } from "@/lib/types"
+import { readFilePreview } from "@/lib/file-preview"
+
+vi.mock("@/lib/file-preview", () => ({
+  MAX_RENDERED_PREVIEW_CHARS: 256 * 1024,
+  readFilePreview: vi.fn(),
+}))
+
+beforeEach(() => {
+  vi.mocked(readFilePreview).mockReset().mockResolvedValue({ kind: "text", text: "# Local file" })
+})
 
 function entry(path: string, extra: Partial<FileEntry> = {}): FileEntry {
   const slash = path.lastIndexOf("/")
@@ -131,13 +141,39 @@ describe("Files tab", () => {
     expect(screen.getByRole("treeitem", { name: "alpha.md" })).toBeInTheDocument()
   })
 
-  it("reveals a file on Enter when the shell can", () => {
+  it("previews a file on Enter and keeps native reveal as an explicit action", async () => {
     const { onReveal } = renderTab()
     const tree = screen.getByTestId("file-tree")
     tree.focus()
     fireEvent.keyDown(tree, { key: "End" })
     fireEvent.keyDown(tree, { key: "Enter" })
+    expect(await screen.findByRole("heading", { name: "Local file" })).toBeInTheDocument()
+    expect(readFilePreview).toHaveBeenCalledWith("th_1", "readme.md", expect.any(AbortSignal))
+    expect(onReveal).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Show file in file manager" }))
     expect(onReveal).toHaveBeenCalledWith("readme.md")
+  })
+
+  it("opens files with a single click in the browser shell too", async () => {
+    const { onReveal } = renderTab(listing, { canReveal: false })
+    fireEvent.click(screen.getByRole("treeitem", { name: "readme.md" }))
+    expect(await screen.findByRole("heading", { name: "Local file" })).toBeInTheDocument()
+    expect(onReveal).not.toHaveBeenCalled()
+    expect(screen.queryByRole("button", { name: "Show file in file manager" })).not.toBeInTheDocument()
+  })
+
+  it("aborts and closes the old preview when changing conversations", async () => {
+    const { rerender } = render(
+      <FilesTab files={listing} workspace="/tmp/ws" threadId="first" canReveal={false}
+        onUpload={vi.fn()} onDelete={vi.fn()} onRefresh={vi.fn()} onReveal={vi.fn()} />,
+    )
+    fireEvent.click(screen.getByRole("treeitem", { name: "readme.md" }))
+    await screen.findByRole("heading", { name: "Local file" })
+    const signal = vi.mocked(readFilePreview).mock.calls[0][2]
+    rerender(<FilesTab files={listing} workspace="/tmp/ws" threadId="second" canReveal={false}
+      onUpload={vi.fn()} onDelete={vi.fn()} onRefresh={vi.fn()} onReveal={vi.fn()} />)
+    expect(screen.queryByTestId("file-preview")).not.toBeInTheDocument()
+    expect(signal.aborted).toBe(true)
   })
 
   it("expands from the keyboard", () => {

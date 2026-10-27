@@ -104,6 +104,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 - 状态：active；类型：security；作用范围：PC 服务；关联功能：`F-110`, `F-140`, `F-310`。
 - 契约内容：默认只在 loopback 提供服务，Web 客户端同源访问；不为持有对话和命令权限的服务添加开放 CORS。
+- 被选中的工作区文件不得作为同源可执行页面呈现：下载继续强制 attachment 与 nosniff；PC 通过同源 fetch 消费该文件的有界字节，Markdown 不解释原始 HTML／MDX，独立 HTML/SVG 文件显示为转义源码，独立图片文件预览仅使用 png/jpeg/gif/webp MIME 的 Blob URL。该文件读取以实际响应字节累计执行 8 MiB 上限，不能信任过期列表大小；关闭／换对话中止旧读取并释放 Blob URL。Markdown 内嵌的绝对 URL 图片沿用现有渲染器加载，不属于该文件读取上限；暂不解析相对文档目录的资源。证据：`internal/server/files.go`、`frontend/src/lib/file-preview.ts`、`frontend/src/lib/use-file-preview.ts`、`frontend/src/components/app/file-preview.tsx`、`frontend/src/lib/file-preview.test.ts`、`frontend/e2e/file-preview.spec.ts`。
 - 允许行为：同源 shell 连接；禁止行为：无认证的非 loopback 默认服务；失败语义：跨源请求被拒绝；不变量：默认网络暴露为本机；边界条件：用户显式配置监听地址。
 - 证据：实现 `internal/app`, `internal/server`；测试 `internal/server`；变更规则：同步配置、API 和安全测试；来源：`AGENTS.md`。
 
@@ -188,6 +189,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 手机引用命令边界：PC／手机复用 `frontend/src/lib/slash-core.ts` 的 `parseSlashSubmit`；手机正文被识别为目标／计划命令且任一引用去空白后非空时，发送／插话／表单提交必须在引用封装、清稿和上传／RPC 回调前显示本地拒绝，保留原正文、引用和文件。拒绝不设置目标、不进入计划、不产生发送成功；修正正文或移除有效引用后须由用户重试。未知命令、路径、URL，以及引用／代码内的字面命令不得误拒；普通引用仍沿 `C-011` 格式，不剥离 `<user_request>` 或丢弃 `<selected_text>` 来激活命令。纯文本的既有引擎／RPC 语义与附件单独存在时的拒绝路径不变。关联 `F-150`、`F-221`、`C-033`；证据：`mobile/src/components/composer.tsx`、`mobile/src/components/composer-quoted-command.test.tsx`、`mobile/e2e/quoted-goal.spec.ts`、`internal/slash/testdata/trailing-goal.json`；变更类型：Fixed；来源：Issue #111。
 
 ## C-010 Build artifacts and update channel
+
+- 版本建议与发布分离：`tools/next_release_version.py` 只读比较新鲜 origin 数字 tags、全部 Release（含 draft）和已有批次占用，按既有构建号边界建议递增 patch；不保留版本、不改源码或台账。重复调用在已有分配之后建议新的未占用版本，不用于发布重试；重试必须复用冻结版本，并由实际发布预检再次校验冲突。无法确认基线或占用时拒绝建议。证据：`tools/next_release_version.py`、`tools/test_next_release_version.py`。
 
 - 显式紧急发布：当前人类要求立即发布时，`tools/release.py --urgent-reason <非空授权原因>` 仅可放宽批次聚合等待和 TestFlight 北京日发布次数策略。实际发布回执保留原因；历史原因不授权后续调用。完整源码、收口工作集、原生验收、签名、不可变版本及 Apple 可安装状态门禁仍适用；普通调用继续执行原有两项策略。实现／验证：`tools/release.py`、`tools/release_ios.py`、`tools/test_release_urgent.py`、`tools/test_release_ios_urgent.py`；变更类型：Changed；来源：用户 2026-10-25 明确立即发布手机体验修复。
 
