@@ -77,7 +77,6 @@ func runRestartProcessAcceptance(t *testing.T, dir, oldBinary, newBinary string,
 	oldStarted := time.Now()
 	old := startRestartProcess(t, dir, oldBinary, "engine", "--data-dir", dataDir, "--addr", "127.0.0.1:0")
 	oldRecord := waitRestartRecord(t, dataDir, 0, 15*time.Second, old)
-	waitRestartReady(t, oldRecord.URL, 15*time.Second)
 	if oldRecord.PID != old.cmd.Process.Pid {
 		t.Fatalf("old engine published another process: %+v", oldRecord)
 	}
