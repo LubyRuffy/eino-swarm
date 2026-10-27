@@ -16,7 +16,9 @@ import (
 // On macOS a process-group spawn into a missing directory fails as
 // "fork/exec <shell>: no such file or directory", which names the shell
 // instead of the directory; a model reading that concludes the shell is gone
-// and stops using exec for the rest of the conversation.
+// and stops using exec for the rest of the conversation. The refusal is a
+// failed result, not a Go error: nothing between a tool and the model turns
+// an error into a result, so an error would end the whole turn.
 type execWorkDir struct {
 	inner        tool.InvokableTool
 	workspaceDir string
@@ -32,9 +34,18 @@ func (g *execWorkDir) Info(ctx context.Context) (*schema.ToolInfo, error) {
 
 func (g *execWorkDir) InvokableRun(ctx context.Context, args string, opts ...tool.Option) (string, error) {
 	if err := missingExecWorkDir(args, g.workspaceDir); err != nil {
-		return "", err
+		return refusedExecResult(err), nil
 	}
 	return g.inner.InvokableRun(ctx, args, opts...)
+}
+
+// refusedExecResult uses exec's own failure keys for a command that never
+// started, so the model reads an ordinary failed call it can correct.
+func refusedExecResult(err error) string {
+	out, _ := json.Marshal(map[string]any{
+		"exit_code": -1, "stdout": "", "stderr": "", "failed": true, "error": err.Error(),
+	})
+	return string(out)
 }
 
 // missingExecWorkDir resolves cwd the way exec does: an absolute cwd as

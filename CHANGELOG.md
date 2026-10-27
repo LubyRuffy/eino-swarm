@@ -322,8 +322,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 - Workers are told the workspace directory in their own system prompt, so a
   worker no longer guesses relative paths from its instructions alone.
-- `exec` with a `cwd` that does not exist is refused with that directory named,
-  instead of the OS error that blamed the shell binary.
+- `exec` with a `cwd` that does not exist returns a failed result naming that
+  directory (`did not run`, omit `cwd` to use the workspace) instead of the OS
+  error that blamed the shell binary. It is a result, not a Go error: a tool
+  error ends the whole turn, which is how a guessed directory used to abort it.
 - `schedule_wake` refusals for a too-short `delay_s` / `every_s` state the
   minimum interval in seconds, so the manager can retry once with a valid value.
 
