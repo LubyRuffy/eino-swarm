@@ -34,7 +34,7 @@ import (
 // instruction/notes/skills, a standing goal, and open wakes. It goes last
 // so those are the most recent thing the model read. Empty for a
 // conversation that has none of those.
-func ManagerPrompt(set *tools.Set, cfg *config.Config, extra string) string {
+func ManagerPrompt(set *tools.Set, extra string) string {
 	var b strings.Builder
 
 	b.WriteString(`You are the manager of a team of AI agents, working alongside a human.
@@ -62,33 +62,7 @@ task, multiple workers, or simultaneous manager work before delegating for quali
 Choose the worker count for the useful subtasks, not a fixed quota.
 
 You can start sub-agents that work in parallel, each with its own context.
-Their tool descriptions give the call details; these points decide how to use them:
-
-- spawn_agent(role, task, fork_context?) starts one and returns immediately
-  with its agent_id. Give each a role name and a task that is complete on its
-  own. One worker per role: a later call with that role continues the same
-  agent instead of starting a second. fork_context copies
-  THIS conversation into a worker that does not exist yet — not a previous
-  worker's findings, and not a reason to mint a twin. To continue one
-  specific id when several leftover siblings share a role, use resume_agent
-  on that id. A missing role or task is an error result: fill both fields in
-  one corrected call. Repeated invalid calls in one reply are coalesced by
-  error with rejected_calls. They created no worker: do not invent ids,
-  claim they ran, or close them.
-- resume_agent continues a finished or failed worker under the same agent_id.
-  Use it when you mean a particular id, not whichever finished last.
-- send_message steers a running worker at its next step, or you when agent_id
-  is manager. A missing or finished target comes back to you as
-  notified:manager; take the next step. Do not invent ids.
-- wait_agents returns as soon as one listed worker finishes. Start a batch up
-  to the concurrency cap, then wait in a loop. When one finishes, resume that
-  agent_id with the next piece or spawn a new role before you wait again.
-  Each time it returns, tell the human in one line what just finished and
-  what is still running — a silent wait looks frozen from the outside.
-- close_agent cancels a still-running worker you no longer need. Finished
-  leftover workers are already stopped; leave those ids for resume_agent. Do
-  not close a leftover roster as cleanup. Closing a finished id returns
-  already_finished.
+Their tool descriptions give the call details and limits.
 
 When you spawn:
 
@@ -100,9 +74,7 @@ When you spawn:
   constraints, expected output and evidence. Tell them where to write in the shared
   workspace and read it back; do not ask them to paste a large result into
   their reply.
-- The concurrency cap below is a hard ceiling. Do not guess a larger number from how many pieces the task has.
-  Do not launch a larger batch up front. Do not wait for one before starting another that still fits under that cap.
-  While they run, do only work no worker was given; do not repeat a worker's investigation
+- While they run, do only work no worker was given; do not repeat a worker's investigation
   yourself. Wait when the next step depends on their results.
 - Review their evidence, resolve conflicting findings, and verify the combined
   result before reporting completion. You own the final answer. Verify from the
@@ -115,12 +87,6 @@ When you spawn:
   writer and fan out the reads.
 
 `)
-
-	n := cfg.SwarmSnapshot().MaxConcurrent
-	if n <= 0 {
-		n = config.DefaultMaxConcurrent
-	}
-	fmt.Fprintf(&b, "The concurrency cap is %d. That number is a hard limit from settings, not a suggestion, and not something to infer from how many pieces the task has. Never start more than %d sub-agents. spawn_agent and resume_agent refuse past %d and do not queue the extra worker. When more pieces remain, wait for one to finish, then resume that agent_id or spawn the next piece.\n\n", n, n, n)
 
 	b.WriteString(HostEnvironmentPrompt())
 	b.WriteString("\n")

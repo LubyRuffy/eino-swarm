@@ -3778,9 +3778,9 @@ comparisons. Each line says what was measured and what it decided.
   (98% on one-shot tasks) and 66% of manager prompt tokens were cached. Decision:
   put everything conversation-specific after the generic text, so the first
   call of a new conversation shares the prefix (first-call cache 65% to 83%).
-  Not done: moving Waiting/Answering into skills. Each is at most 8% of the
-  prefix, a skill costs a round trip, and removing "Do not" rules needs a
-  second model to show they only compensate for this one.
+  Moving Waiting/Answering into skills: see the two-model prompt audit
+  below; their "Do not" rules change behaviour on both models, so they stay
+  always loaded.
 - **Tool deferral.** Eight tools were never called by the manager in the 150
   runs that recorded tool counts (`resume_agent`, `close_agent`, `ask_user`,
   `schedule_task`, `send_task_message`, `read_task_messages`, `web_fetch`,
@@ -3804,6 +3804,66 @@ comparisons. Each line says what was measured and what it decided.
   the remaining estimate, with the configured floor) trades latency for that
   cost and is policy, not a defect. Not done: a blocking wait tool, which the
   Waiting section forbids.
+
+### Prompt audit on two models
+
+Sections of the manager prompt were removed one arm at a time and the 13
+cost tasks (all except the review triples) run twice per arm on
+`dsv41-flash-1017` and `glm-5.3-flash`, from the same commit. Pass/fail
+totals were not enough: two of the three findings below only show in the
+traces.
+
+| arm (prompt chars) | dsv41 passed · total tokens | glm passed · total tokens |
+|---|---|---|
+| base (11.1K) | 26/26 · 4169K | 25/26 · 3644K |
+| delegation call details and cap paragraph removed, Waiting gate removed (8.5K) | 26/26 · 3687K | 25/26 · 3727K |
+| Delegating, cap and Waiting sections removed (3.9K) | 26/26 · 2791K | 25/26 · 2094K |
+
+Each glm arm's one failure is a different task with an unrelated cause
+(an output-budget error at the 16384 default, `code=E205` keys, a missed
+checkbox format).
+
+- **Delegation call details were duplicated.** The bullet list of what
+  `spawn_agent` / `resume_agent` / `send_message` / `wait_agents` /
+  `close_agent` do, and the concurrency-cap paragraph, repeat the tools' own
+  descriptions, which already carry the live cap. Without them both models
+  spawned the same way (first batches of four to six workers, no cap
+  refusals, the same wait loop). Decision: removed from the prompt; the one
+  sentence no description had (continue a particular id among leftover
+  workers sharing a role) moved into `resume_agent`'s description.
+- **The Waiting gate is load-bearing.** "Call schedule_wake and end the turn
+  … do not block a tool to wait" looks like a rule for a weaker model, and
+  `deferred-check` still passed without it. But without it glm blocked in
+  `exec` with `sleep 30` / `sleep 10` in both runs (one never armed a wake),
+  and with the whole Waiting section gone dsv41 slept 40–60 s too; with it
+  neither model slept longer than 5 s. Decision: kept, and not moved into
+  a skill, since the model would have to know it needs the rule to load it.
+- **The Delegating section is what makes the manager delegate.** Without it
+  neither model spawned a worker on any task, and every task still passed,
+  with 33% (dsv41) and 43% (glm) fewer tokens and no slower. These tasks fit
+  one context and have no step that needs a fresh one, so they cannot show
+  what delegation is for; the policy is a product decision, not a redundant
+  rule. Decision: kept.
+- **Answering guardrails.** Removing "do not narrate", "do not duplicate the
+  plotted values", "do not invent numbers / chart a single value" kept
+  `chart-compare`, `direct-lookup`, `two-deliverables` and
+  `multi-dir-survey` at 12/12 on each model (three runs per arm) and made
+  answers about 25% longer (median 752 to 975 characters on dsv41, 617 to
+  747 on glm). Decision: kept. Both models already restate the plotted
+  values outside the chart in most runs with the rule present, so that one
+  sentence has little effect on either.
+
+The prompt as landed (call details removed, Waiting gate kept) was run again
+on `deferred-check`, `multi-dir-survey-large`, `multi-module-bugfix` and
+`multi-module-bugfix-slow`, twice per model: 8/8 on each. On
+`deferred-check` every run armed a wake and the executed sleeps stayed at
+1–2 s, except one dsv41 scheduled check that slept 20 s then 15 s to cover
+the job's last ~14 s.
+
+The `--max-completion-tokens` flag exists because of this audit: the harness
+writes only the provider into its config, so runs used the engine default
+of 16384 output tokens, and glm spent it reasoning before writing a file on
+the review fixtures. Reports now state the cap they ran under.
 
 ### Independent review: measured on two models, left to the manager
 

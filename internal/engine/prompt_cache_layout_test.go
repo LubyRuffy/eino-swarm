@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/tools"
 )
 
@@ -15,9 +14,8 @@ import (
 // were cached on a first call, against 80% or more on later calls). The path now
 // follows all static text, so the shared prefix is the whole generic prompt.
 func TestManagerPromptSharesItsPrefixAcrossConversations(t *testing.T) {
-	cfg := config.Default()
-	a := ManagerPrompt(&tools.Set{WorkspaceDir: "/data/ws/th_aaaaaaaaaaaaaaaa", Names: []string{"exec"}}, cfg, "")
-	b := ManagerPrompt(&tools.Set{WorkspaceDir: "/data/ws/th_bbbbbbbbbbbbbbbb", Names: []string{"exec"}}, cfg, "")
+	a := ManagerPrompt(&tools.Set{WorkspaceDir: "/data/ws/th_aaaaaaaaaaaaaaaa", Names: []string{"exec"}}, "")
+	b := ManagerPrompt(&tools.Set{WorkspaceDir: "/data/ws/th_bbbbbbbbbbbbbbbb", Names: []string{"exec"}}, "")
 
 	shared := 0
 	for shared < len(a) && shared < len(b) && a[shared] == b[shared] {
@@ -42,7 +40,7 @@ func TestManagerPromptSharesItsPrefixAcrossConversations(t *testing.T) {
 }
 
 func TestManagerPromptKeepsProjectTextAfterTheWorkspacePath(t *testing.T) {
-	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/data/ws/th_x"}, config.Default(), "## This project\n\nBe terse.\n")
+	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/data/ws/th_x"}, "## This project\n\nBe terse.\n")
 	path := strings.Index(prompt, "## Workspace path")
 	project := strings.Index(prompt, "## This project")
 	if path < 0 || project < path {
@@ -51,7 +49,7 @@ func TestManagerPromptKeepsProjectTextAfterTheWorkspacePath(t *testing.T) {
 }
 
 func TestManagerPromptWithoutAWorkspaceHasNoEmptyPathSection(t *testing.T) {
-	if prompt := ManagerPrompt(&tools.Set{}, config.Default(), ""); strings.Contains(prompt, "## Workspace path") {
+	if prompt := ManagerPrompt(&tools.Set{}, ""); strings.Contains(prompt, "## Workspace path") {
 		t.Fatal("an empty workspace must not invent a path section")
 	}
 }

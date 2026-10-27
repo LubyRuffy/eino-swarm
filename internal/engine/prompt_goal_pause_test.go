@@ -96,7 +96,7 @@ func TestGoalDefaultsDoNotContainIncidentInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := ManagerPrompt(&tools.Set{}, cfg, "") + GoalPrompt("", false) + GoalContinueText() + string(raw)
+	body := ManagerPrompt(&tools.Set{}, "") + GoalPrompt("", false) + GoalContinueText() + string(raw)
 	// Incident prose is allowed only as user data, never as a default policy.
 	for _, leak := range []string{"继" + "续突破", "你为什么" + "停住，卡在哪里了？", "th_" + "665c1098b6d10e1e"} {
 		if strings.Contains(body, leak) {

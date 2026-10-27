@@ -57,14 +57,14 @@ func TestManagerPromptPreservesTheSelectedWorkspacePath(t *testing.T) {
 			if set.WorkspaceDir != selected {
 				t.Fatalf("actual tool workspace=%q, want %q", set.WorkspaceDir, selected)
 			}
-			prompt := ManagerPrompt(set, e.Config(), "")
+			prompt := ManagerPrompt(set, "")
 			before, path, found := strings.Cut(prompt, "\n## Workspace path\n\n")
 			if !found || path != selected+"\n" {
 				t.Errorf("manager workspace bytes=%q, want %q", path, selected+"\n")
 			}
 			other := *set
 			other.WorkspaceDir = strings.TrimSpace(selected)
-			otherPrefix, _, otherFound := strings.Cut(ManagerPrompt(&other, e.Config(), ""), "\n## Workspace path\n\n")
+			otherPrefix, _, otherFound := strings.Cut(ManagerPrompt(&other, ""), "\n## Workspace path\n\n")
 			if !found || !otherFound || before != otherPrefix {
 				t.Error("preserving workspace bytes must keep the generic prefix shared")
 			}
@@ -74,7 +74,7 @@ func TestManagerPromptPreservesTheSelectedWorkspacePath(t *testing.T) {
 
 func TestManagerPromptOmitsBlankWorkspacePath(t *testing.T) {
 	for _, blank := range []string{"", " \t\n"} {
-		if prompt := ManagerPrompt(&tools.Set{WorkspaceDir: blank}, config.Default(), ""); strings.Contains(prompt, "## Workspace path") {
+		if prompt := ManagerPrompt(&tools.Set{WorkspaceDir: blank}, ""); strings.Contains(prompt, "## Workspace path") {
 			t.Fatalf("blank workspace %q invented a path section", blank)
 		}
 	}

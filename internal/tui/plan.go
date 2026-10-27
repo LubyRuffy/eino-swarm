@@ -152,7 +152,7 @@ func (p *PlanState) Instruction() string {
 		set = tools.ExploreOnly(set)
 	}
 	joined := engine.JoinPromptSections(extra, goal, engine.PlanPrompt(on, md))
-	return engine.ManagerPrompt(set, p.cfg, joined)
+	return engine.ManagerPrompt(set, joined)
 }
 
 func (p *PlanState) storeMarkdown(markdown string) error {

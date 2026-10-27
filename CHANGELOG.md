@@ -149,6 +149,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- The manager prompt no longer repeats the delegation tools' call details or
+  the concurrency cap; those live in the tools' descriptions, which carry the
+  live cap (about 2.6K fewer prompt characters). Measured on
+  `dsv41-flash-1017` and `glm-5.3-flash`: same pass rates and the same
+  spawning. The Waiting gate, the Delegating policy and the Answering
+  guardrails stay: removing each changed behaviour on both models
+  (`docs/TESTING.md`, "Prompt audit on two models").
 - `F-130`, `F-150`, `F-410`, `C-008`, `C-009`, `C-012`, `C-019`: align final
   goal-continuation prompts with worker ownership; separate running and finished
   pending results. A generation-bound collection wait can resume once per turn

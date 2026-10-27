@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"context"
+	"fmt"
 	goruntime "runtime"
 	"strings"
 	"testing"
@@ -15,7 +17,7 @@ import (
 )
 
 func TestStandaloneManagerDoesNotAdvertiseHostInboxTools(t *testing.T) {
-	prompt := ManagerPrompt(&tools.Set{}, config.Default(), "")
+	prompt := ManagerPrompt(&tools.Set{}, "")
 	for _, name := range []string{"list_tasks", "send_task_message", "read_task_messages"} {
 		if strings.Contains(prompt, name) {
 			t.Fatalf("standalone manager has no host inbox tool %s", name)
@@ -27,7 +29,7 @@ func TestStandaloneManagerDoesNotAdvertiseHostInboxTools(t *testing.T) {
 // turn tool selection into an implicit requirement that rejects that path.
 func TestScheduledInstructionsAllowTextResultsWithoutTools(t *testing.T) {
 	for name, instruction := range map[string]string{
-		"manager":  ManagerPrompt(&tools.Set{}, config.Default(), ""),
+		"manager":  ManagerPrompt(&tools.Set{}, ""),
 		"fired":    ScheduleContinueText("Inspect the current state."),
 		"recovery": scheduleCompletionCue,
 	} {
@@ -40,10 +42,38 @@ func TestScheduledInstructionsAllowTextResultsWithoutTools(t *testing.T) {
 	}
 }
 
+// managerSurface is what the manager model reads about delegation: its system
+// prompt and the descriptions of the delegation tools of a real turn registry,
+// whose cap comes from the configured swarm limits. Call details live in the
+// tool descriptions only; the prompt keeps the policy. Measured on two models,
+// repeating them in the prompt changed neither spawning nor pass rates.
+func managerSurface(t *testing.T, maxConcurrent int) string {
+	t.Helper()
+	e := newTestEngine(t)
+	if maxConcurrent > 0 {
+		if err := e.UpdateConfig(func(c *config.Config) error { c.Swarm.MaxConcurrent = maxConcurrent; return nil }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	th, _ := e.CreateThread("", "", "")
+	set := buildTestToolset(t, e, th.ID)
+	reg := e.newTurnRegistry(func(role, id string) model.BaseChatModel { return nil }, set, nil)
+	var b strings.Builder
+	b.WriteString(ManagerPrompt(set, ""))
+	for _, tl := range reg.Tools() {
+		info, err := tl.Info(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&b, "\n%s: %s", info.Name, info.Desc)
+	}
+	return b.String()
+}
+
 func TestManagerPromptRejectsInvalidSpawnCleanupClaims(t *testing.T) {
-	prompt := ManagerPrompt(&tools.Set{}, config.Default(), "")
-	for _, text := range []string{"one corrected call", "rejected_calls", "They created no worker", "do not invent ids"} {
-		if !strings.Contains(prompt, text) {
+	surface := managerSurface(t, 0)
+	for _, text := range []string{"one corrected call", "rejected_calls", "did not create workers", "do not invent ids"} {
+		if !strings.Contains(surface, text) {
 			t.Fatalf("missing spawn recovery guidance %q", text)
 		}
 	}
@@ -54,7 +84,7 @@ func TestManagerPromptRejectsInvalidSpawnCleanupClaims(t *testing.T) {
 // still owns the answer, but it starts from the evidence a worker cites and
 // only reinvestigates where that evidence is missing or contradictory.
 func TestManagerVerifiesDelegatedWorkFromCitedEvidence(t *testing.T) {
-	prompt := strings.Join(strings.Fields(ManagerPrompt(&tools.Set{}, config.Default(), "")), " ")
+	prompt := strings.Join(strings.Fields(ManagerPrompt(&tools.Set{}, "")), " ")
 	for _, text := range []string{
 		"verify the combined result before reporting completion",
 		"Verify from the evidence they cite",
@@ -72,7 +102,7 @@ func TestManagerPromptIncludesTheLiveHost(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	set := buildTestToolset(t, e, th.ID)
-	prompt := ManagerPrompt(set, e.Config(), "")
+	prompt := ManagerPrompt(set, "")
 
 	if !strings.Contains(prompt, "## Environment") {
 		t.Fatal("the manager prompt has no Environment section")
@@ -132,7 +162,7 @@ func TestManagerPromptAppendsProjectExtraLast(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	set := buildTestToolset(t, e, th.ID)
-	prompt := ManagerPrompt(set, e.Config(), "## This project\n\nBe terse.\n")
+	prompt := ManagerPrompt(set, "## This project\n\nBe terse.\n")
 	if !strings.Contains(prompt, "Be terse.") {
 		t.Fatal("project extra did not land")
 	}
@@ -142,27 +172,27 @@ func TestManagerPromptAppendsProjectExtraLast(t *testing.T) {
 }
 
 func TestManagerPromptUsesTheConfiguredConcurrencyCap(t *testing.T) {
-	cfg := &config.Config{}
-	cfg.Swarm.MaxConcurrent = 5
-	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, cfg, "")
+	surface := managerSurface(t, 5)
 	for _, need := range []string{
 		"The concurrency cap is 5.",
-		"Never start more than 5 sub-agents",
-		"refuse past 5",
+		"If 5 sub-agents are already running, returns {error}",
+		"does not start or queue another worker",
+		"Do not start a larger batch",
 	} {
-		if !strings.Contains(prompt, need) {
-			t.Fatalf("missing %q:\n%s", need, prompt)
+		if !strings.Contains(surface, need) {
+			t.Fatalf("missing %q:\n%s", need, surface)
 		}
 	}
-	if strings.Contains(prompt, "The concurrency cap is 6.") || strings.Contains(prompt, "Never start more than 6") {
-		t.Fatal("the prompt advertised the default cap instead of the configured one")
+	if strings.Contains(surface, "The concurrency cap is 6.") {
+		t.Fatal("the default cap was advertised instead of the configured one")
+	}
+	if strings.Contains(ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, ""), "The concurrency cap is") {
+		t.Fatal("the cap belongs to the tool descriptions, which carry the live value; a prompt copy goes stale")
 	}
 }
 
 func TestManagerPromptPrefersProactiveDelegation(t *testing.T) {
-	cfg := &config.Config{}
-	cfg.Swarm.MaxConcurrent = 6
-	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, cfg, "")
+	prompt := managerSurface(t, 6)
 	for _, need := range []string{
 		"save time or improve quality",
 		"do not wait for the human to ask",
@@ -177,10 +207,7 @@ func TestManagerPromptPrefersProactiveDelegation(t *testing.T) {
 		"short job name",
 		"Do not put a slash",
 		"The concurrency cap is 6.",
-		"That number is a hard limit from settings",
-		"not something to infer from how many pieces the task has",
-		"Never start more than 6 sub-agents",
-		"do not queue the extra worker",
+		"does not start or queue another worker",
 		"A one-shot delay is consumed when it fires",
 		"report_schedule does not arm",
 		"Writing that a wait is planned does not create one",
@@ -214,7 +241,7 @@ func TestManagerPromptPrefersProactiveDelegation(t *testing.T) {
 // ran, and none did once the prompt said otherwise. Work no worker was given
 // stays allowed, so this must not become a blanket wait.
 func TestManagerPromptForbidsRepeatingAWorkersInvestigation(t *testing.T) {
-	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, &config.Config{}, "")
+	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, "")
 	for _, need := range []string{
 		"do only work no worker was given",
 		"do not repeat a worker's investigation",
@@ -232,12 +259,12 @@ func TestManagerPromptForbidsRepeatingAWorkersInvestigation(t *testing.T) {
 }
 
 func TestManagerPromptDoesNotTreatLeftoverWorkersAsSomethingToClose(t *testing.T) {
-	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, &config.Config{}, "")
+	prompt := managerSurface(t, 0)
 	for _, need := range []string{
 		"already stopped",
-		"leftover roster",
+		"Do not close leftover ids as cleanup",
 		"already_finished",
-		"resume_agent",
+		"one of several leftover workers that share a role",
 	} {
 		if !strings.Contains(prompt, need) {
 			t.Fatalf("missing %q:\n%s", need, prompt)
@@ -271,7 +298,7 @@ func TestOpenGoalPrefersProactiveDelegation(t *testing.T) {
 }
 
 func TestManagerPromptOmitsToolsWhenNoneAreRegistered(t *testing.T) {
-	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, &config.Config{}, "")
+	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, "")
 	if !strings.Contains(prompt, "/tmp/ws") {
 		t.Fatal("workspace missing")
 	}
@@ -281,7 +308,7 @@ func TestManagerPromptOmitsToolsWhenNoneAreRegistered(t *testing.T) {
 }
 
 func TestManagerPromptSaysWorkersShareWorkspaceTools(t *testing.T) {
-	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws", Names: []string{"exec"}}, &config.Config{}, "")
+	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws", Names: []string{"exec"}}, "")
 	if !strings.Contains(prompt, "Your sub-agents have the same workspace tools") {
 		t.Fatalf("missing worker tool surface:\n%s", prompt)
 	}
@@ -291,7 +318,7 @@ func TestManagerPromptSaysWorkersShareWorkspaceTools(t *testing.T) {
 }
 
 func TestManagerPromptWaitingCopyStaysGeneric(t *testing.T) {
-	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, &config.Config{}, "")
+	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, "")
 	for _, need := range []string{
 		"## Waiting",
 		"schedule_wake",
@@ -609,7 +636,7 @@ func TestEmptyPersonalityAddsNothingToTheManagerPrompt(t *testing.T) {
 	if extra != "" {
 		t.Fatalf("empty config must add nothing, got %q", extra)
 	}
-	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, &config.Config{}, extra)
+	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, extra)
 	if strings.Contains(prompt, "## Personality") {
 		t.Fatal("an empty personality must not occupy the prompt")
 	}
@@ -622,7 +649,7 @@ func TestPersonalityLandsBeforeTheProjectInstruction(t *testing.T) {
 	pc := &projectContext{sections: "## This project\n\n" + project + "\n"}
 	th := &store.Thread{CompactSummary: "briefing", Goal: "keep going"}
 	extra := managerExtra(cfg, th, pc, "")
-	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, cfg, extra)
+	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, extra)
 
 	if !strings.Contains(prompt, persona) {
 		t.Fatalf("personality missing:\n%s", prompt)
@@ -663,7 +690,7 @@ func TestPersonalityWrapperIsGenericAndGrounded(t *testing.T) {
 }
 
 func TestManagerPromptDescribesChartsWithoutASampleTask(t *testing.T) {
-	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, &config.Config{}, "")
+	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, "")
 	for _, need := range []string{
 		"language tag is chart",
 		`"type":"bar|line|area|pie"`,
@@ -689,7 +716,7 @@ func TestManagerPromptDescribesChartsWithoutASampleTask(t *testing.T) {
 }
 
 func TestManagerPromptDescribesCodeFencesAndMath(t *testing.T) {
-	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, &config.Config{}, "")
+	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, "")
 	for _, need := range []string{
 		"Fenced source must name its language",
 		"$...$",
@@ -807,7 +834,7 @@ func TestManagerPromptIsGenericAndGrounded(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	set := buildTestToolset(t, e, th.ID)
-	prompt := ManagerPrompt(set, e.Config(), "")
+	prompt := ManagerPrompt(set, "")
 
 	// it must tell the agent the things only the runtime knows
 	if !strings.Contains(prompt, e.WorkspaceDir(th.ID)) {
@@ -818,15 +845,16 @@ func TestManagerPromptIsGenericAndGrounded(t *testing.T) {
 			t.Fatalf("the prompt does not mention the %q tool the agent actually has", name)
 		}
 	}
+	surface := managerSurface(t, 0)
 	for _, tool := range []string{"spawn_agent", "send_message", "wait_agents", "close_agent", "resume_agent"} {
-		if !strings.Contains(prompt, tool) {
-			t.Fatalf("the prompt does not explain %s", tool)
+		if !strings.Contains(surface, "\n"+tool+": ") {
+			t.Fatalf("the manager is not told about %s", tool)
 		}
 	}
-	if !strings.Contains(prompt, "notified:manager") {
+	if !strings.Contains(surface, "notified:manager") {
 		t.Fatal("the manager must be told it receives a missed handoff")
 	}
-	if !strings.Contains(prompt, "error result") {
+	if !strings.Contains(surface, "returns {error}; it does not fail the turn") {
 		t.Fatal("a missing spawn_agent field must be an error result, not a crashed turn")
 	}
 	for _, leak := range []string{"NodeRunError", "ToolNode"} {

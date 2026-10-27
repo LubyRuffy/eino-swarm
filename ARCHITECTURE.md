@@ -823,9 +823,12 @@ worker before closing SQLite.
    or replace the standing goal completion boundary. Ordinary turns also obey
    the worker-collection admission boundary described above.
 3. The manager's system prompt is generated per turn from the live toolset, the
-   workspace path, the concurrency limits, and a snapshot of the host
-   (OS, architecture, kernel, shell, date, timezone, user, home).    It is
+   workspace path and a snapshot of the host
+   (OS, architecture, kernel, shell, date, timezone, user, home). It is
    task-agnostic: no example task, filename or domain word is baked into it.
+   It carries delegation policy; call details and the live concurrency cap
+   are in the delegation tools' own descriptions, which are the only copy
+   (`managerSurface` in `prompt_test.go` asserts on prompt plus descriptions).
    With the same tool configuration, everything before the `## Workspace path`
    section is the same for conversations on a host and day; that section, then
    the personality, project and goal text below, are the only
