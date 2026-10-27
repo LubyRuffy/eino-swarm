@@ -109,6 +109,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-006 Phone remote protocol
 
+- 手机过程展示（`F-220`、`F-222`、`F-223`、`F-230`）：一级过程展开只显示条目，每条思考正文由默认收起的自身控件独立管理；单项与多项都须显式打开思考正文。正文保留完整原文，同一身份的实时追加和完成不改变用户的开合选择；不同思考身份不共享状态，外层关闭卸载后重新打开按默认收起。一级活动摘要可以显示既有末行预览，不能据该摘要把正文判作已展开；回答和工具折叠语义不变。此条只改变手机展示，不改变事件、Pairlink 或 PC 的 `C-022`。证据：`mobile/src/components/thought.tsx`、`mobile/src/components/thread-blocks.tsx`、`mobile/src/components/client-groups.tsx`、`mobile/src/components/thread-blocks-reasoning.test.tsx`、`mobile/e2e/reasoning-fold.spec.ts`；来源：Issue #118。
+
 - 暂停目标的手机 send 保留 capped／blocked／idle 和连续预算，答完不启动目标下一轮；只有显式 `resume_goal` 按 `C-009` 恢复。协议操作名与载荷不变，UI 保留暂停投影和恢复操作。关联功能：`F-220`；证据：`internal/server/goal_pause_integration_test.go`、`internal/remote/rpc.go`；变更类型：Changed / Fixed。
 
 - 首屏与读取边界：新手机发送 `watch {thread_id, include_detail:true}`，同一 `ready` 回复包含对话 `detail` 和至多 24 条初始事件；元数据、状态和事件共享 sealed-frame 字节预算，裁掉较旧事件时保留 `more` 和最新序号，元数据本身超限返回 `too_large`。旧手机的普通 watch 保持原响应；旧 PC 忽略该字段时，新手机只补请求 `open`，不得再次订阅。晚到详情不得覆盖已观察的实时生命周期或 seq=0 正文；字段即使恢复为原值，也必须保留实际事件带来的状态。详情、摘要和最近轮次必须在数据库中按需投影、倒序分页，不得先读取完整会话再裁剪；跨隐藏记录查找摘要仍保留原有可见语义。证据：`internal/remote/watch_open_test.go`、`internal/remote/snapshot_reads_test.go`、`internal/store/phone_reads_test.go`、`mobile/src/lib/open-thread.test.ts`、`mobile/e2e/conversation-open.spec.ts`；关联功能：`F-220`；变更类型：Changed / Fixed。

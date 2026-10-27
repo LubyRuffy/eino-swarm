@@ -127,6 +127,9 @@ describe("ClientGroups", () => {
     expect(screen.getByText("done")).toBeTruthy()
     fireEvent.click(fold)
     await waitFor(() => expect(screen.getByText("read")).toBeTruthy())
+    expect(screen.queryByTestId("phone-thought")).not.toBeInTheDocument()
+    expect(screen.getByTestId("phone-thought-toggle")).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(screen.getByTestId("phone-thought-toggle"))
     expect(screen.getByText("checked the path")).toBeTruthy()
   })
 
@@ -175,5 +178,88 @@ describe("ClientGroups", () => {
     expect(await screen.findByText("earlier reply")).toBeTruthy()
     expect(screen.getByText("latest reply")).toBeTruthy()
     expect(onRead).toHaveBeenCalledWith("c1", 40)
+  })
+  it.each([
+    { at: 200, n: 0 },
+    { at: 100, n: 1 },
+  ])("keeps a new thinking identity closed after a tail poll ($at, $n)", async ({ at, n }) => {
+    const doc = (thinkingAt: number, thinkingN: number, text: string) => ({
+      id: "c1",
+      title: "open session",
+      status: "running",
+      entries: [
+        { role: "user", text: "the request", at: 1, n: 0 },
+        { role: "thinking", text, at: thinkingAt, n: thinkingN },
+      ],
+    })
+    const onRead = vi.fn()
+      .mockResolvedValueOnce(doc(100, 0, "earlier analysis"))
+      .mockResolvedValueOnce(doc(at, n, "next analysis"))
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] })
+    const { unmount } = render(
+      <ClientGroups
+        tools={[{ id: "cursor", more: false, tasks: [{ id: "c1", title: "open session", status: "running", updated_at: "2026-09-25T00:00:00Z" }] }]}
+        onMore={() => undefined}
+        onRead={onRead}
+      />,
+    )
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "open session" }))
+      fireEvent.click(await screen.findByTestId("work-fold"))
+      fireEvent.click(screen.getByTestId("phone-thought-toggle"))
+      expect(screen.getByTestId("phone-thought")).toHaveTextContent("earlier analysis")
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
+      expect(onRead).toHaveBeenCalledTimes(2)
+      expect(onRead).toHaveBeenLastCalledWith("c1")
+      expect(screen.getByTestId("work-fold")).toHaveAttribute("aria-expanded", "true")
+      expect(screen.getByTestId("phone-thought-toggle")).toHaveAttribute("aria-expanded", "false")
+      expect(screen.queryByTestId("phone-thought")).not.toBeInTheDocument()
+    } finally {
+      unmount()
+      vi.useRealTimers()
+    }
+  })
+
+  it("preserves the chosen thinking state while the same identity grows in tail polls", async () => {
+    const doc = (text: string, status = "running") => ({
+      id: "c1",
+      title: "open session",
+      status,
+      entries: [
+        { role: "user", text: "the request", at: 1, n: 0 },
+        { role: "thinking", text, at: 100, n: 2 },
+      ],
+    })
+    const onRead = vi.fn()
+      .mockResolvedValueOnce(doc("initial analysis"))
+      .mockResolvedValueOnce(doc("initial analysis with a detail"))
+      .mockResolvedValueOnce(doc("initial analysis with a detail and conclusion", "done"))
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] })
+    const { unmount } = render(
+      <ClientGroups
+        tools={[{ id: "cursor", more: false, tasks: [{ id: "c1", title: "open session", status: "running", updated_at: "2026-09-25T00:00:00Z" }] }]}
+        onMore={() => undefined}
+        onRead={onRead}
+      />,
+    )
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "open session" }))
+      fireEvent.click(await screen.findByTestId("work-fold"))
+      fireEvent.click(screen.getByTestId("phone-thought-toggle"))
+      expect(screen.getByTestId("phone-thought-toggle")).toHaveAttribute("aria-expanded", "true")
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
+      expect(onRead).toHaveBeenCalledTimes(2)
+      expect(screen.getByTestId("phone-thought-toggle")).toHaveAttribute("aria-expanded", "true")
+      expect(screen.getByTestId("phone-thought")).toHaveTextContent("initial analysis with a detail")
+      fireEvent.click(screen.getByTestId("phone-thought-toggle"))
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
+      expect(onRead).toHaveBeenCalledTimes(3)
+      expect(screen.getByTestId("work-fold")).toHaveAttribute("aria-expanded", "true")
+      expect(screen.getByTestId("phone-thought-toggle")).toHaveAttribute("aria-expanded", "false")
+      expect(screen.queryByTestId("phone-thought")).not.toBeInTheDocument()
+    } finally {
+      unmount()
+      vi.useRealTimers()
+    }
   })
 })

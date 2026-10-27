@@ -270,6 +270,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-220`, `F-222`, `F-223`, `F-230`, `C-006`: phone process rows now keep each
+  thought behind its own initially closed disclosure. Explicit open/closed
+  choices survive that entry's streaming updates and completion; opening the
+  outer process list alone no longer mounts reasoning text. Paired conversations,
+  sub-agent details, direct chat and Clients share the control without changing
+  answers, tool disclosure or PC presentation (Issue #118).
+
 - `F-430`, `C-031`: publish native preparation test readiness atomically, so
   partial JSON writes do not replace the intended deadline regression during
   concurrent test execution.

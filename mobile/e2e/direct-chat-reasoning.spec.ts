@@ -4,8 +4,9 @@ import { expect, test } from "@playwright/test"
 // The endpoint is intercepted locally; these checks never use a real model.
 for (const field of ["reasoning_content", "reasoning"] as const) {
   for (const wire of ["SSE", "JSON"] as const) {
-    test(`${field} from ${wire} remains visible after reopening a direct chat`, async ({ page }) => {
-      const thought = "检查当前证据 before answering."
+    test(`${field} from ${wire} retains its own collapsed control after reopening a direct chat`, async ({ page }) => {
+      const pieces = ["检查当前证据 before answering.\n", "Compare both paths before concluding."]
+      const thought = pieces.join("")
       const answer = "Verified answer."
       const prompt = "Inspect the current input."
       let requests = 0
@@ -30,7 +31,7 @@ for (const field of ["reasoning_content", "reasoning"] as const) {
           body: wire === "JSON"
             ? JSON.stringify({ choices: [{ message, finish_reason: "stop" }] })
             : [
-              { choices: [{ delta: { role: "assistant", [field]: thought } }] },
+              ...pieces.map((text) => ({ choices: [{ delta: { role: "assistant", [field]: text } }] })),
               { choices: [{ delta: { content: answer }, finish_reason: "stop" }] },
             ].map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join("") + "data: [DONE]\n\n",
         })
@@ -49,7 +50,10 @@ for (const field of ["reasoning_content", "reasoning"] as const) {
       await expect(page.getByText(answer, { exact: true })).toBeVisible()
       await expect(page.getByTestId("work-fold")).toHaveCount(1)
       await page.getByTestId("work-fold").click()
-      await expect(page.getByTestId("phone-thought")).toHaveText(thought)
+      await expect(page.getByTestId("phone-thought-toggle")).toHaveAttribute("aria-expanded", "false")
+      await expect(page.getByTestId("phone-thought")).not.toBeVisible()
+      await page.getByTestId("phone-thought-toggle").click()
+      await expect(page.getByTestId("phone-thought")).toHaveJSProperty("textContent", thought)
       expect(requests).toBe(1)
 
       await page.reload()
@@ -57,7 +61,10 @@ for (const field of ["reasoning_content", "reasoning"] as const) {
       await expect(page.getByText(answer, { exact: true })).toBeVisible()
       await expect(page.getByTestId("work-fold")).toHaveCount(1)
       await page.getByTestId("work-fold").click()
-      await expect(page.getByTestId("phone-thought")).toHaveText(thought)
+      await expect(page.getByTestId("phone-thought-toggle")).toHaveAttribute("aria-expanded", "false")
+      await expect(page.getByTestId("phone-thought")).not.toBeVisible()
+      await page.getByTestId("phone-thought-toggle").click()
+      await expect(page.getByTestId("phone-thought")).toHaveJSProperty("textContent", thought)
       expect(requests).toBe(1)
     })
   }

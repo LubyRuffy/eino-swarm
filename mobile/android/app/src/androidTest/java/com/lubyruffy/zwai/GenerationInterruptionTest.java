@@ -8,7 +8,12 @@ import android.app.UiAutomation;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
+import android.net.Uri;
 import android.os.SystemClock;
+import android.system.Os;
+import android.system.OsConstants;
+import android.view.InputDevice;
+import android.view.MotionEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -43,6 +48,7 @@ public class GenerationInterruptionTest {
         assertTrue(reached instanceof BridgeActivity);
         activity = (BridgeActivity) reached;
         try {
+            selectOfflineInput();
             for (String phase : new String[] {"first-open", "reopened"}) {
                 click(waitFor("Agents (1)", true));
                 AccessibilityNodeInfo worker = waitForWorker();
@@ -61,6 +67,7 @@ public class GenerationInterruptionTest {
                 assertEquals("Old thought must stop showing Thinking", "Thought", folds.getJSONObject(0).getString("text"));
                 assertEquals("Old thought must have no animated content", 0, folds.getJSONObject(0).getInt("animated"));
                 click(waitFor("Thought", true));
+                openThoughtBody();
                 waitFor("Interrupted thought before restart.", false);
                 saveEvidence(phase);
                 click(waitFor("Back", true));
@@ -73,6 +80,32 @@ public class GenerationInterruptionTest {
         } finally {
             instrumentation.runOnMainSync(() -> activity.finish());
         }
+    }
+
+    private void selectOfflineInput() throws Exception {
+        AtomicReference<String> origin = new AtomicReference<>();
+        long until = SystemClock.uptimeMillis() + 15000;
+        do {
+            instrumentation.runOnMainSync(() -> {
+                if (activity.getBridge() != null && activity.getBridge().getWebView() != null) {
+                    origin.set(activity.getBridge().getWebView().getUrl());
+                }
+            });
+            if (origin.get() != null) {
+                Uri observed = Uri.parse(origin.get());
+                if ("https".equals(observed.getScheme()) && "localhost".equals(observed.getHost())) break;
+            }
+            SystemClock.sleep(100);
+        } while (SystemClock.uptimeMillis() < until);
+        assertNotNull("The actual packaged origin must exist", origin.get());
+        Uri current = Uri.parse(origin.get());
+        assertEquals("https", current.getScheme());
+        assertEquals("localhost", current.getHost());
+        String offline = current.buildUpon().path("/").clearQuery().fragment(null)
+            .appendQueryParameter("mock", "1").appendQueryParameter("tick", "0")
+            .appendQueryParameter("history", "generation-interruption").build().toString();
+        // Only choose the existing packaged fixture; no state or resource injection.
+        instrumentation.runOnMainSync(() -> activity.getBridge().getWebView().loadUrl(offline));
     }
 
     private AccessibilityNodeInfo waitForWorker() throws Exception {
@@ -108,6 +141,45 @@ public class GenerationInterruptionTest {
         }));
         assertTrue("The actual WebView DOM must answer the read-only inspection", ready.await(5, TimeUnit.SECONDS));
         return new JSONObject(new JSONArray("[" + value.get() + "]").getString(0));
+    }
+
+    private void openThoughtBody() throws Exception {
+        String script = "JSON.stringify((()=>{const rows=document.querySelectorAll('[data-testid=phone-thought-toggle]');"
+            + "if(rows.length!==1)return {};const p=rows[0];if(p.disabled)return {};const r=p.getBoundingClientRect();"
+            + "return r.width>0&&r.height>0&&r.top>=0&&r.bottom<=innerHeight?"
+            + "{x:r.left+r.width/2,y:r.top+r.height/2,width:innerWidth,expanded:p.getAttribute('aria-expanded')}:{};})())";
+        JSONObject target = null;
+        long until = SystemClock.uptimeMillis() + 10000;
+        do {
+            CountDownLatch ready = new CountDownLatch(1);
+            AtomicReference<String> result = new AtomicReference<>();
+            instrumentation.runOnMainSync(() -> activity.getBridge().getWebView().evaluateJavascript(script, value -> {
+                result.set(value); ready.countDown();
+            }));
+            assertTrue("Read the actual child control before native input", ready.await(5, TimeUnit.SECONDS));
+            JSONObject observed = new JSONObject(new JSONArray("[" + result.get() + "]").getString(0));
+            if (observed.has("x")) { target = observed; break; }
+            SystemClock.sleep(100);
+        } while (SystemClock.uptimeMillis() < until);
+        assertNotNull("Opening work must expose its own reasoning toggle", target);
+        assertEquals("Reasoning starts collapsed inside expanded work", "false", target.getString("expanded"));
+        int[] location = new int[2];
+        AtomicReference<Float> scale = new AtomicReference<>();
+        JSONObject rect = target;
+        instrumentation.runOnMainSync(() -> {
+            activity.getBridge().getWebView().getLocationOnScreen(location);
+            scale.set(activity.getBridge().getWebView().getWidth() / (float) rect.optDouble("width"));
+        });
+        int x = Math.round(location[0] + (float) target.getDouble("x") * scale.get());
+        int y = Math.round(location[1] + (float) target.getDouble("y") * scale.get());
+        long down = SystemClock.uptimeMillis();
+        MotionEvent press = MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, x, y, 0);
+        press.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        assertTrue(ui.injectInputEvent(press, true)); press.recycle();
+        SystemClock.sleep(60);
+        MotionEvent release = MotionEvent.obtain(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0);
+        release.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        assertTrue(ui.injectInputEvent(release, true)); release.recycle();
     }
 
     private AccessibilityNodeInfo waitFor(String label, boolean button) throws Exception {
@@ -152,11 +224,11 @@ public class GenerationInterruptionTest {
     }
 
     private void saveEvidence(String directoryName, String name) throws Exception {
-        File directory = new File(instrumentation.getTargetContext().getExternalFilesDir(null), directoryName);
+        File directory = new File(instrumentation.getTargetContext().getFilesDir(), directoryName);
         assertTrue("Native evidence directory must be writable", directory.isDirectory() || directory.mkdirs());
         Bitmap screenshot = ui.takeScreenshot();
         assertNotNull("The reached native screen must be captured", screenshot);
-        try (FileOutputStream stream = new FileOutputStream(new File(directory, name + ".png"))) {
+        try (FileOutputStream stream = privateOutput(new File(directory, name + ".png"))) {
             assertTrue(screenshot.compress(Bitmap.CompressFormat.PNG, 100, stream));
         }
         screenshot.recycle();
@@ -169,8 +241,12 @@ public class GenerationInterruptionTest {
                 .put("enabled", node.isEnabled()).put("clickable", node.isClickable())
                 .put("visible", node.isVisibleToUser()).put("bounds", bounds.flattenToString()));
         }
-        try (FileOutputStream stream = new FileOutputStream(new File(directory, name + ".json"))) {
+        try (FileOutputStream stream = privateOutput(new File(directory, name + ".json"))) {
             stream.write(tree.toString(2).getBytes(StandardCharsets.UTF_8));
         }
+    }
+
+    private FileOutputStream privateOutput(File path) throws Exception {
+        return new FileOutputStream(Os.open(path.getAbsolutePath(), OsConstants.O_WRONLY | OsConstants.O_CREAT | OsConstants.O_TRUNC, 0600));
     }
 }

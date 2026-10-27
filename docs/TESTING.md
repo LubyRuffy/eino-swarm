@@ -42,6 +42,43 @@ Each concurrent run needs its own port, data/output directories and built dist.
 The fixtures use loopback HTTP without provider credentials and disposable test
 workspaces. They do not read or modify an active user's data directory.
 
+## Phone nested reasoning disclosure (Issue #118, `F-220` / `F-222` / `F-223` / `F-230`, `C-006`)
+
+`mobile/src/components/thread-blocks-reasoning.test.tsx` first reproduces the missing
+second disclosure through the real log renderer. It checks live/replay and single
+or multiple thoughts, independent block identities, full original text after an
+explicit click, retained open/closed choices through deltas and completion, and
+answers and tool controls remaining independent. Direct-model and Clients tests
+keep their original text assertions after explicitly opening the thought.
+
+`mobile/e2e/reasoning-fold.spec.ts` exercises the packaged phone flow in Chromium
+and the iPhone WebKit project. The existing direct-chat wire/reload and generation
+interruption cases also open the second disclosure and retain their original
+reasoning, request-count and recovery assertions. A live outer ticker may contain
+the last reasoning line: inspect the `phone-thought` body and the inner button
+state, rather than asserting that no matching text exists anywhere on screen.
+
+Native entry points are `ReasoningFoldTest` in the Android instrumentation tree
+and `mobile/e2e/ios-reasoning-fold.swift` with `scripts/ios-layout-fixture.py`.
+Use one source-identified public-resource bundle for both private native builds,
+real taps to open the process row and then the thought, and actual images plus
+read-only DOM/AX evidence for closed/open/closed states. Preserve package hashes,
+command exit status and cleanup of only the owned device. Derived Simulator UI
+acceptance is not installation of a signed TestFlight IPA or future release-package
+acceptance; no new version/build/upload is implied by this source QA.
+
+Run Android with `-e reasoningLocale en` and `-e reasoningLocale zh` separately,
+clearing only the owned test app's data between cases. Its screenshots and JSON
+are mode `0600` in the target app's internal files; collect them with debug
+`run-as` and verify the archive and image bytes rather than relying on `adb`'s
+exit status. The bounded passive frame samples retain original images and state:
+pixel stability alone can still select an old frame, so review each phase.
+For iOS, preserve the common web resources with `IOS_LAYOUT_PRESERVE_PUBLIC=1`,
+set `IOS_LAYOUT_LOCALE=en|zh`, and select only the matching
+`testEnglishReasoningRequiresItsOwnToggle` or
+`testChineseReasoningRequiresItsOwnToggle` method. A fixed-locale fixture cannot
+run both methods. Record any native warmup separately; it is not cold-start QA.
+
 ## Chat Completions reasoning fields (`F-170`, `F-230`, `C-009`)
 
 `internal/provider/reasoning_fields_test.go` runs both Generate and Stream through

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { ChevronDown, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 
 import { Composer } from "@/components/composer"
+import { PhoneThought } from "@/components/thought"
 import { Button } from "@/components/ui/button"
 import { installAndroidBack } from "@/lib/android-back"
 import { applyClientPage, type ClientLog } from "@/lib/client-log"
@@ -388,7 +389,7 @@ function ClientLine({ entry }: { entry: ClientLineEntry }) {
     return <p className="text-xs text-muted-foreground">{entry.text}</p>
   }
   if (entry.role === "thinking") {
-    return <p className="whitespace-pre-wrap text-sm text-muted-foreground">{entry.text}</p>
+    return <PhoneThought text={entry.text} className="text-sm" />
   }
   return <p className="whitespace-pre-wrap text-sm">{entry.text}</p>
 }
@@ -423,7 +424,7 @@ function ClientWorkFold({ entries }: { entries: ClientLineEntry[] }) {
       {open ? (
         <div className="mt-1 flex flex-col gap-1 pl-4">
           {entries.map((entry, i) => (
-            <ClientLine key={`${entry.role}-${i}`} entry={entry} />
+            <ClientLine key={`${entry.at ?? i}-${entry.n ?? 0}`} entry={entry} />
           ))}
         </div>
       ) : null}

@@ -3,6 +3,7 @@ import { useState } from "react"
 import { ChevronRight, Loader2 } from "lucide-react"
 
 import { PhoneMarkdown } from "@/components/markdown"
+import { PhoneThought } from "@/components/thought"
 import { getLocale, t } from "@/lib/i18n"
 import { parseQuotedMessage } from "@/lib/quote"
 import {
@@ -70,11 +71,7 @@ export function renderBlock(b: CompactBlock) {
   if (b.kind === "reasoning") {
     const text = dropPackedJson(b.text)
     if (!text) return null
-    return (
-      <p data-testid="phone-thought" className="whitespace-pre-wrap text-xs text-muted-foreground">
-        {text}
-      </p>
-    )
+    return <PhoneThought text={text} />
   }
   if (b.kind === "tool") {
     if (b.toolName === "close_agent") return null

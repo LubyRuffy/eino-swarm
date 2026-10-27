@@ -60,8 +60,12 @@ both themes, including C++ tags `cpp`, `c++`, and `cxx`. The same rendering
 serves direct model chat. Empty or unknown language tags stay plain; no language
 is guessed. Copy code retains the original code text and whitespace as the
 stream grows. A `chart` fence paints as a plot with a table of the same rows;
-a truncated fence waits, and a finished invalid body stays code. Adjacent thoughts and tool calls fold into one row (the same
-compact rule as desktop user view, and the phone's only view). An
+a truncated fence waits, and a finished invalid body stays code. Adjacent thoughts
+and tool calls fold into one process row. Opening it shows the individual entries;
+each thought has its own **Thought / 思考** control, initially closed, like tool
+details. A second tap reveals its complete original text. Each thought retains
+your open or closed choice while that entry receives more text or finishes.
+Closing the process row and opening it again starts its details closed. An
 answer stays on screen and splits that row. The live tail is **Thinking**
 / **Planning next moves** / **Editing** / **Reading** / **Exec**; open
 the row for the pieces. A `progress` pulse is not a chat
@@ -185,7 +189,8 @@ not scan its own disk. Opening a row fills the chat. The opening request stays p
 The column follows the latest lines, and **Earlier** loads the page above that.
 Adjacent thinking and tool calls start collapsed, the same row as a conversation. The composer stays
 on screen and cannot send. On iOS the task title and Back button remain visible
-when the inbox is pulled down; Back returns to the task list.
+when the inbox is pulled down; Back returns to the task list. Thinking entries
+inside a client process row use the same separate, initially closed thought control.
 
 ## A model on the phone
 
@@ -194,9 +199,9 @@ chat completions or responses, discover, timeout. After one is saved, a
 Chat tab sits on the top row, including when no PC is bound. That chat uses
 the same composer as a PC thread. Tap its model button to choose from an
 in-app, provider-grouped list; long names wrap, and Back closes the list.
-The reply streams. The thought is the
-same live row as a PC thread: the latest line while it is arriving, the
-full text when the row is opened. Chat Completions accepts both legacy
+The reply streams. Its process row shows the latest activity while it is arriving.
+Open that row, then the thought's own **Thought / 思考** control to read the complete
+reasoning; merely opening the process row keeps that reasoning closed. Chat Completions accepts both legacy
 `reasoning_content` and newer vLLM `reasoning` in streamed deltas and JSON replies.
 A nonempty legacy field wins; empty or null legacy values fall back to the new
 field. No additional setting is needed. Discover uses the platform HTTP stack so
