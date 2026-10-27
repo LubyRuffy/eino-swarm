@@ -121,6 +121,13 @@ co-working app built on it. The library API is unchanged except where noted
   refused by the answer check, re-armed the same wake and was refused again;
   the contract is unchanged (a recurring claim still needs an `every_s` or cron
   wait), the manager is now told what it armed.
+- Schedule-claim matching: "check again in N seconds" is now backed by an
+  every-N-seconds wait as well as a one-shot of N (a one-shot re-armed with
+  `report_schedule next_in_s` is exactly that row), and a stated clock time
+  matches a wait whose next run is within a minute of it instead of to the
+  second. A recurring claim is still refused unless an `every_s` or cron wait
+  backs it. The refusal's `unmatched` Trace diagnosis adds the compared
+  `delay_s` / `every_s` numbers, never the claim's words.
 - The manager prompt tells the manager to do only work no worker was given
   while workers run, and not to repeat a worker's investigation; it waits when
   the next step depends on their results. The `schedule_wake` tool text states

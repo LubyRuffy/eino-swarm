@@ -222,9 +222,9 @@ empty setting sends the background default `low` through
 `Pool.AuxiliaryModelBuilder`, whose single no-effort retry on HTTP 400 serves
 endpoints without reasoning control. A `no_matching_schedule` refusal records a
 structural `unmatched` diagnosis in its `model_retry` receipt (claim scope,
-whether it claimed a new wait, which cadence fields it stated, how many active
-in-scope rows existed and the closest row's failed requirements), never the
-claim's words.
+whether it claimed a new wait, which cadence fields it stated and their `delay_s` / `every_s` numbers, how many
+active in-scope rows existed, the closest row's failed requirements and its own
+numbers), never the claim's words.
 
 After three consecutive classification request failures, the candidate becomes
 `deferred` durably and its unpublished text remains private. This decision does

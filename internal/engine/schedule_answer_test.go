@@ -81,7 +81,20 @@ func TestScheduleClaimUsesCurrentExactTurnRowAndCadence(t *testing.T) {
 		{"consumed", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) { r.Status = store.ScheduleDone }, false},
 		{"no-next", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) { r.NextRunAt = time.Time{} }, false},
 		{"wrong-interval", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) { c.EveryS = 300 }, false},
-		{"interval-as-delay", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) { c.EveryS = 0; c.DelayS = 90 }, false},
+		// "Check again in 90s" is true of an every-90s wait: it fires that far
+		// out. report_schedule next_in_s turns a one-shot into exactly this row,
+		// and refusing the plain statement of it was a false refusal.
+		{"interval-backs-delay-of-its-period", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) { c.EveryS = 0; c.DelayS = 90 }, true},
+		{"interval-does-not-back-another-delay", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) { c.EveryS = 0; c.DelayS = 60 }, false},
+		// The reverse stays refused: a single wake does not make a recurring
+		// claim true, however its prompt tells the next turn to re-arm.
+		{"delay-does-not-back-an-interval", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) { r.EveryS = 0; r.DelayS = 90 }, false},
+		{"cron-does-not-back-a-delay", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) {
+			c.EveryS = 0
+			c.DelayS = 90
+			r.EveryS = 0
+			r.Cron = "0 * * * *"
+		}, false},
 		{"delay", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) {
 			c.EveryS = 0
 			c.DelayS = 90
@@ -98,8 +111,16 @@ func TestScheduleClaimUsesCurrentExactTurnRowAndCadence(t *testing.T) {
 		{"exact-time", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) {
 			c.NextRunAt = now.Format(time.RFC3339)
 		}, true},
-		{"wrong-time", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) {
+		// A manager quotes the next check as a clock time such as 03:04, with no
+		// seconds; matching to the second would refuse every such statement.
+		{"time-quoted-to-the-minute", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) {
+			c.NextRunAt = now.Add(-50 * time.Second).Format(time.RFC3339)
+		}, true},
+		{"time-a-minute-late", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) {
 			c.NextRunAt = now.Add(time.Minute).Format(time.RFC3339)
+		}, false},
+		{"time-a-minute-early", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) {
+			c.NextRunAt = now.Add(-time.Minute).Format(time.RFC3339)
 		}, false},
 		{"bad-time", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) { c.NextRunAt = "invalid" }, false},
 		{"independent", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) {

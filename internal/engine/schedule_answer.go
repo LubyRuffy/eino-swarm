@@ -210,7 +210,7 @@ func scheduleClaimMismatches(claim scheduleAnswerClaim, row store.Schedule, turn
 	if *claim.New && (!armed[row.ID] || (row.Kind == store.ScheduleThread && row.ArmedTurnID != turn.ID)) {
 		out = append(out, "not_armed_this_turn")
 	}
-	if claim.DelayS != 0 && (row.DelayS != claim.DelayS || row.EveryS != 0 || row.Cron != "") {
+	if claim.DelayS != 0 && !scheduleFiresAfter(row, claim.DelayS) {
 		out = append(out, "delay_s")
 	}
 	if claim.EveryS != 0 && (row.EveryS != claim.EveryS || row.DelayS != 0 || row.Cron != "") {
@@ -221,11 +221,34 @@ func scheduleClaimMismatches(claim scheduleAnswerClaim, row store.Schedule, turn
 	}
 	if claim.NextRunAt != "" {
 		at, err := time.Parse(time.RFC3339, claim.NextRunAt)
-		if err != nil || !at.Equal(row.NextRunAt.Truncate(time.Second)) {
+		if err != nil || !scheduleInstantClose(at, row.NextRunAt) {
 			out = append(out, "next_run_at")
 		}
 	}
 	return out
+}
+
+// scheduleFiresAfter reports whether row fires delay seconds out: a one-shot
+// of that delay, or an interval of that period. "Check again in 90s" is true
+// of both; the reverse is not, because a single wake never makes a recurring
+// claim true.
+func scheduleFiresAfter(row store.Schedule, delay int) bool {
+	if row.Cron != "" {
+		return false
+	}
+	return (row.DelayS == delay && row.EveryS == 0) || (row.EveryS == delay && row.DelayS == 0)
+}
+
+// scheduleInstantClose accepts a stated instant within a minute of the row's
+// next run. A clock time quoted as 03:04 carries no seconds, so matching to
+// the second refused every such statement; a minute or more away is a
+// different check.
+func scheduleInstantClose(stated, next time.Time) bool {
+	d := stated.Sub(next)
+	if d < 0 {
+		d = -d
+	}
+	return d < time.Minute
 }
 
 // scheduleClaimMismatch is a refused claim's Trace diagnosis. It carries the
@@ -241,6 +264,10 @@ type scheduleClaimMismatch struct {
 	// names the requirements it failed.
 	Closest    string   `json:"closest,omitempty"`
 	Mismatched []string `json:"mismatched,omitempty"`
+	// Claimed and Armed give the compared cadence numbers (delay_s, every_s)
+	// on each side, Armed for the closest row only. Numbers, never words.
+	Claimed map[string]int `json:"claimed,omitempty"`
+	Armed   map[string]int `json:"armed,omitempty"`
 }
 
 func diagnoseScheduleClaim(claim scheduleAnswerClaim, rows []store.Schedule, turn *store.Turn, armed map[string]bool) *scheduleClaimMismatch {
@@ -251,6 +278,10 @@ func diagnoseScheduleClaim(claim scheduleAnswerClaim, rows []store.Schedule, tur
 		}
 	}
 	sort.Strings(d.Stated)
+	if n := cadenceNumbers(claim.DelayS, claim.EveryS); n != nil {
+		d.Claimed = n
+	}
+	var closest store.Schedule
 	for _, row := range rows {
 		miss := scheduleClaimMismatches(claim, row, turn, armed)
 		if len(miss) == 1 && (miss[0] == "inactive" || miss[0] == "scope") {
@@ -258,10 +289,26 @@ func diagnoseScheduleClaim(claim scheduleAnswerClaim, rows []store.Schedule, tur
 		}
 		d.Candidates++
 		if d.Closest == "" || len(miss) < len(d.Mismatched) {
-			d.Closest, d.Mismatched = row.ID, miss
+			d.Closest, d.Mismatched, closest = row.ID, miss, row
 		}
 	}
+	if d.Closest != "" {
+		d.Armed = cadenceNumbers(closest.DelayS, closest.EveryS)
+	}
 	return d
+}
+
+func cadenceNumbers(delayS, everyS int) map[string]int {
+	var out map[string]int
+	for name, v := range map[string]int{"delay_s": delayS, "every_s": everyS} {
+		if v != 0 {
+			if out == nil {
+				out = map[string]int{}
+			}
+			out[name] = v
+		}
+	}
+	return out
 }
 
 // A successful report alone is not a rearm. Bind actual tool calls and their
