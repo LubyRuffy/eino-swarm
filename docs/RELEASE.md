@@ -62,6 +62,14 @@ its detached engine. Unknown inventory or surviving owned processes leave an
 unclean latch that refuses further stages/runs; evidence and data remain for
 identity-checked recovery. The guest retains its separate existing
 native-case lock and cleanup latch; this entry never acquires or bypasses it.
+The pre-launch durable pending receipt describes normal in-progress ownership;
+it does not mark a parallel stage as a previous cleanup failure. Only failed or
+unconfirmed setup/cleanup sets the sticky refusal state. Admission rechecks that
+state after input/cache reads and immediately before Popen, with a short lock
+that is not held while commands run. Interrupted pending publication retains the
+original cancellation and refusal; confirmed cleanup is published before its
+refusal state can be cleared. Already-started commands keep their actual timing,
+exit, stream and cleanup evidence when another stage later fails.
 Periodic E2E inventory waits two seconds between scans; first, terminal and
 cleanup inventories remain complete. Each call retains its original command,
 timeout, clocks and full raw streams before parsing, with unavailable streams

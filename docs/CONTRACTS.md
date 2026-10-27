@@ -189,6 +189,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-010 Build artifacts and update channel
 
+- 并行阶段准入：正常 owned stage 的 durable pending 发布不等于异常清理拒绝；只有失败／未确认 setup 或 cleanup 才设置 sticky refusal。输入／cache 读取后与 Popen 前在短准入锁内复查，命令执行期间不持此锁。pending 发布中断保留原取消 cause 与拒绝，清理成功落盘后才清拒绝；后发生的其他阶段失败不抹除已启动命令的实际 PID／时间／退出／流证据。证据：`tools/release_stages.py`、`tools/test_release_stages.py`；入口与边界见 `docs/RELEASE.md`。
+
 - 同宿主跨副本验证：合作的 `release.py --verify` 入口按有效 UID 和 canonical Go module 共用不 unlink 的 flock inode，从 preflight 准入至自有子进程清理结束互斥。锁内真实进程库存绑定 PID/birth、cwd／显式目录切换和 module，既有手工验证或不可核实状态在原有限预算内等待后阻断；不抢占、不发送信号、不以旧 owner 台账证明空闲。私有 owner／queue 证据不记录 argv／环境。仅合作入口获得未来互斥保证，裸 `go test`／`make test/check` 的观测只描述准入时状态。证据：`tools/release_host_lease.py`、`tools/test_release_host_lease.py`、`tools/release_verify.py`、`docs/RELEASE.md`。
 
 - 本地验证可恢复性：`tools/release.py --verify --platform macos` 不触发发布或修改交付账本；同 checkout 跨 evidence 目录互斥，来源证明在首次构建前生成并在持锁后复查。复用只限完整 candidate/version、lockfile、依赖、toolchain、config 与 stage 输入／输出／原日志字节相同的 headless 成功结果；未知／失败证据、来源变化及最终 ZIP 字节变化拒绝继承。签名／公证／装订造成的新字节必须重新绑定实际原生验收，GUI 不自动复用。阶段执行、排队、重试／返工原因和失败各自保留，重叠时间不累计。证据：`tools/release_verify.py`、`tools/release_preflight.py`、`tools/release_stages.py` 及同名测试；入口与边界见 `docs/RELEASE.md`。

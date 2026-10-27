@@ -24,6 +24,15 @@ These lightweight fixtures do not require a VM, GUI or a full Go/Node suite.
 
 ## Release verification tooling (`F-430`, `C-010`, `C-031`)
 
+`test_release_stages` uses a deterministic barrier inside the real pending-latch
+publication path to prove a normal owned-stage setup does not falsely reject a
+parallel ordinary stage. The actual StageRunner, subprocess, cache and durable
+latch execute; only this no-detached-child fixture's OS inventory leaf is empty.
+Independent detached-process tests retain their real inventory/cleanup checks.
+Additional barriers cover a newly failed setup during input/cache reads;
+write failures and `KeyboardInterrupt`/`Cancelled` after pending publication
+retain sticky refusal and the original exception, including across a new runner.
+
 The existing release entry exposes `--verify` / `make release-verify` for
 candidate-bound, resumable local checks without publication. See
 [RELEASE.md](RELEASE.md#local-verification-before-publication) for the commands,

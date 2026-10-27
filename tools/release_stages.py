@@ -273,6 +273,7 @@ class StageRunner:
         self._lock_stream = None
         self.pipeline_queue = None
         self._scope_lock = threading.Lock()
+        self._admission_lock = threading.Lock()
         self._cleanup_pending = False
         for spec in self.stages.values():
             if spec.owned_data is not None and (not spec.owned_data.is_relative_to(self.evidence)
@@ -458,10 +459,13 @@ class StageRunner:
             row['failure'] = 'input_evidence_unavailable'
             return
         reused = self._reuse(directory, row['identity'], spec)
-        if reused and not self.cancel.is_set():
-            row.update(status='reused', exit_code=0, reused_from=reused['evidence'],
-                       stdout=reused['stdout'], stderr=reused['stderr'], files=reused['files'])
-            return
+        with self._admission_lock:
+            if not self._admit(row):
+                return
+            if reused:
+                row.update(status='reused', exit_code=0, reused_from=reused['evidence'],
+                           stdout=reused['stdout'], stderr=reused['stderr'], files=reused['files'])
+                return
         self._execute(spec, row, environment)
         if row['status'] == 'passed':
             try:
@@ -471,6 +475,17 @@ class StageRunner:
                     row['files'] = _files([*spec.outputs, Path(row['stdout']), Path(row['stderr'])])
             except (OSError, ValueError):
                 row.update(status='failed', failure='output_evidence_unavailable')
+
+    def _admit(self, row):
+        # Call under the short admission lock. Hashing/reuse may have overlapped
+        # a newly failed cleanup; a previously started command retains its facts.
+        if self._cleanup_pending:
+            row['failure'] = 'previous_cleanup_pending'
+            return False
+        if self.cancel.is_set():
+            row['status'] = 'cancelled'
+            return False
+        return True
 
     def _finish(self, directory, attempt, row, *, latest=True):
         row['ended'] = _stamp()
@@ -502,13 +517,13 @@ class StageRunner:
         with _open_private(Path(row['stdout']), exclusive=False) as stdout, \
                 _open_private(Path(row['stderr']), exclusive=False) as stderr:
             try:
-                if self.cancel.is_set():
-                    row['status'] = 'cancelled'
-                    return
-                process = subprocess.Popen(spec.argv, cwd=spec.cwd,
-                                           env=environment,
-                                           stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
-                                           start_new_session=True)
+                with self._admission_lock:
+                    if not self._admit(row):
+                        return
+                    process = subprocess.Popen(spec.argv, cwd=spec.cwd,
+                                               env=environment,
+                                               stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
+                                               start_new_session=True)
                 row['command_started'] = _stamp()
                 deadline = time.monotonic() + spec.timeout
                 while process.poll() is None:
@@ -588,14 +603,16 @@ class StageRunner:
             except (OSError, ValueError) as evidence_error:
                 failure['evidence_error_type'] = type(evidence_error).__name__
 
-        self._cleanup_pending = True
         try:
             _private_directory(spec.owned_data)
             self._scope_latch(spec, row, False)
-        except (OSError, ValueError) as error:
+        except BaseException as error:
+            with self._admission_lock:
+                self._cleanup_pending = True
             row.update(failure='scope_evidence_write', error_type=type(error).__name__)
-            return
-        self._cleanup_pending = False
+            if isinstance(error, (OSError, ValueError)):
+                return
+            raise  # Preserve cancellation without clearing the durable refusal.
         with _open_private(Path(row['stdout']), exclusive=False) as stdout, \
                 _open_private(Path(row['stderr']), exclusive=False) as stderr:
             try:
@@ -664,13 +681,13 @@ class StageRunner:
                         cleanup['timeout_seconds'] = error.timeout
                 cleanup.update(inventory_samples=samples, ended=_stamp())
                 row['inventory_calls'] = recorder.calls
-                self._cleanup_pending = not cleanup['cleanup_complete']
                 if cleanup['cleanup_complete']:
                     try:
                         self._scope_latch(spec, row, True)
                     except (OSError, ValueError) as error:
                         cleanup.update(cleanup_complete=False, evidence_error_type=type(error).__name__)
-                        self._cleanup_pending = True
+                with self._admission_lock:
+                    self._cleanup_pending = not cleanup['cleanup_complete']
                 if self._cleanup_pending and row['status'] == 'passed':
                     row.update(status='failed', failure='owned_process_cleanup')
                 if process is not None:

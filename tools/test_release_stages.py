@@ -417,8 +417,9 @@ class StageEvidenceTests(unittest.TestCase):
     def test_inventory_failure_joins_direct_child_and_keeps_durable_refusal_latch(self):
         data = self.root / 'evidence' / 'private-data'
         stage = self.stage("import time; print('started',flush=True); time.sleep(10)", owned_data=data)
+        ordinary = StageSpec('ordinary', (sys.executable, '-c', 'raise SystemExit(99)'), self.root)
         lock = self.root / 'checkout.lock'
-        with self.runner(stage, lock_path=lock) as runner:
+        with StageRunner(self.root / 'evidence', self.identity, [stage, ordinary], lock_path=lock) as runner:
             with patch('native_macos_case.ProcessScope.sample',
                        side_effect=subprocess.TimeoutExpired(['/bin/ps'], .01)):
                 result = runner.run('build')
@@ -428,6 +429,9 @@ class StageEvidenceTests(unittest.TestCase):
             self.assertIsNotNone(result['exit_code'])
             blocked = runner.run('build')
             self.assertEqual(blocked['failure'], 'previous_cleanup_pending')
+            with patch('release_stages.subprocess.Popen') as launch:
+                self.assertEqual(runner.run('ordinary')['failure'], 'previous_cleanup_pending')
+            launch.assert_not_called()
         self.assertTrue(data.exists())
         saved = json.loads(lock.read_text())
         self.assertFalse(saved['cleanup_complete'])
@@ -438,6 +442,103 @@ class StageEvidenceTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'cleanup'):
                 with StageRunner(evidence, self.identity, [next_stage], lock_path=lock_path):
                     self.fail('pending cleanup was bypassed')
+
+    def test_normal_pending_latch_write_does_not_refuse_a_parallel_stage(self):
+        import native_macos_case
+        owned = StageSpec('owned', (sys.executable, '-c', "print('owned')"), self.root,
+                          owned_data=self.root / 'evidence/private-data')
+        ordinary = self.stage()
+        entered, release = threading.Event(), threading.Event()
+        # The actual lifecycle, Popen, durable latch and cache still run. Only
+        # this fixture's OS inventory leaf is empty; no detached child is made.
+        def scope_factory(bundle, data, processes, case_id, *, inventory):
+            return native_macos_case.ProcessScope(bundle, data, processes, case_id,
+                                                  inventory=lambda *_args, **_kwargs: '')
+        with StageRunner(self.root / 'evidence', self.identity, [owned, ordinary]) as runner:
+            original = runner._scope_latch
+            def pause_pending(spec, row, complete):
+                if not complete:
+                    entered.set()
+                    if not release.wait(3):
+                        raise RuntimeError('fixture pending barrier expired')
+                return original(spec, row, complete)
+            with patch('release_stages.ProcessScope', side_effect=scope_factory), \
+                 patch.object(runner, '_scope_latch', side_effect=pause_pending), \
+                 ThreadPoolExecutor(max_workers=1) as executor:
+                running = executor.submit(runner.run, 'owned')
+                self.assertTrue(entered.wait(3), 'owned stage never reached pending publication')
+                try:
+                    result = runner.run('build')
+                finally:
+                    release.set()
+                owned_result = running.result(timeout=5)
+            self.assertEqual(result['status'], 'passed', result)
+            self.assertEqual(owned_result['status'], 'passed', owned_result)
+            self.assertTrue(owned_result['cleanup']['cleanup_complete'])
+
+    def test_pending_latch_write_failure_refuses_subsequent_ordinary_stage(self):
+        owned = StageSpec('owned', (sys.executable, '-c', "print('must not launch')"), self.root,
+                          owned_data=self.root / 'evidence/private-data')
+        with StageRunner(self.root / 'evidence', self.identity, [owned, self.stage()]) as runner:
+            with patch.object(runner, '_scope_latch', side_effect=OSError('fixture durable write failed')), \
+                 patch('release_stages.subprocess.Popen') as launch:
+                failed = runner.run('owned')
+                ordinary = runner.run('build')
+            self.assertEqual(failed['failure'], 'scope_evidence_write')
+            self.assertEqual(ordinary['failure'], 'previous_cleanup_pending')
+            launch.assert_not_called()
+
+    def test_cancelled_pending_publication_retains_the_original_cause_and_refusal(self):
+        from release_verify import Cancelled
+        for index, cause in enumerate((KeyboardInterrupt('original fixture interruption'), Cancelled(15))):
+            evidence = self.root / ('cancel-evidence-' + str(index))
+            owned = StageSpec('owned', (sys.executable, '-c', 'pass'), self.root,
+                              owned_data=evidence / 'private-data')
+            with StageRunner(evidence, self.identity, [owned, self.stage()]) as runner:
+                original = runner._scope_latch
+                def cancelled(spec, row, complete):
+                    original(spec, row, complete)
+                    if not complete:
+                        raise cause
+                with patch.object(runner, '_scope_latch', side_effect=cancelled), \
+                     patch('release_stages.subprocess.Popen') as launch:
+                    with self.assertRaises(KeyboardInterrupt) as caught:
+                        runner.run('owned')
+                    self.assertIs(caught.exception, cause)
+                    self.assertEqual(runner.run('build')['failure'], 'previous_cleanup_pending')
+                launch.assert_not_called()
+            self.assertFalse(json.loads((evidence / 'cleanup-state.json').read_text())['cleanup_complete'])
+            with self.assertRaisesRegex(RuntimeError, 'cleanup'):
+                with StageRunner(evidence, self.identity, [owned]):
+                    self.fail('cancelled setup was admitted as cleaned')
+
+    def test_cleanup_failure_during_hashing_cannot_reuse_an_earlier_pass(self):
+        import release_stages
+        owned = StageSpec('owned', (sys.executable, '-c', 'pass'), self.root,
+                          owned_data=self.root / 'evidence/private-data')
+        entered, release = threading.Event(), threading.Event()
+        with StageRunner(self.root / 'evidence', self.identity, [owned, self.stage()]) as runner:
+            self.assertEqual(runner.run('build')['status'], 'passed')
+            original = release_stages._files
+            def pause_hash(paths):
+                if tuple(paths) == (self.source,):
+                    entered.set()
+                    if not release.wait(3):
+                        raise RuntimeError('fixture hashing barrier expired')
+                return original(paths)
+            with patch('release_stages._files', side_effect=pause_hash), \
+                 ThreadPoolExecutor(max_workers=1) as executor:
+                waiting = executor.submit(runner.run, 'build')
+                self.assertTrue(entered.wait(3), 'ordinary stage never reached input hashing')
+                try:
+                    with patch.object(runner, '_scope_latch', side_effect=OSError('fixture setup failure')):
+                        self.assertEqual(runner.run('owned')['failure'], 'scope_evidence_write')
+                finally:
+                    release.set()
+                result = waiting.result(timeout=5)
+            self.assertEqual(result['failure'], 'previous_cleanup_pending')
+            self.assertEqual(result['status'], 'failed')
+            self.assertNotIn('command_started', result)
 
     def test_signal_cancellation_marks_the_waiting_pipeline_cancelled(self):
         # Exercise the CLI's real signal handler while StageRunner is blocked in
