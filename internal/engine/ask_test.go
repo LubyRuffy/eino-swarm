@@ -148,12 +148,7 @@ func TestAskUserPausesThisTurnUntilAnswered(t *testing.T) {
 		t.Fatal(err)
 	}
 	call := waitAskToolCall(t, sub, 15*time.Second)
-	// The tool-call notification precedes the executor arming waitAsk. Observe
-	// the actual paused state before asserting it, rather than that callback gap.
-	ready := time.Now().Add(2 * time.Second)
-	for !e.Status(th.ID).AwaitingAnswer && time.Now().Before(ready) {
-		time.Sleep(time.Millisecond)
-	}
+	waitAskArmed(t, e, th.ID)
 	if ids := e.AwaitingAnswer(); len(ids) != 1 || ids[0] != th.ID {
 		t.Fatalf("AwaitingAnswer=%v want [%s]", ids, th.ID)
 	}
@@ -198,6 +193,7 @@ func TestAskUserComposerLineAnswersEveryQuestion(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = waitAskToolCall(t, sub, 15*time.Second)
+	waitAskArmed(t, e, th.ID)
 	got, err := e.StartTurn(th.ID, "use the existing layout")
 	if err != nil {
 		t.Fatal(err)
@@ -359,6 +355,22 @@ func waitAskToolCall(t *testing.T, sub *Subscription, timeout time.Duration) sto
 	}
 }
 
+// waitAskArmed returns once the executor is blocked on the human. The
+// tool-call notification is published before waitAsk arms, and the race
+// detector widens that gap enough to fail every assertion that treats the
+// notification as "the question is now waiting": a steer or composer Enter in
+// the gap is a different case from one sent during a pause.
+func waitAskArmed(t *testing.T, e *Engine, threadID string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !e.Status(threadID).AwaitingAnswer {
+		if time.Now().After(deadline) {
+			t.Fatal("ask_user never started waiting for the human")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func TestSteerDuringAskStaysInTheInbox(t *testing.T) {
 	provider.SetMockAskUser(true)
 	t.Cleanup(func() { provider.SetMockAskUser(false) })
@@ -372,6 +384,7 @@ func TestSteerDuringAskStaysInTheInbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = waitAskToolCall(t, sub, 15*time.Second)
+	waitAskArmed(t, e, th.ID)
 	if err := e.Steer(th.ID, "prefer the safer path"); err != nil {
 		t.Fatal(err)
 	}
