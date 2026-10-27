@@ -127,6 +127,7 @@ func runRestartAskProcessAcceptance(t *testing.T, dir, oldBinary, newBinary stri
 	}
 	old := startRestartProcess(t, dir, oldBinary, "engine", "--data-dir", data, "--addr", "127.0.0.1:0")
 	oldRecord := waitRestartRecord(t, data, 0, 15*time.Second, old)
+	waitRestartReady(t, oldRecord.URL, 15*time.Second)
 	t.Cleanup(func() {
 		if rec, err := lease.Discover(data, false); err == nil && rec.PID != oldRecord.PID {
 			if err := lease.Kill(rec.PID); err != nil {

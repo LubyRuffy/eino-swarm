@@ -76,6 +76,7 @@ func runRestartProcessAcceptance(t *testing.T, dir, oldBinary, newBinary string,
 	}
 	old := startRestartProcess(t, dir, oldBinary, "engine", "--data-dir", dataDir, "--addr", "127.0.0.1:0")
 	oldRecord := waitRestartRecord(t, dataDir, 0, 15*time.Second, old)
+	waitRestartReady(t, oldRecord.URL, 15*time.Second)
 	if oldRecord.PID != old.cmd.Process.Pid {
 		t.Fatalf("old engine published another process: %+v", oldRecord)
 	}
@@ -364,6 +365,19 @@ func waitRestartRecord(t *testing.T, dataDir string, previousPID int, timeout ti
 		return err == nil && record.PID != previousPID
 	})
 	return record
+}
+
+// Listener discovery deliberately admits restoring engines for the handoff
+// deadline. Initial fixture writes instead require actual mutation readiness.
+func waitRestartReady(t *testing.T, url string, timeout time.Duration) {
+	t.Helper()
+	var meta struct {
+		Startup string `json:"startup"`
+	}
+	waitRestartCondition(t, timeout, "the initial engine admitting mutations", func() bool {
+		restartJSON(t, http.MethodGet, url+"/api/meta", nil, http.StatusOK, &meta)
+		return meta.Startup == "ready"
+	})
 }
 
 func waitRestartCondition(t *testing.T, timeout time.Duration, description string, ready func() bool) {
