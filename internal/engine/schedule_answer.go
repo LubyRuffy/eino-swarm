@@ -245,10 +245,8 @@ func scheduleFiresAfter(row store.Schedule, delay int) bool {
 // different check.
 func scheduleInstantClose(stated, next time.Time) bool {
 	d := stated.Sub(next)
-	if d < 0 {
-		d = -d
-	}
-	return d < time.Minute
+	// Distant times can saturate Sub to the minimum duration, which cannot be negated.
+	return d > -time.Minute && d < time.Minute
 }
 
 // scheduleClaimMismatch is a refused claim's Trace diagnosis. It carries the

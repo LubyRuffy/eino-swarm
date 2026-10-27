@@ -122,6 +122,12 @@ func TestScheduleClaimUsesCurrentExactTurnRowAndCadence(t *testing.T) {
 		{"time-a-minute-early", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) {
 			c.NextRunAt = now.Add(-time.Minute).Format(time.RFC3339)
 		}, false},
+		{"time-in-distant-past", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) {
+			c.NextRunAt = "0001-01-01T00:00:00Z"
+		}, false},
+		{"time-in-distant-future", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) {
+			c.NextRunAt = "9999-12-31T23:59:59Z"
+		}, false},
 		{"bad-time", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) { c.NextRunAt = "invalid" }, false},
 		{"independent", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) {
 			c.Scope = "independent"
@@ -143,6 +149,45 @@ func TestScheduleClaimUsesCurrentExactTurnRowAndCadence(t *testing.T) {
 			tc.mutate(&claim, &row, armed)
 			if got := scheduleClaimMatches(claim, row, turn, armed); got != tc.want {
 				t.Fatalf("matched=%v want=%v claim=%+v row=%+v", got, tc.want, claim, row)
+			}
+		})
+	}
+}
+
+func TestDecodedScheduleClaimTimeToleranceHandlesDistantDates(t *testing.T) {
+	next := time.Date(2026, 10, 27, 0, 0, 0, 0, time.UTC)
+	turn := &store.Turn{ID: "turn", ThreadID: "thread"}
+	row := store.Schedule{ID: "wake", Kind: store.ScheduleThread, ThreadID: turn.ThreadID,
+		OriginThreadID: turn.ThreadID, Status: store.ScheduleActive, NextRunAt: next, EveryS: 90}
+	const text = "A future check is armed."
+	existing := false
+	for _, tc := range []struct {
+		name   string
+		stated time.Time
+		want   bool
+	}{
+		{"distant-past", time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC), false},
+		{"distant-future", time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC), false},
+		{"just-inside-past", next.Add(-time.Minute + time.Nanosecond), true},
+		{"just-inside-future", next.Add(time.Minute - time.Nanosecond), true},
+		{"exactly-minute-past", next.Add(-time.Minute), false},
+		{"exactly-minute-future", next.Add(time.Minute), false},
+		{"same-instant", next, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body, err := json.Marshal(map[string]any{"claims": []scheduleAnswerClaim{{
+				Quote: text, Stance: "affirmed", Temporal: "current", Attribution: "assistant",
+				Scope: "thread", New: &existing, NextRunAt: tc.stated.Format(time.RFC3339Nano),
+			}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			claims, err := decodeScheduleAnswer(schema.AssistantMessage(string(body), nil), []string{text})
+			if err != nil || len(claims) != 1 {
+				t.Fatalf("valid structured claim did not reach admission: claims=%v err=%v", claims, err)
+			}
+			if got := scheduleClaimMatches(claims[0], row, turn, nil); got != tc.want {
+				t.Fatalf("matched=%v want=%v stated=%s next=%s", got, tc.want, tc.stated.Format(time.RFC3339Nano), next.Format(time.RFC3339Nano))
 			}
 		})
 	}

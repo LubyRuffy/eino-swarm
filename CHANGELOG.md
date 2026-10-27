@@ -344,6 +344,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- Distant valid RFC3339 timestamps no longer pass the schedule-claim one-minute
+  window when time subtraction saturates.
 - Noisy `exec` results remain complete JSON even when both streams contain
   escaped characters or the call specifies a larger capture budget. The final
   encoded-character cap keeps failure/exit/error metadata and stream head/tail;
