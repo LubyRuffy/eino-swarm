@@ -1,5 +1,21 @@
 # Testing
 
+## Host verification admission (`F-430`, `C-010`)
+
+`tools/release_host_lease.py` serializes cooperating local release verification
+across independent copies using one persistent-inode host/UID/module flock.
+Admission additionally samples actual same-user validation PID/birth, working
+directory and module under the mutex. Saved owner JSON alone cannot accept an
+idle state; active or unknown observations block with bounded queue evidence,
+and the observer never terminates another task. This cannot serialize future
+manual commands that bypass the protocol; `make test/check` remain unwrapped.
+`tools/test_release_host_lease.py` uses unique temporary modules and lock roots,
+real competing lock holders and one small owned unittest process. It checks
+cross-copy exclusion, stale receipt versus live process, cancellation, PID reuse,
+foreign-project exclusion and private evidence. `tools/test_release_verify.py`
+checks the actual entry refuses before preflight/heavy commands on host conflict.
+These lightweight fixtures do not require a VM, GUI or a full Go/Node suite.
+
 ## Release verification tooling (`F-430`, `C-010`, `C-031`)
 
 The existing release entry exposes `--verify` / `make release-verify` for

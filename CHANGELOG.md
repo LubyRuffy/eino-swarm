@@ -13,6 +13,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-430`, `C-010`: host/UID/project verification admission serializes the local
+  release entry across independent copies and waits on live manual validation
+  or unknown process state. Private queue/owner evidence retains actual identity;
+  the observer never signals another task or treats old owner rows as an idle host.
+
 - `F-430`, `C-010`, `C-031`: resumable local release verification with offline
   dependency/source preflight, exact-input headless receipts, bounded parallel
   stages and queue/execution timing. Ordinary native startup has a distinct

@@ -16,6 +16,8 @@ import tempfile
 import threading
 import uuid
 
+from release_host_lease import HostLeaseBlocked, HostValidationLease
+
 
 NATIVE_PENDING = "required_separate_guest_acceptance"
 E2E_PROFILES = ("REASONING_FIELDS", "MODEL_API_ERROR", "WORKER_ROSTER", "SCHEDULE_ANSWER",
@@ -154,7 +156,10 @@ def verification_attempt(root, version, evidence, *, jobs=2, e2e_port=None, lock
     private_json(current, dict(status="running", attempt=attempt, version=version, native_status=NATIVE_PENDING))
     code = 1
     try:
-        code = _verify(root, version, evidence, jobs=jobs, e2e_port=e2e_port, lock_timeout=lock_timeout, cancel=cancel)
+        # Copies share this host/UID/module lease. A process-table guard alone
+        # cannot serialize two contenders that both observe an idle host.
+        with HostValidationLease(root, evidence, timeout=lock_timeout, cancel=cancel):
+            code = _verify(root, version, evidence, jobs=jobs, e2e_port=e2e_port, lock_timeout=lock_timeout, cancel=cancel)
         row = json.loads(current.read_text())
         if row.get("status") == "running":
             row["status"] = "blocked" if code == 2 else "failed"
@@ -162,6 +167,12 @@ def verification_attempt(root, version, evidence, *, jobs=2, e2e_port=None, lock
         private_json(current, row)
         private_json(evidence / "history" / (attempt + ".json"), row)
         return code
+    except HostLeaseBlocked:
+        failure = dict(status="blocked", attempt=attempt, version=version, exit_code=2,
+                       failure="host_validation_admission", native_status=NATIVE_PENDING)
+        private_json(current, failure)
+        private_json(evidence / "history" / (attempt + ".json"), failure)
+        return 2
     except BaseException as error:
         failure = dict(status="cancelled" if isinstance(error, Cancelled) else "failed", attempt=attempt,
                        version=version, exit_code=128 + error.signum if isinstance(error, Cancelled) else 1,
@@ -181,7 +192,8 @@ def source_revision(root):
 def harness_fingerprint():
     tools = Path(__file__).parent
     return {name: hashlib.sha256((tools / name).read_bytes()).hexdigest()
-            for name in ("release.py", "release_verify.py", "release_stages.py", "release_preflight.py")}
+            for name in ("release.py", "release_verify.py", "release_stages.py", "release_preflight.py",
+                         "release_host_lease.py", "native_macos_case.py", "native_macos_resilience_fault.py")}
 
 
 def _verify(root, version, evidence, *, jobs=2, e2e_port=None, lock_timeout=30, cancel=None):

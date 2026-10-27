@@ -18,6 +18,24 @@ import release_verify
 
 
 class VerificationEntryTests(unittest.TestCase):
+    def setUp(self):
+        # Entry fixtures isolate commands/preflight below. They must not acquire
+        # the actual project's host lease while another task validates it.
+        lease = mock.patch.object(release_verify, "HostValidationLease", side_effect=lambda *_args, **_kwargs: contextlib.nullcontext())
+        self.addCleanup(lease.stop)
+        self.lease = lease.start()
+
+    def test_host_admission_refusal_never_starts_preflight_or_heavy_commands(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, evidence = Path(directory) / "source", Path(directory) / "evidence"
+            root.mkdir()
+            self.lease.side_effect = release_verify.HostLeaseBlocked("fixture existing validation")
+            with mock.patch.object(release_verify, "_verify") as execute:
+                self.assertEqual(release_verify.verify(root, "1.2.3", evidence), 2)
+            execute.assert_not_called()
+            row = json.loads((evidence / "verification.json").read_text())
+            self.assertEqual((row["status"], row["failure"]), ("blocked", "host_validation_admission"))
+
     def test_sigterm_during_preflight_is_recorded_and_releases_evidence_lock(self):
         with tempfile.TemporaryDirectory() as directory:
             root, evidence = Path(directory) / "source", Path(directory) / "evidence"
@@ -118,7 +136,8 @@ class VerificationEntryTests(unittest.TestCase):
                  mock.patch.object(release_verify, "commands", side_effect=fixture_commands), \
                  mock.patch.object(release_verify, "package_provenance", return_value={"sha256": "fixture"}), \
                  mock.patch.object(release_verify.platform, "system", return_value="Darwin"):
-                self.assertEqual(release_verify.verify(root, "1.2.3", evidence, e2e_port=12345), 3)
+                self.assertEqual(release_verify.verify(root, "1.2.3", evidence, e2e_port=12345), 3,
+                                 (evidence / "verification.json").read_text())
                 self.assertEqual(release_verify.verify(root, "1.2.3", evidence), 3)
                 resumed = json.loads((evidence / "verification.json").read_text())
                 self.assertTrue(all(row["status"] == "reused" for row in resumed["stages"].values()))
