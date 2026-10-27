@@ -140,7 +140,7 @@ EVAL_RUNS ?= 2
 eval:
 	@test -n "$(EVAL_PROVIDER)" || (echo "EVAL_PROVIDER=<provider id in ~/.zwai-swarm/config.yaml> is required" >&2; exit 2)
 	go build -ldflags "$(LDFLAGS)" -o bin/zwai-eval ./cmd/zwai
-	python3 tools/agent_eval.py --provider "$(EVAL_PROVIDER)" --runs "$(EVAL_RUNS)" $(if $(EVAL_TASKS),--tasks "$(EVAL_TASKS)")
+	python3 tools/agent_eval.py --provider "$(EVAL_PROVIDER)" --runs "$(EVAL_RUNS)" $(if $(EVAL_TASKS),--tasks "$(EVAL_TASKS)") $(if $(EVAL_MODEL),--model "$(EVAL_MODEL)")
 
 # The candidate is built/transferred once; each invocation still owns fresh state.
 .PHONY: native-smoke-prepare

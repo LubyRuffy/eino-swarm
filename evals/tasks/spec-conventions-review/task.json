@@ -1,0 +1,81 @@
+{
+  "id": "spec-conventions-review",
+  "purpose": "The spec-conventions task plus a request that an independent worker, given only the README and the code, review the manager's work.",
+  "expect_delegation": "optional",
+  "generate": "generate.py",
+  "timeout_s": 1800,
+  "checks": [
+    {
+      "name": "money meets every README rule",
+      "type": "command",
+      "argv": [
+        "python3",
+        "{task_dir}/../spec-conventions/hidden/run_hidden.py",
+        "money"
+      ],
+      "timeout_s": 60
+    },
+    {
+      "name": "slug meets every README rule",
+      "type": "command",
+      "argv": [
+        "python3",
+        "{task_dir}/../spec-conventions/hidden/run_hidden.py",
+        "slug"
+      ],
+      "timeout_s": 60
+    },
+    {
+      "name": "headers meets every README rule",
+      "type": "command",
+      "argv": [
+        "python3",
+        "{task_dir}/../spec-conventions/hidden/run_hidden.py",
+        "headers"
+      ],
+      "timeout_s": 60
+    },
+    {
+      "name": "money/README.md unchanged",
+      "type": "file_unchanged",
+      "path": "money/README.md"
+    },
+    {
+      "name": "money/test_basic.py unchanged",
+      "type": "file_unchanged",
+      "path": "money/test_basic.py"
+    },
+    {
+      "name": "slug/README.md unchanged",
+      "type": "file_unchanged",
+      "path": "slug/README.md"
+    },
+    {
+      "name": "slug/test_basic.py unchanged",
+      "type": "file_unchanged",
+      "path": "slug/test_basic.py"
+    },
+    {
+      "name": "headers/README.md unchanged",
+      "type": "file_unchanged",
+      "path": "headers/README.md"
+    },
+    {
+      "name": "headers/test_basic.py unchanged",
+      "type": "file_unchanged",
+      "path": "headers/test_basic.py"
+    },
+    {
+      "name": "CONVENTIONS.md unchanged",
+      "type": "file_unchanged",
+      "path": "CONVENTIONS.md"
+    },
+    {
+      "name": "an independent worker was spawned",
+      "type": "tool_count",
+      "tool": "spawn_agent",
+      "agent": "manager",
+      "min": 1
+    }
+  ]
+}

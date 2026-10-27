@@ -3615,7 +3615,12 @@ and its results are measurements rather than pass/fail gates.
 ```bash
 make eval EVAL_PROVIDER=default                 # every task, 2 runs each
 make eval EVAL_PROVIDER=default EVAL_RUNS=3 EVAL_TASKS=direct-lookup,noisy-log
+make eval EVAL_PROVIDER=default EVAL_MODEL=<another model on that provider>
 python3 tools/agent_eval.py --mock --runs 1     # harness smoke test, no model
+python3 tools/agent_eval_compare.py --arm a=<out dir> --arm b=<out dir> --out compare.md
+python3 tools/agent_eval_prereview.py <out dir> ...  # what a worker's report changed
+python3 tools/trace_to_eval.py --trace <run>/traces.json --id <new id>   # replay task
+python3 tools/agent_eval.py --provider default --task-root output/replays --tasks <new id>
 ```
 
 - **Tasks** live in `evals/tasks/<id>/`: `prompt.md` (the human message),
@@ -3637,13 +3642,63 @@ python3 tools/agent_eval.py --mock --runs 1     # harness smoke test, no model
   that gets only the README and the code review it. Reading them together
   says whether a fresh context finds what the author's own second pass does
   not, which is the evidence for or against requiring independent review.
+  `spec-edges`, `spec-edges-selfreview` and `spec-edges-review` are the
+  second triple, with the same closing sentences: three modules (amounts,
+  slugs, CSV header names) whose README rules go against the usual library
+  call or habit, such as half-away rounding where `round(float)` rounds to
+  even, separators only from five digits, letters NFKD does not decompose,
+  a prefix that counts toward a length limit and collision precedence. Each
+  rule is stated in the README; the triple exists so that an unreviewed run
+  has something to miss. `spec-conventions` / `-selfreview` / `-review` add a
+  repository-wide `CONVENTIONS.md` (exported names, docstrings, keyword-only
+  options, exception messages, suppressed exception context) that each README
+  points to in one line, and run spec-edges' rule tests plus convention
+  tests. `spec-dense` is one module, a duration parser and formatter, with
+  thirteen interacting rules (unit order, a zero exception, a fraction only on
+  the last component and only on whole seconds, a whole-text sign, an ISO 8601
+  form that inherits the number rules, ASCII-only digits and a magnitude
+  limit).
+- **Two models.** `--model` (`EVAL_MODEL`) runs another model of the same
+  provider: endpoint, key and the provider's per-model context window are
+  kept, only the model changes. The engine's default output cap (16384
+  tokens per request) applies unless `--max-completion-tokens N` sets one;
+  the source config's `swarm` section is not copied, and the report states
+  the cap. `tools/agent_eval_compare.py` reads several
+  evidence directories as arms (`--arm LABEL=DIR`, the first is the
+  reference; repeat a label to add another directory, and only the harness's
+  own `report.json` files count, not task outputs in workspace copies) and writes a
+  Markdown table of passes, median tokens and seconds, manager calls,
+  spawns, system-prompt size and first-call cache share per arm, the
+  per-task cells, the tasks whose pass rate differs from the reference and
+  every failed check. Harness errors are listed but not graded.
+- **Replayed human input.** A task's optional `replay` list holds the human
+  messages that follow the prompt: `{"kind": "steer" | "answer" | "turn",
+  "text": "…", "after_s": seconds}`. A steer is sent once the turn has run
+  `after_s` seconds since the prompt; an answer is sent only when the run
+  asks (`ask_user`), and only then is a question not an interruption; a
+  pending turn, or a steer whose turn already ended, is sent when the
+  conversation settles. Unsent entries are reported as `replay_unused`, not
+  forced in. `csv-aggregate-steer` is `csv-aggregate` with one steer asking
+  for an extra field. `tools/trace_to_eval.py` turns a run's Trace timelines
+  (`traces.json` from an eval run, or `GET /api/trace/:turn` responses) into
+  such a task: the first manager message becomes `prompt.md`, later human
+  messages, steers and the human's `ask_user` answers become `replay`
+  entries timed from the first message, runtime-started turns and worker
+  questions are skipped. It writes structural checks only (no error event,
+  a nonempty answer), the recorded call/token/spawn counts in
+  `recorded.json` and, with `--workspace`, a copy of the starting files.
+  `--redact REGEX` replaces matches in every written text. The default
+  output is `output/replays/` (ignored by git). Convert eval runs or
+  synthetic traces; a real conversation is exported only after its owner
+  has redacted it, and the tool never reads a data directory itself.
 - **Isolation**: every run gets a new temporary data directory and its own
   `zwai engine` child (`bin/zwai-eval`, built by the target). The harness reads
   one provider from `~/.zwai-swarm/config.yaml` (or `--config`) without writing
   it, scrubs inherited `ZWAI_*` / `OPENAI_*` variables, writes a one-provider
   `config.yaml` (mode `0600`) into the temporary directory, holds a presence
   connection, stops only its own child and deletes that directory, key
-  included. The user's engine and data directory are not touched.
+  included, also when the harness is stopped with SIGTERM or SIGHUP. The
+  user's engine and data directory are not touched.
 - **Grading** is deterministic: files, JSON values, unchanged test files,
   commands run in the workspace (a checker kept beside the task is named with
   the `{task_dir}` placeholder in `argv`, so hidden tests never enter the
@@ -3676,6 +3731,15 @@ python3 tools/agent_eval.py --mock --runs 1     # harness smoke test, no model
   `traces.json`, `engine.log` and a workspace copy. Every file is redacted for
   the provider key before it is written. A harness failure keeps the first
   error; nothing is retried to turn a run green.
+- **What a review changed.** Grading the final workspace cannot show what a
+  worker's review fixed. `tools/agent_eval_prereview.py` replays the files a
+  run's trace wrote (`write`, and `edit` in its search/replace or patch form)
+  up to the manager's first `wait_agents` after a spawn, grades them with the
+  task's `command` checks in a temporary copy, and prints them beside the
+  final grade, with the roles spawned. Files changed through `exec` are
+  invisible to the replay, so a run whose replay does not reproduce a file
+  still in its workspace is marked and its first-report column is not
+  evidence.
 
 Compare architectures by task, not only by the total: look at which runs
 flipped, and run each task more than once. `tools/test_agent_eval.py` (part of
@@ -3689,6 +3753,17 @@ checked the same way: the reference solutions pass every hidden rule, a
 plain-case solution that satisfies the visible tests fails at least four rules
 per module, a missing module reports an import failure instead of crashing,
 and the three prompts differ only in the review request.
+`tools/test_spec_edges.py` does the same for spec-edges, spec-conventions and
+spec-dense: a habit-driven solution that passes the visible tests misses at
+least three rules per module (six for the duration module), a solution that
+meets every README rule still misses at least three conventions per module,
+and the spec-conventions arms reuse spec-edges' prompts.
+`tools/test_agent_eval_prereview.py` covers the replay (patch hunks, the
+first-report boundary, a failed edit, a worker's own wait) and the
+marking of a run changed through `exec`. `tools/test_trace_to_eval.py` converts synthetic
+traces only; `tools/test_agent_eval_compare.py` covers arm merging, flips
+and harness-error exclusion; `tools/test_agent_eval_limits.py` covers the
+output-cap flag and that a SIGTERM unwinds through a run's cleanup.
 
 ### Cost measurements and what they decided
 
@@ -3730,9 +3805,9 @@ comparisons. Each line says what was measured and what it decided.
   cost and is policy, not a defect. Not done: a blocking wait tool, which the
   Waiting section forbids.
 
-### Independent review: measured, no change to delegation policy
+### Independent review: measured on two models, left to the manager
 
-The review triple, four runs per arm on `glm-5.3-flash` (12 runs, binary built
+The first review triple, four runs per arm on `glm-5.3-flash` (12 runs, binary built
 from the commit before the prompt-layout change; a first attempt whose prompt
 asked for all three modules at once was discarded, its runs mostly ending in
 the output-budget error below). The prompts now ask for one directory at a time.
@@ -3762,10 +3837,66 @@ the output-budget error below). The prompts now ask for one directory at a time.
   of `test_*.py` names outside the workspace); the words "hidden test" in the
   transcripts are the model guessing what would be checked.
 
-Decision: keep the delegation policy as it is, with no automatic independent
-review step. Re-open it with a fixture where an unreviewed run misses rules
-(a weaker model, or rules the model cannot derive from the README), run through
-the same triple; the harness needs no change for that.
+#### Three more fixtures on both models
+
+`spec-edges` (all three arms), the unrequested-review arm of
+`spec-conventions` and `spec-dense`, three runs each on `dsv41-flash-1017`
+and `glm-5.3-flash` (output cap 64000, except dsv41's spec-edges runs at the
+16384 default), graded with the final hidden tests and read with
+`tools/agent_eval_prereview.py`.
+
+- **Graded only at the end, nothing looked missed.** Every run met every
+  hidden rule as the tests first stood. The traces said otherwise: workers
+  reported real violations and the manager fixed them before finishing.
+- **The "no review" arm is not unreviewed.** The Delegating section names
+  independent review as a reason to spawn. dsv41 started reviewer or auditor
+  workers in all 9 of its unrequested-review runs, glm in 5 of 9 (none on
+  spec-edges, all on spec-dense).
+- **What the reviewers found.** Three findings follow from a README's
+  wording and became hidden cases: amounts of any number of digits (Python's
+  4300-digit `int`/`str` limit escaped as `ValueError`), a repeated header
+  that took a later column's generated `col_<n>` name, and a 5000-digit
+  duration that must raise `OverflowError`. A fourth (whether slug's `n-`
+  prefix is a word when truncating) is a reading of the README, not a
+  violation, and was left out. These cases exist because a reviewer found
+  them, so they show what a review can catch, not a miss rate.
+
+| fixture | arm | dsv41 met every rule at the end | glm met every rule at the end |
+|---|---|---|---|
+| spec-edges | each of the three arms | 0 of 3 | 0 of 3 |
+| spec-conventions | no review requested | 3 of 3, each fixed after a reviewer's report | 0 of 3 (the digit count only) |
+| spec-dense | no review requested | 2 of 3 | 3 of 3, each fixed after a reviewer's report |
+| spec-dense | prompt without the Delegating section | 2 of 3 | 1 of 3 |
+
+- **The digit-count case is a judgement call.** dsv41's workers or manager
+  noticed the 4300-digit limit in five spec-edges runs, across all three
+  arms, and the manager declined it each time as something the README does
+  not ask about ("silent on size"); glm never noticed it on spec-edges.
+  Leaving that case out, every spec-edges run met every rule at the end
+  except one glm run with a requested independent review, which kept the
+  header collision; one unrequested dsv41 review fixed that collision.
+- **Explicitly requesting review did not add catches.** No requested review
+  (re-check or independent worker) on spec-edges led to a fix that the
+  unrequested arm did not also make.
+- **Unrequested review paid on the dense fixture.** Without the Delegating
+  section glm spawned nothing and two of three runs kept the overflow miss;
+  with it all three glm runs started a reviewer and fixed it. dsv41 met
+  every rule in two of three runs either way, and started a tester in one
+  run even without the section. The cost: median tokens per
+  run 1.43M with the section against 0.37M without on dsv41, 1.46M against
+  0.36M on glm. On spec-edges glm's medians were 448K without review, 1.07M
+  re-checking itself and 1.53M with an independent reviewer.
+- The catches came from workers that tested against a reference they wrote
+  from the README alone, with fuzzing and size probes; glm's spec-conventions
+  reviewers fuzzed against their own reference without probing input size
+  and reported nothing.
+
+Decision: keep independent review as the manager's choice, as the
+Delegating section states it, and add no automatic review step. A forced
+review would cost two to four times the tokens on every task, and on these
+fixtures the requested reviews caught nothing the manager's own choice of
+review did not. The policy is re-measured with `tools/agent_eval_prereview.py`
+on any change to the Delegating section.
 
 ## The scripted offline provider
 

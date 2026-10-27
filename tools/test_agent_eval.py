@@ -104,6 +104,19 @@ class ProviderConfigTest(unittest.TestCase):
             self.assertEqual(back[key], p[key])
         self.assertEqual(back["model_context"], {"model-one": 1048576})
 
+    def test_another_model_keeps_the_endpoint_and_its_own_context_window(self):
+        # Two models on one endpoint are compared by --model; a wrong context
+        # window would change when compaction starts and confound the comparison.
+        p = grade.select_model(grade.extract_provider(CONFIG, "default"), " other ")
+        self.assertEqual(p["model"], "other")
+        self.assertEqual(p["base_url"], "https://one.example/v1")
+        text = grade.render_eval_config(p, "eval")
+        self.assertIn('model: "other"', text)
+        self.assertIn('"other": 8192', text)
+        self.assertNotIn("model-one", text)
+        same = grade.extract_provider(CONFIG, "default")
+        self.assertIs(grade.select_model(same, ""), same)
+
     def test_summary_names_the_model_without_credentials(self):
         p = grade.extract_provider(CONFIG, "default")
         s = grade.provider_summary(p)
@@ -431,6 +444,18 @@ class TaskCatalogTest(unittest.TestCase):
         self.assertEqual(self.expected("csv-aggregate", "revenue_by_region"), {k: float(v) for k, v in revenue.items()})
         self.assertEqual(self.expected("csv-aggregate", "top_product_by_units"), max(units, key=units.get))
 
+    def test_steered_aggregate_grades_the_steer_against_the_same_data(self):
+        steered = grade.load_task(agent_eval.TASKS_DIR / "csv-aggregate-steer")
+        self.assertEqual([r["kind"] for r in steered["replay"]], ["steer"])
+        self.assertNotIn("units_by_region", steered["prompt"], "only the steer may ask for the extra field")
+        rows = list(csv.DictReader((self.prepared("csv-aggregate-steer") / "sales.csv").read_text().splitlines()))
+        by_region = defaultdict(int)
+        for r in rows:
+            by_region[r["region"]] += int(r["units"])
+        self.assertEqual(self.expected("csv-aggregate-steer", "units_by_region"), dict(by_region))
+        base = grade.load_task(agent_eval.TASKS_DIR / "csv-aggregate")
+        self.assertEqual(steered["checks"][:-1], base["checks"])
+
     def test_noisy_log_key_counts_only_error_lines(self):
         found = {}
         for line in (self.prepared("noisy-log") / "app.log").read_text().splitlines():
@@ -663,7 +688,9 @@ class DriveConversationTest(unittest.TestCase):
 
         def fake_http(base, method, path, body=None, timeout=30):
             calls.append((method, path))
-            if path.endswith("/interrupt"):
+            if body and body.get("text"):
+                calls.append(("text", body["text"], clock[0]))
+            if path.endswith(("/interrupt", "/steer", "/answers")):
                 return None
             if path.endswith("/turns"):
                 return {"turns": turns or []}
@@ -715,6 +742,55 @@ class DriveConversationTest(unittest.TestCase):
         self.assertEqual(agent_eval.settled_outcome(done, [])["state"], "done")
         asked = {**done, "state": "asked"}
         self.assertEqual(agent_eval.settled_outcome(asked, failed)["state"], "asked")
+
+    # A replay is the recorded human side of a conversation. Sending a steer
+    # early, answering a question nobody asked, or dropping a later turn would
+    # make the replayed run a different conversation from the recorded one.
+    def test_replayed_steer_waits_for_its_offset(self):
+        task = {"timeout_s": 100, "replay": [{"kind": "steer", "text": "also check b", "after_s": 3}]}
+        out, calls = self.drive([{"running": True}] * 3 + [{"running": False}], task=task)
+        self.assertEqual((out["state"], out["replayed"]), ("done", 1))
+        sent = [c for c in calls if c[0] == "text"]
+        self.assertEqual(sent, [("text", "also check b", 4.0)])
+        self.assertIn(("POST", "/api/threads/th/steer"), calls)
+
+    def test_replayed_answer_continues_the_turn_instead_of_interrupting(self):
+        task = {"timeout_s": 100, "replay": [{"kind": "answer", "text": "the second option", "after_s": 9}]}
+        out, calls = self.drive([{"running": True, "awaiting_answer": True}, {"running": True}, {"running": False}],
+                                task=task)
+        self.assertEqual((out["state"], out["asked"], out["replayed"]), ("done", False, 1))
+        self.assertIn(("POST", "/api/threads/th/answers"), calls)
+        self.assertNotIn(("POST", "/api/threads/th/interrupt"), calls)
+
+    def test_replayed_later_turn_starts_after_the_conversation_settles(self):
+        task = {"timeout_s": 100, "replay": [{"kind": "turn", "text": "now summarise", "after_s": 50}]}
+        out, calls = self.drive([{"running": True}, {"running": False}, {"running": True}, {"running": False}],
+                                task=task, turns=[{"status": "done"}])
+        self.assertEqual((out["state"], out["replayed"]), ("done", 1))
+        self.assertIn(("POST", "/api/threads/th/turns"), calls)
+        self.assertNotIn("replay_unused", out)
+
+    def test_an_answer_the_run_never_asked_for_is_reported_not_sent(self):
+        task = {"timeout_s": 100, "replay": [{"kind": "answer", "text": "yes", "after_s": 0}]}
+        out, calls = self.drive([{"running": True}, {"running": False}], task=task)
+        self.assertEqual((out["state"], out["replayed"], out["replay_unused"]), ("done", 0, ["answer"]))
+        self.assertNotIn(("POST", "/api/threads/th/answers"), calls)
+
+    def test_replay_entries_are_validated_when_the_task_loads(self):
+        d = Path(tempfile.mkdtemp()) / "replay-x"
+        d.mkdir()
+        try:
+            base = {"id": "replay-x", "prompt": "p", "checks": [{"type": "answer_regex", "pattern": "x"}]}
+            for bad in ([{"kind": "shout", "text": "x"}], [{"kind": "steer", "text": " "}],
+                        [{"kind": "steer", "text": "x", "after_s": -1}]):
+                (d / "task.json").write_text(json.dumps({**base, "replay": bad}))
+                with self.assertRaises(grade.TaskError):
+                    grade.load_task(d)
+            (d / "task.json").write_text(json.dumps({**base, "replay": [{"kind": "turn", "text": "next", "after_s": 2}]}))
+            self.assertEqual(grade.load_task(d)["replay"], [{"kind": "turn", "text": "next", "after_s": 2.0}])
+            self.assertEqual([t["id"] for t in agent_eval.load_tasks([], d.parent)], ["replay-x"])
+        finally:
+            shutil.rmtree(d.parent)
 
     def test_wait_and_overall_deadlines(self):
         allowed = {"timeout_s": 1000, "allow_wait": True, "wait_timeout_s": 3}

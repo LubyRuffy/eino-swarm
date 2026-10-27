@@ -168,9 +168,9 @@ class Engine:
             self.presence.stop()
 
 
-def load_tasks(selected: list[str]) -> list[dict]:
+def load_tasks(selected: list[str], root: Path = TASKS_DIR) -> list[dict]:
     tasks = []
-    for d in sorted(p for p in TASKS_DIR.iterdir() if p.is_dir()):
+    for d in sorted(p for p in root.iterdir() if p.is_dir()):
         if selected and d.name not in selected:
             continue
         tasks.append(grade.load_task(d))
@@ -180,12 +180,12 @@ def load_tasks(selected: list[str]) -> list[dict]:
     return tasks
 
 
-def seed_data_dir(data_dir: Path, task: dict, provider: dict | None) -> None:
+def seed_data_dir(data_dir: Path, task: dict, provider: dict | None, max_completion_tokens: int = 0) -> None:
     if provider is not None:
         cfg = data_dir / "config.yaml"
         fd = os.open(cfg, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "w") as fh:
-            fh.write(grade.render_eval_config(provider, EVAL_PROVIDER_ID))
+            fh.write(grade.render_eval_config(provider, EVAL_PROVIDER_ID, max_completion_tokens))
     for skill in task.get("skills", []):
         dest = data_dir / "library" / "skills" / skill["name"] / "SKILL.md"
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -211,41 +211,69 @@ def interrupt(base: str, thread_id: str) -> None:
 
 def drive_conversation(base: str, thread_id: str, task: dict, now: Callable[[], float] = time.monotonic,
                        sleep: Callable[[float], None] = time.sleep) -> dict:
-    """Polls until the conversation settles. Returns the outcome record."""
-    deadline = now() + task["timeout_s"]
+    """Polls until the conversation settles. Returns the outcome record.
+
+    A task's replay list is the human side of a recorded conversation, in
+    order: a steer is sent once its offset has passed, an answer only when a
+    question is open, and a turn (or a steer the run outlived) once the
+    conversation settles. The offsets are the human's, not the model's: the
+    replayed run may be faster or slower than the recorded one."""
+    start = now()
+    deadline = start + task["timeout_s"]
     wait_deadline = None
     outcome = {"state": "done", "asked": False, "iteration_cap": False, "waited": False}
+    pending = list(task.get("replay") or [])
+    if pending:
+        outcome["replayed"] = 0
     seen_running = False
+
+    def send(path: str) -> None:
+        http_json(base, "POST", f"/api/threads/{thread_id}/{path}", {"text": pending.pop(0)["text"]})
+        outcome["replayed"] += 1
+
     while True:
         if now() > deadline:
             outcome["state"] = "timeout"
             interrupt(base, thread_id)
-            return outcome
+            return _with_unused(outcome, pending)
         st = (http_json(base, "GET", f"/api/threads/{thread_id}") or {}).get("status") or {}
         if st.get("running"):
             seen_running = True
+            if pending and pending[0]["kind"] == "steer" and now() - start >= pending[0].get("after_s", 0):
+                send("steer")
+                continue
+            if st.get("awaiting_answer") and pending and pending[0]["kind"] == "answer":
+                send("answers")
+                sleep(POLL_S)
+                continue
             if st.get("awaiting_answer"):
                 outcome["asked"] = True
                 outcome["state"] = "asked"
                 interrupt(base, thread_id)
-                return outcome
+                return _with_unused(outcome, pending)
             if st.get("awaiting_continue"):
                 outcome["iteration_cap"] = True
                 outcome["state"] = "iteration_cap"
                 interrupt(base, thread_id)
-                return outcome
+                return _with_unused(outcome, pending)
         elif seen_running:
+            if pending and pending[0]["kind"] in ("turn", "steer"):
+                # A steer on an idle conversation starts a turn, which is
+                # what the human's words would have done had they come later.
+                send("turns" if pending[0]["kind"] == "turn" else "steer")
+                seen_running = False
+                continue
             if st.get("waiting") and task.get("allow_wait"):
                 outcome["waited"] = True
                 if wait_deadline is None:
                     wait_deadline = now() + task.get("wait_timeout_s", 300)
                 if now() > wait_deadline:
                     outcome["state"] = "wait_timeout"
-                    return outcome
+                    return _with_unused(outcome, pending)
             else:
                 if st.get("waiting"):
                     outcome["waited"] = True
-                return outcome
+                return _with_unused(outcome, pending)
         else:
             # The 202 can precede the runtime marking the turn running; a turn
             # that already finished still lists as a stored turn.
@@ -254,6 +282,14 @@ def drive_conversation(base: str, thread_id: str, task: dict, now: Callable[[], 
                 seen_running = True
                 continue
         sleep(POLL_S)
+
+
+def _with_unused(outcome: dict, pending: list[dict]) -> dict:
+    """An answer the replayed run never asked for is a divergence worth seeing,
+    not a harness error: the new build may simply not need that question."""
+    if pending:
+        outcome["replay_unused"] = [p["kind"] for p in pending]
+    return outcome
 
 
 def settled_outcome(outcome: dict, traces: list[dict]) -> dict:
@@ -317,7 +353,7 @@ def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict 
 
     record["phase_s"] = phases
     try:
-        seed_data_dir(data_dir, task, provider)
+        seed_data_dir(data_dir, task, provider, getattr(args, "max_completion_tokens", 0))
         engine.start()
         phase("boot")
         # Untitled, as a human creates one, so automatic naming is measured too.
@@ -367,8 +403,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--provider", help="provider id in --config; required unless --mock")
     p.add_argument("--config", default=str(DEFAULT_CONFIG), help="config.yaml to read the provider from (read-only)")
+    p.add_argument("--model", default="", help="another model on the same provider (default: its configured model)")
     p.add_argument("--runs", type=int, default=2, help="runs per task")
+    p.add_argument("--max-completion-tokens", type=int, default=0,
+                   help="output cap per model request (default: the engine's default, not the source config's)")
     p.add_argument("--tasks", default="", help="comma-separated task ids (default: all)")
+    p.add_argument("--task-root", default=str(TASKS_DIR),
+                   help="directory of task directories, e.g. replays written by tools/trace_to_eval.py")
     p.add_argument("--out", default=str(REPO / "output" / "agent-eval"), help="evidence root")
     p.add_argument("--zwai", default=str(REPO / "bin" / "zwai-eval"), help="zwai binary")
     p.add_argument("--boot-timeout", type=float, default=240, help="seconds for engine startup")
@@ -379,15 +420,27 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         p.error("--provider is required unless --mock")
     if args.runs < 1:
         p.error("--runs must be at least 1")
+    if args.max_completion_tokens < 0:
+        p.error("--max-completion-tokens must not be negative")
     return args
+
+
+def unwind_on_termination() -> None:
+    """SIGTERM and SIGHUP unwind like Ctrl-C, so the current run's finally
+    stops its own engine and deletes the data directory that holds the key."""
+    def _exit(signum, _frame):
+        raise SystemExit(128 + signum)
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, _exit)
 
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
+    unwind_on_termination()
     provider = None
     if not args.mock:
-        provider = grade.extract_provider(Path(args.config).read_text(), args.provider)
-    tasks = load_tasks([t for t in args.tasks.split(",") if t])
+        provider = grade.select_model(grade.extract_provider(Path(args.config).read_text(), args.provider), args.model)
+    tasks = load_tasks([t for t in args.tasks.split(",") if t], Path(args.task_root))
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     out_dir = Path(args.out) / stamp
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -404,6 +457,7 @@ def main(argv: list[str]) -> int:
         "started": stamp,
         "provider": grade.provider_summary(provider) if provider else {"mock": True},
         "runs_per_task": args.runs,
+        "max_completion_tokens": args.max_completion_tokens or "engine default",
         "zwai": args.zwai,
         "source": grade.git_describe(REPO),
     }

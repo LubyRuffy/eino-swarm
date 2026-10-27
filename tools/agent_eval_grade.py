@@ -93,7 +93,25 @@ def load_task(task_dir: Path) -> dict:
         "allow_wait": bool(spec.get("allow_wait", False)),
         "wait_timeout_s": float(spec.get("wait_timeout_s", 300)),
         "purpose": spec.get("purpose", ""),
+        "replay": _validated_replay(task_dir.name, spec.get("replay") or []),
     }
+
+
+REPLAY_KINDS = ("steer", "answer", "turn")
+
+
+def _validated_replay(task_id: str, replay: list) -> list[dict]:
+    out = []
+    for i, entry in enumerate(replay):
+        if not isinstance(entry, dict) or entry.get("kind") not in REPLAY_KINDS:
+            raise TaskError(f"{task_id}: replay[{i}] kind must be one of {REPLAY_KINDS}")
+        if not str(entry.get("text", "")).strip():
+            raise TaskError(f"{task_id}: replay[{i}] has no text")
+        after = entry.get("after_s", 0)
+        if not isinstance(after, (int, float)) or after < 0:
+            raise TaskError(f"{task_id}: replay[{i}] after_s must be a non-negative number")
+        out.append({"kind": entry["kind"], "text": str(entry["text"]), "after_s": float(after)})
+    return out
 
 
 def _validate_check(task_id: str, check: dict) -> None:
@@ -192,8 +210,9 @@ def _int_or_str(value: str) -> Any:
         return value
 
 
-def render_eval_config(provider: dict, provider_id: str) -> str:
-    """A minimal config.yaml with one provider. The engine fills defaults."""
+def render_eval_config(provider: dict, provider_id: str, max_completion_tokens: int = 0) -> str:
+    """A minimal config.yaml with one provider. The engine fills defaults,
+    including the output cap unless max_completion_tokens sets one."""
     q = json.dumps
     out = [
         "models:",
@@ -213,7 +232,18 @@ def render_eval_config(provider: dict, provider_id: str) -> str:
     if isinstance(window, int):
         out.append("          model_context:")
         out.append(f"            {q(provider['model'])}: {window}")
+    if max_completion_tokens > 0:
+        out += ["swarm:", f"    max_completion_tokens: {int(max_completion_tokens)}"]
     return "\n".join(out) + "\n"
+
+
+def select_model(provider: dict, model: str) -> dict:
+    """The same endpoint and key with another of its models, so two models are
+    compared through one provider entry instead of two hand-edited configs."""
+    model = model.strip()
+    if not model:
+        return provider
+    return {**provider, "model": model}
 
 
 def provider_summary(provider: dict) -> dict:
@@ -492,7 +522,9 @@ def _run_check(check: dict, workspace: Path, answer: str, traces: list[dict], ba
                                   timeout=float(check.get("timeout_s", 120)))
         except (OSError, subprocess.TimeoutExpired) as exc:
             return _result(check, False, f"{type(exc).__name__}: {exc}")
-        tail = (proc.stdout + proc.stderr)[-300:]
+        # stdout last: a hidden-rule runner's one-line summary is on stdout,
+        # after a traceback that would otherwise push it out of the tail.
+        tail = (proc.stderr + proc.stdout)[-280:]
         return _result(check, proc.returncode == 0, "" if proc.returncode == 0 else f"exit {proc.returncode}: {tail}")
     if kind == "answer_chart":
         ok, detail = chart_matches(answer, check.get("expect") or {}, float(check.get("tolerance", 1e-6)))
@@ -683,6 +715,7 @@ def render_markdown(meta: dict, summary: dict, results: list[dict]) -> str:
         f"- provider: {json.dumps(meta.get('provider'), ensure_ascii=False)}",
         f"- source: {json.dumps(meta.get('source'))}",
         f"- runs per task: {meta.get('runs_per_task')}",
+        *([f"- output cap per request: {meta['max_completion_tokens']}"] if "max_completion_tokens" in meta else []),
         f"- passed: {summary['passed']}/{summary['runs']} (harness errors: {summary['harness_errors']})",
         f"- memory reviews cut off at shutdown: {summary.get('reviews_cut_off', 0)} "
         "(their memory-reviewer tokens are a lower bound)",

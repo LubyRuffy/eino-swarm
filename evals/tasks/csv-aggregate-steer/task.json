@@ -1,0 +1,55 @@
+{
+  "id": "csv-aggregate-steer",
+  "purpose": "csv-aggregate with a human steer sent while the turn runs, asking for one more field. Measures whether a mid-turn steer reaches the result without losing what was already asked; the replay follows the run (a steer that arrives after the turn ended starts the next one).",
+  "expect_delegation": "none",
+  "generate": "generate.py",
+  "timeout_s": 600,
+  "replay": [
+    {
+      "kind": "steer",
+      "after_s": 5,
+      "text": "另外请在 report.json 里再加一个 units_by_region 字段：各 region 的 units 合计（整数），其它字段保持不变。"
+    }
+  ],
+  "checks": [
+    {
+      "name": "total_units",
+      "type": "json_equals",
+      "path": "report.json",
+      "pointer": "/total_units",
+      "value": 5015
+    },
+    {
+      "name": "revenue_by_region",
+      "type": "json_equals",
+      "path": "report.json",
+      "pointer": "/revenue_by_region",
+      "value": {
+        "north": 22989.62,
+        "south": 19244.46,
+        "east": 26362.41,
+        "west": 22675.55
+      },
+      "tolerance": 0.011
+    },
+    {
+      "name": "top_product_by_units",
+      "type": "json_equals",
+      "path": "report.json",
+      "pointer": "/top_product_by_units",
+      "value": "P-500"
+    },
+    {
+      "name": "units_by_region",
+      "type": "json_equals",
+      "path": "report.json",
+      "pointer": "/units_by_region",
+      "value": {
+        "north": 1280,
+        "south": 1109,
+        "east": 1251,
+        "west": 1375
+      }
+    }
+  ]
+}

@@ -32,6 +32,29 @@ co-working app built on it. The library API is unchanged except where noted
   every finished run met every rule, including the unreviewed ones, so review
   cost about 2.3 times the tokens for no change; delegation policy is unchanged
   (details in `docs/TESTING.md`).
+- Evals compare models: `--model` (`make eval EVAL_MODEL=…`) runs another
+  model of the same provider, `--max-completion-tokens` sets the output cap
+  a run is measured under (reports state it), and `tools/agent_eval_compare.py` puts several
+  evidence directories side by side (passes, median tokens and time, manager
+  calls, spawns, prompt size, first-call cache share, tasks whose pass rate
+  differs, failed checks).
+- Eval tasks can replay the human messages that follow the prompt (`replay`:
+  steers, answers to `ask_user`, later turns, each timed from the prompt).
+  `tools/trace_to_eval.py` turns Trace timelines into such a task under
+  `output/replays/`, with optional starting files and `--redact`;
+  `--task-root` runs them. `csv-aggregate-steer` grades a mid-turn steer.
+- Review fixtures `spec-edges` / `-selfreview` / `-review` (README rules that
+  go against the usual library call or habit), `spec-conventions` /
+  `-selfreview` / `-review` (plus repository-wide conventions) and
+  `spec-dense` (one module with thirteen interacting rules), and
+  `tools/agent_eval_prereview.py`, which grades a run's files as they stood
+  when the manager first collected a worker's report next to the final
+  files. Measured on `dsv41-flash-1017` and `glm-5.3-flash`: reviews the
+  manager chose itself fixed real misses (a header collision, Python's
+  4300-digit conversion limit escaping, an overflow rule), requested reviews
+  added no catches, and review cost two to four times the tokens.
+  Independent review stays the manager's choice; there is no automatic
+  review step (details in `docs/TESTING.md`).
 
 - `F-170`: `swarm.policy_reasoning_effort` (Settings → Swarm → Policy check
   thinking) sets the reasoning level for the schedule-claim and wake-permission
@@ -365,6 +388,12 @@ co-working app built on it. The library API is unchanged except where noted
   The shared phone event list forwards the same internal receipt and sequence,
   while the phone's existing renderer keeps it out of chat.
 
+- A stopped eval harness (SIGTERM, SIGHUP) now stops its own engine and
+  deletes the temporary data directory that holds the provider key, instead
+  of leaving it behind.
+- An eval `command` check's failure detail now ends with the command's
+  stdout, so a hidden-rule runner's list of failed rules is no longer cut off
+  behind a traceback.
 - Preserve the selected workspace path verbatim in the manager's shared-prefix
   prompt layout, including trailing spaces or tabs; a trimmed sibling is a
   different directory (`C-004`).

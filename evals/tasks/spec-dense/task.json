@@ -1,0 +1,29 @@
+{
+  "id": "spec-dense",
+  "purpose": "One module (a duration parser and formatter) to write from a README of thirteen interacting rules: unit order, a zero exception, a fraction only on the last component and only on whole seconds, a whole-text sign, an ISO 8601 form that inherits the number rules, and ASCII-only digits. Visible tests cover only the plain cases; the rule tests are hidden. Built after no unreviewed run missed a spec-edges or spec-conventions rule, to ask whether rule density leaves a review something to catch.",
+  "expect_delegation": "optional",
+  "generate": "generate.py",
+  "timeout_s": 1800,
+  "checks": [
+    {
+      "name": "duration meets every README rule",
+      "type": "command",
+      "argv": [
+        "python3",
+        "{task_dir}/../spec-dense/hidden/run_hidden.py",
+        "duration"
+      ],
+      "timeout_s": 60
+    },
+    {
+      "name": "duration/README.md unchanged",
+      "type": "file_unchanged",
+      "path": "duration/README.md"
+    },
+    {
+      "name": "duration/test_basic.py unchanged",
+      "type": "file_unchanged",
+      "path": "duration/test_basic.py"
+    }
+  ]
+}
