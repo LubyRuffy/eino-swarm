@@ -1859,11 +1859,13 @@ a cancelled or failed arrangement cannot support it. A repeated unsupported
 claim fails explicitly; a correction with the claim removed publishes normally.
 Restart preserves the consumed same-turn correction allowance; receipt reads
 and writes must succeed before another corrective manager call. The correction's `model_retry` receipt for `no_matching_schedule` adds
-`unmatched`: `{scope, new, stated, candidates, closest?, mismatched?}`, where
+`unmatched`: `{scope, new, stated, candidates, closest?, mismatched?, claimed?, armed?}`, where
 `stated` lists the cadence/identity fields the claim named, `candidates` counts
 active rows in its scope, and `mismatched` names the closest row's failed
 requirements (`schedule_id`, `not_armed_this_turn`, `delay_s`, `every_s`,
-`cron`, `next_run_at`). It never contains the claim's quote. A terminal
+`cron`, `next_run_at`). `claimed` and `armed` give the compared `delay_s` /
+`every_s` numbers on each side (`armed` is the closest row's). It never
+contains the claim's quote. A terminal
 `schedule_claim_unverified` ending in `(no_matching_schedule)` keeps the turn
 `error` and `final` empty, but does not write `goal_block_reason` or mark the
 goal externally blocked. A pursuing goal may start another turn within its

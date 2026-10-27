@@ -1,7 +1,7 @@
 {
   "id": "multi-dir-survey",
-  "purpose": "Four independent directories with distractors. Parallel workers could help; measures whether they do, and at what cost.",
-  "expect_delegation": "parallel",
+  "purpose": "Four small independent directories with distractors. Everything fits in one context, so workers are expected to cost more than they save; measures whether the manager delegates anyway, and at what cost. Its large variant is the scale where they should pay.",
+  "expect_delegation": "optional",
   "generate": "generate.py",
   "timeout_s": 900,
   "checks": [

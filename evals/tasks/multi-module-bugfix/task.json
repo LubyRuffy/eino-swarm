@@ -1,0 +1,123 @@
+{
+  "id": "multi-module-bugfix",
+  "purpose": "Six unrelated packages, each with its own failing tests. Every piece is a multi-step read, fix and verify loop with nothing shared, so parallel workers should finish sooner; compare its delegated and solo runs for time and tokens.",
+  "expect_delegation": "parallel",
+  "generate": "generate.py",
+  "timeout_s": 1200,
+  "checks": [
+    {
+      "name": "intervals tests pass",
+      "type": "command",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "pkgs/intervals",
+        "-q"
+      ],
+      "timeout_s": 60
+    },
+    {
+      "name": "ringbuf tests pass",
+      "type": "command",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "pkgs/ringbuf",
+        "-q"
+      ],
+      "timeout_s": 60
+    },
+    {
+      "name": "versions tests pass",
+      "type": "command",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "pkgs/versions",
+        "-q"
+      ],
+      "timeout_s": 60
+    },
+    {
+      "name": "workdays tests pass",
+      "type": "command",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "pkgs/workdays",
+        "-q"
+      ],
+      "timeout_s": 60
+    },
+    {
+      "name": "lrucache tests pass",
+      "type": "command",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "pkgs/lrucache",
+        "-q"
+      ],
+      "timeout_s": 60
+    },
+    {
+      "name": "csvline tests pass",
+      "type": "command",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "pkgs/csvline",
+        "-q"
+      ],
+      "timeout_s": 60
+    },
+    {
+      "name": "intervals test file unchanged",
+      "type": "file_unchanged",
+      "path": "pkgs/intervals/test_intervals.py"
+    },
+    {
+      "name": "ringbuf test file unchanged",
+      "type": "file_unchanged",
+      "path": "pkgs/ringbuf/test_ringbuf.py"
+    },
+    {
+      "name": "versions test file unchanged",
+      "type": "file_unchanged",
+      "path": "pkgs/versions/test_versions.py"
+    },
+    {
+      "name": "workdays test file unchanged",
+      "type": "file_unchanged",
+      "path": "pkgs/workdays/test_workdays.py"
+    },
+    {
+      "name": "lrucache test file unchanged",
+      "type": "file_unchanged",
+      "path": "pkgs/lrucache/test_lrucache.py"
+    },
+    {
+      "name": "csvline test file unchanged",
+      "type": "file_unchanged",
+      "path": "pkgs/csvline/test_csvline.py"
+    }
+  ]
+}

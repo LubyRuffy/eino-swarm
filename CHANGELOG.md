@@ -19,6 +19,11 @@ co-working app built on it. The library API is unchanged except where noted
   deterministically, and reports duration, tokens per caller (manager,
   workers, host-side policy/review/title calls), delegation and skill use.
   Not part of `make check` or CI; see `docs/TESTING.md`.
+- Eval tasks for delegation economics: `multi-dir-survey-large` (twelve
+  services, ~555 KB), `multi-module-bugfix` (six independent packages) and its
+  `-slow` variant. The report adds cached tokens and cache hit rate per caller,
+  a delegated-versus-solo split (duration, tokens, correctness) and the
+  manager's own tool calls made while a worker was running.
 
 - `F-170`: `swarm.policy_reasoning_effort` (Settings → Swarm → Policy check
   thinking) sets the reasoning level for the schedule-claim and wake-permission
@@ -118,7 +123,24 @@ co-working app built on it. The library API is unchanged except where noted
   identities into briefing and successful review inputs (Issue #120).
   Rewind also removes metadata owned by deleted turns when it was recorded
   before their user event, preserving earlier retained turns' evidence.
-
+- A successful `schedule_wake` / `schedule_task` receipt carries a `cadence`
+  note saying whether the armed wait is one-shot or recurring. A manager that
+  armed a single `delay_s` wake and then described it as a repeating check was
+  refused by the answer check, re-armed the same wake and was refused again;
+  the contract is unchanged (a recurring claim still needs an `every_s` or cron
+  wait), the manager is now told what it armed.
+- Schedule-claim matching: "check again in N seconds" is now backed by an
+  every-N-seconds wait as well as a one-shot of N (a one-shot re-armed with
+  `report_schedule next_in_s` is exactly that row), and a stated clock time
+  matches a wait whose next run is within a minute of it instead of to the
+  second. A recurring claim is still refused unless an `every_s` or cron wait
+  backs it. The refusal's `unmatched` Trace diagnosis adds the compared
+  `delay_s` / `every_s` numbers, never the claim's words.
+- The manager prompt tells the manager to do only work no worker was given
+  while workers run, and not to repeat a worker's investigation; it waits when
+  the next step depends on their results. The `schedule_wake` tool text states
+  the configured minimum interval and what to use when a third of the estimate
+  falls below it.
 - `F-420`, `C-025`: `memory.review_reasoning_effort` blank now means the
   background default `low` instead of the conversation's level; set `inherit`
   to keep the previous behaviour. Only that default is optional: an endpoint
@@ -328,8 +350,10 @@ co-working app built on it. The library API is unchanged except where noted
   an extremely small limit retains the valid metadata envelope.
 - Workers are told the workspace directory in their own system prompt, so a
   worker no longer guesses relative paths from its instructions alone.
-- `exec` with a `cwd` that does not exist is refused with that directory named,
-  instead of the OS error that blamed the shell binary.
+- `exec` with a `cwd` that does not exist returns a failed result naming that
+  directory (`did not run`, omit `cwd` to use the workspace) instead of the OS
+  error that blamed the shell binary. It is a result, not a Go error: a tool
+  error ends the whole turn, which is how a guessed directory used to abort it.
 - `schedule_wake` refusals for a too-short `delay_s` / `every_s` state the
   minimum interval in seconds, so the manager can retry once with a valid value.
 

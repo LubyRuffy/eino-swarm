@@ -213,3 +213,29 @@ func TestScheduleClaimDiagnosisNamesTheClosestRowsMismatches(t *testing.T) {
 		t.Fatalf("mismatches=%v", miss)
 	}
 }
+
+// A refused claim named only the fields it stated, so a mismatch on delay_s
+// could not be told apart from the classifier reading a job's duration as the
+// wait. The numbers on each side are structure, not the claim's words.
+func TestScheduleClaimDiagnosisGivesTheComparedCadenceNumbers(t *testing.T) {
+	turn := &store.Turn{ID: "turn-now", ThreadID: "thread-a"}
+	yes := true
+	next := time.Now().Add(time.Minute)
+	rows := []store.Schedule{
+		{ID: "sch_near", Kind: store.ScheduleThread, ThreadID: "thread-a", Status: store.ScheduleActive, NextRunAt: next, DelayS: 30, ArmedTurnID: "turn-now"},
+	}
+	claim := scheduleAnswerClaim{Scope: "thread", New: &yes, DelayS: 90, Quote: "never copied"}
+	d := diagnoseScheduleClaim(claim, rows, turn, map[string]bool{"sch_near": true})
+	if d.Claimed["delay_s"] != 90 || len(d.Claimed) != 1 || d.Armed["delay_s"] != 30 || len(d.Armed) != 1 {
+		t.Fatalf("diagnosis lacks the compared numbers: %+v", d)
+	}
+	body, _ := json.Marshal(d)
+	if strings.Contains(string(body), "never copied") {
+		t.Fatalf("diagnosis copied the quote: %s", body)
+	}
+
+	none := diagnoseScheduleClaim(scheduleAnswerClaim{Scope: "thread", New: &yes, DelayS: 90}, nil, turn, nil)
+	if none.Armed != nil {
+		t.Fatalf("no candidate row, nothing armed to report: %+v", none)
+	}
+}

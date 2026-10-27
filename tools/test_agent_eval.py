@@ -8,6 +8,7 @@ that misreads a parked or questioning conversation.
 
 import contextlib
 import csv
+import importlib.util
 import io
 import json
 import os
@@ -67,9 +68,9 @@ def ev(kind, agent="manager", text=""):
     return {"kind": kind, "agent_id": agent, "text": text}
 
 
-def call(agent, tokens, chars=0):
+def call(agent, tokens, chars=0, cached=0):
     return {"agent_id": agent, "total_tokens": tokens, "prompt_tokens": tokens, "completion_tokens": 0,
-            "duration_ms": 10, "input_chars": chars}
+            "duration_ms": 10, "input_chars": chars, "cached_tokens": cached}
 
 
 class ProviderConfigTest(unittest.TestCase):
@@ -198,6 +199,42 @@ class TraceMetricsTest(unittest.TestCase):
         self.assertEqual(m["model_retry"], {"model_idle": 1, "unknown": 1})
         self.assertEqual((m["schedule_events"], m["errors"], m["duration_ms"]), (1, 1, 1500))
 
+    # Cost per caller is only comparable between architectures when the
+    # provider's cache is visible: a cheap-looking run with a cold prefix
+    # and a dear-looking one with a warm prefix bill very differently.
+    def test_cached_tokens_are_kept_per_caller(self):
+        m = grade.extract_metrics([trace([], [call("manager", 100, cached=40), call("manager", 50, cached=30),
+                                              call("w-1", 20), call("memory-reviewer", 10, cached=5)])])
+        self.assertEqual(m["calls"]["manager"]["cached_tokens"], 70)
+        self.assertEqual(m["calls"]["worker"]["cached_tokens"], 0)
+        self.assertEqual(m["calls"]["memory-reviewer"]["cached_tokens"], 5)
+
+    # Delegation only saves time if the manager stays out of the workers'
+    # way. Work it does itself while a worker is still running is the
+    # duplicate-investigation signal; lifecycle tools and its own work after
+    # the last worker finished are not.
+    def test_manager_tool_calls_while_workers_run_are_counted(self):
+        events = [
+            ev("tool_call", text='read({"file_path":"before"})'),
+            ev("tool_call", text='spawn_agent({"role":"a","task":"x"})'),
+            ev("tool_call", text='spawn_agent({"role":"b","task":"y"})'),
+            ev("spawned", agent="a-1"),
+            ev("spawned", agent="b-2"),
+            ev("tool_call", agent="a-1", text='read({"file_path":"worker"})'),
+            ev("tool_call", text='read({"file_path":"mine"})'),
+            ev("tool_call", text='grep({"pattern":"p"})'),
+            ev("tool_call", text='wait_agents({"agent_ids":["a-1"]})'),
+            ev("finished", agent="a-1"),
+            ev("tool_call", text='exec({"command":"still b running"})'),
+            ev("finished", agent="b-2"),
+            ev("tool_call", text='write({"file_path":"after"})'),
+            ev("tool_call", text='close_agent({"agent_id":"a-1"})'),
+        ]
+        m = grade.extract_metrics([trace(events, [])])
+        self.assertEqual(m["manager_tools_while_workers_run"], 3)
+        self.assertEqual(grade.extract_metrics([trace([ev("tool_call", text="read({})")], [])])
+                         ["manager_tools_while_workers_run"], 0)
+
     def test_final_answer_prefers_the_latest_turn(self):
         first = trace([], [], final="I will check later")
         later = trace([ev("done", text="done text")], [], final="")
@@ -297,7 +334,7 @@ class ChecksTest(unittest.TestCase):
 class TaskCatalogTest(unittest.TestCase):
     def test_every_task_loads_and_is_well_formed(self):
         tasks = agent_eval.load_tasks([])
-        self.assertGreaterEqual(len(tasks), 10)
+        self.assertGreaterEqual(len(tasks), 13)
         for t in tasks:
             self.assertTrue(t["prompt"], t["id"])
             self.assertIn(t["expect_delegation"], grade.DELEGATION)
@@ -394,18 +431,95 @@ class TaskCatalogTest(unittest.TestCase):
         self.assertEqual(self.expected("two-deliverables", "city means"), means)
 
     def test_survey_key_is_stated_in_each_service(self):
-        ws = self.prepared("multi-dir-survey")
-        key = self.expected("multi-dir-survey", "survey")
-        self.assertEqual(sorted(key), sorted(p.name for p in (ws / "services").iterdir()))
-        for name, want in key.items():
-            text = "".join(p.read_text() for p in (ws / "services" / name).rglob("*") if p.is_file())
-            self.assertIn(str(want["port"]), text, name)
-            self.assertIn(want["team"], text, name)
+        for task_id in ("multi-dir-survey", "multi-dir-survey-large"):
+            ws = self.prepared(task_id)
+            key = self.expected(task_id, "survey")
+            self.assertEqual(sorted(key), sorted(p.name for p in (ws / "services").iterdir()), task_id)
+            for name, want in key.items():
+                text = "".join(p.read_text() for p in (ws / "services" / name).rglob("*") if p.is_file())
+                self.assertIn(str(want["port"]), text, name)
+                self.assertIn(want["team"], text, name)
+
+    # The large variant is only a scale test if its bulk is noise. Filler that
+    # happened to state a port or name a current team would let a worker
+    # answer from the wrong file, and would make the key depend on luck.
+    def test_large_survey_filler_never_states_an_answer(self):
+        ws = self.prepared("multi-dir-survey-large")
+        key = self.expected("multi-dir-survey-large", "survey")
+        teams = {v["team"] for v in key.values()}
+        filler = [p for p in (ws / "services").rglob("*.md") if "notes" in p.parts]
+        self.assertGreaterEqual(len(filler), 12 * 20)
+        for path in filler:
+            text = path.read_text()
+            self.assertIsNone(re.search(r"\b(9\d{3}|10\d{3})\b", text), path)
+            self.assertFalse({w for w in re.findall(r"[a-z]+", text.lower())} & teams, path)
+
+    def test_large_survey_is_large_and_its_ports_are_distinct(self):
+        ws = self.prepared("multi-dir-survey-large")
+        key = self.expected("multi-dir-survey-large", "survey")
+        self.assertEqual(len(key), 12)
+        self.assertEqual(len({v["port"] for v in key.values()}), 12)
+        size = sum(p.stat().st_size for p in (ws / "services").rglob("*") if p.is_file())
+        self.assertGreater(size, 400_000)
 
     def unittest_in(self, ws):
         env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
         return subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-t", ".", "-q"],
                               cwd=ws, capture_output=True, env=env).returncode
+
+    # A bugfix task is only a measurement if every package can be fixed by
+    # its two substitutions and its tests notice each one; otherwise a
+    # failed run could be the fixture's fault.
+    def test_multi_module_fixture_starts_broken_and_is_fixable(self):
+        task = grade.load_task(agent_eval.TASKS_DIR / "multi-module-bugfix")
+        suites = [c for c in task["checks"] if c["type"] == "command"]
+        self.assertEqual(len(suites), 6)
+        broken = self.prepared("multi-module-bugfix")
+        for c in suites:
+            self.assertEqual(subprocess.run(c["argv"], cwd=broken, capture_output=True,
+                                            env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1")).returncode,
+                             1, c["name"])
+        gen = agent_eval.TASKS_DIR / "multi-module-bugfix" / "generate.py"
+        fixed = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, fixed)
+        subprocess.run([sys.executable, str(gen), str(fixed), "--fixed"], check=True)
+        results = grade.run_checks(task["checks"], fixed, "", [], grade.hash_tree(broken))
+        self.assertTrue(all(r["ok"] for r in results), [r for r in results if not r["ok"]])
+
+    def test_multi_module_each_defect_is_caught_by_its_own_tests(self):
+        spec = importlib.util.spec_from_file_location(
+            "multi_module_generate", agent_eval.TASKS_DIR / "multi-module-bugfix" / "generate.py")
+        gen = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gen)
+        for name, (_, subs, _) in gen.PACKAGES.items():
+            self.assertEqual(len(subs), 2, name)
+            for i in range(len(subs)):
+                ws = Path(tempfile.mkdtemp())
+                self.addCleanup(shutil.rmtree, ws)
+                gen.main(ws, fixed=True)
+                (ws / "pkgs" / name / f"{name}.py").write_text(gen.render(name, [i]))
+                code = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", f"pkgs/{name}", "-q"],
+                                      cwd=ws, capture_output=True,
+                                      env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1")).returncode
+                self.assertNotEqual(code, 0, f"{name} defect {i} is not caught")
+
+    # The slow variant is a measurement of overlapped waiting only if it is
+    # the same fixture plus the wait; a different one could not be compared.
+    def test_slow_multi_module_fixture_is_the_same_packages_plus_a_wait(self):
+        base, slow = self.prepared("multi-module-bugfix"), self.prepared("multi-module-bugfix-slow")
+        names = sorted(p.name for p in (base / "pkgs").iterdir())
+        self.assertEqual(names, sorted(p.name for p in (slow / "pkgs").iterdir()))
+        for name in names:
+            self.assertEqual((base / "pkgs" / name / f"{name}.py").read_text(),
+                             (slow / "pkgs" / name / f"{name}.py").read_text())
+            plain = (base / "pkgs" / name / f"test_{name}.py").read_text()
+            waited = (slow / "pkgs" / name / f"test_{name}.py").read_text()
+            self.assertTrue(waited.endswith(plain), name)
+            self.assertRegex(waited[: len(waited) - len(plain)], r"time\.sleep\(\d+\)")
+        slow_spec = grade.load_task(agent_eval.TASKS_DIR / "multi-module-bugfix-slow")
+        base_spec = grade.load_task(agent_eval.TASKS_DIR / "multi-module-bugfix")
+        self.assertEqual([c["name"] for c in slow_spec["checks"]], [c["name"] for c in base_spec["checks"]])
+        self.assertEqual(slow_spec["prompt"], base_spec["prompt"])
 
     def test_bugfix_fixture_starts_broken(self):
         self.assertNotEqual(self.unittest_in(self.prepared("bugfix-python")), 0)
@@ -513,6 +627,40 @@ class ReportTest(unittest.TestCase):
         self.assertIn("t run 2: outcome done; c (missing)", md)
         self.assertIn("t run 3: harness error: EvalError: boom", md)
         self.assertIn("memory reviews cut off at shutdown: 1", md)
+
+    # The architecture question is "did folding the work into the manager
+    # win or lose here", so runs of one task are split by whether it
+    # delegated, with medians, instead of one blended mean.
+    def test_runs_are_split_by_whether_they_delegated(self):
+        def run(n, spawned, tokens, ms, cached=0, mine=0):
+            events = [ev("spawned", agent=f"w-{i}") for i in range(spawned)]
+            m = grade.extract_metrics([trace(events, [call("manager", tokens, 1000, cached)], duration=ms)])
+            m["manager_tools_while_workers_run"] = mine
+            return {"task": "t", "run": n, "passed": True, "harness_error": "", "outcome": {"state": "done"},
+                    "checks": [], "metrics": m, "expect_delegation": "optional"}
+
+        results = [run(1, 0, 100, 20000), run(2, 0, 300, 40000), run(3, 2, 900, 60000, cached=450, mine=4),
+                   run(4, 2, 700, 80000, cached=350, mine=8), run(5, 2, 800, 70000, mine=6)]
+        s = grade.summarize(results)
+        split = s["tasks"]["t"]["delegation_split"]
+        self.assertEqual((split["solo"]["runs"], split["solo"]["passed"]), (2, 2))
+        self.assertEqual((split["solo"]["duration_ms_median"], split["solo"]["tokens_median"]), (30000, 200))
+        self.assertEqual((split["delegated"]["runs"], split["delegated"]["duration_ms_median"],
+                          split["delegated"]["tokens_median"]), (3, 70000, 800))
+        self.assertEqual(split["delegated"]["manager_tools_while_workers_run_median"], 6)
+        self.assertEqual(s["cache_hit_by_category"], {"manager": round(800 / 2800, 3)})
+        md = grade.render_markdown({"started": "x", "provider": {}, "source": {}, "runs_per_task": 5}, s, results)
+        self.assertIn("## Delegated vs solo", md)
+        self.assertIn("| t | 2 | 30.0 | 200 | 3 | 70.0 | 800 | 6 |", md)
+        self.assertIn("| manager | 2800 | 1.0 | 800 | 0.286 |", md)
+
+    def test_a_task_that_never_delegated_has_an_empty_delegated_side(self):
+        m = grade.extract_metrics([trace([], [call("manager", 10, 1000)])])
+        s = grade.summarize([{"task": "t", "run": 1, "passed": True, "harness_error": "", "outcome": {},
+                              "checks": [], "metrics": m, "expect_delegation": "none"}])
+        self.assertEqual(s["tasks"]["t"]["delegation_split"]["delegated"]["runs"], 0)
+        md = grade.render_markdown({"started": "x", "provider": {}, "source": {}, "runs_per_task": 1}, s, [])
+        self.assertIn("| t | 1 |", md)
 
     # A review still running when the harness stops the engine was reported
     # as a cheap review in the first baseline. Detection relies on the

@@ -1,0 +1,24 @@
+{
+  "id": "multi-dir-survey-large",
+  "purpose": "The multi-dir-survey question over twelve services of about fifty kilobytes each. Reading everything in one context is expensive, so this is where delegating to workers with fresh contexts is expected to pay; compare its solo and delegated runs with the small variant's.",
+  "expect_delegation": "parallel",
+  "generate": "generate.py",
+  "timeout_s": 1200,
+  "checks": [
+    {"name": "survey", "type": "json_equals", "path": "survey.json", "pointer": "",
+     "value": {
+       "catalog": {"port": 9112, "team": "discovery"},
+       "checkout": {"port": 9237, "team": "payments"},
+       "ledger": {"port": 9341, "team": "treasury"},
+       "media": {"port": 9458, "team": "imaging"},
+       "gateway": {"port": 9503, "team": "edge"},
+       "inventory": {"port": 9629, "team": "logistics"},
+       "scheduler": {"port": 9714, "team": "orchestration"},
+       "reports": {"port": 9826, "team": "analytics"},
+       "profile": {"port": 9932, "team": "identity"},
+       "ingest": {"port": 9047, "team": "pipeline"},
+       "mailer": {"port": 9163, "team": "messaging"},
+       "audit": {"port": 9279, "team": "compliance"}
+     }}
+  ]
+}

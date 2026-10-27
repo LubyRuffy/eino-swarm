@@ -306,6 +306,30 @@ def agent_category(agent_id: str) -> str:
     return "worker"
 
 
+# Tools a manager uses to run its workers rather than to do the task.
+LIFECYCLE_TOOLS = ("spawn_agent", "wait_agents", "send_message", "close_agent", "resume_agent")
+
+
+def manager_tools_while_workers_run(events: list[dict]) -> int:
+    """Manager tool calls made while a worker it spawned has not finished.
+
+    Work the manager does itself in that window is the duplicate
+    investigation delegation was meant to avoid; a worker that never
+    finishes keeps the window open to the end of the trace."""
+    running: set[str] = set()
+    count = 0
+    for e in events:
+        kind = e.get("kind")
+        if kind == "spawned":
+            running.add(e.get("agent_id", ""))
+        elif kind == "finished":
+            running.discard(e.get("agent_id", ""))
+        elif kind == "tool_call" and running and e.get("agent_id") == MANAGER_ID:
+            if parse_tool_call(e.get("text", ""))[0] not in LIFECYCLE_TOOLS:
+                count += 1
+    return count
+
+
 def extract_metrics(traces: list[dict]) -> dict:
     events = _events(traces)
     calls = _calls(traces)
@@ -313,9 +337,9 @@ def extract_metrics(traces: list[dict]) -> dict:
     for c in calls:
         cat = agent_category(c.get("agent_id", ""))
         slot = by_cat.setdefault(cat, {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
-                                       "total_tokens": 0, "duration_ms": 0})
+                                       "total_tokens": 0, "cached_tokens": 0, "duration_ms": 0})
         slot["calls"] += 1
-        for key in ("prompt_tokens", "completion_tokens", "total_tokens", "duration_ms"):
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens", "duration_ms"):
             slot[key] += int(c.get(key) or 0)
     manager_calls = [c for c in calls if c.get("agent_id") == MANAGER_ID]
     tools_manager: Counter = Counter()
@@ -347,6 +371,7 @@ def extract_metrics(traces: list[dict]) -> dict:
         "manager_calls": len(manager_calls),
         "workers": workers,
         "spawn_calls": tools_manager.get("spawn_agent", 0),
+        "manager_tools_while_workers_run": manager_tools_while_workers_run(events),
         "fork_context": fork,
         "tools_manager": dict(tools_manager),
         "tools_workers": dict(tools_workers),
@@ -570,11 +595,20 @@ def summarize(results: list[dict]) -> dict:
             "schedule_events": sum(m["schedule_events"] for m in metrics),
             "model_retry": dict(sum((Counter(m["model_retry"]) for m in metrics), Counter())),
             "aux_token_share": _share(metrics),
+            "delegation_split": _delegation_split(graded),
             "outcomes": dict(Counter((r.get("outcome") or {}).get("state", "harness_error") for r in runs)),
             "reviews_cut_off": sum(1 for r in runs if r.get("review_cut_off")),
             "failed_checks": dict(Counter(c["name"] for r in graded for c in r.get("checks", []) if not c["ok"])),
         }
     all_tokens = sum(totals_by_cat.values())
+    prompt_by_cat: Counter = Counter()
+    cached_by_cat: Counter = Counter()
+    for r in results:
+        if r.get("harness_error"):
+            continue
+        for cat, slot in r["metrics"]["calls"].items():
+            prompt_by_cat[cat] += slot["prompt_tokens"]
+            cached_by_cat[cat] += slot.get("cached_tokens", 0)
     graded_all = [r for r in results if not r.get("harness_error")]
     return {
         "runs": len(results),
@@ -583,8 +617,27 @@ def summarize(results: list[dict]) -> dict:
         "reviews_cut_off": sum(1 for r in results if r.get("review_cut_off")),
         "tokens_by_category": dict(totals_by_cat),
         "token_share_by_category": {k: round(v / all_tokens, 3) for k, v in totals_by_cat.items()} if all_tokens else {},
+        "cached_tokens_by_category": dict(cached_by_cat),
+        "cache_hit_by_category": {k: round(cached_by_cat[k] / v, 3) for k, v in prompt_by_cat.items() if v},
         "tasks": tasks,
     }
+
+
+def _delegation_split(graded: list[dict]) -> dict:
+    """Medians for the runs of one task that kept the work and the runs that
+    spawned workers; the model picks, so the two groups are not randomized."""
+    def side(runs: list[dict]) -> dict:
+        ms = [r["metrics"] for r in runs]
+        return {
+            "runs": len(runs),
+            "passed": sum(1 for r in runs if r.get("passed")),
+            "duration_ms_median": int(statistics.median(m["duration_ms"] for m in ms)) if ms else 0,
+            "tokens_median": int(statistics.median(m["total_tokens"] for m in ms)) if ms else 0,
+            "manager_tools_while_workers_run_median":
+                int(statistics.median(m.get("manager_tools_while_workers_run", 0) for m in ms)) if ms else 0,
+        }
+    return {"solo": side([r for r in graded if not r["metrics"]["workers"]]),
+            "delegated": side([r for r in graded if r["metrics"]["workers"]])}
 
 
 def _mean(values: list[float]) -> float:
@@ -622,9 +675,29 @@ def render_markdown(meta: dict, summary: dict, results: list[dict]) -> str:
             f"{t['skill_view_runs']} | {t['asks']} | {t['schedule_events']} | {t['aux_token_share']} | "
             f"{t.get('reviews_cut_off', 0)} | {json.dumps(t['outcomes'])} |"
         )
-    lines += ["", "## Tokens by caller", "", "| caller | tokens | share |", "|---|---|---|"]
+    lines += ["", "## Delegated vs solo", "",
+              "Runs that kept the work against runs that spawned workers, per task (medians; the model "
+              "chose, so the groups are not randomized). `own calls` are manager tool calls made while a "
+              "worker was still running.", "",
+              "| task | solo runs | solo s | solo tokens | delegated runs | delegated s | delegated tokens "
+              "| own calls | solo pass | delegated pass |",
+              "|---|---|---|---|---|---|---|---|---|---|"]
+    for task_id, t in summary["tasks"].items():
+        solo, deleg = t["delegation_split"]["solo"], t["delegation_split"]["delegated"]
+        def cell(side, key, scale=1.0, fmt="{:.0f}"):
+            return fmt.format(side[key] / scale) if side["runs"] else "-"
+        lines.append(
+            f"| {task_id} | {solo['runs']} | {cell(solo, 'duration_ms_median', 1000, '{:.1f}')} | "
+            f"{cell(solo, 'tokens_median')} | {deleg['runs']} | {cell(deleg, 'duration_ms_median', 1000, '{:.1f}')} | "
+            f"{cell(deleg, 'tokens_median')} | {cell(deleg, 'manager_tools_while_workers_run_median')} | "
+            f"{solo['passed']}/{solo['runs']} | {deleg['passed']}/{deleg['runs']} |")
+    lines += ["", "## Tokens by caller", "",
+              "`hit rate` is cached prompt tokens over prompt tokens, as the provider reports them.", "",
+              "| caller | tokens | share | cached | hit rate |", "|---|---|---|---|---|"]
     for cat, n in sorted(summary["tokens_by_category"].items(), key=lambda kv: -kv[1]):
-        lines.append(f"| {cat} | {n} | {summary['token_share_by_category'].get(cat, 0)} |")
+        lines.append(f"| {cat} | {n} | {summary['token_share_by_category'].get(cat, 0)} | "
+                     f"{summary['cached_tokens_by_category'].get(cat, 0)} | "
+                     f"{summary['cache_hit_by_category'].get(cat, 0)} |")
     lines += ["", "## Failures", ""]
     any_fail = False
     for r in results:

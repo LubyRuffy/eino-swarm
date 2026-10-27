@@ -33,12 +33,24 @@ func TestExecNamesAMissingWorkingDirectoryInsteadOfTheShell(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "not-created")
 
 	for _, cwd := range []string{missing, "not-created-either"} {
-		_, err = execTool.InvokableRun(context.Background(), execArgs(t, map[string]string{"command": "echo ran", "cwd": cwd}))
-		if err == nil {
-			t.Fatalf("cwd %q: a missing directory ran the command", cwd)
+		out, err := execTool.InvokableRun(context.Background(), execArgs(t, map[string]string{"command": "echo ran", "cwd": cwd}))
+		if err != nil {
+			t.Fatalf("cwd %q: a missing directory must come back as a result the model can correct, not an error that ends the turn: %v", cwd, err)
 		}
-		if !strings.Contains(err.Error(), "does not exist") || strings.Contains(err.Error(), "fork/exec") {
-			t.Fatalf("cwd %q: error does not name the directory: %v", cwd, err)
+		var res struct {
+			ExitCode int    `json:"exit_code"`
+			Failed   bool   `json:"failed"`
+			Error    string `json:"error"`
+			Stdout   string `json:"stdout"`
+		}
+		if err := json.Unmarshal([]byte(out), &res); err != nil {
+			t.Fatalf("cwd %q: result is not exec's JSON: %v\n%s", cwd, err, out)
+		}
+		if !res.Failed || res.ExitCode == 0 || res.Stdout != "" {
+			t.Fatalf("cwd %q: a command that never ran must read as failed: %s", cwd, out)
+		}
+		if !strings.Contains(res.Error, "does not exist") || strings.Contains(res.Error, "fork/exec") {
+			t.Fatalf("cwd %q: error does not name the directory: %s", cwd, res.Error)
 		}
 	}
 

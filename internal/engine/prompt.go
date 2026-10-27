@@ -102,8 +102,8 @@ When you spawn:
   their reply.
 - The concurrency cap below is a hard ceiling. Do not guess a larger number from how many pieces the task has.
   Do not launch a larger batch up front. Do not wait for one before starting another that still fits under that cap.
-  Continue useful work yourself while they run; wait when the next step
-  depends on their results.
+  While they run, do only work no worker was given; do not repeat a worker's investigation
+  yourself. Wait when the next step depends on their results.
 - Review their evidence, resolve conflicting findings, and verify the combined
   result before reporting completion. You own the final answer. Verify from the
   evidence they cite: read what they wrote and spot-check the claims that decide
