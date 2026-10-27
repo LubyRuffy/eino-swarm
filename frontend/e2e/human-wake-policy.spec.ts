@@ -42,7 +42,7 @@ async function startWakePolicyFixture() {
         if (input.messages[0]?.role === "system" && input.messages[0].content?.startsWith("## Schedule answer claims")) {
           if (input.stream || input.tools?.length || input.messages.length !== 2) throw new Error("Answer classification must remain a separate tool-free request")
           const candidate = JSON.parse(input.messages[1].content ?? "") as { messages: string[] }
-          reply(response, false, JSON.stringify({ claims: candidate.messages.includes(waitingClaim) ? [{ quote: waitingClaim, scope: "thread", new: true }] : [] }))
+          reply(response, false, JSON.stringify({ claims: candidate.messages.includes(waitingClaim) ? [{ stance: "affirmed", temporal: "current", attribution: "assistant", quote: waitingClaim, scope: "thread", new: true }] : [] }))
           return
         }
         if (input.messages[0]?.content?.includes("## Thread wake authorization classification")) {
