@@ -26,7 +26,7 @@ co-working app built on it. The library API is unchanged except where noted
   `tools.result_max_chars` (Settings → Tools → Tool result limit, default
   40000) caps every tool result entering the model's context, keeping head
   and tail around an omission notice; `exec` without `max_output_kb` gets a
-  matching per-stream budget so its JSON stays parseable.
+  matching per-stream capture budget; its final JSON is capped structurally.
 - A `no_matching_schedule` correction's `model_retry` receipt carries a
   structural `unmatched` diagnosis (scope, stated fields, candidate count, the
   closest row's mismatches) so Trace explains it without the claim's text.
@@ -303,6 +303,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- Noisy `exec` results remain complete JSON even when both streams contain
+  escaped characters or the call specifies a larger capture budget. The final
+  encoded-character cap keeps failure/exit/error metadata and stream head/tail;
+  an extremely small limit retains the valid metadata envelope.
 - Workers are told the workspace directory in their own system prompt, so a
   worker no longer guesses relative paths from its instructions alone.
 - `exec` with a `cwd` that does not exist is refused with that directory named,

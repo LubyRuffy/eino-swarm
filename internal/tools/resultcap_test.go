@@ -57,29 +57,99 @@ func TestALargeListingCannotFloodTheModelsContext(t *testing.T) {
 	}
 }
 
-// exec clips its own streams to a budget derived from the cap, so a noisy
-// command still returns parseable JSON flagged truncated rather than a JSON
-// document cut in half.
+// The actual Build -> exec chain must cap the encoded result, including both
+// streams and JSON escaping, without turning a failed command into plain text.
 func TestNoisyCommandOutputStaysParseableUnderTheCap(t *testing.T) {
-	cfg := configFor(t)
-	cfg.Tools.ResultMaxChars = 4096
-	set, err := Build(context.Background(), cfg, t.TempDir())
-	if err != nil {
-		t.Fatal(err)
+	escaped := `printf 'OUT-FIRST\n'; printf 'ERR-FIRST\n' >&2; i=0; while [ $i -lt 6000 ]; do printf 'out<>&"\\\001\n'; printf 'err<>&"\\\002\n' >&2; i=$((i+1)); done; printf 'OUT-LAST\n'; printf 'ERR-LAST\n' >&2; exit 7`
+	cases := []struct {
+		name          string
+		limit         int
+		command       string
+		outputKB      int
+		wantExit      int
+		wantOutput    string
+		wantTruncated bool
+		wantTail      bool
+	}{
+		{"small_unchanged", 4096, "printf intact; printf diagnostic >&2; exit 7", 1, 7, "intact", false, false},
+		{"stdout", 4096, "i=0; while [ $i -lt 3000 ]; do echo line-$i; i=$((i+1)); done", 0, 0, "line-", true, false},
+		{"escaped_both_streams_default_cap", config.DefaultToolResultMaxChars, escaped, 0, 7, "out", true, false},
+		{"explicit_large_budget", 4096, escaped, 512, 7, "out", true, true},
+		{"explicit_small_budget", config.DefaultToolResultMaxChars, "i=0; while [ $i -lt 6000 ]; do printf data; i=$((i+1)); done; exit 7", 1, 7, "data", true, false},
+		{"unicode", 4096, "i=0; while [ $i -lt 3000 ]; do printf '工具🙂stdout\n'; printf '观察🙂stderr\n' >&2; i=$((i+1)); done; exit 7", 512, 7, "工具🙂", true, false},
+		{"large_command_metadata", 4096, "printf ok; printf diagnostic >&2; # " + strings.Repeat(`<>&"\`, 5000) + "\nexit 7", 0, 7, "ok", true, false},
+		{"tiny_cap_metadata_floor", 1, "printf output; printf diagnostic >&2; exit 7", 0, 7, "", true, false},
 	}
-	out, err := find(t, set, "exec").InvokableRun(context.Background(), execArgs(t, map[string]string{"command": "i=0; while [ $i -lt 3000 ]; do echo line-$i; i=$((i+1)); done"}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var payload struct {
-		Stdout    string `json:"stdout"`
-		Truncated bool   `json:"truncated"`
-	}
-	if err := json.Unmarshal([]byte(out), &payload); err != nil {
-		t.Fatalf("exec result is no longer JSON: %v\n%.200s", err, out)
-	}
-	if !payload.Truncated || len(out) > 4096 {
-		t.Fatalf("truncated=%v len=%d", payload.Truncated, len(out))
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := configFor(t)
+			cfg.Tools.ResultMaxChars = tc.limit
+			set, err := Build(context.Background(), cfg, t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			args := map[string]any{"command": tc.command, "timeout_ms": 10000}
+			if tc.outputKB > 0 {
+				args["max_output_kb"] = tc.outputKB
+			}
+			raw, err := json.Marshal(args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err := find(t, set, "exec").InvokableRun(context.Background(), string(raw))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var payload struct {
+				Stdout      string `json:"stdout"`
+				Stderr      string `json:"stderr"`
+				ExitCode    int    `json:"exit_code"`
+				Failed      bool   `json:"failed"`
+				Error       string `json:"error"`
+				FullCommand string `json:"full_command"`
+				Truncated   bool   `json:"truncated"`
+			}
+			if err := json.Unmarshal([]byte(out), &payload); err != nil {
+				t.Fatalf("exec result is no longer JSON (%d runes): %v\n%.200s", utf8.RuneCountInString(out), err, out)
+			}
+			if !utf8.ValidString(out) || !utf8.ValidString(payload.Stdout) || !utf8.ValidString(payload.Stderr) {
+				t.Fatal("capping broke UTF-8")
+			}
+			if tc.name == "unicode" && strings.ContainsRune(payload.Stdout+payload.Stderr, utf8.RuneError) {
+				t.Fatal("capping introduced a replacement character at a Unicode boundary")
+			}
+			if payload.ExitCode != tc.wantExit || payload.Failed != (tc.wantExit != 0) || payload.Truncated != tc.wantTruncated {
+				t.Fatalf("exit=%d failed=%v truncated=%v", payload.ExitCode, payload.Failed, payload.Truncated)
+			}
+			if tc.wantExit != 0 && payload.Error != "exit status 7" {
+				t.Fatalf("failed-command error metadata was lost: %q", payload.Error)
+			}
+			if tc.limit == 1 {
+				// An impossibly small limit keeps the complete metadata envelope;
+				// every capped text field is empty, rather than broken JSON.
+				if payload.Stdout != "" || payload.Stderr != "" || payload.FullCommand != "" {
+					t.Fatal("a tiny cap must not retain a command/output text budget")
+				}
+			} else if utf8.RuneCountInString(out) > tc.limit {
+				t.Fatalf("encoded JSON has %d runes, limit %d", utf8.RuneCountInString(out), tc.limit)
+			}
+			if tc.wantOutput != "" && !strings.Contains(payload.Stdout, tc.wantOutput) {
+				t.Fatalf("stdout lost its retained content: %.100s", payload.Stdout)
+			}
+			if strings.Contains(tc.command, "printf 'err") && !strings.Contains(payload.Stderr, "err") {
+				t.Fatal("stderr lost its retained content")
+			}
+			if !tc.wantTruncated && (payload.Stdout != "intact" || payload.Stderr != "diagnostic" || payload.FullCommand != tc.command) {
+				t.Fatal("a small exec result must keep its complete output and command")
+			}
+			if tc.wantTail && (!strings.HasPrefix(payload.Stdout, "OUT-FIRST\n") || !strings.HasSuffix(payload.Stdout, "OUT-LAST\n") || !strings.HasPrefix(payload.Stderr, "ERR-FIRST\n") || !strings.HasSuffix(payload.Stderr, "ERR-LAST\n")) {
+				t.Fatal("result capping must retain both ends of both captured streams")
+			}
+			if tc.outputKB == 1 && len(payload.Stdout) > 1024 {
+				t.Fatalf("explicit per-stream byte limit was exceeded: %d", len(payload.Stdout))
+			}
+			t.Logf("encoded JSON=%d runes/%d bytes cap=%d exit=%d failed=%v truncated=%v", utf8.RuneCountInString(out), len(out), tc.limit, payload.ExitCode, payload.Failed, payload.Truncated)
+		})
 	}
 }
 
