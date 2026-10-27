@@ -249,8 +249,8 @@ export class MockHost {
       } else if (new URLSearchParams(location.search).get("history") === "stopped-workers") {
         this.seed(live, stopReplayStart(), true)
       } else if (new URLSearchParams(location.search).get("history") === "worker-collection") {
-        const completed = new URLSearchParams(location.search).get("collection") === "done"
-        this.seed(live, workerCollectionHistory(completed), !completed)
+        const state = new URLSearchParams(location.search).get("collection")
+        this.seed(live, workerCollectionHistory(state), state !== "done" && state !== "stopped")
       } else if (new URLSearchParams(location.search).get("history") === "streamed-agents") {
         this.seed(live, [
           { kind: "agent_message", agentID: "manager", text: "Older manager answer" },

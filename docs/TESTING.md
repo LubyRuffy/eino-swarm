@@ -223,7 +223,13 @@ Continue 只增加一次尝试；Stop／拒绝取消，重启保持原收取状�
 在实际 session-memory／reviewer 模型输入断言长尾以外的完成身份，独立收取
 状态、同 ID 新 generation、checkpoint、cleanup、legacy unknown 及整条预算省略。
 PC `worker-completion.spec.ts` 验证真实 SSE 完成唤醒、候选正文被扣留及刷新重放；
-手机 `worker-collection.spec.ts` 验证等待／恢复文案与重开，remote `OpLog` 回归
+手机 `worker-collection.spec.ts` 验证 EN／ZH 等待、暂停、恢复、停止收取的文案及
+重开／Reload；`history=worker-collection` 的 `collection=paused`／`stopped` 只扩展
+既有历史夹具，不模拟 live push 或新增手机 Continue 操作。停止使用真实终态形状
+`error.err="stopped before collecting worker results"`，必须保持普通提示而非失败／重试
+banner。`mock-worker-collection.test.tsx` 通过 MockLink watch 历史及实际 ThreadLog
+断言事件、运行状态和本地化呈现；这些 Web／夹具证据不替代签名手机包或真实
+Pairlink 全链路验收。remote `OpLog` 回归
 保证 Earlier 页不会跳过新的可见暂停原因。
 门禁针对主管自然完成；`goal_session_test.go` 的外部 Complete／Block 中途终止与
 ReAct 切片耗尽沿原边界收尾，不能因为这类结束新增收取确认卡。
