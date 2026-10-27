@@ -131,6 +131,13 @@ func denyScheduleTools() []tool.BaseTool {
 	}
 }
 
+// scheduleWakeFloorNote states the enforced minimum beside the guidance that
+// pushes a wait below it: a third of a short estimate is under the floor.
+func scheduleWakeFloorNote(min time.Duration) string {
+	n := minSeconds(min)
+	return fmt.Sprintf(" delay_s and every_s must be at least %d seconds; a shorter wait is refused, so when a third of the estimate is below that, use %d.", n, n)
+}
+
 func (rt *runtime) managerScheduleTools(turn *store.Turn) []tool.BaseTool {
 	e := rt.engine
 	tid := rt.threadID
@@ -139,6 +146,7 @@ func (rt *runtime) managerScheduleTools(turn *store.Turn) []tool.BaseTool {
 		turnID = turn.ID
 	}
 	wake := ScheduleWakeTool(nil).(*jsonArgsTool)
+	wake.desc += scheduleWakeFloorNote(e.scheduleMinInterval())
 	wake.runContext = func(ctx context.Context, args string) (string, error) {
 		return e.scheduleWakeContextJSON(ctx, tid, turnID, args)
 	}

@@ -25,7 +25,6 @@ co-working app built on it. The library API is unchanged except where noted
   a delegated-versus-solo split (duration, tokens, correctness) and the
   manager's own tool calls made while a worker was running.
 
-
 - `F-170`: `swarm.policy_reasoning_effort` (Settings → Swarm → Policy check
   thinking) sets the reasoning level for the schedule-claim and wake-permission
   classifiers, defaulting to `low` rather than the conversation's level.
@@ -116,7 +115,11 @@ co-working app built on it. The library API is unchanged except where noted
   identities into briefing and successful review inputs (Issue #120).
   Rewind also removes metadata owned by deleted turns when it was recorded
   before their user event, preserving earlier retained turns' evidence.
-
+- The manager prompt tells the manager to do only work no worker was given
+  while workers run, and not to repeat a worker's investigation; it waits when
+  the next step depends on their results. The `schedule_wake` tool text states
+  the configured minimum interval and what to use when a third of the estimate
+  falls below it.
 - `F-420`, `C-025`: `memory.review_reasoning_effort` blank now means the
   background default `low` instead of the conversation's level; set `inherit`
   to keep the previous behaviour. Only that default is optional: an endpoint

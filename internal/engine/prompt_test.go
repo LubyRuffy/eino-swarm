@@ -208,6 +208,29 @@ func TestManagerPromptPrefersProactiveDelegation(t *testing.T) {
 	}
 }
 
+// "Continue useful work yourself while they run" read as an invitation to do
+// the workers' own investigation. On a real model every delegated survey run
+// had the manager making 5 to 33 tool calls in its workers' scope while they
+// ran, and none did once the prompt said otherwise. Work no worker was given
+// stays allowed, so this must not become a blanket wait.
+func TestManagerPromptForbidsRepeatingAWorkersInvestigation(t *testing.T) {
+	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, &config.Config{}, "")
+	for _, need := range []string{
+		"do only work no worker was given",
+		"do not repeat a worker's investigation",
+		"Wait when the next step depends on their results",
+		"A single worker can improve quality",
+		"even when you must wait for its result",
+	} {
+		if !strings.Contains(prompt, need) {
+			t.Fatalf("missing %q:\n%s", need, prompt)
+		}
+	}
+	if strings.Contains(prompt, "Continue useful work yourself while they run") {
+		t.Fatal("the invitation to duplicate a worker's scope came back")
+	}
+}
+
 func TestManagerPromptDoesNotTreatLeftoverWorkersAsSomethingToClose(t *testing.T) {
 	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, &config.Config{}, "")
 	for _, need := range []string{
