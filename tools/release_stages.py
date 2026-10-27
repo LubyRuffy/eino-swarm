@@ -46,6 +46,7 @@ INHERITED_ENVIRONMENT = frozenset({
     'CFLAGS', 'CPPFLAGS', 'CXXFLAGS', 'FFLAGS', 'LDFLAGS', 'SDKROOT',
     'MACOSX_DEPLOYMENT_TARGET', 'DEVELOPER_DIR',
 })
+PROCESS_SAMPLE_INTERVAL = 2.0
 
 
 def _execution_environment(spec):
@@ -131,6 +132,70 @@ def _save(path, row):
         temp.replace(path)
     finally:
         temp.unlink(missing_ok=True)
+
+
+def _save_bytes(path, value):
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0)
+    with os.fdopen(os.open(path, flags, 0o600), 'wb') as stream:
+        stream.write(value or b'')
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+class _InventoryRecorder:
+    """Keep a failed inventory's original bytes before its caller starts cleanup."""
+
+    def __init__(self, attempt):
+        self.attempt = attempt
+        self.phase = 'first'
+        self.calls = []
+        self.evidence_errors = []
+
+    def __call__(self, command, *, timeout, text=False):
+        call = {'command': list(command), 'timeout_seconds': timeout,
+                'phase': self.phase, 'started': _stamp()}
+        self.calls.append(call)
+        output, stderr, failure = None, None, None
+        try:
+            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    timeout=timeout)
+            output, stderr = result.stdout, result.stderr
+            call['exit_code'] = result.returncode
+            if result.returncode:
+                raise subprocess.CalledProcessError(result.returncode, command,
+                                                     output=output, stderr=stderr)
+        except (OSError, subprocess.SubprocessError) as error:
+            failure = error
+            output = getattr(error, 'output', output)
+            stderr = getattr(error, 'stderr', stderr)
+            call.update(error_type=type(error).__name__,
+                        original_command=getattr(error, 'cmd', command),
+                        original_timeout_seconds=getattr(error, 'timeout', None))
+            raise
+        finally:
+            call['ended'] = _stamp()
+            call.update(stdout_present=output is not None, stderr_present=stderr is not None,
+                        stdout_sha256=hashlib.sha256(output).hexdigest() if output is not None else None,
+                        stderr_sha256=hashlib.sha256(stderr).hexdigest() if stderr is not None else None)
+            # Persist every complete stream before ProcessScope parses it. The
+            # caller limits sampling frequency, rather than dropping evidence.
+            prefix = self.attempt / ('inventory-' + str(len(self.calls)).zfill(4))
+            call.update(stdout=str(prefix.with_suffix('.stdout.log')) if output is not None else None,
+                        stderr=str(prefix.with_suffix('.stderr.log')) if stderr is not None else None,
+                        evidence=str(prefix.with_suffix('.json')))
+            try:
+                if output is not None:
+                    _save_bytes(Path(call['stdout']), output)
+                if stderr is not None:
+                    _save_bytes(Path(call['stderr']), stderr)
+                _save(Path(call['evidence']), call)
+            except (OSError, ValueError) as error:
+                call['evidence_error_type'] = type(error).__name__
+                self.evidence_errors.append(call)
+                # Never replace the original command failure with an I/O error.
+                if failure is None:
+                    raise
+        return os.fsdecode(output) if text else output
 
 
 def _files(paths):
@@ -496,9 +561,33 @@ class StageRunner:
         """
         processes, process = [], None
         bundle = spec.owned_data / 'no-native-app'
+        recorder = _InventoryRecorder(Path(row['evidence']).parent)
         scope = ProcessScope(bundle, spec.owned_data, processes,
-                             environment['ZWAI_NATIVE_CASE_ID'])
+                             environment['ZWAI_NATIVE_CASE_ID'], inventory=recorder)
         inventory_ok, samples = True, 0
+
+        def inventory_failure(error, phase):
+            nonlocal inventory_ok
+            inventory_ok = False
+            failure = {'phase': phase, 'error_type': type(error).__name__,
+                       'command': getattr(error, 'cmd', None),
+                       'timeout_seconds': getattr(error, 'timeout', None), 'observed': _stamp()}
+            if recorder.calls and recorder.calls[-1].get('error_type'):
+                failure['raw_evidence'] = recorder.calls[-1].get('evidence')
+            row.setdefault('inventory_failures', []).append(failure)
+            if not row.get('failure'):
+                row.update(status='failed', failure='process_inventory',
+                           inventory_error_type=type(error).__name__)
+                if isinstance(error, subprocess.TimeoutExpired):
+                    row['inventory_timeout_seconds'] = error.timeout
+            # The recorder has already persisted a subprocess failure's bytes.
+            # A later identity/sysctl failure has no invented process streams.
+            try:
+                _save(Path(row['evidence']).parent /
+                      ('inventory-failure-' + str(len(row['inventory_failures'])) + '.json'), failure)
+            except (OSError, ValueError) as evidence_error:
+                failure['evidence_error_type'] = type(evidence_error).__name__
+
         self._cleanup_pending = True
         try:
             _private_directory(spec.owned_data)
@@ -519,27 +608,27 @@ class StageRunner:
                     processes.append(process)
                     row['command_started'] = _stamp()
                     deadline = time.monotonic() + spec.timeout
+                    next_inventory = 0
                     while True:
-                        try:
-                            scope.sample()
-                            samples += 1
-                        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
-                            inventory_ok = False
-                            row.update(status='failed', failure='process_inventory',
-                                       inventory_error_type=type(error).__name__)
-                            if isinstance(error, subprocess.TimeoutExpired):
-                                row['inventory_timeout_seconds'] = error.timeout
-                            break
-                        if process.poll() is not None:
-                            row['status'] = 'passed' if process.returncode == 0 else 'failed'
-                            if process.returncode:
-                                row['failure'] = 'command_exit'
-                            break
+                        if time.monotonic() >= next_inventory:
+                            recorder.phase = 'first' if samples == 0 else 'periodic'
+                            try:
+                                scope.sample()
+                                samples += 1
+                            except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+                                inventory_failure(error, recorder.phase)
+                                break
+                            next_inventory = time.monotonic() + PROCESS_SAMPLE_INTERVAL
                         if self.cancel.is_set():
                             row['status'] = 'cancelled'
                             break
                         if time.monotonic() >= deadline:
                             row['status'] = 'timed_out'
+                            break
+                        if process.poll() is not None:
+                            row['status'] = 'passed' if process.returncode == 0 else 'failed'
+                            if process.returncode:
+                                row['failure'] = 'command_exit'
                             break
                         self.cancel.wait(min(.05, max(0, deadline - time.monotonic())))
             except KeyboardInterrupt:
@@ -550,18 +639,31 @@ class StageRunner:
             finally:
                 cleanup = {'cleanup_complete': False, 'inventory_samples': samples,
                            'remaining_owned_pids': None, 'observed_identities': dict(scope.identities),
-                           'data_removed': False}
+                           'data_removed': False, 'started': _stamp()}
                 row['cleanup'] = cleanup
                 try:
-                    direct, direct_complete = stop_known_children(processes, grace=.25)
+                    direct, direct_complete = stop_known_children(processes)
                     cleanup['direct_child_cleanup'] = direct
-                    remaining = stop_owned(bundle, spec.owned_data, processes, grace=.25, scope=scope)
+                    # Always join direct children before another fallible scan.
+                    # Even a recently sampled/failed loop gets a fresh terminal
+                    # inventory; unknown results never count as an empty scope.
+                    recorder.phase = 'terminal'
+                    try:
+                        scope.sample()
+                        samples += 1
+                    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+                        inventory_failure(error, 'terminal')
+                    recorder.phase = 'cleanup'
+                    remaining = stop_owned(bundle, spec.owned_data, processes, scope=scope)
                     cleanup['remaining_owned_pids'] = remaining
-                    cleanup['cleanup_complete'] = inventory_ok and direct_complete and not remaining
+                    cleanup['cleanup_complete'] = (inventory_ok and direct_complete and not remaining
+                                                    and not recorder.evidence_errors)
                 except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
                     cleanup['error_type'] = type(error).__name__
                     if isinstance(error, subprocess.TimeoutExpired):
                         cleanup['timeout_seconds'] = error.timeout
+                cleanup.update(inventory_samples=samples, ended=_stamp())
+                row['inventory_calls'] = recorder.calls
                 self._cleanup_pending = not cleanup['cleanup_complete']
                 if cleanup['cleanup_complete']:
                     try:

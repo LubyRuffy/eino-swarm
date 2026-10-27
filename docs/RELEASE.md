@@ -40,6 +40,11 @@ its detached engine. Unknown inventory or surviving owned processes leave an
 unclean latch that refuses further stages/runs; evidence and data remain for
 identity-checked recovery. The guest retains its separate existing
 native-case lock and cleanup latch; this entry never acquires or bypasses it.
+Periodic E2E inventory waits two seconds between scans; first, terminal and
+cleanup inventories remain complete. Each call retains its original command,
+timeout, clocks and full raw streams before parsing, with unavailable streams
+marked explicitly. Cleanup keeps the existing two-second TERM/KILL grace per
+phase. Reduced sampling does not establish the cause of an earlier timeout.
 
 Rerun with the same evidence directory to resume. A headless stage is reusable
 only when candidate/version, lockfiles, dependency checks, toolchain, fixed

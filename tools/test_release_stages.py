@@ -491,6 +491,118 @@ except Cancelled as error:
         with StageRunner(evidence, self.identity, [], lock_path=lock):
             pass
 
+    def test_delayed_detached_shutdown_keeps_native_grace_and_terminal_inventory(self):
+        import native_macos_case
+        data = self.root / 'evidence' / 'private-data'
+        child = '''import signal,sys,time
+from pathlib import Path
+def stop(*_):
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    time.sleep(.6)
+    Path('graceful-cleanup').write_text('finished')
+    raise SystemExit(0)
+signal.signal(signal.SIGTERM, stop)
+Path('delayed-ready').touch()
+time.sleep(10)
+'''
+        code = ("import subprocess,sys,time; from pathlib import Path; "
+                f"subprocess.Popen([sys.executable,'-c',{child!r},'--data-dir',{str(data)!r}],start_new_session=True); "
+                "deadline=time.monotonic()+3\n"
+                "while not Path('delayed-ready').exists() and time.monotonic()<deadline: time.sleep(.01)\n"
+                "Path('output').write_text('done'); time.sleep(.8)")
+        try:
+            with self.runner(self.stage(code, owned_data=data, timeout=5)) as runner:
+                with patch('release_stages.stop_owned', wraps=native_macos_case.stop_owned) as cleanup:
+                    result = runner.run('build')
+            self.assertEqual(result['status'], 'passed', result)
+            self.assertEqual((self.root / 'graceful-cleanup').read_text(), 'finished')
+            self.assertNotIn('grace', cleanup.call_args.kwargs)
+            phases = [call['phase'] for call in result['inventory_calls']]
+            self.assertEqual(phases.count('first'), 1)
+            self.assertEqual(phases.count('terminal'), 1)
+            self.assertNotIn('periodic', phases)
+            for call in result['inventory_calls']:
+                self.assertEqual(call['timeout_seconds'], 5)
+                self.assertEqual(Path(call['evidence']).is_file(), True)
+        finally:
+            native_macos_case.stop_owned(data / 'no-native-app', data, [])
+
+    def test_repeated_actual_inventory_timeouts_keep_raw_bytes_before_cleanup(self):
+        import native_macos_case
+        data = self.root / 'evidence' / 'private-data'
+        native_scope = native_macos_case.ProcessScope
+        native_direct_cleanup = __import__('release_stages').stop_known_children
+        sequence = []
+        payload = b'\x00\xff' + bytes(range(256)) * 8
+        def scope_factory(bundle, owned_data, processes, case_id, *, inventory):
+            def timed_inventory(command, **kwargs):
+                self.assertEqual(kwargs['timeout'], 5)
+                tag = str(len(sequence))
+                fixture = [sys.executable, '-B', '-c',
+                    "import os,sys,time; p=bytes.fromhex(sys.argv[2]); "
+                    "os.write(1,p+sys.argv[1].encode()); os.write(2,p[::-1]+sys.argv[1].encode()); time.sleep(10)",
+                    tag, payload.hex()]
+                sequence.append(fixture)
+                return inventory(fixture, timeout=1, text=True)
+            return native_scope(bundle, owned_data, processes, case_id, inventory=timed_inventory)
+        def joined_after_evidence(processes):
+            files = list((self.root / 'evidence').glob('build/*/inventory-0001.json'))
+            self.assertEqual(len(files), 1, 'raw failure must be durable before cleanup')
+            receipt = json.loads(files[0].read_text())
+            self.assertEqual(Path(receipt['stdout']).read_bytes(), payload + b'0')
+            self.assertEqual(Path(receipt['stderr']).read_bytes(), payload[::-1] + b'0')
+            return native_direct_cleanup(processes)
+        with self.runner(self.stage('import time; time.sleep(10)', owned_data=data)) as runner:
+            with patch('release_stages.ProcessScope', side_effect=scope_factory), \
+                    patch('release_stages.stop_known_children', side_effect=joined_after_evidence):
+                result = runner.run('build')
+        self.assertEqual(result['failure'], 'process_inventory')
+        self.assertEqual(result['inventory_error_type'], 'TimeoutExpired')
+        self.assertEqual(result['inventory_timeout_seconds'], 1)
+        self.assertFalse(result['cleanup']['cleanup_complete'])
+        self.assertIsNotNone(result['exit_code'])
+        self.assertGreaterEqual(len(sequence), 3)
+        first = result['inventory_failures'][0]
+        self.assertEqual(first['command'], sequence[0])
+        self.assertLessEqual(json.loads(Path(first['raw_evidence']).read_text())['ended']['monotonic'],
+                             result['cleanup']['started']['monotonic'])
+        for index, call in enumerate(result['inventory_calls']):
+            self.assertEqual(call['original_command'], sequence[index])
+            self.assertEqual(call['original_timeout_seconds'], 1)
+            self.assertEqual(Path(call['stdout']).read_bytes(), payload + str(index).encode())
+            self.assertEqual(Path(call['stderr']).read_bytes(), payload[::-1] + str(index).encode())
+        self.assertEqual(json.loads((self.root / 'evidence' / 'cleanup-state.json').read_text())['cleanup_complete'], False)
+
+    def test_inventory_evidence_error_preserves_original_timeout_and_unavailable_streams(self):
+        from release_stages import _InventoryRecorder
+        attempt = self.root / 'inventory'
+        attempt.mkdir()
+        recorder = _InventoryRecorder(attempt)
+        command = [sys.executable, '-B', '-c',
+                   "import os,time; os.write(1,b'partial\\x00\\xff'); os.write(2,b'error\\x00'); time.sleep(10)"]
+        with patch('release_stages._save', side_effect=PermissionError('fixture evidence I/O')):
+            with self.assertRaises(subprocess.TimeoutExpired) as raised:
+                recorder(command, timeout=1, text=True)
+        self.assertEqual(raised.exception.cmd, command)
+        self.assertEqual(raised.exception.output, b'partial\x00\xff')
+        self.assertEqual(raised.exception.stderr, b'error\x00')
+        self.assertEqual(recorder.calls[0]['evidence_error_type'], 'PermissionError')
+        with self.assertRaises(FileNotFoundError):
+            recorder([str(self.root / 'missing-inventory-program')], timeout=5, text=True)
+        unavailable = recorder.calls[-1]
+        self.assertFalse(unavailable['stdout_present'])
+        self.assertFalse(unavailable['stderr_present'])
+        self.assertIsNone(unavailable['stdout'])
+        self.assertIsNone(unavailable['stderr'])
+
+    def test_owned_inventory_does_not_renew_the_scenario_deadline(self):
+        data = self.root / 'evidence' / 'private-data'
+        with self.runner(self.stage(owned_data=data, timeout=.01)) as runner:
+            result = runner.run('build')
+        self.assertEqual(result['status'], 'timed_out', result)
+        self.assertTrue(result['cleanup']['cleanup_complete'])
+        self.assertEqual([call['phase'] for call in result['inventory_calls']].count('terminal'), 1)
+
 
 if __name__ == '__main__':
     unittest.main()
