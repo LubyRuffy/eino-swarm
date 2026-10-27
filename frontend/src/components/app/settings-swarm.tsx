@@ -1,11 +1,12 @@
 import { Input } from "@/components/ui/input"
+import { SelectItem } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { MAX_COMPLETION_SETTINGS_KEY } from "@/lib/output-budget"
 import { AGENT_MAX_TURNS_SETTINGS_KEY, AGENT_TIMEOUT_SETTINGS_KEY } from "@/lib/agent-failure"
 import type { Settings } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 
-import { Field, SettingsPage, SettingsSection } from "./settings-field"
+import { Field, SettingsChoice, SettingsPage, SettingsSection } from "./settings-field"
 
 export function SwarmTab({
   settings,
@@ -295,6 +296,21 @@ export function SwarmTab({
             }
           />
         </Field>
+        <SettingsChoice
+          query={query}
+          label={t("settings.swarm.policyThinking")}
+          hint={t("settings.swarm.policyThinkingHint")}
+          value={settings.swarm.policy_reasoning_effort || "default"}
+          onValueChange={(effort) =>
+            update({ policy_reasoning_effort: effort === "default" ? "" : effort })
+          }
+        >
+          <SelectItem value="default">{t("settings.swarm.policyThinkingDefault")}</SelectItem>
+          <SelectItem value="inherit">{t("settings.swarm.policyThinkingInherit")}</SelectItem>
+          <SelectItem value="low">{t("settings.swarm.policyThinkingLow")}</SelectItem>
+          <SelectItem value="medium">{t("settings.swarm.policyThinkingMedium")}</SelectItem>
+          <SelectItem value="high">{t("settings.swarm.policyThinkingHigh")}</SelectItem>
+        </SettingsChoice>
       </SettingsSection>
     </SettingsPage>
   )

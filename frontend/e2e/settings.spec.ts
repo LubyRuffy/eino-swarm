@@ -184,7 +184,7 @@ test("per-note memory cap round-trips through settings", async ({
   }
 })
 
-test("review thinking saves independently and can restore inheritance", async ({ page, request }, info) => {
+test("review thinking saves independently, can inherit and returns to Default", async ({ page, request }, info) => {
   const { settings } = await (await request.get("/api/settings")).json()
   try {
     await page.goto("/")
@@ -192,31 +192,67 @@ test("review thinking saves independently and can restore inheritance", async ({
     const dialog = page.getByRole("dialog")
     await dialog.getByRole("tab", { name: "Memory" }).click()
     const thinking = dialog.getByLabel("Review thinking")
-    await expect(thinking).toContainText("Inherit conversation")
+    await expect(thinking).toContainText("Default (Low)")
     await thinking.click()
-    await page.getByRole("option", { name: "Low", exact: true }).click()
-    await expect(thinking).toContainText("Low")
-    await info.attach("review-thinking-low", {
+    await page.getByRole("option", { name: "Medium", exact: true }).click()
+    await expect(thinking).toContainText("Medium")
+    await info.attach("review-thinking-medium", {
       body: await dialog.screenshot(), contentType: "image/png",
     })
     await dialog.getByRole("button", { name: "Back to app" }).click()
     await expect(dialog).toBeHidden()
     const saved = await (await request.get("/api/settings")).json()
-    expect(saved.settings.memory).toEqual({ ...settings.memory, review_reasoning_effort: "low" })
+    expect(saved.settings.memory).toEqual({ ...settings.memory, review_reasoning_effort: "medium" })
     expect(saved.settings.swarm).toEqual(settings.swarm)
     expect(saved.settings.models).toEqual(settings.models)
 
     await page.getByRole("button", { name: "Settings" }).click()
     await dialog.getByRole("tab", { name: "Memory" }).click()
-    await expect(thinking).toContainText("Low")
+    await expect(thinking).toContainText("Medium")
     await thinking.click()
     await page.getByRole("option", { name: "Inherit conversation", exact: true }).click()
+    await dialog.getByRole("button", { name: "Back to app" }).click()
+    await expect(dialog).toBeHidden()
+    const inheriting = await (await request.get("/api/settings")).json()
+    expect(inheriting.settings.memory).toEqual({ ...settings.memory, review_reasoning_effort: "inherit" })
+
+    await page.getByRole("button", { name: "Settings" }).click()
+    await dialog.getByRole("tab", { name: "Memory" }).click()
+    await thinking.click()
+    await page.getByRole("option", { name: "Default (Low)", exact: true }).click()
     await dialog.getByRole("button", { name: "Back to app" }).click()
     await expect(dialog).toBeHidden()
     const restored = await (await request.get("/api/settings")).json()
     expect(restored.settings.memory).toEqual({ ...settings.memory, review_reasoning_effort: "" })
   } finally {
     await request.put("/api/settings", { data: { memory: settings.memory } })
+  }
+})
+
+test("policy check thinking and the tool result limit save through settings", async ({ page, request }) => {
+  const { settings } = await (await request.get("/api/settings")).json()
+  try {
+    expect(settings.swarm.policy_reasoning_effort).toBe("")
+    expect(settings.tools.result_max_chars).toBeGreaterThan(0)
+    await page.goto("/")
+    await page.getByRole("button", { name: "Settings" }).click()
+    const dialog = page.getByRole("dialog")
+    await dialog.getByRole("tab", { name: "Swarm" }).click()
+    const policy = dialog.getByLabel("Policy check thinking")
+    await expect(policy).toContainText("Default (Low)")
+    await policy.click()
+    await page.getByRole("option", { name: "Inherit conversation", exact: true }).click()
+    await dialog.getByRole("tab", { name: "Tools" }).click()
+    const limit = dialog.getByLabel("Tool result limit (characters)")
+    await expect(limit).toHaveValue(String(settings.tools.result_max_chars))
+    await limit.fill("12000")
+    await dialog.getByRole("button", { name: "Back to app" }).click()
+    await expect(dialog).toBeHidden()
+    const saved = await (await request.get("/api/settings")).json()
+    expect(saved.settings.swarm).toEqual({ ...settings.swarm, policy_reasoning_effort: "inherit" })
+    expect(saved.settings.tools).toEqual({ ...settings.tools, result_max_chars: 12000 })
+  } finally {
+    await request.put("/api/settings", { data: { swarm: settings.swarm, tools: settings.tools } })
   }
 })
 

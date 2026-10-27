@@ -18,6 +18,27 @@ func HostEnvironmentPrompt() string {
 	return formatEnvironment(currentHost(), time.Now())
 }
 
+// WorkerEnvironmentPrompt is the host snapshot plus the shared workspace a
+// sub-agent works in. The host section names the home directory; without
+// the workspace next to it a worker can take home as its base directory and
+// search the whole disk for files the manager meant relative to the workspace.
+func WorkerEnvironmentPrompt(workspaceDir string) string {
+	host := HostEnvironmentPrompt()
+	dir := strings.TrimSpace(workspaceDir)
+	if dir == "" {
+		return host
+	}
+	return host + fmt.Sprintf(`## Working files
+
+The shared workspace directory is: %s
+Relative paths in tool calls resolve there, so prefer them over absolute
+paths. Paths the task names without a directory are relative to this
+workspace, not to the home directory. Use another directory only when the task
+names it.
+
+`, dir)
+}
+
 type hostFacts struct {
 	OS     string
 	Arch   string

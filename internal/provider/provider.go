@@ -347,28 +347,39 @@ type recordingModel struct {
 	providerID string
 	model      string
 	reasoning  string
-	maxTokens  int
-	rec        Recorder
+	// optionalEffort marks reasoning as an engine default for a background
+	// call, not a level the human chose: an endpoint that rejects it is asked
+	// again without it.
+	optionalEffort bool
+	maxTokens      int
+	rec            Recorder
 }
 
 // withReasoning prepends the reasoning-effort option when one is set. It goes
 // first so an explicit caller option later in the list still wins.
-func (r *recordingModel) withReasoning(opts []model.Option) []model.Option {
+func (r *recordingModel) withReasoning(opts []model.Option, level string) []model.Option {
 	if r.maxTokens > 0 {
 		opts = append([]model.Option{model.WithMaxTokens(r.maxTokens)}, opts...)
 	}
-	if r.reasoning == "" {
+	if level == "" {
 		return opts
 	}
-	effort := openaimodel.WithReasoningEffort(openaimodel.ReasoningEffortLevel(r.reasoning))
+	effort := openaimodel.WithReasoningEffort(openaimodel.ReasoningEffortLevel(level))
 	if _, ok := r.inner.(*responsesModel); ok {
-		effort = responsesReasoningOption(r.reasoning)
+		effort = responsesReasoningOption(level)
 	}
 	return append([]model.Option{effort}, opts...)
 }
 
 func (r *recordingModel) Generate(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.Message, error) {
-	opts = r.withReasoning(opts)
+	out, err := r.generate(ctx, in, r.withReasoning(opts, r.reasoning))
+	if r.effortRejected(err) {
+		out, err = r.generate(ctx, in, r.withReasoning(opts, ""))
+	}
+	return out, err
+}
+
+func (r *recordingModel) generate(ctx context.Context, in []*schema.Message, opts []model.Option) (*schema.Message, error) {
 	ctx, finish, err := r.admit(ctx)
 	if err != nil {
 		return nil, modelCallError(err)
@@ -392,7 +403,14 @@ func (r *recordingModel) Generate(ctx context.Context, in []*schema.Message, opt
 }
 
 func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
-	opts = r.withReasoning(opts)
+	out, err := r.stream(ctx, in, r.withReasoning(opts, r.reasoning))
+	if r.effortRejected(err) {
+		out, err = r.stream(ctx, in, r.withReasoning(opts, ""))
+	}
+	return out, err
+}
+
+func (r *recordingModel) stream(ctx context.Context, in []*schema.Message, opts []model.Option) (*schema.StreamReader[*schema.Message], error) {
 	completion := &streamCompletion{}
 	ctx = context.WithValue(ctx, streamCompletionKey{}, completion)
 	ctx, finish, err := r.admit(ctx)

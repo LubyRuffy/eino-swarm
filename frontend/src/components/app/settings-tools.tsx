@@ -145,6 +145,26 @@ export function ToolsTab({
           />
         </Field>
       </SettingsSection>
+
+      <SettingsSection title={tr("settings.tools.limits")}>
+        <Field
+          query={query}
+          label={tr("settings.tools.resultMax")}
+          hint={tr("settings.tools.resultMaxHint")}
+        >
+          <Input
+            type="number"
+            min={1000}
+            value={settings.tools.result_max_chars ?? 40000}
+            onChange={(e) =>
+              onChange({
+                ...settings,
+                tools: { ...settings.tools, result_max_chars: Number(e.target.value) },
+              })
+            }
+          />
+        </Field>
+      </SettingsSection>
     </SettingsPage>
   )
 }

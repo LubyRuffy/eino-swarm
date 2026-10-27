@@ -72,7 +72,9 @@ func TestPolicyFailureKeepsTheStandingGoalWithoutRestartingItsManager(t *testing
 	for _, row := range turns {
 		t.Logf("turn=%s goal_continue=%v status=%s error=%s", row.ID, row.GoalContinue, row.Status, row.Error)
 	}
-	if len(turns) != 1 || turns[0].Status != "running" || managers.Load() != 1 || policy.Load() != 1 {
+	// One classification attempt: the default policy effort is optional, so
+	// the 400 gets a single no-effort request before the attempt fails.
+	if len(turns) != 1 || turns[0].Status != "running" || managers.Load() != 1 || policy.Load() != 2 {
 		t.Fatalf("policy error replayed or terminated the manager: turns=%+v managers=%d policy=%d", turns, managers.Load(), policy.Load())
 	}
 	got, _ := e.Store().GetThread(th.ID)

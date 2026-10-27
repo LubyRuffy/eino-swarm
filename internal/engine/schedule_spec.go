@@ -45,13 +45,13 @@ func parseScheduleSpec(delayS, everyS int, cron string, min time.Duration) (sche
 	case delayS != 0:
 		d := time.Duration(delayS) * time.Second
 		if d < min {
-			return scheduleSpec{}, fmt.Errorf("engine: delay is shorter than the minimum interval")
+			return scheduleSpec{}, fmt.Errorf("engine: delay %ds is shorter than the minimum interval of %ds", delayS, minSeconds(min))
 		}
 		return scheduleSpec{delay: d}, nil
 	case everyS != 0:
 		d := time.Duration(everyS) * time.Second
 		if d < min {
-			return scheduleSpec{}, fmt.Errorf("engine: interval is shorter than the minimum interval")
+			return scheduleSpec{}, fmt.Errorf("engine: interval %ds is shorter than the minimum interval of %ds", everyS, minSeconds(min))
 		}
 		return scheduleSpec{every: d}, nil
 	default:
@@ -61,6 +61,11 @@ func parseScheduleSpec(delayS, everyS int, cron string, min time.Duration) (sche
 		}
 		return scheduleSpec{cron: expr, loc: time.Local}, nil
 	}
+}
+
+// minSeconds rounds up so the minimum named in a refusal is itself accepted.
+func minSeconds(min time.Duration) int64 {
+	return int64((min + time.Second - 1) / time.Second)
 }
 
 // nextAfter reports the following fire after now.

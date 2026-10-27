@@ -263,7 +263,13 @@ func TestUnknownScheduleClassificationRetainsTheOriginalTurnAndCorrection(t *tes
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.Status != store.TurnRunning || managers.Load() != 1 || checks.Load() != 1 || scheduleAnswerRetryCount(t, e, turn.ID) != 0 {
+			// The default policy effort is optional, so an endpoint answering
+			// 400 gets one no-effort request inside the same attempt.
+			wantChecks := int32(1)
+			if mode == "classifier-unavailable" {
+				wantChecks = 2
+			}
+			if got.Status != store.TurnRunning || managers.Load() != 1 || checks.Load() != wantChecks || scheduleAnswerRetryCount(t, e, turn.ID) != 0 {
 				t.Fatalf("unknown classification became a manager correction: turn=%+v manager=%d policy=%d", got, managers.Load(), checks.Load())
 			}
 			if strings.Contains(replayDump(t, e, th.ID), fixtureScheduleClaim) {

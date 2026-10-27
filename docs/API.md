@@ -236,7 +236,7 @@ Client startup metadata. During recovery, clients poll it until `startup` is `re
              "goal_max_auto_turns": 12,
              "goal_session_max_iterations": 40, "goal_auto_compact_percent": 80,
              "schedule_min_interval_seconds": 30, "schedule_tick_ms": 1000,
-             "schedule_max_active": 32},
+             "schedule_max_active": 32, "policy_reasoning_effort": ""},
   "locale": "system",
   "ui": {"locale": "system", "font": "system", "ui_font_size": "medium",
          "content_font": "ui", "font_size": "ui", "code_font": "mono",
@@ -368,8 +368,9 @@ provider carries `has_api_key` and `ready` instead.
             "goal_max_auto_turns": 12,
             "goal_session_max_iterations": 40, "goal_auto_compact_percent": 80,
             "schedule_min_interval_seconds": 30, "schedule_tick_ms": 1000,
-            "schedule_max_active": 32},
+            "schedule_max_active": 32, "policy_reasoning_effort": ""},
   "tools": {"disabled": [], "enabled": [], "web_search_max_results": 8,
+            "result_max_chars": 40000,
             "proxy": {"http": "", "https": "", "no_proxy": ""}},
   "memory": {"enabled": true, "auto_review": true, "char_limit": 2200,
              "entry_max": 360, "review_max_iterations": 8,
@@ -1850,7 +1851,12 @@ successful action;
 a cancelled or failed arrangement cannot support it. A repeated unsupported
 claim fails explicitly; a correction with the claim removed publishes normally.
 Restart preserves the consumed same-turn correction allowance; receipt reads
-and writes must succeed before another corrective manager call. A terminal
+and writes must succeed before another corrective manager call. The correction's `model_retry` receipt for `no_matching_schedule` adds
+`unmatched`: `{scope, new, stated, candidates, closest?, mismatched?}`, where
+`stated` lists the cadence/identity fields the claim named, `candidates` counts
+active rows in its scope, and `mismatched` names the closest row's failed
+requirements (`schedule_id`, `not_armed_this_turn`, `delay_s`, `every_s`,
+`cron`, `next_run_at`). It never contains the claim's quote. A terminal
 `schedule_claim_unverified` ending in `(no_matching_schedule)` keeps the turn
 `error` and `final` empty, but does not write `goal_block_reason` or mark the
 goal externally blocked. A pursuing goal may start another turn within its

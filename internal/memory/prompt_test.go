@@ -221,6 +221,30 @@ func TestReviewPromptSetsTheBarAndNamesItsTools(t *testing.T) {
 	}
 }
 
+// A review saved each finished task as a new skill named after that task,
+// which no later task opened. Both review prompts must hold a new skill to a
+// reuse bar on a different task, while still keeping observed recovery.
+func TestReviewPromptsDoNotFileTheFinishedRequestAsASkill(t *testing.T) {
+	for name, prompt := range map[string]string{"review": ReviewPrompt(), "library review": LibraryReviewPrompt()} {
+		flat := strings.Join(strings.Fields(prompt), " ")
+		for _, want := range []string{
+			"worth reusing on a different later task",
+			"Do not create one for this conversation's own request",
+			"steps a capable agent already takes without guidance",
+			"recovery from a failure actually observed here",
+		} {
+			if !strings.Contains(flat, want) {
+				t.Errorf("%s lacks the reuse bar %q", name, want)
+			}
+		}
+	}
+	for name, prompt := range map[string]string{"worker": WorkerPromptSections(Snapshot{Limit: 100}, nil, 50), "tidy": CatalogTidyPrompt()} {
+		if strings.Contains(prompt, "worth reusing on a different later task") {
+			t.Errorf("%s is not a post-turn review and should not carry its new-skill bar", name)
+		}
+	}
+}
+
 func TestReviewCatalogListsSkillsAndFamiliesWithoutInventingAConversation(t *testing.T) {
 	if ReviewCatalog(nil, nil) != "" {
 		t.Fatal("an empty catalog must not become a review transcript")

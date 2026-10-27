@@ -75,7 +75,8 @@ export const memoryZh: { [K in keyof typeof memoryEn]: string } = {
   "settings.memory.budget": "预算",
   "settings.memory.reviewThinking": "复盘推理级别",
   "settings.memory.reviewThinkingHint":
-    "单独控制自动复盘和手动复盘的推理级别。请选择当前模型支持的档位，其他会话工作继续使用原设置。",
+    "单独控制自动复盘和手动复盘的推理级别。复盘只做提取，默认使用低档；端点拒绝默认档时会去掉它再请求一次。手动选择的档位按所选发送。其他会话工作继续使用原设置。",
+  "settings.memory.reviewThinkingDefault": "默认（低）",
   "settings.memory.reviewThinkingInherit": "跟随会话",
   "settings.memory.reviewThinkingLow": "低",
   "settings.memory.reviewThinkingMedium": "中",

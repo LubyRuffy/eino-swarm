@@ -10,8 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -94,7 +96,7 @@ func (e *Engine) classifyThreadWakeInput(ctx context.Context, threadID, turnID s
 	if err != nil {
 		return err
 	}
-	builder, err := e.pool.ModelBuilder(ctx, th.ProviderID, th.Model, th.ReasoningEffort, e.callRecorder(threadID, turnID))
+	builder, err := e.policyModelBuilder(ctx, th, e.callRecorder(threadID, turnID))
 	if err != nil {
 		return err
 	}
@@ -197,4 +199,14 @@ func (m *threadWakePolicyMiddleware) BeforeModelRewriteState(ctx context.Context
 		next.Messages[index] = schema.SystemMessage(prompt)
 	}
 	return ctx, &next, nil
+}
+
+// policyModelBuilder builds a classifier model at the policy thinking level.
+// Only the blank default may be dropped by an endpoint that rejects it.
+func (e *Engine) policyModelBuilder(ctx context.Context, th *store.Thread, rec provider.Recorder) (func(role, agentID string) model.BaseChatModel, error) {
+	effort, optional := e.cfg.SwarmSnapshot().PolicyEffort(th.ReasoningEffort)
+	if optional {
+		return e.pool.AuxiliaryModelBuilder(ctx, th.ProviderID, th.Model, effort, rec)
+	}
+	return e.pool.ModelBuilder(ctx, th.ProviderID, th.Model, effort, rec)
 }

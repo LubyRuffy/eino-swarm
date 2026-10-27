@@ -430,6 +430,9 @@ func TestTUIBuildsTheConfiguredSwarm(t *testing.T) {
 	if !strings.Contains(reg.WorkerPreamble, "OS:") {
 		t.Fatal("the terminal swarm would not tell workers which OS they are on")
 	}
+	if !strings.Contains(reg.WorkerPreamble, workspace) {
+		t.Fatal("terminal workers would not know the workspace and could treat home as their base")
+	}
 
 	// words after the flags are part of the task, so quoting is optional
 	_, text, cleanup2, err := buildTUISwarm(context.Background(), []string{

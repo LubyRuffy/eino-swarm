@@ -766,6 +766,14 @@ export const en = {
   "settings.swarm.scheduleMax": "Active waits at once",
   "settings.swarm.scheduleMaxHint":
     "Scheduled runs that may execute together. Overflow waits for the next tick.",
+  "settings.swarm.policyThinking": "Policy check thinking",
+  "settings.swarm.policyThinkingHint":
+    "Reasoning level for the checks that verify a claimed scheduled check and classify permission to wait. A finished answer waits for the first one. Default uses Low; an endpoint that rejects Default is asked again without it.",
+  "settings.swarm.policyThinkingDefault": "Default (Low)",
+  "settings.swarm.policyThinkingInherit": "Inherit conversation",
+  "settings.swarm.policyThinkingLow": "Low",
+  "settings.swarm.policyThinkingMedium": "Medium",
+  "settings.swarm.policyThinkingHigh": "High",
 
   "settings.tools.title": "Tools",
   "settings.tools.desc":
@@ -776,6 +784,10 @@ export const en = {
   "settings.tools.https": "HTTPS",
   "settings.tools.noProxy": "Skip the proxy for",
   "settings.tools.noProxyHint": "Comma-separated hosts.",
+  "settings.tools.limits": "Limits",
+  "settings.tools.resultMax": "Tool result limit (characters)",
+  "settings.tools.resultMaxHint":
+    "The most text one workspace tool call puts in the model's context. Longer results keep their start and end, with a note asking the agent to narrow the request. Every later call in the turn resends a result, so this is a per-call cost.",
 
 
   "settings.remote.title": "Phone",

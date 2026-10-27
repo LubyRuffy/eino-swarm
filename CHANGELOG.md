@@ -13,6 +13,17 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-170`: `swarm.policy_reasoning_effort` (Settings → Swarm → Policy check
+  thinking) sets the reasoning level for the schedule-claim and wake-permission
+  classifiers, defaulting to `low` rather than the conversation's level.
+  `tools.result_max_chars` (Settings → Tools → Tool result limit, default
+  40000) caps every tool result entering the model's context, keeping head
+  and tail around an omission notice; `exec` without `max_output_kb` gets a
+  matching per-stream budget so its JSON stays parseable.
+- A `no_matching_schedule` correction's `model_retry` receipt carries a
+  structural `unmatched` diagnosis (scope, stated fields, candidate count, the
+  closest row's mismatches) so Trace explains it without the claim's text.
+
 - `F-180`, `C-011`: select integrated-terminal text and use **Add to chat**
   to attach it to the current composer with its source tab, conversation/project,
   initial directory and shell. References use the existing editable, durable
@@ -81,6 +92,21 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-420`, `C-025`: Settings → Memory can set a separate reasoning level for automatic and manual turn review. Empty retains conversation inheritance; conversation work, catalog tidy, model and output cap are unchanged.
 
 ### Changed
+
+- `F-420`, `C-025`: `memory.review_reasoning_effort` blank now means the
+  background default `low` instead of the conversation's level; set `inherit`
+  to keep the previous behaviour. Only that default is optional: an endpoint
+  rejecting it with HTTP 400 gets one retry without `reasoning_effort`.
+  Review prompts also refuse to save a skill for the finished request itself
+  or for steps an agent takes without guidance.
+- The manager prompt asks it to verify delegated work from the evidence workers
+  cite and spot-check deciding or conflicting claims, rather than rereading
+  every source a worker already covered.
+- The manager's fixed prefix (system prompt plus tool schemas) is about 1.6K
+  characters (5%) shorter on every model call: the delegation and ask sections no
+  longer restate what the tool descriptions already say, and workspace tools
+  stop advertising `base_dir`, which a worker once filled with the home
+  directory. Calls that still send `base_dir` keep working.
 
 - `F-120`, `F-130`, `F-150`, `C-003`, `C-008`, `C-022`: keep every PC goal-session
   answer visible by default while reasoning and tool details start collapsed in
@@ -269,6 +295,13 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-150`, `C-009`: a scheduled check cannot complete the standing objective while its own manager-created conversation wake remains armed, including a newly armed wake ID after a one-shot fired. The final check may complete after cancelling that wait; the reverse call order and parallel tool calls cannot rearm the same continuation after completion. Conflicts return recoverable `goal_schedule_conflict` results. Human-created waits and independent jobs retain their own lifecycle; existing completed goals are not automatically reopened (Issue #79).
 
 ### Fixed
+
+- Workers are told the workspace directory in their own system prompt, so a
+  worker no longer guesses relative paths from its instructions alone.
+- `exec` with a `cwd` that does not exist is refused with that directory named,
+  instead of the OS error that blamed the shell binary.
+- `schedule_wake` refusals for a too-short `delay_s` / `every_s` state the
+  minimum interval in seconds, so the manager can retry once with a valid value.
 
 - `F-220`, `F-222`, `F-223`, `F-230`, `C-006`: phone process rows now keep each
   thought behind its own initially closed disclosure. Explicit open/closed

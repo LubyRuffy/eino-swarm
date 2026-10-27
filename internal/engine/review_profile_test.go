@@ -8,18 +8,22 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
-// Review policy is independent of the original task. Blank configuration
+// Review policy is independent of the original task. A review that thought
+// at the task's level cost more than many of the tasks it reviewed, so blank
+// configuration takes the low background level; only an explicit inherit
 // preserves the task's wire behavior, including omitting an unset effort.
 func TestReviewProfileControlsOnlyTheReviewHTTPReasoningEffort(t *testing.T) {
 	for _, tc := range []struct{ name, override, inherited, want string }{
 		{"explicit low", "low", "high", "low"},
 		{"explicit low from unset", "low", "", "low"},
-		{"default inherits", "", "high", "high"},
-		{"default stays unset", "", "", ""},
+		{"default is low", "", "high", "low"},
+		{"default is low from unset", "", "", "low"},
+		{"inherit follows the task", "inherit", "high", "high"},
+		{"inherit stays unset", "inherit", "", ""},
 		{"medium normalizes", " MEDIUM ", "low", "medium"},
 		{"high normalizes", "HIGH", "low", "high"},
-		{"invalid inherits", "unsupported", "high", "high"},
-		{"disable is not invented", "off", "", ""},
+		{"invalid takes the default", "unsupported", "high", "low"},
+		{"disable is not invented", "off", "", "low"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, fixture := newReviewProtocolEngine(t, func(int) (string, []reviewOperation) { return "", nil })

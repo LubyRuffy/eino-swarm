@@ -485,6 +485,8 @@ export interface SwarmLimits {
   schedule_tick_ms?: number
   /** Schedule runs that may execute at once. */
   schedule_max_active?: number
+  /** Classifier thinking: blank is the background default (low); otherwise inherit, low, medium or high. */
+  policy_reasoning_effort?: string
 }
 
 export interface ProviderSettings {
@@ -519,6 +521,8 @@ export interface Settings {
     enabled: string[]
     proxy: { http: string; https: string; no_proxy: string }
     web_search_max_results: number
+    /** Characters one workspace tool result may put in the model's context. */
+    result_max_chars?: number
   }
   memory: MemorySettings
   personality?: PersonalitySettings
@@ -692,6 +696,7 @@ export interface MemorySettings {
   char_limit: number
   entry_max: number
   review_max_iterations: number
+  /** Blank is the background default (low); otherwise inherit, low, medium or high. */
   review_reasoning_effort?: string
   skills_index_max: number
   skill_stale_days?: number

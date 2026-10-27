@@ -80,7 +80,8 @@ export const memoryEn = {
   "settings.memory.budget": "Budget",
   "settings.memory.reviewThinking": "Review thinking",
   "settings.memory.reviewThinkingHint":
-    "Choose a separate reasoning level for automatic reviews and Review now. Select a level supported by your model; other conversation work keeps its own setting.",
+    "A separate reasoning level for automatic reviews and Review now. A review extracts rather than plans, so Default uses Low; an endpoint that rejects Default is asked again without it. A level you pick explicitly is sent as chosen. Other conversation work keeps its own setting.",
+  "settings.memory.reviewThinkingDefault": "Default (Low)",
   "settings.memory.reviewThinkingInherit": "Inherit conversation",
   "settings.memory.reviewThinkingLow": "Low",
   "settings.memory.reviewThinkingMedium": "Medium",

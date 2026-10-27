@@ -265,16 +265,19 @@ type reviewOutcome struct {
 // reviewRun is one reviewer agent: post-turn extraction or the Memory panel's
 // catalog tidy. Same agent id so a trace still names the cost memory-reviewer.
 type reviewRun struct {
-	threadID    string
-	turnID      string
-	providerID  string
-	model       string
-	effort      string
-	description string
-	instruction string
-	userMsg     string
-	maxIter     int
-	tools       []tool.BaseTool
+	threadID   string
+	turnID     string
+	providerID string
+	model      string
+	effort     string
+	// optionalEffort marks effort as the background default rather than a
+	// chosen level; an endpoint without reasoning control may reject it.
+	optionalEffort bool
+	description    string
+	instruction    string
+	userMsg        string
+	maxIter        int
+	tools          []tool.BaseTool
 	// onText is the assistant prose so far, one call per streamed chunk.
 	// Tool-call frames are not prose. Nil on the post-turn review, which
 	// only keeps the finished line.
@@ -347,18 +350,20 @@ func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectCo
 		instruction = memory.LibraryReviewPrompt()
 		description = "records reusable procedures from a conversation that belongs to no project"
 	}
+	effort, optionalEffort := e.cfg.Memory.ReviewEffort(turn.ReasoningEffort)
 	e.driveReviewer(reviewRun{
-		threadID:    threadID,
-		turnID:      turn.ID,
-		providerID:  turn.ProviderID,
-		model:       turn.Model,
-		effort:      e.cfg.Memory.ReviewEffort(turn.ReasoningEffort),
-		description: description,
-		instruction: instruction,
-		userMsg:     e.reviewUserMessageWithNotes(pc, input.Transcript, notes),
-		maxIter:     e.cfg.Memory.ReviewIterations(),
-		tools:       tools,
-		sequential:  true,
+		threadID:       threadID,
+		turnID:         turn.ID,
+		providerID:     turn.ProviderID,
+		model:          turn.Model,
+		effort:         effort,
+		optionalEffort: optionalEffort,
+		description:    description,
+		instruction:    instruction,
+		userMsg:        e.reviewUserMessageWithNotes(pc, input.Transcript, notes),
+		maxIter:        e.cfg.Memory.ReviewIterations(),
+		tools:          tools,
+		sequential:     true,
 		completed: func() (string, bool) {
 			mu.Lock()
 			defer mu.Unlock()
@@ -395,7 +400,11 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 	if strings.TrimSpace(run.description) == "" {
 		run.description = "curates this project's memory"
 	}
-	builder, err := e.pool.ModelBuilder(ctx, run.providerID, run.model, run.effort,
+	modelBuilder := e.pool.ModelBuilder
+	if run.optionalEffort {
+		modelBuilder = e.pool.AuxiliaryModelBuilder
+	}
+	builder, err := modelBuilder(ctx, run.providerID, run.model, run.effort,
 		e.callRecorder(run.threadID, run.turnID))
 	if err != nil {
 		mu.Lock()

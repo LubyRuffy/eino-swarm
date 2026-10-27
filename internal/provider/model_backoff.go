@@ -126,19 +126,7 @@ func isBackoffFailure(err error) bool {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
-	var api *einoopenai.APIError
-	var sdk *openai.APIError
-	var request *openai.RequestError
-	status := 0
-	switch {
-	case errors.As(err, &api):
-		status = api.HTTPStatusCode
-	case errors.As(err, &sdk):
-		status = sdk.HTTPStatusCode
-	case errors.As(err, &request):
-		status = request.HTTPStatusCode
-	}
-	if status >= 300 {
+	if status := HTTPStatus(err); status >= 300 {
 		return status == 408 || status == 429 || status >= 500
 	}
 	var syntax *json.SyntaxError
@@ -151,6 +139,23 @@ func isBackoffFailure(err error) bool {
 	return strings.Contains(s, "unexpected eof") || strings.Contains(s, "unexpected end of json") ||
 		strings.Contains(s, "invalid character") || strings.Contains(s, "mismatch type ") ||
 		strings.Contains(s, "json: cannot unmarshal")
+}
+
+// HTTPStatus is the status of a rejected model request, or 0 when err did not
+// come from an HTTP response the SDKs report.
+func HTTPStatus(err error) int {
+	var api *einoopenai.APIError
+	var sdk *openai.APIError
+	var request *openai.RequestError
+	switch {
+	case errors.As(err, &api):
+		return api.HTTPStatusCode
+	case errors.As(err, &sdk):
+		return sdk.HTTPStatusCode
+	case errors.As(err, &request):
+		return request.HTTPStatusCode
+	}
+	return 0
 }
 
 // Metadata and empty deltas do not demonstrate a generating service. Tool

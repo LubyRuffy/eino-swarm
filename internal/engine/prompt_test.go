@@ -49,6 +49,25 @@ func TestManagerPromptRejectsInvalidSpawnCleanupClaims(t *testing.T) {
 	}
 }
 
+// After two workers surveyed separate trees, the manager reread every source
+// file they had covered, costing more than the workers did. Verification
+// still owns the answer, but it starts from the evidence a worker cites and
+// only reinvestigates where that evidence is missing or contradictory.
+func TestManagerVerifiesDelegatedWorkFromCitedEvidence(t *testing.T) {
+	prompt := strings.Join(strings.Fields(ManagerPrompt(&tools.Set{}, config.Default(), "")), " ")
+	for _, text := range []string{
+		"verify the combined result before reporting completion",
+		"Verify from the evidence they cite",
+		"spot-check the claims that decide or conflict",
+		"Do not reread every source a worker already covered",
+		"investigate again only where its evidence is missing, inconsistent or failed",
+	} {
+		if !strings.Contains(prompt, text) {
+			t.Fatalf("delegation review guidance lacks %q", text)
+		}
+	}
+}
+
 func TestManagerPromptIncludesTheLiveHost(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
@@ -87,6 +106,25 @@ func TestTurnRegistryHandsWorkersTheHostEnvironment(t *testing.T) {
 	}
 	if len(reg.SubAgentTools) == 0 {
 		t.Fatal("the helper dropped the toolset")
+	}
+}
+
+// A worker that saw only the host's home directory took it as its base
+// directory and searched the whole disk for files the manager named relative
+// to the workspace. The workspace must reach every worker next to home.
+func TestTurnRegistryTellsWorkersWhereTheWorkspaceIs(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	set := buildTestToolset(t, e, th.ID)
+	reg := e.newTurnRegistry(func(role, id string) model.BaseChatModel { return nil }, set, nil)
+	if !strings.Contains(reg.WorkerPreamble, "The shared workspace directory is: "+set.WorkspaceDir+"\n") {
+		t.Fatalf("workers are not told the workspace %q:\n%s", set.WorkspaceDir, reg.WorkerPreamble)
+	}
+	if strings.Contains(strings.ToLower(reg.WorkerPreamble), "sandbox") {
+		t.Fatal("the workspace is an anchor, not a sandbox")
+	}
+	if got := WorkerEnvironmentPrompt("  "); got != HostEnvironmentPrompt() {
+		t.Fatalf("no workspace must not invent a section:\n%s", got)
 	}
 }
 

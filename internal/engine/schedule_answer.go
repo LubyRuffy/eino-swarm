@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -45,6 +46,8 @@ type scheduleAnswerError struct {
 	Claims int
 	Hash   string
 	Cause  error
+	// Unmatched explains a no_matching_schedule refusal from structure alone.
+	Unmatched *scheduleClaimMismatch
 }
 
 func (e *scheduleAnswerError) Error() string {
@@ -75,7 +78,7 @@ func (e *Engine) verifyScheduleAnswer(ctx context.Context, turn *store.Turn, tex
 		failure.Cause = err
 		return nil, failure
 	}
-	build, err := e.pool.ModelBuilder(ctx, th.ProviderID, th.Model, th.ReasoningEffort, e.callRecorder(turn.ThreadID, turn.ID))
+	build, err := e.policyModelBuilder(ctx, th, e.callRecorder(turn.ThreadID, turn.ID))
 	if err != nil {
 		failure.Code = "classification_configuration_unavailable"
 		failure.Cause = err
@@ -126,6 +129,8 @@ func (e *Engine) verifyScheduleAnswer(ctx context.Context, turn *store.Turn, tex
 		}
 		if !matched {
 			failure.Code = "no_matching_schedule"
+			failure.Unmatched = diagnoseScheduleClaim(claim, rows, turn, armed)
+			e.log.Warn("scheduling answer claim matched no current schedule", "thread", turn.ThreadID, "turn", turn.ID, "scope", failure.Unmatched.Scope, "new", failure.Unmatched.New, "stated", failure.Unmatched.Stated, "candidates", failure.Unmatched.Candidates, "closest", failure.Unmatched.Closest, "mismatched", failure.Unmatched.Mismatched)
 			return nil, failure
 		}
 	}
@@ -183,37 +188,80 @@ func decodeScheduleAnswer(out *schema.Message, text []string) ([]scheduleAnswerC
 }
 
 func scheduleClaimMatches(claim scheduleAnswerClaim, row store.Schedule, turn *store.Turn, armed map[string]bool) bool {
+	return len(scheduleClaimMismatches(claim, row, turn, armed)) == 0
+}
+
+// scheduleClaimMismatches names each requirement row fails for claim. The
+// first two are gates: an inactive or out-of-scope row is not compared further.
+func scheduleClaimMismatches(claim scheduleAnswerClaim, row store.Schedule, turn *store.Turn, armed map[string]bool) []string {
 	if row.Status != store.ScheduleActive || row.NextRunAt.IsZero() {
-		return false
+		return []string{"inactive"}
 	}
 	if claim.Scope == "thread" && (row.Kind != store.ScheduleThread || row.ThreadID != turn.ThreadID) {
-		return false
+		return []string{"scope"}
 	}
 	if claim.Scope == "independent" && (row.Kind != store.ScheduleStandalone || row.OriginThreadID != turn.ThreadID) {
-		return false
+		return []string{"scope"}
 	}
+	var out []string
 	if claim.ScheduleID != "" && claim.ScheduleID != row.ID {
-		return false
+		out = append(out, "schedule_id")
 	}
 	if *claim.New && (!armed[row.ID] || (row.Kind == store.ScheduleThread && row.ArmedTurnID != turn.ID)) {
-		return false
+		out = append(out, "not_armed_this_turn")
 	}
 	if claim.DelayS != 0 && (row.DelayS != claim.DelayS || row.EveryS != 0 || row.Cron != "") {
-		return false
+		out = append(out, "delay_s")
 	}
 	if claim.EveryS != 0 && (row.EveryS != claim.EveryS || row.DelayS != 0 || row.Cron != "") {
-		return false
+		out = append(out, "every_s")
 	}
 	if claim.Cron != "" && row.Cron != claim.Cron {
-		return false
+		out = append(out, "cron")
 	}
 	if claim.NextRunAt != "" {
 		at, err := time.Parse(time.RFC3339, claim.NextRunAt)
 		if err != nil || !at.Equal(row.NextRunAt.Truncate(time.Second)) {
-			return false
+			out = append(out, "next_run_at")
 		}
 	}
-	return true
+	return out
+}
+
+// scheduleClaimMismatch is a refused claim's Trace diagnosis. It carries the
+// claim's shape and field names, never its quote or the candidate answer.
+type scheduleClaimMismatch struct {
+	Scope string `json:"scope"`
+	New   bool   `json:"new"`
+	// Stated lists the cadence and identity fields the claim named.
+	Stated []string `json:"stated"`
+	// Candidates counts active rows in the claim's scope.
+	Candidates int `json:"candidates"`
+	// Closest is the in-scope row with the fewest mismatches; Mismatched
+	// names the requirements it failed.
+	Closest    string   `json:"closest,omitempty"`
+	Mismatched []string `json:"mismatched,omitempty"`
+}
+
+func diagnoseScheduleClaim(claim scheduleAnswerClaim, rows []store.Schedule, turn *store.Turn, armed map[string]bool) *scheduleClaimMismatch {
+	d := &scheduleClaimMismatch{Scope: claim.Scope, New: *claim.New, Stated: []string{}}
+	for field, set := range map[string]bool{"schedule_id": claim.ScheduleID != "", "delay_s": claim.DelayS != 0, "every_s": claim.EveryS != 0, "cron": claim.Cron != "", "next_run_at": claim.NextRunAt != ""} {
+		if set {
+			d.Stated = append(d.Stated, field)
+		}
+	}
+	sort.Strings(d.Stated)
+	for _, row := range rows {
+		miss := scheduleClaimMismatches(claim, row, turn, armed)
+		if len(miss) == 1 && (miss[0] == "inactive" || miss[0] == "scope") {
+			continue
+		}
+		d.Candidates++
+		if d.Closest == "" || len(miss) < len(d.Mismatched) {
+			d.Closest, d.Mismatched = row.ID, miss
+		}
+	}
+	return d
 }
 
 // A successful report alone is not a rearm. Bind actual tool calls and their
@@ -294,7 +342,11 @@ func (e *Engine) scheduleAnswerContinued(turn *store.Turn, snapshots ...*restore
 }
 
 func (rt *runtime) recordScheduleAnswerRetry(turn *store.Turn, failure *scheduleAnswerError) *scheduleAnswerError {
-	body, _ := json.Marshal(map[string]any{"attempt": 1, "cap": 1, "reason": "schedule_claim_unverified", "code": failure.Code, "claim_count": failure.Claims, "candidate_sha256": failure.Hash})
+	receipt := map[string]any{"attempt": 1, "cap": 1, "reason": "schedule_claim_unverified", "code": failure.Code, "claim_count": failure.Claims, "candidate_sha256": failure.Hash}
+	if failure.Unmatched != nil {
+		receipt["unmatched"] = failure.Unmatched
+	}
+	body, _ := json.Marshal(receipt)
 	e := rt.engine
 	e.recordMu.Lock()
 	defer e.recordMu.Unlock()

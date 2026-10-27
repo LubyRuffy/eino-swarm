@@ -139,6 +139,10 @@ type SwarmConfig struct {
 	// the default so a hand-edit cannot refuse every fire or unbounded
 	// fan-out.
 	ScheduleMaxActive int `yaml:"schedule_max_active" json:"schedule_max_active"`
+	// PolicyReasoningEffort is the schedule-claim and wake-permission
+	// classifiers' thinking level: blank (DefaultAuxiliaryReasoning),
+	// inherit, low, medium or high. Unknown values are repaired to blank.
+	PolicyReasoningEffort string `yaml:"policy_reasoning_effort" json:"policy_reasoning_effort"`
 }
 
 // AgentTimeout is the per-sub-agent watchdog duration.
@@ -307,6 +311,9 @@ type ToolsConfig struct {
 	Enabled             []string    `yaml:"enabled" json:"enabled"`
 	Proxy               ProxyConfig `yaml:"proxy" json:"proxy"`
 	WebSearchMaxResults int         `yaml:"web_search_max_results" json:"web_search_max_results"`
+	// ResultMaxChars caps the text one workspace tool call hands the model.
+	// Zero or negative is repaired to DefaultToolResultMaxChars.
+	ResultMaxChars int `yaml:"result_max_chars" json:"result_max_chars"`
 }
 
 // IsDisabled reports whether the named tool has been explicitly switched off.
@@ -480,6 +487,7 @@ func Default() *Config {
 			Disabled:            []string{},
 			Enabled:             []string{},
 			WebSearchMaxResults: DefaultWebSearchResults,
+			ResultMaxChars:      DefaultToolResultMaxChars,
 		},
 		Memory: MemoryConfig{
 			Enabled:               true,
@@ -682,8 +690,12 @@ func (c *Config) normalize() {
 	if c.Swarm.ScheduleMaxActive <= 0 {
 		c.Swarm.ScheduleMaxActive = d.Swarm.ScheduleMaxActive
 	}
+	c.Swarm.PolicyReasoningEffort = NormalizeAuxiliaryReasoning(c.Swarm.PolicyReasoningEffort)
 	if c.Tools.WebSearchMaxResults <= 0 {
 		c.Tools.WebSearchMaxResults = d.Tools.WebSearchMaxResults
+	}
+	if c.Tools.ResultMaxChars <= 0 {
+		c.Tools.ResultMaxChars = d.Tools.ResultMaxChars
 	}
 	// Budgets and preferences are normalized. The two switches are booleans a user may
 	// legitimately have set to false, and "repairing" a false to the default
@@ -699,7 +711,7 @@ func (c *Config) normalize() {
 	if c.Memory.ReviewMaxIterations <= 0 {
 		c.Memory.ReviewMaxIterations = d.Memory.ReviewMaxIterations
 	}
-	c.Memory.ReviewReasoningEffort = NormalizeReasoning(c.Memory.ReviewReasoningEffort)
+	c.Memory.ReviewReasoningEffort = NormalizeAuxiliaryReasoning(c.Memory.ReviewReasoningEffort)
 	if c.Memory.SkillsIndexMax <= 0 {
 		c.Memory.SkillsIndexMax = d.Memory.SkillsIndexMax
 	}

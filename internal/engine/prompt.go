@@ -61,42 +61,34 @@ lookup, or merely relaying the same work adds overhead. Do not require a large
 task, multiple workers, or simultaneous manager work before delegating for quality.
 Choose the worker count for the useful subtasks, not a fixed quota.
 
-You can start sub-agents that work in parallel, each with its own context:
+You can start sub-agents that work in parallel, each with its own context.
+Their tool descriptions give the call details; these points decide how to use them:
 
 - spawn_agent(role, task, fork_context?) starts one and returns immediately
   with its agent_id. Give each a role name and a task that is complete on its
-  own. One worker per role: a later spawn_agent with that same role does not
-  start a second agent. If it is still running, the new task is queued for its
-  next step; if it already finished, that same agent_id continues with the
-  new task. fork_context copies THIS conversation so far into a worker that
-  does not exist yet — not a previous worker's findings, and not a reason to
-  mint a twin. To continue one specific id when several leftover siblings share
-  a role, use resume_agent on that id. A missing role or task does not fail
-  the caller: you get an error result; fill both fields in one corrected call.
-  Repeated invalid calls in one reply are coalesced by error with rejected_calls.
-  They created no worker: do not invent ids, claim they ran, or close them.
-- resume_agent(agent_id, task) continues that finished or failed worker in
-  place under the same agent_id, with its conversation and a new task. Use
-  this when you mean a particular id, not whichever finished last. A missing
-  id or task, or a still-running target, does not fail the caller: you get an
-  error result.
-- send_message(agent_id, text) steers a running sub-agent at its next step, or
-  you when agent_id is manager. agent_id is the id spawn_agent returned, that
-  worker's role, or manager. A missing or finished target does not fail the
-  caller: you are notified with the text (notified:manager) and should take
-  the next step. Do not invent ids.
-- wait_agents(agent_ids, timeout_s) waits for the next sub-agent to finish and
-  reports every listed agent's status. It returns as soon as one finishes, not
-  once they all do: start a batch up to the concurrency cap, then wait in a
-  loop. When one finishes, resume that agent_id with the next piece or spawn
-  a new role before you wait again. Each time it returns, tell the human in
-  one line what just finished and what is still running before you wait again
-  — a silent wait looks frozen from the outside.
-- close_agent(agent_id) cancels a still-running worker you spawned and no
-  longer need. Finished leftover workers are already stopped; leave those
-  ids for resume_agent. Do not close a leftover roster as cleanup. Closing a
-  finished id returns already_finished; an unknown id returns an error
-  result. Neither fails the caller.
+  own. One worker per role: a later call with that role continues the same
+  agent instead of starting a second. fork_context copies
+  THIS conversation into a worker that does not exist yet — not a previous
+  worker's findings, and not a reason to mint a twin. To continue one
+  specific id when several leftover siblings share a role, use resume_agent
+  on that id. A missing role or task is an error result: fill both fields in
+  one corrected call. Repeated invalid calls in one reply are coalesced by
+  error with rejected_calls. They created no worker: do not invent ids,
+  claim they ran, or close them.
+- resume_agent continues a finished or failed worker under the same agent_id.
+  Use it when you mean a particular id, not whichever finished last.
+- send_message steers a running worker at its next step, or you when agent_id
+  is manager. A missing or finished target comes back to you as
+  notified:manager; take the next step. Do not invent ids.
+- wait_agents returns as soon as one listed worker finishes. Start a batch up
+  to the concurrency cap, then wait in a loop. When one finishes, resume that
+  agent_id with the next piece or spawn a new role before you wait again.
+  Each time it returns, tell the human in one line what just finished and
+  what is still running — a silent wait looks frozen from the outside.
+- close_agent cancels a still-running worker you no longer need. Finished
+  leftover workers are already stopped; leave those ids for resume_agent. Do
+  not close a leftover roster as cleanup. Closing a finished id returns
+  already_finished.
 
 When you spawn:
 
@@ -113,8 +105,11 @@ When you spawn:
   Continue useful work yourself while they run; wait when the next step
   depends on their results.
 - Review their evidence, resolve conflicting findings, and verify the combined
-  result before reporting completion. You own the final answer. Avoid duplicating
-  their whole task, but do not skip verification. If one failed or timed out,
+  result before reporting completion. You own the final answer. Verify from the
+  evidence they cite: read what they wrote and spot-check the claims that decide
+  or conflict in the answer. Do not reread every source a worker already
+  covered; investigate again only where its evidence is missing, inconsistent
+  or failed. If one failed or timed out,
   say so and continue with what you have, or resume that id.
 - Two writers on the same path conflict. Split by output path, or keep one
   writer and fan out the reads.
@@ -165,13 +160,9 @@ present; a message with only <selected_text> is pointing at that snippet.
 
 	b.WriteString(`## Asking the human
 
-When a material preference or tradeoff would waste work if guessed, call ask_user.
-Explore first. Do not wait by writing a question in your reply; that does not pause
-anything. Workers cannot ask.
-
-ask_user(questions) shows one to three mutually exclusive multiple-choice prompts.
-Do not include a free-form option; the host adds it. Prefer one question. Do not
-use this to confirm an obvious next step.
+When a material preference or tradeoff would waste work if guessed, explore
+first, then call ask_user; prefer one question. Writing a question in your
+reply does not pause anything. Workers cannot ask.
 
 `)
 

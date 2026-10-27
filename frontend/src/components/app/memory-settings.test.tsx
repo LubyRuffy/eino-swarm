@@ -25,10 +25,10 @@ const settings: Settings = {
 }
 
 describe("Memory review thinking", () => {
-  it("inherits the conversation for older settings without the field", () => {
+  it("shows the low background default for older settings without the field", () => {
     const onChange = vi.fn()
     render(<MemorySettings settings={settings} onChange={onChange} />)
-    expect(screen.getByLabelText("Review thinking")).toHaveTextContent("Inherit conversation")
+    expect(screen.getByLabelText("Review thinking")).toHaveTextContent("Default (Low)")
     expect(onChange).not.toHaveBeenCalled()
   })
 
@@ -43,17 +43,19 @@ describe("Memory review thinking", () => {
     expect(next.models).toEqual(settings.models)
   })
 
-  it("can clear an override to restore conversation inheritance", () => {
+  it("saves inheritance explicitly and Default as blank", () => {
     const onChange = vi.fn()
-    render(<MemorySettings
-      settings={{ ...settings, memory: { ...settings.memory, review_reasoning_effort: "low" } }}
-      onChange={onChange}
-    />)
-    expect(screen.getByLabelText("Review thinking")).toHaveTextContent("Low")
+    const { rerender } = render(<MemorySettings settings={settings} onChange={onChange} />)
     fireEvent.click(screen.getByLabelText("Review thinking"))
     fireEvent.click(screen.getByRole("option", { name: "Inherit conversation" }))
-    const next = onChange.mock.calls[0][0] as Settings
-    expect(next.memory).toEqual({ ...settings.memory, review_reasoning_effort: "" })
+    expect((onChange.mock.calls[0][0] as Settings).memory.review_reasoning_effort).toBe("inherit")
+    rerender(<MemorySettings
+      settings={{ ...settings, memory: { ...settings.memory, review_reasoning_effort: "high" } }}
+      onChange={onChange}
+    />)
+    fireEvent.click(screen.getByLabelText("Review thinking"))
+    fireEvent.click(screen.getByRole("option", { name: "Default (Low)" }))
+    expect((onChange.mock.calls[1][0] as Settings).memory).toEqual({ ...settings.memory, review_reasoning_effort: "" })
   })
 })
 

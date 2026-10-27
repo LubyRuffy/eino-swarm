@@ -728,6 +728,14 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.swarm.scheduleMax": "同时进行的等待",
   "settings.swarm.scheduleMaxHint":
     "同时执行中的定时运行上限。超出的等到下一拍。",
+  "settings.swarm.policyThinking": "策略核对推理级别",
+  "settings.swarm.policyThinkingHint":
+    "核对“已安排定时检查”声明、判断是否允许等待的推理级别。完成的答复要等第一项核对结束才发布。默认使用低档；端点拒绝默认档时会去掉它再请求一次。",
+  "settings.swarm.policyThinkingDefault": "默认（低）",
+  "settings.swarm.policyThinkingInherit": "跟随会话",
+  "settings.swarm.policyThinkingLow": "低",
+  "settings.swarm.policyThinkingMedium": "中",
+  "settings.swarm.policyThinkingHigh": "高",
 
   "settings.tools.title": "工具",
   "settings.tools.desc": "代理可以调用什么。以后版本新加的工具会沿用它自己的默认。",
@@ -737,6 +745,10 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.tools.https": "HTTPS",
   "settings.tools.noProxy": "不走代理的主机",
   "settings.tools.noProxyHint": "逗号分隔。",
+  "settings.tools.limits": "上限",
+  "settings.tools.resultMax": "工具结果上限（字符）",
+  "settings.tools.resultMaxHint":
+    "单次工作区工具调用放进模型上下文的最大文本量。超出时保留开头和结尾，并提示 agent 缩小范围。结果会在本回合后续每次调用中重复发送，所以这是每次调用的成本。",
 
 
   "settings.remote.title": "手机",

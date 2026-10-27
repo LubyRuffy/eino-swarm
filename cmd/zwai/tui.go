@@ -190,7 +190,7 @@ func assembleTUI(ctx context.Context, args []string) (*tuiSetup, error) {
 	reg.MaxTurns = cfg.Swarm.MaxTurns
 	reg.ManagerMaxIterations = cfg.Swarm.ManagerIterations()
 	reg.SubAgentTools = toolset.Tools
-	reg.WorkerPreamble = engine.HostEnvironmentPrompt()
+	reg.WorkerPreamble = engine.WorkerEnvironmentPrompt(toolset.WorkspaceDir)
 
 	host := tui.NewAskHost(stdinIsTTY())
 	planState := tui.NewPlanState(cfg, toolset, engine.PersonalityPrompt(cfg.Personality.Instructions), host.Wait)
