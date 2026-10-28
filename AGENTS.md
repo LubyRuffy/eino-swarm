@@ -356,11 +356,17 @@ E2E suite.
   pauses and Stop, storage failure, and tool results arriving after shutdown.
   Unknown external effects require verification before retry; a model summary
   or process launch is not proof of handoff or recovery.
-- A change to the ordering of handoff, restoration, Stop, parked-worker
-  checkpoints, idle exit or presence admission updates
-  `models/lifecycle/EngineLifecycle.tla` and passes `make model-check`. A guard
-  that is removed or relaxed keeps a case showing which invariant breaks
-  without it. The model checks the protocol, not the Go code's atomicity; the
+- Model first for ordering protocols. A change to the ordering of handoff,
+  restoration, Stop, parked-worker checkpoints, idle exit or presence
+  admission updates `models/lifecycle/EngineLifecycle.tla`; one to event
+  storage, broadcast, catch-up, rewind or seq numbering updates
+  `models/stream/EventStream.tla`. Change the model before the code and pass
+  `make model-check`. A suspected ordering bug gets a switch that restores
+  the suspect behaviour; a TLC counterexample is a hypothesis until a test
+  reproduces it on the real code, red before the fix. A new model is
+  accepted only after it re-finds a known fault. A guard that is removed or
+  relaxed keeps a case showing which invariant breaks without it. The model
+  checks the protocol, not the Go code's atomicity; the
   real-boundary regressions above remain required.
 - Unanswered ask recovery must cross the real Registry middleware and HTTP/
   process replacement boundary. A direct `AskUserTool` call misses handoff's

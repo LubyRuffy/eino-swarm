@@ -200,6 +200,11 @@ co-working app built on it. The library API is unchanged except where noted
   remain in place. Complete engine samples fell from 781s to 345–349s on the
   measured host; this does not establish a one-minute suite budget.
 
+- Contributor workflow: ordering protocol changes start in their TLA+ model
+  (`AGENTS.md`, `docs/TESTING.md` "Model first"). A suspected fault becomes
+  a model switch, and a counterexample counts only once a test reproduces it
+  on the real code before the fix. A new model is accepted after it re-finds
+  a known fault.
 - The manager prompt no longer repeats the delegation tools' call details or
   the concurrency cap; those live in the tools' descriptions, which carry the
   live cap (about 2.6K fewer prompt characters). Measured on

@@ -3722,6 +3722,34 @@ SIGTERM with SIGKILL. `TestSameEngineIsTheBinaryThatWasStarted`
 is the match (version plus executable identity). `assembleTUI` / `buildTUISwarm` still build an in-process
 swarm for renderer tests. The window itself is verified by hand — see below.
 
+## Model first
+
+Most serious bugs here have been ordering bugs, and example tests only cover
+the orders someone thought of. For a protocol with a model under `models/`,
+or a new one built from the same kind of locks, channels and cursors, the
+model comes first:
+
+1. State the change in the model. To test a suspicion, add a Boolean switch
+   that restores the suspect behaviour, plus a case in `tools/model_check.py`
+   that names its source (commit or guard) and the invariant it must break.
+2. Run `make model-check`. The current design must pass and each switch must
+   fail on its named invariant. Add a `Never*` witness for any scenario an
+   invariant depends on, so it cannot pass only because the scenario is
+   unreachable.
+3. Treat each counterexample as a hypothesis. Write a test on the real code
+   that follows the trace (Go for the engine, the store or HTTP; Vitest for a
+   client) and watch it fail before the fix. A trace the real code cannot
+   reproduce shows that the model is wrong.
+4. Fix the code and keep the test and the case.
+
+Accept a new model only after it re-finds a historical or current fault. The
+lifecycle model re-found two shipped handoff faults; the stream model found
+the shipped rewind faults before their fix. Parsers and
+reducers whose input space is large but whose rule can be stated get a
+property, fuzz or differential test instead (see "Fuzz and property tests").
+To close the gap between a model and the code, replay the code's own
+interleavings against the stated rule, as the history replay property does.
+
 ## Lifecycle protocol model (opt-in, `C-001` / `C-027`)
 
 The Go tests reproduce the interleavings someone thought of. The protocol
