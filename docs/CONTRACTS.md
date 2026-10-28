@@ -101,6 +101,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 状态：active；类型：security；作用范围：tools、server、files；关联功能：`F-140`, `F-224`。
 - 契约内容：agent 工作区是定位锚点，不限制 agent 文件权限；HTTP 和手机远程文件入口提供的路径不得穿越允许的工作区。
 - 允许行为：agent 在其被授权环境中访问路径；禁止行为：把外部文件路径穿越交给文件工具；失败语义：拒绝不安全 HTTP／远程文件路径；不变量：两种信任边界不混同；边界条件：符号链接和相对路径。
+- 符号链接与名称身份：HTTP 下载、删除和手机读取都在工作区根下经 `os.Root` 解析；目标留在工作区内的链接可读，经链接到达外部的路径拒绝，删除链接只删链接本身。客户端路径按原样作为文件身份，首尾空白不裁剪，附件名同样不裁剪。证据：`internal/engine/workspace_files.go`、`internal/engine/workspace_files_test.go`（含 fuzz 目标）、`internal/server/workspace_identity_test.go`。
 - 证据：实现 `internal/tools`, `internal/server`, `internal/remote/files.go`；测试 `internal/server`, `internal/remote/files_test.go`；变更规则：同步 API 和安全测试；来源：`AGENTS.md`、GitHub Issue #48。
 
 ## C-005 Loopback and same-origin HTTP

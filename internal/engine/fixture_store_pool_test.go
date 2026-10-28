@@ -289,14 +289,14 @@ func runEngineTests(run func() int, pool *engineStorePool, report func(error)) i
 	return code
 }
 
-func clearTestEngineSeed(t *testing.T) {
+func clearTestEngineSeed(t testing.TB) {
 	t.Helper()
 	t.Setenv("OPENAI_BASE_URL", "")
 	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv("OPENAI_MODEL", "")
 }
 
-func testEngineConfig(t *testing.T, dir string) *config.Config {
+func testEngineConfig(t testing.TB, dir string) *config.Config {
 	t.Helper()
 	cfg, err := config.Load(dir)
 	if err != nil {
@@ -308,7 +308,7 @@ func testEngineConfig(t *testing.T, dir string) *config.Config {
 	return cfg
 }
 
-func buildTestEngine(t *testing.T, cfg *config.Config, st *store.Store) *Engine {
+func buildTestEngine(t testing.TB, cfg *config.Config, st *store.Store) *Engine {
 	t.Helper()
 	e := New(cfg, st, provider.NewMock(cfg), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	t.Cleanup(e.Shutdown)

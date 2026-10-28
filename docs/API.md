@@ -2210,7 +2210,10 @@ than overwriting it. One file may not exceed 256 MiB.
 
 Streams the file. Paths containing `..` are rejected (`400`), and every response
 is `Content-Disposition: attachment` with `X-Content-Type-Options: nosniff` — an
-agent-written HTML file must not run as script in the app's own origin.
+agent-written HTML file must not run as script in the app's own origin. The
+path is opened beneath the workspace root with symlinks resolved: a link whose
+target stays inside is followed, one that leads outside is `400`. The name is
+used exactly as sent; surrounding whitespace is part of it.
 
 ### `GET /api/threads/:id/input-images/:image_id`
 
@@ -2220,6 +2223,10 @@ the event (`img_` + hex). Unknown, traversal, or non-image ids are `404`. This
 is not a workspace file and does not appear in the Files listing.
 
 ### `DELETE /api/threads/:id/download/<path>` → `204`
+
+Removes that exact name (a missing file is still `204`). Deleting a symlink
+removes the link, never its target; a path whose parent directories lead
+outside the workspace through a link is `400`.
 
 ### `POST /api/threads/:id/reveal`
 

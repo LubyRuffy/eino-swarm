@@ -82,8 +82,13 @@ func (e *Engine) resolveAttachedFiles(threadID string, paths []string) ([]store.
 	return out, nil
 }
 
+// normalizeAttachedPath keeps surrounding whitespace: it is part of an upload's
+// name, and trimming it can name a different upload.
 func normalizeAttachedPath(raw string) (string, error) {
-	rel := filepath.ToSlash(filepath.Clean(strings.TrimSpace(raw)))
+	if strings.TrimSpace(raw) == "" {
+		return "", fmt.Errorf("engine: attached file %q is not a workspace upload", raw)
+	}
+	rel := filepath.ToSlash(filepath.Clean(raw))
 	rel = strings.TrimPrefix(rel, "/")
 	if rel == "" || rel == "." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") {
 		return "", fmt.Errorf("engine: attached file %q is not a workspace upload", raw)

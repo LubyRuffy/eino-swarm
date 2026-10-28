@@ -1,13 +1,16 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
@@ -118,14 +121,19 @@ func (s *Server) downloadFile(c *gin.Context) {
 		return
 	}
 	rel := strings.TrimPrefix(c.Param("path"), "/")
-	abs, err := s.engine.ResolveWorkspacePath(th.ID, rel)
+	f, err := s.engine.OpenWorkspaceFile(th.ID, rel)
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no such file in this conversation's workspace"})
+		return
+	}
 	if err != nil {
 		s.fail(c, err)
 		return
 	}
-	info, err := os.Stat(abs)
+	defer f.Close()
+	info, err := f.Stat()
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "no such file in this conversation's workspace"})
+		s.fail(c, err)
 		return
 	}
 	if info.IsDir() {
@@ -135,10 +143,11 @@ func (s *Server) downloadFile(c *gin.Context) {
 	// Force a download rather than letting the browser render workspace
 	// content in the app's own origin: an agent-written HTML file would
 	// otherwise run as same-origin script.
+	name := filepath.Base(filepath.FromSlash(rel))
 	c.Header("Content-Disposition",
-		fmt.Sprintf("attachment; filename*=UTF-8''%s", escapePath(filepath.Base(abs))))
+		fmt.Sprintf("attachment; filename*=UTF-8''%s", escapePath(name)))
 	c.Header("X-Content-Type-Options", "nosniff")
-	c.File(abs)
+	http.ServeContent(c.Writer, c.Request, name, info.ModTime(), f)
 }
 
 func (s *Server) deleteFile(c *gin.Context) {

@@ -960,6 +960,15 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Security
 
+- `F-140`, `C-004`: workspace download and delete no longer follow a symlink
+  out of the workspace. A link an agent left to an outside directory let
+  `GET /api/threads/:id/download/<link>/<file>` serve and `DELETE` remove files
+  outside it; both now resolve beneath the workspace root (as the phone file
+  reader already did) and deleting a link removes only the link. Workspace file
+  names are used exactly as sent: trimming surrounding whitespace made Delete of
+  `notes.md ` remove `notes.md`, Download serve it, and an attached upload name
+  attach its trimmed sibling. Found by new fuzz targets
+  (`FuzzWorkspaceRelNameKeepsTheNamedFile`, `FuzzResolveWorkspacePathStaysInside`).
 - `F-190`, `C-024`: delayed updater cleanup treats installer paths as literal shell arguments, including quotes, dollar command substitution and backticks. Bundle symlink aliases share the actual target's installation lock (Issue #77).
 
 ### Added

@@ -47,7 +47,7 @@ func pinContextWindow(e *Engine, n int) {
 	e.Config().Models.Providers[0].ContextWindow = n
 }
 
-func newTestEngineAt(t *testing.T, dir string) *Engine {
+func newTestEngineAt(t testing.TB, dir string) *Engine {
 	t.Helper()
 	clearTestEngineSeed(t)
 	cfg := testEngineConfig(t, dir)
