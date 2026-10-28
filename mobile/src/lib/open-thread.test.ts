@@ -240,6 +240,40 @@ describe("opening a phone conversation", () => {
     expect(foldPhoneItems(managerBlocks(h.view().blocks))).toHaveLength(1)
   })
 
+  it("continues below a live rewind instead of painting an older page that was removed", async () => {
+    const page = pendingReply()
+    const h = harness(async (op, req) => {
+      if (op === OpWatch) return { ...hiddenReady, detail }
+      if (req.before === 28) return page.promise
+      if (req.before === 20) return { v: 1, id: "kept", ok: true,
+        thread_id: detail.id, events: [historyEvent(18)], seq: 18, more: true }
+      throw new Error("Opening must stop at the retained manager history")
+    })
+    const opening = openPhoneThread(h.opts)
+    await vi.waitFor(() => expect(h.rpc).toHaveBeenCalledWith({ op: OpLog, thread_id: detail.id, before: 28 }), { timeout: 250 })
+    h.opts.commitView(applyPush(h.view(), { v: 1, id: "", ok: true, op: "event",
+      event: historyEvent(0, { kind: "delta", message_id: "removed-answer", text: "Removed partial" }) }))
+    h.opts.commitView(applyPush(h.view(), { v: 1, id: "", ok: true, op: "event",
+      event: historyEvent(35, { kind: "rewound", text: "20" }) }))
+    expect(h.view().oldestSeq).toBe(20)
+    expect(h.view().events.map((event) => event.seq)).toEqual([35])
+    expect(h.view().blocks.some((block) => block.text === "Removed partial")).toBe(false)
+    page.resolve({ v: 1, id: "stale", ok: true, thread_id: detail.id,
+      events: [historyEvent(25, { text: "Removed stale answer" })], seq: 25, more: false })
+    expect(await opening).toBe(true)
+    expect(h.rpc.mock.calls.map(([req]) => [req.op, req.before])).toEqual([
+      [OpWatch, undefined], [OpLog, 28], [OpLog, 20],
+    ])
+    expect(h.view().events.map((event) => event.seq)).toEqual([18, 35])
+    expect(h.view().lastSeq).toBe(35)
+    expect(h.view().oldestSeq).toBe(18)
+    expect(h.view().hasMore).toBe(true)
+    expect(foldPhoneItems(managerBlocks(h.view().blocks))).toMatchObject([
+      { type: "block", block: { text: "Earlier manager answer" } },
+    ])
+    expect(h.opts.setError).not.toHaveBeenCalled()
+  })
+
   it("stops when an empty older page cannot advance the existing history cursor", async () => {
     const h = harness(async (op) => op === OpWatch ? { ...hiddenReady, detail }
       : { v: 1, id: "no-progress", ok: true, thread_id: detail.id, events: [], seq: 28, more: true })
