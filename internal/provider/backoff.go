@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"sync"
 	"time"
+
+	"github.com/LubyRuffy/eino-swarm/internal/timing"
 )
 
 type backoffOutcome uint8
@@ -29,6 +31,7 @@ type backoffGate struct {
 	probeReady bool
 	generation uint64
 	changed    chan struct{}
+	clock      timing.Clock
 }
 
 type backoffTicket struct {
@@ -40,7 +43,11 @@ type backoffTicket struct {
 
 // The caller supplies the configured positive durations, with max >= initial.
 func newBackoffGate(initial, max time.Duration) *backoffGate {
-	return &backoffGate{id: rand.Text(), initial: initial, max: max, changed: make(chan struct{})}
+	return newBackoffGateWithClock(initial, max, nil)
+}
+
+func newBackoffGateWithClock(initial, max time.Duration, clock timing.Clock) *backoffGate {
+	return &backoffGate{id: rand.Text(), initial: initial, max: max, changed: make(chan struct{}), clock: timing.OrReal(clock)}
 }
 
 func (g *backoffGate) acquire(ctx context.Context, onWait func(int, time.Duration, uint64)) (*backoffTicket, error) {
@@ -51,7 +58,7 @@ func (g *backoffGate) acquire(ctx context.Context, onWait func(int, time.Duratio
 			g.mu.Unlock()
 			return nil, err
 		}
-		delay := time.Until(g.next)
+		delay := g.next.Sub(g.clock.Now())
 		if g.failures == 0 || g.probeReady || (!g.probe && delay <= 0) {
 			isProbe := g.failures > 0 && !g.probeReady
 			if isProbe {
@@ -64,7 +71,7 @@ func (g *backoffGate) acquire(ctx context.Context, onWait func(int, time.Duratio
 		changed, generation, attempt := g.changed, g.generation, g.failures
 		g.mu.Unlock()
 		if delay > 0 {
-			timer := time.NewTimer(delay)
+			timer := g.clock.NewTimer(delay)
 			if onWait != nil && notified != generation {
 				notified = generation
 				onWait(attempt, delay, generation)
@@ -74,7 +81,7 @@ func (g *backoffGate) acquire(ctx context.Context, onWait func(int, time.Duratio
 				timer.Stop()
 				return nil, ctx.Err()
 			case <-changed:
-			case <-timer.C:
+			case <-timer.C():
 			}
 			timer.Stop()
 		} else {
@@ -131,7 +138,7 @@ func (t *backoffTicket) finish(outcome backoffOutcome) {
 			} else {
 				g.delay *= 2
 			}
-			g.next = time.Now().Add(g.delay)
+			g.next = g.clock.Now().Add(g.delay)
 			g.generation++
 		case backoffSuccess:
 			if !t.probe {
@@ -146,7 +153,7 @@ func (t *backoffTicket) finish(outcome backoffOutcome) {
 			}
 			// Cancellation does not prove recovery. Retain the failure streak,
 			// and prevent repeated cancellations from opening rapid probes.
-			g.next = time.Now().Add(g.delay)
+			g.next = g.clock.Now().Add(g.delay)
 			g.generation++
 		}
 		g.probe, g.probeReady = false, false

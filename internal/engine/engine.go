@@ -19,6 +19,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	"github.com/LubyRuffy/eino-swarm/internal/timing"
 )
 
 // Errors callers are expected to distinguish.
@@ -87,6 +88,8 @@ type Engine struct {
 	// now is the wall clock the ticker reads. Tests install a fake so a
 	// wait does not sleep a real cadence. Default is time.Now.
 	now func() time.Time
+	// Separate from scheduler time and actual request-duration telemetry.
+	answerRecoveryClock timing.Clock
 
 	schedMu   sync.Mutex
 	schedStop chan struct{}
@@ -108,22 +111,29 @@ type Engine struct {
 
 // New builds an engine over an already-open store and provider pool.
 func New(cfg *config.Config, st *store.Store, pool *provider.Pool, log *slog.Logger) *Engine {
+	return NewWithAnswerRecoveryClock(cfg, st, pool, log, nil)
+}
+
+// NewWithAnswerRecoveryClock injects only durable answer-verification retry
+// timing. A nil clock keeps real time, including all normal production callers.
+func NewWithAnswerRecoveryClock(cfg *config.Config, st *store.Store, pool *provider.Pool, log *slog.Logger, clock timing.Clock) *Engine {
 	if log == nil {
 		log = slog.Default()
 	}
 	return &Engine{
-		cfg:          cfg,
-		store:        st,
-		pool:         pool,
-		log:          log,
-		runtimes:     map[string]*runtime{},
-		subs:         map[string]map[int]*subscriber{},
-		droppedTurns: map[string]struct{}{},
-		memory:       projectMemory{stores: map[string]*memory.Store{}},
-		reviews:      newReviewPool(),
-		titles:       newTitlePool(),
-		compacts:     newCompactPool(),
-		sessions:     newSessionMemoryPool(),
+		cfg:                 cfg,
+		store:               st,
+		pool:                pool,
+		log:                 log,
+		runtimes:            map[string]*runtime{},
+		subs:                map[string]map[int]*subscriber{},
+		droppedTurns:        map[string]struct{}{},
+		memory:              projectMemory{stores: map[string]*memory.Store{}},
+		reviews:             newReviewPool(),
+		titles:              newTitlePool(),
+		compacts:            newCompactPool(),
+		sessions:            newSessionMemoryPool(),
+		answerRecoveryClock: timing.OrReal(clock),
 	}
 }
 

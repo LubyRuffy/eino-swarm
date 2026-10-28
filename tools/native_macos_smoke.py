@@ -27,6 +27,9 @@ import zlib
 _spec = importlib.util.spec_from_file_location("native_macos_case", Path(__file__).with_name("native_macos_case.py"))
 runner = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(runner)
+_ready_spec = importlib.util.spec_from_file_location("native_macos_readiness", Path(__file__).with_name("native_macos_readiness.py"))
+readiness = importlib.util.module_from_spec(_ready_spec)
+_ready_spec.loader.exec_module(readiness)
 AX_SOURCE = Path(__file__).with_name("native_macos_ax.m")
 AX_FLAGS = ["-fobjc-arc", "-mmacosx-version-min=13.0", "-framework", "Foundation",
             "-framework", "AppKit", "-framework", "ApplicationServices", "-framework", "CoreGraphics"]
@@ -201,7 +204,8 @@ def assert_process(context, pid, kind):
     if (marker != context["case_id"] or not argv or not any(
             Path(argv[0]).is_relative_to(bundle / "Contents/MacOS") for bundle in allowed)
             or (kind == "engine" and not runner.owns_argv(argv, Path("/no-bundle"), context["data"]))):
-        raise RuntimeError(kind + " process identity does not belong to this private native case")
+        raise readiness.Failure("native_identity_refused", "engine" if kind == "engine" else "window",
+                                kind + " process identity does not belong to this private native case")
     return Path(argv[0])
 
 
@@ -235,49 +239,130 @@ def wait_engine(context, deadline):
         deadline.remaining("engine readiness")
         try:
             record = json.loads((context["data"] / "engine.json").read_text())
-            origin = engine_origin(record["url"])
-            if record.get("mock") is not True or type(record.get("pid")) is not int:
-                raise RuntimeError("engine lease identity is not the case's offline engine")
-            assert_process(context, record["pid"], "engine")
+        except FileNotFoundError:
+            pending(context, deadline, "engine", "engine_lease_pending")
+            continue
+        if not isinstance(record, dict):
+            raise readiness.Failure("native_identity_refused", "engine", "engine lease is not an identity object")
+        origin = engine_origin(record["url"])
+        if record.get("mock") is not True or type(record.get("pid")) is not int:
+            raise readiness.Failure("native_identity_refused", "engine", "engine lease identity is not the case's offline engine")
+        assert_process(context, record["pid"], "engine")
+        try:
             metadata = request_json(origin, "/api/meta", deadline)
-            if metadata.get("mock") is not True or metadata.get("data_dir") != str(context["data"]):
-                raise RuntimeError("engine HTTP identity differs from the private offline lease")
-            if not any(row.get("surface") == "desktop" and row.get("pid") == context["app_pid"]
-                       for row in metadata.get("clients", [])):
-                deadline.pause("desktop presence")
-                continue
-            return origin, record
-        except (FileNotFoundError, json.JSONDecodeError, urllib.error.URLError, ConnectionError, TimeoutError):
-            deadline.pause("engine readiness")
+        except urllib.error.HTTPError as error:
+            raise readiness.Failure("native_http_refused", "engine", "private engine HTTP refused readiness") from error
+        except urllib.error.URLError as error:
+            if not isinstance(error.reason, (ConnectionError, TimeoutError)):
+                raise readiness.Failure("native_http_refused", "engine", "private engine HTTP observation failed") from error
+            pending(context, deadline, "engine", "engine_listener_pending")
+            continue
+        except (ConnectionError, TimeoutError):
+            pending(context, deadline, "engine", "engine_listener_pending")
+            continue
+        clients = metadata.get("clients", [])
+        if (metadata.get("mock") is not True or metadata.get("data_dir") != str(context["data"])
+                or not isinstance(clients, list) or any(not isinstance(row, dict) for row in clients)):
+            raise readiness.Failure("native_identity_refused", "engine", "engine HTTP identity differs from the private offline lease")
+        if not any(row.get("surface") == "desktop" and row.get("pid") == context["app_pid"] for row in clients):
+            pending(context, deadline, "engine", "desktop_presence_pending")
+            continue
+        return origin, record
+
+
+def pending(context, deadline, stage, reason):
+    """A pending read never authorizes replaying an input or a failed case."""
+    observation = dict(stage=stage, reason=reason, retryable=True, input_repeated=False,
+                       elapsed_seconds=deadline.clock()-deadline.started,
+                       shared_deadline_monotonic=deadline.ends)
+    observations = context.setdefault("readiness_observations", [])
+    observations.append(observation)
+    readiness.save_json(context["evidence"] / "smoke-readiness.json", dict(scope="ordinary_startup", observations=observations))
+    deadline.pause("native rendered result" if stage == "result" else "native composer" if stage == "window" else stage)
+
+
+def observed_command(context, deadline, command, action, timeout, identity=None):
+    """Persist each complete outcome before parsing; unknown outcomes refuse."""
+    timeout = min(timeout, deadline.remaining(action))
+    index = context.get("native_call_count", 0)+1
+    context["native_call_count"] = index
+    row = dict(action=action, argv=command, timeout_seconds=timeout,
+               shared_deadline_monotonic=deadline.ends, started_monotonic=deadline.clock(), started_wall=time.time())
+    row.update(identity or {})
+    original = None
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+        row.update(returncode=result.returncode, stdout=result.stdout, stderr=result.stderr,
+                   streams=dict(stdout=readiness.stream_record(result.stdout), stderr=readiness.stream_record(result.stderr)))
+        return result
+    except BaseException as error:
+        original = error
+        row.update(exception=type(error).__name__, failure=str(error), returncode=None,
+                   streams=dict(stdout=readiness.stream_record(getattr(error, "stdout", None)),
+                                stderr=readiness.stream_record(getattr(error, "stderr", None))))
+        row.update(readiness.failure_record(error, context.get("readiness_stage", "window")))
+        raise
+    finally:
+        row["elapsed_seconds"] = deadline.clock()-row["started_monotonic"]
+        # Try both destinations independently. Failure evidence must never be
+        # replaced by a secondary storage exception, nor overwritten by a poll.
+        write_error = None
+        for path in (context["evidence"] / ("smoke-native-call-%04d.json" % index),
+                     context["evidence"] / "smoke-native-last.json"):
+            try:
+                readiness.save_json(path, row)
+            except (OSError, ValueError, TypeError) as error:
+                context.setdefault("evidence_errors", []).append(dict(path=str(path), error=str(error)))
+                if write_error is None:
+                    write_error = error
+        if original is None and write_error is not None:
+            raise readiness.Failure("native_evidence_failed", action, "native command evidence could not be saved") from write_error
 
 
 def native_snapshot(context, deadline, action="snapshot", message="", expected=""):
     executable = assert_process(context, context["app_pid"], "desktop")
     requested_bundle = executable.parent.parent.parent
-    identity = validate_helper(context["ax"])
+    try:
+        identity = validate_helper(context["ax"])
+    except (OSError, RuntimeError) as error:
+        raise readiness.Failure("native_source_refused", "window", "native helper source or binary identity is invalid") from error
     if context.get("ax_identity", identity)["binary_sha256"] != identity["binary_sha256"]:
-        raise RuntimeError("native helper changed during the case")
-    result = subprocess.run([str(context["ax"]), str(context["app_pid"]), action,
-                             context["case_id"], str(requested_bundle), context["origin"],
-                             message if action in ("fill", "send") else expected],
-                            capture_output=True, text=True,
-                            timeout=min(8, deadline.remaining("native accessibility")))
-    runner.save_json(context["evidence"] / "smoke-native-last.json",
-                     dict(action=action, app_pid=context["app_pid"], requested_bundle=str(requested_bundle),
-                          requested_origin=context["origin"], returncode=result.returncode,
-                          stdout=result.stdout, stderr=result.stderr))
+        raise readiness.Failure("native_source_refused", "window", "native helper changed during the case")
+    result = observed_command(context, deadline, [str(context["ax"]), str(context["app_pid"]), action,
+                              context["case_id"], str(requested_bundle), context["origin"],
+                              message if action in ("fill", "send") else expected], action, 8,
+                              dict(app_pid=context["app_pid"], requested_bundle=str(requested_bundle),
+                                   requested_origin=context["origin"]))
     if result.returncode:
-        raise RuntimeError("guest native Accessibility/window check failed: " + (result.stdout + result.stderr).strip()[:500])
+        raise readiness.Failure("native_helper_refused", "window", "guest native Accessibility/window check failed: " + (result.stdout + result.stderr).strip()[:500])
     row = json.loads(result.stdout)
-    if row.get("origin") != context["origin"]:
-        raise RuntimeError("native helper returned another origin")
+    if (not isinstance(row, dict) or row.get("origin") != context["origin"] or row.get("pid") != context["app_pid"]
+            or ("case_id" in row and row["case_id"] != context["case_id"])):
+        raise readiness.Failure("native_identity_refused", "window", "native helper returned another origin or PID")
     try:
         same_bundle = Path(row.get("bundle")).resolve(strict=True) == requested_bundle.resolve(strict=True)
     except (OSError, ValueError, TypeError) as error:
-        raise RuntimeError("native helper returned a missing or invalid bundle identity") from error
+        raise readiness.Failure("native_identity_refused", "window", "native helper returned a missing or invalid bundle identity") from error
     if not same_bundle:
-        raise RuntimeError("native helper returned another bundle")
+        raise readiness.Failure("native_identity_refused", "window", "native helper returned another bundle")
+    assert_web_origin(row, context["app_pid"], required=False)
     return row
+
+
+def assert_web_origin(row, pid, required=True):
+    origin = engine_origin(row.get("origin", ""))
+    urls = row.get("web_urls", [])
+    if not isinstance(urls, list) or (required and not urls):
+        raise readiness.Failure("native_identity_refused", "window", "native window has no bound webview origin")
+    for value in urls:
+        if not isinstance(value, str):
+            raise readiness.Failure("native_identity_refused", "window", "native webview origin is malformed")
+        url = urllib.parse.urlsplit(value)
+        query = urllib.parse.parse_qs(url.query)
+        if (url.scheme + "://" + url.netloc != origin or query.get("shell") != ["desktop"]
+                or query.get("pid") != [str(pid)] or url.path not in ("", "/")
+                or url.username or url.password or url.fragment):
+            raise readiness.Failure("native_identity_refused", "window", "native webview origin, shell or PID belongs to another client")
 
 
 def assert_window(row, pid, require_result=False):
@@ -292,17 +377,7 @@ def assert_window(row, pid, require_result=False):
             or row.get("windows") != [dict(id=row["window_id"], owner_pid=pid)]
             or (require_result and row.get("expected_visible") is not True)):
         raise RuntimeError("native window lacks this case's rendered page or visible final result")
-    origin = engine_origin(row.get("origin", ""))
-    urls = row.get("web_urls", [])
-    if not urls:
-        raise RuntimeError("native window has no bound webview origin")
-    for value in urls:
-        url = urllib.parse.urlsplit(value)
-        query = urllib.parse.parse_qs(url.query)
-        if (url.scheme + "://" + url.netloc != origin or query.get("shell") != ["desktop"]
-                or query.get("pid") != [str(pid)] or url.path not in ("", "/")
-                or url.username or url.password or url.fragment):
-            raise RuntimeError("native webview origin, shell or PID belongs to another client")
+    assert_web_origin(row, pid)
 
 
 def assert_draft(row, message):
@@ -315,10 +390,13 @@ def wait_window(context, deadline, expected=""):
     while True:
         deadline.remaining("native rendered result" if expected else "native composer")
         row = native_snapshot(context, deadline, expected=expected)
-        if row.get("ready") and (not expected or row.get("expected_visible")):
+        reason = readiness.window_pending(row, context["app_pid"])
+        if reason is None and (not expected or row.get("expected_visible")):
             assert_window(row, context["app_pid"], require_result=bool(expected))
             return row
-        deadline.pause("native rendered result" if expected else "native composer")
+        if reason is None:
+            assert_window(row, context["app_pid"])
+        pending(context, deadline, "result" if expected else "window", reason or "rendered_result_pending")
 
 
 def submit_native(context, deadline, message):
@@ -472,6 +550,55 @@ def png_dimensions(path):
     return list(header[:2])
 
 
+def capture_window(context, deadline, window, name):
+    """Observe fresh window pixels; the caller owns the unchanged deadline."""
+    assert_process(context, context["app_pid"], "desktop")
+    image = context["evidence"] / name
+    descriptor = os.open(image, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    os.close(descriptor)
+    command = ["/usr/sbin/screencapture", "-x", "-l", str(window["window_id"]), str(image)]
+    result = observed_command(context, deadline, command, "window_pixels", 8)
+    if result.returncode:
+        raise readiness.Failure("native_pixels_failed", "pixels", "native window screenshot failed: " + result.stderr[:500])
+    dimensions = png_dimensions(image)
+    observation = readiness.pixel_observation(image)
+    observation.update(path=str(image), sha256=hashlib.sha256(image.read_bytes()).hexdigest(),
+                       window_id=window["window_id"], window_owner_pid=window["window_owner_pid"])
+    if dimensions != observation["dimensions"] or min(dimensions) < 100:
+        raise readiness.Failure("native_pixels_invalid", "pixels", "native screenshot is not a full window image")
+    deadline.remaining("ordinary startup pixels")
+    return observation
+
+
+def wait_initial_ready(context, deadline):
+    """Ordinary startup uses engine, AX and pixels, never a recovery journal.
+
+    This says nothing about a replacement's automatic readiness or cold-start
+    duration. Those assertions belong to the explicit recovery scenario.
+    """
+    context["readiness_stage"] = "engine"
+    origin, lease = wait_engine(context, deadline)
+    context["origin"] = origin
+    timings = context.setdefault("readiness_timings", {})
+    timings["engine_ready_seconds"] = deadline.clock()-deadline.started
+    attempt = 0
+    while True:
+        context["readiness_stage"] = "window"
+        window = wait_window(context, deadline)
+        timings["window_ready_seconds"] = deadline.clock()-deadline.started
+        context["readiness_stage"] = "pixels"
+        attempt += 1
+        pixels = capture_window(context, deadline, window, "smoke-initial-%04d.png" % attempt)
+        readiness.save_json(context["evidence"] / "smoke-initial.json",
+                            dict(scope="ordinary_startup", window=window, pixels=pixels,
+                                 shared_deadline_monotonic=deadline.ends, recovery_accepted=False))
+        if pixels["content_visible"]:
+            timings["pixels_ready_seconds"] = deadline.clock()-deadline.started
+            context["readiness_stage"] = "scenario"
+            return origin, lease, window
+        pending(context, deadline, "pixels", "ordinary_window_pixels_pending")
+
+
 def run_smoke(context):
     deadline = Deadline(context["timeout"])
     runner.require_guest()
@@ -487,10 +614,9 @@ def run_smoke(context):
     binary_sha256 = binary_hash.hexdigest()
     with (executable.parent.parent / "Info.plist").open("rb") as stream:
         bundle = plistlib.load(stream)
-    origin, lease = wait_engine(context, deadline)
-    context["origin"] = origin
-    phases["engine_ready_seconds"] = deadline.clock() - deadline.started
-    before = wait_window(context, deadline)
+    origin, lease, before = wait_initial_ready(context, deadline)
+    phases.update(context["readiness_timings"])
+    phases["initial_ready_seconds"] = deadline.clock() - deadline.started
     runner.save_json(context["evidence"] / "smoke-window-before.json", before)
     message = "Inspect this workspace for case " + context["case_id"] + " and report findings."
     if request_json(origin, "/api/threads", deadline).get("threads") != []:
@@ -554,9 +680,15 @@ def main(argv=None):
         print(json.dumps(receipt))
         return 0
     except (KeyError, OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
-        receipt = dict(passed=False, failure=str(error))
+        receipt = dict(passed=False, failure=str(error),
+                       **readiness.failure_record(error, context.get("readiness_stage", "scenario") if context else "preparation"))
         if context is not None:
-            runner.save_json(context["evidence"] / "smoke.json", receipt)
+            receipt["evidence_errors"] = context.get("evidence_errors", [])
+            receipt["phases"] = context.get("readiness_timings", {})
+            try:
+                readiness.save_json(context["evidence"] / "smoke.json", receipt)
+            except (OSError, ValueError, TypeError) as write_error:
+                receipt["terminal_evidence_error"] = str(write_error)
         print(json.dumps(receipt))
         return 2
 

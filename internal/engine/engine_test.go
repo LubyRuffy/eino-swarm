@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"log/slog"
 	"os"
 	"strings"
 	"sync"
@@ -21,7 +19,25 @@ import (
 
 func newTestEngine(t *testing.T) *Engine {
 	t.Helper()
-	return newTestEngineAt(t, t.TempDir())
+	return newTestEngineFromPool(t, engineTestStores, *engineStorePrefetch)
+}
+
+func newTestEngineFromPool(t *testing.T, pool *engineStorePool, prefetch bool) *Engine {
+	t.Helper()
+	if !prefetch {
+		return newTestEngineAt(t, t.TempDir())
+	}
+	clearTestEngineSeed(t)
+	fixture, err := pool.get(t.Context())
+	if err != nil {
+		t.Fatalf("prepare test Store: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := pool.release(fixture); err != nil {
+			t.Errorf("clean up test Store: %v", err)
+		}
+	})
+	return buildTestEngine(t, testEngineConfig(t, fixture.dir), fixture.store)
 }
 
 // pinContextWindow makes the scripted provider report this ceiling. Without
@@ -33,26 +49,15 @@ func pinContextWindow(e *Engine, n int) {
 
 func newTestEngineAt(t *testing.T, dir string) *Engine {
 	t.Helper()
-	t.Setenv("OPENAI_BASE_URL", "")
-	t.Setenv("OPENAI_API_KEY", "")
-	t.Setenv("OPENAI_MODEL", "")
-	cfg, err := config.Load(dir)
-	if err != nil {
-		t.Fatalf("config.Load: %v", err)
-	}
-	// Keep the scripted swarm small and quick, but still parallel.
-	cfg.Swarm.MaxConcurrent = 4
-	cfg.Swarm.AgentTimeoutSeconds = 30
-
+	clearTestEngineSeed(t)
+	cfg := testEngineConfig(t, dir)
 	st, err := store.Open(cfg.DBPath())
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
 
-	e := New(cfg, st, provider.NewMock(cfg), slog.New(slog.NewTextHandler(io.Discard, nil)))
-	t.Cleanup(e.Shutdown)
-	return e
+	return buildTestEngine(t, cfg, st)
 }
 
 func replayDump(t *testing.T, e *Engine, threadID string) string {

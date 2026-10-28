@@ -23,6 +23,18 @@ co-working app built on it. The library API is unchanged except where noted
   parked checkpoints, full `ActiveWork`). Reachability witnesses keep the
   invariants from passing vacuously. Opt-in: needs Java and fetches the pinned
   TLC release once; see `docs/TESTING.md`.
+
+- `F-430`, `C-010`: host/UID/project verification admission serializes the local
+  release entry across independent copies and waits on live manual validation
+  or unknown process state. Private queue/owner evidence retains actual identity;
+  the observer never signals another task or treats old owner rows as an idle host.
+
+- `F-430`, `C-010`, `C-031`: resumable local release verification with offline
+  dependency/source preflight, exact-input headless receipts, bounded parallel
+  stages and queue/execution timing. Ordinary native startup has a distinct
+  engine/window/pixel entry; one-shot login approvals bind current-frame points.
+  Existing native and publication gates remain required.
+
 - `make eval EVAL_PROVIDER=<id>`: opt-in task-completion evals against a real
   model (`tools/agent_eval.py`, tasks in `evals/tasks/`). Each run owns a
   temporary data directory and engine, grades files and answers
@@ -158,6 +170,12 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-420`, `C-025`: Settings → Memory can set a separate reasoning level for automatic and manual turn review. Empty retains conversation inheritance; conversation work, catalog tidy, model and output cap are unchanged.
 
 ### Changed
+
+- Engine fixtures prepare independent disk Stores with bounded concurrency and
+  use instance clocks for retry-policy waits. Every database still runs its real
+  migrations; normal runtime timing, race coverage and real HTTP deadline tests
+  remain in place. Complete engine samples fell from 781s to 345–349s on the
+  measured host; this does not establish a one-minute suite budget.
 
 - The manager prompt no longer repeats the delegation tools' call details or
   the concurrency cap; those live in the tools' descriptions, which carry the

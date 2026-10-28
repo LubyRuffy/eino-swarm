@@ -28,6 +28,7 @@ func TestScheduleAnswerServiceRecoveryRetriesOnlyTheOriginalCandidate(t *testing
 				}
 				writeContextFlowReply(w, false, map[string]any{"content": `{"claims":[]}`}, "stop")
 			})
+			useEngineBackoffClock(t, e)
 			th, err := e.CreateThread("recover policy service", "", "")
 			if err != nil {
 				t.Fatal(err)
@@ -74,6 +75,7 @@ func TestScheduleAnswerServiceRecoveryRetriesOnlyTheOriginalCandidate(t *testing
 			if policyCalls != 2 {
 				t.Fatalf("policy recovery left original Trace: %+v", calls)
 			}
+			assertFixtureBackoffWaits(t, e, 5*time.Second)
 		})
 	}
 }
@@ -90,6 +92,7 @@ func TestPersistentScheduleAnswerOutageKeepsTheTurnUntilHumanStop(t *testing.T) 
 		<-r.Context().Done()
 		cancelled.Add(1)
 	})
+	useEngineBackoffClock(t, e)
 	th, err := e.CreateThread("retain pending policy", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -127,6 +130,7 @@ func TestPersistentScheduleAnswerOutageKeepsTheTurnUntilHumanStop(t *testing.T) 
 	if cancelled.Load() != 1 {
 		t.Fatal("Stop did not cancel the actual policy HTTP request")
 	}
+	assertFixtureBackoffWaits(t, e, 5*time.Second)
 	for {
 		select {
 		case ev := <-sub.C:
@@ -141,6 +145,7 @@ func TestPersistentScheduleAnswerOutageKeepsTheTurnUntilHumanStop(t *testing.T) 
 
 func TestRecoveredClassifierStillRejectsUnsupportedSchedulingClaims(t *testing.T) {
 	e, managers, policies := newScheduleAnswerFixture(t, "flaky-classifier", false)
+	useEngineBackoffClock(t, e)
 	th, err := e.CreateThread("recovered claims still need evidence", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -155,6 +160,7 @@ func TestRecoveredClassifierStillRejectsUnsupportedSchedulingClaims(t *testing.T
 	if got.Status != store.TurnError || got.Final != "" || !strings.Contains(got.Error, "no_matching_schedule") || managers.Load() != 2 || policies.Load() != 3 || scheduleAnswerRetryCount(t, e, turn.ID) != 1 {
 		t.Fatalf("service recovery bypassed real scheduling evidence or correction ownership: turn=%+v managers=%d policies=%d", got, managers.Load(), policies.Load())
 	}
+	assertFixtureBackoffWaits(t, e, 5*time.Second)
 	if strings.Contains(replayDump(t, e, th.ID), fixtureScheduleClaim) {
 		t.Fatal("unsupported claim reached replay after service recovery")
 	}

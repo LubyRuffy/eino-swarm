@@ -51,7 +51,7 @@ func (p *Pool) backoffFor(baseURL string) *backoffGate {
 	}
 	key := backoffKey(baseURL)
 	if p.backoffs[key] == nil {
-		p.backoffs[key] = newBackoffGate(config.DefaultModelBackoffInitial, config.DefaultModelBackoffMax)
+		p.backoffs[key] = newBackoffGateWithClock(config.DefaultModelBackoffInitial, config.DefaultModelBackoffMax, p.backoffClock)
 	}
 	return p.backoffs[key]
 }

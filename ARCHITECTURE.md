@@ -553,6 +553,13 @@ browser history entries.
 
 ## Modules
 
+Retry waits use instance-owned clocks from `internal/timing`. Provider endpoint
+cooldowns and durable answer-verification recovery default to real time; an
+explicit test clock keeps each domain's deadlines and timers together. HTTP
+timeouts, request-duration telemetry and the engine scheduler retain their
+separate timing. `internal/timing/timingtest` supplies the explicitly advanced
+test clock and is imported only by tests.
+
 | package | responsibility |
 |---|---|
 | `.` (root) | `spawn_batch.go` wraps manager model output before tool dispatch and event emission: invalid spawn calls sharing one argument error retain one original ID plus a counted refusal; valid calls survive, and partial arguments wait for stream completion. The retained transcript and trace agree. The swarm library: `Registry`, `spawn_agent`/`send_message`/`wait_agents`/`close_agent`/`resume_agent` (a missing argument or unknown target is `{"error"}` / `delivered:false`, not a Go error — eino's ToolNode would turn that into `NodeRunError` and kill the caller), `Restore`/`PlantFinished` for leftover workers, `RunWith` → `RunResult{Final, Transcript}`, `Notification` stream. Usable on its own — see [docs/LIBRARY.md](docs/LIBRARY.md). |

@@ -1,5 +1,102 @@
 # Unified release (F-430 / C-010)
 
+## Local verification before publication
+
+`make release-plan VERSION=x.y.z` prints the fixed verification stages without
+running them. `make release-verify VERSION=x.y.z EVIDENCE=/absolute/private/run`
+uses `tools/release.py --verify --platform macos`: offline input preflight,
+frontend build, the complete default Go race/frontend/mobile/tools/docs/E2E
+checks, then the existing desktop packer. It never commits, pushes, creates a
+tag, uploads, drives a VM or changes the delivery ledger. Use a clean standalone
+Git checkout of the exact candidate; a linked worktree is refused before build
+because automatic VCS discovery previously omitted its revision. Source proof
+is saved before the first build and rechecked after taking the checkout lock.
+
+Preflight does not install or repair dependencies. It rejects missing development
+tools, dependency self-links or links outside the checkout, wrong installed
+versions, core module loading failures and failed local Playwright collection.
+This entry uses the default toolchain: custom `CC`, `CXX`, `GOROOT` or non-local
+`GOTOOLCHAIN` overrides are refused until their selected tools can be bound.
+Prepare dependencies independently from the committed lockfiles and npm cache
+using `npm ci --include=dev`; do not copy an unchecked `node_modules`, edit a
+lockfile to pass an environment check, or accept a failing collection by retrying.
+The read-only probe is also available as:
+
+```bash
+python3 tools/release_preflight.py --checkout /absolute/frozen-copy --source-sha FULL_SHA --project frontend --project mobile --check-only
+```
+
+Verification has at most two independent stages running (`VERIFY_JOBS=1` or `2`).
+Before preflight, this entry holds a host-level verification lease across the
+entire attempt and owned-process cleanup. Independent checkouts of the same
+canonical Go module share a stable `/tmp` lock inode keyed by effective UID and
+module hash; the inode is never unlinked. The current owner and queue evidence
+use mode `0600`, retain PID/birth and timing, and never contain full argv or
+environment values. A released historical owner row does not prove an idle host.
+After taking the mutex, a fresh read-only OS inventory checks existing same-user
+Go tests, Vitest/Playwright, full unittest discovery and make test/check. A Python
+`release.py --verify` or `make release-verify` controller alone is not heavy work: it may be waiting on
+this same mutex. Its actual test workers are observed independently. The guard
+binds actual process identity twice, current/effective
+working directory and module; known `-C`, `--prefix`, test-root/config switches
+are interpreted in memory. Active or unreadable/unknown state waits within the
+original bounded admission budget, then returns `blocked` before heavy work.
+No observed process is signalled. Each attempt retains `host-lease-*.json`.
+Only cooperating `release.py --verify` invocations are mutually serialized by
+this protocol. The manual-process inventory is an admission guard, not a mutex:
+it cannot prevent a new bare `go test`, `make test/check` or other bypass command
+from starting after admission. Those entries are not wrapped here, avoiding
+nested-lock acquisition by verification subprocesses. The existing checkout,
+evidence and native-guest locks retain their separate ownership boundaries.
+
+E2E keeps one worker and zero automatic retries, with a private data/output
+directory and one isolated port (`E2E_PORT` can select it explicitly). The
+evidence path must use letters, digits, dot, slash, underscore or hyphen; the entry
+rejects spaces and shell metacharacters before writes because the existing E2E
+server command interpolates its data path. The checkout is locked across different
+evidence directories, so no concurrent verification build can replace
+the served `dist` during E2E. Signals cancel and reap this pipeline's command
+groups before the lock is released.
+E2E additionally uses the existing private process inventory to track and reap
+its detached engine. Unknown inventory or surviving owned processes leave an
+unclean latch that refuses further stages/runs; evidence and data remain for
+identity-checked recovery. The guest retains its separate existing
+native-case lock and cleanup latch; this entry never acquires or bypasses it.
+The pre-launch durable pending receipt describes normal in-progress ownership;
+it does not mark a parallel stage as a previous cleanup failure. Only failed or
+unconfirmed setup/cleanup sets the sticky refusal state. Admission rechecks that
+state after input/cache reads and immediately before Popen, with a short lock
+that is not held while commands run. Interrupted pending publication retains the
+original cancellation and refusal; confirmed cleanup is published before its
+refusal state can be cleared. Already-started commands keep their actual timing,
+exit, stream and cleanup evidence when another stage later fails.
+Periodic E2E inventory waits two seconds between scans; first, terminal and
+cleanup inventories remain complete. Each call retains its original command,
+timeout, clocks and full raw streams before parsing, with unavailable streams
+marked explicitly. Cleanup keeps the existing two-second TERM/KILL grace per
+phase. Reduced sampling does not establish the cause of an earlier timeout.
+
+Rerun with the same evidence directory to resume. A headless stage is reusable
+only when candidate/version, lockfiles, dependency checks, toolchain, fixed
+configuration, stage input/output bytes and original log receipts still match.
+Failed attempts remain separate; failures are not retried automatically. Changed
+assets invalidate E2E/package results. Successful local verification returns **3**
+with `headless_passed_native_pending`, not publication success. Perform the
+required fresh guest behavior acceptance of that exact final ZIP using the
+existing native case runner, record the existing batch acceptance receipt, and
+then use the normal authorized `make release VERSION=x.y.z` entry. No native
+receipt is inferred from headless results or reused automatically by this runner.
+
+`source-inputs.json`, per-attempt `result.json`/stdout/stderr, queue receipts and
+`verification.json` retain private evidence with mode `0600` without changing the
+subprocess umask. Timings include wall/monotonic stamps, queue time, attempt reason
+and execution intervals. `execution_union_seconds` counts overlapping commands
+once; it does not measure model deliberation, external agents or guest time.
+The package receipt hashes bytes after the packer's signing boundary. Any later
+signing, notarization or stapling that changes bytes requires a new package hash
+and matching native acceptance; previous-version evidence never transfers.
+The 25–35 minute healthy-environment target remains unmeasured for this entry.
+
 `make release VERSION=x.y.z` publishes only the allocated batch's outstanding
 required platforms in order:
 

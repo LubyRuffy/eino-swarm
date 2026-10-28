@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"github.com/LubyRuffy/eino-swarm/internal/timing"
 	openaimodel "github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -80,6 +81,8 @@ type Pool struct {
 	build     builder
 	mock      bool
 	mockDelay time.Duration
+	// Fixed at construction, shared by every endpoint gate in this pool.
+	backoffClock timing.Clock
 
 	mu       sync.Mutex
 	cache    map[string]model.BaseChatModel
@@ -90,7 +93,14 @@ type Pool struct {
 
 // New returns a pool backed by real OpenAI-compatible endpoints.
 func New(cfg *config.Config) *Pool {
-	return &Pool{cfg: cfg, build: buildOpenAI, cache: map[string]model.BaseChatModel{}}
+	return NewWithBackoffClock(cfg, nil)
+}
+
+// NewWithBackoffClock injects only endpoint cooldown timing. A nil clock keeps
+// real time; HTTP timeouts and request duration telemetry are unchanged.
+func NewWithBackoffClock(cfg *config.Config, clock timing.Clock) *Pool {
+	return &Pool{cfg: cfg, build: buildOpenAI, cache: map[string]model.BaseChatModel{},
+		backoffClock: timing.OrReal(clock)}
 }
 
 // NewMock returns a pool whose models are scripted: no network, deterministic

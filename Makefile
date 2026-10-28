@@ -22,6 +22,8 @@ help:
 	@echo "make mobile-ios   open the iOS app in Xcode"
 	@echo "make mobile-ios-release  resume the allocated TestFlight batch"
 	@echo "make release-check  read-only release preflight"
+	@echo "make release-plan VERSION=...  inspect local verification stages"
+	@echo "make release-verify VERSION=... EVIDENCE=...  resumable local checks/package, no publication"
 	@echo "make mobile-android  open the Android app in Android Studio"
 	@echo "make mobile-android-release  Android APK/AAB into bin/"
 	@echo "make desktop-release  macOS zwai.app zip into bin/ (darwin host)"
@@ -102,6 +104,15 @@ release:
 
 release-check:
 	python3 tools/release.py --version "$(VERSION)" --check
+
+VERIFY_JOBS ?= 2
+.PHONY: release-plan release-verify
+release-plan:
+	python3 tools/release.py --version "$(VERSION)" --platform macos --verify --plan --jobs "$(VERIFY_JOBS)"
+
+release-verify:
+	@test -n "$(EVIDENCE)" || (echo "EVIDENCE outside the source checkout is required" >&2; exit 2)
+	python3 tools/release.py --version "$(VERSION)" --platform macos --verify --evidence "$(EVIDENCE)" --jobs "$(VERIFY_JOBS)" $(if $(E2E_PORT),--e2e-port "$(E2E_PORT)")
 
 mobile-ios-release:
 	python3 tools/release.py --version "$(VERSION)" --platform ios
