@@ -3809,13 +3809,15 @@ go test ./internal/engine -run '^$' -fuzz '^FuzzResolveWorkspacePathStaysInside$
 |---|---|---|
 | `FuzzWorkspaceRelNameKeepsTheNamedFile` | a client path is refused exactly when it is blank, has a `..` segment or names the root; an accepted path keeps its identity (`path.Clean("/"+p)`), surrounding whitespace included | Delete of `notes.md ` removed `notes.md`, Download served it, and an attached name attached the trimmed sibling (`C-004`) |
 | `FuzzResolveWorkspacePathStaysInside` | in a workspace holding links to outside, links inside and `..` chains, every accepted path resolves beneath the root, and download/delete never reach the outside file | HTTP download and delete followed an agent-made symlink out of the workspace (`C-004`) |
+| `FuzzCronNextAfterIsTheFirstMatchingMinute` | in UTC, New York, London, Lord Howe (a 30-minute shift) and Shanghai, the next cron fire is the first absolute minute whose wall clock matches, by brute-force scan over eight days | a daily wait at the first hour after a spring-forward gap skipped the daylight-saving start day (`C-009`); `TestDailyCronFiresOnTheDaylightSavingStartDay` keeps the example |
 
 Each finding was reproduced failing before its fix, and each target was run
 again with its fix reverted to confirm it fails (a mutation check, so a green
 target is evidence rather than a property too weak to notice).
 `internal/server/workspace_identity_test.go` keeps the HTTP-level examples.
 After the fixes the two path targets ran 60 seconds each (about 1.05 million
-executions) without a failure.
+executions) and the cron target 120 seconds (about 2.58 million) without a
+failure.
 
 ## Agent task evals (opt-in, real model)
 

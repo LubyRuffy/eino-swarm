@@ -201,13 +201,16 @@ func cronBits(a, b, step int) uint64 {
 	return bits
 }
 
-// cronAdvance keeps the scan moving forward. time.Date of a missing or
-// repeated wall hour can land on t or earlier; Add is the monotonic escape.
-func cronAdvance(t, nt time.Time, step time.Duration) time.Time {
+// cronAdvance keeps the scan moving forward. time.Date of a wall time a
+// daylight-saving change skipped can land on t or earlier (New York's 02:00
+// becomes 01:00). Stepping a whole hour or day from t then jumps past the
+// first minute after the gap, so the escape is one minute: every absolute
+// minute is still examined.
+func cronAdvance(t, nt time.Time) time.Time {
 	if nt.After(t) {
 		return nt
 	}
-	return t.Add(step)
+	return t.Add(time.Minute)
 }
 
 func (c cronExpr) nextAfter(now time.Time, loc *time.Location) time.Time {
@@ -220,17 +223,17 @@ func (c cronExpr) nextAfter(now time.Time, loc *time.Location) time.Time {
 	for t.Before(end) {
 		if c.month&(1<<uint(t.Month())) == 0 {
 			nt := time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, loc)
-			t = cronAdvance(t, nt, 24*time.Hour)
+			t = cronAdvance(t, nt)
 			continue
 		}
 		if !c.dayMatches(t) {
 			nt := time.Date(t.Year(), t.Month(), t.Day()+1, 0, 0, 0, 0, loc)
-			t = cronAdvance(t, nt, 24*time.Hour)
+			t = cronAdvance(t, nt)
 			continue
 		}
 		if c.hour&(1<<uint(t.Hour())) == 0 {
 			nt := time.Date(t.Year(), t.Month(), t.Day(), t.Hour()+1, 0, 0, 0, loc)
-			t = cronAdvance(t, nt, time.Hour)
+			t = cronAdvance(t, nt)
 			continue
 		}
 		if c.minute&(1<<uint(t.Minute())) == 0 {

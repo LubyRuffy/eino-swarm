@@ -2372,7 +2372,10 @@ For a one-shot, `done` means its only trigger was consumed; the claimed
 Body: `kind`, `thread_id`, `origin_thread_id`, `project_id`, `provider_id`,
 `model`, optional `title`, `prompt`, exactly one of `delay_s` / `every_s` / `cron`,
 optional `max_runs`, optional `until` (RFC 3339). `created_by` is always
-`human`; the body cannot set it. Thread wakes need `thread_id`. An omitted
+`human`; the body cannot set it. Thread wakes need `thread_id`. A `cron`
+fires at the first later minute whose wall clock matches in the server's
+local zone; a wall time that a daylight-saving change skips does not fire that
+day, and later matches on the same day still do. An omitted
 `title` plants a truncated prompt and asks the conversation namer for a short
 inbox label (`title_auto` until it lands or someone PATCHes one). Responds
 `{"schedule": {…}}`.

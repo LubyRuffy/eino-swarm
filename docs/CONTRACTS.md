@@ -163,6 +163,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-009 Editable configuration and scheduled waits
 
+- Cron 触发时刻：下一次触发是严格晚于当前时刻、墙钟在计划时区（默认服务器本地时区）匹配的第一个绝对分钟。夏令时跳过的墙钟时刻不触发，也不推迟到其他日期；跳变当天其后匹配的时刻照常触发，重复的墙钟小时按第一个匹配的绝对分钟。关联功能：`F-150`；证据：`internal/engine/schedule_spec.go`、`internal/engine/schedule_spec_fuzz_test.go`（fuzz 目标与已提交的失败种子）；变更类型：Fixed。
+
 - 末轮目标收取：自动计数已到 cap 且没有 active 同对话 wake 时，不再授予跨轮 worker 归属；Goal 提示必须说明没有下一自动轮承接，结束前真实 wait 收取当前代终态或显式 close 放弃。运行中与已结束待收取项分组携带 generation；不得为绕过收取临时编造 wake，也不得把历史归档当作收取。证据：`internal/engine/prompt_goal_worker.go`、`internal/engine/worker_completion.go`、`internal/engine/worker_completion_wake_test.go`；关联 `C-019`、`F-150`；变更类型：Fixed。
 
 - 暂停与声明纠偏交互：普通回答的调度声明验证失败或其终态回执不可读时，不得给 capped／blocked／idle 目标分配重试，不得用 capped 覆盖既有 idle；存储事务也必须重新检查 idle，以拒绝快照读取后迟到的封顶。活动追求与显式恢复保留独立三次纠偏上限。关联功能：`F-150`；证据：`internal/engine/goal_schedule_claim.go`、`internal/engine/goal_paused_schedule_claim_test.go`、`internal/store/goal_cap.go`、`internal/store/goal_cap_test.go`；变更类型：Fixed。

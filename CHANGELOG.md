@@ -452,6 +452,14 @@ co-working app built on it. The library API is unchanged except where noted
   conversations and file previews keep content-weighted columns, long-token
   wrapping, GFM alignment and horizontal scrolling within wide tables.
 
+- `F-150`, `C-009`: a cron wait at the first hour after a spring-forward gap
+  no longer skips the daylight-saving start day. `0 3 * * *` in New York,
+  computed from 01:00 on that day, used to fire a day late: the missing 02:00
+  mapped back to 01:00 and the fallback stepped a whole hour past 03:00. The
+  fallback now advances one minute, so every absolute minute is examined.
+  Found by the new fuzz target `FuzzCronNextAfterIsTheFirstMatchingMinute`,
+  which compares the next fire with a brute-force minute scan across five
+  zones; its failing input is committed as a seed.
 - `F-410`: `⌘K` filters unrelated commands during conversation search instead
   of leaving every action visible, using their visible localized labels as
   well as aliases. Searching, no matches and request failure
