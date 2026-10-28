@@ -6134,3 +6134,56 @@ all navigation and Earlier actions still use native accessibility clicks.
 An unloaded body or null callback remains pending within the original poll.
 Native fixture behavior supplements bounded-query/RPC and
 Chromium/WebKit regression tests; it does not measure a real paired network.
+
+### Engine fixture timing and Store ownership
+
+Measure a complete engine run with `go test -race -cover -count=1 -json
+./internal/engine`. Keep the package and command wall times, the complete test
+set, coverage and host admission evidence. Per-test elapsed totals omit some
+process work and must not replace package time. A timed subset is not a complete
+engine result, and `-count=1` prevents a cached test result from becoming a speed
+sample.
+
+Engine fixtures use at most four concurrent preparation workers and a bounded
+ready queue of independent disk Stores.
+Every Store still runs the real constructor, migrations, search setup and WAL
+configuration. It belongs to one test, is never recycled, and has its own
+callbacks and directory. Explicit-directory fixtures keep their ordinary open
+and reopen path. `TestMain` stops and joins preparation and closes unused Stores
+before the process exits, so this work remains inside package timing. A failed
+close retains its directory. Stop prevents new preparation admissions; an already
+admitted `Store.Open` is joined rather than abandoned.
+
+For a single-factor comparison, run the same selection and repetition count with
+`-args -engine.store-prefetch=false` and then with
+`-args -engine.store-prefetch=true`. This flag belongs only to the engine test
+binary; do not pass it to `./...`. Include startup and final pool cleanup in both
+samples, and retain all samples rather than selecting the fastest one.
+
+`internal/timing` lets a fixture supply an instance clock to endpoint backoff or
+durable answer recovery. Normal constructors retain real clocks. HTTP timeouts,
+request duration telemetry and the scheduler clock remain separate. A manual
+clock advances only registered timers; cancellation, probe generations, persisted
+RetryAt and the original 5/10-second waits remain assertions. The real HTTP test
+that waits beyond thirty seconds and checks its recorded duration stays in the
+complete suite. No fixture changes the Go mock's default 1ms chunk pacing or the
+explicit 18ms live-stream test.
+
+A 2026-10-28 same-host sample with Go 1.26.1, `-race -cover -count=1`
+measured 781.192s before these fixture changes and 348.830s afterwards for the
+complete engine package. All 1,382 original top-level tests and 710 original
+subtests ran with their original outcomes; the candidate added 21 top-level tests
+and nine subtests. This is a measured 55.3% package-time reduction, not a stable
+one-minute result. Command wall time was 784.78s and 359.20s respectively; host
+queueing and source preparation are separate. Peak RSS rose from about 666MB to
+1,016MB, so prefetch trades memory and extra preparation CPU for lower latency.
+The largest three remaining serial test times alone totalled 68.80s, including
+the unchanged real HTTP boundary. Further parallelization must first isolate
+process environment and global state, rather than mechanically adding
+`t.Parallel` or moving real-duration tests outside the measured suite.
+The subsequent complete-repository race/coverage run passed with engine package
+time 344.493s and 94.9% coverage. All changed production coverage blocks were
+executed, and the new clock module was covered completely. The earlier baseline
+printed 95.0% but did not retain a block profile; its 0.1 percentage-point
+difference cannot be attributed to a particular pre-existing branch from those
+rounded totals alone.

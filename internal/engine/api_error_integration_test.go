@@ -10,11 +10,14 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	"github.com/LubyRuffy/eino-swarm/internal/timing"
+	"github.com/LubyRuffy/eino-swarm/internal/timing/timingtest"
 )
 
 // An empty gateway error is decoded by the real SDK as a RequestError. Its
@@ -25,6 +28,7 @@ func TestEmptyGatewayResponseKeepsTheAPIErrorAndRetryTrace(t *testing.T) {
 		"model API request failed: HTTP 502 Bad Gateway: unexpected end of JSON input",
 		"error, status code: 502, status: 502 Bad Gateway, message: unexpected end of JSON input, body: ",
 		3, 2)
+	assertFixtureBackoffWaits(t, e, 5*time.Second, 10*time.Second)
 }
 
 func TestAPIAuthenticationFailureEndsTheSameTurnWithoutRetry(t *testing.T) {
@@ -112,6 +116,7 @@ func TestMalformedSuccessfulStreamIsAModelResponseFailure(t *testing.T) {
 			if len(calls) != 3 {
 				t.Fatalf("Trace calls=%d, want 3", len(calls))
 			}
+			assertFixtureBackoffWaits(t, e, 5*time.Second, 10*time.Second)
 			for _, call := range calls {
 				if call.TurnID != turn.ID || call.Err == "" || call.OutputChars != 0 {
 					t.Errorf("bad response trace: %+v", call)
@@ -123,6 +128,13 @@ func TestMalformedSuccessfulStreamIsAModelResponseFailure(t *testing.T) {
 }
 
 func newAPIErrorEngine(t *testing.T, status int, body string) (*Engine, *atomic.Int32) {
+	t.Helper()
+	e, requests := newAPIErrorEngineWithBackoffClock(t, status, body, nil)
+	useEngineBackoffClock(t, e)
+	return e, requests
+}
+
+func newAPIErrorEngineWithBackoffClock(t *testing.T, status int, body string, clock timing.Clock) (*Engine, *atomic.Int32) {
 	t.Helper()
 	requests := new(atomic.Int32)
 	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -157,9 +169,60 @@ func newAPIErrorEngine(t *testing.T, status int, body string) (*Engine, *atomic.
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	e := New(cfg, st, provider.New(cfg), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	e := NewWithAnswerRecoveryClock(cfg, st, provider.NewWithBackoffClock(cfg, clock), slog.New(slog.NewTextHandler(io.Discard, nil)), clock)
 	t.Cleanup(e.Shutdown)
 	return e, requests
+}
+
+// A stopped turn must not send its delayed retry even if test time advances
+// afterwards. Registration alone is not the durable backoff-event boundary.
+func TestAPIBackoffCancellationCannotSendTheWaitingRetry(t *testing.T) {
+	clock := timingtest.New(time.Now())
+	e, requests := newAPIErrorEngineWithBackoffClock(t, http.StatusBadGateway, "", clock)
+	thread, err := e.CreateThread("cancel waiting request", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub := e.Subscribe(thread.ID)
+	defer sub.Close()
+	turn, err := e.StartTurn(thread.ID, "Inspect the current input.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-clock.Registered():
+	case <-time.After(5 * time.Second):
+		t.Fatal("failed request did not register its real retry timer")
+	}
+	waitLive(t, sub, KindModelBackoff, 5*time.Second)
+	events, err := e.Store().ListTurnEvents(turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waits := 0
+	for _, event := range events {
+		if event.Kind == KindModelBackoff && event.TurnID == turn.ID {
+			waits++
+		}
+	}
+	if requests.Load() != 1 || waits != 1 {
+		t.Fatalf("waiting retry escaped its recorded boundary: requests=%d waits=%d", requests.Load(), waits)
+	}
+	if err := e.Interrupt(thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	got := waitForTurn(t, e, turn.ID)
+	waitSettled(t, e, thread.ID)
+	if got.Status != store.TurnCancelled || requests.Load() != 1 {
+		t.Fatalf("Stop changed the original request ownership: turn=%+v requests=%d", got, requests.Load())
+	}
+	if clock.AdvanceNext() {
+		t.Fatal("settled cancelled request retained an active retry timer")
+	}
+	clock.Advance(time.Minute)
+	if requests.Load() != 1 {
+		t.Fatal("advancing retry time replayed a cancelled request")
+	}
 }
 
 func assertAPIErrorTurn(t *testing.T, e *Engine, requests *atomic.Int32, publicError, rawError string, attempts, retries int, reason ...string) {

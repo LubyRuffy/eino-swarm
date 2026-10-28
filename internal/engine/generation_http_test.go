@@ -57,7 +57,7 @@ func TestGenerationFailureAndRetryThroughActualHTTPAdapter(t *testing.T) {
 			e := newTestEngine(t)
 			e.cfg.Models.Default = "generation-fixture"
 			e.cfg.Models.Providers = []config.Provider{{ID: "generation-fixture", BaseURL: endpoint.URL, Model: "fixture"}}
-			e.pool = provider.New(e.cfg)
+			useEngineBackoffClock(t, e)
 			th, _ := e.CreateThread("", "", "")
 			turn := plantUnfinishedTurn(t, e, th.ID, "Check the current evidence.")
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
