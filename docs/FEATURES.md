@@ -324,6 +324,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 失败时 transcript 与 Memory 面板显示停止原因、提案次数、拒绝类别及可用容量数字，区分未提交 notes 与已落盘 skills；Trace 记录有界 attempts 安全元数据，不保存被拒提案正文、原文引句或旧条目。容量反馈向模型保留 usage/over_by/current_entries/matched，原容量、来源、数字、revision 校验不变，只能在原预算内先有依据地缩短或替换相关条目再新增，不能清理无关记忆；无法安全提交时明确失败，旧事件缺新增字段仍兼容。失败 Trace 按钮会打开侧栏并加载原回合，历史聚焦不冒用最新 token 用量；切换后返回原会话时恢复手动复盘结果，结果落在已加载 tail 之外时只读一次已知 turn 的 Trace，并校验点击代次、线程、回合和事件起点，不轮询。入口：回合自动复盘、Memory 的 Review now、同 turn Trace；关联契约：`C-025`、`C-012`；实现证据：`internal/engine/review_diagnostics.go`、`internal/engine/review_diagnostics_test.go`、`internal/engine/review_finalize_test.go`、`internal/server/review_diagnostics_test.go`、`frontend/src/lib/review-diagnostics.ts`、`frontend/src/lib/review-diagnostics.test.ts`、`frontend/e2e/memory-review.spec.ts`、`frontend/src/lib/transcript-review.ts`。
 
+- 记忆写入提示与 Memory 面板的复盘状态提供默认折叠的“查看详情”，展开已保存的新增／删除内容；notes 净变更和支持的 skill create/patch/delete 以事件内完整 before/after 为依据，后续文件编辑不改写历史。旧事件和无快照动作只显示明确标注的预览，失败复盘仍可查看已实际保存的部分变更。关联契约：`C-025`、`C-012`；实现证据：`frontend/src/components/app/review-status.tsx`、`frontend/src/components/app/review-changes.tsx`、`internal/engine/review_batch.go`；测试证据：`frontend/src/components/app/review-status.test.tsx`、`frontend/e2e/memory-review.spec.ts`、`internal/engine/review_change_details_test.go`。
+
 ### F-430 Build and release paths
 
 - 发布版本建议：`python3 tools/next_release_version.py` 只读查询远端数字 tags、含 draft 的全部 Release 和已分配批次，按数字组件建议下一个有效 patch 版本；未知基线、无效台账或远端读取失败明确拒绝。建议不占用版本、不改源码或台账；发布重试复用已冻结版本，实际发布仍须原生验收与并发版本预检。关联契约：`C-010`；证据：`tools/next_release_version.py`、`tools/test_next_release_version.py`、`docs/RELEASE.md`。

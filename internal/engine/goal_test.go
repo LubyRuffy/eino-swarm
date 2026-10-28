@@ -139,7 +139,7 @@ func TestGoalStopsAtTheAutoContinueCap(t *testing.T) {
 	}
 	waitForTurn(t, e, first.ID)
 	waitForTurnCount(t, e, th.ID, 2)
-	waitSettled(t, e, th.ID)
+	waitForRecordedGoalCap(t, e, th.ID)
 
 	turns, _ := e.Store().ListTurns(th.ID)
 	if len(turns) != 2 {
@@ -168,7 +168,7 @@ func TestAHumanMessageResetsTheGoalAutoContinueBudget(t *testing.T) {
 	first, _ := e.StartTurn(th.ID, "start the work")
 	waitForTurn(t, e, first.ID)
 	waitForTurnCount(t, e, th.ID, 2)
-	waitSettled(t, e, th.ID)
+	waitForRecordedGoalCap(t, e, th.ID)
 
 	second, err := e.StartTurn(th.ID, "a later steer")
 	if err != nil {

@@ -7,6 +7,16 @@ product regression without a controlled comparison.
 
 ## Paused goal replies and runtime provenance (`F-150`, `F-220`, `C-008`, `C-009`)
 
+`internal/engine/goal_cap_receipt_test.go` holds the real `goal_capped` write
+with a callback on its private Store. Runtime idle is already observable in
+that window; the old quiet-period wait let a human follow-up renew an unpaused
+goal's budget and create another automatic turn. Goal-cap fixtures now wait
+for the persisted event before testing paused-message behavior. The regression
+proves the wait remains blocked until the receipt exists, then checks actual
+human admission retains the cap. The callback stays until Store.Close and the
+fixture has an explicit title. This changes test synchronization, not the
+product's existing distinction between an unpaused goal and a recorded pause.
+
 `internal/engine/goal_paused_schedule_claim_test.go` crosses the real Registry/HTTP boundary for capped, blocked and idle human replies rejected by schedule verification, with and without a durable terminal error receipt. The original pause, reason and auto-turn count must survive with no new goal turn. `internal/store/goal_cap_test.go` also makes an idle pause win inside the cap transaction, after an older snapshot was read. Active pursuit and explicit resume retain the separate three-failure schedule-claim cap.
 
 `goal_test.go` changes the old cap-reset expectation: cap 1 admits a human turn
@@ -2536,6 +2546,17 @@ cd frontend && ZWAI_E2E_WORKER_ROSTER=1 npm run e2e
 Concurrent runs follow the [E2E isolation rules](#end-to-end-tests).
 
 ## Memory review provenance and commit (F-420 / C-025 / C-012)
+
+Memory-review details retain committed content in the event instead of reading
+the current file. `internal/engine/review_change_details_test.go` covers complete
+add/replace/remove text beyond the preview cap and a later human edit;
+`internal/memory/change_test.go` checks real note/skill tool snapshots.
+`frontend/src/components/app/review-status.test.tsx` checks collapsed/open/close,
+addition/deletion marks, partial success, preview-only records and localization.
+`frontend/e2e/memory-review.spec.ts` exercises the real reviewer, named SSE
+notice, full deleted text, persisted snapshots and replay after reload. Run it
+with `ZWAI_E2E_MEMORY_REVIEW=1`, a private `ZWAI_E2E_PORT` and
+`ZWAI_E2E_DATA_DIR`, and a separate Playwright `--output` directory.
 
 `internal/memory/reclassify_test.go` checks source-preserving moves, negation /
 numeric / condition changes, complete-text demotion, destination conflicts,

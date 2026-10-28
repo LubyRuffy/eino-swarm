@@ -13,6 +13,17 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-420`, `C-025` (Issue #125): **View details** on memory-review notices and review status
+  expands saved additions/deletions. Committed note edits and skill
+  create/patch/delete retain available full before/after snapshots; old records
+  and changes without snapshots explicitly show previews only. Details remain
+  collapsed until opened and survive history replay through stored events.
+
+- `F-150`, `C-009` (Issue #125): goal-cap regressions wait for the durable
+  `goal_capped` receipt before sending a human message. A delayed cap write
+  verifies that runtime idle alone does not establish a recorded pause; the
+  existing unpaused-budget and explicit-resume behavior is unchanged.
+
 - `make eval EVAL_PROVIDER=<id>`: opt-in task-completion evals against a real
   model (`tools/agent_eval.py`, tasks in `evals/tasks/`). Each run owns a
   temporary data directory and engine, grades files and answers

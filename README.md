@@ -1021,7 +1021,13 @@ Set **Settings → Memory → Review thinking** to choose a separate reasoning l
 See [the review contract](docs/CONTRACTS.md#c-025-memory-review-evidence-and-commit).
 The panel says when it is reading, and what it decided — including when it kept
 nothing. A write that landed is also named in the transcript itself
-(`Memory updated: …`), so you do not have to have the tab open to notice. If you were mid-edit when a review wrote, the panel says so
+(`Memory updated: …`), so you do not have to have the tab open to notice.
+Choose **View details** on that notice or the Memory panel's review status to
+expand the saved additions and deletions. Note edits and skill create/patch/delete
+carry complete before/after text when available; the view uses the recorded
+snapshot even if the file has changed again. Older records and changes without
+snapshots show a labelled preview instead. Details start collapsed after reload.
+If you were mid-edit when a review wrote, the panel says so
 and lets you keep yours or take the new ones — the last save does not silently
 win. Correcting a wrong note there matters: it would otherwise be repeated in
 every future conversation. Notes are budgeted (`memory.char_limit`, default 2200

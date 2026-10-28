@@ -38,6 +38,10 @@ type Change struct {
 	// whether it is something they want stored. Only the text does, and the
 	// transcript is where they are already looking.
 	Text string `json:"text,omitempty"`
+	// Before and After retain the complete changed content. A nil side means
+	// this receipt has only a preview; an empty string is a known absent side.
+	Before *string `json:"before,omitempty"`
+	After  *string `json:"after,omitempty"`
 }
 
 // changeTextMax bounds the preview. Long enough for a note, short enough that
@@ -143,16 +147,20 @@ func (t *memoryTool) InvokableRun(_ context.Context, args string, _ ...tool.Opti
 		err     error
 		changed = true
 		// What the change did, for the line the user reads.
-		text = a.Content
+		text          = a.Content
+		before, after string
 	)
 	action := strings.ToLower(strings.TrimSpace(a.Action))
 	switch action {
 	case "add":
 		snap, changed, err = t.store.Add(a.Content)
+		after = normalizeEntry(a.Content)
 	case "replace":
-		snap, err = t.store.Replace(a.OldText, a.Content)
+		snap, before, err = t.store.replace(a.OldText, a.Content)
+		after = normalizeEntry(a.Content)
 	case "remove":
 		snap, text, err = t.store.Remove(a.OldText)
+		before = text
 	default:
 		return failure("unknown action %q; use add, replace or remove", a.Action), nil
 	}
@@ -160,7 +168,7 @@ func (t *memoryTool) InvokableRun(_ context.Context, args string, _ ...tool.Opti
 		return memoryFailure(err), nil
 	}
 	if changed {
-		t.onChange(Change{Target: ToolMemory, Action: action, Text: clipText(text)})
+		t.onChange(changeWithContent(Change{Target: ToolMemory, Action: action, Text: clipText(text)}, before, after))
 	}
 	return marshal(map[string]any{
 		"success": true,
@@ -325,7 +333,9 @@ func (t *skillManageTool) InvokableRun(_ context.Context, args string, _ ...tool
 
 	switch action {
 	case "create":
-		skill, err := t.store.WriteSkill(name, a.Description, a.Content)
+		skill, change, err := t.store.changeSkill(name, func() (Skill, error) {
+			return t.store.writeSkillLocked(name, a.Description, a.Content, nil, nil)
+		})
 		if err != nil {
 			var dup *DuplicateSkillError
 			if errors.As(err, &dup) {
@@ -340,22 +350,30 @@ func (t *skillManageTool) InvokableRun(_ context.Context, args string, _ ...tool
 			}
 			return failure("%s", err.Error()), nil
 		}
-		t.onChange(Change{Target: ToolSkillManage, Action: action, Name: skill.Name,
-			Text: clipText(skill.Description)})
+		change.Target, change.Action, change.Name = ToolSkillManage, action, skill.Name
+		change.Text = clipText(skill.Description)
+		t.onChange(change)
 		return marshal(map[string]any{"success": true, "name": skill.Name}), nil
 	case "patch":
-		skill, err := t.store.PatchSkill(name, a.OldText, a.NewText)
+		skill, change, err := t.store.changeSkill(name, func() (Skill, error) {
+			return t.store.patchSkillLocked(name, a.OldText, a.NewText)
+		})
 		if err != nil {
 			return failure("%s", err.Error()), nil
 		}
-		t.onChange(Change{Target: ToolSkillManage, Action: action, Name: skill.Name,
-			Text: clipText(a.NewText)})
+		change.Target, change.Action, change.Name = ToolSkillManage, action, skill.Name
+		change.Text = clipText(a.NewText)
+		t.onChange(change)
 		return marshal(map[string]any{"success": true, "name": skill.Name}), nil
 	case "delete":
-		if err := t.store.DeleteSkill(name); err != nil {
+		_, change, err := t.store.changeSkill(name, func() (Skill, error) {
+			return Skill{}, t.store.deleteSkillLocked(name)
+		})
+		if err != nil {
 			return failure("%s", err.Error()), nil
 		}
-		t.onChange(Change{Target: ToolSkillManage, Action: action, Name: name})
+		change.Target, change.Action, change.Name = ToolSkillManage, action, name
+		t.onChange(change)
 		return marshal(map[string]any{"success": true, "name": name}), nil
 	case "merge":
 		skill, deleted, err := t.store.MergeSkills(name, a.Sources, a.Description, a.Content)

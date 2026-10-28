@@ -149,11 +149,15 @@ func (s *Store) PatchSkill(name, oldText, newText string) (Skill, error) {
 	if err := ValidSkillName(name); err != nil {
 		return Skill{}, err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.patchSkillLocked(name, oldText, newText)
+}
+
+func (s *Store) patchSkillLocked(name, oldText, newText string) (Skill, error) {
 	if strings.TrimSpace(oldText) == "" {
 		return Skill{}, fmt.Errorf("memory: patch needs the text to find")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	skill, err := s.readSkill(name)
 	if err != nil {
 		return Skill{}, err

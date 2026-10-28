@@ -275,26 +275,33 @@ func (s *Store) Add(content string) (Snapshot, bool, error) {
 // short unique substring is deliberate: an agent that had to quote an entry
 // back verbatim would get it subtly wrong and create a second copy instead.
 func (s *Store) Replace(oldText, content string) (Snapshot, error) {
+	snap, _, err := s.replace(oldText, content)
+	return snap, err
+}
+
+// replace returns the matched note under the write lock so its receipt cannot
+// accidentally describe another writer's update.
+func (s *Store) replace(oldText, content string) (Snapshot, string, error) {
 	oldText = strings.TrimSpace(oldText)
 	content = normalizeEntry(content)
 	if oldText == "" || content == "" {
-		return Snapshot{Limit: s.limit}, fmt.Errorf("memory: replace needs the text to find and the text to store")
+		return Snapshot{Limit: s.limit}, "", fmt.Errorf("memory: replace needs the text to find and the text to store")
 	}
 	if err := tooLong(content, s.entryMax); err != nil {
-		return Snapshot{Limit: s.limit}, err
+		return Snapshot{Limit: s.limit}, "", err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	snap, err := s.read()
 	if err != nil {
-		return snap, err
+		return snap, "", err
 	}
 	if err := s.noteRestatesASkill(content); err != nil {
-		return snap, err
+		return snap, "", err
 	}
 	idx, err := matchOne(snap.Entries, oldText)
 	if err != nil {
-		return snap, err
+		return snap, "", err
 	}
 	matched := snap.Entries[idx]
 	next := append([]string{}, snap.Entries...)
@@ -308,7 +315,7 @@ func (s *Store) Replace(oldText, content string) (Snapshot, error) {
 	if errors.As(err, &overflow) {
 		overflow.Matched = matched
 	}
-	return written, err
+	return written, matched, err
 }
 
 // Remove drops the single entry containing oldText and reports the entry it

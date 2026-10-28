@@ -276,6 +276,9 @@ export interface MemoryChange {
   action: string
   name?: string
   text?: string
+  /** Complete committed images. Older events contain only the clipped text preview. */
+  before?: string
+  after?: string
 }
 
 export type MemoryNotify = "off" | "on" | "verbose"

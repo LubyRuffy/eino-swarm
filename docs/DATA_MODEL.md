@@ -715,6 +715,12 @@ source seqs and safe capacity usage/excess fields. Full proposal counts may exce
 the retained metadata list. Rejected bodies, exact quotes, old note/skill names
 and model-only `current_entries`/`matched` feedback are not added to these fields;
 existing accepted evidence and committed-change previews keep their meaning.
+Committed `changes` can additionally include `before`/`after` strings, with both
+present for a complete snapshot and an empty side for creation/deletion. Net note
+edits preserve full entry text, while skill create/patch/delete preserve available
+raw `SKILL.md` text. Historical and merge/move changes may have previews only.
+The snapshot belongs to that stored event and is not reconstructed from the
+current file; rejected proposals still do not enter these committed-change fields.
 Batch tool arguments are not recorded as a proposal transcript. Existing events
 may omit the new fields and remain valid. No new SQLite columns, Markdown front
 matter or event kind are introduced. See [Memory reviews](API.md#memory-reviews) and

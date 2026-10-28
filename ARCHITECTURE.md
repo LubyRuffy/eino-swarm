@@ -1228,7 +1228,12 @@ restate the body. This changes no Markdown format or event kind.
    seqs per operation are retained. No rejected note/skill body, exact quote,
    old note, skill name, `current_entries` or `matched` is added to these
    diagnostics. Existing committed-change previews and evidence keep their
-   meanings. Transcript and Memory panel expose the stopping/refusal reasons
+   meanings. Committed note entries and supported skill create/patch/delete
+   changes also retain full `before`/`after` snapshots when available. The
+   transcript and Memory panel's review status expand these stored snapshots as
+   additions/deletions on **View details**, without rereading later file state;
+   changes lacking snapshots show an explicit preview-only label.
+   Transcript and Memory panel expose the stopping/refusal reasons
    without treating a failed note draft as saved; old events may omit the fields.
    A failure's Trace action loads its original turn before opening the side
    panel; unavailable history remains explicit. Historical focus hides the live

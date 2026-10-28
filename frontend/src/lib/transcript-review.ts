@@ -1,4 +1,4 @@
-import type { ReviewOutcome, SwarmEvent } from "./types"
+import type { MemoryChange, ReviewOutcome, SwarmEvent } from "./types"
 import { type Locale, localizeNotice, t } from "./i18n"
 import { parseReviewDiagnostics, reviewFailure } from "./review-diagnostics"
 
@@ -18,13 +18,30 @@ export function parseReview(ev: SwarmEvent): ReviewOutcome | undefined {
     stale_candidates: Array.isArray(body.stale_candidates) ? body.stale_candidates.filter((name): name is string => typeof name === "string" && name.trim() !== "") : undefined,
     changed: body.changed === true,
     notes: typeof body.notes === "object" && body.notes ? body.notes : undefined,
-    skills: Array.isArray(body.skills) ? body.skills : undefined,
-    changes: Array.isArray(body.changes) ? body.changes : undefined,
+    skills: parseMemoryChanges(body.skills),
+    changes: parseMemoryChanges(body.changes),
     note: typeof body.note === "string" ? body.note : undefined,
     err: typeof body.err === "string" && body.err ? body.err : ev.err || undefined,
     notify: notifyOf(body.notify),
     library: body.library === true,
   }
+}
+
+function parseMemoryChanges(raw: unknown): MemoryChange[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  return raw.flatMap((value): MemoryChange[] => {
+    if (!value || typeof value !== "object") return []
+    const change = value as Partial<MemoryChange>
+    if (typeof change.action !== "string") return []
+    return [{
+      target: typeof change.target === "string" ? change.target : "",
+      action: change.action,
+      name: typeof change.name === "string" ? change.name : undefined,
+      text: typeof change.text === "string" ? change.text : undefined,
+      before: typeof change.before === "string" ? change.before : undefined,
+      after: typeof change.after === "string" ? change.after : undefined,
+    }]
+  })
 }
 
 function notifyOf(raw: unknown): ReviewOutcome["notify"] {
