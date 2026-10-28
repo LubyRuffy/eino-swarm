@@ -2399,6 +2399,15 @@ or weakening race checks.
 `internal/remote/restart_test.go` prevents private
 checkpoint bodies leaving the PC. `internal/server/restart_http_test.go` covers idempotent
 HTTP acknowledgement, readable status, same-origin refusal and admission errors.
+`internal/server/restart_answered_ask_http_test.go` sends an invalid question
+through the real model/Registry boundary, answers a subsequent valid question
+over HTTP, then checkpoints after the successful result reaches manager history.
+The replacement uses the indexed, filtered `App.Restore` path: the original turn
+continues with exactly one copy of its answer and the earlier failure receipt,
+without another human wait. `internal/engine/restart_answered_ask_test.go` also
+checks earlier invalid, unknown and cancelled calls, missing/conflicting current
+identities and invalid accepted answers. The existing ambiguous legacy-wait
+tests still refuse recovery when the pending question cannot be identified.
 `TestRestartStorageFailureKeepsDiagnosticsAndCanRetry` registers its private
 checkpoint-write failure callback before starting any runtime or HTTP goroutine.
 The actual offline worker reaches checkpointing; failed storage returns a

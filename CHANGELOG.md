@@ -431,6 +431,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-110`, `C-027` (Issue #127): restart recovery validates an accepted human
+  answer against its own tool-call identity, so earlier rejected or uncertain
+  `ask_user` calls cannot block a later confirmed answer. Missing or conflicting
+  checkpoint identities still refuse recovery, and genuine unanswered questions
+  retain their original wait.
+
 - `F-220`: the phone composer no longer repeats a persistent queue hint below
   its controls. Follow-up, Steer, Stop and the visible queue retain their
   existing behavior.

@@ -128,16 +128,28 @@ func historyConfirmedAsk(messages []*schema.Message, callID string) bool {
 
 func restartAskRecoveryError(events []store.Event) error {
 	cp, _ := latestRestartCheckpoint(events)
-	if cp == nil || cp.HumanStopped || cp.Pause != "ask" && cp.Answer == nil || checkpointAskCall(events) != nil {
+	if cp == nil || cp.HumanStopped || cp.Pause != "ask" && cp.Answer == nil {
 		return nil
 	}
+	callID := cp.AskCallID
+	if cp.Answer != nil {
+		if cp.Answer.CallID == "" || callID != "" && callID != cp.Answer.CallID {
+			return fmt.Errorf("restart checkpoint has no matching human question")
+		}
+		callID = cp.Answer.CallID
+	}
+	if checkpointAskCall(events) != nil {
+		return nil
+	}
+	// A consumed answer can remain in the checkpoint after its tool result was
+	// saved. Earlier rejected calls do not own that answer or its recovery.
 	seen := false
 	for _, msg := range cp.ManagerHistory {
 		if msg == nil || msg.Role != schema.Assistant {
 			continue
 		}
 		for _, tc := range msg.ToolCalls {
-			if tc.Function.Name != ToolAskUser || tc.ID == "" || cp.AskCallID != "" && cp.AskCallID != tc.ID {
+			if tc.Function.Name != ToolAskUser || tc.ID == "" || callID != "" && callID != tc.ID {
 				continue
 			}
 			seen = true
