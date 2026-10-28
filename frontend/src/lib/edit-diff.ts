@@ -1,4 +1,4 @@
-/** Reconstruct an `edit` / `write` as a line hunk. The tool result is only a
+/** Reconstruct an `edit`, `write` or skill patch as a line hunk. The tool result is only a
  *  status sentence (`ok: replaced block in …` / `Updated file <abs> (N bytes)`); the
  *  change itself is in the args. */
 
@@ -75,6 +75,15 @@ export function parseWriteDiff(args: string): EditDiff | undefined {
 export function parseFileChange(name: string, args: string): EditDiff | undefined {
   if (name === "edit") return parseEditDiff(args)
   if (name === "write") return parseWriteDiff(args)
+  if (name === "skill_manage") {
+    const obj = parseObject(args)
+    if (!obj || asRaw(obj.action).trim().toLowerCase() !== "patch") return undefined
+    if (typeof obj.old_text !== "string" || !obj.old_text.trim()) return undefined
+    if (obj.new_text !== undefined && typeof obj.new_text !== "string") return undefined
+    // The result only names the skill. Retain this call's original replacement,
+    // including indentation; reading today's skill would rewrite its history.
+    return diffText(asPath(obj.name), obj.old_text, asRaw(obj.new_text))
+  }
   return undefined
 }
 

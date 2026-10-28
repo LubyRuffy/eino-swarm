@@ -28,6 +28,42 @@ const searchHits = JSON.stringify({
 })
 
 describe("ToolRow", () => {
+  it("keeps a skill patch collapsed and opens its original change after completion", () => {
+    const block = toolBlock({
+      name: "skill_manage", pending: true,
+      args: JSON.stringify({ action: "patch", name: "release-checklist", old_text: "  old step", new_text: "  new step" }),
+    })
+    const { rerender } = render(<ToolRow block={block} />)
+    const toggle = screen.getByRole("button", { name: /skill_manage/ })
+    expect(toggle).toHaveAttribute("aria-expanded", "false")
+    expect(toggle).toHaveTextContent("+1")
+    expect(toggle).toHaveTextContent("−1")
+    expect(screen.queryByTestId("file-diff")).not.toBeInTheDocument()
+    fireEvent.click(toggle)
+    rerender(<ToolRow block={{ ...block, tool: { ...block.tool!, pending: false, result: JSON.stringify({ success: true, name: "release-checklist" }) } }} />)
+    const diff = screen.getByTestId("file-diff")
+    expect(toggle).toHaveAttribute("aria-expanded", "true")
+    expect(diff.querySelector('[data-diff="del"]')).toHaveTextContent("old step")
+    expect(diff.querySelector('[data-diff="add"]')).toHaveTextContent("new step")
+    expect(screen.queryByTestId("tool-output")).not.toBeInTheDocument()
+    fireEvent.click(toggle)
+    expect(screen.queryByTestId("file-diff")).not.toBeInTheDocument()
+  })
+
+  it("retains a failed skill patch's error when the change is expanded", () => {
+    render(<ToolRow block={toolBlock({
+      name: "skill_manage",
+      args: JSON.stringify({ action: "patch", name: "release-checklist", old_text: "missing step", new_text: "new step" }),
+      result: JSON.stringify({ success: false, error: "text not found" }),
+    })} />)
+    const toggle = screen.getByRole("button", { name: /skill_manage/ })
+    expect(toggle).toHaveAttribute("aria-invalid", "true")
+    expect(toggle).toHaveTextContent("text not found")
+    fireEvent.click(toggle)
+    expect(screen.getByRole("alert")).toHaveTextContent("text not found")
+    expect(screen.getByTestId("file-diff")).toHaveTextContent("missing step")
+  })
+
   it("opens a pending non-exec call so live output is visible", () => {
     render(
       <ToolRow

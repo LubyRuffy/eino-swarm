@@ -344,6 +344,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   **Reading** / **Exec** while a tool is in flight.
   Settings → General, the app menu (`…` at the bottom of the icon rail),
   or ⌘K switches to developer view.
+- **Inspect skill patches.** A `skill_manage patch` row shows added/deleted
+  line counts. Click it to compare the original text with its replacement;
+  click again to collapse. The same diff remains available after reload,
+  and a failed patch keeps its error beside the attempted change.
 - **PC worker thoughts keep their identity across checks.** A background worker
   can keep generating while the manager ends a scheduled check. Its growing
   thought or answer updates the same row, including after reload, instead of

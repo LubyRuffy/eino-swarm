@@ -5259,7 +5259,10 @@ Several things are tested here, some as pure logic and some in jsdom:
   content is still a hunk (zero lines). `clipDiff` keeps the first 400
   painted lines and reports the rest as hidden. The tool result is ignored
   — it is only a status sentence. CRLF matches LF. A path-only call has no
-  hunk. `parseFileChange` dispatches edit/write and ignores other tools.
+  hunk. `parseFileChange` also reconstructs `skill_manage patch` from the
+  original `old_text` / `new_text`, preserving indentation and accepting empty
+  or omitted replacement text as deletion. Other actions and malformed text
+  fields do not invent a diff.
 - **`src/lib/shell-highlight.ts`**: an `exec` command tokenizes into
   keywords / strings / flags / variables without dropping characters; a
   too-long line falls back to plain text.
@@ -5281,6 +5284,12 @@ Several things are tested here, some as pure logic and some in jsdom:
   finished `edit` or `write` stays collapsed (`+N −M` beside the path,
   muted until hover/focus) until the reader opens it, including while
   the call is still pending.
+  Skill patches use the same counts and disclosure, keep a reader-opened diff
+  after completion, and retain a refusal beside the attempted change.
+- **`e2e/skill-patch.spec.ts`**: real browser controls show skill patch counts,
+  expand/collapse the original additions/deletions, and retain them after
+  reload. Named live tool events and stored-history fixtures share the same
+  display, including deletion-only patches and failed-call errors.
 - **`src/components/app/tool-result.tsx`**, rendered in jsdom: a markdown `read`
   renders headings, a `*.go` `read` paints keywords onto tokens and keeps line
   numbers, an unknown suffix stays uncoloured, `exec` shows

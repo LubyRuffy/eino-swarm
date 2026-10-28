@@ -35,7 +35,7 @@ export type ToolView = {
   error?: string
   body: string
   hits?: SearchHit[]
-  /** Present for edit/write. Parsed once so the row and the expanded
+  /** Present for edit/write/skill patch. Parsed once so the row and the expanded
    *  body share the same hunk instead of re-parsing the args. */
   diff?: EditDiff
 }
@@ -112,7 +112,7 @@ export function viewTool(name: string, args: string, result?: string, flagged?: 
         summary,
         failed: Boolean(flagged || !mem.success),
         error: mem.error || prefix,
-        body: mem.body,
+        body: diff ? "" : mem.body,
         diff,
       }
     }

@@ -130,6 +130,39 @@ describe("parseWriteDiff", () => {
 })
 
 describe("parseFileChange", () => {
+  it("reconstructs a skill patch from its original text without trimming indentation", () => {
+    const diff = parseFileChange("skill_manage", JSON.stringify({
+      action: " PATCH ", name: "release-checklist",
+      old_text: "  verify source\n  old step\n", new_text: "  verify source\n  new step\n",
+    }))
+    expect(diff).toMatchObject({ path: "release-checklist", added: 1, removed: 1 })
+    expect(diff?.hunks[0].lines).toEqual([
+      { op: "eq", text: "  verify source" },
+      { op: "del", text: "  old step" },
+      { op: "add", text: "  new step" },
+    ])
+  })
+
+  it.each(["", undefined])("shows a skill patch deletion when new_text is %s", (new_text) => {
+    const diff = parseFileChange("skill_manage", JSON.stringify({
+      action: "patch", name: "release-checklist", old_text: "remove step", new_text,
+    }))
+    expect(diff).toMatchObject({ added: 0, removed: 1 })
+    expect(diff?.hunks[0].lines).toEqual([{ op: "del", text: "remove step" }])
+  })
+
+  it.each([
+    { action: "create", old_text: "old", new_text: "new" },
+    { action: "delete", old_text: "old", new_text: "new" },
+    { action: "merge", old_text: "old", new_text: "new" },
+    { action: "patch", old_text: " \n", new_text: "new" },
+    { action: "patch", new_text: "new" },
+    { action: "patch", old_text: 123, new_text: "new" },
+    { action: "patch", old_text: "old", new_text: 123 },
+  ])("does not invent skill changes for unsupported or incomplete arguments: %j", (args) => {
+    expect(parseFileChange("skill_manage", JSON.stringify({ name: "release-checklist", ...args }))).toBeUndefined()
+  })
+
   it("dispatches edit and write, and ignores other tools", () => {
     const edit = parseFileChange(
       "edit",

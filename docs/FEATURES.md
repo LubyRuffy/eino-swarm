@@ -87,6 +87,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
+- 桌面/Web 的 `skill_manage patch` 工具行默认折叠，显示新增／删除行数；展开后按差异展示原始修改前后文本，支持纯删除和再次收起。实时与历史重放使用该次调用参数，失败仍保留原错误及尝试的修改。证据：`frontend/src/lib/edit-diff.ts`、`frontend/src/lib/tool-view.ts`、`frontend/src/components/app/tool-row.test.tsx`、`frontend/e2e/skill-patch.spec.ts`。
+
 - 收取暂停后选择停止，实时聊天与 Reload／分页历史保持相同的停止展示；内部 `workers_collection_declined` 回执留在 Trace，不额外显示原始 JSON，也不依据其中的历史 running 字段复活子代理。关联 `C-003`、`C-019`；证据：`frontend/src/store/app-stream-worker-collection.test.ts`、`frontend/e2e/worker-completion.spec.ts`。
 
 - 收取等待与工具轮数暂停分别显示原因；精确 wait_id 的 `workers_collection_resumed` 结清对应等待卡片，实时、重开与手机重放保持一致，不能把自动唤醒显示为人工 Continue 或已经收取成功。保留 worker 的模型调用在发起准入后冻结活跃 turn 归属，跨轮单次流仍归开始轮，辅助任务不迁移。关联 `C-012`、`C-019`；证据：`internal/engine/worker_accounting_test.go`、`frontend/e2e/worker-completion.spec.ts`。

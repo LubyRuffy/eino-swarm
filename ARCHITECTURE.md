@@ -1397,6 +1397,11 @@ row is still the real size. The collapsed row (and the expanded hunk
 header) shows `+N` (write) or `+N −M` (edit) as a sibling of the path —
 idle they inherit the row colour, hover/focus paints add/del. `viewTool`
 attaches the hunk once so the row and the body do not re-parse the args.
+`skill_manage` with action `patch` uses the same collapsed counts and expanded
+diff, reconstructed from the recorded `old_text` / `new_text` with the skill
+name as its label. Empty or omitted `new_text` shows deletion. History uses
+that original call, never the current skill file. A failed patch retains its
+refusal above the attempted change, as a failed edit does.
 A turn that ends (`done` / `error`, including a user interrupt) or an
 agent that `finished` closes any tool still `pending`: interrupt cancels
 in-flight calls without a `tool_result`, and leaving them pending keeps the

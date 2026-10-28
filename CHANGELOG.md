@@ -431,6 +431,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-130`: expanding a desktop/Web `skill_manage patch` now shows the original
+  added/deleted text instead of only the skill name, with line counts on the
+  collapsed row. History replay retains the same diff and failed patches keep
+  their error beside the attempted change.
+
 - `F-110`, `C-027` (Issue #127): restart recovery validates an accepted human
   answer against its own tool-call identity, so earlier rejected or uncertain
   `ask_user` calls cannot block a later confirmed answer. Missing or conflicting

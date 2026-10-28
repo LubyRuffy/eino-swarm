@@ -61,7 +61,7 @@ export function EditCountMarks({
   )
 }
 
-/** Highlighted hunk for an `edit` / `write` call. Built from the args, not
+/** Highlighted hunk for an `edit`, `write` or skill patch. Built from the args, not
  *  the status sentence the tool returns to the model. */
 export function EditDiffView({ diff }: { diff: EditDiff }) {
   const t = useT()

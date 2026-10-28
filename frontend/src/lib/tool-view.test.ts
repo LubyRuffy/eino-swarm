@@ -195,6 +195,26 @@ describe("toolRowSummary", () => {
 })
 
 describe("file change view", () => {
+  it("shows a successful skill patch as a diff instead of repeating its name", () => {
+    const view = viewTool("skill_manage", JSON.stringify({
+      action: "patch", name: "release-checklist", old_text: "old step", new_text: "new step",
+    }), JSON.stringify({ success: true, name: "release-checklist" }))
+    expect(view).toMatchObject({
+      summary: "patch · release-checklist", failed: false, body: "",
+      diff: { path: "release-checklist", added: 1, removed: 1 },
+    })
+  })
+
+  it("keeps the refusal alongside an attempted skill patch", () => {
+    const view = viewTool("skill_manage", JSON.stringify({
+      action: "patch", name: "release-checklist", old_text: "missing step", new_text: "new step",
+    }), JSON.stringify({ success: false, error: "text not found" }))
+    expect(view.failed).toBe(true)
+    expect(view.error).toBe("text not found")
+    expect(toolRowSummary(view)).toContain("text not found")
+    expect(view.diff?.hunks[0].lines).toContainEqual({ op: "del", text: "missing step" })
+  })
+
   it("puts the path on an edit summary and the plus/minus counts on the hunk, not the JSON envelope", () => {
     const view = viewTool(
       "edit",
