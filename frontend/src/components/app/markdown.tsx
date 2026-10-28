@@ -144,8 +144,8 @@ function codeText(children: ReactNode): string {
   return String(children ?? "").replace(/\n$/, "")
 }
 
-/** A GFM table's min-content is the longest token. Wrapping it is what
- *  keeps that token from widening the conversation under the side panel. */
+/** The scrollport contains readable-width columns when they cannot all fit
+ *  in the conversation, without widening it under the side panel. */
 function MarkdownTable({
   node: _node,
   ...props

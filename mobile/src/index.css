@@ -179,6 +179,8 @@
   .md-body th,
   .md-body td {
     @apply border border-border px-2 py-1 text-left;
+    /* Preserve readable labels; excess columns use the table scrollport. */
+    min-width: 10ch;
     overflow-wrap: anywhere;
   }
   .md-body :is(th, td) code {

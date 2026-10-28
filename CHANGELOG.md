@@ -393,6 +393,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-120`, `F-220` (Issue #123): Markdown tables retain a font-relative
+  readable minimum column width, so long descriptions do not squeeze short
+  Latin or Chinese labels into one-character lines. Desktop/Web and phone
+  conversations and file previews keep content-weighted columns, long-token
+  wrapping, GFM alignment and horizontal scrolling within wide tables.
+
 - `F-130`, `C-003`, `C-019` (Issue #120): keep worker-collection decline
   receipts in Trace without adding a raw JSON chat card after Reload or older
   history loads. PC live events settle the matching wait without changing

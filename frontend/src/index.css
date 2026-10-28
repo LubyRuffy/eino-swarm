@@ -540,9 +540,9 @@
   .md .katex-error {
     color: hsl(var(--destructive));
   }
-  /* A GFM table's min-content is the longest token. The scrollport is
-     the cap; overflow-wrap is what lets a wide table still sit in the
-     reading column instead of painting under the side panel. */
+  /* Keep automatic, content-weighted columns, but do not let anywhere
+     wrapping squeeze short labels into one-character lines. Tables with
+     more columns than fit scroll inside the reading column. */
   .md .md-table {
     @apply min-w-0 max-w-full overflow-x-auto;
   }
@@ -555,6 +555,7 @@
   .md th,
   .md td {
     @apply border border-border px-2 py-1 text-left align-top;
+    min-width: 10ch;
     overflow-wrap: anywhere;
   }
   .md :is(th, td) code {

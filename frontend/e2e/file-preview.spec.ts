@@ -160,3 +160,56 @@ test("contains a wide Markdown table in a short preview window", async ({ page }
   expect(table!.x + table!.width).toBeLessThanOrEqual(box!.x + box!.width + 1)
   writeFileSync(info.outputPath("markdown-preview-short.png"), await page.screenshot(), { mode: 0o600 })
 })
+
+test("keeps short table labels readable beside long content and scrolls excess columns", async ({ page }, info) => {
+  await page.setViewportSize({ width: 1000, height: 760 })
+  const token = "identifier_".repeat(60)
+  const source = [
+    "# Table layout", "",
+    "| Area | Details |", "| --- | --- |",
+    `| GPU/API | ${"说明内容应有足够空间自然换行，同时保留短标签的可读宽度。".repeat(12)} |`,
+    `| 部署范围 | \`${token}\` |`, "",
+    "| Left | Center | Right | Fourth | Fifth | Sixth | Seventh | Eighth | Ninth | Last |",
+    "| :--- | :---: | ---: | --- | --- | --- | --- | --- | --- | --- |",
+    "| One | Two | Three | Four | Five | Six | Seven | Eight | Nine | End |",
+  ].join("\n")
+  const { tree } = await workspace(page, info.title, "table-layout.md", Buffer.from(source))
+  await tree.getByRole("treeitem", { name: "table-layout.md", exact: true }).click()
+  const preview = page.getByTestId("file-preview")
+  await expect(preview.getByRole("heading", { name: "Table layout", exact: true })).toBeVisible()
+  await expect.poll(() => preview.evaluate((element) =>
+    element.getAnimations().every((animation) => animation.playState !== "running"),
+  )).toBe(true)
+  const tables = preview.getByTestId("markdown-table")
+  for (const width of [1000, 640]) {
+    await page.setViewportSize({ width, height: 760 })
+    for (const label of ["GPU/API", "部署范围"]) {
+      const cell = tables.first().getByRole("cell", { name: label, exact: true })
+      // DOM containment alone misses a label squeezed into one-character lines.
+      const dimensions = await cell.evaluate((element) => {
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        return { textHeight: range.getBoundingClientRect().height, lineHeight: parseFloat(getComputedStyle(element).lineHeight) }
+      })
+      expect(dimensions.textHeight).toBeGreaterThan(0)
+      expect(dimensions.textHeight).toBeLessThanOrEqual(dimensions.lineHeight + 1)
+    }
+    const columns = await tables.first().locator("th").evaluateAll((cells) => cells.map((cell) => cell.getBoundingClientRect().width))
+    expect(columns[1]).toBeGreaterThan(columns[0] * 2)
+    await expect(tables.first().locator("code")).toHaveText(token)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    const bounds = await tables.first().evaluate((element) => ({ client: element.clientWidth, scroll: element.scrollWidth }))
+    expect(bounds.scroll).toBeLessThanOrEqual(bounds.client + 1)
+    writeFileSync(info.outputPath(`table-layout-${width}.png`), await page.screenshot(), { mode: 0o600 })
+  }
+  const wide = tables.nth(1)
+  await expect(wide.locator("tbody td").nth(0)).toHaveCSS("text-align", "left")
+  await expect(wide.locator("tbody td").nth(1)).toHaveCSS("text-align", "center")
+  await expect(wide.locator("tbody td").nth(2)).toHaveCSS("text-align", "right")
+  expect(await wide.evaluate((element) => element.scrollWidth)).toBeGreaterThan(await wide.evaluate((element) => element.clientWidth))
+  await wide.evaluate((element) => { element.scrollLeft = element.scrollWidth })
+  expect(await wide.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+  const lastCell = await wide.getByRole("cell", { name: "End", exact: true }).boundingBox()
+  const scrollport = await wide.boundingBox()
+  expect(lastCell!.x + lastCell!.width).toBeLessThanOrEqual(scrollport!.x + scrollport!.width + 1)
+})

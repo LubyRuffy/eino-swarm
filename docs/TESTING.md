@@ -6211,6 +6211,13 @@ Last-Modified time. A short-window case waits for the entrance animation to
 finish, checks that long GFM tables stay inside the preview, and captures the
 reached screen.
 
+The table-layout case measures actual rendered Latin and Chinese short labels
+beside long prose at two window widths, keeps long code tokens inside the
+preview, and scrolls a multi-column table to its final cell while retaining GFM
+alignment. `mobile/e2e/markdown-table.spec.ts` exercises the same behavior in
+submitted phone messages at 320px and 430px. These are layout assertions, not
+just checks that the table has an overflow wrapper.
+
 Run with an exclusive port, data directory and evidence output, as described
 in the concurrent Playwright section above. These browser checks exercise the
 shared desktop/Web React flow; they do not establish native Wails acceptance.
