@@ -7,6 +7,7 @@ import {
   OpClients,
   OpHello,
   OpList,
+  OpLog,
   OpMore,
   OpOpen,
   OpStart,
@@ -621,6 +622,45 @@ describe("inbox window and thread loading", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("page offline")
   })
 
+  it("keeps Earlier usable when a manual page arrives after automatic opening history advanced", async () => {
+    seedLink()
+    let finishAutomatic: (value: RemoteResponse) => void = () => undefined
+    let finishManual: (value: RemoteResponse) => void = () => undefined
+    const automatic = new Promise<RemoteResponse>((resolve) => { finishAutomatic = resolve })
+    const manual = new Promise<RemoteResponse>((resolve) => { finishManual = resolve })
+    const log = vi.fn((_req: Partial<RemoteRequest>) => {
+      if (log.mock.calls.length === 1) return automatic
+      if (log.mock.calls.length === 2) return manual
+      return Promise.resolve({ v: 1, id: "oldest", ok: true, thread_id: "th-1", seq: 1, more: false,
+        events: [{ thread_id: "th-1", seq: 1, kind: "user_message", text: "Original request", created_at: "2026-01-01T00:00:00Z" }] })
+    })
+    vi.mocked(openSaved).mockResolvedValue(hostLink({
+      watch: async () => ({ v: 1, id: "w", ok: true, op: "ready", thread_id: "th-1", seq: 30, more: true,
+        detail: { id: "th-1", title: "th-1" },
+        events: [
+          { thread_id: "th-1", seq: 28, kind: "agent_message", agent_id: "worker", text: "Worker-only progress", created_at: "2026-01-01T00:00:00Z" },
+          { thread_id: "th-1", seq: 30, kind: "tool_result", tool_call_id: "spawn", text: "Started worker", created_at: "2026-01-01T00:00:00Z" },
+        ] }),
+      log,
+    }))
+    render(<App />)
+    fireEvent.click(await screen.findByRole("button", { name: t("home.open", { title: "th-1" }) }))
+    await waitFor(() => expect(log).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByRole("button", { name: t("thread.earlier") }))
+    expect(log.mock.calls.map(([req]) => req.before)).toEqual([28, 28])
+    await act(async () => finishAutomatic({ v: 1, id: "automatic", ok: true, thread_id: "th-1", seq: 18, more: true,
+      events: [{ thread_id: "th-1", seq: 18, kind: "agent_message", text: "Earlier manager answer", created_at: "2026-01-01T00:00:00Z" }] }))
+    expect(screen.getByText("Earlier manager answer")).toBeInTheDocument()
+    await act(async () => finishManual({ v: 1, id: "manual", ok: true, thread_id: "th-1", seq: 20, more: true, events: [] }))
+    const earlier = screen.queryByRole("button", { name: t("thread.earlier") })
+    expect(earlier).not.toBeNull()
+    expect(earlier).toBeEnabled()
+    await act(async () => fireEvent.click(earlier!))
+    expect(log.mock.calls.map(([req]) => req.before)).toEqual([28, 28, 18])
+    expect(screen.getByText("Original request")).toBeInTheDocument()
+    expect(screen.getByText("Earlier manager answer")).toBeInTheDocument()
+  })
+
   it("shows loading outside the transcript while the opening snapshot has not answered", async () => {
     seedLink()
     vi.mocked(openSaved).mockResolvedValue(
@@ -660,6 +700,7 @@ function hostLink(opts?: {
   list?: () => Promise<RemoteResponse>
   open?: () => Promise<RemoteResponse>
   watch?: () => Promise<RemoteResponse>
+  log?: (req: Partial<RemoteRequest>) => Promise<RemoteResponse>
   start?: (req: Partial<RemoteRequest>) => Promise<RemoteResponse>
   more?: (req: Partial<RemoteRequest>) => Promise<RemoteResponse>
   clients?: (req: Partial<RemoteRequest>) => Promise<RemoteResponse>
@@ -681,6 +722,7 @@ function hostLink(opts?: {
         return { v: 1, id: "l", ok: true, threads, running, projects: opts?.projects ?? [] }
       }
       if (req.op === OpMore && opts?.more) return opts.more(req)
+      if (req.op === OpLog && opts?.log) return opts.log(req)
       if (req.op === OpClients && opts?.clients) return opts.clients(req)
       if (req.op === OpOpen) {
         if (opts?.open) return opts.open()

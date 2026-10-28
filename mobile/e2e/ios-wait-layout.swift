@@ -500,21 +500,43 @@ final class BindFlowTests: XCTestCase {
   }
 
   func testHiddenHistoryShowsEarlierAnswer() throws {
+    continueAfterFailure = false
     let app = XCUIApplication()
     app.launch()
-    let explanation = app.staticTexts["No visible messages in this turn yet. Open earlier history."]
-    guard explanation.waitForExistence(timeout: 8) else {
-      throw XCTSkip("requires IOS_LAYOUT_QUERY=/?mock=1&tick=0&history=hidden")
+    for visit in 0...1 {
+      XCTAssertTrue(app.staticTexts["Earlier answer"].waitForExistence(timeout: 15),
+        "history=hidden must backfill its latest answer before any Earlier tap")
+      XCTAssertTrue(app.staticTexts["Earlier answer"].isHittable)
+      XCTAssertFalse(app.staticTexts["No visible messages in this turn yet. Open earlier history."].exists)
+      XCTAssertTrue(app.buttons.matching(identifier: "Stop").allElementsBoundByIndex.contains { $0.isHittable }, "The live turn must remain running")
+      recordAgentPage(app, name: "hidden-history-automatic-answer-\(visit)")
+      if visit == 0 { reopenHiddenHistoryFromPlatform(app) }
     }
-    let earlier = app.buttons["Earlier"]
-    XCTAssertTrue(earlier.isHittable)
-    earlier.tap()
-    XCTAssertTrue(app.staticTexts["Earlier answer"].waitForExistence(timeout: 8))
-    XCTAssertFalse(explanation.exists)
-    let shot = XCTAttachment(screenshot: app.screenshot())
-    shot.name = "hidden-history-earlier-answer"
-    shot.lifetime = .keepAlways
-    add(shot)
+  }
+
+  private func reopenHiddenHistoryFromPlatform(_ app: XCUIApplication) {
+    let back = app.buttons["Back"]
+    XCTAssertTrue(back.isHittable)
+    back.tap()
+    let platform = app.buttons.matching(NSPredicate(format: "label ==[c] %@", "Platform"))
+    let following = app.buttons.matching(NSPredicate(format: "label ==[c] %@", "Field notes"))
+    XCTAssertTrue(platform.element(boundBy: 0).waitForExistence(timeout: 8))
+    XCTAssertEqual(platform.count, 1)
+    XCTAssertEqual(following.count, 1)
+    guard platform.count == 1 && following.count == 1 else { return }
+    let start = platform.element(boundBy: 0).frame.maxY
+    let end = following.element(boundBy: 0).frame.minY
+    let allRows = app.buttons.matching(identifier: "Open Trim the layout pass").allElementsBoundByIndex
+    // This source thread is also in In progress; choose only its Platform section.
+    let rows = allRows.filter { $0.frame.midY > start && $0.frame.midY < end }
+    let scope = XCTAttachment(string: "Platform=\(platform.element(boundBy: 0).frame), Field notes=\(following.element(boundBy: 0).frame), all Open frames=\(allRows.map { $0.frame }), scoped Open frames=\(rows.map { $0.frame })")
+    scope.name = "conversation-open-native-project-scope"
+    scope.lifetime = .keepAlways
+    add(scope)
+    XCTAssertEqual(rows.count, 1, "The same source host/project/title must identify exactly one native Open row")
+    guard rows.count == 1 else { return }
+    XCTAssertTrue(rows[0].isHittable)
+    rows[0].tap()
   }
 
   func testPhoneOutputPreview() throws {

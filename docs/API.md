@@ -765,6 +765,19 @@ returns `too_large` and leaves no new watch. A new phone talking to an older
 PC receives its ordinary watch snapshot, then requests `open` only for the
 missing detail. Ordinary watch and open remain compatible with older phones.
 
+The phone then checks its rendered main-conversation items after separating
+workers and applying phone folds. If none are visible and `more` is true, opening
+uses the existing `log {thread_id, before}` operation until the first visible
+item, exhausted history or a non-advancing cursor. This is a client display
+policy: the 24-event raw watch window, server paging and sealed-frame budget
+remain unchanged. A dated completion divider is already a visible item; it does
+not trigger extra reads merely to find older prose. Pages preserve the current
+turn/status, live high-water sequence and seq=0 output. Back, another thread,
+another opening or a replaced link invalidates stale results; concurrent manual
+and automatic pages cannot exhaust a newer cursor with a late response. A page
+error preserves the ready conversation and reports once without an automatic
+retry. Earlier and pull-up remain available for further history.
+
 Preview reads select only the current turn's relevant event kinds in indexed
 tail pages; detail selects only its configured recent completed turns. Neither
 decodes the complete historical timeline before clipping. Reconnecting one
@@ -778,7 +791,7 @@ the phone's clock. Scheduled input may be hidden while its divider remains.
 Catch-up is not a slideshow of `event` frames —
 painting those oldest-first is how the phone showed the start of the turn
 and then yanked down. `more` means older events still exist; the phone
-pulls up (or taps Earlier) and calls `log`. `log` with `before` omitted or
+uses `log` for the opening policy above and for pull-up or Earlier. `log` with `before` omitted or
 `0` pages the rows older than that last-turn window. `more: false` is omitted on
 the wire (`omitempty`); the phone treats a missing `more` as false. `log`
 returns `events` plus `seq` (oldest seq of that store page) so an empty

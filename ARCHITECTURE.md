@@ -472,7 +472,14 @@ it. Captured callbacks from an older group cannot admit a new handler.
 
 Phone opening requests `watch include_detail`, receiving the header and live
 edge in one byte-bounded `ready` reply. A legacy PC falls back to a separate
-header read. Preview and recent-turn queries use projected, indexed tail pages
+header read. If manager separation and phone folding leave no visible items
+with more history available, the phone reads existing `log` pages until an item
+is visible, history ends or its cursor cannot advance. It preserves the current
+turn, live sequence and seq=0 output; stale opening/link results and late pages
+cannot overwrite a newer view or cursor. A visible completion divider already
+ends this automatic backfill. Read errors keep the ready view without retry;
+Earlier remains for additional history. The raw watch window and frame budget
+are unchanged. Preview and recent-turn queries use projected, indexed tail pages
 through `internal/store/phone_reads.go`; they preserve hidden-record skipping
 without decoding the whole event history. The existing older-page and event
 sequence semantics remain shared with normal watch.

@@ -46,14 +46,22 @@ inbox. Reopening reloads the PC values, including after an uncertain save.
 
 The phone is a compact screen on the same conversation as the desktop: same
 event kinds and seq (`watch` / `unwatch` / `log`), clipped bodies so a frame
-stays under 64KiB. First paint is a live-edge snapshot on the `watch` RPC
+stays under 64KiB. The initial wire snapshot is the live edge on the `watch` RPC
 `ready`, already at the tail; a tap shows the chrome before that returns.
 Current PCs include the header and tail in that one reply when the phone sends
 `include_detail: true`. Older PCs remain usable through a separate header read.
 Reconnecting replaces the old device subscription instead of accumulating
 duplicate event senders. The PC reads previews and recent turns in indexed
-pages; opening a long task does not decode its complete history.
-**Earlier** sits above the log; pulling up also pages older events. User and
+pages; opening a long task does not decode its complete history. If the ready
+snapshot has more history but no visible main-conversation items after worker
+separation and phone folding, the phone reads existing `log` pages automatically.
+It stops at the first visible item, exhausted history or a cursor that cannot
+advance. A completion divider already counts as visible; this does not promise
+an older answer body whenever the tail contains only a divider. The current
+turn, live sequence and streaming output remain current while pages arrive.
+A failed page keeps the ready conversation, reports the error once and does not
+retry automatically. **Earlier** sits above the log for additional history;
+pulling up also pages older events. User and
 assistant rows render markdown; a path link does not navigate the
 webview. Recognised language fences use the existing source syntax colours in
 both themes, including C++ tags `cpp`, `c++`, and `cxx`. The same rendering

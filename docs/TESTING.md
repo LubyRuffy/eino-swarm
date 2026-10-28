@@ -224,9 +224,20 @@ projection, row counts, current-turn selection and paging past hidden records;
 `phone_reads_test.go` checks legacy NULL values, index migration and query plans.
 `watch_open_test.go` checks one encrypted relay request carrying detail and
 tail, legacy response shape, combined frame budget and refusal cleanup.
-`mobile/src/lib/open-thread.test.ts` checks the single RPC, legacy-host fallback,
-queued live events and Back during either response. The Chromium/WebKit
-`mobile/e2e/conversation-open.spec.ts` exercises reopening and Earlier history.
+`mobile/src/lib/open-thread.test.ts` checks the single initial watch, legacy-host
+fallback and automatic `log` reads when manager separation and phone folding
+leave no visible items. Cover filtered empty pages with a descending cursor,
+exhaustion, an empty ready's `seq+1` cursor, non-progress termination, live and
+seq=0 output during a read, and stale success/error after Back, another thread or
+a new opening of the same thread. Existing visible items, including turn-end
+dividers, must not trigger extra reads. History errors keep ready and are not
+retried. `open-thread.test.ts` and `mobile/src/app.test.tsx` cover both orders of
+automatic/manual pagination; the App case exercises a manual reply arriving
+after automatic advancement, so a late page cannot clear a newer cursor's
+`hasMore`. The App tests also cover link ownership. The Chromium/WebKit `mobile/e2e/conversation-open.spec.ts`
+must show history without an Earlier tap on initial entry and on Back/reopen.
+The backend's raw latest-turn window, event identities and frame-budget tests
+remain separate; this client policy does not change them.
 
 Reconnect regression must use production Host admission with a real encrypted
 relay, then count outbound frames for a subsequent real engine event. Closing
@@ -3478,8 +3489,10 @@ pages older than that window.
 `TestLogFindsEarlierAnswerPastHiddenSubagentBookkeeping` covers a long run of
 phone-hidden subagent calls and results: one `log` RPC must reach the prior
 answer instead of returning another empty-looking page. The phone screen unit
-test and `walkthrough.spec.ts` exercise the empty-state explanation and the
-Earlier button through the rendered page.
+test retains its hidden-tail explanation as a fallback; opening-entry unit tests,
+`conversation-open.spec.ts` and `walkthrough.spec.ts` cover automatic first-visible
+history before the user requests more. Do not count a visible completion divider
+as an empty window merely to force older answer text onto the screen.
 `TestPhoneListAndOpenSurfaceGoalAndParkedWait` is why a parked `/goal` wait
 is on the phone roster (`waiting`) even when it is not on the recent page,
 and why `open` carries the objective flags plus the wake snapshot.
@@ -3582,8 +3595,9 @@ A parked wait is Waiting
 with Run now / Cancel wait rather than a silent Send box, a long
 objective stays one truncated line so that chrome cannot cover the composer,
 and Earlier sits outside the scroller so a live-edge tail can still page.
-A scroll that is already at the top does not ask for another page; that
-request is the Earlier button or a pull. Interrupt is on a queued follow-up,
+A scroll that is already at the top does not itself ask for another page.
+After the bounded opening backfill, further requests use Earlier or a pull.
+Interrupt is on a queued follow-up,
 not on every running turn. `mobile/src/lib/phone-turn.test.ts` verifies that
 this action promotes the selected waiting message before preempting the current
 manager step, leaves later messages queued, and tolerates a steer already read
@@ -6095,11 +6109,10 @@ Agents → conversation → inbox, keep the root open, dismiss the current model
 picker before its conversation and ignore short, vertical, centre and opposite
 edge gestures. Browser tests of the same return hook prove page-layer behavior;
 they do not prove recognition of the UIKit gesture.
-For the hidden-history regression, set `IOS_LAYOUT_QUERY='/?mock=1&tick=0&history=hidden'`
-when creating the disposable fixture and select only
-`AppUITests/BindFlowTests/testHiddenHistoryShowsEarlierAnswer`. That XCTest
-checks the packaged app's empty-state explanation, Earlier tap and recovered
-answer; the default fixture leaves this one test skipped.
+For the hidden-history opening regression, use the dedicated
+`mobile/e2e/ios-conversation-open.swift` case and disposable fixture described
+under Phone conversation loading below. The opening must reach a visible
+main-conversation item without an Earlier tap, including after Back/reopen.
 For Issue #59, use `IOS_LAYOUT_QUERY='/?mock=1&tick=0&history=turns'` and select
 `AppUITests/BindFlowTests/testScheduledTurnBoundariesShowCompletionDates`.
 It opens the seeded conversation inside the packaged app and checks both dated
@@ -6843,18 +6856,23 @@ TestFlight daily limit. Source/workset/native/signing/remote gates remain in
 force, saved reasons do not authorize later runs, and check-only runs do not
 write publication receipts.
 
-Phone conversation loading also has packaged native cases in
+### Phone conversation loading (F-220 / C-006)
+
+Packaged native conversation-loading entry points are
 `mobile/e2e/ios-conversation-open.swift` and
 `mobile/android/app/src/androidTest/java/com/lubyruffy/zwai/ConversationOpenTest.java`.
 Use a disposable fixture with `/?mock=1&tick=0&history=hidden&pause=open`.
-Both cases check empty live edge, Earlier history, Back and reopening the same
-conversation before reading Earlier again, retaining PNG and accessibility
-observations. Android API 33 text polling reads the actual rendered WebView
+Require the history answer to appear automatically on initial entry, then Back
+and a fresh opening of the same conversation; no Earlier input may establish
+that opening result. Keep the original live-turn identity and collect PNG and
+accessibility observations for both visits. Test manual Earlier separately when
+more history remains. Android API 33 text polling reads the actual rendered WebView
 DOM because its cached accessibility tree can omit a painted paragraph;
-all navigation and Earlier actions still use native accessibility clicks.
+navigation and any manual Earlier action still use native accessibility clicks.
 An unloaded body or null callback remains pending within the original poll.
 Native fixture behavior supplements bounded-query/RPC and
-Chromium/WebKit regression tests; it does not measure a real paired network.
+Chromium/WebKit regression tests; it does not measure a real paired network,
+prove cold-start performance or accept a future formal release package.
 
 ### Engine fixture timing and Store ownership
 

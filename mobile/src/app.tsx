@@ -249,7 +249,7 @@ export function App() {
     openPhoneThread({
       target,
       id,
-      view: () => viewRef.current,
+      view: () => linkRef.current === target ? viewRef.current : emptyView(),
       setView: (next) => {
         viewRef.current = next
       },
@@ -583,7 +583,12 @@ export function App() {
         setError(remoteError(r.error || r.code || ""))
         return
       }
-      commitView(prependOlder(viewRef.current, r.events ?? [], Boolean(r.more), r.seq ?? 0))
+      const latest = viewRef.current
+      if (!latest.hasMore) return
+      const cursor = latest.oldestSeq > 0 ? latest.oldestSeq : latest.lastSeq
+      // Automatic opening history can advance before this manual page returns.
+      if (before > 0 && cursor > 0 && cursor < before) return
+      commitView(prependOlder(latest, r.events ?? [], Boolean(r.more), r.seq ?? 0))
     } catch (e) {
       fail(e)
     } finally {

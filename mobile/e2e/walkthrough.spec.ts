@@ -40,14 +40,20 @@ test("scheduled results stay separated by their completion timestamps on the pho
   await expect(transcript).toContainText("Second completed run")
 })
 
-test("phone reaches earlier conversation text past hidden background events", async ({ page }) => {
+test("phone opens the latest answer past hidden background events without Earlier", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto("/?mock=1&tick=0&history=hidden")
   const transcript = page.getByTestId("transcript")
-  await expect(transcript).toContainText("这一轮暂无可显示消息")
-  await page.getByRole("button", { name: "更早" }).click()
   await expect(transcript).toContainText("Earlier answer")
   await expect(transcript).not.toContainText("这一轮暂无可显示消息")
+  await expect(page.locator("form").getByRole("button", { name: "停止", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "返回", exact: true }).click()
+  const sameThread = page.getByTestId("project-stack").getByRole("button", { name: "打开 Trim the layout pass", exact: true })
+  await expect(sameThread).toHaveCount(1)
+  await sameThread.click()
+  await expect(transcript).toContainText("Earlier answer")
+  await expect(transcript).not.toContainText("这一轮暂无可显示消息")
+  await expect(page.locator("form").getByRole("button", { name: "停止", exact: true })).toBeVisible()
 })
 
 test("a phone lists PC outputs and previews a file without leaving the conversation", async ({ page }) => {

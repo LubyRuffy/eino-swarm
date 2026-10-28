@@ -1,9 +1,13 @@
 import { t } from "@/lib/i18n"
 import type { RemoteLink } from "@/lib/link"
 import { linkError, remoteError } from "@/lib/client"
-import { OpOpen, OpReady, OpWatch } from "@/lib/rpc"
-import { applyOpenDetail, applyPendingOpenDetail, applyPush, emptyView, type PhoneView } from "@/lib/session"
+import { OpLog, OpOpen, OpReady, OpWatch } from "@/lib/rpc"
+import { applyOpenDetail, applyPendingOpenDetail, applyPush, emptyView, prependOlder, type PhoneView } from "@/lib/session"
 import { clearLastThreadId, loadLastThreadId, saveLastThreadId } from "@/lib/store"
+import { foldPhoneItems, managerBlocks } from "@/lib/transcript"
+
+// A second open of the same thread invalidates the first request as well.
+const openings = new WeakMap<RemoteLink, object>()
 
 /** Opens one thread and watches it. A cleared threadId means Back already
  *  left: a check that only bails when some other id is current treats "left"
@@ -20,7 +24,9 @@ export async function openPhoneThread(opts: {
 }): Promise<boolean> {
   const { target, id, view, setView, commitView, setError, bumpLoad, clearOlder } = opts
   const staying = view().threadId === id && Boolean(view().detail)
-  const still = () => view().threadId === id
+  const request = {}
+  openings.set(target, request)
+  const still = () => openings.get(target) === request && view().threadId === id
   try {
     const w = await target.rpc({ op: OpWatch, thread_id: id, include_detail: true })
     if (!still()) return false
@@ -51,7 +57,32 @@ export async function openPhoneThread(opts: {
     const current = view()
     const next = baseline ? applyPendingOpenDetail(current, r.detail, baseline) : applyOpenDetail(current, r.detail)
     commitView(w.detail ? applyPush(next, { ...w, op: w.op || OpReady }) : next)
-    return true
+    // The live-edge page is bounded by raw events, so a worker-only tail can
+    // leave the main transcript empty even while older conversation exists.
+    while (still() && view().hasMore && foldPhoneItems(managerBlocks(view().blocks)).length === 0) {
+      const current = view()
+      const before = current.oldestSeq > 0 ? current.oldestSeq : current.lastSeq
+      try {
+        const older = await target.rpc({ op: OpLog, thread_id: id, before })
+        if (!still()) return false
+        if (!older.ok) {
+          setError(remoteError(older.error || older.code || ""))
+          return true
+        }
+        const latest = view()
+        if (!latest.hasMore) return true
+        const cursor = latest.oldestSeq > 0 ? latest.oldestSeq : latest.lastSeq
+        // A manual page may already have advanced while this read was pending.
+        // Its late cursor cannot exhaust or move that newer history window.
+        if (before > 0 && cursor > 0 && cursor < before) continue
+        commitView(prependOlder(latest, older.events ?? [], Boolean(older.more), older.seq ?? 0))
+      } catch (error) {
+        if (!still()) return false
+        setError(linkError(error))
+        return true
+      }
+    }
+    return still()
   } catch (e) {
     if (!still()) return false
     setError(linkError(e))

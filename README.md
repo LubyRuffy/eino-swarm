@@ -671,11 +671,12 @@ end-to-end tests run on and the fastest way to see the UI work.
    the menu. Switching a chip opens that PC's inbox without automatically
    opening its live or last conversation; tap a row to enter it. In-progress rows show
    findings or **Waiting**, not `schedule_wake` / `report_schedule` JSON.
-   The transcript opens on the
-   last turn, already at the live edge; Earlier or pull up loads older rows.
-   If the current turn contains only hidden background coordination, the phone
-   explains the empty view; one Earlier request skips that activity and reaches
-   the nearest visible conversation history. A completed turn has a dated
+   The transcript keeps the latest turn's status and live updates. If its recent
+   events contain no visible main-conversation item, the phone automatically
+   reads older pages until an item is visible or history ends. **Earlier** or
+   pulling up loads more history. Reading stops when an item is visible rather
+   than loading the remaining log; a failed history read keeps the opened
+   conversation and reports the error without retrying automatically. A completed turn has a dated
    divider on both the PC and the phone, so repeated scheduled results stay distinct.
    **Agents / 子 Agent** counts running workers and separates them from finished
    or failed history; each row shows status and opens its separate

@@ -464,6 +464,14 @@ co-working app built on it. The library API is unchanged except where noted
   checkpoint identities still refuse recovery, and genuine unanswered questions
   retain their original wait.
 
+- `F-220`, `C-006` (Issue #121): opening a phone conversation whose recent
+  events paint no main-conversation items automatically reads existing history
+  pages until an item is visible, history ends or the cursor cannot advance.
+  Live turn status and streaming output remain current; late automatic/manual
+  pages cannot exhaust a newer cursor. Read errors keep the opened view without
+  automatic retries, and Earlier remains available for additional history.
+  The backend's 24-event watch window and frame budget are unchanged.
+
 - `F-220`: the phone composer no longer repeats a persistent queue hint below
   its controls. Follow-up, Steer, Stop and the visible queue retain their
   existing behavior.
