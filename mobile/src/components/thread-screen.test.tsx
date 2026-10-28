@@ -750,7 +750,7 @@ describe("ThreadScreen", () => {
     expect(screen.queryByTestId("to-latest")).not.toBeInTheDocument()
   })
 
-  it("says a follow-up is queued, and drops steer once the turn ends", () => {
+  it("omits the queue hint while keeping steer available only during the turn", () => {
     setLocale("en")
     const { rerender } = render(
       <ThreadScreen
@@ -764,8 +764,12 @@ describe("ThreadScreen", () => {
         onAnswerStructured={vi.fn()}
       />,
     )
-    expect(screen.getByText("Queued after this turn")).toBeInTheDocument()
+    expect(screen.queryByText("Queued after this turn")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Steer" })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "follow-up" } })
+    expect(screen.queryByText("Queued after this turn")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Follow-up" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Steer" })).toBeEnabled()
     rerender(
       <ThreadScreen
         detail={{ id: "t1", title: "live" }}

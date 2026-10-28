@@ -89,7 +89,6 @@ export const zh: Record<MessageKey, string> = {
   "when.days": "{n} 天前",
 
   "thread.toLatest": "回到最新",
-  "thread.sendHint": "排在本轮之后",
   "thread.steerHint": "插话给本轮",
   "queue.waiting": "等这轮结束",
   "queue.steer": "插入",

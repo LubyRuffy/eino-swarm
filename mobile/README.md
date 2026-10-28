@@ -135,8 +135,9 @@ a short thread is bottom-aligned, and scrolling away from the tail raises
 (`components/composer.tsx`) that grows with the text up to a cap, Enter
 sends (Shift+Enter is a newline, and an IME candidate list is never a
 send), and the round button stays off until there is something to send.
-While a turn is live the box also offers steer, and says a plain send is
-queued after this turn.
+While a turn is live the box also offers steer, and a plain send is queued
+after this turn. The composer has no persistent queue hint below its controls;
+waiting messages remain visible in the queue tray.
 Message, quote and Ask Other editors use 16px text (`C-017`). On iOS, focusing and
 dismissing the keyboard must leave the header in its safe area and the wait
 actions and Send/Follow-up/Steer inside the screen, including long drafts;

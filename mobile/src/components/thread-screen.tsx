@@ -463,7 +463,6 @@ export function ThreadScreen({
         // announces two "Answer" controls and a test cannot pick either.
         label={asking ? t("thread.answerBox") : t("thread.message")}
         sendLabel={asking ? t("thread.answer") : running ? t("thread.followUp") : t("thread.send")}
-        hint={running && !asking ? t("thread.sendHint") : undefined}
         steerLabel={running && !asking ? t("thread.steer") : undefined}
         onSteer={running && !asking ? onSteer : undefined}
         stopLabel={t("thread.stop")}

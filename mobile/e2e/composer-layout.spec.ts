@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs"
 import { expect, test, type Page } from "@playwright/test"
 
 // Bounds must include the submission itself: a visible editor or a page with
@@ -34,6 +35,38 @@ test("PC follow-up and new chat keep submission inside the phone", async ({ page
   await page.getByTestId("new-chat").click()
   await page.locator(".screen-push").evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)))
   await controlsFit(page, "新消息")
+})
+
+test("the live composer keeps Follow-up and Steer without a persistent queue hint", async ({ page }, info) => {
+  await page.goto("/?mock=1&tick=0")
+  const form = page.locator("form")
+  const editor = page.getByLabel("消息", { exact: true })
+  const steer = form.getByRole("button", { name: "插入", exact: true })
+  const followUp = form.getByRole("button", { name: "跟进", exact: true })
+  const hint = page.getByText(/^(排在本轮之后|Queued after this turn)$/)
+  await expect(form.getByRole("button", { name: "停止", exact: true })).toBeEnabled()
+  await expect(hint).toHaveCount(0)
+  await editor.fill("Check the current result")
+  await expect(followUp).toBeEnabled()
+  await expect(steer).toBeEnabled()
+  await expect(hint).toHaveCount(0)
+  writeFileSync(info.outputPath("composer-live-without-queue-hint.png"), await page.screenshot(), { mode: 0o600 })
+
+  // Exercise both real composer callbacks: hiding a hint must not turn Steer
+  // into a queued send or remove Follow-up from an active conversation.
+  await steer.click()
+  await expect(page.getByTestId("transcript").getByText("Check the current result", { exact: true })).toBeVisible()
+  await expect(editor).toHaveValue("")
+  await expect(form.getByRole("button", { name: "停止", exact: true })).toBeEnabled()
+  await editor.fill("Continue with the next item")
+  await expect(followUp).toBeEnabled()
+  await followUp.click()
+  await expect(page.getByTestId("transcript").getByText("Continue with the next item", { exact: true })).toBeVisible()
+  await expect(editor).toHaveValue("")
+  await expect(form.getByRole("button", { name: "发送", exact: true })).toBeDisabled()
+  await expect(steer).toHaveCount(0)
+  await expect(hint).toHaveCount(0)
+  writeFileSync(info.outputPath("composer-idle-without-steer.png"), await page.screenshot(), { mode: 0o600 })
 })
 
 test("the empty live composer stops the turn while a typed draft still sends a follow-up", async ({ page }) => {

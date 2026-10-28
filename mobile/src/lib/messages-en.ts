@@ -163,7 +163,6 @@ export const en = {
   "thread.workFoldTools": "{n} tools",
   "thread.workFoldBoth": "Thought · {tools}",
   "thread.toLatest": "Jump to latest",
-  "thread.sendHint": "Queued after this turn",
   "thread.steerHint": "Steer this turn",
   "queue.waiting": "Waiting for this turn",
   "queue.steer": "Steer",

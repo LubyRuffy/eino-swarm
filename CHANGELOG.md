@@ -393,6 +393,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-220`: the phone composer no longer repeats a persistent queue hint below
+  its controls. Follow-up, Steer, Stop and the visible queue retain their
+  existing behavior.
+
 - `F-120`, `F-220` (Issue #123): Markdown tables retain a font-relative
   readable minimum column width, so long descriptions do not squeeze short
   Latin or Chinese labels into one-character lines. Desktop/Web and phone
