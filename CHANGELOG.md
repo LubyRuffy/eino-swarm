@@ -404,6 +404,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-410`: `⌘K` filters unrelated commands during conversation search instead
+  of leaving every action visible, using their visible localized labels as
+  well as aliases. Searching, no matches and request failure
+  have distinct feedback; failure filters the local fallback, and server-ranked
+  keyword/semantic results keep their order.
+
 - `F-130`, `C-003`, `C-019` (Issue #120): keep worker-collection decline
   receipts in Trace without adding a raw JSON chat card after Reload or older
   history loads. PC live events settle the matching wait without changing

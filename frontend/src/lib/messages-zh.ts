@@ -101,6 +101,8 @@ export const zh: { [K in keyof typeof en]: string } = {
 
   "palette.placeholder": "搜索会话，或输入命令…",
   "palette.empty": "没有匹配项。",
+  "palette.searching": "正在搜索会话…",
+  "palette.searchFailed": "会话搜索失败，仅显示匹配的本地标题。",
   "palette.actions": "操作",
   "palette.new": "新对话",
   "palette.find": "在会话中查找",

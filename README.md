@@ -878,7 +878,8 @@ Send once it does (text, a quote, a file, or an image; whitespace does not
 count) · `/` at the
 start of the box opens built-in commands · ⌘Enter steers
 the draft into the current turn · Shift+Enter a newline · `⌘K` command palette
-(titles, bodies, and meaning when embeddings are on) · `⌘N` new
+(titles, bodies, and meaning when embeddings are on; commands filter as you
+type, with separate searching, no-match and search-error messages) · `⌘N` new
 conversation · `⌘F` find in the open conversation · `⌘B` hide or show the
 list beside the icon rail (the rail stays) · `⌘\` toggle the right panel · `⌘J` open a terminal in the
 current project (or conversation) directory · `⌘,` settings · `Esc` close
