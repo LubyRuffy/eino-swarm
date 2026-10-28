@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Model-check the engine lifecycle protocol (C-027 handoff, Stop, parked
-workers, C-001 idle exit and shell presence) with TLC.
+"""Model-check the engine's ordering protocols with TLC.
 
     python3 tools/model_check.py [--fetch] [--jar PATH] [--out DIR] [CASE ...]
 
-The model is models/lifecycle/EngineLifecycle.tla. Every case sets its switch
-constants and states the expected outcome: the current design must pass every
-safety invariant; each historical or seeded behaviour must break the named
-invariant; each reachability witness must be violated so that a passing
-invariant cannot be vacuous. A case whose outcome differs fails the run.
+Each model under models/ states one protocol: models/lifecycle/EngineLifecycle.tla
+(C-027 handoff, Stop, parked workers, C-001 idle exit and shell presence) and
+models/stream/EventStream.tla (C-003 stored order, slow readers, catch-up,
+rewind and restart). Every case sets its model's switch constants and states
+the expected outcome: the current design must pass every safety invariant;
+each historical or seeded behaviour must break the named invariant (checked
+alone with TypeOK, so the reported invariant does not depend on which
+counterexample TLC's workers reach first); each reachability witness must be
+violated so that a passing invariant cannot be vacuous. A case whose outcome
+differs fails the run.
 
 TLC is tla2tools.jar, found through --jar, $TLA2TOOLS_JAR or the user cache.
 --fetch downloads the pinned release into that cache and checks its SHA-256;
@@ -32,25 +36,41 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SPEC = ROOT / "models" / "lifecycle" / "EngineLifecycle.tla"
 
 TLA_VERSION = "v1.7.4"
 TLA_URL = f"https://github.com/tlaplus/tlaplus/releases/download/{TLA_VERSION}/tla2tools.jar"
 TLA_SHA256 = "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88"
 CACHE_JAR = Path.home() / ".cache" / "tlaplus" / TLA_VERSION / "tla2tools.jar"
 
-SWITCHES = (
-    "DeadlineKillsChild",
-    "RestoreBeforeListen",
-    "StopRacesRestore",
-    "PresenceAfterWindow",
-    "IdleCommitNonAtomic",
-    "FinishUngated",
-    "ParkedNotCheckpointed",
-    "IdleCountsOnlyManagers",
-)
-SAFETY = ("TypeOK", "WorkHasLiveOwner", "CheckpointHasOwner", "StopIsFinal", "WindowHasEngine")
-MAX_TURNS = 2
+
+@dataclass(frozen=True)
+class Model:
+    name: str
+    spec: Path
+    switches: tuple[str, ...]
+    safety: tuple[str, ...]
+    # Bounds that keep the state space finite.
+    constants: tuple[tuple[str, int], ...]
+
+
+MODELS = {
+    m.name: m
+    for m in (
+        Model(
+            "lifecycle", ROOT / "models" / "lifecycle" / "EngineLifecycle.tla",
+            ("DeadlineKillsChild", "RestoreBeforeListen", "StopRacesRestore", "PresenceAfterWindow",
+             "IdleCommitNonAtomic", "FinishUngated", "ParkedNotCheckpointed", "IdleCountsOnlyManagers"),
+            ("TypeOK", "WorkHasLiveOwner", "CheckpointHasOwner", "StopIsFinal", "WindowHasEngine"),
+            (("MaxTurns", 2),),
+        ),
+        Model(
+            "stream", ROOT / "models" / "stream" / "EventStream.tla",
+            ("MarkerUnstored", "MarkerAfterUnlock", "BroadcastAfterUnlock", "DropWhenSlow"),
+            ("TypeOK", "ConvergedView", "SeqIdentity"),
+            (("MaxSeq", 5), ("Cap", 1)),
+        ),
+    )
+}
 
 
 @dataclass(frozen=True)
@@ -62,17 +82,27 @@ class Case:
     violates: str | None = None
     # A witness checks only its own invariant, which the design must violate.
     witness: str | None = None
+    model: str = "lifecycle"
 
     def invariants(self) -> tuple[str, ...]:
-        return (self.witness,) if self.witness else SAFETY
+        if self.witness:
+            return (self.witness,)
+        if self.violates:
+            return ("TypeOK", self.violates)
+        return MODELS[self.model].safety
 
     def expected(self) -> str | None:
         return self.witness or self.violates
 
 
 def _case(name: str, source: str, switches: tuple[str, ...] = (), violates: str | None = None,
-          witness: str | None = None) -> Case:
-    return Case(name, source, frozenset(switches), violates, witness)
+          witness: str | None = None, model: str = "lifecycle") -> Case:
+    return Case(name, source, frozenset(switches), violates, witness, model)
+
+
+def _stream(name: str, source: str, switches: tuple[str, ...] = (), violates: str | None = None,
+            witness: str | None = None) -> Case:
+    return _case(name, source, switches, violates, witness, "stream")
 
 
 CASES: tuple[Case, ...] = (
@@ -111,14 +141,37 @@ CASES: tuple[Case, ...] = (
     _case("reach-idle-exit-after-close", "witness", witness="NeverIdleExitAfterClose"),
     _case("reach-relaunch-after-idle-commit", "witness", witness="NeverRelaunchAfterIdleCommit"),
     _case("reach-finish-waits-for-handoff", "witness", witness="NeverFinishWaitsForHandoff"),
+    # C-003 event stream.
+    _stream("stream-current", "current design: every switch off"),
+    _stream("stream-v0.1.45-lost-marker", "historical, shipped through v0.1.45: the rewind marker was "
+            "broadcast after recordMu with seq 0 and never stored, so a slow or reconnecting reader "
+            "kept the truncated rows", ("MarkerUnstored", "MarkerAfterUnlock"), "ConvergedView"),
+    _stream("stream-v0.1.45-seq-reuse", "historical, shipped through v0.1.45: with nothing stored at "
+            "the cut, a restart reseeded the counter below seqs already issued",
+            ("MarkerUnstored", "MarkerAfterUnlock"), "SeqIdentity"),
+    _stream("stream-marker-unstored", "historical part of the v0.1.45 design: an unstored marker alone loses "
+            "the cut for a slow reader", ("MarkerUnstored",), "ConvergedView"),
+    _stream("stream-marker-unstored-reuse", "historical part of the v0.1.45 design: an unstored marker alone "
+            "lets a restart reuse seqs", ("MarkerUnstored",), "SeqIdentity"),
+    _stream("stream-marker-after-unlock", "historical part of the v0.1.45 design: a marker broadcast after "
+            "recordMu races a concurrent row, which the reader then drops or erases",
+            ("MarkerAfterUnlock",), "ConvergedView"),
+    _stream("stream-broadcast-after-unlock", "guard since cb0edb5: Engine.record broadcasts under "
+            "recordMu, so stored and streamed order agree", ("BroadcastAfterUnlock",), "ConvergedView"),
+    _stream("stream-drop-when-slow", "guard since cb0edb5: a stored row that does not fit a slow "
+            "subscriber flags it lagged", ("DropWhenSlow",), "ConvergedView"),
+    _stream("stream-reach-catch-up-across-rewind", "witness", witness="NeverCatchUpAcrossRewind"),
+    _stream("stream-reach-record-after-restart", "witness", witness="NeverRecordAfterRestart"),
 )
 
 
 def render_config(case: Case) -> str:
+    model = MODELS[case.model]
     lines = ["SPECIFICATION Spec", "CONSTANTS"]
-    for name in SWITCHES:
+    for name in model.switches:
         lines.append(f"  {name} = {'TRUE' if name in case.switches else 'FALSE'}")
-    lines.append(f"  MaxTurns = {MAX_TURNS}")
+    for name, value in model.constants:
+        lines.append(f"  {name} = {value}")
     lines.append("INVARIANTS " + " ".join(case.invariants()))
     return "\n".join(lines) + "\n"
 
@@ -194,13 +247,14 @@ def find_jar(explicit: str | None, fetch: bool) -> Path:
 
 def run_case(case: Case, jar: Path, out: Path, timeout: int = 600) -> tuple[Outcome, Path]:
     # TLC resolves the config beside the module, so each case gets a copy.
+    spec = MODELS[case.model].spec
     workdir = out / case.name
     workdir.mkdir(parents=True)
-    shutil.copy(SPEC, workdir / SPEC.name)
+    shutil.copy(spec, workdir / spec.name)
     (workdir / "case.cfg").write_text(render_config(case))
     proc = subprocess.run(
         ["java", "-XX:+UseParallelGC", "-cp", str(jar), "tlc2.TLC", "-deadlock", "-workers", "auto",
-         "-metadir", str(workdir / "states"), "-config", "case.cfg", SPEC.name],
+         "-metadir", str(workdir / "states"), "-config", "case.cfg", spec.name],
         cwd=workdir, capture_output=True, text=True, timeout=timeout,
     )
     log = workdir / "tlc.out"
@@ -221,7 +275,7 @@ def main(argv: list[str] | None = None) -> int:
     by_name = {c.name: c for c in CASES}
     if args.list:
         for c in CASES:
-            print(f"{c.name:34} expect {c.expected() or 'pass':26} {c.source}")
+            print(f"{c.name:38} {c.model:9} expect {c.expected() or 'pass':26} {c.source}")
         return 0
     unknown = [n for n in args.cases if n not in by_name]
     if unknown:
@@ -238,7 +292,7 @@ def main(argv: list[str] | None = None) -> int:
         problem = judge(case, outcome)
         result = "pass" if outcome.passed else f"violates {outcome.violated}"
         states = f"{outcome.distinct} states" if outcome.distinct is not None else "-"
-        print(f"{'ok  ' if problem is None else 'FAIL'} {case.name:34} {result:30} {states}")
+        print(f"{'ok  ' if problem is None else 'FAIL'} {case.name:38} {result:30} {states}")
         if problem:
             failures += 1
             print(f"     {problem}; see {log}")

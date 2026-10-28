@@ -161,14 +161,16 @@ export function rememberStored(id: string, ev: SwarmEvent): boolean {
   return true
 }
 
-export function rememberRewind(id: string, cut: number, through = 0) {
+export function rememberRewind(id: string, cut: number, through = 0, marker = 0) {
   if (threadId !== id) return
   historyGeneration++
   const oldest = historyOldestSeq()
   if (oldest === 0 || oldest >= cut) unloadedBelow = unloadedBelow > 0 ? Math.min(unloadedBelow, cut) : cut
   cutFrom = cut
   if (through > cutThrough) cutThrough = through
-  const keep = (seq: number) => seq < cut || (cutThrough > 0 && seq > cutThrough)
+  // The stored marker stays a known row: once a later cut moves cutFrom past
+  // it, a replayed copy would otherwise look new and cut again.
+  const keep = (seq: number) => seq < cut || (cutThrough > 0 && seq > cutThrough) || (marker > 0 && seq === marker)
   events = events.filter((ev) => keep(ev.seq))
   // A sidecar row past the cut is either truncated or newer than the marker.
   // The latter is still ahead of SSE, which delivers it again.
@@ -179,12 +181,12 @@ export function rememberRewind(id: string, cut: number, through = 0) {
 
 /** A rendered output may combine checkpoints on both sides of the cut. Only
  *  the original events can recover its earlier text rather than drop it whole. */
-export function rewindStoredTranscript(id: string, cut: number, current: TranscriptState): TranscriptState {
+export function rewindStoredTranscript(id: string, cut: number, current: TranscriptState, marker = 0): TranscriptState {
   if (threadId !== id) return rewindTranscript(current, cut)
   // SSE is ordered: the page and every streamed row predate this marker. A
   // worker log may already hold rows stored after the truncation, so its
   // seqs must not stretch the cut over the turn that replaced it.
-  rememberRewind(id, cut, historyNewestSeq())
+  rememberRewind(id, cut, historyNewestSeq(), marker)
   return foldedTranscript(rewindTranscript(current, cut, cutThrough))
 }
 

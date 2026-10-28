@@ -20,10 +20,23 @@ func TestStartTurnRewindsFromAUserMessage(t *testing.T) {
 	h.waitTurnDone(id)
 
 	seq := firstUserSeq(t, h.app.Store, id)
+	before, err := h.app.Store.ListEvents(id, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cursor := before[len(before)-1].Seq
 	h.json(http.MethodPost, "/api/threads/"+id+"/turns",
 		map[string]any{"text": "the edited request", "from_event_seq": seq},
 		http.StatusAccepted)
 	h.waitTurnDone(id)
+
+	// A page that was open before the edit resumes from its old cursor. The
+	// named rewound event must reach it there, before the replacement turn,
+	// or the removed rows stay on its screen.
+	kinds, _ := readStream(t, h, id, cursor, 10*time.Second)
+	if kinds[engine.KindRewound] != 1 || kinds[engine.KindUser] != 1 {
+		t.Fatalf("resuming from the pre-edit cursor got %v, want one rewound and the new request", kinds)
+	}
 
 	turns, err := h.app.Store.ListTurns(id)
 	if err != nil {
@@ -37,8 +50,8 @@ func TestStartTurnRewindsFromAUserMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, ev := range events {
-		if ev.Kind == engine.KindRewound {
-			t.Fatal("rewound is live-only; storing it would replay a cut that already happened")
+		if ev.Kind == engine.KindRewound && ev.Seq <= cursor {
+			t.Fatalf("the stored marker %d is not above the removed rows (%d)", ev.Seq, cursor)
 		}
 		if ev.Kind == engine.KindUser && ev.Text != "the edited request" {
 			t.Fatalf("a dropped request is still on the timeline: %q", ev.Text)

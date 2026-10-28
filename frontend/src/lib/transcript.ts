@@ -245,9 +245,9 @@ export function reduceEvent(
   // Array.reduce would pass the index as the third argument; only explicit "roster" skips chrome.
   const rosterOnly = mode === "roster"
   if (ev.kind === "rewound") {
-    const from = Number.parseInt(String(ev.text ?? ""), 10)
-    if (!Number.isFinite(from) || from <= 0) return state
-    return rewindTranscript(state, from)
+    // A stored marker in a history page was applied when its log was cut.
+    const from = ev.seq > 0 ? 0 : Number.parseInt(String(ev.text ?? ""), 10)
+    return from > 0 ? rewindTranscript(state, from) : ev.seq > state.lastSeq ? { ...state, lastSeq: ev.seq } : state
   }
   if (droppedByRewind(state, ev)) return state
   const next: TranscriptState = {

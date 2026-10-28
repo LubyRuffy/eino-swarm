@@ -1456,9 +1456,11 @@ counters are **not** wound back, so a live `Last-Event-ID` still lands on new
 events. A running turn is interrupted first, so this is not `409 busy`. A
 seq that is not a `user_message` is `400`; a missing seq is `404`. Original
 pasted images are reused when the body has none. `POST …/steer` ignores this
-field. Live clients get a `rewound` event (`seq` 0, not stored; `text` is the
-cut seq) so the UI can drop everything below that bubble before the replacement
-`user_message` arrives.
+field. The cut is stored as a `rewound` event (`text` is the cut seq) with a
+seq above every removed row, before the replacement `user_message`. Clients
+drop everything from that seq up to the marker; one that lagged or reconnects
+with `Last-Event-ID` / `since` gets the marker on catch-up, and a later engine
+restart cannot reuse a removed seq.
 Returns the created turn immediately:
 
 ```json
@@ -1846,7 +1848,7 @@ shortening only the bounded detail text.
 | `plan_cancelled` | the human left planning without implementing. `text` is `left planning` |
 | `goal_session` | historical: older builds forced a `/goal` turn to end so the next session could start. New runs do not emit it. `text` is JSON `{reason,elapsed_ms,rounds}` where `reason` is `time` (the removed wall-clock cut) or `iterations` (older builds that treated eino's ReAct slice as a session boundary). The turn is `done`, not cancelled. In-flight sub-agents were parked for the next session |
 | `compacted` | earlier replay was folded into a briefing, either by `/compact` or automatically at the compact trigger (percent of a confirmed window, else `swarm.auto_compact_tokens`). `text` is JSON `{summary,through_seq,chars_before?,chars_after?,auto?,tokens_before?,tokens_after?,phase?}`. `phase: "start"` is live only (`seq` 0) and means compression is in flight — clients keep the Working clock and show that in chrome (title bar **Compressing**, composer banner), not only as a transcript notice. A stored auto event has `auto: true` and the token counts. `err` is set when the summarizer failed and the thread is unchanged. The PC transcript shows successful compression as a secondary status, retaining token counts when supplied; a labelled disclosure expands or collapses the complete `summary` inline. Compression errors keep their notice card. This changes presentation only; original messages and event order remain intact |
-| `rewound` | a live client should drop rows from `text` (the cut seq) onward. `seq` is 0, not stored — a reload already has the truncated log |
+| `rewound` | stored. A client that receives it live or on catch-up drops rows from `text` (the cut seq) up to this event's seq; a page that contains it already lacks those rows. `seq` is 0 only if storing it failed |
 | `schedule` | a wait was armed. `text` is JSON `{id,kind,title,prompt,thread_id,origin_thread_id,status,next_run_at}`. Older rows omit the extra keys. The transcript shows a short chip; the id lives in `detail` so cancel can target it. The client also merges this payload into the inbox list immediately so the composer banner does not wait on `GET /api/schedules`. `next_run_at` on that chip is a snapshot of the first due slot — a later GET or fire must not be rewound if the event is replayed |
 | `schedule_fired` | the runtime started this turn because a wait fired. Not a `user_message`. `text` is the short chip (`Scheduled check.`). Same Working-clock rule as `goal_continued` |
 | `schedule_skipped` | a due tick could not start (busy). Trace-only; the transcript adds no row. The client refreshes the schedule list so the banner shows the advanced `next_run_at` |

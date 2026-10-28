@@ -1,7 +1,7 @@
 """Tests for tools/model_check.py.
 
-The case table is the acceptance record of the lifecycle model: if a case
-named an invariant or switch the module no longer declares, TLC would fail on
+The case table is the acceptance record of the protocol models: if a case
+named an invariant or switch its module no longer declares, TLC would fail on
 the config and the record would silently stop meaning anything. The TLC run
 itself is exercised only when tla2tools.jar and Java are already present; it
 never downloads.
@@ -22,66 +22,97 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import model_check as mc  # noqa: E402
 
-SPEC_TEXT = mc.SPEC.read_text()
 
-
-def declared_constants() -> set[str]:
-    block = re.search(r"^CONSTANTS\n(.*?)\n\n", SPEC_TEXT, re.S | re.M).group(1)
+def declared_constants(model: mc.Model) -> set[str]:
+    block = re.search(r"^CONSTANTS\n(.*?)\n\n", model.spec.read_text(), re.S | re.M).group(1)
     return set(re.findall(r"^\s+(\w+)", block, re.M))
 
 
-def defined_operators() -> set[str]:
-    return set(re.findall(r"^(\w+)(?:\(.*?\))? ==", SPEC_TEXT, re.M))
+def defined_operators(model: mc.Model) -> set[str]:
+    return set(re.findall(r"^(\w+)(?:\(.*?\))? ==", model.spec.read_text(), re.M))
+
+
+def cases_of(model: mc.Model) -> list[mc.Case]:
+    return [c for c in mc.CASES if c.model == model.name]
 
 
 class CaseTable(unittest.TestCase):
+    def test_every_case_belongs_to_a_model(self):
+        self.assertLessEqual({c.model for c in mc.CASES}, set(mc.MODELS))
+        for model in mc.MODELS.values():
+            self.assertTrue(cases_of(model), model.name)
+
     def test_every_switch_and_invariant_exists_in_the_model(self):
-        self.assertEqual(declared_constants(), set(mc.SWITCHES) | {"MaxTurns"})
-        ops = defined_operators()
-        for case in mc.CASES:
-            for inv in case.invariants():
-                self.assertIn(inv, ops, case.name)
-            self.assertLessEqual(case.switches, set(mc.SWITCHES), case.name)
+        for model in mc.MODELS.values():
+            self.assertEqual(declared_constants(model),
+                             set(model.switches) | {name for name, _ in model.constants}, model.name)
+            ops = defined_operators(model)
+            for case in cases_of(model):
+                for inv in case.invariants():
+                    self.assertIn(inv, ops, case.name)
+                self.assertLessEqual(case.switches, set(model.switches), case.name)
 
     def test_every_switch_is_shown_to_break_an_invariant(self):
         # A switch no case turns on is an untested claim about the protocol.
-        exercised = set().union(*(c.switches for c in mc.CASES if c.violates))
-        self.assertEqual(exercised, set(mc.SWITCHES))
+        for model in mc.MODELS.values():
+            exercised = set().union(*(c.switches for c in cases_of(model) if c.violates))
+            self.assertEqual(exercised, set(model.switches), model.name)
+
+    def test_every_safety_invariant_is_shown_to_catch_something(self):
+        for model in mc.MODELS.values():
+            caught = {c.violates for c in cases_of(model) if c.violates}
+            self.assertEqual(caught, set(model.safety) - {"TypeOK"}, model.name)
 
     def test_the_current_design_is_checked_against_every_safety_invariant(self):
-        current = [c for c in mc.CASES if not c.switches and not c.witness]
-        self.assertEqual(len(current), 1)
-        self.assertIsNone(current[0].expected())
-        self.assertEqual(current[0].invariants(), mc.SAFETY)
+        for model in mc.MODELS.values():
+            current = [c for c in cases_of(model) if not c.switches and not c.witness]
+            self.assertEqual(len(current), 1, model.name)
+            self.assertIsNone(current[0].expected())
+            self.assertEqual(current[0].invariants(), model.safety)
 
     def test_every_witness_is_checked_alone_on_the_current_design(self):
-        witnesses = [c for c in mc.CASES if c.witness]
-        self.assertTrue(witnesses)
-        defined = {op for op in defined_operators() if op.startswith("Never")}
-        self.assertEqual({c.witness for c in witnesses}, defined)
-        for c in witnesses:
-            self.assertFalse(c.switches, c.name)
-            self.assertEqual(c.invariants(), (c.witness,))
+        for model in mc.MODELS.values():
+            witnesses = [c for c in cases_of(model) if c.witness]
+            self.assertTrue(witnesses, model.name)
+            defined = {op for op in defined_operators(model) if op.startswith("Never")}
+            self.assertEqual({c.witness for c in witnesses}, defined, model.name)
+            for c in witnesses:
+                self.assertFalse(c.switches, c.name)
+                self.assertEqual(c.invariants(), (c.witness,))
 
-    def test_case_names_are_unique_and_historical_cases_name_their_commit(self):
+    # A historical case is only checkable against code someone can still
+    # check out: a published commit or release tag.
+    def test_case_names_are_unique_and_historical_cases_name_their_source(self):
         names = [c.name for c in mc.CASES]
         self.assertEqual(len(names), len(set(names)))
         for c in mc.CASES:
             if c.source.startswith("historical"):
-                self.assertRegex(c.source, r"\b[0-9a-f]{7}\b", c.name)
+                self.assertRegex(c.source, r"\b[0-9a-f]{7}\b|\bv\d+\.\d+\.\d+\b", c.name)
 
 
 class Config(unittest.TestCase):
     def test_config_sets_every_switch_and_only_the_case_invariants(self):
+        model = mc.MODELS["lifecycle"]
         case = mc.Case("x", "s", frozenset({"FinishUngated"}), "WorkHasLiveOwner")
         cfg = mc.render_config(case)
         self.assertIn("  FinishUngated = TRUE\n", cfg)
-        for name in set(mc.SWITCHES) - {"FinishUngated"}:
+        for name in set(model.switches) - {"FinishUngated"}:
             self.assertIn(f"  {name} = FALSE\n", cfg)
-        self.assertIn(f"  MaxTurns = {mc.MAX_TURNS}\n", cfg)
-        self.assertTrue(cfg.endswith("INVARIANTS " + " ".join(mc.SAFETY) + "\n"))
+        self.assertIn("  MaxTurns = 2\n", cfg)
+        # A seeded case checks its finding alone, so the run is not decided by
+        # which counterexample a TLC worker happens to reach first.
+        self.assertTrue(cfg.endswith("INVARIANTS TypeOK WorkHasLiveOwner\n"))
+        current = mc.render_config(mc.Case("c", "s"))
+        self.assertTrue(current.endswith("INVARIANTS " + " ".join(model.safety) + "\n"))
         witness = mc.render_config(mc.Case("w", "s", witness="NeverParkedCheckpoint"))
         self.assertTrue(witness.endswith("INVARIANTS NeverParkedCheckpoint\n"))
+
+    def test_config_uses_the_case_model(self):
+        cfg = mc.render_config(mc.Case("s", "s", frozenset({"MarkerUnstored"}), "ConvergedView", model="stream"))
+        self.assertIn("  MarkerUnstored = TRUE\n", cfg)
+        self.assertIn("  MarkerAfterUnlock = FALSE\n", cfg)
+        self.assertIn("  MaxSeq = 5\n", cfg)
+        self.assertNotIn("MaxTurns", cfg)
 
 
 PASS_OUT = """Model checking completed. No error has been found.
@@ -175,14 +206,15 @@ def available_jar() -> Path | None:
 
 @unittest.skipUnless(available_jar(), "tla2tools.jar and java are not installed; run make model-check")
 class WithTLC(unittest.TestCase):
-    # The current design and the two historical reproductions; the full table
-    # runs through `make model-check`.
+    # Each model's current design and its historical reproductions; the full
+    # table runs through `make model-check`.
     def test_current_design_passes_and_history_is_found_again(self):
         jar = available_jar()
         out = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, out)
         by_name = {c.name: c for c in mc.CASES}
-        for name in ("current", "pre-d77e8d4", "pre-f341e05"):
+        for name in ("current", "pre-d77e8d4", "pre-f341e05", "stream-current",
+                     "stream-v0.1.45-lost-marker", "stream-v0.1.45-seq-reuse"):
             outcome, log = mc.run_case(by_name[name], jar, out)
             self.assertIsNone(mc.judge(by_name[name], outcome), log.read_text()[-2000:])
             self.assertTrue((out / name / "case.cfg").is_file())

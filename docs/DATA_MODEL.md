@@ -435,10 +435,15 @@ from the table. The ring is the last **manager** prompt versus the selected
 model's window — counting workers would make the meter jump to a number that is
 not this conversation.
 
-**`rewound` is not stored either.** It tells a live client to drop everything
-from a `user_message` seq downward after an edit-and-resend. A reload already
-sees the truncated tables (`events`, `messages`, `turns`, `llm_calls`,
-`followups`). Broadcast with `seq = 0`.
+**`rewound` is stored.** After an edit-and-resend truncates the tables
+(`events`, `messages`, `turns`, `llm_calls`, `followups`), the engine appends
+one `rewound` row (`turn_id` empty, agent `manager`, `text` = the first removed
+seq) under the same record lock, then broadcasts it. Its seq is above every
+removed row, so a reader that lagged or reconnected receives it on catch-up,
+and a reopened store seeds its counter above the seqs readers may still hold
+as their cursor. A row a later rewind removes goes with it. Folding a history
+page treats it as already applied. If that append fails, the marker is still
+broadcast with `seq = 0`.
 
 ## `llm_calls` — where the time went
 

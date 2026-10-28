@@ -44,8 +44,8 @@ type Rand = ReturnType<typeof prng>
 const pick = <T,>(rand: Rand, items: T[]): T => items[Math.floor(rand() * items.length)]
 
 /** What the server does, in order: store a row, or truncate from a user
- *  message because some client resent it. A rewind is broadcast, not stored. */
-type Op = { ev: SwarmEvent } | { rewind: number }
+ *  message because some client resent it and store that cut as `ev`. */
+type Op = { ev: SwarmEvent; rewind?: number }
 
 /** Plausible turns of manager talk, tools, and workers that start, think in
  *  checkpoints, finish or get swept by cleanup, sometimes resumed later under
@@ -53,9 +53,10 @@ type Op = { ev: SwarmEvent } | { rewind: number }
 function script(rand: Rand, rewinds: boolean): Op[] {
   const ops: Op[] = []
   let seq = 0
-  const add = (turn: string, kind: string, agent: string, extra: Partial<SwarmEvent> = {}) => {
+  const add = (turn: string, kind: string, agent: string, extra: Partial<SwarmEvent> = {}, rewind?: number) => {
     seq++
     ops.push({
+      rewind,
       ev: {
         thread_id: "th_p", turn_id: turn, agent_id: agent, seq, kind,
         created_at: `2026-01-01T00:${String(Math.floor(seq / 60) % 60).padStart(2, "0")}:${String(seq % 60).padStart(2, "0")}Z`, ...extra,
@@ -107,7 +108,7 @@ function script(rand: Rand, rewinds: boolean): Op[] {
     else add(turn, "done", "manager", { text: `answer ${t}` })
     if (rewinds && t < turns - 1 && rand() < 0.4) {
       const from = pick(rand, users)
-      ops.push({ rewind: from })
+      add("", "rewound", "manager", { text: String(from) }, from)
       users = users.filter((s) => s < from)
     }
   }
@@ -118,14 +119,14 @@ function script(rand: Rand, rewinds: boolean): Op[] {
 function rowsAfter(ops: Op[], count: number): SwarmEvent[] {
   let rows: SwarmEvent[] = []
   for (const op of ops.slice(0, count)) {
-    if ("ev" in op) rows.push(op.ev)
-    else rows = rows.filter((ev) => ev.seq < op.rewind)
+    if (op.rewind) rows = rows.filter((ev) => ev.seq < (op.rewind ?? 0))
+    rows.push(op.ev)
   }
   return rows
 }
 
 function describeOp(op: Op): string {
-  return "ev" in op ? `${op.ev.seq}:${op.ev.kind}:${op.ev.agent_id}:${op.ev.turn_id}` : `rewind from ${op.rewind}`
+  return `${op.ev.seq}:${op.ev.kind}:${op.ev.agent_id}:${op.ev.turn_id}${op.rewind ? ` from ${op.rewind}` : ""}`
 }
 
 type Reader = StreamSnapshot & {
@@ -202,17 +203,29 @@ async function deliver(ops: Op[], rand: Rand): Promise<string[]> {
   // tail already had.
   let sent = stored
   let sentThrough = tail[tail.length - 1].seq
-  for (let guard = 0; (sent < ops.length || reader.historyHasMore) && guard < 5000; guard++) {
+  let lagged = false
+  for (let guard = 0; (sent < ops.length || lagged || reader.historyHasMore) && guard < 5000; guard++) {
     const r = rand()
-    if (r < 0.2 && stored < ops.length) {
+    if (lagged && r < 0.15) {
+      // The stream catches a lagged reader up from its highest seq, the way
+      // streamEvents calls Replay(highest), and drops what it already sent.
+      for (const ev of server.rows.filter((row) => row.seq > sentThrough)) {
+        emit(ev)
+        sentThrough = ev.seq
+      }
+      sent = stored
+      lagged = false
+      steps.push(`catch-up through ${sentThrough} at op ${stored}`)
+    } else if (r < 0.2 && stored < ops.length) {
       stored++
       server.rows = rowsAfter(ops, stored)
       steps.push(`store op ${stored}`)
     } else if (r < 0.55 && sent < stored) {
       const op = ops[sent++]
-      if ("rewind" in op) {
-        emit({ thread_id: "th_p", turn_id: "", agent_id: "manager", seq: 0, kind: "rewound", text: String(op.rewind), created_at: "2026-01-01T01:00:00Z" })
-        steps.push(`sse rewound ${op.rewind}`)
+      if (lagged || rand() < 0.08) {
+        // A full subscriber channel skips stored rows and marks the reader lagged.
+        lagged = true
+        steps.push(`dropped ${describeOp(op)}`)
         continue
       }
       for (const live of precedingBroadcasts(op.ev, rand)) {

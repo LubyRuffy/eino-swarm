@@ -1553,8 +1553,10 @@ that bubble into an in-place editor (Cancel / Send) — the draft stays in the
 bubble, not the composer. Send truncates the log from that `user_message`
 seq (`POST /api/threads/:id/turns` with `from_event_seq`) and starts the turn
 again at that position: everything below vanishes first, the edited bubble
-stays with the new text. Live clients hear `rewound` (`seq` 0, not stored)
-and keep a local pending row so the bubble does not blink out before the
+stays with the new text. The engine stores the cut as a `rewound` event in
+the truncation's record-lock section, so a lagged or reconnecting desktop or
+phone gets it on catch-up (`models/stream` checks this order). Clients
+keep a local pending row so the bubble does not blink out before the
 replacement `user_message` arrives. An image-only send has nothing to copy,
 so copy is hidden and edit still opens the box; the original images ride
 along unless new ones are attached.

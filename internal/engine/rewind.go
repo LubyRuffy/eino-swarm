@@ -10,10 +10,10 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
-// KindRewound is broadcast when a conversation is truncated so a user message
-// can be resent from that position. It is not stored: a reload already sees
-// the shortened log, and a live client needs the cut point to drop the rows
-// that just vanished.
+// KindRewound marks where a conversation was truncated so a user message can
+// be resent from that position; its text is the first removed seq. A live
+// client needs the cut point to drop the rows that just vanished, and one
+// that lagged or reconnected finds it through catch-up because it is stored.
 const KindRewound = "rewound"
 
 var rewindWait = 30 * time.Second
@@ -70,6 +70,7 @@ func (e *Engine) applyRewind(threadID string, fromSeq int64) error {
 		for _, id := range drop {
 			e.droppedTurns[id] = struct{}{}
 		}
+		e.recordRewindLocked(threadID, fromSeq)
 	}
 	e.recordMu.Unlock()
 	if err != nil {
@@ -79,13 +80,27 @@ func (e *Engine) applyRewind(threadID string, fromSeq int64) error {
 	delete(e.generations.threads, threadID)
 	e.generations.Unlock()
 	e.reindex(threadID)
-	e.emit(store.Event{
+	return nil
+}
+
+// recordRewindLocked stores and broadcasts the cut in the truncation's
+// recordMu critical section (modelled in models/stream). A row recorded in
+// between would reach readers before the cut and be erased by it; an
+// unstored marker is lost to a reader that lags or reconnects; and its seq
+// keeps a restarted counter above the removed rows, which a reader may still
+// hold as its resume cursor.
+func (e *Engine) recordRewindLocked(threadID string, fromSeq int64) {
+	marker := store.Event{
 		ThreadID: threadID,
 		Kind:     KindRewound,
 		AgentID:  swarm.DefaultManagerID,
 		Text:     strconv.FormatInt(fromSeq, 10),
-	})
-	return nil
+	}
+	if err := e.store.AppendEvent(&marker); err != nil {
+		e.log.Warn("could not persist a rewind marker", "thread", threadID, "from", fromSeq, "err", err)
+		marker.Seq, marker.CreatedAt = 0, time.Now().UTC()
+	}
+	e.broadcast(marker)
 }
 
 func (e *Engine) waitTurnClosed(turnID string, d time.Duration) {

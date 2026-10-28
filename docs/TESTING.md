@@ -3792,6 +3792,48 @@ invariant, every witness is checked) and, when Java and the jar are already
 present, runs the current design and both historical cases; it never
 downloads.
 
+## Event stream protocol model (opt-in, `C-003`)
+
+`models/stream/EventStream.tla` models one conversation and one live reader:
+`Engine.record` storing and broadcasting rows, the non-blocking subscriber
+channel, the SSE handler's dedupe, lag catch-up and `Last-Event-ID`
+reconnect, an edit-and-resend rewind, and an engine restart that reseeds
+the sequence counter from the database. `make model-check` runs its cases with
+the lifecycle cases; `python3 tools/model_check.py --list` names the model of
+each.
+
+Two safety invariants: once everything sent has arrived, the reader shows
+exactly the stored rows (`ConvergedView`); the counter never falls below a seq
+it already issued, since a seq is the reader's dedupe key and resume cursor
+(`SeqIdentity`).
+
+| case | source | breaks |
+|---|---|---|
+| `stream-current` | every switch off | nothing (2190 distinct states) |
+| `stream-v0.1.45-lost-marker` | shipped through v0.1.45: the rewind marker was broadcast with seq 0 after the record lock and never stored | `ConvergedView` |
+| `stream-v0.1.45-seq-reuse` | the same shipped code across a restart | `SeqIdentity` |
+| `stream-marker-unstored`, `stream-marker-unstored-reuse` | an unstored marker alone | `ConvergedView`, `SeqIdentity` |
+| `stream-marker-after-unlock` | a stored marker broadcast after the lock | `ConvergedView` |
+| `stream-broadcast-after-unlock` | `Engine.record` broadcasting after `recordMu` | `ConvergedView` |
+| `stream-drop-when-slow` | a full subscriber dropping a stored row without the lag flag | `ConvergedView` |
+
+This model was written before its fix. TLC reproduced the shipped rewind
+faults in under a second, and the Go tests then confirmed each one against the
+real engine (`internal/engine/rewind_marker_test.go`, red on the v0.1.45 code):
+`Replay(since)` after a cut returned nothing, so a lagged or reconnecting
+reader kept the removed rows; a reopened store numbered the next row 3 while a
+reader's cursor was 4, so its `since` skipped the replacement turn; and the
+marker reached a subscriber after rows recorded later. The fix stores the
+marker under `recordMu` in the same critical section as the truncation.
+Two witnesses (`stream-reach-*`) show that catch-up across a stored rewind
+and a record after restart are reachable.
+
+What this does not show: one reader, one rewind, one restart and one
+disconnect; the reader's own cut bookkeeping is a set, not the desktop's
+`cutFrom` / `cutThrough` range. That range is covered by the history replay
+property below, which found the one fault the model could not: a replayed
+copy of an older stored marker cut again after a newer rewind moved the range.
+
 ## Fuzz and property tests
 
 Example tests pin the inputs someone thought of. Where the input space is
@@ -3860,7 +3902,8 @@ with a random-size contiguous tail and `agentLog` with that worker's rows, both
 read from whatever the scripted server holds at that moment. A random schedule
 then interleaves storing rows, SSE delivery (each stored row preceded by its
 live-only `delta` / `reasoning_delta` / `tool_call_delta` / `tool_delta`
-broadcasts, plus `rewound` markers), duplicate SSE frames, `loadOlderHistory`
+broadcasts, plus stored `rewound` markers), dropped frames with catch-up,
+duplicate SSE frames, `loadOlderHistory`
 and `loadAgentHistory`, all through the real `applyTail`, `queueEvent` and
 history functions. The final screen must equal a fresh open of the server's
 final log, `reduceEvents(emptyTranscript(), rows)`.
@@ -3897,14 +3940,23 @@ divergences, each now fixed and kept as an example test in
   out of its turn.
 
 After the fixes each case passed 30,000 seeds. The property also exposed a
-gap it cannot close on the client: `rewound` is broadcast with seq 0 and is
-not stored. `broadcast` drops a seq-0 event for a full subscriber buffer
-without marking it lagged, catch-up replays stored rows only, and EventSource
-reconnects with `Last-Event-ID` rather than reloading the tail. A desktop that
-is disconnected or lagging while another device rewinds keeps the truncated
-rows until it reopens the conversation. Closing that needs a stored rewind
-record replayed on catch-up and by the phone pump. Until then the property
-always delivers every marker; it does not generate the dropped-marker case.
+gap the client could not close while `rewound` was an unstored seq-0
+broadcast: a reader that lagged or reconnected never saw the cut. The event
+stream model above reproduced it, and the marker is now a stored row. The
+property stores each rewind as a marker row with its own seq, and its
+schedule also drops SSE frames and then catches up from the reader's highest
+seq, as `streamEvents` does. With seq-0 markers that schedule fails within the
+first 13 seeds. With stored markers it found one more fault, now fixed and kept
+in `app-stream-history.test.ts`: a repeated older marker cut again once a
+newer rewind had moved the remembered range.
+
+The phone uses the same marker live, in `ready` snapshots and in older pages
+(`mobile/src/lib/session-rewind.test.ts`). One phone gap remains: it never
+sends a cursor, and `watch` returns a last-turn window. That window starts at
+the latest turn, after the marker. If another device rewinds while the phone
+is disconnected, the phone keeps the removed rows already loaded until the
+conversation is reopened. Closing that needs a resume cursor on `watch` with a
+bounded replay, which is a protocol change.
 
 ## Agent task evals (opt-in, real model)
 
@@ -4909,8 +4961,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   dismisses a leftover tool-round confirm so a crash does not look like
   the turn is still waiting for a click. Engine tests assert the matching
   `tool_result` (`err`: the previous process stopped) is stored before `resumed`.
-  A `rewound` event (and `rewindTranscript`) drops
-  that `user_message` seq and everything after it without lowering `lastSeq`.
+  A live `rewound` event (and `rewindTranscript`) drops
+  that `user_message` seq and everything after it without lowering `lastSeq`;
+  a stored marker folded from a history page only advances `lastSeq`.
   `placePendingEdit` keeps that cut. A later stored row inside the cut, and a
   seq-0 delta before the replacement `user_message`, are ignored so the old
   editor cannot reappear. The replacement message and deltas after it stay.

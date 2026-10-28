@@ -177,6 +177,8 @@ function oldestOf(
 
 function applyLiveEvent(view: PhoneView, ev: RemoteEvent, status?: WatchStatus): PhoneView {
   if (ev.seq > 0 && view.events.some((row) => row.seq === ev.seq)) return view
+  const cut = rewindCut(ev)
+  if (cut > 0) return applyRewind(view, ev, cut)
   const events = rememberEvent(view.events, ev)
   const historical = ev.seq > 0 && ev.seq < view.lastSeq
   const blocks = historical
@@ -202,6 +204,40 @@ function applyLiveEvent(view: PhoneView, ev: RemoteEvent, status?: WatchStatus):
   }
 }
 
+/** Another client resent an earlier message, so the host removed every row
+ *  from the cut on, along with the turn that was streaming. Rows below a cut
+ *  at or before the oldest loaded one are still stored and stay pageable. */
+function applyRewind(view: PhoneView, ev: RemoteEvent, cut: number): PhoneView {
+  const events = ev.seq > 0 ? rememberEvent(view.events, ev) : view.events.filter((row) => row.seq < cut)
+  const blocks = foldEvents(events)
+  const unloaded = view.oldestSeq === 0 || view.oldestSeq >= cut
+  return {
+    ...view,
+    lastSeq: Math.max(view.lastSeq, ev.seq),
+    oldestSeq: unloaded ? cut : view.oldestSeq,
+    hasMore: unloaded ? view.hasMore || cut > 1 : view.hasMore,
+    events,
+    blocks,
+    detail: view.detail ? askDetail(view.detail, blocks) : view.detail,
+  }
+}
+
+function rewindCut(ev: RemoteEvent): number {
+  if (ev.kind !== "rewound") return 0
+  const cut = Number.parseInt(ev.text ?? "", 10)
+  return Number.isFinite(cut) && cut > 0 ? cut : 0
+}
+
+/** A stored rewind marker removes the rows from its cut up to itself. */
+function withoutRewound(rows: RemoteEvent[]): RemoteEvent[] {
+  let kept = rows
+  for (const marker of rows) {
+    const cut = rewindCut(marker)
+    if (cut > 0) kept = kept.filter((row) => row.seq < cut || row.seq >= marker.seq)
+  }
+  return kept
+}
+
 function rememberEvent(events: RemoteEvent[], ev: RemoteEvent): RemoteEvent[] {
   if (ev.seq <= 0) return events
   if (events.some((row) => row.seq === ev.seq)) return events
@@ -216,7 +252,7 @@ function mergeEvents(base: RemoteEvent[], extra: RemoteEvent[]): RemoteEvent[] {
   for (const ev of extra) {
     if (ev.seq > 0) bySeq.set(ev.seq, ev)
   }
-  return [...bySeq.values()].sort((a, b) => a.seq - b.seq)
+  return withoutRewound([...bySeq.values()].sort((a, b) => a.seq - b.seq))
 }
 
 function foldEvents(events: RemoteEvent[]): CompactBlock[] {

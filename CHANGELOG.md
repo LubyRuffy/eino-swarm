@@ -31,6 +31,11 @@ co-working app built on it. The library API is unchanged except where noted
   code through random interleavings of pages, worker logs, SSE and rewinds and
   compares the result with a fresh open of the server's log. Together they
   found the workspace, cron and history replay faults fixed in this release.
+- `C-003`: `models/stream/EventStream.tla`, a TLA+ model of stored and
+  streamed event order: subscriber lag and catch-up, `Last-Event-ID`
+  reconnect, rewind and engine restart. `make model-check` runs it with the
+  lifecycle model; the shipped rewind marker design breaks both of its
+  invariants, and each removed ordering guard breaks one.
 - `F-110`, `C-001`, `C-027`: `make model-check` runs TLC over
   `models/lifecycle/EngineLifecycle.tla`, a TLA+ model of the restart handoff,
   Stop before restoration, parked-worker checkpoints, idle exit and shell
@@ -460,6 +465,16 @@ co-working app built on it. The library API is unchanged except where noted
   conversations and file previews keep content-weighted columns, long-token
   wrapping, GFM alignment and horizontal scrolling within wide tables.
 
+- `C-003`: editing and resending a message from another device is no longer
+  lost by a desktop that was lagging or reconnecting. The cut was a seq-0
+  broadcast sent after the record lock was released, so catch-up never replayed
+  it. That desktop kept the removed rows, a row recorded at the same moment could
+  arrive before the cut and be erased, and after an engine restart the replacement
+  turn reused seqs below the reader's `Last-Event-ID` and was skipped. The cut is now a stored
+  `rewound` event written in the same locked section as the truncation; the
+  desktop and the phone apply it live or on catch-up and treat it as already
+  applied in history pages. The phone previously ignored the cut altogether.
+  Found by the new event stream model before the fix (`docs/TESTING.md`).
 - `F-150`, `C-009`: the desktop no longer acts on a slash command token in
   the middle of a message. `explain the /plan mode` entered plan mode with
   only `mode`, `… /goal more` set a goal from the words after the token, and

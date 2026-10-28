@@ -27,6 +27,8 @@ func TestRewindFromAnEarlierMessageDropsWhatCameAfter(t *testing.T) {
 	waitForTurn(t, e, second.ID)
 
 	seq := userMessageSeq(t, e, th.ID, first.ID)
+	before, _ := e.Store().ListEvents(th.ID, 0, 0)
+	highest := before[len(before)-1].Seq
 	sub := e.Subscribe(th.ID)
 	defer sub.Close()
 
@@ -38,8 +40,9 @@ func TestRewindFromAnEarlierMessageDropsWhatCameAfter(t *testing.T) {
 	}
 	waitForTurn(t, e, again.ID)
 
-	if saw := waitForKind(t, sub.C, KindRewound, 5*time.Second); saw.Text != strconv.FormatInt(seq, 10) {
-		t.Fatalf("rewound event text=%q want seq %d", saw.Text, seq)
+	saw := waitForKind(t, sub.C, KindRewound, 5*time.Second)
+	if saw.Text != strconv.FormatInt(seq, 10) || saw.Seq <= highest {
+		t.Fatalf("rewound event=%+v want text %d and a seq above %d", saw, seq, highest)
 	}
 
 	dump := replayDump(t, e, th.ID)
@@ -55,13 +58,22 @@ func TestRewindFromAnEarlierMessageDropsWhatCameAfter(t *testing.T) {
 		t.Fatalf("want only the replacement turn, got %+v", turns)
 	}
 	events, _ := e.Store().ListEvents(th.ID, 0, 0)
+	markers := 0
 	for _, ev := range events {
 		if ev.Kind == KindRewound {
-			t.Fatal("rewound must not be stored; a reload already has the truncated log")
+			markers++
+			if ev.Seq != saw.Seq {
+				t.Fatalf("stored marker seq=%d, broadcast seq=%d", ev.Seq, saw.Seq)
+			}
+		} else if ev.Seq > highest && ev.TurnID != again.ID {
+			t.Fatalf("a row above the marker belongs to no replacement turn: %+v", ev)
 		}
 		if ev.TurnID == first.ID || ev.TurnID == second.ID {
 			t.Fatalf("a dropped turn still has events: %+v", ev)
 		}
+	}
+	if markers != 1 {
+		t.Fatalf("stored markers=%d, want 1", markers)
 	}
 }
 

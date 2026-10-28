@@ -11,9 +11,11 @@ import (
 // TruncateFromEventSeq drops the named event and everything after it: later
 // turns, their model messages, their model-call records, and any queued
 // follow-up. Metadata owned by a removed turn is also dropped even if it
-// precedes that turn's user event. Earlier turns stay. Sequence counters are
-// not wound back, so a live subscriber's Last-Event-ID still lands on new events instead of
-// colliding with a seq that just vanished.
+// precedes that turn's user event. Earlier turns stay. The in-memory counter
+// is not wound back, so a live subscriber's Last-Event-ID still lands on new
+// events instead of colliding with a seq that just vanished. A reopened store
+// reseeds from the rows that remain, so the caller must store a row above
+// the cut (the engine's rewind marker) to keep that true across a restart.
 func (s *Store) TruncateFromEventSeq(threadID string, fromSeq int64) error {
 	if fromSeq <= 0 {
 		return ErrNotFound

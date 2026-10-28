@@ -308,7 +308,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
 function foldLiveEvent(state: TranscriptState, ev: SwarmEvent): TranscriptState {
   if (ev.kind === "rewound") {
     const from = Number.parseInt(String(ev.text ?? ""), 10)
-    if (Number.isFinite(from) && from > 0) return rewindStoredTranscript(ev.thread_id, from, state)
+    if (Number.isFinite(from) && from > 0) return rewindStoredTranscript(ev.thread_id, from, state, ev.seq)
   }
   return reduceEvent(state, ev)
 }

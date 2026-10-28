@@ -225,6 +225,40 @@ describe("history and live event overlap", () => {
   }
 })
 
+describe("stored rewind markers", () => {
+  const manager = (seq: number, kind: SwarmEvent["kind"], text: string, turn = "tn_1") =>
+    event(seq, kind, text, { agent_id: "manager", turn_id: turn })
+  const managerSeqs = () => state.transcript.agents.manager.blocks.map((b) => b.seq)
+
+  // A page already holds the truncated log, so its marker has nothing left
+  // to cut; re-applying it would sweep worker statuses and hide live tokens.
+  it("leaves a page that contains its marker as stored", () => {
+    state.transcript = applyTail("th_1", [manager(1, "user_message", "kept"), manager(6, "rewound", "2", ""), manager(7, "user_message", "replacement", "tn_2")])
+    expect(managerSeqs()).toEqual([1, 7])
+    expect(state.transcript.rewindCut).toBeUndefined()
+    expect(state.transcript.lastSeq).toBe(7)
+  })
+
+  // The stream or a reconnect can repeat a marker after a newer cut moved
+  // the remembered range past it. The repeat must not cut a second time.
+  it("does not cut again when an older marker is repeated after a newer cut", () => {
+    state.transcript = applyTail("th_1", [manager(1, "user_message", "first"), manager(2, "agent_message", "answer")])
+    emit(manager(3, "rewound", "2", ""))
+    emit(manager(4, "user_message", "second", "tn_2"))
+    emit(manager(5, "rewound", "4", ""))
+    emit(manager(6, "user_message", "third", "tn_3"))
+    emit(manager(3, "rewound", "2", ""))
+    expect(managerSeqs()).toEqual([1, 6])
+  })
+
+  it("applies a marker that arrives through catch-up", () => {
+    state.transcript = applyTail("th_1", [manager(1, "user_message", "first"), manager(2, "user_message", "removed", "tn_2")])
+    emit(manager(9, "rewound", "2", ""))
+    emit(manager(10, "user_message", "replacement", "tn_3"))
+    expect(managerSeqs()).toEqual([1, 10])
+  })
+})
+
 describe("live output during a history request", () => {
   it("does not restore live text from the discarded side of a rewind", () => {
     state.transcript = applyTail("th_1", [
