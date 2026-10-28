@@ -80,6 +80,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-003 Stored events and streamed order
 
+- PC 历史回放等价：尾页、更早分页、worker 日志与 SSE 以任意可达顺序到达，加上其他客户端的倒带，最终画面必须等于对服务器最终日志的全新打开。无 seq 的实时快照若同一 `message_id` 的已存储检查点已不短于它、或同一 `tool_call_id` 已有存储结果，则视为过期，不得复活已结束 worker 或重开已完成调用；实时先到的工具行在存储行到达后取得其 seq。倒带切点在已加载最早行之下时，切点之前的行仍可分页加载；worker 日志中晚于倒带存储的行不得把倒带范围延伸到替代 turn；已加载页连续区间内的 worker 日志行计入时间线。`rewound` 标记不存储，断线或落后的客户端会错过它，需重新打开会话；该缺口已记录，修复需持久化倒带记录并在追赶时重放。证据：`frontend/src/store/history-replay-property.test.ts`、`frontend/src/lib/transcript-late-broadcast.test.ts`、`frontend/src/store/thread-history.ts`、`frontend/src/lib/transcript-blocks.ts`、`frontend/src/lib/transcript-tool-block.ts`；变更类型：Fixed。
+
 - 收取决定的展示边界：`workers_collection_declined` 保留为持久化控制回执，Trace 仍可查看；PC 实时 SSE、冷启动和分页回放不把其原始 JSON 渲染为聊天通知，手机回放同样不新增该通知。PC 只结清同 turn、同 wait_id 的既有等待卡与 awaiting 状态，不把回执中的历史 `workers[].running` 当成当前生命周期，也不复活已停止的 worker。后续 cleanup、主管终态与迟到取消 finished 保留原身份及停止语义。证据：`frontend/src/lib/transcript-worker-collection-declined.test.ts`、`frontend/src/store/app-stream-worker-collection.test.ts`、`frontend/e2e/worker-completion.spec.ts`、`mobile/e2e/worker-collection.spec.ts`；关联 `C-019`；来源：Issue #120。
 
 - 状态：active；类型：data / consistency；作用范围：engine、store、SSE、PC transcript、phone；关联功能：`F-120`, `F-130`, `F-150`, `F-220`, `F-310`, `F-330`, `F-410`。

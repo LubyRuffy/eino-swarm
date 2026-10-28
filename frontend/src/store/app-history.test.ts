@@ -114,6 +114,8 @@ beforeEach(() => {
 describe("opening a long conversation", () => {
   it("pages past a roster of Started rows so the chat is not a wall of agents", async () => {
     const at = new Date().toISOString()
+    // Pages are contiguous: this one stops above the roster's spawn at seq 4,
+    // which stays a roster row until a page actually reaches it.
     fake.logHandler = (opts) => {
       if (opts?.before === 40) {
         return {
@@ -121,14 +123,14 @@ describe("opening a long conversation", () => {
             {
               thread_id: "th_old",
               turn_id: "tn_a",
-              seq: 2,
+              seq: 30,
               kind: "user_message",
               agent_id: "manager",
               text: "look into the mapping",
               created_at: at,
             },
           ],
-          has_more: false,
+          has_more: true,
         }
       }
       return {

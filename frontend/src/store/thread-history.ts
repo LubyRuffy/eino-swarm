@@ -44,6 +44,10 @@ let olderLoad: Promise<void> | undefined
 /** Stored seqs inside a resent cut. A late replay must not put them back. */
 let cutFrom = 0
 let cutThrough = 0
+/** A rewind at or below the page's oldest row leaves nothing loaded under
+ *  it, yet the rows before the cut are still stored. Paging continues from
+ *  the cut instead of reading an empty page as the start of the log. */
+let unloadedBelow = 0
 
 export function resetThreadHistory() {
   historyGeneration++
@@ -55,6 +59,7 @@ export function resetThreadHistory() {
   loadedAgents.clear()
   cutFrom = 0
   cutThrough = 0
+  unloadedBelow = 0
 }
 
 export function historyNewestSeq(): number {
@@ -62,24 +67,24 @@ export function historyNewestSeq(): number {
 }
 
 export function historyOldestSeq(): number {
-  return oldestOf(events)
+  const oldest = oldestOf(events)
+  return unloadedBelow > 0 && (oldest === 0 || oldest > unloadedBelow) ? unloadedBelow : oldest
 }
 
 export function agentLogIsLoaded(agentId: string): boolean {
   return loadedAgents.has(agentId)
 }
 
-function pageSeqs(): Set<number> {
-  return new Set(events.filter((ev) => ev.seq > 0).map((ev) => ev.seq))
-}
-
 function foldedTranscript(current?: TranscriptState): TranscriptState {
-  const inPage = pageSeqs()
+  // The page is contiguous from its oldest row to the live edge. A worker-log
+  // row inside that span belongs to the timeline even though its SSE copy
+  // will now be refused as already stored; only older rows are roster-only.
+  const oldest = historyOldestSeq()
   const merged = mergeLogEvents(uniqueStoredEvents([...roster, ...agentLogs]), events)
   storedSeqs = new Set(merged.map((ev) => ev.seq))
   let state = emptyTranscript()
   for (const ev of merged) {
-    state = reduceEvent(state, ev, inPage.has(ev.seq) ? "full" : "roster")
+    state = reduceEvent(state, ev, oldest > 0 && ev.seq >= oldest ? "full" : "roster")
   }
   if (current && !current.rewindCut?.live) preserveLiveOutput(state, current)
   if (!current?.rewindCut) return state
@@ -125,6 +130,7 @@ export function applyTail(
   roster = extraRosterEvents(extra, events)
   agentLogs = []
   loadedAgents.clear()
+  unloadedBelow = 0
   return foldedTranscript()
 }
 
@@ -158,22 +164,28 @@ export function rememberStored(id: string, ev: SwarmEvent): boolean {
 export function rememberRewind(id: string, cut: number, through = 0) {
   if (threadId !== id) return
   historyGeneration++
+  const oldest = historyOldestSeq()
+  if (oldest === 0 || oldest >= cut) unloadedBelow = unloadedBelow > 0 ? Math.min(unloadedBelow, cut) : cut
   cutFrom = cut
   if (through > cutThrough) cutThrough = through
   const keep = (seq: number) => seq < cut || (cutThrough > 0 && seq > cutThrough)
   events = events.filter((ev) => keep(ev.seq))
-  roster = roster.filter((ev) => keep(ev.seq))
-  agentLogs = agentLogs.filter((ev) => keep(ev.seq))
+  // A sidecar row past the cut is either truncated or newer than the marker.
+  // The latter is still ahead of SSE, which delivers it again.
+  roster = roster.filter((ev) => ev.seq < cut)
+  agentLogs = agentLogs.filter((ev) => ev.seq < cut)
   storedSeqs = new Set([...events, ...roster, ...agentLogs].map((ev) => ev.seq))
 }
 
 /** A rendered output may combine checkpoints on both sides of the cut. Only
  *  the original events can recover its earlier text rather than drop it whole. */
 export function rewindStoredTranscript(id: string, cut: number, current: TranscriptState): TranscriptState {
-  const rewound = rewindTranscript(current, cut)
-  if (threadId !== id) return rewound
-  rememberRewind(id, cut, current.lastSeq)
-  return foldedTranscript(rewound)
+  if (threadId !== id) return rewindTranscript(current, cut)
+  // SSE is ordered: the page and every streamed row predate this marker. A
+  // worker log may already hold rows stored after the truncation, so its
+  // seqs must not stretch the cut over the turn that replaced it.
+  rememberRewind(id, cut, historyNewestSeq())
+  return foldedTranscript(rewindTranscript(current, cut, cutThrough))
 }
 
 export function applyAgentLog(id: string, extra: SwarmEvent[], current?: TranscriptState): TranscriptState | undefined {

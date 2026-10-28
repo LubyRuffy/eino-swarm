@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { MANAGER_ID } from "@/lib/transcript"
+import { MANAGER_ID, reduceEvent } from "@/lib/transcript"
 import {
   applyAgentLog,
   applyTail,
@@ -10,6 +10,7 @@ import {
   rememberRewind,
   rememberStored,
   resetThreadHistory,
+  rewindStoredTranscript,
 } from "./thread-history"
 import type { SwarmEvent } from "@/lib/types"
 
@@ -182,6 +183,52 @@ describe("thread history buffer", () => {
     expect(historyOldestSeq()).toBe(40)
     expect(state?.agents["worker-1"]?.blocks).toHaveLength(1)
     expect(state?.agents[MANAGER_ID]?.blocks.filter((b) => b.kind === "spawn")).toEqual([])
+  })
+
+  // A rewind from another client, or an edit of the first visible message, can
+  // remove every loaded row. The rows before the cut are still stored; an
+  // empty page used to read as the start of the log, so they never loaded.
+  for (const [label, cut] of [["below the page", 17], ["at the page's first row", 23]] as const) {
+    it(`keeps older history loadable after a rewind ${label}`, () => {
+      resetThreadHistory()
+      const tail = applyTail("th_1", [ev(23, "visible", "tn_c"), ev(24, "later", "tn_c")])
+      rewindStoredTranscript("th_1", cut, tail)
+      expect(historyOldestSeq()).toBe(cut)
+      const older = prependOlder("th_1", [ev(16, "kept", "tn_b")])
+      expect(older?.agents[MANAGER_ID]?.blocks.map((b) => b.text)).toEqual(["kept"])
+      expect(historyOldestSeq()).toBe(16)
+    })
+  }
+
+  // A worker log can outrun SSE and return rows stored after another client's
+  // truncation. Their seqs are not evidence of what the rewind removed.
+  it("accepts the replacement turn when a worker log already holds its rows", () => {
+    resetThreadHistory()
+    const worker = (seq: number, kind: string, turn: string, text: string): SwarmEvent => ({
+      thread_id: "th_1", turn_id: turn, seq, kind, agent_id: "worker-1", role: "worker", text,
+      ...(kind === "agent_message" ? { message_id: `m_${seq}` } : {}), created_at: new Date().toISOString(),
+    })
+    let state = applyTail("th_1", [ev(10, "original", "tn_a"), worker(11, "spawned", "tn_a", "task")])
+    state = applyAgentLog("th_1", [worker(11, "spawned", "tn_a", "task"), worker(21, "spawned", "tn_b", "task"), worker(22, "agent_message", "tn_b", "replacement result")], state)!
+    state = rewindStoredTranscript("th_1", 10, state)
+    for (const row of [ev(20, "resent", "tn_b"), worker(21, "spawned", "tn_b", "task"), worker(22, "agent_message", "tn_b", "replacement result")]) {
+      if (rememberStored("th_1", row)) state = reduceEvent(state, row)
+    }
+    expect(state.agents[MANAGER_ID]?.blocks.map((b) => [b.kind, b.text])).toEqual([["user", "resent"], ["spawn", "task"]])
+    expect(state.agents["worker-1"]?.blocks.map((b) => b.text)).toEqual(["replacement result"])
+    expect(state.turns.map((t) => t.id)).toEqual(["tn_b"])
+  })
+
+  it("counts a worker resumed inside the loaded page as part of that turn", () => {
+    resetThreadHistory()
+    const resumed: SwarmEvent = {
+      thread_id: "th_1", turn_id: "tn_b", seq: 15, kind: "spawned", agent_id: "worker-1", role: "worker",
+      text: "continue", created_at: new Date().toISOString(),
+    }
+    applyTail("th_1", [ev(10, "first", "tn_a"), ev(14, "second", "tn_b")])
+    const state = applyAgentLog("th_1", [resumed])
+    expect(rememberStored("th_1", resumed)).toBe(false)
+    expect(state?.turns.find((t) => t.id === "tn_b")?.agentIds).toEqual(["worker-1"])
   })
 })
 

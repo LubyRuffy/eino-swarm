@@ -27,7 +27,7 @@ import {
   steerRevisionsBefore,
 } from "./transcript-steer"
 import { applyScheduleEvent, sealQuietTurns } from "./transcript-schedule"
-import { findToolBlock, splitToolCall, summarise } from "./transcript-tool-block"
+import { findToolBlock, splitToolCall, summarise, supersededToolDelta } from "./transcript-tool-block"
 import { closePendingTools, parseWorkerRetention, settleFailedWorkers, type WorkerRetention } from "./transcript-worker-ownership"
 import {
   MANAGER_ID,
@@ -35,7 +35,7 @@ import {
   block,
   closeStreaming,
   replaceComplete,
-  replaceStreaming,
+  replaceStreaming, supersededDelta,
 } from "./transcript-blocks"
 
 export { MANAGER_ID }
@@ -475,14 +475,14 @@ export function reduceEvent(
     case "reasoning_delta":
       // Deltas carry the whole accumulated string, so the open block is
       // replaced. Appending here is the classic bug that doubles every word.
-      if (!keepWorkerLive(agent)) break
+      // A late copy of a stored checkpoint must not revive a finished worker.
+      if (supersededDelta(agent, ev, "reasoning") || !keepWorkerLive(agent)) break
       replaceStreaming(agent, ev, "reasoning")
       agent.activity = "thinking"
       break
-
     case "delta":
       // The model has started answering, so any thinking block is done.
-      if (!keepWorkerLive(agent)) break
+      if (supersededDelta(agent, ev, "answer") || !keepWorkerLive(agent)) break
       closeStreaming(agent, "reasoning")
       replaceStreaming(agent, ev, "answer")
       agent.activity = "writing"
@@ -504,7 +504,7 @@ export function reduceEvent(
 
     case "tool_call":
     case "tool_call_delta": {
-      if (!keepWorkerLive(agent)) break
+      if (supersededToolDelta(agent, ev) || !keepWorkerLive(agent)) break
       closeStreaming(agent, "reasoning")
       // tool_call_delta arrives while the commentary is still streaming.
       // Closing the answer here seals that paragraph, and the agent_message
@@ -523,7 +523,7 @@ export function reduceEvent(
           pending: true,
           writing: Number.isFinite(writing) ? writing : undefined,
         }
-        existing.text = name || existing.text
+        Object.assign(existing, { text: name || existing.text, seq: ev.seq || existing.seq })
         agent.activity = name || agent.activity
         break
       }
@@ -555,7 +555,7 @@ export function reduceEvent(
     case "tool_delta": {
       // Live tool output is the accumulated snapshot, same as a text delta.
       // The call is still running: a later tool_result is what closes it.
-      const target = findToolBlock(agent, ev.tool_call_id)
+      const target = supersededToolDelta(agent, ev) ? undefined : findToolBlock(agent, ev.tool_call_id)
       if (target?.tool) {
         target.tool = {
           ...target.tool,
@@ -792,7 +792,7 @@ export const PENDING_EDIT_ID = "pending-edit"
  *  reconnect does not replay the cut as if it were new. */
 export function rewindTranscript(
   state: TranscriptState,
-  fromSeq: number,
+  fromSeq: number, through = state.lastSeq,
 ): TranscriptState {
   if (!(fromSeq > 0)) return state
   const keep = (b: Block) =>
@@ -848,7 +848,7 @@ export function rewindTranscript(
     steerRevisions: steerRevisionsBefore(state.steerRevisions, fromSeq),
     quietTurns: (state.quietTurns ?? []).filter((id) => keptTurns.has(id)),
     scheduledFiredTurns: (state.scheduledFiredTurns ?? []).filter((id) => keptTurns.has(id)),
-    rewindCut: { from: fromSeq, through: state.lastSeq, live: true },
+    rewindCut: { from: fromSeq, through, live: true },
     recoveryEvents: state.recoveryEvents?.filter((event) => event.seq > 0 && event.seq < fromSeq),
   }
 }

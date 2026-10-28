@@ -3819,6 +3819,64 @@ After the fixes the two path targets ran 60 seconds each (about 1.05 million
 executions) and the cron target 120 seconds (about 2.58 million) without a
 failure.
 
+### History replay property (`C-003`)
+
+`frontend/src/store/history-replay-property.test.ts` is a conformance check
+between the desktop history code and the server's stored log. A seeded
+generator scripts plausible turns: manager talk, tool calls with results,
+workers that spawn, think in cumulative checkpoints under one `message_id`,
+finish, are swept by cleanup or are resumed under the same id, and optionally
+another client's rewind from a user message. A fake api answers `threadLog`
+with a random-size contiguous tail and `agentLog` with that worker's rows, both
+read from whatever the scripted server holds at that moment. A random schedule
+then interleaves storing rows, SSE delivery (each stored row preceded by its
+live-only `delta` / `reasoning_delta` / `tool_call_delta` / `tool_delta`
+broadcasts, plus `rewound` markers), duplicate SSE frames, `loadOlderHistory`
+and `loadAgentHistory`, all through the real `applyTail`, `queueEvent` and
+history functions. The final screen must equal a fresh open of the server's
+final log, `reduceEvents(emptyTranscript(), rows)`.
+
+The comparison is a projection of what the user sees: whether the
+conversation is running, worker order and status, each block's kind, text,
+seq, turn, streaming flag and tool arguments/result/state, and each turn's
+status, workers and completion seq. Internal bookkeeping such as cursors is
+excluded, so a refactor of it does not fail the property. The generator only
+produces reachable orders: worker logs are fetched for workers already
+visible, and duplicate SSE frames come only from rows already delivered or in
+the tail, never from older rows the reader has not loaded.
+
+```bash
+cd frontend
+HISTORY_PROPERTY_RUNS=30000 HISTORY_PROPERTY_SEED=7 npx vitest run src/store/history-replay-property.test.ts
+```
+
+`npm test` runs 300 seeds per case (`HISTORY_PROPERTY_RUNS`, starting at
+`HISTORY_PROPERTY_SEED`, default 1); a failure prints its seed. It found six
+divergences, each now fixed and kept as an example test in
+`transcript-late-broadcast.test.ts` or `thread-history.test.ts`:
+
+- a live answer or thinking snapshot arriving after its worker log already
+  delivered the stored checkpoint revived a finished worker;
+- a live tool snapshot after the stored result reopened the completed call;
+- a tool row first seen as a live snapshot kept seq 0 after its stored row
+  arrived, so editing a later message removed it;
+- a rewind at or below the oldest loaded row left nothing loaded, and the
+  empty page read as the start of the log, so earlier rows never loaded;
+- a worker log holding rows stored after another client's truncation
+  stretched the rewind over the replacement turn;
+- a worker resumed inside the loaded page was folded as roster-only and left
+  out of its turn.
+
+After the fixes each case passed 30,000 seeds. The property also exposed a
+gap it cannot close on the client: `rewound` is broadcast with seq 0 and is
+not stored. `broadcast` drops a seq-0 event for a full subscriber buffer
+without marking it lagged, catch-up replays stored rows only, and EventSource
+reconnects with `Last-Event-ID` rather than reloading the tail. A desktop that
+is disconnected or lagging while another device rewinds keeps the truncated
+rows until it reopens the conversation. Closing that needs a stored rewind
+record replayed on catch-up and by the phone pump. Until then the property
+always delivers every marker; it does not generate the dropped-marker case.
+
 ## Agent task evals (opt-in, real model)
 
 The layers above prove the code is correct; they cannot say whether a prompt,

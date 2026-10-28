@@ -1,5 +1,13 @@
 import { ASK_TOOL } from "./transcript-ask"
 import type { AgentState, Block, TranscriptState } from "./transcript"
+import type { SwarmEvent } from "./types"
+
+/** A live tool snapshot for a call whose stored result already arrived, from
+ *  a worker log that outran SSE. It must not reopen the call or the worker. */
+export function supersededToolDelta(agent: AgentState, ev: SwarmEvent): boolean {
+  if ((ev.kind !== "tool_call_delta" && ev.kind !== "tool_delta") || !ev.tool_call_id) return false
+  return agent.blocks.some((b) => b.tool?.callId === ev.tool_call_id && b.tool?.pending === false)
+}
 
 /** The in-flight tool or question this call id belongs to. The returned
  *  block is a copy already written back onto the agent, so the caller can

@@ -117,6 +117,15 @@ function replaceIdentified(agent: AgentState, ev: SwarmEvent, kind: "reasoning" 
   return true
 }
 
+/** A live snapshot of an output whose durable checkpoint already holds at
+ *  least this much text. Deltas carry no seq, so this identity is the only
+ *  way to tell a late broadcast from new work. */
+export function supersededDelta(agent: AgentState, ev: SwarmEvent, kind: "reasoning" | "answer"): boolean {
+  if (!ev.message_id) return false
+  const prev = agent.blocks.find((b) => b.kind === kind && b.messageId === ev.message_id)
+  return Boolean(prev && prev.seq > 0 && !prev.streaming && (ev.text ?? "").length <= prev.text.length)
+}
+
 /** Exact copy of a sealed paragraph, with only tool rows after it. */
 function echoesSealed(
   blocks: Block[],

@@ -155,9 +155,14 @@ describe("history and live event overlap", () => {
       expect(workerThoughts()).toHaveLength(1)
       expect(workerThoughts()[0]).toMatchObject({ text: "first", seq: 2, streaming: false })
       expect(state.transcript.lastSeq).toBe(5)
-      expect(state.transcript.rewindCut).toEqual({ from: 4, through: 5, live: true })
-      emit(event(5, "reasoning", "first extended", { message_id: "output-a" }))
-      expect(workerThoughts()[0].text).toBe("first")
+      // The cut spans what the page and SSE delivered before the marker. A
+      // worker-log row is not proof of that order: it may be newer than the
+      // truncation, and SSE delivers such a row again.
+      expect(state.transcript.rewindCut).toEqual({ from: 4, through: fromAgentLog ? 0 : 5, live: true })
+      if (!fromAgentLog) {
+        emit(event(5, "reasoning", "first extended", { message_id: "output-a" }))
+        expect(workerThoughts()[0].text).toBe("first")
+      }
     })
   }
 

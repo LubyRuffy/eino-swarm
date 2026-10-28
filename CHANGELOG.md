@@ -23,6 +23,14 @@ co-working app built on it. The library API is unchanged except where noted
   `goal_capped` receipt before sending a human message. A delayed cap write
   verifies that runtime idle alone does not establish a recorded pause; the
   existing unpaused-budget and explicit-resume behavior is unchanged.
+
+- `C-003`, `C-004`, `C-009`: fuzz and property tests (`docs/TESTING.md`,
+  "Fuzz and property tests"). Go native fuzz targets state the workspace path
+  and cron next-fire properties; their committed failing inputs run in plain
+  `go test`. A seeded history replay property drives the real desktop history
+  code through random interleavings of pages, worker logs, SSE and rewinds and
+  compares the result with a fresh open of the server's log. Together they
+  found the workspace, cron and history replay faults fixed in this release.
 - `F-110`, `C-001`, `C-027`: `make model-check` runs TLC over
   `models/lifecycle/EngineLifecycle.tla`, a TLA+ model of the restart handoff,
   Stop before restoration, parked-worker checkpoints, idle exit and shell
@@ -452,6 +460,16 @@ co-working app built on it. The library API is unchanged except where noted
   conversations and file previews keep content-weighted columns, long-token
   wrapping, GFM alignment and horizontal scrolling within wide tables.
 
+- `F-130`, `C-003`: desktop history replay now paints the same conversation as
+  a fresh open, whatever order the tail, older pages, worker logs and SSE
+  arrive in. A live snapshot that arrives after its worker log delivered the
+  stored checkpoint or tool result no longer revives a finished worker or
+  reopens a completed call. A tool row first seen live takes its stored seq,
+  so editing a later message keeps it. A rewind at or below the oldest loaded
+  row keeps earlier rows loadable instead of reading the empty page as the
+  start of the log, and a worker log's rows stored after another client's
+  truncation no longer stretch that rewind over the replacement turn. A worker
+  resumed inside the loaded page counts as part of its turn.
 - `F-150`, `C-009`: a cron wait at the first hour after a spring-forward gap
   no longer skips the daylight-saving start day. `0 3 * * *` in New York,
   computed from 01:00 on that day, used to fire a day late: the missing 02:00
