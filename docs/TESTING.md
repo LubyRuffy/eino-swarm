@@ -3612,6 +3612,76 @@ SIGTERM with SIGKILL. `TestSameEngineIsTheBinaryThatWasStarted`
 is the match (version plus executable identity). `assembleTUI` / `buildTUISwarm` still build an in-process
 swarm for renderer tests. The window itself is verified by hand — see below.
 
+## Lifecycle protocol model (opt-in, `C-001` / `C-027`)
+
+The Go tests reproduce the interleavings someone thought of. The protocol
+behind the restart handoff, Stop, parked workers, idle exit and shell presence
+is small enough to check every interleaving with TLC instead.
+`models/lifecycle/EngineLifecycle.tla` models one data directory, one
+conversation and one launching shell: the old engine (same or other build),
+the C-027 handoff, the replacement's publish and restoration, Stop on a live
+runtime or before restoration, normal finalization and worker parking, and
+each engine's idle watcher.
+
+```bash
+make model-check                              # every case; first run fetches TLC
+python3 tools/model_check.py --list           # cases, expected outcome, source
+python3 tools/model_check.py pre-d77e8d4 --out /tmp/model   # one case, kept output
+```
+
+It needs Java. `tools/model_check.py` uses `--jar`, `$TLA2TOOLS_JAR` or
+`~/.cache/tlaplus/v1.7.4/tla2tools.jar`; `--fetch` (which `make model-check`
+passes) downloads that pinned release once and checks its SHA-256, and nothing
+is downloaded without it. Each case runs in its own directory under `--out` (a
+fresh temporary directory by default) with its config, TLC output and any
+counterexample trace. It is not part of `make check`.
+
+Four safety invariants are checked: in-memory work never outlives its engine
+(`WorkHasLiveOwner`); an unstopped checkpoint always has an engine that will
+restore it, outside the shell's spawn step and a human cancel
+(`CheckpointHasOwner`); an acknowledged Stop is never undone by restoration
+(`StopIsFinal`); an opened window has an engine until it closes
+(`WindowHasEngine`). Each Boolean constant restores one earlier or removed
+behaviour, and the case table states which invariant it must break:
+
+| case | source | breaks |
+|---|---|---|
+| `current` | every switch off | nothing (574 distinct states) |
+| `pre-d77e8d4` | shipped code: the restart deadline bounded the replacement child, which restored before publishing | `CheckpointHasOwner` |
+| `pre-f341e05` | shipped code: the window opened before holding presence; idle exit acted on an earlier sample | `WindowHasEngine` |
+| `hold-without-atomic-idle`, `window-before-presence` | each half of f341e05 alone | `WindowHasEngine` |
+| `stop-races-restore` | `restoreMu` removed (added with d77e8d4) | `StopIsFinal` |
+| `finish-ungated` | `lockFinish` removed | `WorkHasLiveOwner` |
+| `parked-not-checkpointed` | parked registries left out of the checkpoint | `WorkHasLiveOwner` |
+| `idle-counts-only-managers` | idle load without parked workers, restoration and handoff | `WorkHasLiveOwner` |
+
+The two historical cases are the pilot's acceptance: TLC finds both again in
+about a second each (the full table takes about 15 seconds), and the counterexamples are the failures those commits
+describe. Before d77e8d4: handoff, freeze and checkpoint, ACK, old engine
+exits, replacement spawned, deadline, replacement killed — the checkpoint has
+no engine. Before f341e05: the shell finds the engine and opens the window,
+the engine samples idle and exits before the frontend attaches. The
+f341e05 halves show that holding presence first and committing idle exit
+atomically are each necessary. Seven `reach-*` witnesses are checked against
+the current design and must be violated: a restored task in an opened window,
+a parked checkpoint, a Stop before restoration, an opened window after the
+deadline, an idle exit after the window closed, a relaunch after an idle
+commit, a finalization the handoff waits for. Without them a passing
+invariant could mean only that its scenario is unreachable.
+
+What this does not show: an action is one locked step of the Go code, and
+nothing checks that the code keeps that atomicity — the Go tests named in
+`C-001` / `C-027` still do. The model has no clock: the deadline is an event
+that can fire at any point, so `deadline-kills-child` alone is a violation
+even though publishing before restoration made a slow boot much less likely.
+It has one conversation, one shell and safety only (no liveness), and leaves
+out storage failure (`ErrRestartUnpersistedTurn`), Stop while frozen, phones,
+schedules and asks. `tools/test_model_check.py` keeps the case table honest
+(every switch and invariant exists in the module, every switch breaks an
+invariant, every witness is checked) and, when Java and the jar are already
+present, runs the current design and both historical cases; it never
+downloads.
+
 ## Agent task evals (opt-in, real model)
 
 The layers above prove the code is correct; they cannot say whether a prompt,

@@ -13,6 +13,16 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-110`, `C-001`, `C-027`: `make model-check` runs TLC over
+  `models/lifecycle/EngineLifecycle.tla`, a TLA+ model of the restart handoff,
+  Stop before restoration, parked-worker checkpoints, idle exit and shell
+  presence. The current design passes four safety invariants; the designs
+  before d77e8d4 (deadline killed the sole replacement) and f341e05 (window
+  opened before presence, non-atomic idle exit) are found again as
+  counterexamples, as is each removed guard (`restoreMu`, `lockFinish`,
+  parked checkpoints, full `ActiveWork`). Reachability witnesses keep the
+  invariants from passing vacuously. Opt-in: needs Java and fetches the pinned
+  TLC release once; see `docs/TESTING.md`.
 - `make eval EVAL_PROVIDER=<id>`: opt-in task-completion evals against a real
   model (`tools/agent_eval.py`, tasks in `evals/tasks/`). Each run owns a
   temporary data directory and engine, grades files and answers

@@ -1870,6 +1870,13 @@ The full process replacement is exercised by
 `cmd/zwai/engine_restart_acceptance_test.go` using real processes and a keyless
 loopback model fixture.
 
+`models/lifecycle/EngineLifecycle.tla` states the ordering rules of this
+handoff, Stop before restoration, parked workers, idle exit and shell presence
+as a TLA+ model; `make model-check` runs TLC over it and over the earlier
+designs it must reject (see `docs/TESTING.md`). Each model action stands for one
+locked step named in its comment. A change to those steps changes the model in
+the same commit.
+
 ## Provider cloud tool boundary
 
 `internal/config/provider_tools.go` validates `api_mode` and `builtin_tools`.

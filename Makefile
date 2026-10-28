@@ -29,6 +29,7 @@ help:
 	@echo "make check      formatting, vet, test, e2e"
 	@echo "make docs-check  validate feature and contract references"
 	@echo "make eval EVAL_PROVIDER=<id>  opt-in task evals against a real model (not in check)"
+	@echo "make model-check  TLC over the engine lifecycle model (Java; fetches pinned TLC once)"
 	@echo "make native-smoke APP=... EVIDENCE=...  one isolated ci-macOS round, 60s budget"
 	@echo "make native-smoke-prepare  build the native AX helper once with the candidate"
 
@@ -141,6 +142,11 @@ eval:
 	@test -n "$(EVAL_PROVIDER)" || (echo "EVAL_PROVIDER=<provider id in ~/.zwai-swarm/config.yaml> is required" >&2; exit 2)
 	go build -ldflags "$(LDFLAGS)" -o bin/zwai-eval ./cmd/zwai
 	python3 tools/agent_eval.py --provider "$(EVAL_PROVIDER)" --runs "$(EVAL_RUNS)" $(if $(EVAL_TASKS),--tasks "$(EVAL_TASKS)") $(if $(EVAL_MODEL),--model "$(EVAL_MODEL)")
+
+# Needs Java. The first run downloads the pinned tla2tools.jar into ~/.cache/tlaplus.
+.PHONY: model-check
+model-check:
+	python3 tools/model_check.py --fetch
 
 # The candidate is built/transferred once; each invocation still owns fresh state.
 .PHONY: native-smoke-prepare
