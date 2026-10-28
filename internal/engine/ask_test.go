@@ -192,8 +192,36 @@ func TestAskUserComposerLineAnswersEveryQuestion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = waitAskToolCall(t, sub, 15*time.Second)
-	waitAskArmed(t, e, th.ID)
+	call := waitAskToolCall(t, sub, 15*time.Second)
+	if call.ToolCallID == "" || call.ThreadID != th.ID || call.TurnID != turn.ID {
+		t.Fatalf("the questionnaire call does not belong to this turn: %+v", call)
+	}
+	// StartTurn is the armed-question compatibility path. The live UI instead
+	// uses /answers, which can stash a reply after tool_call but before waitAsk.
+	// Exercise this call's real waiter rather than racing that notification gap.
+	rt := e.runtimeFor(th.ID)
+	ready := time.Now().Add(2 * time.Second)
+	for {
+		rt.mu.Lock()
+		// The waiter can precede the durable event, leaving its cached ID
+		// empty; the answer path then resolves the current open call below.
+		armed := rt.turnID == turn.ID && rt.ask != nil && rt.ask.ch != nil &&
+			len(rt.ask.questions) > 0 && (rt.ask.callID == "" || rt.ask.callID == call.ToolCallID)
+		rt.mu.Unlock()
+		if armed {
+			break
+		}
+		if !time.Now().Before(ready) {
+			t.Fatalf("this questionnaire did not start waiting before the composer answer: call=%q status=%+v", call.ToolCallID, e.Status(th.ID))
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if id := rt.askCallIDOnTurn(turn.ID); id != call.ToolCallID {
+		t.Fatalf("the armed questionnaire belongs to another open call: got %q want %q", id, call.ToolCallID)
+	}
+	if !time.Now().Before(ready) {
+		t.Fatal("questionnaire readiness exceeded its original 2s deadline")
+	}
 	got, err := e.StartTurn(th.ID, "use the existing layout")
 	if err != nil {
 		t.Fatal(err)
@@ -383,18 +411,20 @@ func TestSteerDuringAskStaysInTheInbox(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = waitAskToolCall(t, sub, 15*time.Second)
-	waitAskArmed(t, e, th.ID)
+	call := waitAskToolCall(t, sub, 15*time.Second)
+	rt, waiting, reg := waitSteerAskArmed(t, e, turn, call)
 	if err := e.Steer(th.ID, "prefer the safer path"); err != nil {
 		t.Fatal(err)
 	}
 	if !e.Status(th.ID).AwaitingAnswer {
 		t.Fatal("a steer must not swallow the questionnaire")
 	}
-	rt := e.runtimeFor(th.ID)
 	rt.mu.Lock()
-	reg := rt.reg
+	sameAsk := rt.running && rt.turnID == turn.ID && rt.reg == reg && rt.ask == waiting
 	rt.mu.Unlock()
+	if !sameAsk {
+		t.Fatal("steer replaced this turn's armed questionnaire")
+	}
 	if reg == nil || !reg.HasPendingSteers() {
 		t.Fatal("steer vanished instead of sitting in the inbox")
 	}

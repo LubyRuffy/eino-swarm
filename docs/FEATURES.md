@@ -333,6 +333,10 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 发布版本建议：`python3 tools/next_release_version.py` 只读查询远端数字 tags、含 draft 的全部 Release 和已分配批次，按数字组件建议下一个有效 patch 版本；未知基线、无效台账或远端读取失败明确拒绝。建议不占用版本、不改源码或台账；发布重试复用已冻结版本，实际发布仍须原生验收与并发版本预检。关联契约：`C-010`；证据：`tools/next_release_version.py`、`tools/test_next_release_version.py`、`docs/RELEASE.md`。
 
+- 本机验证资源准入：`release.py --verify` 在 preflight 前到自有进程清理结束持有同宿主／UID／canonical Go module 的稳定 inode 租约，独立副本共享 mutex；锁内只读核实当前 PID/birth/cwd/module，现存手工重型验证或 unknown 只有限等待／阻断，不发送信号。旧 released 台账不能替代实际进程观测；未来绕过协议的新手工命令不受此 mutex 保证，未包装 `make test/check`。关联契约：`C-010`；实现／验证：`tools/release_host_lease.py`、`tools/test_release_host_lease.py`、`tools/release_verify.py`、`tools/test_release_verify.py`；边界见 `docs/RELEASE.md`。
+
+- 本地发布验证入口 `make release-verify` 复用现有发布器，先做只读来源／依赖／本地 E2E 收集检查，再以最多两个独立阶段执行完整默认检查和正式打包；精确输入与输出字节匹配才复用 headless 成功结果，失败、排队、取消与原始证据独立保留，重叠命令按区间并集计时。返回 pending native 不代表原生通过或发布。普通启动使用 engine／AX／像素入口，恢复日志另属恢复场景；登录点位必须在本次画面后明确批准。关联契约：`C-010`、`C-031`；证据：`tools/release_verify.py`、`tools/release_preflight.py`、`tools/release_stages.py`、`tools/native_macos_readiness.py`、`tools/test_release_verify.py`、`tools/test_release_preflight.py`、`tools/test_release_stages.py`。
+
 - 原生 case 区分真实场景截止与子命令观测超时，保留首错原始流；库存失败仍取消并等待已持有的直接子进程，未知后代继续保留清理拒绝标记与私有数据。草稿验收再次读回持久文本、附件原字节与真实输入框值，不依赖正常保存时已隐藏的提示。关联契约：`C-031`、`C-033`；证据：`tools/native_macos_case.py`、`tools/test_native_macos_case.py`、`tools/test_native_macos_case_timeouts.py`、`tools/native_macos_resilience.py`、`tools/test_native_macos_resilience.py`。
 - SIGKILL 清理回归以本测试真实私有进程库存执行故障和恢复，并在失败时保留 runner 首错与证据；测试命名空间不代替生产完整 collector 验收。关联契约：`C-031`；证据：`tools/test_native_macos_fault_cleanup.py`、`tools/test_native_macos_resilience_fault.py`。
 

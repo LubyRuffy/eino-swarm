@@ -9,6 +9,7 @@ import (
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	"github.com/LubyRuffy/eino-swarm/internal/timing"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -75,6 +76,7 @@ func scheduleAnswerRecoveryDelay(attempt int) time.Duration {
 // tools and workers retain their identities until recovery or cancellation.
 func (rt *runtime) verifyPendingScheduleAnswer(ctx context.Context, turn *store.Turn, row *store.PendingScheduleAnswer, candidate *pendingScheduleAnswer) ([]store.Schedule, *scheduleAnswerError) {
 	e := rt.engine
+	clock := timing.OrReal(e.answerRecoveryClock)
 	if ctx.Err() != nil {
 		return nil, interruptedScheduleAnswer(ctx)
 	}
@@ -88,14 +90,15 @@ func (rt *runtime) verifyPendingScheduleAnswer(ctx context.Context, turn *store.
 		if row.State == "deferred" {
 			return nil, &scheduleAnswerError{Code: "classification_deferred"}
 		}
-		if delay := time.Until(row.RetryAt); delay > 0 {
-			timer := time.NewTimer(delay)
+		if delay := row.RetryAt.Sub(clock.Now()); delay > 0 {
+			timer := clock.NewTimer(delay)
 			select {
 			case <-ctx.Done():
 				timer.Stop()
 				return nil, interruptedScheduleAnswer(ctx)
-			case <-timer.C:
+			case <-timer.C():
 			}
+			timer.Stop()
 		}
 		if ctx.Err() != nil {
 			return nil, interruptedScheduleAnswer(ctx)
@@ -114,7 +117,7 @@ func (rt *runtime) verifyPendingScheduleAnswer(ctx context.Context, turn *store.
 			row.ClassificationFailures = 0
 		}
 		delay := scheduleAnswerRecoveryDelay(row.Attempts)
-		row.RetryAt = time.Now().UTC().Add(delay)
+		row.RetryAt = clock.Now().UTC().Add(delay)
 		deferred := row.ClassificationFailures >= config.DefaultScheduleAnswerFailures
 		if err := e.store.SetScheduleAnswerRecovery(row.ID, row.Attempts, row.ClassificationFailures, row.RetryAt, deferred); err != nil {
 			return nil, &scheduleAnswerError{Code: "answer_storage_failed", Cause: err}

@@ -15,6 +15,7 @@ make build                         # ./bin/zwai (rebuilds the bundle first)
 make check                         # formatting + vet + test + e2e
 make fmt                           # gofmt the tree; `make fmt-check` only reports
 make eval EVAL_PROVIDER=<id>       # opt-in task evals on a real model; a measurement, not a finishing check
+make model-check                   # TLC over models/lifecycle: handoff, Stop, parked workers, idle exit, presence
 cd mobile && npm test              # Capacitor phone unit tests (includes native iOS/Android trees)
 cd mobile && npm run e2e           # phone scan/paste Playwright
 make mobile-sync                   # rebuild the phone web bundle and copy into iOS/Android
@@ -355,6 +356,12 @@ E2E suite.
   pauses and Stop, storage failure, and tool results arriving after shutdown.
   Unknown external effects require verification before retry; a model summary
   or process launch is not proof of handoff or recovery.
+- A change to the ordering of handoff, restoration, Stop, parked-worker
+  checkpoints, idle exit or presence admission updates
+  `models/lifecycle/EngineLifecycle.tla` and passes `make model-check`. A guard
+  that is removed or relaxed keeps a case showing which invariant breaks
+  without it. The model checks the protocol, not the Go code's atomicity; the
+  real-boundary regressions above remain required.
 - Unanswered ask recovery must cross the real Registry middleware and HTTP/
   process replacement boundary. A direct `AskUserTool` call misses handoff's
   synthetic unknown result. Recover a legacy placeholder only from the matching

@@ -1,5 +1,75 @@
 # Testing
 
+## Host verification admission (`F-430`, `C-010`)
+
+`tools/release_host_lease.py` serializes cooperating local release verification
+across independent copies using one persistent-inode host/UID/module flock.
+Admission additionally samples actual same-user validation PID/birth, working
+directory and module under the mutex. Saved owner JSON alone cannot accept an
+idle state; active or unknown observations block with bounded queue evidence,
+and the observer never terminates another task. This cannot serialize future
+manual commands that bypass the protocol; `make test/check` remain unwrapped.
+`tools/test_release_host_lease.py` uses unique temporary modules and lock roots,
+real competing lock holders and one small owned unittest process. It checks
+cross-copy exclusion, stale receipt versus live process, cancellation, PID reuse,
+foreign-project exclusion and private evidence.
+The waiting-CLI fixture holds the actual inode while a second real Python release
+controller waits on it, then samples the current processes and confirms the
+holder admits and releases normally; OS inventory selection is limited to the
+owned fixture PIDs while identity/cwd/classification reads stay real. A controller
+without a heavy worker is not an active-test conflict; manual workers remain
+subject to the admission guard. `tools/test_release_verify.py` checks the actual
+entry refuses before preflight/heavy commands on host conflict.
+These lightweight fixtures do not require a VM, GUI or a full Go/Node suite.
+
+## Release verification tooling (`F-430`, `C-010`, `C-031`)
+
+`test_release_stages` uses a deterministic barrier inside the real pending-latch
+publication path to prove a normal owned-stage setup does not falsely reject a
+parallel ordinary stage. The actual StageRunner, subprocess, cache and durable
+latch execute; only this no-detached-child fixture's OS inventory leaf is empty.
+Independent detached-process tests retain their real inventory/cleanup checks.
+Additional barriers cover a newly failed setup during input/cache reads;
+write failures and `KeyboardInterrupt`/`Cancelled` after pending publication
+retain sticky refusal and the original exception, including across a new runner.
+
+The existing release entry exposes `--verify` / `make release-verify` for
+candidate-bound, resumable local checks without publication. See
+[RELEASE.md](RELEASE.md#local-verification-before-publication) for the commands,
+exit statuses, dependency preparation and final-package/native boundaries.
+Regression fixtures cover dependency self-links and outside module resolution,
+bad core entries, source/lock/toolchain/config changes, changed output trees,
+failed receipts, queue/cancellation cleanup and overlapping interval accounting:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p 'test_release_*.py'
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest test_native_macos_prepare_login.FrameTargetTests test_native_macos_prepare_login.PrepareLoginTests
+```
+
+Ordinary native readiness uses `native_macos_smoke.wait_initial_ready` and the
+existing shared deadline for engine identity, real AX window and nonblank pixels.
+It does not read a recovery journal. Recovery successor readiness and cold-start
+source/launch assertions remain separate scenario contracts. Only explicit
+registration/window/content pending observations may be polled; unknown helper
+outcomes, identity/permission refusal, failed pixels and business assertions stop
+the round. Every native helper attempt retains complete original streams and
+timing before parsing, including timeout output. These headless regressions do
+not accept an actual guest window or recovery.
+
+The one-shot login preparation accepts `login_target=None`: publish the fresh
+before-frame first, then approve its exact SHA and `login_target` in the single
+RAM envelope. The target contains `width`, `height`, `password_x`, `password_y`
+and `known_us_empty_ci_field: true`; malformed/out-of-frame points refuse input.
+An explicit frozen target is only a hint and must be confirmed by that envelope.
+Older frame-only login senders now refuse. After-desktop approval carries neither
+target nor credential. Credentials remain RAM-only, absent from argv and receipts.
+
+The existing 1500ms offline worker hold is intentional: Steer/wait fixtures need
+an observable running worker. This change does not shorten it, add E2E shards,
+weaken coverage/race/GUI gates, or create a VM pool. Parallel-stage timing alone
+cannot establish a speed gain or VM contention; measure comparable candidates
+before changing those policies.
+
 Create private evidence files with explicit mode `0600` while preserving and
 recording the normal compiler/test subprocess umask; a restrictive logging-only
 mask must not silently change executable-mode fixtures or be reported as a
@@ -3643,6 +3713,76 @@ SIGTERM with SIGKILL. `TestSameEngineIsTheBinaryThatWasStarted`
 is the match (version plus executable identity). `assembleTUI` / `buildTUISwarm` still build an in-process
 swarm for renderer tests. The window itself is verified by hand — see below.
 
+## Lifecycle protocol model (opt-in, `C-001` / `C-027`)
+
+The Go tests reproduce the interleavings someone thought of. The protocol
+behind the restart handoff, Stop, parked workers, idle exit and shell presence
+is small enough to check every interleaving with TLC instead.
+`models/lifecycle/EngineLifecycle.tla` models one data directory, one
+conversation and one launching shell: the old engine (same or other build),
+the C-027 handoff, the replacement's publish and restoration, Stop on a live
+runtime or before restoration, normal finalization and worker parking, and
+each engine's idle watcher.
+
+```bash
+make model-check                              # every case; first run fetches TLC
+python3 tools/model_check.py --list           # cases, expected outcome, source
+python3 tools/model_check.py pre-d77e8d4 --out /tmp/model   # one case, kept output
+```
+
+It needs Java. `tools/model_check.py` uses `--jar`, `$TLA2TOOLS_JAR` or
+`~/.cache/tlaplus/v1.7.4/tla2tools.jar`; `--fetch` (which `make model-check`
+passes) downloads that pinned release once and checks its SHA-256, and nothing
+is downloaded without it. Each case runs in its own directory under `--out` (a
+fresh temporary directory by default) with its config, TLC output and any
+counterexample trace. It is not part of `make check`.
+
+Four safety invariants are checked: in-memory work never outlives its engine
+(`WorkHasLiveOwner`); an unstopped checkpoint always has an engine that will
+restore it, outside the shell's spawn step and a human cancel
+(`CheckpointHasOwner`); an acknowledged Stop is never undone by restoration
+(`StopIsFinal`); an opened window has an engine until it closes
+(`WindowHasEngine`). Each Boolean constant restores one earlier or removed
+behaviour, and the case table states which invariant it must break:
+
+| case | source | breaks |
+|---|---|---|
+| `current` | every switch off | nothing (574 distinct states) |
+| `pre-d77e8d4` | shipped code: the restart deadline bounded the replacement child, which restored before publishing | `CheckpointHasOwner` |
+| `pre-f341e05` | shipped code: the window opened before holding presence; idle exit acted on an earlier sample | `WindowHasEngine` |
+| `hold-without-atomic-idle`, `window-before-presence` | each half of f341e05 alone | `WindowHasEngine` |
+| `stop-races-restore` | `restoreMu` removed (added with d77e8d4) | `StopIsFinal` |
+| `finish-ungated` | `lockFinish` removed | `WorkHasLiveOwner` |
+| `parked-not-checkpointed` | parked registries left out of the checkpoint | `WorkHasLiveOwner` |
+| `idle-counts-only-managers` | idle load without parked workers, restoration and handoff | `WorkHasLiveOwner` |
+
+The two historical cases are the pilot's acceptance: TLC finds both again in
+about a second each (the full table takes about 15 seconds), and the counterexamples are the failures those commits
+describe. Before d77e8d4: handoff, freeze and checkpoint, ACK, old engine
+exits, replacement spawned, deadline, replacement killed — the checkpoint has
+no engine. Before f341e05: the shell finds the engine and opens the window,
+the engine samples idle and exits before the frontend attaches. The
+f341e05 halves show that holding presence first and committing idle exit
+atomically are each necessary. Seven `reach-*` witnesses are checked against
+the current design and must be violated: a restored task in an opened window,
+a parked checkpoint, a Stop before restoration, an opened window after the
+deadline, an idle exit after the window closed, a relaunch after an idle
+commit, a finalization the handoff waits for. Without them a passing
+invariant could mean only that its scenario is unreachable.
+
+What this does not show: an action is one locked step of the Go code, and
+nothing checks that the code keeps that atomicity — the Go tests named in
+`C-001` / `C-027` still do. The model has no clock: the deadline is an event
+that can fire at any point, so `deadline-kills-child` alone is a violation
+even though publishing before restoration made a slow boot much less likely.
+It has one conversation, one shell and safety only (no liveness), and leaves
+out storage failure (`ErrRestartUnpersistedTurn`), Stop while frozen, phones,
+schedules and asks. `tools/test_model_check.py` keeps the case table honest
+(every switch and invariant exists in the module, every switch breaks an
+invariant, every witness is checked) and, when Java and the jar are already
+present, runs the current design and both historical cases; it never
+downloads.
+
 ## Agent task evals (opt-in, real model)
 
 The layers above prove the code is correct; they cannot say whether a prompt,
@@ -4115,7 +4255,14 @@ turn until an answer, idle answers are `ErrIdle`, a wrong `call_id` is
 `ErrAskMismatch`, interrupt cancels the wait, resume re-arms an orphaned
 questionnaire instead of swallowing it, a worker call fails in JSON, and
 `AwaitingAnswer()` lists only the blocked conversation (a working turn is
-not an ask; answering clears the list). `internal/server/ask_test.go` is why
+not an ask; answering clears the list). Steering acceptance waits within the
+existing two-second readiness budget for this turn's real waiter/channel and
+matching durable call ID, then checks that Steer retains that same question,
+Registry and pending inbox. `internal/engine/ask_steer_order_test.go` holds the
+actual AskUserTool callback just before entering runtime.waitAsk: after call
+publication there is no waiter until release, then the real runtime waiter arms.
+This distinguishes notification readiness from question readiness without
+extending the budget or changing production behavior. `internal/server/ask_test.go` is why
 the thread listing marks `awaiting_answer` while the questionnaire is open.
 `internal/engine/schedule_tool_test.go` is why `schedule_wake` upserts on
 this conversation (including when the model omits `id`), and
@@ -6455,3 +6602,56 @@ all navigation and Earlier actions still use native accessibility clicks.
 An unloaded body or null callback remains pending within the original poll.
 Native fixture behavior supplements bounded-query/RPC and
 Chromium/WebKit regression tests; it does not measure a real paired network.
+
+### Engine fixture timing and Store ownership
+
+Measure a complete engine run with `go test -race -cover -count=1 -json
+./internal/engine`. Keep the package and command wall times, the complete test
+set, coverage and host admission evidence. Per-test elapsed totals omit some
+process work and must not replace package time. A timed subset is not a complete
+engine result, and `-count=1` prevents a cached test result from becoming a speed
+sample.
+
+Engine fixtures use at most four concurrent preparation workers and a bounded
+ready queue of independent disk Stores.
+Every Store still runs the real constructor, migrations, search setup and WAL
+configuration. It belongs to one test, is never recycled, and has its own
+callbacks and directory. Explicit-directory fixtures keep their ordinary open
+and reopen path. `TestMain` stops and joins preparation and closes unused Stores
+before the process exits, so this work remains inside package timing. A failed
+close retains its directory. Stop prevents new preparation admissions; an already
+admitted `Store.Open` is joined rather than abandoned.
+
+For a single-factor comparison, run the same selection and repetition count with
+`-args -engine.store-prefetch=false` and then with
+`-args -engine.store-prefetch=true`. This flag belongs only to the engine test
+binary; do not pass it to `./...`. Include startup and final pool cleanup in both
+samples, and retain all samples rather than selecting the fastest one.
+
+`internal/timing` lets a fixture supply an instance clock to endpoint backoff or
+durable answer recovery. Normal constructors retain real clocks. HTTP timeouts,
+request duration telemetry and the scheduler clock remain separate. A manual
+clock advances only registered timers; cancellation, probe generations, persisted
+RetryAt and the original 5/10-second waits remain assertions. The real HTTP test
+that waits beyond thirty seconds and checks its recorded duration stays in the
+complete suite. No fixture changes the Go mock's default 1ms chunk pacing or the
+explicit 18ms live-stream test.
+
+A 2026-10-28 same-host sample with Go 1.26.1, `-race -cover -count=1`
+measured 781.192s before these fixture changes and 348.830s afterwards for the
+complete engine package. All 1,382 original top-level tests and 710 original
+subtests ran with their original outcomes; the candidate added 21 top-level tests
+and nine subtests. This is a measured 55.3% package-time reduction, not a stable
+one-minute result. Command wall time was 784.78s and 359.20s respectively; host
+queueing and source preparation are separate. Peak RSS rose from about 666MB to
+1,016MB, so prefetch trades memory and extra preparation CPU for lower latency.
+The largest three remaining serial test times alone totalled 68.80s, including
+the unchanged real HTTP boundary. Further parallelization must first isolate
+process environment and global state, rather than mechanically adding
+`t.Parallel` or moving real-duration tests outside the measured suite.
+The subsequent complete-repository race/coverage run passed with engine package
+time 344.493s and 94.9% coverage. All changed production coverage blocks were
+executed, and the new clock module was covered completely. The earlier baseline
+printed 95.0% but did not retain a block profile; its 0.1 percentage-point
+difference cannot be attributed to a particular pre-existing branch from those
+rounded totals alone.

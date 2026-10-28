@@ -463,6 +463,7 @@ func TestScheduledManagerModelErrorPreservesOwnedWorkerWithoutImmediateRetry(t *
 	} {
 		t.Run(tc.owner+"/"+tc.failure, func(t *testing.T) {
 			e, f := newScheduleOwnershipEngine(t)
+			useEngineBackoffClock(t, e)
 			th, sch, reg, id := startOwnedScheduleWorker(t, e, f)
 			ownerID := sch.ID
 			if tc.owner == "goal" {
@@ -492,6 +493,9 @@ func TestScheduledManagerModelErrorPreservesOwnedWorkerWithoutImmediateRetry(t *
 			turns, _ := e.Store().ListTurns(th.ID)
 			if goal.GoalBlocked || hasKind(t, e, th.ID, KindGoalContinued) || f.steps.Load() != tc.requests || len(turns) != 2 {
 				t.Fatalf("scheduled model failure mutated pursuit or exceeded its retry budget: goal=%+v requests=%d turns=%d", goal, f.steps.Load(), len(turns))
+			}
+			if tc.failure == "rate limited" {
+				assertFixtureBackoffWaits(t, e, 5*time.Second, 10*time.Second)
 			}
 		})
 	}

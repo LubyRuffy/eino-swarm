@@ -62,6 +62,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 允许行为：多个 shell 同时连接；禁止行为：多个进程同时写同一数据库；失败语义：引擎不可达或租约冲突需明确报告；不变量：一个目录一把 lease；边界条件：进程异常结束后可恢复。
 - 原生窗口启动：返回窗口 URL 前必须得到真实 presence SSE 的确认，由 native 进程持有到退出；页面 reload 不释放该连接，前端不登记第二个 desktop 客户端。最终 idle 停止使用与 watcher 相同的 `Engine.ActiveWork`，复核 manager、parked worker 及重启交接归属，不能只看运行中的 manager 列表；与 presence 接入按同一互斥锁决策：接入先成功则不得停止；停止先提交则 POST/GET 返回 `503` 和 `engine_stopping`。握手及原持有人退出等待有界；仅证明原租约记录消失或其进程／启动／二进制身份变化后重新走完整身份/单写入者检查；不同 PID 复用相同 URL 也必须识别为替换，不能用端口代替持有人身份。不能用延长 idle grace、等待用户手动重开或杀掉仍持锁但不响应的引擎替代该边界。证据：`cmd/zwai/desktop_attach.go`、`cmd/zwai/desktop_attach_test.go`、`cmd/zwai/desktop_attach_errors_test.go`、`cmd/zwai/desktop_attach_identity_test.go`、`internal/server/presence_shutdown_test.go`、`internal/server/presence_shutdown_http_test.go`、`frontend/e2e/presence.spec.ts`；来源：Issue #77 正式 Mac 关闭后立即重开失败。
 - 已确认的原生 presence 断流：native owner 仅在同一引擎 URL 重新 POST 并确认 SSE，连续最多三次恢复，单次完整握手和等待合计受 idle grace 内的上限约束。稳定持有至少一个 idle grace 才恢复预算，短流的确认不能无限重置预算；成功握手的超时不得延伸到健康 SSE 生命周期。关闭原生应用可中断请求和等待。Wails 启动后耗尽时，必须在请求原生 Quit 前通过配置的桌面 logger 同步记录一次可判断的连接原因；操作系统可能直接终止进程，不得依赖 Run 返回后才报告。若 Run 返回，必须保留原有错误类别；启动前失败直接返回且不得开窗口，正常释放或取消不得误报终止失败。不得后台 ensure 新引擎、换窗口 URL 或回加前端 hold。URL 中的 presence 是初次交接标识，恢复后的新 slot 仍登记同一 native PID。证据：`cmd/zwai/desktop_presence.go`、`cmd/zwai/desktop_attach_stream_recovery_test.go`、`cmd/zwai/desktop_presence_test.go`、`internal/desktop/lifecycle.go`、`internal/desktop/lifecycle_test.go`、`internal/desktop/lifecycle_terminal_test.go`。
+- 空闲退出协议模型：presence 先于窗口持有、`TryIdleShutdown` 原子提交且计入完整 `ActiveWork`，由 `C-027` 的 `models/lifecycle/EngineLifecycle.tla` 一并检查；f341e05 之前的设计在模型中违反 `WindowHasEngine`。证据：`tools/model_check.py`。
 - 证据：实现 `internal/lease`, `internal/app`, `cmd/zwai`；测试 `internal/lease`, `internal/app`, `cmd/zwai/engine_startup_test.go`；变更规则：同步架构、CLI 和恢复测试；来源：`ARCHITECTURE.md` 和 Git 历史。
 
 ## C-002 One turn per conversation
@@ -199,6 +200,12 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 ## C-010 Build artifacts and update channel
 
 - 版本建议与发布分离：`tools/next_release_version.py` 只读比较新鲜 origin 数字 tags、全部 Release（含 draft）和已有批次占用，按既有构建号边界建议递增 patch；不保留版本、不改源码或台账。重复调用在已有分配之后建议新的未占用版本，不用于发布重试；重试必须复用冻结版本，并由实际发布预检再次校验冲突。无法确认基线或占用时拒绝建议。证据：`tools/next_release_version.py`、`tools/test_next_release_version.py`。
+
+- 并行阶段准入：正常 owned stage 的 durable pending 发布不等于异常清理拒绝；只有失败／未确认 setup 或 cleanup 才设置 sticky refusal。输入／cache 读取后与 Popen 前在短准入锁内复查，命令执行期间不持此锁。pending 发布中断保留原取消 cause 与拒绝，清理成功落盘后才清拒绝；后发生的其他阶段失败不抹除已启动命令的实际 PID／时间／退出／流证据。证据：`tools/release_stages.py`、`tools/test_release_stages.py`；入口与边界见 `docs/RELEASE.md`。
+
+- 同宿主跨副本验证：合作的 `release.py --verify` 入口按有效 UID 和 canonical Go module 共用不 unlink 的 flock inode，从 preflight 准入至自有子进程清理结束互斥。锁内真实进程库存绑定 PID/birth、cwd／显式目录切换和 module，既有手工验证或不可核实状态在原有限预算内等待后阻断；不抢占、不发送信号、不以旧 owner 台账证明空闲。私有 owner／queue 证据不记录 argv／环境。仅合作入口获得未来互斥保证，裸 `go test`／`make test/check` 的观测只描述准入时状态。证据：`tools/release_host_lease.py`、`tools/test_release_host_lease.py`、`tools/release_verify.py`、`docs/RELEASE.md`。
+
+- 本地验证可恢复性：`tools/release.py --verify --platform macos` 不触发发布或修改交付账本；同 checkout 跨 evidence 目录互斥，来源证明在首次构建前生成并在持锁后复查。复用只限完整 candidate/version、lockfile、依赖、toolchain、config 与 stage 输入／输出／原日志字节相同的 headless 成功结果；未知／失败证据、来源变化及最终 ZIP 字节变化拒绝继承。签名／公证／装订造成的新字节必须重新绑定实际原生验收，GUI 不自动复用。阶段执行、排队、重试／返工原因和失败各自保留，重叠时间不累计。证据：`tools/release_verify.py`、`tools/release_preflight.py`、`tools/release_stages.py` 及同名测试；入口与边界见 `docs/RELEASE.md`。
 
 - 显式紧急发布：当前人类要求立即发布时，`tools/release.py --urgent-reason <非空授权原因>` 仅可放宽批次聚合等待和 TestFlight 北京日发布次数策略。实际发布回执保留原因；历史原因不授权后续调用。完整源码、收口工作集、原生验收、签名、不可变版本及 Apple 可安装状态门禁仍适用；普通调用继续执行原有两项策略。实现／验证：`tools/release.py`、`tools/release_ios.py`、`tools/test_release_urgent.py`、`tools/test_release_ios_urgent.py`；变更类型：Changed；来源：用户 2026-10-25 明确立即发布手机体验修复。
 
@@ -409,6 +416,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 失败语义：有能力的旧引擎必须持久化成功后才返回 `ready:true`；进入交接冻结后保存失败明确报错，保留冻结及已接管的检查点供重试，不能自动恢复执行未知外部操作，也不能静默降级为强杀。存储仍可读取时，历史、Trace 和 `GET /api/engine/restart` 的 `failed` 状态保持可达；新工作仍返回 `409 restarting`，修复存储后可通过 `POST /api/engine/restart` 重试同一批检查点。这不宣称 manager／worker 继续执行。证据：`internal/server/restart_failure_retry_test.go`、`cmd/zwai/engine_restart_test.go`。已释放 runtime 但尚无持久化终态的正常收尾同样必须拒绝替换，不能把 idle 当作保存成功。证据：`internal/engine/restart_finish_storage_test.go`。旧引擎无交接 API 时允许有界自动停止并从已有事件恢复，但不宣称保全旧版本未存储的内存消息。未知工具结果必须标明未确认并先核验副作用，不保证任意外部操作 exactly-once。
 - 允许行为：截止后取消仍未收尾的模型／工具，使用已保存的检查点继续；禁止行为：无限等待模型、把摘要当任务完成、重启时重复创建 worker、将未确认外部操作盲目重放。启动／存储／模型依赖异常可明确失败，不能伪造 30 秒内任务已恢复。
 - 证据：实现 `handoff.go`、`internal/engine/restart.go`、`cmd/zwai/engine_restart.go`、`internal/server/restart.go`；测试 `handoff_test.go`、`internal/engine/restart_test.go`、`cmd/zwai/engine_restart_acceptance_test.go`、`internal/server/restart_http_test.go`、`frontend/src/lib/transcript-restart.test.ts`。
+- 协议模型：`models/lifecycle/EngineLifecycle.tla` 以 TLA+ 表达交接、恢复前 Stop、停泊 worker、空闲退出与 presence 的排序；`make model-check` 用 TLC 检查当前设计满足 `WorkHasLiveOwner`、`CheckpointHasOwner`、`StopIsFinal`、`WindowHasEngine`，并要求 d77e8d4／f341e05 之前的设计及移除 `restoreMu`、`lockFinish`、停泊检查点或完整 `ActiveWork` 的变体各自违反指定不变量。模型只验证协议，不证明 Go 代码保持每个动作的原子性；修改这些排序步骤须同时更新模型。证据：`tools/model_check.py`、`tools/test_model_check.py`。
 - 变更规则：同步 CLI、API、持久化格式、恢复及真实进程验收、UI 通知和 CHANGELOG；来源：用户 2026-10-19 的自动交接重启需求。
 
 ## C-028 Image intake and sent-image preview retain vision bytes

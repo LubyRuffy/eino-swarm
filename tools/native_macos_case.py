@@ -144,14 +144,15 @@ def owns_argv(argv, bundle, data):
 
 class ProcessScope:
     """Attribute inherited case markers, private sessions and observed descendants."""
-    def __init__(self, bundle, data, processes, case_id=None):
+    def __init__(self, bundle, data, processes, case_id=None, inventory=None):
         self.bundle, self.data, self.processes = bundle, data, processes
         self.case_id = case_id
+        self.inventory = inventory
         self.groups = {process.pid for process in processes}
         self.identities = {}
 
     def sample(self):
-        listing = subprocess.check_output(
+        listing = (self.inventory or subprocess.check_output)(
             ["/bin/ps", "-axo", "pid=,ppid=,pgid=,uid=,stat=,lstart="], timeout=5, text=True)
         rows = {}
         for line in listing.splitlines():

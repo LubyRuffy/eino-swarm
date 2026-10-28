@@ -379,11 +379,26 @@ def main():
     parser.add_argument('--version', required=True)
     parser.add_argument('--platform', choices=['all', 'macos', 'android', 'ios'], default='all')
     parser.add_argument('--check', action='store_true', help='read-only source, signing and remote checks')
+    parser.add_argument('--verify', action='store_true', help='local resumable checks/package only; never publish')
+    parser.add_argument('--plan', action='store_true', help='print the local verification plan without running it')
+    parser.add_argument('--evidence', type=Path, help='private verification directory outside the source checkout')
+    parser.add_argument('--jobs', type=int, choices=(1, 2), default=2, help='bounded independent verification stages')
+    parser.add_argument('--e2e-port', type=int, help='isolated loopback port for this verification run')
     parser.add_argument('--source-dir', type=Path, default=ROOT)
     parser.add_argument('--urgent-reason', type=urgent_release_reason,
                         help='explicit user-authorized urgent release; bypass timing policy only')
     args = parser.parse_args()
     version_code(args.version)
+    if args.verify:
+        if args.check or args.platform != 'macos' or (not args.plan and args.evidence is None):
+            parser.error('--verify requires --platform macos and --evidence; it cannot be combined with --check')
+        from release_verify import plan, verify
+        if args.plan:
+            print(json.dumps(plan(args.source_dir, args.version, args.evidence or Path('/private/evidence'), args.jobs), indent=2))
+            return 0
+        return verify(args.source_dir, args.version, args.evidence, jobs=args.jobs, e2e_port=args.e2e_port)
+    if args.plan or args.evidence is not None or args.e2e_port is not None:
+        parser.error('--plan, --evidence and --e2e-port require --verify')
     directory = home() / 'releases'
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / 'release.lock').open('a') as lock:
@@ -398,6 +413,9 @@ def main():
 if __name__ == '__main__':
     try:
         sys.exit(main())
+    except KeyboardInterrupt as error:
+        print('Local verification cancelled', file=sys.stderr)
+        sys.exit(128 + getattr(error, 'signum', 2))
     except (OSError, ValueError, RuntimeError) as error:
         print(str(error), file=sys.stderr)
         sys.exit(1)
