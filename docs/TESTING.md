@@ -7,6 +7,16 @@ product regression without a controlled comparison.
 
 ## Paused goal replies and runtime provenance (`F-150`, `F-220`, `C-008`, `C-009`)
 
+`internal/engine/goal_cap_receipt_test.go` holds the real `goal_capped` write
+with a callback on its private Store. Runtime idle is already observable in
+that window; the old quiet-period wait let a human follow-up renew an unpaused
+goal's budget and create another automatic turn. Goal-cap fixtures now wait
+for the persisted event before testing paused-message behavior. The regression
+proves the wait remains blocked until the receipt exists, then checks actual
+human admission retains the cap. The callback stays until Store.Close and the
+fixture has an explicit title. This changes test synchronization, not the
+product's existing distinction between an unpaused goal and a recorded pause.
+
 `internal/engine/goal_paused_schedule_claim_test.go` crosses the real Registry/HTTP boundary for capped, blocked and idle human replies rejected by schedule verification, with and without a durable terminal error receipt. The original pause, reason and auto-turn count must survive with no new goal turn. `internal/store/goal_cap_test.go` also makes an idle pause win inside the cap transaction, after an older snapshot was read. Active pursuit and explicit resume retain the separate three-failure schedule-claim cap.
 
 `goal_test.go` changes the old cap-reset expectation: cap 1 admits a human turn
@@ -2537,6 +2547,17 @@ Concurrent runs follow the [E2E isolation rules](#end-to-end-tests).
 
 ## Memory review provenance and commit (F-420 / C-025 / C-012)
 
+Memory-review details retain committed content in the event instead of reading
+the current file. `internal/engine/review_change_details_test.go` covers complete
+add/replace/remove text beyond the preview cap and a later human edit;
+`internal/memory/change_test.go` checks real note/skill tool snapshots.
+`frontend/src/components/app/review-status.test.tsx` checks collapsed/open/close,
+addition/deletion marks, partial success, preview-only records and localization.
+`frontend/e2e/memory-review.spec.ts` exercises the real reviewer, named SSE
+notice, full deleted text, persisted snapshots and replay after reload. Run it
+with `ZWAI_E2E_MEMORY_REVIEW=1`, a private `ZWAI_E2E_PORT` and
+`ZWAI_E2E_DATA_DIR`, and a separate Playwright `--output` directory.
+
 `internal/memory/reclassify_test.go` checks source-preserving moves, negation /
 numeric / condition changes, complete-text demotion, destination conflicts,
 capacity, failure after saving the target, partial deletion receipts and
@@ -2569,7 +2590,10 @@ streamed scan, report and original-turn Trace.
 
 Boundary regressions in `internal/memory/prompt_test.go` cover manager, worker,
 reviewer, tidy and library instructions, including generic wording and negative
-assertions. Store tests distinguish an existing-name pointer from copied steps
+assertions. `internal/memory/review_repair_prompt_test.go` checks source-byte
+copying, JSON escapes, operation-scoped numeric support and complete-batch repair
+within the existing cap; instruction checks do not establish model reliability.
+Store tests distinguish an existing-name pointer from copied steps
 and ensure an unknown name cannot bypass overlap checks. Frontend i18n tests
 check the extracted memory catalogs and both panel descriptions. Run
 `go test -race ./internal/memory` and `cd frontend && npm run lint && npm test`.
@@ -2616,6 +2640,12 @@ memory files and stored outcomes, not agreement with the old reviewer's answer:
   Raw proposed note/skill text, old
   entries, exact quotes and arbitrary target/action values must not leak into the
   diagnostic outcome. Capacity and provenance checks retain their existing gates.
+- `internal/engine/review_repair_protocol_test.go`: a request-aware loopback
+  model repairs references and numeric details from the actual rejected tool
+  receipt carried through the reviewer/ADK/HTTP adapter. The next proposal uses
+  the returned operation index and repair metadata, not a preselected round
+  number. Successful repair preserves exact source authority, the iteration cap
+  and committed notes; repair-only text stays outside persisted diagnostics.
 - `internal/engine/review_finalize_test.go`: an actual accepted batch followed
   by a real skill-fold write failure retains committed notes/skills and records
   `stop_reason: error` without the storage path. A separate real `NotesDraft`
@@ -2660,6 +2690,7 @@ go test -race -count=1 -timeout 25m ./internal/memory ./internal/engine
 go test -race -run '^(TestReviewBatch|TestReviewEvidence|TestValidateReview|TestReviewNoteDiff|TestInvokeReviewOperation)' ./internal/engine
 go test -race -count=1 ./internal/engine -run 'ReviewHistory|FullThreadWorkerHistory|LifecycleHistory|CompatibilityWrapper|TerminalStatus'
 go test -race -count=1 ./internal/engine -run 'Review.*(Capacity|Proposal|Diagnostics|ReceiptFeedback|Bounded|Refusal|ModelError|TerminalFailure)'
+go test -race -count=1 ./internal/engine -run 'ReviewRepair|ReviewProtocolRepairsQuotesAndNumbers'
 go test -race -count=1 ./internal/server -run TestReviewCapacityFailureIsExplainedByTheOriginalTurnTrace
 cd frontend && npm test -- src/lib/review-diagnostics.test.ts src/lib/transcript-review.test.ts src/components/app/review-status.test.tsx src/components/app/trace-tab.test.tsx src/store/projects.test.ts
 ZWAI_E2E_MEMORY_REVIEW=1 ZWAI_E2E_PORT=18849 ZWAI_E2E_DATA_DIR=.e2e-data-memory-review npm run e2e
@@ -3271,6 +3302,14 @@ deterministic and fast enough to run on every change.
 | Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, live viewfinder (frame, sweeping beam, chime on a pairlink QR), saved-ticket host chips + connecting skeleton (not the scan form), multiple tickets, computer name from `hello`/`list` `host` (not the hub hostname), slim list, resume picker (live turn / last thread / parked wait), compact transcript / watch session (goal flags + waiting), ticket-socket keepalive and reconnect banner, goal/wait banners, device model line from platform+UA (`hello`), launcher is the zwai mark not Capacitor's default; Android system back pops Add a PC, then the new-conversation screen, then a conversation, and finishes only from the inbox or the unbound scan screen; inbox search filters the roster already on the phone; a project row starts a conversation in that project; Android release Gradle reads version/signing from env (no password in git); `android-release` refuses a store upload without a keystore, skips JDK 17, copies the APK to `bin/` | `cd mobile && npm test` |
 | Phone E2E | scan screen opens a live viewfinder (frame, sweeping beam, fake-camera preview) and paste of the same `pairlink:v1` URI; a saved ticket shows host chips and Connecting, not Scan QR; Add a PC is a menu sheet; New chat and a project row open the start screen, and on a 320px-wide viewport the project row and the message box stay inside it; sub-agent header counts running workers only, finished history stays grouped and opens a separate activity log without painting worker answers as manager answers; Check for updates shows fetching, then current, an install question, or the stubbed feed error | `cd mobile && npm run e2e` |
 | Phone simulators | packaged iOS/Android apps bind via paste of that URI, list the seed thread, New chat, Start; native iOS Menu shows the version without Android's update action | see `mobile/README.md` (not in `make check`) |
+
+PC palette verification (`F-410`): `cd frontend && npm test -- src/components/app/palette.test.tsx`
+covers command filtering by aliases and visible localized labels, Enter,
+pending/empty/error states, filtered local
+fallback, semantic server ranking (including blank titles and query whitespace),
+and stale responses after editing or closing. `npx playwright test palette-search.spec.ts shell.spec.ts`
+also checks real keyword-body indexing and browser interaction; pending/error
+and semantic responses are controlled fixtures, without a real model.
 
 Phone output verification (`F-224`, `C-020`): `go test -race ./internal/remote`
 checks bounded listing and content frames, traversal and symlink escape;

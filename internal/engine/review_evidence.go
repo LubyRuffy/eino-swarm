@@ -2,7 +2,6 @@ package engine
 
 import (
 	"encoding/json"
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -62,18 +61,28 @@ func reviewEvidenceSources(events []store.Event, visible map[int64]store.Event) 
 
 func validateReviewEvidence(op reviewOperation, sources map[int64]store.Event, humanOnly bool) ([]int64, string, error) {
 	if len(op.Evidence) == 0 {
-		return nil, "", fmt.Errorf("each change needs an exact source quote and sequence")
+		return nil, "", reviewEvidenceRepair([]reviewEvidenceIssue{{Index: -1, Reason: "missing_evidence"}}, sources, humanOnly)
 	}
 	var seqs []int64
 	var quotes strings.Builder
 	seen := map[int64]bool{}
-	for _, ref := range op.Evidence {
+	var issues []reviewEvidenceIssue
+	for index, ref := range op.Evidence {
 		ev, ok := sources[ref.Seq]
-		if !ok || strings.TrimSpace(ref.Quote) == "" || !strings.Contains(ev.Text, ref.Quote) {
-			return nil, "", fmt.Errorf("source %d is absent, revised, untrusted, or does not contain the exact quote", ref.Seq)
+		issue := reviewEvidenceIssue{Index: index, Seq: ref.Seq}
+		switch {
+		case !ok:
+			issue.Reason = "source_unavailable"
+		case humanOnly && ev.Kind != KindUser && ev.Kind != KindSteer:
+			issue.Reason = "human_only"
+		case strings.TrimSpace(ref.Quote) == "":
+			issue.Reason, issue.SourceText = "empty_quote", ev.Text
+		case !strings.Contains(ev.Text, ref.Quote):
+			issue.Reason, issue.SourceText = "quote_mismatch", ev.Text
 		}
-		if humanOnly && ev.Kind != KindUser && ev.Kind != KindSteer {
-			return nil, "", fmt.Errorf("this review accepts only explicit human requirements")
+		if issue.Reason != "" {
+			issues = append(issues, issue)
+			continue
 		}
 		if !seen[ref.Seq] {
 			seqs = append(seqs, ref.Seq)
@@ -82,19 +91,34 @@ func validateReviewEvidence(op reviewOperation, sources map[int64]store.Event, h
 		quotes.WriteString(ref.Quote)
 		quotes.WriteByte('\n')
 	}
+	if len(issues) > 0 {
+		return nil, "", reviewEvidenceRepair(issues, sources, humanOnly)
+	}
 	return seqs, quotes.String(), nil
 }
 
 // Preserve numeric spelling from the evidence or the retained old note.
 // This catches fabricated dates/versions/counts; it is not an entailment test.
 func validateReviewNumbers(content, evidence, previous string) error {
+	values := reviewNumberTokens(evidence + "\n" + previous)
 	supported := map[string]bool{}
-	for _, value := range reviewNumber.FindAllString(evidence+"\n"+previous, -1) {
+	for _, value := range values {
 		supported[value] = true
 	}
-	for _, value := range reviewNumber.FindAllString(content, -1) {
+	var unsupported []string
+	for _, value := range reviewNumberTokens(content) {
 		if !supported[value] {
-			return fmt.Errorf("new numeric detail %q has no source; omit it or quote its evidence", value)
+			unsupported = append(unsupported, value)
+		}
+	}
+	if len(unsupported) > 0 {
+		return &reviewRepairError{
+			message: "new numeric detail lacks cited support: " + strings.Join(unsupported, ", "),
+			feedback: map[string]any{
+				"instruction":         "Repair every unsupported_numbers item in this operation. supported_numbers comes only from this operation's exact quotes and replaced old note. If an admissible visible source supports a missing value, add its exact quote; otherwise omit the unsupported detail. Preserve numeric spelling, units, dates, versions and identifiers; do not convert digits to words to evade validation. Source sequence numbers and display line numbers are not evidence. Resubmit the complete changes array; no notes from this proposal were saved.",
+				"unsupported_numbers": unsupported,
+				"supported_numbers":   values,
+			},
 		}
 	}
 	return nil

@@ -1,6 +1,7 @@
-import { useState } from "react"
-import { Sparkles } from "lucide-react"
+import { useId, useState } from "react"
+import { ChevronRight, Sparkles } from "lucide-react"
 
+import { ReviewChanges } from "@/components/app/review-changes"
 import { Button } from "@/components/ui/button"
 import { reviewNotice, reviewPanelHint } from "@/lib/transcript-review"
 import type { ReviewOutcome } from "@/lib/types"
@@ -16,6 +17,8 @@ export function ReviewStatus({ outcome, turnId, panel = false }: {
   panel?: boolean
 }) {
   const t = useT()
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const detailsId = useId()
   const [opening, setOpening] = useState(false)
   const [traceError, setTraceError] = useState(false)
   const openTrace = async () => {
@@ -46,7 +49,29 @@ export function ReviewStatus({ outcome, turnId, panel = false }: {
     >
       {!panel ? <Sparkles className="mt-0.5 size-3.5 shrink-0" /> : null}
       <div className="min-w-0 flex-1">
-        <p className="stream-text whitespace-pre-wrap">{text}</p>
+        <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
+          <p className="stream-text min-w-0 flex-1 whitespace-pre-wrap">{text}</p>
+          {outcome.changed || outcome.changes?.length ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-auto shrink-0 gap-1 px-1 py-0 text-xs font-normal leading-5 text-muted-foreground hover:text-foreground [&_svg]:size-3"
+              aria-expanded={detailsOpen}
+              aria-controls={detailsId}
+              onClick={() => setDetailsOpen((previous) => !previous)}
+              data-testid="memory-review-details-toggle"
+            >
+              <ChevronRight aria-hidden className={detailsOpen ? "rotate-90" : undefined} />
+              {t(detailsOpen ? "memory.reviewDetailsHide" : "memory.reviewDetails")}
+            </Button>
+          ) : null}
+        </div>
+        {detailsOpen ? (
+          <div id={detailsId} role="region" aria-label={t("memory.reviewDetailsTitle")} className="mt-2" data-testid="memory-review-details">
+            <ReviewChanges changes={outcome.changes} />
+          </div>
+        ) : null}
         {turnId && (outcome.err || (outcome.stop_reason && outcome.stop_reason !== "completed")) ? (
           <Button
             type="button"

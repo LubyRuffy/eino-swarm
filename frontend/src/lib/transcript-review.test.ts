@@ -165,6 +165,24 @@ describe("the memory review", () => {
     expect(manager(state)).toBeUndefined()
   })
 
+  it("keeps committed images on replay and rejects malformed change fields", () => {
+    const state = fold([review({
+      changed: true,
+      changes: [null, "invalid", {},
+        { target: "memory", action: "replace", text: "legacy preview", before: 12, after: false },
+        { target: "memory", action: "add", before: "", after: "Full saved text", name: 42, text: {} },
+      ],
+    })])
+    const changes = manager(state).blocks[0].review?.changes
+    expect(changes).toHaveLength(2)
+    expect(changes?.[0]).toMatchObject({ target: "memory", action: "replace", text: "legacy preview" })
+    expect(changes?.[0].before).toBeUndefined()
+    expect(changes?.[0].after).toBeUndefined()
+    expect(changes?.[1]).toMatchObject({ target: "memory", action: "add", before: "", after: "Full saved text" })
+    expect(changes?.[1].name).toBeUndefined()
+    expect(changes?.[1].text).toBeUndefined()
+  })
+
   it("still moves the resume point, so a reconnect does not replay it", () => {
     const state = fold([review({ changed: false })])
     expect(state.lastSeq).toBeGreaterThan(0)

@@ -25,6 +25,17 @@ export type EditDiff = {
  *  dumb del-then-add, because an O(nm) table would freeze the transcript. */
 const LCS_CELLS = 200_000
 
+/** Compare stored images rather than the current file, which may have changed again. */
+export function diffText(path: string, before: string, after: string): EditDiff {
+  const lines = lineDiff(splitLines(before), splitLines(after))
+  return {
+    path,
+    hunks: [{ lines }],
+    added: lines.filter((line) => line.op === "add").length,
+    removed: lines.filter((line) => line.op === "del").length,
+  }
+}
+
 export function parseEditDiff(args: string): EditDiff | undefined {
   const obj = parseObject(args)
   if (!obj) return undefined

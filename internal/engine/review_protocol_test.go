@@ -264,6 +264,13 @@ func (f *reviewProtocolFixture) snapshot() []json.RawMessage {
 
 func newReviewProtocolEngine(t *testing.T, response func(int) (string, []reviewOperation)) (*Engine, *reviewProtocolFixture) {
 	t.Helper()
+	return newReviewProtocolRequestEngine(t, func(_ json.RawMessage, number int) (string, []reviewOperation) {
+		return response(number)
+	})
+}
+
+func newReviewProtocolRequestEngine(t *testing.T, response func(json.RawMessage, int) (string, []reviewOperation)) (*Engine, *reviewProtocolFixture) {
+	t.Helper()
 	fixture := &reviewProtocolFixture{}
 	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/chat/completions" {
@@ -294,7 +301,7 @@ func newReviewProtocolEngine(t *testing.T, response func(int) (string, []reviewO
 		fixture.requests = append(fixture.requests, body)
 		number := len(fixture.requests)
 		fixture.mu.Unlock()
-		prose, operations := response(number)
+		prose, operations := response(body, number)
 		proseOnly := prose != "" && operations == nil
 		if operations == nil {
 			operations = []reviewOperation{}

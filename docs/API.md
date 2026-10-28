@@ -2048,7 +2048,7 @@ to `memory-reviewer`. `text` is JSON:
   "notes": {"add": 1},
   "skills": [{"target": "skill_manage", "action": "create", "name": "a-procedure", "text": "when it applies"}],
   "changes": [
-    {"target": "memory", "action": "add", "text": "the durable fact that was stored"},
+    {"target": "memory", "action": "add", "text": "the durable fact that was stored", "before": "", "after": "the durable fact that was stored"},
     {"target": "skill_manage", "action": "create", "name": "a-procedure", "text": "when it applies"}
   ],
   "note": "Saved 1 note changes and 1 skill changes.",
@@ -2067,6 +2067,16 @@ to `memory-reviewer`. `text` is JSON:
                "attempt": 1, "sources": [1], "usage": "2200/2200", "over_by": 125}]
 }
 ```
+
+Each `changes` item can additionally contain string `before` and `after`
+snapshots. Both present means complete recorded text, including an empty string
+for the absent side of a creation/deletion. Note add/replace/remove snapshots
+describe committed net entries; skill create/patch/delete snapshots use the
+actual `SKILL.md` text, including front matter, when both sides are readable.
+`text` remains the bounded preview. Merge/fold/promote/demote and older records
+may omit snapshots; clients must label them as previews and cannot reconstruct
+the missing original from the current file. These fields describe persisted
+changes only, including real skill writes surviving a later failure.
 
 `evidence`, `refused`, `stop_reason`, `attempt_count` and `attempts` are optional
 additive fields; old events remain valid. Evidence records name the accepted
@@ -2089,7 +2099,8 @@ a controlled diagnostic `reason`, and optional `code` (`evidence`, `numeric`,
 attempt and `err`. Legacy refusals may contain only index/reason. Raw rejected
 proposal bodies, exact quotes, old notes, skill names, current entries and matched
 note text are not persisted in these new diagnostic fields. Previously committed
-changes and accepted evidence keep their existing payloads.
+change previews and accepted evidence keep their meaning; committed changes may
+also retain the before/after snapshots described above.
 
 A refusal can be repaired within the existing iteration cap. The model receives
 structured capacity feedback (`usage`, `over_by`, `current_entries`, and `matched`
@@ -2125,6 +2136,10 @@ project's latest successful turn.
 
 `notify` is `off`, `on` or `verbose`, stamped from `memory.notifications` at record
 time. The transcript reports actual writes, adds previews in verbose mode, and
+offers a collapsed **View details** disclosure for recorded changes. It shows
+stored additions/deletions or explicitly labelled previews where snapshots are
+missing, without reading today's memory files. The Memory panel's review status
+uses the same disclosure. `off` still hides the transcript notice. The transcript
 shows failures with the stopping reason, proposal count and refusal details,
 including capacity usage/excess when present. Failure text distinguishes pending
 notes left unsaved from skill changes already committed. The failure's Trace

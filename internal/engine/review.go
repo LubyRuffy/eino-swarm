@@ -247,8 +247,8 @@ type reviewOutcome struct {
 	// rather than a project's memory. Stamped here so a replay does not
 	// have to guess from the conversation's project.
 	Library bool `json:"library,omitempty"`
-	// Changes is every write that landed, with a preview of the text, so the
-	// transcript can say what was stored rather than only that something was.
+	// Changes describes writes that landed. Available before/after snapshots
+	// keep transcript details tied to this review rather than later file edits.
 	Changes []memory.Change `json:"changes,omitempty"`
 	Note    string          `json:"note,omitempty"`
 	Err     string          `json:"err,omitempty"`

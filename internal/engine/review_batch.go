@@ -291,15 +291,22 @@ func reviewNoteDiff(before, after memory.Snapshot) []memory.Change {
 	var changes []memory.Change
 	for i := 0; i < max(len(added), len(removed)); i++ {
 		action, text := "replace", ""
+		beforeText, afterText := "", ""
+		if i < len(removed) {
+			beforeText = removed[i]
+		}
 		if i < len(added) {
-			text = added[i]
+			text, afterText = added[i], added[i]
 		} else {
 			action, text = "remove", removed[i]
 		}
 		if i >= len(removed) {
 			action = "add"
 		}
-		changes = append(changes, memory.Change{Target: memory.ToolMemory, Action: action, Text: clip(text, 160)})
+		changes = append(changes, memory.Change{
+			Target: memory.ToolMemory, Action: action, Text: clip(text, 160),
+			Before: &beforeText, After: &afterText,
+		})
 	}
 	return changes
 }

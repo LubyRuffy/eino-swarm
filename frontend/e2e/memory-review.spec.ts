@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test"
 import { composer, waitForIdle } from "./session"
 import { startMemoryReviewFixture } from "./memory-review-fixture"
 
-test("rejected reviews show bounded diagnostics and the original turn Trace; repaired notes commit", async ({ page, request }, info) => {
+test("rejected reviews retain diagnostics; committed changes expose their full diff live and after reload", async ({ page, request }, info) => {
   test.skip(process.env.ZWAI_E2E_MEMORY_REVIEW !== "1", "requires the keyless loopback memory fixture")
   const fixture = await startMemoryReviewFixture()
   try {
@@ -101,11 +101,42 @@ test("rejected reviews show bounded diagnostics and the original turn Trace; rep
     await page.getByRole("tab", { name: "Memory", exact: true }).click()
     fixture.setMode("repair")
     await page.getByRole("button", { name: "Review this conversation now" }).click()
-    await expect(status).toHaveText("Review finished.")
+    await expect(status).toContainText("Review finished.")
     await expect(page.getByLabel("Project notes")).toHaveValue("Verify the current result.")
+
+    // Assert the named memory_review stream before reading Trace/history: an
+    // observer fetch must not hide a missing live subscription.
+    const changedNotice = page.getByTestId("memory-notice").filter({ hasText: "Memory updated: 1 note revised." })
+    const detailsButton = changedNotice.getByRole("button", { name: "View details", exact: true })
+    await expect(detailsButton).toHaveAttribute("aria-expanded", "false")
+    await expect(changedNotice.getByTestId("file-diff")).toHaveCount(0)
+    await detailsButton.click()
+    await expect(changedNotice.getByRole("button", { name: "Hide details", exact: true })).toHaveAttribute("aria-expanded", "true")
+    // The old entry exceeds the legacy 160-character preview. Its complete
+    // original text, rather than a guessed/reloaded current note, must survive.
+    await expect(changedNotice.locator('[data-diff="del"]')).toContainText(text)
+    await expect(changedNotice.locator('[data-diff="add"]')).toContainText("Verify the current result.")
+    await changedNotice.scrollIntoViewIfNeeded()
+    await page.screenshot({ path: info.outputPath("review-change-details-live.png"), animations: "disabled" })
+    await changedNotice.getByRole("button", { name: "Hide details", exact: true }).click()
+    await expect(changedNotice.getByTestId("file-diff")).toHaveCount(0)
+
     const latest = await (await request.get(`/api/trace/${nextTurn.id}`)).json()
     const outcomes = latest.events.filter((event: { kind: string }) => event.kind === "memory_review").map((event: { text: string }) => JSON.parse(event.text))
     expect(outcomes.at(-1)).toMatchObject({ stop_reason: "completed", attempt_count: 2, changed: true, notes: { replace: 1 } })
+    expect(outcomes.at(-1).changes).toEqual([expect.objectContaining({ target: "memory", action: "replace", before: text, after: "Verify the current result." })])
+
+    await page.reload()
+    await page.getByTestId("dest-projects").click()
+    const historyProject = page.getByRole("button", { name, exact: true })
+    if (await historyProject.getAttribute("aria-expanded") !== "true") await historyProject.click()
+    await page.locator(`[data-testid="thread-row"][data-id="${thread}"]`).getByTestId("row-label").click()
+    await expect(detailsButton).toHaveAttribute("aria-expanded", "false")
+    await detailsButton.click()
+    await expect(changedNotice.locator('[data-diff="del"]')).toContainText(text)
+    await expect(changedNotice.locator('[data-diff="add"]')).toContainText("Verify the current result.")
+    await changedNotice.scrollIntoViewIfNeeded()
+    await page.screenshot({ path: info.outputPath("review-change-details-history.png"), animations: "disabled" })
     expect(fixture.errors).toEqual([])
     expect(fixture.calls.every((call) => !call.authorization)).toBe(true)
     await page.screenshot({ path: info.outputPath("review-repair-success.png"), animations: "disabled" })

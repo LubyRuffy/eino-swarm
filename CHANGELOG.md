@@ -13,6 +13,17 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-420`, `C-025` (Issue #125): **View details** on memory-review notices and review status
+  expands saved additions/deletions. Committed note edits and skill
+  create/patch/delete retain available full before/after snapshots; old records
+  and changes without snapshots explicitly show previews only. Details remain
+  collapsed until opened and survive history replay through stored events.
+
+- `F-150`, `C-009` (Issue #125): goal-cap regressions wait for the durable
+  `goal_capped` receipt before sending a human message. A delayed cap write
+  verifies that runtime idle alone does not establish a recorded pause; the
+  existing unpaused-budget and explicit-resume behavior is unchanged.
+
 - `make eval EVAL_PROVIDER=<id>`: opt-in task-completion evals against a real
   model (`tools/agent_eval.py`, tasks in `evals/tasks/`). Each run owns a
   temporary data directory and engine, grades files and answers
@@ -402,6 +413,19 @@ co-working app built on it. The library API is unchanged except where noted
   Latin or Chinese labels into one-character lines. Desktop/Web and phone
   conversations and file previews keep content-weighted columns, long-token
   wrapping, GFM alignment and horizontal scrolling within wide tables.
+
+- `F-410`: `⌘K` filters unrelated commands during conversation search instead
+  of leaving every action visible, using their visible localized labels as
+  well as aliases. Searching, no matches and request failure
+  have distinct feedback; failure filters the local fallback, and server-ranked
+  keyword/semantic results keep their order.
+
+- `F-420`, `C-025`, `C-012` (Issue #126): memory-review evidence and numeric refusals return
+  the rejected operation and structured repair feedback, so the reviewer can
+  correct source references, exact quotes and unsupported numeric spellings
+  together before resubmitting the complete batch. Repair details remain private
+  to the model loop; source authority, numeric spelling, atomic note commit and
+  the existing iteration budget remain unchanged.
 
 - `F-130`, `C-003`, `C-019` (Issue #120): keep worker-collection decline
   receipts in Trace without adding a raw JSON chat card after Reload or older

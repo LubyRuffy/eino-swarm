@@ -161,7 +161,11 @@ func (t *reviewBatchTool) refuse(number, index int, code string, err error, oper
 	}
 	// Detailed memory feedback belongs to the model result only. Whitelist the
 	// same repair fields emitted by the existing memory tool, not arbitrary JSON.
-	result := map[string]any{"success": false, "note": err.Error(), "error": err.Error(), "code": code}
+	result := map[string]any{"success": false, "note": err.Error(), "error": err.Error(), "code": code, "index": index}
+	var repair *reviewRepairError
+	if errors.As(err, &repair) {
+		result["repair"] = repair.feedback
+	}
 	var receipt *reviewOperationError
 	if errors.As(err, &receipt) {
 		for _, key := range []string{"usage", "over_by", "current_entries", "matched", "matching", "chars", "entry_max", "existing", "existing_description"} {
