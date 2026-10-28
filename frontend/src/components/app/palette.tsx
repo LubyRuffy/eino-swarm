@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { defaultFilter } from "cmdk"
 import { Languages, Code2, MessageSquare, MessageSquarePlus, PanelLeft, Search, Settings, SquareTerminal, SunMoon, UnfoldHorizontal } from "lucide-react"
 
 import {
@@ -104,6 +105,8 @@ export function Palette({
 
   const searching = shouldQuerySearch(query)
   const q = query.trim()
+  const loading = searching && hitsFor !== q
+  const failed = searching && searchFailed && hitsFor === q
   const conversationHits = !searching
     ? null
     : searchFailed && hitsFor === q
@@ -111,42 +114,88 @@ export function Palette({
       : hits && hitsFor === q
         ? hits
         : []
+  // Server hits already include semantic matching and ranking. Only commands
+  // and the local fallback should receive cmdk's fuzzy filtering/scoring.
+  const hitValues = new Set(conversationHits?.map((hit) => conversationHitValue(hit, query).trim()))
 
   return (
-    <CommandDialog open={open} onOpenChange={onOpenChange} shouldFilter={!searching}>
+    <CommandDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      filter={(value, search, keywords = []) => {
+        if (hitValues.has(value)) return 1
+        const needle = search.trim()
+        // Joining aliases and labels lets fuzzy matching bridge unrelated text.
+        return Math.max(
+          defaultFilter(value, needle),
+          ...keywords.map((keyword) => defaultFilter(keyword, needle)),
+        )
+      }}
+    >
       <CommandInput
         value={query}
         onValueChange={setQuery}
         placeholder={t("palette.placeholder")}
       />
-      <CommandList>
-        <CommandEmpty>{t("palette.empty")}</CommandEmpty>
+      <CommandList aria-busy={loading}>
+        {loading ? (
+          <div role="status" className="px-3 py-2 text-sm text-muted-foreground">
+            {t("palette.searching")}
+          </div>
+        ) : failed ? (
+          <div role="alert" className="px-3 py-2 text-sm text-destructive">
+            {t("palette.searchFailed")}
+          </div>
+        ) : (
+          <CommandEmpty>{t("palette.empty")}</CommandEmpty>
+        )}
         <CommandGroup heading={t("palette.actions")}>
-          <CommandItem value="new conversation 新对话" onSelect={() => run(onNew)}>
+          <CommandItem
+            value="new conversation 新对话"
+            keywords={[t("palette.new")]}
+            onSelect={() => run(onNew)}
+          >
             <MessageSquarePlus />
             {t("palette.new")}
             <kbd className="ml-auto text-[11px] text-muted-foreground">⌘N</kbd>
           </CommandItem>
-          <CommandItem value="find in conversation 查找" onSelect={() => run(onFind)}>
+          <CommandItem
+            value="find in conversation 查找"
+            keywords={[t("palette.find")]}
+            onSelect={() => run(onFind)}
+          >
             <Search />
             {t("palette.find")}
             <kbd className="ml-auto text-[11px] text-muted-foreground">⌘F</kbd>
           </CommandItem>
-          <CommandItem value="toggle conversations sidebar 会话" onSelect={() => run(onToggleSidebar)}>
+          <CommandItem
+            value="toggle conversations sidebar 会话"
+            keywords={[t("palette.toggleSidebar")]}
+            onSelect={() => run(onToggleSidebar)}
+          >
             <PanelLeft />
             {t("palette.toggleSidebar")}
             <kbd className="ml-auto text-[11px] text-muted-foreground">⌘B</kbd>
           </CommandItem>
-          <CommandItem value="settings 设置" onSelect={() => run(onSettings)}>
+          <CommandItem
+            value="settings 设置"
+            keywords={[t("palette.settings")]}
+            onSelect={() => run(onSettings)}
+          >
             <Settings />
             {t("palette.settings")}
           </CommandItem>
-          <CommandItem value="theme appearance 主题" onSelect={() => run(onToggleTheme)}>
+          <CommandItem
+            value="theme appearance 主题"
+            keywords={[t("palette.theme")]}
+            onSelect={() => run(onToggleTheme)}
+          >
             <SunMoon />
             {t("palette.theme")}
           </CommandItem>
           <CommandItem
             value="language 语言 中文 english 切换"
+            keywords={[t("palette.language")]}
             onSelect={() => run(onToggleLocale)}
           >
             <Languages />
@@ -154,6 +203,7 @@ export function Palette({
           </CommandItem>
           <CommandItem
             value="width wide standard full comfortable 宽屏 标准 铺满"
+            keywords={[t("palette.width")]}
             onSelect={() => run(onToggleContentWidth)}
           >
             <UnfoldHorizontal />
@@ -161,6 +211,7 @@ export function Palette({
           </CommandItem>
           <CommandItem
             value="transcript user developer compact tools thinking 用户 开发 精简"
+            keywords={[t("palette.transcriptMode")]}
             onSelect={() => run(onToggleTranscriptMode)}
           >
             <Code2 />
@@ -168,6 +219,7 @@ export function Palette({
           </CommandItem>
           <CommandItem
             value="terminal shell 终端"
+            keywords={[t("palette.terminal")]}
             onSelect={() => run(onOpenTerminal)}
           >
             <SquareTerminal />

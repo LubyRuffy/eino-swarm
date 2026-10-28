@@ -100,6 +100,8 @@ export const en = {
 
   "palette.placeholder": "Search conversations, or type a command…",
   "palette.empty": "Nothing matches that.",
+  "palette.searching": "Searching conversations…",
+  "palette.searchFailed": "Conversation search failed. Showing matching local titles only.",
   "palette.actions": "Actions",
   "palette.new": "New conversation",
   "palette.find": "Find in conversation",

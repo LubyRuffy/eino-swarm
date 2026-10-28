@@ -3272,6 +3272,14 @@ deterministic and fast enough to run on every change.
 | Phone E2E | scan screen opens a live viewfinder (frame, sweeping beam, fake-camera preview) and paste of the same `pairlink:v1` URI; a saved ticket shows host chips and Connecting, not Scan QR; Add a PC is a menu sheet; New chat and a project row open the start screen, and on a 320px-wide viewport the project row and the message box stay inside it; sub-agent header counts running workers only, finished history stays grouped and opens a separate activity log without painting worker answers as manager answers; Check for updates shows fetching, then current, an install question, or the stubbed feed error | `cd mobile && npm run e2e` |
 | Phone simulators | packaged iOS/Android apps bind via paste of that URI, list the seed thread, New chat, Start; native iOS Menu shows the version without Android's update action | see `mobile/README.md` (not in `make check`) |
 
+PC palette verification (`F-410`): `cd frontend && npm test -- src/components/app/palette.test.tsx`
+covers command filtering by aliases and visible localized labels, Enter,
+pending/empty/error states, filtered local
+fallback, semantic server ranking (including blank titles and query whitespace),
+and stale responses after editing or closing. `npx playwright test palette-search.spec.ts shell.spec.ts`
+also checks real keyword-body indexing and browser interaction; pending/error
+and semantic responses are controlled fixtures, without a real model.
+
 Phone output verification (`F-224`, `C-020`): `go test -race ./internal/remote`
 checks bounded listing and content frames, traversal and symlink escape;
 `cd mobile && npm test -- --run src/lib/remote-files.test.ts` checks

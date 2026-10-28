@@ -297,6 +297,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-410 Local conversation storage and search
 
+- PC `⌘K` 同时筛选操作和检索会话；会话命中保留服务端排序，语义命中不要求包含原词。请求中、无匹配与请求失败分别显示状态；失败时仅回退到匹配的本地会话，旧查询／关闭面板后的响应不得覆盖当前结果。关键词检索覆盖标题、目标与用户／助手正文，不包含工具日志或归档会话。证据：`frontend/src/components/app/palette.tsx`、`frontend/src/components/app/palette.test.tsx`、`frontend/e2e/palette-search.spec.ts`、`internal/store/search.go`。
+
 - 会话摘要与成功记忆复核从完整持久历史获得当前 worker ID、generation、生命周期和独立收取状态；早期完成事件即使落在正文尾窗外仍有身份事实，同 ID 续办不沿用旧代完成。快照整行限额并明确省略数量，不自动改写旧摘要或笔记。关联 `C-008`、`C-012`；证据：`internal/engine/worker_lifecycle_identity_test.go`。
 
 - 运行时纠偏来源：同轮 ADK 和持久化消息显式保留来源，下一轮回放、compact 与 session briefing 排除 runtime 指令；旧行仅按完整常量及合法 worker-ID 后缀兼容，真实人类引用保留。关联契约：`C-008`；实现／验证：`internal/engine/runtime_cues.go`、`internal/store/message_source.go`、`internal/engine/ordinary_worker_completion_test.go`。
