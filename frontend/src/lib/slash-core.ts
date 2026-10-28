@@ -12,6 +12,8 @@ export interface SlashCommand {
   description: string
   /** Extra status on the right, e.g. how full the replay looks. */
   hint?: string
+  /** The engine reads it only at the start of a message. */
+  leadingOnly?: boolean
 }
 
 export const SLASH_COMMANDS: readonly SlashCommand[] = [
@@ -24,6 +26,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     id: "plan",
     name: "plan",
     description: "Explore and write a plan before changing anything",
+    leadingOnly: true,
   },
   {
     id: "compact",
@@ -43,6 +46,8 @@ export interface SlashDraft {
   start: number
   /** Index after the command-name query (no argument yet). */
   end: number
+  /** Other text precedes the slash, so only commands that act there apply. */
+  afterText: boolean
 }
 
 /** A draft that is still naming a command: `/` plus optional letters, no space.
@@ -55,7 +60,7 @@ export function slashDraft(text: string): SlashDraft | null {
   let end = start + 1
   while (end < text.length && isCommandNameChar(text[end] as string)) end += 1
   if (end < text.length) return null
-  return { query: text.slice(start + 1, end), start, end }
+  return { query: text.slice(start + 1, end), start, end, afterText: text.slice(0, start).trim() !== "" }
 }
 
 /** CJK punctuation IMEs emit `、` (or fullwidth `／`) from the Slash key.
@@ -93,7 +98,9 @@ export function clearSlashCommand(text: string): string {
 export function filterSlashCommands(
   query: string,
   commands: readonly SlashCommand[] = SLASH_COMMANDS,
+  afterText = false,
 ): SlashCommand[] {
+  if (afterText) commands = commands.filter((c) => !c.leadingOnly)
   const q = query.trim().toLowerCase()
   if (!q) return [...commands]
   return commands.filter(
@@ -109,11 +116,12 @@ export function parseSlashSubmit(text: string): SlashSubmit | null {
   if (leading) return leading
   const start = lastTriggeredSlashIndex(text)
   if (start < 0) return null
+  // After other text only a bare trailing /goal is a command, as the engine
+  // reads it. Taking a token mid-sentence as a command would drop the words
+  // before it, and the same text from the phone is an ordinary message.
   const command = parseSlashFrom(text.slice(start))
-  if (command?.id === "goal" && !command.arg) {
-    return { ...command, arg: text.slice(0, start).trim() }
-  }
-  return command
+  if (command?.id !== "goal" || command.arg) return null
+  return { ...command, arg: text.slice(0, start).trim() }
 }
 
 /** Codex `parse_slash_name` stops at whitespace. We stop at the first rune
@@ -191,7 +199,7 @@ function literalCommandPosition(text: string, pos: number): boolean {
       if (ch === "`" || end - i >= 3) code = text.slice(i, end)
       i = end - 1
     } else if (ch === '"') quote = ch
-    else if (ch === "'" && !/[\p{L}\p{N}]/u.test(text[i - 1] ?? "")) quote = ch
+    else if (ch === "'" && !/[\p{L}\p{N}]/u.test(Array.from(text.slice(Math.max(0, i - 2), i)).pop() ?? "")) quote = ch
     else if (ch === "“") quote = "”"
     else if (ch === "‘") quote = "’"
     else if (ch === "「") quote = "」"

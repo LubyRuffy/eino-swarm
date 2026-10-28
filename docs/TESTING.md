@@ -3819,6 +3819,35 @@ After the fixes the two path targets ran 60 seconds each (about 1.05 million
 executions) and the cron target 120 seconds (about 2.58 million) without a
 failure.
 
+### Composer and engine command parse (`C-009`)
+
+The desktop acts on its own slash parse (`frontend/src/lib/slash-core.ts`)
+while the phone and HTTP send raw text that the engine reads with
+`internal/slash`. `internal/slash/testdata/submit-commands.json` holds the
+cases both sides must agree on: `TestSubmittedCommandsMatchTheComposer` reads
+them through the engine's order (leading `/plan`, then `/goal`) and
+`slash.test.ts` through `parseSlashSubmit`. A differential run searches for new
+disagreements with seeded random texts built from structural tokens (slash
+variants, whitespace the two languages classify differently, quotes, code
+fences, escapes, paths, astral letters and non-decimal numbers):
+
+```bash
+cd frontend && SLASH_DIFF_OUT=/tmp/slash-diff.jsonl SLASH_DIFF_SEED=1 npx vitest run src/lib/slash-differential.test.ts
+cd .. && SLASH_DIFF_IN=/tmp/slash-diff.jsonl go test -count=1 ./internal/slash -run TestComposerParsesMatchTheEngine
+```
+
+Both steps skip unless their variable is set (`SLASH_DIFF_RUNS` defaults to
+300,000). A leading `/compact` is skipped because the desktop handles it
+locally and never sends it. The first runs found about 7,000 disagreements in
+300,000 texts. The desktop took a command token after other text as the
+command, keeping only the words after it: `/plan` and `/goal` replaced the
+message, and `/compact` cleared the draft and compacted the conversation.
+The engine reads those lines as prose. Go and JavaScript also disagreed on
+U+FEFF and U+0085 as whitespace, on the character before an apostrophe after
+an escape, on non-decimal numbers and on astral letters. Each class is now in
+the shared cases, and each fix was checked by reverting it. After the fixes
+six seeds (1.8 million texts) agree.
+
 ### History replay property (`C-003`)
 
 `frontend/src/store/history-replay-property.test.ts` is a conformance check

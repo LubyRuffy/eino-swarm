@@ -460,6 +460,16 @@ co-working app built on it. The library API is unchanged except where noted
   conversations and file previews keep content-weighted columns, long-token
   wrapping, GFM alignment and horizontal scrolling within wide tables.
 
+- `F-150`, `C-009`: the desktop no longer acts on a slash command token in
+  the middle of a message. `explain the /plan mode` entered plan mode with
+  only `mode`, `… /goal more` set a goal from the words after the token, and
+  `fix the /compact docs` cleared the draft and compacted the conversation;
+  the engine, the phone and HTTP read those lines as ordinary messages, and
+  now so does the desktop. After existing text the menu offers goal and
+  compact, not plan. The engine and the desktop also agree on U+FEFF and
+  U+0085 as whitespace and on when an apostrophe opens a quotation, so a line
+  pasted with a byte-order mark is the same command on both. Found by a new
+  differential run between the two parsers (`docs/TESTING.md`).
 - `F-130`, `C-003`: desktop history replay now paints the same conversation as
   a fresh open, whatever order the tail, older pages, worker logs and SSE
   arrive in. A live snapshot that arrives after its worker log delivered the

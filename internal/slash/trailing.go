@@ -9,7 +9,7 @@ import (
 // trailingGoal accepts a command marker after its objective. Literal command
 // examples in paths, quotations, Markdown quotes and code remain ordinary text.
 func trailingGoal(line string) (string, bool) {
-	line = strings.TrimSpace(line)
+	line = trimSpace(line)
 	start := strings.LastIndexAny(line, "/／、")
 	if start <= 0 {
 		return "", false
@@ -19,23 +19,23 @@ func trailingGoal(line string) (string, bool) {
 		return "", false
 	}
 	// CJK path segments also permit a slash immediately after a non-ASCII rune.
-	segment := line[strings.LastIndexFunc(line[:start], unicode.IsSpace)+1 : start]
+	segment := line[strings.LastIndexFunc(line[:start], isSpace)+1 : start]
 	if strings.ContainsAny(segment, "/\\") {
 		return "", false
 	}
 	before, _ := utf8.DecodeLastRuneInString(line[:start])
-	if !unicode.IsSpace(before) && (isNameRune(before) || strings.ContainsRune("/:.\\([]", before)) {
+	if !isSpace(before) && (isNameRune(before) || strings.ContainsRune("/:.\\([]", before)) {
 		return "", false
 	}
 	if literalCommandPosition(line, start) {
 		return "", false
 	}
-	return strings.TrimSpace(line[:start]), true
+	return trimSpace(line[:start]), true
 }
 
 func literalCommandPosition(line string, pos int) bool {
 	lineStart := strings.LastIndexByte(line[:pos], '\n') + 1
-	if strings.HasPrefix(strings.TrimSpace(line[lineStart:pos]), ">") {
+	if strings.HasPrefix(trimSpace(line[lineStart:pos]), ">") {
 		return true
 	}
 	var quote rune
@@ -46,7 +46,7 @@ func literalCommandPosition(line string, pos int) bool {
 		r, n := utf8.DecodeRuneInString(line[i:])
 		i += n
 		if r == '\\' {
-			_, n = utf8.DecodeRuneInString(line[i:])
+			previous, n = utf8.DecodeRuneInString(line[i:])
 			i += n
 			continue
 		}
@@ -91,7 +91,7 @@ func literalCommandPosition(line string, pos int) bool {
 			case '"':
 				quote = r
 			case '\'':
-				if !unicode.IsLetter(previous) && !unicode.IsDigit(previous) {
+				if !unicode.IsLetter(previous) && !unicode.IsNumber(previous) {
 					quote = r
 				}
 			case '“':

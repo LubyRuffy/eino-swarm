@@ -213,6 +213,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   after what you already wrote, the same way Cursor does. Paths (`foo/bar`)
   and URLs do not open the palette. Picking **goal** or **plan** from the
   menu writes `/goal ` / `/plan ` in the box; type the rest and Enter.
+  After existing text the menu offers **goal** (as the trailing marker) and
+  **compact** only; any other command token in the middle of a message is
+  ordinary text, on the PC exactly as on the phone or over HTTP.
   A standalone `/goal` at the end of a message uses the preceding text as
   the objective. This explicit command starts a new pursuit even when the
   conversation's previous objective is Done; trailing whitespace is allowed.

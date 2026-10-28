@@ -842,17 +842,6 @@ describe("Composer slash commands", () => {
     expect(onSend).not.toHaveBeenCalled()
   })
 
-  it("submits a trailing /goal after existing text", () => {
-    const onSend = vi.fn()
-    const onSetGoal = vi.fn()
-    renderComposer({ onSend, onSetGoal })
-    const input = screen.getByTestId("composer-input")
-    fireEvent.change(input, { target: { value: "hello /goal keep going" } })
-    fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })
-    expect(onSetGoal).toHaveBeenCalledWith("keep going")
-    expect(onSend).not.toHaveBeenCalled()
-  })
-
   it("submits /goal when the objective is glued on without a space", () => {
     const onSend = vi.fn()
     const onSetGoal = vi.fn()

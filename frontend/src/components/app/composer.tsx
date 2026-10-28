@@ -326,7 +326,7 @@ export function Composer({
   // Hints (the compact %) live in ComposerSlashMenu so a usage pulse cannot
   // re-render this textarea mid-IME. Keyboard handling only needs the ids.
   const slashItems = draft
-    ? filterSlashCommands(draft.query, localizedSlashCommands(t.locale))
+    ? filterSlashCommands(draft.query, localizedSlashCommands(t.locale), draft.afterText)
     : []
   const slashOpen = slashItems.length > 0
   const awaitingArg = slashAwaitingArg(text)
@@ -579,6 +579,7 @@ export function Composer({
             {draft && slashOpen ? (
               <ComposerSlashMenu
                 query={draft.query}
+                afterText={draft.afterText}
                 activeIndex={Math.min(slashIndex, slashItems.length - 1)}
                 usage={usage}
                 window={meterWindow}
@@ -864,6 +865,7 @@ function ComposerContextMeter({
 
 function ComposerSlashMenu({
   query,
+  afterText,
   activeIndex,
   usage,
   window,
@@ -873,6 +875,7 @@ function ComposerSlashMenu({
   onSelect,
 }: {
   query: string
+  afterText: boolean
   activeIndex: number
   usage?: UsageSnapshot | null
   window: number
@@ -885,7 +888,7 @@ function ComposerSlashMenu({
   const live = useApp((s) => s.usage)
   const snap = usage ?? live
   const items = withSlashHints(
-    filterSlashCommands(query, localizedSlashCommands(t.locale)),
+    filterSlashCommands(query, localizedSlashCommands(t.locale), afterText),
     {
       compact: compactHint(
         snap?.context_tokens,

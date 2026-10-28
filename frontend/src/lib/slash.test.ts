@@ -22,27 +22,27 @@ describe("slashDraft", () => {
   it("opens on a slash token at the caret, including after existing text", () => {
     expect(slashDraft("")).toBeNull()
     expect(slashDraft("hello")).toBeNull()
-    expect(slashDraft("/")).toEqual({ query: "", start: 0, end: 1 })
-    expect(slashDraft("/go")).toEqual({ query: "go", start: 0, end: 3 })
-    expect(slashDraft("/goal")).toEqual({ query: "goal", start: 0, end: 5 })
+    expect(slashDraft("/")).toEqual({ query: "", start: 0, end: 1, afterText: false })
+    expect(slashDraft("/go")).toEqual({ query: "go", start: 0, end: 3, afterText: false })
+    expect(slashDraft("/goal")).toEqual({ query: "goal", start: 0, end: 5, afterText: false })
     expect(slashDraft("/goal ")).toBeNull()
-    expect(slashDraft("hello /")).toEqual({ query: "", start: 6, end: 7 })
-    expect(slashDraft("hello /go")).toEqual({ query: "go", start: 6, end: 9 })
-    expect(slashDraft(" /goal")).toEqual({ query: "goal", start: 1, end: 6 })
-    expect(slashDraft("字/")).toEqual({ query: "", start: 1, end: 2 })
+    expect(slashDraft("hello /")).toEqual({ query: "", start: 6, end: 7, afterText: true })
+    expect(slashDraft("hello /go")).toEqual({ query: "go", start: 6, end: 9, afterText: true })
+    expect(slashDraft(" /goal")).toEqual({ query: "goal", start: 1, end: 6, afterText: false })
+    expect(slashDraft("字/")).toEqual({ query: "", start: 1, end: 2, afterText: true })
     expect(slashDraft("foo/bar")).toBeNull()
     expect(slashDraft("https://")).toBeNull()
   })
 
   it("opens from the IME punctuation the Slash key emits in CJK mode", () => {
-    expect(slashDraft("、")).toEqual({ query: "", start: 0, end: 1 })
-    expect(slashDraft("、go")).toEqual({ query: "go", start: 0, end: 3 })
-    expect(slashDraft("／")).toEqual({ query: "", start: 0, end: 1 })
-    expect(slashDraft("字、")).toEqual({ query: "", start: 1, end: 2 })
+    expect(slashDraft("、")).toEqual({ query: "", start: 0, end: 1, afterText: false })
+    expect(slashDraft("、go")).toEqual({ query: "go", start: 0, end: 3, afterText: false })
+    expect(slashDraft("／")).toEqual({ query: "", start: 0, end: 1, afterText: false })
+    expect(slashDraft("字、")).toEqual({ query: "", start: 1, end: 2, afterText: true })
   })
 
   it("closes once a known command already has its argument, even without a space", () => {
-    expect(slashDraft("/goalkeep")).toEqual({ query: "goalkeep", start: 0, end: 9 })
+    expect(slashDraft("/goalkeep")).toEqual({ query: "goalkeep", start: 0, end: 9, afterText: false })
     expect(slashDraft("/goal持续推进")).toBeNull()
     expect(slashDraft("／goal持续推进")).toBeNull()
     expect(slashDraft("、goal持续推进")).toBeNull()
@@ -60,6 +60,19 @@ describe("normalizeSlashPrefix", () => {
     expect(normalizeSlashPrefix("hello")).toBe("hello")
     expect(normalizeSlashPrefix("hello 、")).toBe("hello /")
     expect(normalizeSlashPrefix("字、")).toBe("字/")
+  })
+})
+
+describe("slash menu after other text", () => {
+  // The engine reads /plan only at the start; offering it after text would
+  // complete into a line that is sent as an ordinary message.
+  it("offers only the commands that act there", () => {
+    const draft = slashDraft("hello /")
+    expect(draft?.afterText).toBe(true)
+    expect(filterSlashCommands(draft?.query ?? "", SLASH_COMMANDS, draft?.afterText).map((c) => c.id)).toEqual(["goal", "compact"])
+    expect(filterSlashCommands("pl", SLASH_COMMANDS, true)).toEqual([])
+    expect(slashDraft("  /")?.afterText).toBe(false)
+    expect(filterSlashCommands("", SLASH_COMMANDS, false).map((c) => c.id)).toEqual(["goal", "plan", "compact"])
   })
 })
 
@@ -162,10 +175,7 @@ describe("parseSlashSubmit", () => {
       id: "goal",
       arg: "keep going",
     })
-    expect(parseSlashSubmit("hello /goal keep going")).toEqual({
-      id: "goal",
-      arg: "keep going",
-    })
+    expect(parseSlashSubmit("hello /goal keep going")).toBeNull()
     expect(parseSlashSubmit("see foo/bar")).toBeNull()
     expect(parseSlashSubmit("/goals")).toBeNull()
     expect(parseSlashSubmit("/compacted")).toBeNull()
@@ -181,13 +191,22 @@ describe("trailing goal commands", () => {
     else { const draft = slashDraft(text); expect(draft ? filterSlashCommands(draft.query) : []).toEqual([]) }
   })
 
-  it("keeps an empty goal waiting and preserves the established argument commands", () => {
+  // A token after other text used to act on only the words after it: the
+  // desktop set that goal, entered plan mode or compacted and dropped the
+  // rest, while the engine reads the same line from the phone as a message.
+  it("keeps an empty goal waiting and reads a command token after other text as prose", () => {
     expect(parseSlashSubmit(" /goal \n")).toEqual({ id: "goal", arg: "" })
     expect(slashAwaitingArg(" /goal \n")).toBe("goal")
-    expect(parseSlashSubmit("before /goal after")).toEqual({ id: "goal", arg: "after" })
     expect(parseSlashSubmit("/goal 检查当前状态")).toEqual({ id: "goal", arg: "检查当前状态" })
-    expect(parseSlashSubmit("before /plan after")).toEqual({ id: "plan", arg: "after" })
-    expect(parseSlashSubmit("before /compact")).toEqual({ id: "compact", arg: "" })
+    for (const text of ["before /goal after", "before /plan after", "before /compact", "before /compact after", "before /plan "]) {
+      expect(parseSlashSubmit(text)).toBeNull()
+      expect(slashAwaitingArg(text)).toBeNull()
+    }
+  })
+
+  const shared = JSON.parse(readFileSync("../internal/slash/testdata/submit-commands.json", "utf8")) as { text: string; command?: string; arg?: string }[]
+  it.each(shared)("submits what the engine reads: $text", ({ text, command, arg }) => {
+    expect(parseSlashSubmit(text)).toEqual(command ? { id: command, arg } : null)
   })
 
   it("keeps a leading command in charge when its argument contains a goal token", () => {

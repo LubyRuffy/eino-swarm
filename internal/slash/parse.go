@@ -10,6 +10,7 @@ package slash
 
 import (
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -44,7 +45,7 @@ func NormalizePrefix(s string) string {
 // the leading ASCII identifier; anything else — space, CJK, punctuation —
 // is the argument. `/goals` is not `/goal`.
 func Split(line string) (name, arg string, ok bool) {
-	line = strings.TrimSpace(line)
+	line = trimSpace(line)
 	rest, ok := Leading(line)
 	if !ok {
 		return "", "", false
@@ -59,7 +60,7 @@ func Split(line string) (name, arg string, ok bool) {
 	if end == 0 {
 		return "", "", false
 	}
-	return strings.ToLower(rest[:end]), strings.TrimSpace(rest[end:]), true
+	return strings.ToLower(rest[:end]), trimSpace(rest[end:]), true
 }
 
 // Lookup matches leading commands and the trailing /goal objective marker.
@@ -69,7 +70,7 @@ func Lookup(line string, names ...string) (arg string, ok bool) {
 	for _, n := range names {
 		n = strings.ToLower(strings.TrimSpace(n))
 		if ok && name == n {
-			rest, _ := Leading(strings.TrimSpace(line))
+			rest, _ := Leading(trimSpace(line))
 			if tail := rest[len(name):]; tail == "" || !strings.ContainsRune("./\\", rune(tail[0])) {
 				return arg, true
 			}
@@ -81,6 +82,19 @@ func Lookup(line string, names ...string) (arg string, ok bool) {
 		}
 	}
 	return "", false
+}
+
+// isSpace is the composer's JavaScript whitespace (`\s`, String.trim): it
+// includes U+FEFF, which text pasted from a file with a byte-order mark can
+// carry, and excludes U+0085. Where the two disagree, the desktop and the
+// engine decide differently whether a line is a command and what its
+// argument is.
+func isSpace(r rune) bool {
+	return r == '\ufeff' || (r != '\u0085' && unicode.IsSpace(r))
+}
+
+func trimSpace(s string) string {
+	return strings.TrimFunc(s, isSpace)
 }
 
 func isNameRune(r rune) bool {
