@@ -392,6 +392,9 @@ func TestDeletedConversationCannotBeRevivedByALateActualWorkerGenerationCallback
 			if len(events) != 0 || cached {
 				t.Fatalf("deleted conversation resurrected from late generation: cached=%v events=%+v", cached, events)
 			}
+			if rows, err := e.store.ListEvents(th.ID, 0, 0); err != nil || len(rows) != 0 {
+				t.Fatalf("late worker rows outlived the deletion: err=%v rows=%+v", err, rows)
+			}
 		})
 	}
 }

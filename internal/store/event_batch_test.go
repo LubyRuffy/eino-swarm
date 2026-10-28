@@ -8,6 +8,7 @@ func TestAtomicDecisionReceiptsCommitTogetherOrRollbackTogether(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		t.Run(map[bool]string{false: "commit", true: "second-write-fails"}[fail], func(t *testing.T) {
 			s := open(t)
+			withThreads(t, s, "thread")
 			if fail {
 				if err := s.DB().Exec("CREATE TRIGGER refuse_consumption BEFORE INSERT ON events WHEN NEW.kind='model_retry' BEGIN SELECT RAISE(ABORT,'consumption unavailable'); END").Error; err != nil {
 					t.Fatal(err)

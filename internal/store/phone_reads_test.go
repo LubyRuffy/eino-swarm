@@ -11,6 +11,7 @@ import (
 
 func TestPhoneTurnReadsPageOnlyTheVisiblePreviewFields(t *testing.T) {
 	s := open(t)
+	withThreads(t, s, "thread", "other")
 	turns := []Turn{
 		{ID: "old", ThreadID: "thread", Status: TurnDone, UserText: "old question", Final: "old answer", Error: "large private diagnostic"},
 		{ID: "quiet", ThreadID: "thread", Status: TurnDone, Quiet: true, Final: "quiet answer"},
@@ -75,6 +76,7 @@ func TestPhoneTurnReadsPageOnlyTheVisiblePreviewFields(t *testing.T) {
 
 func TestPhoneActionReadsMergeIndexedKindsAndPageBeforeOldest(t *testing.T) {
 	s := open(t)
+	withThreads(t, s, "thread", "another")
 	events := []Event{
 		{ThreadID: "thread", TurnID: "turn", Seq: 0, Kind: "delta", Text: "legacy seq zero"},
 		{ThreadID: "thread", TurnID: "turn", Seq: 1, Kind: "agent_message", Text: "first", AgentID: "not needed", Err: "not needed"},
@@ -138,6 +140,7 @@ func TestPhoneReadIndexesMigrateAndActualQueriesStayBounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	withThreads(t, s, "thread")
 	turn := Turn{ID: "legacy", ThreadID: "thread", Status: TurnDone, UserText: "request", Final: "answer"}
 	if err := s.CreateTurn(&turn); err != nil {
 		t.Fatal(err)

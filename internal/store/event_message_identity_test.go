@@ -15,6 +15,7 @@ func TestEventMessageIdentitySurvivesReopenWithoutChangingLegacyRows(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	withThreads(t, s, "thread")
 	var checkpoint Event
 	if err := json.Unmarshal([]byte(`{"thread_id":"thread","turn_id":"turn","kind":"reasoning","message_id":"output","text":"checking"}`), &checkpoint); err != nil {
 		t.Fatal(err)

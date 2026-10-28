@@ -3986,6 +3986,46 @@ is disconnected, the phone keeps the removed rows already loaded until the
 conversation is reopened. Closing that needs a resume cursor on `watch` with a
 bounded replay, which is a protocol change.
 
+### Engine event log audit (`C-003`, `C-008`)
+
+Every engine test is one real interleaving of turns, workers, rewinds,
+restarts and deletions. `internal/engine/event_audit_test.go` checks the log
+each one leaves behind against the rules the stream model states, from the
+cleanup `newTestEngineAt` registers (after `Shutdown`, before the store
+closes):
+
+- each `(thread_id, seq)` names one row, and every seq is positive;
+- a stored `rewound` marker's cut is below its own seq, and no row remains
+  between the cut and the marker;
+- no event, message or model-call row names an engine-generated turn (`tn_`
+  and 16 hex digits) that its conversation does not have;
+- a deleted conversation owns no `events`, `messages`, `turns`, `llm_calls`,
+  `attachments` or `followups` rows.
+
+Its first run found that deleting a running conversation left its late rows on
+disk: the worker's reasoning and `finished` receipt with seq restarting at 1,
+the turn's answer and transcript in `messages`, its `llm_calls` row and the
+post-turn review's `memory_review`. The store now refuses those writes with
+per-table insert triggers (`internal/store/live_thread_test.go`, which also
+keeps conversation-less model calls, reopen, raw inserts and a `threads`
+rebuild migration working). A first version checked existence in an explicit
+transaction around each insert; the full suite showed it held the store's
+only connection across a slow insert, so a Stop write blocked an unrelated
+model-call record (`TestActualStopPreventsAnswerPublicationAfterItsDurableIntent`),
+and that design was dropped. Extending the turn rule to model calls found a
+second late writer: after an edit-and-resend, the post-turn memory review's
+model call finished after the rewind and stored its `llm_calls` row under the
+removed turn, about one run in eight of `TestRewindReusesTheOriginalImages`.
+`TestAModelCallFinishingAfterARewindLeavesNoRow` reproduces it every time.
+Checking `droppedTurns` under `recordMu` in the model-call recorder fixed it
+but failed the same Stop admission test (a slow event write then stalled
+model-call recording), so `llm_calls_require_turn` refuses the row instead.
+A test that removes or rewrites rows behind the
+engine to inject a fault calls `exemptFromEventAudit`; fixtures that write
+under an invented readable turn id are outside the turn rule by its id
+pattern, not by exemption. Store fixtures name their conversations with
+`withThreads`; a test that rebuilds a legacy schema calls `legacySchema`.
+
 ## Agent task evals (opt-in, real model)
 
 The layers above prove the code is correct; they cannot say whether a prompt,

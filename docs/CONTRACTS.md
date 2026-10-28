@@ -147,7 +147,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-008 Durable local data
 
-- 回退归属：删除 turn 时，同事务删除其全部事件证据，包括在该 turn 的 user_message 之前落库的标题等元数据；不能留下指向已删除 turn 的孤儿事件，较早保留 turn 的证据不受影响；收件游标只下调到实际剩余日志上限，不得越过保留的未读消息。证据：`internal/store/rewind_ownership_test.go`、`internal/engine/rewind_test.go`；关联 `F-130`、`F-410`；变更类型：Fixed。
+- 回退归属：删除 turn 时，同事务删除其全部事件证据，包括在该 turn 的 user_message 之前落库的标题等元数据；不能留下指向已删除 turn 的孤儿事件，较早保留 turn 的证据不受影响；收件游标只下调到实际剩余日志上限，不得越过保留的未读消息。对话后复核等在 turn 关闭后仍运行的调用，其迟到事件由 `droppedTurns` 丢弃；迟到模型调用由 `llm_calls_require_turn` 插入触发器拒绝（`turn_id` 非空时该 turn 必须仍属于此会话），不得在被删 turn 下重新写入 `llm_calls`，也不为此在模型调用路径上获取 `recordMu`。证据：`internal/store/rewind_ownership_test.go`、`internal/engine/rewind_test.go`、`internal/store/live_thread.go`、`internal/store/live_thread_test.go`、`internal/engine/rewind_marker_test.go`；关联 `F-130`、`F-410`；变更类型：Fixed。
+
+- 删除归属：会话或项目删除提交后，其 worker、正在结束的 turn 与对话后复核仍可能迟到写入。`turns`、`events`、`messages`、`llm_calls`、`attachments`、`followups` 各有 `BEFORE INSERT` 触发器，在同一条插入语句内拒绝 `thread_id` 非空且会话已不存在的行，覆盖所有写入方（含终态与原子回执批次），不在唯一连接上额外持有事务；store 将其报告为 `ErrNotFound` 并清除迟到写入重新种下的内存序号。空 `thread_id`（无来源会话的独立日程命名调用）不属于任何会话，允许写入。`Open` 在迁移前移除、迁移后重建触发器，重建 `threads` 的 schema 变更不得因此无法启动。引擎把这类拒绝记为 Debug，不广播；其他存储失败仍为 Warn。所有引擎测试结束时由事件日志审计检查：已删除会话不残留任何拥有的行，seq 在会话内唯一，倒带切点到标记之间无行，事件、消息和模型调用不指向会话中不存在的引擎 turn。证据：`internal/store/live_thread.go`、`internal/store/live_thread_test.go`、`internal/engine/event_audit_test.go`；关联 `C-003`；变更类型：Fixed。
 
 - Worker 身份事实：保留各 turn 历史计数，最新事实行额外保存 `worker_state_through_seq` 与会话当前 `workers:[{agent_id,generation,status,collection}]`。完成与收取分离，同 ID 的新 generation 覆盖旧代状态；finished／stopped 不得写成仍运行，collected／discarded 不得写成结果待收取，pending／unknown 不得冒称已收取。事实块限额时整条省略身份并记录 `omitted_workers`，不能切碎 JSON，也不能以省略推断不存在。最多四个 turn 的计数及有界快照优先于旧摘要，失败 human-only review 保持原范围；提示词不承诺任意模型必然遵从。证据：`internal/engine/worker_lifecycle_identity_test.go`；关联 `F-410`、`F-420`；变更类型：Added。
 

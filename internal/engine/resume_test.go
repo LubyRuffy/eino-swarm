@@ -345,8 +345,14 @@ func TestResumeOrphanedTurnsUsesTheConversationProviderWhenTheTurnHasNone(t *tes
 
 func TestResumeOrphanedTurnsClosesATurnWhoseConversationIsGone(t *testing.T) {
 	e := newTestEngine(t)
-	turn := &store.Turn{ThreadID: "th_missing", UserText: "leftover", ProviderID: "p"}
-	if err := e.Store().CreateTurn(turn); err != nil {
+	// A row left by a build that let late writes outlive their conversation.
+	// Such a database predates the ownership guard.
+	exemptFromEventAudit(t)
+	if err := e.Store().DB().Exec("DROP TRIGGER turns_require_thread").Error; err != nil {
+		t.Fatal(err)
+	}
+	turn := &store.Turn{ID: store.NewID("tn_"), ThreadID: "th_missing", Seq: 1, Status: store.TurnRunning, UserText: "leftover", ProviderID: "p", StartedAt: time.Now().UTC()}
+	if err := e.Store().DB().Create(turn).Error; err != nil {
 		t.Fatal(err)
 	}
 	n, err := e.ResumeOrphanedTurns()

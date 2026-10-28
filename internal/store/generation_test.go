@@ -4,6 +4,7 @@ import "testing"
 
 func TestGenerationEventsExcludeUnrelatedBodiesAndKeepRequestOrder(t *testing.T) {
 	s := openTestStore(t)
+	withThreads(t, s, "thread")
 	for _, kind := range []string{"generation_started", "reasoning", "generation_interrupted", "generation_recovered", "generation_completed", "tool_result"} {
 		ev := Event{ThreadID: "thread", TurnID: "turn", Kind: kind, MessageID: "output"}
 		if err := s.AppendEvent(&ev); err != nil {

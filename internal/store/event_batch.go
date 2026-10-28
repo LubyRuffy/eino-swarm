@@ -25,14 +25,14 @@ func (s *Store) AppendEventsAtomic(events []*Event) error {
 		}
 		event.Seq, event.CreatedAt = seq, time.Now().UTC()
 	}
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.threadWriteErr(events[0].ThreadID, s.db.Transaction(func(tx *gorm.DB) error {
 		for _, event := range events {
 			if err := tx.Create(event).Error; err != nil {
 				return err
 			}
 		}
 		return nil
-	}); err != nil {
+	})); err != nil {
 		return fmt.Errorf("store: append atomic receipts: %w", err)
 	}
 	return nil

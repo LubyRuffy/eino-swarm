@@ -9,6 +9,7 @@ import (
 
 func TestRecoveryReadsOnlyLatestCheckpointAndRelevantEventBodies(t *testing.T) {
 	s := open(t)
+	withThreads(t, s, "history", "other")
 	for _, ev := range []Event{
 		{ThreadID: "history", TurnID: "old", Kind: "engine_restart_checkpoint", Text: strings.Repeat("x", 1<<20)},
 		{ThreadID: "history", TurnID: "old", Kind: "spawned", AgentID: "worker", Text: "task"},
@@ -55,6 +56,7 @@ func TestRecoveryReadsOnlyLatestCheckpointAndRelevantEventBodies(t *testing.T) {
 
 func TestRecoveryRetainsOriginalPendingToolReceiptsAndSkipsInvalidCheckpointVersions(t *testing.T) {
 	s := open(t)
+	withThreads(t, s, "history", "other")
 	for _, ev := range []Event{
 		{ThreadID: "history", TurnID: "original", Kind: "tool_call", ToolCallID: "pending", Text: "ask_user({})"},
 		{ThreadID: "history", TurnID: "original", Kind: "tool_result", ToolCallID: "pending", Text: "confirmed before final checkpoint"},
@@ -78,6 +80,7 @@ func TestRecoveryRetainsOriginalPendingToolReceiptsAndSkipsInvalidCheckpointVers
 
 func TestLatestRecoveryEventPropagatesDecodeFailure(t *testing.T) {
 	s := open(t)
+	withThreads(t, s, "history", "other")
 	event := Event{ThreadID: "history", Kind: "checkpoint", Text: "valid body"}
 	if err := s.AppendEvent(&event); err != nil {
 		t.Fatal(err)
@@ -94,6 +97,7 @@ func TestLatestRecoveryEventPropagatesDecodeFailure(t *testing.T) {
 // older retry or reorder the later human receipt that renews its allowance.
 func TestRecoveryRetainsCorrectionAndHumanContinuationReceiptsAcrossCheckpoint(t *testing.T) {
 	s := open(t)
+	withThreads(t, s, "history", "other")
 	for _, event := range []Event{
 		{ThreadID: "history", TurnID: "original", Kind: "model_retry", AgentID: "manager", Text: `{"reason":"workers_uncollected"}`},
 		{ThreadID: "history", TurnID: "original", Kind: "model_retry", AgentID: "manager", Text: `{"reason":"schedule_claim_unverified"}`},

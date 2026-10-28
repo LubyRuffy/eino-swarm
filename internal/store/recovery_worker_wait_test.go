@@ -7,6 +7,7 @@ import (
 
 func TestRecoveryKeepsGenerationBoundWaitDecisionsAcrossCheckpoint(t *testing.T) {
 	s := open(t)
+	withThreads(t, s, "waiting")
 	kinds := []string{"max_iterations", "workers_collection_resumed", "workers_collection_declined", "engine_restart_checkpoint", "max_iterations_continued"}
 	for _, kind := range kinds {
 		if err := s.AppendEvent(&Event{ThreadID: "waiting", TurnID: "original", AgentID: "manager", Kind: kind, Text: "private wait state"}); err != nil {

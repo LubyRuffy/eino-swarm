@@ -31,6 +31,10 @@ co-working app built on it. The library API is unchanged except where noted
   code through random interleavings of pages, worker logs, SSE and rewinds and
   compares the result with a fresh open of the server's log. Together they
   found the workspace, cron and history replay faults fixed in this release.
+- `C-003`, `C-008`: every engine test's stored log is audited when it ends:
+  unique seqs, nothing left inside a rewind, no row naming a turn its
+  conversation lacks, nothing owned by a deleted conversation
+  (`docs/TESTING.md`, "Engine event log audit").
 - `C-003`: `models/stream/EventStream.tla`, a TLA+ model of stored and
   streamed event order: subscriber lag and catch-up, `Last-Event-ID`
   reconnect, rewind and engine restart. `make model-check` runs it with the
@@ -470,6 +474,18 @@ co-working app built on it. The library API is unchanged except where noted
   conversations and file previews keep content-weighted columns, long-token
   wrapping, GFM alignment and horizontal scrolling within wide tables.
 
+- `C-008`: deleting a conversation or project while a turn, worker or
+  post-turn review was still running no longer leaves its late writes on disk.
+  The finishing turn's answer, transcript and model-call row, a worker's
+  reasoning and `finished` receipt, and the review's `memory_review` were stored
+  after the deletion committed, under a conversation nothing could open or
+  delete again. Insert triggers on the conversation-owned tables now refuse a
+  row whose conversation no longer exists. Rows left behind by earlier builds
+  are not removed.
+- `C-008`: editing and resending a message while the post-turn memory review
+  was still running no longer leaves the reviewer's model-call row under the
+  removed turn. The rewind deleted that turn's model calls, but the review's
+  call finished afterwards and stored one again.
 - `C-003`: editing and resending a message from another device is no longer
   lost by a desktop that was lagging or reconnecting. The cut was a seq-0
   broadcast sent after the record lock was released, so catch-up never replayed

@@ -206,6 +206,7 @@ func TestScheduleClaimRetryRefusesUnknownBudgetWithoutExternalBlocker(t *testing
 					t.Fatal(err)
 				}
 			} else if failure == "missing-turn" {
+				exemptFromEventAudit(t)
 				if err := e.store.DB().Delete(&store.Turn{}, "id = ?", last.ID).Error; err != nil {
 					t.Fatal(err)
 				}

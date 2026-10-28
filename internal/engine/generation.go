@@ -181,7 +181,7 @@ func (e *Engine) recordGeneration(ev *store.Event) bool {
 		return false
 	}
 	if err := e.store.AppendEvent(ev); err != nil {
-		e.log.Warn("could not persist generation lifecycle", "thread", ev.ThreadID, "kind", ev.Kind, "err", err)
+		e.logPersistFailure("could not persist generation lifecycle", err, "thread", ev.ThreadID, "kind", ev.Kind)
 		return false
 	}
 	e.broadcast(*ev)

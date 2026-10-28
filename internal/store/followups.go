@@ -26,7 +26,7 @@ func (s *Store) EnqueueFollowup(threadID, text string) (*Followup, error) {
 			return s.maxSeq(&Followup{}, "seq", threadID)
 		}),
 	}
-	if err := s.db.Create(f).Error; err != nil {
+	if err := s.threadWriteErr(threadID, s.db.Create(f).Error); err != nil {
 		return nil, fmt.Errorf("store: enqueue follow-up: %w", err)
 	}
 	return f, nil

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"gorm.io/gorm"
 )
@@ -146,5 +147,30 @@ func TestAnUnstoredRewindStillReachesLiveReaders(t *testing.T) {
 	saw := waitForKind(t, sub.C, KindRewound, 5*time.Second)
 	if saw.Seq != 0 || saw.Text != strconv.FormatInt(cut, 10) || saw.CreatedAt.IsZero() {
 		t.Fatalf("unstored marker=%+v", saw)
+	}
+}
+
+// A post-turn review keeps running after its turn closes, so a rewind can
+// remove the turn while the reviewer's model call is in flight. Truncation
+// deletes a dropped turn's model-call rows; the late record must not put one
+// back under a turn that no longer exists.
+func TestAModelCallFinishingAfterARewindLeavesNoRow(t *testing.T) {
+	e := newTestEngine(t)
+	threadID, cut, _ := rewindableThread(t, e)
+	cutEvent, err := e.Store().GetEvent(threadID, cut)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := e.callRecorder(threadID, cutEvent.TurnID)
+	if err := e.applyRewind(threadID, cut); err != nil {
+		t.Fatal(err)
+	}
+	record(provider.CallRecord{AgentID: "memory-reviewer", ProviderID: "p", Model: "m"})
+	calls, err := e.Store().ListLLMCalls(cutEvent.TurnID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 0 {
+		t.Fatalf("late model call stored under the rewound turn: %+v", calls)
 	}
 }

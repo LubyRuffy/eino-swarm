@@ -44,6 +44,9 @@ func TestModelBackoffKeepsActualCallAccountingSeparate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := e.store.CreateTurn(&store.Turn{ID: "turn-backoff", ThreadID: thread.ID}); err != nil {
+		t.Fatal(err)
+	}
 	sub := e.Subscribe(thread.ID)
 	t.Cleanup(sub.Close)
 	record := e.callRecorder(thread.ID, "turn-backoff")

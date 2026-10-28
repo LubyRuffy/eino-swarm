@@ -10,7 +10,6 @@ import (
 	"time"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
-	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/slash"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/LubyRuffy/eino-swarm/internal/tools"
@@ -784,38 +783,6 @@ func (rt *runtime) runLateSteerMessages(status string, leftover []*schema.Messag
 	return true
 }
 
-// callRecorder persists one row per model call so `zwai trace <turn>` can
-// explain where a turn's time went.
-func (e *Engine) callRecorder(threadID, turnID string) provider.Recorder {
-	return func(r provider.CallRecord) {
-		if r.Backoff != nil {
-			e.recordModelBackoff(threadID, turnID, r)
-			return
-		}
-		rec := &store.LLMCall{
-			ThreadID: threadID, TurnID: turnID, AgentID: r.AgentID,
-			ProviderID: r.ProviderID, Model: r.Model,
-			InputMsgs: r.InputMsgs, InputChars: r.InputChars, OutputChars: r.OutputChars,
-			PromptTokens: r.PromptTokens, CompletionTokens: r.CompletionTokens,
-			TotalTokens: r.TotalTokens, CachedTokens: r.CachedTokens,
-			ReasoningTokens: r.ReasoningTokens,
-			DurationMS:      r.Duration.Milliseconds(),
-		}
-		if r.Err != nil {
-			rec.Err = r.Err.Error()
-		}
-		if err := e.store.AppendLLMCall(rec); err != nil {
-			e.log.Warn("could not record a model call", "turn", turnID, "err", err)
-			return
-		}
-		e.recordBuiltinTools(rec, r.BuiltinTools)
-		if isAuxiliaryAgent(r.AgentID) {
-			return
-		}
-		e.emitUsage(threadID, turnID)
-	}
-}
-
 func isAuxiliaryAgent(id string) bool {
 	switch id {
 	case TitleAgentID, CompactAgentID, SessionMemoryAgentID:
@@ -844,7 +811,11 @@ func (e *Engine) record(ev store.Event) {
 		}
 	}
 	if err := e.store.AppendEvent(&ev); err != nil {
-		e.log.Warn("could not persist an event", "thread", ev.ThreadID, "kind", ev.Kind, "err", err)
+		e.logPersistFailure("could not persist an event", err, "thread", ev.ThreadID, "kind", ev.Kind)
+		if errors.Is(err, store.ErrNotFound) {
+			e.recordMu.Unlock()
+			return
+		}
 	}
 	// Store the manager answer before the event is visible. A client that
 	// reacts to agent_message by reading replay (or a crash right after the
@@ -870,7 +841,7 @@ func (e *Engine) persistManagerAnswer(threadID, turnID, text string) {
 	if err := e.store.AppendMessages(threadID, turnID, []store.Message{
 		{Role: string(schema.Assistant), Content: text, AgentID: swarm.DefaultManagerID},
 	}); err != nil {
-		e.log.Warn("could not persist assistant message", "turn", turnID, "err", err)
+		e.logPersistFailure("could not persist assistant message", err, "turn", turnID)
 		return
 	}
 	e.reindex(threadID)
@@ -938,7 +909,7 @@ func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Mes
 		rows = append(rows, row)
 	}
 	if err := e.store.AppendMessages(threadID, turnID, rows); err != nil {
-		e.log.Warn("could not persist transcript", "turn", turnID, "err", err)
+		e.logPersistFailure("could not persist transcript", err, "turn", turnID)
 		return
 	}
 	e.reindex(threadID)

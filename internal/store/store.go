@@ -75,8 +75,14 @@ func Open(path string) (*Store, error) {
 		followupSeq: map[string]int64{},
 		inMemory:    inMemory,
 	}
+	if err := s.dropThreadOwnership(); err != nil {
+		return nil, err
+	}
 	if err := db.AutoMigrate(&Project{}, &Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}, &Schedule{}, &ScheduleRun{}, &RemoteDevice{}, &ThreadWakeDecision{}, &ComposerDraft{}, &ComposerDraftBlob{}, &PendingScheduleAnswer{}); err != nil {
 		return nil, fmt.Errorf("store: migrate: %w", err)
+	}
+	if err := s.ensureThreadOwnership(); err != nil {
+		return nil, err
 	}
 	if err := s.ensureSearch(); err != nil {
 		return nil, err
@@ -266,12 +272,7 @@ func (s *Store) DeleteThread(id string) error {
 	if err != nil {
 		return fmt.Errorf("store: delete thread: %w", err)
 	}
-	s.mu.Lock()
-	delete(s.evtSeq, id)
-	delete(s.msgSeq, id)
-	delete(s.turnSeq, id)
-	delete(s.followupSeq, id)
-	s.mu.Unlock()
+	s.forgetThreadSeqs(id)
 	return nil
 }
 
@@ -292,7 +293,7 @@ func (s *Store) AppendMessages(threadID, turnID string, msgs []Message) error {
 			return s.maxSeq(&Message{}, "seq", threadID)
 		})
 	}
-	if err := s.db.Create(&msgs).Error; err != nil {
+	if err := s.threadWriteErr(threadID, s.db.Create(&msgs).Error); err != nil {
 		return fmt.Errorf("store: append messages: %w", err)
 	}
 	return s.IndexThread(threadID)
@@ -378,7 +379,7 @@ func (s *Store) CreateTurn(t *Turn) error {
 	t.Seq = s.nextSeq(s.turnSeq, t.ThreadID, func() int64 {
 		return s.maxSeq(&Turn{}, "seq", t.ThreadID)
 	})
-	if err := s.db.Create(t).Error; err != nil {
+	if err := s.threadWriteErr(t.ThreadID, s.db.Create(t).Error); err != nil {
 		return fmt.Errorf("store: create turn: %w", err)
 	}
 	return nil
@@ -503,7 +504,7 @@ func (s *Store) AppendEvent(e *Event) error {
 	}
 	e.Seq = seq
 	e.CreatedAt = time.Now().UTC()
-	if err := s.appendCompletionEvent(e); err != nil {
+	if err := s.threadWriteErr(e.ThreadID, s.appendCompletionEvent(e)); err != nil {
 		return fmt.Errorf("store: append event: %w", err)
 	}
 	return nil
@@ -622,7 +623,7 @@ func (s *Store) ListTurnEvents(turnID string) ([]Event, error) {
 // AppendLLMCall records one model request.
 func (s *Store) AppendLLMCall(c *LLMCall) error {
 	c.CreatedAt = time.Now().UTC()
-	if err := s.db.Create(c).Error; err != nil {
+	if err := s.threadWriteErr(c.ThreadID, s.db.Create(c).Error); err != nil {
 		return fmt.Errorf("store: append llm call: %w", err)
 	}
 	return nil
@@ -642,7 +643,7 @@ func (s *Store) ListLLMCalls(turnID string) ([]LLMCall, error) {
 // AddAttachment records an uploaded file.
 func (s *Store) AddAttachment(a *Attachment) error {
 	a.CreatedAt = time.Now().UTC()
-	if err := s.db.Create(a).Error; err != nil {
+	if err := s.threadWriteErr(a.ThreadID, s.db.Create(a).Error); err != nil {
 		return fmt.Errorf("store: add attachment: %w", err)
 	}
 	return nil

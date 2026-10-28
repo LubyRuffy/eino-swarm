@@ -37,6 +37,7 @@ func newTestEngineFromPool(t *testing.T, pool *engineStorePool, prefetch bool) *
 			t.Errorf("clean up test Store: %v", err)
 		}
 	})
+	t.Cleanup(func() { auditEventLog(t, fixture.store) })
 	return buildTestEngine(t, testEngineConfig(t, fixture.dir), fixture.store)
 }
 
@@ -56,6 +57,7 @@ func newTestEngineAt(t testing.TB, dir string) *Engine {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
+	t.Cleanup(func() { auditEventLog(t, st) })
 
 	return buildTestEngine(t, cfg, st)
 }

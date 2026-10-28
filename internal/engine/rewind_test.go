@@ -292,6 +292,9 @@ func TestApplyRewindFailsIfTheCutVanished(t *testing.T) {
 	}
 	waitForTurn(t, e, turn.ID)
 	seq := userMessageSeq(t, e, th.ID, turn.ID)
+	// Truncating behind the engine skips droppedTurns, so the turn's
+	// post-turn review can still write under it.
+	exemptFromEventAudit(t)
 	if err := e.Store().TruncateFromEventSeq(th.ID, seq); err != nil {
 		t.Fatal(err)
 	}

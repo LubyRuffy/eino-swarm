@@ -211,6 +211,7 @@ func TestCompletionMigrationDoesNotLightOldHistoryOrReviveItAfterQuiet(t *testin
 	if err := s.DB().Create(old).Error; err != nil {
 		t.Fatal(err)
 	}
+	legacySchema(t, s)
 	for _, column := range []string{"completed_seq", "read_completed_seq", "terminal_seq_high_water"} {
 		if err := s.DB().Migrator().DropColumn(&Thread{}, column); err != nil {
 			t.Fatal(err)
@@ -298,6 +299,7 @@ func TestCompletionSequenceSeedFailureAndFloorWriteAreNotPartial(t *testing.T) {
 	t.Run("seed failure", func(t *testing.T) {
 		s := open(t)
 		th := completionThread(t, s)
+		legacySchema(t, s)
 		if err := s.DB().Migrator().DropColumn(&Thread{}, "terminal_seq_high_water"); err != nil {
 			t.Fatal(err)
 		}

@@ -640,6 +640,9 @@ func TestRunTitleHonoursAPinnedModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	turn := &store.Turn{ID: "tn_pin", ThreadID: th.ID, ProviderID: e.Config().Models.Default, Model: "heavy"}
+	if err := e.Store().CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
 	e.runTitle(th.ID, turn, "look into the reporting pipeline", "final")
 	ev := waitForTitle(t, e, "tn_pin")
 	if ev.Err != "" || ev.Text == "" {

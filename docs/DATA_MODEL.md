@@ -793,7 +793,19 @@ not wipe `label`.
   is that conversation are cancelled in the same transaction; standalone
   schedules that only originated there stay. A conversation in a project shares the project's
   directory, which may be the user's own repository, so the workspace is left
-  alone; pasted images still go because they never lived there.
+  alone; pasted images still go because they never lived there. A turn,
+  worker or post-turn review still running when the deletion commits cannot
+  write rows back. `turns`, `events`, `messages`, `llm_calls`, `attachments`
+  and `followups` each carry a `<table>_require_thread` `BEFORE INSERT`
+  trigger that aborts a row whose nonempty `thread_id` names no conversation;
+  the store reports it as `store.ErrNotFound`. An empty `thread_id` (a
+  standalone schedule's namer call in `llm_calls`) is allowed.
+  `llm_calls_require_turn` also refuses a model call whose nonempty `turn_id`
+  is not a turn of that conversation, so a post-turn review finishing after
+  an edit-and-resend cannot store a row under the removed turn. `store.Open`
+  drops the triggers before `AutoMigrate` and creates them again after it,
+  because SQLite validates triggers when a migration renames a rebuilt
+  `threads` table into place.
 - **Delete a project** (`DELETE /api/projects/:id`): its conversations' messages,
   turns, events, model calls, attachments and follow-ups are removed. Wakes
   whose `thread_id` is one of those conversations, and standalone schedules

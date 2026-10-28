@@ -60,6 +60,7 @@ func TestInboxCursorExcludesOtherThreadsAndKinds(t *testing.T) {
 	if err := s.CreateThread(th); err != nil {
 		t.Fatal(err)
 	}
+	withThreads(t, s, "other")
 	for _, ev := range []Event{{ThreadID: "a", Kind: "task_message", SourceThreadID: "sender", SourceTurnID: "source", Text: "first"}, {ThreadID: "a", Kind: "tool_result"}, {ThreadID: "other", Kind: "task_message"}, {ThreadID: "a", Kind: "task_message", Text: "second"}} {
 		if err := s.AppendEvent(&ev); err != nil {
 			t.Fatal(err)

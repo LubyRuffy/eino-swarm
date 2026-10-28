@@ -60,6 +60,7 @@ func TestGoalToolScopeErrorsStayRecoverable(t *testing.T) {
 		}
 		requireGoalScheduleToolOK(t, out, false)
 	}
+	exemptFromEventAudit(t)
 	if err := e.Store().DB().Exec("DELETE FROM threads WHERE id = ?", thread).Error; err != nil {
 		t.Fatal(err)
 	}

@@ -5,6 +5,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -239,6 +240,17 @@ func (e *Engine) CreateThread(title, providerID, projectID string) (*store.Threa
 	}
 	e.reindex(th.ID)
 	return th, nil
+}
+
+// logPersistFailure keeps storage faults visible. Workers and a finishing turn
+// can still write after their conversation was deleted; the store refuses
+// those rows with ErrNotFound, which is the deletion working, not a fault.
+func (e *Engine) logPersistFailure(msg string, err error, args ...any) {
+	level := slog.LevelWarn
+	if errors.Is(err, store.ErrNotFound) {
+		level = slog.LevelDebug
+	}
+	e.log.Log(context.Background(), level, msg, append(args, "err", err)...)
 }
 
 // DeleteThread stops any running turn, drops the rows and removes the
