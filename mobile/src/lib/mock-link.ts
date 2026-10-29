@@ -2,7 +2,7 @@ import { restartAskHistory } from "./mock-ask-restart"
 import { generationHistory } from "./mock-generation"
 import { backoffHistory } from "./mock-backoff"
 import { workerCollectionHistory, workerCollectionStopHistory, workerCollectionPaged } from "./mock-worker-collection"
-import { scriptedTurn, type Step } from "./mock-turn"
+import { reasoningOnlyTurn, scriptedTurn, type Step } from "./mock-turn"
 import {
   OpAnswer,
   OpCancelWait,
@@ -232,7 +232,9 @@ export class MockHost {
   constructor(readonly tickMs = mockTickMs()) {
     const live = this.find("t-live")
     if (live) {
-      if (new URLSearchParams(location.search).get("history") === "restart-ask") {
+      if (new URLSearchParams(location.search).get("history") === "reasoning-only") {
+        this.seed(live, reasoningOnlyTurn(true), true)
+      } else if (new URLSearchParams(location.search).get("history") === "restart-ask") {
         live.askUser = true
         this.seed(live, restartAskHistory(), true)
       } else if (new URLSearchParams(location.search).get("history") === "goal-complete") {
@@ -281,7 +283,9 @@ export class MockHost {
     }
     const done = this.find("t-recent")
     if (done) {
-      if (new URLSearchParams(location.search).get("history") === "model-response-error") {
+      if (new URLSearchParams(location.search).get("history") === "reasoning-only") {
+        this.seed(done, reasoningOnlyTurn(false), false)
+      } else if (new URLSearchParams(location.search).get("history") === "model-response-error") {
         this.seed(done, [
           { kind: "model_retry", agentID: "manager", text: JSON.stringify({ attempt: 1, cap: 2, reason: "model_response_invalid" }) },
           { kind: "model_retry", agentID: "manager", text: JSON.stringify({ attempt: 2, cap: 2, reason: "model_response_invalid" }) },

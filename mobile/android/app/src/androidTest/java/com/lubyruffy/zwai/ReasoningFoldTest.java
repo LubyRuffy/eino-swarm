@@ -46,6 +46,7 @@ public class ReasoningFoldTest {
     private final UiAutomation ui = instrumentation.getUiAutomation();
     private BridgeActivity activity;
     private File evidenceDirectory;
+    private boolean reasoningOnlyCapture;
 
     @Test
     public void reasoningStaysCollapsedUntilItsOwnToggleIsPressed() throws Exception {
@@ -114,6 +115,86 @@ public class ReasoningFoldTest {
         }
     }
 
+    @Test
+    public void reasoningOnlyNeedsOneDisclosure() throws Exception {
+        reasoningOnlyCapture = true;
+        String locale = InstrumentationRegistry.getArguments().getString("reasoningLocale", "en");
+        assertTrue("Select one existing locale", "en".equals(locale) || "zh".equals(locale));
+        evidenceDirectory = new File(instrumentation.getTargetContext().getFilesDir(), "reasoning-only-" + locale + "-" + UUID.randomUUID());
+        assertTrue("Each invocation needs fresh evidence", evidenceDirectory.mkdir());
+        Intent launch = instrumentation.getTargetContext().getPackageManager()
+            .getLaunchIntentForPackage(instrumentation.getTargetContext().getPackageName());
+        assertNotNull(launch);
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        Activity reached = instrumentation.startActivitySync(launch);
+        assertTrue(reached instanceof BridgeActivity);
+        activity = (BridgeActivity) reached;
+        Throwable primary = null;
+        try {
+            writeIdentity(locale);
+            selectOfflineInput("reasoning-only");
+            JSONObject initial = state();
+            boolean chinese = initial.getBoolean("chinese");
+            if (chinese != "zh".equals(locale)) {
+                tapButton(chinese ? "返回" : "Back");
+                tapButton(chinese ? "菜单" : "Menu");
+                tapButton(chinese ? "EN" : "中文");
+                awaitState(() -> locale.equals(state().getString("storedLocale")));
+                String open = ("zh".equals(locale) ? "打开 " : "Open ") + "Trim the layout pass";
+                // The running row also appears in In progress; use its project occurrence.
+                tapSelector("[data-testid=project-stack] button", "open-live-reasoning", open);
+            }
+            for (String phase : new String[] {"live", "history"}) {
+                if ("history".equals(phase)) {
+                    tapButton("zh".equals(locale) ? "返回" : "Back");
+                    tapButton(("zh".equals(locale) ? "打开 " : "Open ") + "Sweep the unused exports");
+                    awaitState(() -> state().getString("transcript").contains("Here is what changed:"));
+                }
+                awaitState(() -> state().getInt("thoughtToggleCount") == 1);
+                JSONObject closed = state();
+                assertEquals("A pure thought must have no redundant work disclosure", 0, closed.getInt("foldCount"));
+                assertEquals("false", closed.getString("thoughtExpanded"));
+                assertFalse(closed.getBoolean("bodyVisible"));
+                assertFalse("The outer ticker must not expose the thought's last line", closed.getString("transcript").contains(THOUGHT));
+                assertFalse(closed.getString("controls").isEmpty());
+                saveEvidence(phase + "-thought-closed");
+
+                tapSelector("[data-testid=phone-thought-toggle]", phase + "-open-thought");
+                awaitState(() -> state().getBoolean("bodyVisible"));
+                JSONObject opened = state();
+                assertEquals(0, opened.getInt("foldCount"));
+                assertEquals("true", opened.getString("thoughtExpanded"));
+                assertTrue("The complete thought must be visible in the native viewport", opened.getBoolean("bodyOnScreen"));
+                assertEquals(THOUGHT, opened.getString("bodyText"));
+                assertEquals(closed.getString("controls"), opened.getString("controls"));
+                assertEquals(opened.getString("controls"), opened.getString("bodyId"));
+                if ("history".equals(phase)) assertTrue(opened.getString("transcript").contains("Here is what changed:"));
+                saveEvidence(phase + "-thought-open");
+
+                tapSelector("[data-testid=phone-thought-toggle]", phase + "-close-thought");
+                awaitState(() -> !state().getBoolean("bodyVisible"));
+                JSONObject reclosed = state();
+                assertEquals(0, reclosed.getInt("foldCount"));
+                assertEquals("false", reclosed.getString("thoughtExpanded"));
+                assertEquals(closed.getString("controls"), reclosed.getString("controls"));
+                assertFalse(reclosed.getString("transcript").contains(THOUGHT));
+                if ("history".equals(phase)) assertTrue(reclosed.getString("transcript").contains("Here is what changed:"));
+                saveEvidence(phase + "-thought-reclosed");
+            }
+        } catch (Exception | AssertionError failure) {
+            primary = failure;
+            try { saveEvidence("failure"); }
+            catch (Exception | AssertionError evidenceFailure) { failure.addSuppressed(evidenceFailure); }
+            throw failure;
+        } finally {
+            try { instrumentation.runOnMainSync(activity::finish); }
+            catch (RuntimeException | Error cleanupFailure) {
+                if (primary != null) primary.addSuppressed(cleanupFailure);
+                else throw cleanupFailure;
+            }
+        }
+    }
+
     private void assertUnchangedSurroundings(JSONObject observed) throws Exception {
         assertTrue(observed.getString("transcript").contains("Here is what changed:"));
         assertTrue("The read tool must remain in the expanded work", observed.getString("transcript").contains("read"));
@@ -121,6 +202,10 @@ public class ReasoningFoldTest {
     }
 
     private void selectOfflineInput() throws Exception {
+        selectOfflineInput(null);
+    }
+
+    private void selectOfflineInput(String history) throws Exception {
         AtomicReference<String> origin = new AtomicReference<>();
         long until = SystemClock.uptimeMillis() + 15000;
         do {
@@ -139,8 +224,10 @@ public class ReasoningFoldTest {
         Uri current = Uri.parse(origin.get());
         assertEquals("https", current.getScheme());
         assertEquals("localhost", current.getHost());
-        String offline = current.buildUpon().path("/").clearQuery().fragment(null)
-            .appendQueryParameter("mock", "1").appendQueryParameter("tick", "0").build().toString();
+        Uri.Builder input = current.buildUpon().path("/").clearQuery().fragment(null)
+            .appendQueryParameter("mock", "1").appendQueryParameter("tick", "0");
+        if (history != null) input.appendQueryParameter("history", history);
+        String offline = input.build().toString();
         writeJson("offline-navigation", new JSONObject().put("actual_origin", origin.get()).put("offline_url", offline));
         // Navigation selects the existing packaged walkthrough. All later JS only observes.
         instrumentation.runOnMainSync(() -> activity.getBridge().getWebView().loadUrl(offline));
@@ -292,10 +379,12 @@ public class ReasoningFoldTest {
                 observations.put(new JSONObject().put("png", name + ".png").put("elapsed_ms", elapsed)
                     .put("natural_vsync_nanos", vsync).put("same_as_previous", same).put("rendered_webview", state()));
                 writeJson(phase + "-frame-observations", new JSONObject().put("frames", observations)
-                    .put("minimum_observation_ms", 1000).put("budget_ms", 3000));
+                    .put("minimum_observation_ms", 1000).put("budget_ms", 3000)
+                    .put("automatic_stability_confirmed", stable >= 2)
+                    .put("selection", reasoningOnlyCapture ? "natural_samples_require_Root_visual_review" : "identical_full_frames"));
                 // Stable screen pixels still require visual review; DOM and VSYNC are not that proof.
                 if (SystemClock.uptimeMillis() > until) break;
-                if (elapsed >= 1000 && stable >= 2) {
+                if (elapsed >= 1000 && (reasoningOnlyCapture ? observations.length() >= 4 : stable >= 2)) {
                     Bitmap selected = previous; previous = null;
                     return selected;
                 }

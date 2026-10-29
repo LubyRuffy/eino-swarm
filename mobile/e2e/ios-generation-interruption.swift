@@ -21,14 +21,11 @@ final class BindFlowTests: XCTestCase {
       XCTAssertTrue(recovery.waitForExistence(timeout: 5), "recovery must not imply the interrupted output completed")
       let oldThought = app.buttons["Thought"].firstMatch
       XCTAssertTrue(oldThought.waitForExistence(timeout: 8), "the old thought must use a finished label")
-      oldThought.tap()
-      let nestedThought = app.buttons.matching(NSPredicate(format: "label == 'Thought'")).element(boundBy: 1)
-      XCTAssertTrue(nestedThought.waitForExistence(timeout: 5), "work and reasoning must have separate controls")
-      XCTAssertGreaterThanOrEqual(nestedThought.frame.minY, oldThought.frame.maxY,
-        "the second control must belong to the opened work, not its outer header")
+      XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == 'Thought'")).count, 2,
+        "each generation has one disclosure, without extra work headers")
       XCTAssertFalse(app.staticTexts["Interrupted thought before restart."].exists)
-      XCTAssertTrue(nestedThought.isHittable)
-      nestedThought.tap()
+      XCTAssertTrue(oldThought.isHittable)
+      oldThought.tap()
       XCTAssertTrue(app.staticTexts["Interrupted thought before restart."].waitForExistence(timeout: 5))
       XCTAssertFalse(app.staticTexts["Recovery pending."].exists)
       record(app, phase)

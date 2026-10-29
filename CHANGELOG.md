@@ -474,6 +474,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- Phone reasoning-only groups use one initially closed Thought control, removing
+  the extra activity-summary layer. Mixed tool groups keep their work summary,
+  and the same thought retains its disclosure choice as tools join or leave
+  (Issue #129).
+
 - `F-160`, `C-009`: successful wake/task arming and report rearming receipts
   include the persisted RFC3339 `next_run_at` alongside `cadence`. When a
   scheduling claim fails against an active in-scope plan, the one manager
