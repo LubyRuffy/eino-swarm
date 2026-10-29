@@ -267,6 +267,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 手机文本产出物按后缀选择 Markdown 文档或现有源码语言高亮；未知文本与超过 256 Ki 字符的文本完整显示为纯文本。HTML/SVG、MDX 组件不执行，原文件下载保持不变。证据：`mobile/src/components/text-file-preview.tsx`, `mobile/src/components/text-file-preview.test.tsx`, `mobile/src/components/file-browser.test.tsx`。
 
+- 原生手机的下载打开系统保存／导出面板，选择位置后写出原文件；取消不显示成功，保存失败在预览中提示并允许重试。浏览器保留下载链接。证据：`mobile/src/components/file-download.tsx`, `mobile/src/lib/file-save.ts`, `mobile/src/components/file-browser.test.tsx`, `mobile/android/app/src/main/java/com/lubyruffy/zwai/FileSavePlugin.java`, `mobile/ios/App/App/FileSavePlugin.swift`；关联契约：`C-020`。
+
 ### F-230 Direct model chat
 
 - 新旧 Chat Completions 推理字段兼容沿用 `F-170`／`C-009`；通过直连的同一思考区块显示，字段名称不影响正文。证据：`mobile/src/lib/openai-wire.ts`、`mobile/e2e/direct-chat-reasoning.spec.ts`。

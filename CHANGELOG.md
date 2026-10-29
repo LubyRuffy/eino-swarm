@@ -453,6 +453,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-224`, `C-020` (Issue #122): downloading a previewed phone file now opens
+  Android/iOS system file saving instead of relying on an unsupported WebView
+  blob download. It preserves the original bytes and reports actual completion,
+  cancellation or a retryable failure; browser downloads remain available.
+
 - `F-130`: expanding a desktop/Web `skill_manage patch` now shows the original
   added/deleted text instead of only the skill name, with line counts on the
   collapsed row. History replay retains the same diff and failed patches keep

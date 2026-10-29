@@ -128,7 +128,11 @@ file to preview Markdown (.md/.markdown/.mdx) as a document, known source
 suffixes with syntax colors, plain text, a common image, or PDF. HTML/SVG and
 MDX components never execute. Unknown text stays plain; text over 256 Ki
 characters stays complete but skips document parsing and syntax colors. The read is limited to 32 MiB, with previews limited to 8 MiB. Other
-files show a download action. Full Settings, PTY and Trace stay on the PC; paired phones also expose PC timeout controls.
+files show a download action. In the Android/iOS app, **Download** opens the
+system save/export picker: choose a location to save the original bytes. A
+cancelled picker does not report success; a failed save keeps the preview and
+lets you retry. In a browser, Download remains a browser download.
+Full Settings, PTY and Trace stay on the PC; paired phones also expose PC timeout controls.
 
 While a PC turn runs, the empty composer shows a square Stop button. Typing a message or adding an attachment or quote switches it to Follow-up; Steer stays available for that draft. The header Stop remains available while drafting. A parked wait has no live turn to stop. In direct model chat, the square Stop cancels the stream, keeps the text received so far, and restores Send.
 

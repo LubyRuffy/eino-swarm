@@ -20,6 +20,7 @@ public class MainActivity extends BridgeActivity {
         // Before the bridge starts, or the page's install() never finds it.
         registerPlugin(AppUpdatePlugin.class);
         registerPlugin(StreamBodyPlugin.class);
+        registerPlugin(FileSavePlugin.class);
         super.onCreate(savedInstanceState);
         // Conversation and add-PC are React state, not WebView history.
         // Activity's default back finishes the task from those screens.
