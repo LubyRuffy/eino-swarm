@@ -92,7 +92,9 @@ func validateReviewEvidence(op reviewOperation, sources map[int64]store.Event, h
 		quotes.WriteByte('\n')
 	}
 	if len(issues) > 0 {
-		return nil, "", reviewEvidenceRepair(issues, sources, humanOnly)
+		// Other independent checks may use the verified subset, never the
+		// rejected quotes. The operation still cannot be committed on error.
+		return seqs, quotes.String(), reviewEvidenceRepair(issues, sources, humanOnly)
 	}
 	return seqs, quotes.String(), nil
 }

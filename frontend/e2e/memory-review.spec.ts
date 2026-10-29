@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 
 import { composer, waitForIdle } from "./session"
-import { startMemoryReviewFixture } from "./memory-review-fixture"
+import { capacityRepairCase, startMemoryReviewFixture } from "./memory-review-fixture"
 
 test("rejected reviews retain diagnostics; committed changes expose their full diff live and after reload", async ({ page, request }, info) => {
   test.skip(process.env.ZWAI_E2E_MEMORY_REVIEW !== "1", "requires the keyless loopback memory fixture")
@@ -140,5 +140,78 @@ test("rejected reviews retain diagnostics; committed changes expose their full d
     expect(fixture.errors).toEqual([])
     expect(fixture.calls.every((call) => !call.authorization)).toBe(true)
     await page.screenshot({ path: info.outputPath("review-repair-success.png"), animations: "disabled" })
+  } finally { await fixture.close() }
+})
+
+test("one complete refusal automatically compacts related notes without dropping constraints or unrelated memory", async ({ page, request }, info) => {
+  test.skip(process.env.ZWAI_E2E_MEMORY_REVIEW !== "1", "requires the keyless loopback memory fixture")
+  const fixture = await startMemoryReviewFixture()
+  fixture.setMode("compact")
+  try {
+    const { related, unrelated, request: requirement, compacted } = capacityRepairCase
+    const initialText = [related, unrelated].join("\n\n")
+    const expectedText = [compacted, unrelated].join("\n\n")
+    const { settings } = await (await request.get("/api/settings")).json()
+    expect((await request.put("/api/settings", { data: {
+      models: { default: "review-fixture", providers: [{ id: "review-fixture", label: "Offline review regression", base_url: fixture.url, model: "fixture-model", api_key: "", context_window: 128000 }] },
+      swarm: { ...settings.swarm, auto_title: false },
+      memory: { ...settings.memory, enabled: true, auto_review: true, char_limit: initialText.length, entry_max: initialText.length, review_max_iterations: 2 },
+    } })).ok()).toBe(true)
+    const name = `Capacity repair ${Date.now()}`
+    const { project } = await (await request.post("/api/projects", { data: { name } })).json()
+    const initial = await (await request.get(`/api/projects/${project.id}/memory`)).json()
+    const storedResponse = await request.put(`/api/projects/${project.id}/memory`, { data: { text: initialText, rev: initial.memory.memory.rev } })
+    expect(storedResponse.ok()).toBe(true)
+    const stored = (await storedResponse.json()).memory
+    expect(stored.chars).toBe(initialText.length)
+
+    await page.goto("/")
+    await page.getByTestId("dest-projects").click()
+    await page.getByRole("button", { name: `New conversation in ${name}` }).click()
+    const thread = await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute("data-id")
+    expect(thread).toBeTruthy()
+    const accepted = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === `/api/threads/${thread}/steer`)
+    await composer(page).fill(requirement)
+    await composer(page).press("Enter")
+    const { turn } = await (await accepted).json()
+    await waitForIdle(page)
+
+    // Observe the actual named memory_review delivery before a Trace or
+    // history fetch can conceal a missing live subscription.
+    const changedNotice = page.getByTestId("memory-notice").filter({ hasText: "Memory updated: 1 note revised." })
+    await expect(changedNotice).toBeVisible()
+    expect(fixture.repairReceipts).toHaveLength(1)
+    expect(fixture.calls.filter((call) => call.review)).toHaveLength(2)
+    await page.getByRole("tab", { name: /^Memory(?: new)?$/ }).click()
+    await expect(page.getByLabel("Project notes")).toHaveValue(expectedText)
+    await changedNotice.getByRole("button", { name: "View details", exact: true }).click()
+    await expect(changedNotice.locator('[data-diff="del"]')).toContainText(related)
+    await expect(changedNotice.locator('[data-diff="add"]')).toContainText(compacted)
+    await page.screenshot({ path: info.outputPath("capacity-repair-live.png"), animations: "disabled" })
+
+    const trace = await (await request.get(`/api/trace/${turn.id}`)).json()
+    const outcome = JSON.parse(trace.events.find((event: { kind: string }) => event.kind === "memory_review").text)
+    expect(outcome).toMatchObject({ stop_reason: "completed", attempt_count: 2, changed: true, notes: { replace: 1 } })
+    expect(outcome.attempts.map((attempt: { status: string }) => attempt.status)).toEqual(["refused", "accepted"])
+    expect(outcome.refused.filter((refusal: { attempt: number }) => refusal.attempt === 1).map((refusal: { code: string }) => refusal.code).sort()).toEqual(["capacity", "evidence", "numeric"])
+    expect(trace.llm_calls.filter((call: { agent_id: string }) => call.agent_id === "memory-reviewer")).toHaveLength(2)
+    expect(outcome.changes).toEqual([expect.objectContaining({ target: "memory", action: "replace", before: related, after: compacted })])
+    const durable = JSON.stringify(outcome)
+    for (const privateField of ["An absent quotation.", "91MiB", "invalid_evidence", "unsupported_numbers", "current_entries", "max_content_chars", "proposed_usage"]) expect(durable).not.toContain(privateField)
+    const saved = (await (await request.get(`/api/projects/${project.id}/memory`)).json()).memory.memory
+    expect(saved.entries).toEqual([compacted, unrelated])
+    expect(saved.chars).toBeLessThanOrEqual(stored.chars)
+
+    await page.reload()
+    await page.getByTestId("dest-projects").click()
+    const projectButton = page.getByRole("button", { name, exact: true })
+    if (await projectButton.getAttribute("aria-expanded") !== "true") await projectButton.click()
+    await page.locator(`[data-testid="thread-row"][data-id="${thread}"]`).getByTestId("row-label").click()
+    await expect(changedNotice).toBeVisible()
+    await page.getByRole("tab", { name: /^Memory(?: new)?$/ }).click()
+    await expect(page.getByLabel("Project notes")).toHaveValue(expectedText)
+    expect(fixture.errors).toEqual([])
+    expect(fixture.calls.every((call) => !call.authorization)).toBe(true)
+    await page.screenshot({ path: info.outputPath("capacity-repair-reload.png"), animations: "disabled" })
   } finally { await fixture.close() }
 })

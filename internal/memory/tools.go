@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
@@ -109,6 +110,13 @@ type memoryTool struct {
 	onChange func(Change)
 }
 
+type entryCapacityError struct {
+	*EntryTooLongError
+	preview *noteCapacityPreview
+}
+
+func (e *entryCapacityError) Unwrap() error { return e.EntryTooLongError }
+
 func (t *memoryTool) Info(context.Context) (*schema.ToolInfo, error) {
 	return &schema.ToolInfo{
 		Name: ToolMemory,
@@ -165,6 +173,24 @@ func (t *memoryTool) InvokableRun(_ context.Context, args string, _ ...tool.Opti
 		return failure("unknown action %q; use add, replace or remove", a.Action), nil
 	}
 	if err != nil {
+		var overflow *OverflowError
+		if errors.As(err, &overflow) && (action == "add" || action == "replace") {
+			// The refused candidate already includes separators and a replaced
+			// note's removal. Subtracting its excess gives the exact content cap.
+			maxContent := max(0, utf8.RuneCountInString(after)-overflow.OverBy())
+			if t.store.EntryMax() > 0 {
+				maxContent = min(maxContent, t.store.EntryMax())
+			}
+			return memoryFailure(err, maxContent), nil
+		}
+		var entryLimit *EntryTooLongError
+		if errors.As(err, &entryLimit) {
+			preview, previewErr := t.store.previewRejectedNote(action, a.OldText, after)
+			if previewErr != nil {
+				return memoryFailure(errors.Join(err, previewErr)), nil
+			}
+			return memoryFailure(&entryCapacityError{EntryTooLongError: entryLimit, preview: preview}), nil
+		}
 		return memoryFailure(err), nil
 	}
 	if changed {
@@ -182,15 +208,20 @@ func (t *memoryTool) InvokableRun(_ context.Context, args string, _ ...tool.Opti
 // overflow in particular has to carry the current entries and how far over
 // the limit the write landed: "consolidate with replace" without those numbers
 // is how a model retries the same longer note until the turn budget runs out.
-func memoryFailure(err error) string {
+func memoryFailure(err error, contentBudget ...int) string {
 	var overflow *OverflowError
 	if errors.As(err, &overflow) {
 		out := map[string]any{
 			"success":         false,
 			"error":           overflow.Error(),
 			"usage":           fmt.Sprintf("%d/%d", overflow.Usage, overflow.Limit),
+			"proposed_usage":  fmt.Sprintf("%d/%d", overflow.WouldBe, overflow.Limit),
+			"available_chars": max(0, overflow.Limit-overflow.Usage),
 			"over_by":         overflow.OverBy(),
 			"current_entries": overflow.Entries,
+		}
+		if len(contentBudget) != 0 {
+			out["max_content_chars"] = contentBudget[0]
 		}
 		if overflow.Matched != "" {
 			out["matched"] = overflow.Matched
@@ -199,12 +230,33 @@ func memoryFailure(err error) string {
 	}
 	var tooLongErr *EntryTooLongError
 	if errors.As(err, &tooLongErr) {
-		return marshal(map[string]any{
+		out := map[string]any{
 			"success":   false,
-			"error":     tooLongErr.Error(),
+			"error":     err.Error(),
 			"chars":     tooLongErr.Chars,
 			"entry_max": tooLongErr.Max,
-		})
+		}
+		var planned *entryCapacityError
+		if errors.As(err, &planned) {
+			p := planned.preview
+			out["usage"] = fmt.Sprintf("%d/%d", p.current.Chars, p.current.Limit)
+			out["proposed_usage"] = fmt.Sprintf("%d/%d", p.proposed, p.current.Limit)
+			out["over_by"] = max(0, p.proposed-p.current.Limit)
+			out["available_chars"] = max(0, p.current.Limit-p.current.Chars)
+			out["current_entries"] = p.current.Entries
+			out["max_content_chars"] = p.maxContent
+			if p.matched != "" {
+				out["matched"] = p.matched
+			}
+		}
+		var match *MatchError
+		if errors.As(err, &match) {
+			out["current_entries"] = match.Entries
+			if len(match.Matching) > 0 {
+				out["matching"] = match.Matching
+			}
+		}
+		return marshal(out)
 	}
 	var restates *NoteSkillOverlapError
 	if errors.As(err, &restates) {

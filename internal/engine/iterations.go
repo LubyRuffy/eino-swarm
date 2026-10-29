@@ -404,9 +404,11 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 				if err := rt.recordScheduleAnswerRetry(turn, failure); err != nil {
 					return res, err
 				}
-				cue := scheduleAnswerCorrectionCue
+				var cue string
 				if isHistoryAnswerCorrection(failure) {
 					cue = historyAnswerCorrectionCue
+				} else {
+					cue = failure.correctionCue()
 				}
 				messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()), runtimeUserMessage(cue))
 				continue

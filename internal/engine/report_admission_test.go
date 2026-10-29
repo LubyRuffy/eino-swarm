@@ -299,7 +299,7 @@ func TestReportAdmissionReusesItsExactToolReceiptAndRefusesBrokenState(t *testin
 					Error           string `json:"error"`
 				}
 				wantCommitted := mode != "save-failure-no-action" && mode != "save-failure-already-cancelled"
-				if err := json.Unmarshal([]byte(first[0].Content), &receipt); err != nil || receipt.OK || receipt.Code != "answer_storage_failed" || receipt.ActionCommitted != wantCommitted || receipt.ReportPublished == nil || *receipt.ReportPublished || receipt.ScheduleID != sch.ID || strings.Contains(first[0].Content, "Inspection complete.") {
+				if err := json.Unmarshal([]byte(first[0].Content), &receipt); err != nil || receipt.OK || receipt.Code != "answer_storage_failed" || receipt.ActionCommitted != wantCommitted || receipt.ReportPublished == nil || *receipt.ReportPublished || receipt.ScheduleID != sch.ID || strings.Contains(first[0].Content, "Inspection complete.") || strings.Contains(first[0].Content, `"next_run_at"`) {
 					t.Fatalf("save failure concealed the committed-action boundary: receipt=%+v error=%v", receipt, err)
 				}
 				if !strings.Contains(receipt.Error, "Inspect the current schedule") || wantCommitted && !strings.Contains(receipt.Error, "Do not repeat") {
@@ -327,6 +327,7 @@ func TestReportAdmissionReusesItsExactToolReceiptAndRefusesBrokenState(t *testin
 				}
 				return
 			}
+			assertArmedTime(t, e, first[0].Content)
 			before, _ := e.store.GetSchedule(sch.ID)
 			candidateID := turn.ID + ":original-report"
 			wantFailure := ""
