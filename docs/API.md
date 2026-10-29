@@ -1891,13 +1891,21 @@ a cancelled or failed arrangement cannot support it. A repeated unsupported
 claim fails explicitly; a correction with the claim removed publishes normally.
 Restart preserves the consumed same-turn correction allowance; receipt reads
 and writes must succeed before another corrective manager call. The correction's `model_retry` receipt for `no_matching_schedule` adds
-`unmatched`: `{scope, new, stated, candidates, closest?, mismatched?, claimed?, armed?}`, where
+`unmatched`: `{scope, new, stated, candidates, closest?, mismatched?, claimed?, armed?, armed_cron?, armed_next_run_at?}`, where
 `stated` lists the cadence/identity fields the claim named, `candidates` counts
 active rows in its scope, and `mismatched` names the closest row's failed
 requirements (`schedule_id`, `not_armed_this_turn`, `delay_s`, `every_s`,
 `cron`, `next_run_at`). `claimed` and `armed` give the compared `delay_s` /
 `every_s` numbers on each side (`armed` is the closest row's). It never
-contains the claim's quote. A terminal
+contains the claim's quote. `armed_cron` and `armed_next_run_at` carry the
+closest active row's cron and RFC3339 next run. Only for `no_matching_schedule`
+with an active in-scope closest row, the corrective manager input includes
+that row's ID, mismatched fields, `delay_s`, `every_s`, `cron` and
+`next_run_at`. It says the wait is already armed, asks for prose corrected to
+those facts, and prohibits calling scheduling tools again merely to make the
+previous answer pass. It contains no withheld quote. With no active in-scope
+row (or another failure code), the existing cue permits scheduling only when
+needed and authorized, otherwise asks for the actual status. A terminal
 `schedule_claim_unverified` ending in `(no_matching_schedule)` keeps the turn
 `error` and `final` empty, but does not write `goal_block_reason` or mark the
 goal externally blocked. A pursuing goal may start another turn within its
@@ -1957,10 +1965,23 @@ Public answer events, replay messages and the accepted candidate decision
 commit together, preventing duplicate publication after restart. The policy
 model interprets prose; the schedule database remains the source of facts.
 
+Successful `schedule_wake` and `schedule_task` tool receipts contain
+`{ok:true,id,cadence,next_run_at}`. `next_run_at` is the just-persisted row's
+RFC3339 instant (fractional seconds preserved when present), for the manager
+to quote without estimating now plus a delay. `cadence` continues to describe
+one-shot, interval or cron recurrence. These descriptive fields do not supply
+verification evidence: admission still compares the current plan row and
+turn-bound action receipt, with strictly less than one minute tolerance for
+stated instants. Failure receipts omit `next_run_at`.
+
 On the real manager-tool path, `report_schedule` returns
 `{"ok":true,"quiet":false,"report_pending":true}` after its scheduling action
 and private report intent have been saved (`quiet` reflects the findings).
-This acknowledges the action and queued verification, not verified findings.
+When `next_in_s` actually rearms a schedule, this successful receipt also
+contains `id`, `cadence` and the committed row's `next_run_at`, using the same
+fields as the arming tools. A report without rearming or with `keep:false`
+does not add these arming fields. Saved-receipt replay retains the original
+instant. This acknowledges the action and queued verification, not verified findings.
 The global goal/wake lock is released before classification. A saved receipt
 is bound to the original tool-call ID so recovery does not repeat that action;
 only admitted findings produce the public `schedule_report` event.

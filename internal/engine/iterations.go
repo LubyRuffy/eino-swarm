@@ -389,7 +389,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 				if err := rt.recordScheduleAnswerRetry(turn, failure); err != nil {
 					return res, err
 				}
-				messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()), runtimeUserMessage(scheduleAnswerCorrectionCue))
+				messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()), runtimeUserMessage(failure.correctionCue()))
 				continue
 			}
 			res = answer.accept(res)

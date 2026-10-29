@@ -264,8 +264,10 @@ type scheduleClaimMismatch struct {
 	Mismatched []string `json:"mismatched,omitempty"`
 	// Claimed and Armed give the compared cadence numbers (delay_s, every_s)
 	// on each side, Armed for the closest row only. Numbers, never words.
-	Claimed map[string]int `json:"claimed,omitempty"`
-	Armed   map[string]int `json:"armed,omitempty"`
+	Claimed        map[string]int `json:"claimed,omitempty"`
+	Armed          map[string]int `json:"armed,omitempty"`
+	ArmedCron      string         `json:"armed_cron,omitempty"`
+	ArmedNextRunAt string         `json:"armed_next_run_at,omitempty"`
 }
 
 func diagnoseScheduleClaim(claim scheduleAnswerClaim, rows []store.Schedule, turn *store.Turn, armed map[string]bool) *scheduleClaimMismatch {
@@ -292,8 +294,27 @@ func diagnoseScheduleClaim(claim scheduleAnswerClaim, rows []store.Schedule, tur
 	}
 	if d.Closest != "" {
 		d.Armed = cadenceNumbers(closest.DelayS, closest.EveryS)
+		d.ArmedCron = closest.Cron
+		d.ArmedNextRunAt = closest.NextRunAt.Format(time.RFC3339Nano)
 	}
 	return d
+}
+
+// correctionCue uses only the in-scope row diagnosis, never withheld prose.
+func (failure *scheduleAnswerError) correctionCue() string {
+	if failure.Code != "no_matching_schedule" || failure.Unmatched == nil || failure.Unmatched.Closest == "" {
+		return scheduleAnswerCorrectionCue
+	}
+	d := failure.Unmatched
+	state, _ := json.Marshal(struct {
+		ID         string   `json:"id"`
+		Mismatched []string `json:"mismatched"`
+		DelayS     int      `json:"delay_s"`
+		EveryS     int      `json:"every_s"`
+		Cron       string   `json:"cron"`
+		NextRunAt  string   `json:"next_run_at"`
+	}{d.Closest, d.Mismatched, d.Armed["delay_s"], d.Armed["every_s"], d.ArmedCron, d.ArmedNextRunAt})
+	return "The runtime withheld the previous candidate answer because its scheduling claim did not match the current plan. Continue this same turn. An active wait is already armed in the claim's scope. The closest persisted row and mismatched fields are: " + string(state) + "\nRewrite the answer to describe the actual state and use this next_run_at. An existing wait does not prove it was newly armed this turn. Do not call scheduling tools again merely to make the previous answer pass. Respect the human's waiting policy."
 }
 
 func cadenceNumbers(delayS, everyS int) map[string]int {

@@ -453,6 +453,14 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-160`, `C-009`: successful wake/task arming and report rearming receipts
+  include the persisted RFC3339 `next_run_at` alongside `cadence`. When a
+  scheduling claim fails against an active in-scope plan, the one manager
+  correction receives the closest row's actual timing and mismatched fields,
+  and must correct prose without rearming merely to justify it. Verification
+  still reads plan rows, retains the strict one-minute boundary and never
+  includes withheld candidate quotes in correction or Trace.
+
 - `F-420`, `C-025` (Issue #130): memory review returns all independently
   discoverable proposal problems together before any write, including evidence,
   numeric and capacity errors in one operation. Capacity receipts distinguish

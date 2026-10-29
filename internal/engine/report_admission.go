@@ -17,6 +17,7 @@ type preparedScheduleReport struct {
 	quiet          bool
 	events         []store.Event
 	committedRearm []string
+	receipt        map[string]any
 }
 
 func (e *Engine) reportScheduleContextJSON(ctx context.Context, threadID, turnID, args string) (string, error) {
@@ -53,7 +54,7 @@ func (e *Engine) reportScheduleContextJSON(ctx context.Context, threadID, turnID
 	if failure != nil {
 		return reportAdmissionFailure(nil, failure), nil
 	}
-	body, _ := json.Marshal(map[string]any{"ok": true, "quiet": report.quiet})
+	body, _ := json.Marshal(report.receipt)
 	return string(body), nil
 }
 
@@ -155,7 +156,12 @@ func (e *Engine) prepareScheduleReport(ctx context.Context, threadID, turnID, ar
 		committedRearm = append(committedRearm, sch.ID)
 	}
 
-	report := &preparedScheduleReport{turn: turn, findings: findings, quiet: quiet, committedRearm: committedRearm,
+	receiptFields := map[string]any{"ok": true, "quiet": quiet}
+	if len(committedRearm) > 0 {
+		receiptFields = scheduleArmedFields(sch)
+		receiptFields["quiet"] = quiet
+	}
+	report := &preparedScheduleReport{receipt: receiptFields, turn: turn, findings: findings, quiet: quiet, committedRearm: committedRearm,
 		events: []store.Event{{ThreadID: threadID, TurnID: turnID, Kind: KindScheduleReport,
 			AgentID: swarm.DefaultManagerID, Text: string(payload)}},
 	}
@@ -164,7 +170,8 @@ func (e *Engine) prepareScheduleReport(ctx context.Context, threadID, turnID, ar
 	}
 	// The tool result acknowledges only the committed action and queued
 	// report. Unverified findings remain solely in the private candidate.
-	receipt, _ := json.Marshal(map[string]any{"ok": true, "quiet": quiet, "report_pending": true})
+	receiptFields["report_pending"] = true
+	receipt, _ := json.Marshal(receiptFields)
 	candidate := pendingScheduleAnswer{AnswerID: candidateID, Events: report.events,
 		CommittedRearm: committedRearm, ToolCallID: callID, ToolResult: string(receipt)}
 	if findings != "" {

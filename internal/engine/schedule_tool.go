@@ -477,6 +477,7 @@ func (e *Engine) rearmScheduleIntervalForTurn(sch *store.Schedule, nextInS int, 
 		return err
 	}
 	e.recordScheduleArmed(got)
+	*sch = *got
 	return nil
 }
 
@@ -495,17 +496,19 @@ func (e *Engine) scheduleForTurn(turn *store.Turn) *store.Schedule {
 	return sch
 }
 
-// scheduleArmedOK is the receipt for an armed wait. cadence says what was
-// armed in the model's own terms: a one-shot delay is easily described
-// afterwards as a repeating check, and the answer check refuses a recurring
-// claim that only a one-shot backs. The answer check reads ok and id only.
+// scheduleArmedOK quotes the persisted next run for manager prose. Admission
+// still compares current plan rows; neither receipt text field is evidence.
 func scheduleArmedOK(row *store.Schedule) string {
-	out := map[string]any{"ok": true, "id": row.ID}
+	body, _ := json.Marshal(scheduleArmedFields(row))
+	return string(body)
+}
+
+func scheduleArmedFields(row *store.Schedule) map[string]any {
+	out := map[string]any{"ok": true, "id": row.ID, "next_run_at": row.NextRunAt.Format(time.RFC3339Nano)}
 	if note := scheduleCadenceNote(row); note != "" {
 		out["cadence"] = note
 	}
-	body, _ := json.Marshal(out)
-	return string(body)
+	return out
 }
 
 func scheduleCadenceNote(row *store.Schedule) string {
