@@ -154,6 +154,11 @@ func (t *reviewBatchTool) markAttempt(number int, status string) {
 var reviewUsage = regexp.MustCompile(`^[0-9]{1,12}/[0-9]{1,12}$`)
 
 func (t *reviewBatchTool) refuse(number, index int, code string, err error, operations []reviewOperation) string {
+	raw, _ := json.Marshal(t.refusal(number, index, code, err, operations))
+	return string(raw)
+}
+
+func (t *reviewBatchTool) refusal(number, index int, code string, err error, operations []reviewOperation) map[string]any {
 	code = reviewRefusalCode(err, code)
 	refused := reviewRefusal{Index: index, Reason: reviewRefusalReason(code), Code: code, Attempt: number}
 	if index >= 0 && index < len(operations) {
@@ -168,7 +173,7 @@ func (t *reviewBatchTool) refuse(number, index int, code string, err error, oper
 	}
 	var receipt *reviewOperationError
 	if errors.As(err, &receipt) {
-		for _, key := range []string{"usage", "over_by", "current_entries", "matched", "matching", "chars", "entry_max", "existing", "existing_description"} {
+		for _, key := range []string{"usage", "over_by", "current_entries", "matched", "matching", "chars", "entry_max", "existing", "existing_description", "proposed_usage", "available_chars", "max_content_chars"} {
 			if value := receipt.feedback[key]; value != nil {
 				result[key] = value
 			}
@@ -186,6 +191,5 @@ func (t *reviewBatchTool) refuse(number, index int, code string, err error, oper
 		t.outcome.Refused = append(t.outcome.Refused, refused)
 	}
 	t.mu.Unlock()
-	raw, _ := json.Marshal(result)
-	return string(raw)
+	return result
 }

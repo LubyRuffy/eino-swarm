@@ -1211,14 +1211,31 @@ restate the body. This changes no Markdown format or event kind.
    `memory.review_max_iterations`. The review input includes current note usage,
    total capacity and the agent's per-entry cap. Capacity refusals preserve
    structured `usage`, `over_by`, `current_entries` and `matched` feedback for the
-   model. Repairs may shorten or replace related, source-supported entries before
+   model, plus `proposed_usage`, `available_chars` and `max_content_chars` for the
+   refused candidate. `over_by` is the additional savings required, rather than
+   the total free space needed; the content allowance counts normalized Unicode
+   characters, separators and the per-note cap. Repairs automatically shorten
+   related entries or merge this turn's supported facts into them, preserving
+   facts, scope, conditions, negation and numeric spelling. Unrelated notes remain
+   intact; a shorter string alone does not establish equivalent meaning.
+   Repairs may shorten or replace related, source-supported entries before
    additions, in the draft's existing operation order; unrelated notes are not
    automatic eviction candidates. Evidence, numeric spelling, caps and the fixed
    revision remain mandatory. `memory.review_reasoning_effort` sets only this
    turn-review agent's effort; empty is the background default `low`, built
    through `Pool.AuxiliaryModelBuilder` so an endpoint that rejects the default
    with HTTP 400 is asked once more without it, and `inherit` follows the turn.
-   Evidence and numeric refusals also return the operation `index` and a
+   Preflight collects all independently discoverable operation, evidence,
+   numeric and note-tool validation problems in one `issues` array before any
+   notes commit or skill write. The first issue retains the existing top-level
+   refusal fields. Numeric checks use only individually verified quotes and the
+   uniquely replaced old note, even when another citation fails. Source text is
+   repeated only on its first issue for each seq. Note checks simulate the
+   existing operation order in a disposable draft; a refused note operation does
+   not advance it, so dependent repairs can reveal further problems on resubmit.
+   Skill filesystem operations still execute only after preflight and retain
+   their immediate-write/failure contract. Evidence and numeric issues return
+   the operation `index` and a
    repair-only `repair` object: invalid references are distinguished from exact
    quote mismatches, admitted source IDs are listed, and numeric feedback lists
    unsupported spellings together with spellings supported by that operation's

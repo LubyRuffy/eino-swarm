@@ -453,6 +453,17 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-420`, `C-025` (Issue #130): memory review returns all independently
+  discoverable proposal problems together before any write, including evidence,
+  numeric and capacity errors in one operation. Capacity receipts distinguish
+  additional savings from free space and give the candidate usage and exact
+  content allowance; automatic repair shortens related notes or merges the new
+  supported facts while retaining scope, conditions, negation and numeric spelling.
+  Unrelated memory, iteration limits, source guards and revision checks remain.
+  Private repair details stay outside durable diagnostics.
+  Sidebar unit fixtures also use one current timestamp so the seven-day preview
+  window cannot make unrelated validation expire with the calendar.
+
 - `F-130`: expanding a desktop/Web `skill_manage patch` now shows the original
   added/deleted text instead of only the skill name, with line counts on the
   collapsed row. History replay retains the same diff and failed patches keep

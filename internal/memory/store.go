@@ -100,10 +100,11 @@ func (e *OverflowError) Error() string {
 	over := e.OverBy()
 	msg := fmt.Sprintf("memory is at %d/%d characters; this write exceeds the limit by %d. Do not retry the same write.",
 		e.Usage, e.Limit, over)
+	repair := fmt.Sprintf(" Reduce the proposed notes by at least %d additional characters before retrying. Shorten the new content or first shorten related existing notes; preserve unrelated notes.", over)
 	if e.Matched != "" {
-		return msg + fmt.Sprintf(" The matched note was not changed. Replace it with a shorter note or remove another note first — the stored notes must shrink by at least %d characters.", over)
+		return msg + " The matched note was not changed." + repair
 	}
-	return msg + fmt.Sprintf(" Shorten or remove existing notes until at least %d characters are free, then retry.", over)
+	return msg + repair
 }
 
 // OverBy is how many characters the refused write ran past the limit.
@@ -316,6 +317,49 @@ func (s *Store) replace(oldText, content string) (Snapshot, string, error) {
 		overflow.Matched = matched
 	}
 	return written, matched, err
+}
+
+type noteCapacityPreview struct {
+	current    Snapshot
+	proposed   int
+	matched    string
+	maxContent int
+}
+
+// previewRejectedNote supplements an already-refused per-entry write. Read
+// and unique matching share the store lock, and this never changes a draft or
+// file. content is the normalized add/replace content from that refusal.
+func (s *Store) previewRejectedNote(action, oldText, content string) (*noteCapacityPreview, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	snap, err := s.read()
+	if err != nil {
+		return nil, err
+	}
+	entries := append([]string(nil), snap.Entries...)
+	matched := ""
+	if action == "add" {
+		entries = append(entries, content)
+	} else {
+		index, err := matchOne(entries, strings.TrimSpace(oldText))
+		if err != nil {
+			return nil, err
+		}
+		matched, entries[index] = entries[index], content
+	}
+	proposed := s.snapshot(entries).Chars
+	maxContent := min(s.entryMax, max(0, utf8.RuneCountInString(content)+s.limit-proposed))
+	if action == "add" {
+		for _, existing := range snap.Entries {
+			if existing == content {
+				// The original candidate adds no duplicate, but shortening it
+				// creates a distinct addition and still pays for its separator.
+				proposed = snap.Chars
+				break
+			}
+		}
+	}
+	return &noteCapacityPreview{current: snap, proposed: proposed, matched: matched, maxContent: maxContent}, nil
 }
 
 // Remove drops the single entry containing oldText and reports the entry it

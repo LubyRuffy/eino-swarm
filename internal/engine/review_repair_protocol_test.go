@@ -110,7 +110,9 @@ func TestReviewProtocolRepairsQuotesAndNumbersFromActualToolFeedback(t *testing.
 	if err != nil || !reflect.DeepEqual(snap.Entries, []string{accepted}) || out.Err != "" || out.StopReason != "completed" || !out.Changed {
 		t.Fatalf("feedback-driven repair did not commit: notes=%+v outcome=%+v err=%v", snap, out, err)
 	}
-	if out.AttemptCount != 3 || len(out.Attempts) != 3 || out.Attempts[0].Status != "refused" || out.Attempts[1].Status != "refused" || out.Attempts[2].Status != "accepted" || len(out.Refused) != 2 || out.Refused[0].Code != "evidence" || out.Refused[1].Code != "numeric" || len(fixture.snapshot()) != 3 {
+	// This legacy client reads only the first issue, so it still takes three
+	// requests. Diagnostics must also retain the first proposal's numeric issue.
+	if out.AttemptCount != 3 || len(out.Attempts) != 3 || out.Attempts[0].Status != "refused" || out.Attempts[1].Status != "refused" || out.Attempts[2].Status != "accepted" || len(out.Refused) != 3 || out.Refused[0].Code != "evidence" || out.Refused[1].Code != "numeric" || out.Refused[1].Attempt != 1 || out.Refused[2].Code != "numeric" || out.Refused[2].Attempt != 2 || len(fixture.snapshot()) != 3 {
 		t.Fatalf("repair loop did not retain its actual receipts: %+v; model calls=%d", out, len(fixture.snapshot()))
 	}
 	durable, err := json.Marshal(out)

@@ -100,44 +100,6 @@ func (t *reviewBatchTool) InvokableRun(ctx context.Context, args string, _ ...to
 			return "", t.terminalError(number, &memory.ConflictError{Current: current}, operations)
 		}
 	}
-	evidence := make([]reviewEvidence, 0, len(operations))
-	for i, op := range operations {
-		if op.Target == memory.ToolMemory && (op.Action == "replace" || op.Action == "add") {
-			if op.Content != "" && op.NewText != "" && op.Content != op.NewText {
-				return t.refuse(number, i, "validation", errors.New("conflicting replacement text fields"), operations), nil
-			}
-			if op.Content == "" {
-				op.Content = op.NewText
-			}
-			op.NewText = ""
-			operations[i] = op
-		}
-		if err := t.validateOperation(op); err != nil {
-			return t.refuse(number, i, "validation", err, operations), nil
-		}
-		seqs, quotes, err := validateReviewEvidence(op, t.sources, t.humanOnly)
-		if err != nil {
-			return t.refuse(number, i, "evidence", err, operations), nil
-		}
-		if op.Target == memory.ToolMemory && op.Action != "remove" {
-			previous := ""
-			if op.Action == "replace" {
-				snap, readErr := t.store.Read()
-				if readErr != nil {
-					return t.refuse(number, i, "storage", readErr, operations), nil
-				}
-				for _, entry := range snap.Entries {
-					if strings.Contains(entry, op.OldText) {
-						previous += entry + "\n"
-					}
-				}
-			}
-			if err := validateReviewNumbers(op.Content, quotes, previous); err != nil {
-				return t.refuse(number, i, "numeric", err, operations), nil
-			}
-		}
-		evidence = append(evidence, reviewEvidence{Target: op.Target, Action: op.Action, Name: op.Name, Sources: seqs})
-	}
 	// The empty batch is a real decision, with no filesystem mutation.
 	if len(operations) == 0 {
 		return t.completed(ctx, number, nil)
@@ -153,14 +115,9 @@ func (t *reviewBatchTool) InvokableRun(ctx context.Context, args string, _ ...to
 	if hasNotes && t.notesRev != "" && before.Rev != t.notesRev {
 		return "", t.terminalError(number, &memory.ConflictError{Current: before}, operations)
 	}
-	noteTool := memory.Tools(draft.Store, nil)[0].(tool.InvokableTool)
-	for i, op := range operations {
-		if op.Target != memory.ToolMemory {
-			continue
-		}
-		if err := invokeReviewOperation(ctx, noteTool, op); err != nil {
-			return t.refuse(number, i, "storage", err, operations), nil
-		}
+	evidence, issues := t.validateProposal(ctx, operations, draft)
+	if len(issues) != 0 {
+		return t.refuseIssues(number, issues, operations), nil
 	}
 	// Skill files keep their existing immediate-write contract. Persist each
 	// actual skill change even if a later operation or note commit is refused.

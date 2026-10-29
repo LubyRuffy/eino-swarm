@@ -2637,6 +2637,12 @@ Concurrent runs follow the [E2E isolation rules](#end-to-end-tests).
 
 ## Memory review provenance and commit (F-420 / C-025 / C-012)
 
+The 2026-10-29 Issue #130 local candidate passed the full Go race suite with
+94.9% engine and 98.6% memory package coverage. The new proposal preflight and
+aggregate refusal functions measured 95.2% and 100%; the new capacity preview
+and changed memory receipt functions measured 100%. These are execution
+coverage measurements, separate from the frozen-fact repair assertions below.
+
 Memory-review details retain committed content in the event instead of reading
 the current file. `internal/engine/review_change_details_test.go` covers complete
 add/replace/remove text beyond the preview cap and a later human edit;
@@ -2742,6 +2748,23 @@ memory files and stored outcomes, not agreement with the old reviewer's answer:
   CAS conflict checks refusal metadata and the next actual batch's fixed-revision
   termination; its manually supplied refusal receipt does not claim to reproduce
   the entire final-commit race inside `InvokableRun` deterministically.
+- `internal/engine/review_validation_all_test.go`: one receipt aggregates same-
+  and cross-operation evidence, numeric and capacity problems before any note or
+  skill write. Forged/unquoted sources and ambiguous old-note matches cannot
+  authorize numbers; source text is deduplicated across issues. A request-aware
+  offline HTTP model repairs all problems in its second proposal, shortening a
+  related note and merging the new supported fact while preserving frozen scope,
+  conditions, negation, numeric spelling and the unrelated entry verbatim. This
+  verifies the repair protocol, not an external model's semantic performance.
+  A separate HTTP case proves that a simultaneous per-note and total overflow
+  carries both limits and the full content budget through the real adapter.
+- `internal/memory/capacity_feedback_test.go`: actual normalized Unicode writes
+  prove `proposed_usage`, `available_chars`, separator-aware `max_content_chars`
+  and additional-savings wording for add/replace, empty/full stores and entry
+  limits. The advertised content allowance fits; one extra character refuses.
+  Per-note refusals include the total budget when the candidate can be uniquely
+  resolved; unreadable or ambiguous state cannot invent a candidate allowance.
+  Duplicate additions do not inflate the proposed total.
 - `internal/server/review_diagnostics_test.go`: the real settings → project
   memory → turn → automatic offline review → `GET /api/trace/:turn` path.
   Full-capacity failure retains usage, excess, attempt/refusal metadata and the
