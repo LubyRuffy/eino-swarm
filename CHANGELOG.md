@@ -13,6 +13,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- A project-local [native testing fast path](docs/NATIVE_TESTING_FAST_PATH.md)
+  documents existing commands, exact-input reuse, scenario selection, bounded
+  retries and cleanup, with separate preparation/queue/execution timing.
+  Existing test and publication gates are unchanged; no VM migration or new
+  runtime automation is introduced.
+
 - `F-410`, `C-036` (Issue #128): **Summarize project history** opens a titled
   conversation in the selected project without replacing the existing draft.
   Managers and workers choose read-only `query_history` SQL over retained

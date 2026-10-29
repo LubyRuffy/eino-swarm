@@ -31,6 +31,11 @@ make mobile-ios-release VERSION=x.y.z # resume only this TestFlight batch
 go run ./mobile/scripts/genicons.go  # paint appicon.png into iOS/Android launcher slots
 ```
 
+Native Mac testing starts with [原生测试最短路径](docs/NATIVE_TESTING_FAST_PATH.md):
+check inputs/admission, finish headless preparation, freeze the candidate, then
+run the affected guest scenarios serially through cleanup. It preserves the
+required checks below; ordinary smoke does not replace specialized acceptance.
+
 Before finishing any change: **it compiles, the tests pass, and the docs match.**
 Touched Go code → `go test -race -timeout 25m ./...`. Touched `frontend/src` → `npm run lint`
 (a `tsc` type check), `npm test`. `go run ./cmd/zwai desktop` (and `web`)

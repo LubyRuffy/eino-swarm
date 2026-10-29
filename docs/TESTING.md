@@ -1,5 +1,9 @@
 # Testing
 
+For the shortest repeatable native workflow, start with
+[原生测试最短路径](NATIVE_TESTING_FAST_PATH.md). It selects the existing commands
+and affected scenarios; the detailed requirements and evidence below remain authoritative.
+
 ## Original project-history SQL and source reports (`F-410`, `C-036`)
 
 `internal/history` uses real temporary WAL databases for single-statement

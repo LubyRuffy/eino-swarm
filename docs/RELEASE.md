@@ -2,6 +2,11 @@
 
 ## Local verification before publication
 
+Use [原生测试最短路径](NATIVE_TESTING_FAST_PATH.md) for input/admission checks,
+headless preparation, exact-candidate guest scenarios and failure/cleanup handling.
+It does not remove any publication gate or make verification an automatic
+prerequisite of the ordinary release command.
+
 `make release-plan VERSION=x.y.z` prints the fixed verification stages without
 running them. `make release-verify VERSION=x.y.z EVIDENCE=/absolute/private/run`
 uses `tools/release.py --verify --platform macos`: offline input preflight,
@@ -80,8 +85,11 @@ Rerun with the same evidence directory to resume. A headless stage is reusable
 only when candidate/version, lockfiles, dependency checks, toolchain, fixed
 configuration, stage input/output bytes and original log receipts still match.
 Failed attempts remain separate; failures are not retried automatically. Changed
-assets invalidate E2E/package results. Successful local verification returns **3**
-with `headless_passed_native_pending`, not publication success. Perform the
+assets invalidate E2E/package results. The Python verifier returns **3**
+with `headless_passed_native_pending`, not publication success. The Make wrapper
+may report `Error 3` and return 2 itself; read `verification.json` and the stage
+receipts, or use the direct Python entry in the
+[fast path](NATIVE_TESTING_FAST_PATH.md) for the verifier status. Perform the
 required fresh guest behavior acceptance of that exact final ZIP using the
 existing native case runner, record the existing batch acceptance receipt, and
 then use the normal authorized `make release VERSION=x.y.z` entry. No native
