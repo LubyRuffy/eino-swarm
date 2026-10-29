@@ -4,19 +4,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { FileBrowser } from "./file-browser"
 import type { RemoteLink } from "@/lib/link"
 import type { WorkspaceFile } from "@/lib/rpc"
+import { t } from "@/lib/i18n"
+
+const nativeSave = vi.hoisted(() => ({ enabled: false, saveFile: vi.fn() }))
+vi.mock("@capacitor/core", async (original) => {
+  const actual = await original<typeof import("@capacitor/core")>()
+  return {
+    ...actual,
+    Capacitor: { ...actual.Capacitor, isNativePlatform: () => nativeSave.enabled },
+    registerPlugin: (name: string, options?: Parameters<typeof actual.registerPlugin>[1]) =>
+      name === "FileSave" ? { saveFile: nativeSave.saveFile } : actual.registerPlugin(name, options),
+  }
+})
 
 const entry = { path: "outputs/report.html", name: "report.html", size: 17, dir: false, modified: "", uploaded: false }
 const content = "<script>bad()</script>"
 
 function link(unknownOp = false, files: WorkspaceFile[] = [
   { path: "outputs", name: "outputs", size: 0, dir: true, modified: "", uploaded: false }, entry,
-], text = content, mime = "text/html") {
+], text: string | Uint8Array = content, mime = "text/html") {
+  const bytes = typeof text === "string" ? new TextEncoder().encode(text) : text
   const rpc = vi.fn(async (request: { op: string }) => {
     if (unknownOp) return { v: 1, id: "", ok: false, code: "unknown_op", error: "unknown op" }
     if (request.op === "files") return { v: 1, id: "", ok: true, files }
     return { v: 1, id: "", ok: true, file_chunk: {
-      path: files.at(-1)!.path, name: files.at(-1)!.name, size: text.length, mime,
-      offset: 0, next_offset: text.length, data: btoa(text), more: false,
+      path: files.at(-1)!.path, name: files.at(-1)!.name, size: bytes.length, mime,
+      offset: 0, next_offset: bytes.length, data: btoa(String.fromCharCode(...bytes)), more: false,
     } }
   })
   return { path: "relay", alive: () => true, close: vi.fn(), announceDevice: vi.fn(), rpc } as unknown as RemoteLink
@@ -24,10 +37,74 @@ function link(unknownOp = false, files: WorkspaceFile[] = [
 
 describe("phone file browser", () => {
   beforeEach(() => {
+    nativeSave.enabled = false
+    nativeSave.saveFile.mockReset().mockResolvedValue({ saved: true })
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:test") })
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() })
   })
   afterEach(() => vi.restoreAllMocks())
+
+  it("saves a phone preview through the native picker with its original UTF-8 bytes", async () => {
+    nativeSave.enabled = true
+    const text = "# Summary\r\n\r\n数据与条件\r\n"
+    const bytes = new TextEncoder().encode(text)
+    const file = { ...entry, path: "outputs/summary.md", name: "summary.md", size: bytes.length }
+    render(<FileBrowser link={link(false, [file], text, "text/markdown")} threadId="t1" onClose={vi.fn()} />)
+    fireEvent.click(await screen.findByRole("button", { name: file.name }))
+    fireEvent.click(await screen.findByText("Download"))
+    await waitFor(() => expect(nativeSave.saveFile).toHaveBeenCalledWith({
+      name: file.name, mime: "text/markdown", size: bytes.length,
+      data: btoa(String.fromCharCode(...bytes)),
+    }))
+    expect(await screen.findByRole("status")).toHaveTextContent(t("files.saved"))
+  })
+
+  it("makes a native save refusal visible and keeps the preview available for retry", async () => {
+    nativeSave.enabled = true
+    nativeSave.saveFile.mockRejectedValueOnce(new Error("provider_refused"))
+    const file = { ...entry, path: "report.md", name: "report.md" }
+    render(<FileBrowser link={link(false, [file], "# Report", "text/markdown")} threadId="t1" onClose={vi.fn()} />)
+    fireEvent.click(await screen.findByRole("button", { name: file.name }))
+    fireEvent.click(await screen.findByText("Download"))
+    expect(await screen.findByRole("alert")).toHaveTextContent(t("files.saveFailed"))
+    expect(screen.getByRole("heading", { name: "Report" })).toBeInTheDocument()
+    fireEvent.click(screen.getByText("Download"))
+    expect(await screen.findByRole("status")).toHaveTextContent(t("files.saved"))
+  })
+
+  it.each([new Uint8Array(), new Uint8Array([0, 255, 128, 13, 10])])(
+    "exports empty or non-text bytes without passing through the text preview", async (bytes) => {
+      nativeSave.enabled = true
+      const file = { ...entry, path: "result.bin", name: "result.bin", size: bytes.length }
+      render(<FileBrowser link={link(false, [file], bytes, "application/octet-stream")} threadId="t1" onClose={vi.fn()} />)
+      fireEvent.click(await screen.findByRole("button", { name: file.name }))
+      fireEvent.click(await screen.findByText("Download"))
+      await waitFor(() => expect(nativeSave.saveFile).toHaveBeenCalledWith({
+        name: file.name, mime: "application/octet-stream", size: bytes.length,
+        data: btoa(String.fromCharCode(...bytes)),
+      }))
+    },
+  )
+
+  it("waits for one native export and does not call a cancelled save successful", async () => {
+    nativeSave.enabled = true
+    let settle!: (result: { saved: boolean }) => void
+    nativeSave.saveFile.mockReturnValueOnce(new Promise((resolve) => { settle = resolve }))
+    const file = { ...entry, path: "report.md", name: "report.md" }
+    render(<FileBrowser link={link(false, [file], "# Report", "text/markdown")} threadId="t1" onClose={vi.fn()} />)
+    fireEvent.click(await screen.findByRole("button", { name: file.name }))
+    const download = await screen.findByText("Download")
+    fireEvent.click(download)
+    fireEvent.click(download)
+    expect(nativeSave.saveFile).toHaveBeenCalledOnce()
+    expect(screen.getByRole("button", { name: t("files.saving") })).toBeDisabled()
+    await act(async () => { settle({ saved: false }) })
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Download" }))
+    expect(await screen.findByRole("status")).toHaveTextContent(t("files.saved"))
+    expect(nativeSave.saveFile).toHaveBeenCalledTimes(2)
+  })
 
   it("renders a Markdown output as a document selected by suffix, not MIME", async () => {
     const text = '# Summary\n\n> A finding\n\n- First\n\n<script>bad()</script>\n\n[unsafe](javascript:bad())'

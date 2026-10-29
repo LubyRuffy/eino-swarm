@@ -6395,6 +6395,30 @@ line alone does not accept a hung or cancelled parent command.
 
 `mobile/src/components/file-browser.test.tsx` exercises the real read/preview path; `text-file-preview.test.tsx` checks suffix selection, unknown/large/empty text, exact source preservation and inert HTML/SVG/MDX. `mobile/e2e/walkthrough.spec.ts` checks Markdown structure and syntax colors in light/dark; the packaged `mobile/e2e/ios-wait-layout.swift` `testPhoneOutputPreview` reaches both documents through Outputs. Reuse `scripts/ios-layout-fixture.py` and select only that XCTest. Android uses a disposable offline package and isolated emulator, inspecting the same reached screens; a browser pass or native launch alone does not accept the changed flow.
 
+### Phone file saving (Issue #122)
+
+`mobile/e2e/file-download.spec.ts` receives the browser's actual download and
+compares its bytes on Chromium and iPhone WebKit. Native exports instead use
+`FileSave`: Android `FileSavePluginTest` checks input and stream failures, and
+`FileSaveBytesTest` decodes the same production payload on the runtime.
+`FileSaveUiTest#outputDownloadCanCancelThenSaveExactBytesToDownloads` navigates
+Outputs, cancels the real SAF dialog, saves to a unique Downloads filename and
+reads that document back. Retain its screenshots, accessibility tree and byte
+receipt before disposing of the isolated emulator.
+
+The disposable iOS `testPhoneOutputPreview` also checks the real Files export:
+cancel the picker, reopen it and save the original `report.md` to On My iPhone.
+Use a fresh, identified Simulator and verify no earlier target exists. Locate
+that device's actual `group.com.apple.FileProvider.LocalStorage` container from
+its metadata and read the single exported `report.md` under File Provider
+Storage. Compare the actual target bytes, retaining the XCTest screenshots,
+accessibility trees and host readback; the App's staging file is not the target.
+No new folder or rename is required to accept a download. Run
+`FileSavePayloadTests` for the same production decoder's size, basename and
+raw-byte boundaries. A bridge mock, staging file or successful picker launch
+cannot accept the saved document. These debug packaged-app checks do not
+sign, upload or accept a future formal release package.
+
 ## Independent task coordination (`F-135`, `C-021`)
 
 - `go test -race ./internal/engine ./internal/store ./internal/remote ./internal/provider -run 'Test(IndependentManagers|TaskMessage|TaskDiscovery|InboxCursor|PeerMessage|OfflineTaskCoordination)'` runs two managers through the actual Eino tool graph, bidirectional messages, provenance, cursors, idle/late delivery, no human-turn conversion and database failure.

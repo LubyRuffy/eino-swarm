@@ -6,9 +6,12 @@ import UIKit
 /// runs after the bridge exists and before the webview navigates.
 @objc(BridgeViewController)
 public class BridgeViewController: CAPBridgeViewController, UIGestureRecognizerDelegate {
+    private let fileSavePlugin = FileSavePlugin()
+
     override public func capacitorDidLoad() {
         super.capacitorDidLoad()
         bridge?.registerPluginInstance(StreamBodyPlugin())
+        bridge?.registerPluginInstance(fileSavePlugin)
 
         let back = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(edgeBack(_:)))
         back.edges = .left
@@ -16,6 +19,10 @@ public class BridgeViewController: CAPBridgeViewController, UIGestureRecognizerD
         back.delegate = self
         webView?.addGestureRecognizer(back)
         webView?.scrollView.panGestureRecognizer.require(toFail: back)
+    }
+
+    deinit {
+        fileSavePlugin.cancelForDestroy()
     }
 
     public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {

@@ -536,6 +536,11 @@ provider ID from the latest configuration, so an unrelated desktop edit cannot
 replay stale values over a phone timeout save. Other section replacement rules
 remain unchanged.
 
+Phone output downloads reuse the bounded `file_chunk` bytes. The web client
+keeps its download link; the native `FileSave` bridge uses Android SAF or the
+iOS document export picker. Only a completed write/export acknowledges success;
+cancellation and failed writes return separately without changing the PC file.
+
 ## Phone navigation
 
 The first bind or a cold launch may resume a live or last PC conversation.

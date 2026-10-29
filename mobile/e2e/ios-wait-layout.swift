@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 
 // Run on iPhone 17 with scripts/ios-layout-fixture.py. The fixture copies the
@@ -540,6 +541,7 @@ final class BindFlowTests: XCTestCase {
   }
 
   func testPhoneOutputPreview() throws {
+    continueAfterFailure = false
     let app = XCUIApplication()
     app.launch()
     let back = app.buttons["Back"].firstMatch
@@ -565,6 +567,7 @@ final class BindFlowTests: XCTestCase {
     shot.name = "phone-output-preview"
     shot.lifetime = .keepAlways
     add(shot)
+    try exportPhoneOutputThroughFiles(app)
     app.buttons["Back to list"].tap()
     XCTAssertTrue(file.waitForExistence(timeout: 5))
     app.buttons["sample.go"].tap()
@@ -573,6 +576,49 @@ final class BindFlowTests: XCTestCase {
     codeShot.name = "phone-output-code-highlight"
     codeShot.lifetime = .keepAlways
     add(codeShot)
+  }
+
+  // A fresh owned Simulator gives the Files provider unique provenance. The
+  // runner independently reads/hashes its actual root report.md after Save;
+  // this method never writes expected bytes or accepts the staging copy.
+  private func exportPhoneOutputThroughFiles(_ app: XCUIApplication) throws {
+    let end = ProcessInfo.processInfo.systemUptime + 40
+    func remaining() throws -> TimeInterval {
+      let left = end - ProcessInfo.processInfo.systemUptime
+      guard left > 0 else { throw NSError(domain: "NativeFileExport", code: 1) }
+      return min(8, left)
+    }
+    func unique(_ query: XCUIElementQuery, _ name: String) throws -> XCUIElement {
+      let until = ProcessInfo.processInfo.systemUptime + (try remaining())
+      while ProcessInfo.processInfo.systemUptime < until {
+        if query.count == 1 && query.element(boundBy: 0).isHittable && query.element(boundBy: 0).isEnabled { return query.element(boundBy: 0) }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+      }
+      recordAgentPage(app, name: "file-export-native-control-refusal-" + name)
+      throw NSError(domain: "NativeFileExport", code: 2, userInfo: [NSLocalizedDescriptionKey: "Missing/ambiguous/unhittable " + name])
+    }
+    func press(_ query: XCUIElementQuery, _ name: String) throws { let element = try unique(query, name); _ = try remaining(); element.tap() }
+    let navigation = app.navigationBars.matching(identifier: "FullDocumentManagerViewControllerNavigationBar")
+    try press(app.buttons.matching(identifier: "Download"), "Download")
+    _ = try unique(navigation.buttons.matching(identifier: "Save"), "initial native Save page")
+    try press(navigation.buttons.matching(identifier: "BackButton"), "native Browse parent")
+    _ = try unique(navigation.buttons.matching(identifier: "Cancel"), "native Cancel")
+    recordAgentPage(app, name: "file-export-native-before-cancel")
+    try press(navigation.buttons.matching(identifier: "Cancel"), "fresh native Cancel")
+    _ = try unique(app.buttons.matching(identifier: "Download"), "Download after cancel")
+    XCTAssertFalse(app.staticTexts["File saved."].exists)
+    recordAgentPage(app, name: "file-export-native-cancelled-preview-intact")
+    try press(app.buttons.matching(identifier: "Download"), "second Download")
+    _ = try unique(navigation.buttons.matching(identifier: "Save"), "native Save")
+    XCTAssertEqual(app.textFields["DOCPicker.filenameTextField"].value as? String, "report")
+    let localRoot = app.otherElements.matching(identifier: "DOC.browsingRoot Source: com.apple.FileProvider.LocalStorage, Title: On My iPhone")
+    XCTAssertTrue(localRoot.element(boundBy: 0).waitForExistence(timeout: try remaining()))
+    XCTAssertEqual(localRoot.count, 1, "Save must target the actual local Files provider root")
+    recordAgentPage(app, name: "file-export-native-local-root-before-Save")
+    try press(navigation.buttons.matching(identifier: "Save"), "actual native Save")
+    _ = try unique(app.buttons.matching(identifier: "Download"), "Download after completed Save")
+    recordAgentPage(app, name: "file-export-native-after-Save-host-byte-readback-required")
+    _ = try remaining()
   }
 
   func testClientTaskHeaderStaysVisibleAfterPull() throws {

@@ -18,6 +18,10 @@
 		A11F11E00000000000000003 /* BindFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11F11E00000000000000001 /* BindFlowTests.swift */; };
 		B0D7E0021FED79650016851F /* StreamBodyPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D7E0011FED79650016851F /* StreamBodyPlugin.swift */; };
 		B0D7E0041FED79650016851F /* BridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D7E0031FED79650016851F /* BridgeViewController.swift */; };
+		F12200021FED79650016851F /* FileSavePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12200011FED79650016851F /* FileSavePlugin.swift */; };
+		F12200041FED79650016851F /* FileSavePayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12200031FED79650016851F /* FileSavePayload.swift */; };
+		F12200051FED79650016851F /* FileSavePayload.swift in Test Sources */ = {isa = PBXBuildFile; fileRef = F12200031FED79650016851F /* FileSavePayload.swift */; };
+		F12200071FED79650016851F /* FileSavePayloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12200061FED79650016851F /* FileSavePayloadTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -34,6 +38,9 @@
 		A11F11E00000000000000001 /* BindFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BindFlowTests.swift; sourceTree = "<group>"; };
 		B0D7E0011FED79650016851F /* StreamBodyPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamBodyPlugin.swift; sourceTree = "<group>"; };
 		B0D7E0031FED79650016851F /* BridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeViewController.swift; sourceTree = "<group>"; };
+		F12200011FED79650016851F /* FileSavePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSavePlugin.swift; sourceTree = "<group>"; };
+		F12200031FED79650016851F /* FileSavePayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSavePayload.swift; sourceTree = "<group>"; };
+		F12200061FED79650016851F /* FileSavePayloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSavePayloadTests.swift; sourceTree = "<group>"; };
 		A11F11E00000000000000002 /* AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -82,6 +89,8 @@
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				B0D7E0031FED79650016851F /* BridgeViewController.swift */,
 				B0D7E0011FED79650016851F /* StreamBodyPlugin.swift */,
+				F12200011FED79650016851F /* FileSavePlugin.swift */,
+				F12200031FED79650016851F /* FileSavePayload.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -96,6 +105,7 @@
 			isa = PBXGroup;
 			children = (
 				A11F11E00000000000000001 /* BindFlowTests.swift */,
+				F12200061FED79650016851F /* FileSavePayloadTests.swift */,
 			);
 			path = AppUITests;
 			sourceTree = "<group>";
@@ -216,6 +226,8 @@
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				B0D7E0021FED79650016851F /* StreamBodyPlugin.swift in Sources */,
+				F12200021FED79650016851F /* FileSavePlugin.swift in Sources */,
+				F12200041FED79650016851F /* FileSavePayload.swift in Sources */,
 				B0D7E0041FED79650016851F /* BridgeViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -225,6 +237,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				A11F11E00000000000000003 /* BindFlowTests.swift in Sources */,
+				F12200051FED79650016851F /* FileSavePayload.swift in Test Sources */,
+				F12200071FED79650016851F /* FileSavePayloadTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

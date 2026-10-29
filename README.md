@@ -689,8 +689,10 @@ end-to-end tests run on and the fastest way to see the UI work.
    **Outputs / 产出物** opens this conversation's PC workspace tree. Folders
    fold, search narrows the list, and a tap previews text, images or PDFs on
    the phone. HTML and SVG show their source text, not an executable page.
-   Other files can be downloaded after a bounded read; large files show a
-   limit rather than silently truncating.
+   Download in the Android/iOS app opens the system save/export picker and
+   preserves the original file bytes; cancelling leaves the preview open, and
+   failed saves can be retried. Browsers use their download link. Large files
+   show a limit rather than silently truncating.
    until that conversation arrives the body
    shows a loading status, not a blank screen. The transcript is a short tail, not the
    whole turn. The composer matches the PC: a model, a thinking level, and a

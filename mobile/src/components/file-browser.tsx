@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { TextFilePreview } from "@/components/text-file-preview"
+import { FileDownload } from "@/components/file-download"
 import { ChevronDown, ChevronLeft, ChevronRight, FileText, Folder, Loader2, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -9,7 +10,7 @@ import type { RemoteLink } from "@/lib/link"
 import { listWorkspaceFiles, maxPhoneFileBytes, previewKind, readWorkspaceFile, RemoteFileError } from "@/lib/remote-files"
 import type { WorkspaceFile } from "@/lib/rpc"
 
-type LoadedFile = { url: string; kind: ReturnType<typeof previewKind>; text: string }
+type LoadedFile = { url: string; kind: ReturnType<typeof previewKind>; text: string; bytes: Uint8Array; mime: string }
 
 function fileSize(size: number): string {
   if (size < 1024) return `${size} B`
@@ -75,7 +76,7 @@ export function FileBrowser({ link, threadId, onClose }: {
       const safeMime = kind === "image" || kind === "pdf" ? mime : "application/octet-stream"
       url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: safeMime }))
       const text = kind === "text" ? new TextDecoder().decode(bytes) : ""
-      setFile({ url, kind, text })
+      setFile({ url, kind, text, bytes, mime })
     }).catch((cause: unknown) => {
       if (active) setFileError(fileFailure(cause))
     }).finally(() => {
@@ -132,7 +133,7 @@ export function FileBrowser({ link, threadId, onClose }: {
           {file?.kind === "image" ? <img src={file.url} alt={selected.name} className="max-h-full max-w-full self-center object-contain" /> : null}
           {file?.kind === "pdf" ? <iframe src={file.url} title={selected.name} sandbox="allow-scripts" className="min-h-0 w-full flex-1 border-0" /> : null}
           {file?.kind === "download" ? <p className="text-sm text-muted-foreground">{t("files.unavailable")}</p> : null}
-          {file ? <a href={file.url} download={selected.name} className="mt-4 self-start text-sm text-primary underline">{t("files.download")}</a> : null}
+          {file ? <FileDownload key={file.url} name={selected.name} url={file.url} bytes={file.bytes} mime={file.mime} /> : null}
         </section>
       ) : (
         <section className="flex min-h-0 flex-1 flex-col">
