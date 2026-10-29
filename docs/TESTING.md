@@ -230,15 +230,18 @@ keep their original text assertions after explicitly opening the thought.
 
 `mobile/e2e/reasoning-fold.spec.ts` exercises the packaged phone flow in Chromium
 and the iPhone WebKit project. The existing direct-chat wire/reload and generation
-interruption cases also open the second disclosure and retain their original
-reasoning, request-count and recovery assertions. A live outer ticker may contain
-the last reasoning line: inspect the `phone-thought` body and the inner button
+interruption cases retain their original reasoning, request-count and recovery
+assertions. Reasoning-only groups have no `work-fold`; their one Thought control
+starts closed in live and reopened history. Groups containing tools retain the
+outer summary and independent thought controls. A live mixed-group ticker may
+contain the last reasoning line: inspect the `phone-thought` body and its button
 state, rather than asserting that no matching text exists anywhere on screen.
 
 Native entry points are `ReasoningFoldTest` in the Android instrumentation tree
 and `mobile/e2e/ios-reasoning-fold.swift` with `scripts/ios-layout-fixture.py`.
 Use one source-identified public-resource bundle for both private native builds,
-real taps to open the process row and then the thought, and actual images plus
+real taps to open the thought directly for `history=reasoning-only`, and to open
+the process row then the thought for the mixed walkthrough, with actual images plus
 read-only DOM/AX evidence for closed/open/closed states. Preserve package hashes,
 command exit status and cleanup of only the owned device. Derived Simulator UI
 acceptance is not installation of a signed TestFlight IPA or future release-package
@@ -250,6 +253,13 @@ are mode `0600` in the target app's internal files; collect them with debug
 `run-as` and verify the archive and image bytes rather than relying on `adb`'s
 exit status. The bounded passive frame samples retain original images and state:
 pixel stability alone can still select an old frame, so review each phase.
+For the reasoning-only active-turn fixture, the header running indicator may
+animate independently of the transcript. Its Android sampler retains at least
+four natural full-screen frames over one second within the original three-second
+budget and records whether whole-frame stability was observed. Those samples
+require explicit visual acceptance alongside the actual closed/open/closed
+interaction and DOM/AX evidence; collecting them never accepts the method by
+itself. The mixed completed-work fixture keeps its full-frame stability gate.
 For iOS, preserve the common web resources with `IOS_LAYOUT_PRESERVE_PUBLIC=1`,
 set `IOS_LAYOUT_LOCALE=en|zh`, and select only the matching
 `testEnglishReasoningRequiresItsOwnToggle` or

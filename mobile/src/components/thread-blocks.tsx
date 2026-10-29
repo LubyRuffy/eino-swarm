@@ -1,5 +1,5 @@
 import { GenerationNotice } from "./generation-notice"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ChevronRight, Loader2 } from "lucide-react"
 
 import { PhoneMarkdown } from "@/components/markdown"
@@ -314,13 +314,19 @@ function PlanningTail() {
 }
 
 function WorkFold({ blocks, live }: { blocks: CompactBlock[]; live: boolean }) {
-  const [open, setOpen] = useState(false)
+  const hasTools = blocks.some((block) => block.kind === "tool")
+  const [open, setOpen] = useState(!hasTools)
+  // A thought already has its own disclosure. Keep its mounted identity when
+  // tools join, leave, or rejoin instead of adding a second thinking-only fold.
+  useEffect(() => {
+    if (!hasTools) setOpen(true)
+  }, [hasTools])
   const frame = phoneWorkTicker(blocks, live)
   const failed = blocks.some((b) => b.failed)
   const label = frame ? formatPhoneTicker(frame) : foldLabel(blocks)
   return (
     <div className="min-w-0 max-w-full">
-      <button
+      {hasTools ? <button
         type="button"
         data-testid="work-fold"
         className={cn(
@@ -335,9 +341,9 @@ function WorkFold({ blocks, live }: { blocks: CompactBlock[]; live: boolean }) {
           className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")}
         />
         <span className="min-w-0 truncate">{label}</span>
-      </button>
-      {open ? (
-        <div className="mt-1 flex flex-col gap-1 pl-4">
+      </button> : null}
+      {!hasTools || open ? (
+        <div className={cn("flex flex-col gap-1", hasTools && "mt-1 pl-4")}>
           {blocks.map((b) => {
             const node = renderBlock(b)
             if (!node) return null

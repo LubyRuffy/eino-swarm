@@ -340,8 +340,9 @@ describe("thread blocks", () => {
       { id: "a-old", kind: "answer", text: "landed" },
       { id: "d-old", kind: "turn_end", text: "2026-10-08T01:01:02Z" },
     ]} />)
-    expect(screen.getByTestId("work-fold")).toHaveTextContent("Thought")
-    expect(screen.getByTestId("work-fold")).not.toHaveTextContent("Planning next moves")
+    expect(screen.queryByTestId("work-fold")).not.toBeInTheDocument()
+    expect(screen.getByTestId("phone-thought-toggle")).toHaveTextContent("Thought")
+    expect(screen.getByTestId("phone-thought-toggle")).not.toHaveTextContent("Planning next moves")
     expect(screen.queryByTestId("planning-tail")).not.toBeInTheDocument()
   })
 })

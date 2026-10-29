@@ -133,7 +133,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-006 Phone remote protocol
 
-- 手机过程展示（`F-220`、`F-222`、`F-223`、`F-230`）：一级过程展开只显示条目，每条思考正文由默认收起的自身控件独立管理；单项与多项都须显式打开思考正文。正文保留完整原文，同一身份的实时追加和完成不改变用户的开合选择；不同思考身份不共享状态，外层关闭卸载后重新打开按默认收起。一级活动摘要可以显示既有末行预览，不能据该摘要把正文判作已展开；回答和工具折叠语义不变。此条只改变手机展示，不改变事件、Pairlink 或 PC 的 `C-022`。证据：`mobile/src/components/thought.tsx`、`mobile/src/components/thread-blocks.tsx`、`mobile/src/components/client-groups.tsx`、`mobile/src/components/thread-blocks-reasoning.test.tsx`、`mobile/e2e/reasoning-fold.spec.ts`；来源：Issue #118。
+- 手机过程展示（`F-220`、`F-222`、`F-223`、`F-230`）：主管／子 Agent／直连聊天的纯思考组不增加一级过程聚合或活动末行预览，直接显示各自默认收起的思考控件；含工具的组保留一级聚合，展开只显示条目，每条思考正文仍由自身控件独立管理。单项与多项都须显式打开思考正文。正文保留完整原文，同一身份的实时追加和完成不改变用户的开合选择；不同思考身份不共享状态，外层关闭卸载后重新打开按默认收起。含工具的一级活动摘要可以显示既有末行预览，不能据该摘要把正文判作已展开；纯思考组加入或移除工具时，同一已挂载思考的开合选择保持；回答和工具折叠语义不变。Clients 保留既有任务聚合，其思考条目仍复用默认收起的自身控件。此条只改变手机展示，不改变事件、Pairlink 或 PC 的 `C-022`。证据：`mobile/src/components/thought.tsx`、`mobile/src/components/thread-blocks.tsx`、`mobile/src/components/client-groups.tsx`、`mobile/src/components/thread-blocks-reasoning.test.tsx`、`mobile/e2e/reasoning-fold.spec.ts`；来源：Issue #118、#129。
 
 - 暂停目标的手机 send 保留 capped／blocked／idle 和连续预算，答完不启动目标下一轮；只有显式 `resume_goal` 按 `C-009` 恢复。协议操作名与载荷不变，UI 保留暂停投影和恢复操作。关联功能：`F-220`；证据：`internal/server/goal_pause_integration_test.go`、`internal/remote/rpc.go`；变更类型：Changed / Fixed。
 

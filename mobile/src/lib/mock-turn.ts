@@ -30,3 +30,15 @@ export function scriptedTurn(prompt: string): Step[] {
     { kind: "done" },
   ]
 }
+
+/** Isolates the phone's reasoning disclosure from its tool aggregation. */
+export function reasoningOnlyTurn(running: boolean): Step[] {
+  return [
+    // A ready/history snapshot carries durable events, not seq-zero live deltas.
+    { kind: "reasoning", agentID: "manager", text: "Reading the current shape before touching it." },
+    ...(running ? [] : [
+      { kind: "agent_message", agentID: "manager", text: "Here is what changed:" },
+      { kind: "done", agentID: "manager" },
+    ]),
+  ]
+}

@@ -44,6 +44,10 @@ for an update. Closing or pressing Back dismisses the sheet before leaving the
 inbox. Reopening reloads the PC values, including after an uncertain save.
 **Menu → Models** configures phone-direct providers separately.
 
+A reasoning-only group has one **Thought / 思考** control per entry, initially
+closed. One tap reveals its complete text; no extra activity-summary fold sits
+above it. Groups with tools retain their compact work summary.
+
 The phone is a compact screen on the same conversation as the desktop: same
 event kinds and seq (`watch` / `unwatch` / `log`), clipped bodies so a frame
 stays under 64KiB. The initial wire snapshot is the live edge on the `watch` RPC

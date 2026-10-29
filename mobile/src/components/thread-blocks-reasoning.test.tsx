@@ -7,6 +7,56 @@ import type { CompactBlock } from "@/lib/transcript"
 import { renderBlock, ThreadLog } from "./thread-blocks"
 
 describe("phone reasoning disclosure", () => {
+
+  it("shows only one localized disclosure for live and replay reasoning without tools", () => {
+    for (const locale of ["en", "zh"] as const) {
+      setLocale(locale)
+      for (const running of [false, true]) {
+        const text = "Review the evidence.\nConsider the remaining condition."
+        const { unmount } = render(<ThreadLog running={running} blocks={[
+          { id: "only-thought", kind: "reasoning", text, streaming: running },
+        ]} />)
+        expect(screen.queryByTestId("work-fold")).not.toBeInTheDocument()
+        const toggle = screen.getByTestId("phone-thought-toggle")
+        expect(toggle).toHaveTextContent(locale === "en" ? "Thought" : "思考")
+        expect(toggle).toHaveAttribute("aria-expanded", "false")
+        expect(screen.queryByText("Consider the remaining condition.")).not.toBeInTheDocument()
+        fireEvent.click(toggle)
+        expect(screen.getByTestId("phone-thought").textContent).toBe(text)
+        unmount()
+      }
+    }
+  })
+
+  it("retains the open reasoning when a first tool joins its live group", () => {
+    setLocale("en")
+    const thought: CompactBlock = { id: "stable-thought", kind: "reasoning", text: "Current analysis", streaming: true }
+    const { rerender } = render(<ThreadLog running blocks={[thought]} />)
+    fireEvent.click(screen.getByTestId("phone-thought-toggle"))
+    const original = screen.getByTestId("phone-thought-toggle")
+    rerender(<ThreadLog running blocks={[thought, { id: "read", kind: "tool", toolName: "read", pending: true, text: "" }]} />)
+    expect(screen.getByTestId("work-fold")).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByTestId("phone-thought-toggle")).toBe(original)
+    expect(original).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByTestId("phone-thought")).toHaveTextContent("Current analysis")
+  })
+
+  it("keeps a reasoning choice when tools leave and later rejoin a closed group", () => {
+    setLocale("en")
+    const thought: CompactBlock = { id: "retained", kind: "reasoning", text: "Retained analysis" }
+    const tool: CompactBlock = { id: "tool", kind: "tool", toolName: "read", text: "Read output" }
+    const { rerender } = render(<ThreadLog blocks={[thought, tool]} />)
+    expect(screen.getByTestId("work-fold")).toHaveAttribute("aria-expanded", "false")
+    rerender(<ThreadLog blocks={[thought]} />)
+    expect(screen.queryByTestId("work-fold")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTestId("phone-thought-toggle"))
+    const original = screen.getByTestId("phone-thought-toggle")
+    rerender(<ThreadLog blocks={[thought, tool]} />)
+    expect(screen.getByTestId("work-fold")).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByTestId("phone-thought-toggle")).toBe(original)
+    expect(original).toHaveAttribute("aria-expanded", "true")
+  })
+
   it("keeps reasoning bodies closed after opening a live or replay work group", () => {
     setLocale("en")
     for (const running of [false, true]) {
@@ -49,7 +99,7 @@ describe("phone reasoning disclosure", () => {
         { id: "same-thought", kind: "reasoning", text, streaming },
       ]
       const { rerender, unmount } = render(<ThreadLog running blocks={blocks("First observation", true)} />)
-      fireEvent.click(screen.getByTestId("work-fold"))
+      expect(screen.queryByTestId("work-fold")).not.toBeInTheDocument()
       fireEvent.click(screen.getByTestId("phone-thought-toggle"))
       if (!open) fireEvent.click(screen.getByTestId("phone-thought-toggle"))
 
@@ -59,7 +109,7 @@ describe("phone reasoning disclosure", () => {
       if (open) expect(screen.getByTestId("phone-thought")).toHaveTextContent("plus another condition")
 
       rerender(<ThreadLog blocks={blocks("Complete reasoning retained after completion", false)} />)
-      expect(screen.getByTestId("work-fold")).toHaveAttribute("aria-expanded", "true")
+      expect(screen.queryByTestId("work-fold")).not.toBeInTheDocument()
       expect(screen.getByTestId("phone-thought-toggle")).toHaveAttribute("aria-expanded", String(open))
       expect(screen.queryAllByTestId("phone-thought")).toHaveLength(open ? 1 : 0)
       if (open) expect(screen.getByTestId("phone-thought").textContent).toBe("Complete reasoning retained after completion")
@@ -74,7 +124,7 @@ describe("phone reasoning disclosure", () => {
       { id: "second", kind: "reasoning", text: "Second analysis" },
     ]
     const { rerender } = render(<ThreadLog blocks={initial} />)
-    fireEvent.click(screen.getByTestId("work-fold"))
+    expect(screen.queryByTestId("work-fold")).not.toBeInTheDocument()
     const thoughts = screen.getAllByTestId("phone-thought-toggle")
     thoughts.forEach((thought) => expect(thought).toHaveAttribute("aria-expanded", "false"))
     fireEvent.click(thoughts[0])
@@ -108,11 +158,10 @@ describe("phone reasoning disclosure", () => {
       </div>
     </>)
     expect(screen.getByText("The final answer stays visible.")).toBeVisible()
-    expect(screen.getAllByTestId("work-fold")).toHaveLength(1)
+    expect(screen.queryByTestId("work-fold")).not.toBeInTheDocument()
     const tool = within(screen.getByTestId("independent-tool"))
     const toolToggle = tool.getByRole("button")
     expect(toolToggle).toHaveAttribute("aria-expanded", "false")
-    fireEvent.click(screen.getByTestId("work-fold"))
     expect(screen.getByTestId("phone-thought-toggle")).toHaveAttribute("aria-expanded", "false")
     expect(screen.queryByTestId("phone-thought")).not.toBeInTheDocument()
     expect(screen.getByText("The final answer stays visible.")).toBeVisible()
