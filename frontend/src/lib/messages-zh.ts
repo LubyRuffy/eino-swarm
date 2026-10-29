@@ -98,6 +98,9 @@ export const zh: { [K in keyof typeof en]: string } = {
   "projects.newIn": "在 {name} 中新建会话",
   "projects.options": "{name} 的项目选项",
   "projects.viewSkills": "查看技能",
+  "projects.summarizeHistory": "提炼项目历史",
+  "projects.historyTitle": "项目历史提炼",
+  "projects.historyPrompt": "阅读当前项目的原始讨论，提炼需求和决定，区分历史记录与建议，并结合原文证据提出下一步方案。保留后续纠正、排除项和未知信息。",
 
   "palette.placeholder": "搜索会话，或输入命令…",
   "palette.empty": "没有匹配项。",
@@ -376,6 +379,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "tool.noOutput": "（无输出）",
   "tool.emptyFile": "（空文件）",
   "tool.diffMore": "还有 {n} 行",
+  "tool.historySchema": "查看历史数据结构",
 
   "status.unread": "已完成，未读",
   "sidebar.unreadOne": "{count} 个已完成未读任务",

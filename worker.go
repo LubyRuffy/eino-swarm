@@ -22,6 +22,17 @@ func (r *Registry) workerInstruction(task string) string {
 	return p + "\n\n" + task
 }
 
+// Host-owned durable identities sometimes need to reach worker tools. Keep
+// that value transport explicit; inheriting the full manager context would
+// also carry its model/role/accounting state and shorter execution lifetime.
+func (r *Registry) workerContext(parent context.Context) context.Context {
+	detached := context.Background()
+	if r.WorkerContextValues != nil {
+		detached = context.WithoutCancel(r.WorkerContextValues(parent, detached))
+	}
+	return detached
+}
+
 // startWorker runs h's goroutine. Spawn and resume both land here so a
 // continued worker does not mint a second id — the roster row is the identity.
 func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction string,
@@ -34,7 +45,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 	// handoff cancels the manager's context; tying the worker to that context
 	// would kill in-flight work the next turn still needs. Handle.Cancel /
 	// Cleanup / Close still stop them.
-	runCtx, cancel := context.WithCancel(context.Background())
+	runCtx, cancel := context.WithCancel(r.workerContext(ctx))
 	watchCtx, watchCancel := context.WithTimeout(runCtx, timeout)
 	h.mu.Lock()
 	h.cancel = cancel

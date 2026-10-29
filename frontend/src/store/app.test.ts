@@ -66,6 +66,26 @@ beforeEach(() => {
 })
 
 describe("send", () => {
+  it("keeps an explicitly titled project report out of automatic naming", async () => {
+    const create = vi.spyOn(api, "createThread")
+    try {
+      await useApp.getState().newThread("pj_1", undefined, "History report")
+      expect(create).toHaveBeenCalledWith("History report", undefined, "pj_1")
+    } finally { create.mockRestore() }
+  })
+
+  it("sends a source report as an explicit turn instead of answering or queuing", async () => {
+    useApp.setState({ activeId: "th_old", status: { running: true, awaiting_answer: true } })
+    const start = vi.spyOn(api, "startTurn")
+    try {
+      expect(await useApp.getState().send("Review original records", undefined, { threadId: "th_old", historyReport: true })).toBe(true)
+      expect(start).toHaveBeenCalledWith("th_old", "Review original records", undefined, undefined, undefined, true)
+      expect(fake.answers).toEqual([])
+      expect(fake.enqueued).toEqual([])
+      expect(fake.steers).toEqual([])
+    } finally { start.mockRestore() }
+  })
+
   it("creates a conversation when there is none", async () => {
     await useApp.getState().send("do the thing")
     expect(fake.steers).toEqual([{ id: "th_new_1", text: "do the thing" }])

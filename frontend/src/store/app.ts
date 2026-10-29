@@ -120,7 +120,7 @@ export interface AppState extends ScheduleSlice {
   /** Keep paging until this turn's user row is in the transcript. */
   loadUntilTurn: (turnId: string, clientHeight?: number) => Promise<boolean>
   /** Lands in projectId. Omit it and the conversation sits in Recents. */
-  newThread: (projectId?: string, draftKey?: string) => Promise<string | undefined>
+  newThread: (projectId?: string, draftKey?: string, title?: string) => Promise<string | undefined>
   /** Highlights a project and loads its memory. Does not filter the list. */
   selectProject: (projectId?: string) => Promise<void>
   pinThread: (id: string, pinned: boolean) => Promise<void>
@@ -128,7 +128,7 @@ export interface AppState extends ScheduleSlice {
   renameThread: (id: string, title: string) => Promise<void>
   deleteThread: (id: string) => Promise<void>
   reorderThreads: (ids: string[]) => Promise<void>
-  send: (text: string, images?: SendImage[], opts?: { steer?: boolean; command?: "goal" | "plan"; files?: string[]; fromEventSeq?: number; threadId?: string }) => Promise<boolean>
+  send: (text: string, images?: SendImage[], opts?: { steer?: boolean; command?: "goal" | "plan"; files?: string[]; fromEventSeq?: number; threadId?: string; historyReport?: boolean }) => Promise<boolean>
   setGoal: (text: string, threadId?: string) => Promise<boolean>
   setPlan: (text: string, threadId?: string) => Promise<boolean>
   savePlan: (text: string) => Promise<void>
@@ -402,7 +402,7 @@ export const useApp = create<AppState>((set, get) => ({
   loadUntilTurn: async (turnId, clientHeight) =>
     loadUntilTurnHistory(get, turnId, clientHeight),
 
-  newThread: async (projectId, draftKey) => {
+  newThread: async (projectId, draftKey, title) => {
     set({ creatingThread: true })
     creating = (async () => {
       try {
@@ -416,7 +416,7 @@ export const useApp = create<AppState>((set, get) => ({
             threads: setThreadRunning(s.threads, keepId, true, keepAsking),
           }))
         }
-        const thread = await api.createThread(undefined, undefined, projectId)
+        const thread = await api.createThread(title, undefined, projectId)
         // The recovery attribution must not advertise a new empty scope
         // while the only durable copy still belongs to the home composer.
         if (draftKey) await composerDraftSession(draftKey).transferTo(composerDraftSession(`thread:${thread.id}`))
@@ -522,7 +522,8 @@ export const useApp = create<AppState>((set, get) => ({
         error: undefined,
       }))
       try {
-        await api.startTurn(id, text, images, opts.files, from)
+        if (opts.historyReport) await api.startTurn(id, text, images, opts.files, from, true)
+        else await api.startTurn(id, text, images, opts.files, from)
         void get().refreshFollowups()
         void get().refreshThreads()
         return true
@@ -547,7 +548,7 @@ export const useApp = create<AppState>((set, get) => ({
       // A live question is not a follow-up: Enter is Other for every
       // unanswered prompt. Queueing here would wait for a turn that cannot
       // finish until this answer lands.
-      if (!opts?.command && status.awaiting_answer) {
+      if (!opts?.command && !opts?.historyReport && status.awaiting_answer) {
         if (images?.length || opts?.files?.length) {
           set({ error: "Attachments cannot be sent as an answer to a pending question. Answer the question with text first; the draft was kept." })
           return false
@@ -560,6 +561,7 @@ export const useApp = create<AppState>((set, get) => ({
       // inject now rather than being dropped on the floor.
       const queue =
         !opts?.command &&
+        !opts?.historyReport &&
         !opts?.steer &&
         status.running &&
         !(images && images.length > 0) &&
@@ -591,9 +593,11 @@ export const useApp = create<AppState>((set, get) => ({
       // Event sequences belong to one conversation, including after navigation.
       const sentSeq = get().activeId === id ? get().transcript.lastSeq : 0
       // Plan entry must reject a newly busy target, while goals may update its live turn.
-      const accepted = opts?.command === "plan"
-        ? { steered: false, turn: await api.startTurn(id, text, images, opts?.files) }
-        : await api.steer(id, text, images, opts?.files)
+      const accepted = opts?.historyReport
+        ? { steered: false, turn: await api.startTurn(id, text, images, opts?.files, undefined, true) }
+        : opts?.command === "plan"
+          ? { steered: false, turn: await api.startTurn(id, text, images, opts?.files) }
+          : await api.steer(id, text, images, opts?.files)
       set((s) => {
         // The acknowledgement may arrive after this turn's terminal event.
         if (s.activeId !== id || (!s.status.running &&

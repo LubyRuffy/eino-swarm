@@ -17,6 +17,7 @@ type preparedScheduleReport struct {
 	quiet          bool
 	events         []store.Event
 	committedRearm []string
+	historyReport  *pendingHistoryReport
 }
 
 func (e *Engine) reportScheduleContextJSON(ctx context.Context, threadID, turnID, args string) (string, error) {
@@ -48,7 +49,11 @@ func (e *Engine) reportScheduleContextJSON(ctx context.Context, threadID, turnID
 		evidence, failure = e.verifyScheduleAnswer(ctx, report.turn, []string{report.findings}, report.committedRearm...)
 	}
 	if failure == nil {
-		failure = e.admitScheduleAnswer(threadID, turnID, evidence, report.events)
+		var history *store.HistoryEvidence
+		if report.historyReport != nil {
+			history = &report.historyReport.Evidence
+		}
+		failure = e.admitScheduleAnswerWithHistory(threadID, turnID, evidence, report.events, history)
 	}
 	if failure != nil {
 		return reportAdmissionFailure(nil, failure), nil
@@ -103,6 +108,21 @@ func (e *Engine) prepareScheduleReport(ctx context.Context, threadID, turnID, ar
 	}
 	findings := strings.TrimSpace(a.Findings)
 	quiet := findings == ""
+	var historyReport *pendingHistoryReport
+	if !quiet {
+		var scope *string
+		if buffer != nil {
+			scope = buffer.historyScope
+		}
+		var failure *scheduleAnswerError
+		historyReport, failure = e.prepareHistoryReport(ctx, turn, scope, findings)
+		if failure != nil {
+			return nil, reportAdmissionFailure(buffer, failure)
+		}
+		if historyReport != nil {
+			findings = historyReport.Rendered
+		}
+	}
 	scope, err := e.wakeGoalScope(threadID, turnID)
 	if err != nil {
 		return nil, goalScheduleFailure(err)
@@ -155,7 +175,7 @@ func (e *Engine) prepareScheduleReport(ctx context.Context, threadID, turnID, ar
 		committedRearm = append(committedRearm, sch.ID)
 	}
 
-	report := &preparedScheduleReport{turn: turn, findings: findings, quiet: quiet, committedRearm: committedRearm,
+	report := &preparedScheduleReport{turn: turn, findings: findings, quiet: quiet, committedRearm: committedRearm, historyReport: historyReport,
 		events: []store.Event{{ThreadID: threadID, TurnID: turnID, Kind: KindScheduleReport,
 			AgentID: swarm.DefaultManagerID, Text: string(payload)}},
 	}
@@ -166,7 +186,7 @@ func (e *Engine) prepareScheduleReport(ctx context.Context, threadID, turnID, ar
 	// report. Unverified findings remain solely in the private candidate.
 	receipt, _ := json.Marshal(map[string]any{"ok": true, "quiet": quiet, "report_pending": true})
 	candidate := pendingScheduleAnswer{AnswerID: candidateID, Events: report.events,
-		CommittedRearm: committedRearm, ToolCallID: callID, ToolResult: string(receipt)}
+		CommittedRearm: committedRearm, ToolCallID: callID, ToolResult: string(receipt), HistoryReport: historyReport}
 	if findings != "" {
 		candidate.Text = []string{findings}
 	}
@@ -202,6 +222,10 @@ func reportAdmissionFailure(buffer *managerAnswerBuffer, failure *scheduleAnswer
 	if buffer != nil {
 		buffer.reportStatus(failure)
 	}
-	body, _ := json.Marshal(map[string]any{"ok": false, "code": "schedule_claim_unverified", "error": failure.Error()})
+	code := "schedule_claim_unverified"
+	if strings.HasPrefix(failure.Code, "history_") {
+		code = failure.Code
+	}
+	body, _ := json.Marshal(map[string]any{"ok": false, "code": code, "error": failure.Error()})
 	return string(body)
 }

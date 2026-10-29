@@ -56,6 +56,7 @@ export function ProjectList({
   onToggle,
   onNew,
   onNewConversation,
+  onHistoryReport,
   onEdit,
   onDelete,
   onOpenSkill,
@@ -81,6 +82,7 @@ export function ProjectList({
   onToggle: (id: string) => void
   onNew: () => void
   onNewConversation: (project: Project) => void
+  onHistoryReport?: (project: Project) => void
   onEdit: (project: Project) => void
   onDelete: (project: Project) => void
   onOpenSkill: (project: Project, skill?: SkillInfo) => void
@@ -128,6 +130,7 @@ export function ProjectList({
             onSelect={onSelect}
             onToggle={onToggle}
             onNewConversation={onNewConversation}
+            onHistoryReport={onHistoryReport}
             onEdit={onEdit}
             onDelete={onDelete}
             onOpenSkill={onOpenSkill}
@@ -161,6 +164,7 @@ function ProjectRow({
   onSelect,
   onToggle,
   onNewConversation,
+  onHistoryReport,
   onEdit,
   onDelete,
   onOpenSkill,
@@ -181,6 +185,7 @@ function ProjectRow({
   onSelect: (id: string) => void
   onToggle: (id: string) => void
   onNewConversation: (project: Project) => void
+  onHistoryReport?: (project: Project) => void
   onEdit: (project: Project) => void
   onDelete: (project: Project) => void
   onOpenSkill: (project: Project, skill?: SkillInfo) => void
@@ -280,6 +285,12 @@ function ProjectRow({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            {onHistoryReport ? (
+              <DropdownMenuItem onSelect={() => onHistoryReport(project)}>
+                <BookOpen />
+                {t("projects.summarizeHistory")}
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem onSelect={() => onOpenSkill(project)}>
               <BookOpen />
               {t("projects.viewSkills")}

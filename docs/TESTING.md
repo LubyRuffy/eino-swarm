@@ -1,5 +1,98 @@
 # Testing
 
+## Original project-history SQL and source reports (`F-410`, `C-036`)
+
+`internal/history` uses real temporary WAL databases for single-statement
+admission, scalar precision, complete-row budgets, private-state/schema/view
+bypass refusal and cancellation. Project tests omit WHERE, alter parameters,
+use aliases/CTEs/UNION and concurrently change membership; all nine raw tables
+must retain actual ownership scope. Missing bound projects must fail rather
+than expose global history. Standalone scope remains separately tested.
+The pinned driver requires the internal ExecContext row collector to retain
+cancellation during scanning, including an infinite recursive aggregate and
+subsequent writer progress.
+
+`history_tool_http_test.go` and `history_worker_http_test.go` inspect actual
+Registry/ADK/HTTP model input and returned idle-peer records without injecting
+expected peer text. Read-guard tests require the original trusted turn owner,
+persist the start before reading, and verify storage/cancellation refusal
+before any source bytes or follow-on model request. Planning, Memory-off,
+integer precision, repairable errors and microcompaction have targeted cases.
+
+Source-report tests cover strict JSON/duplicate keys, message/event identity,
+full empty/NUL/negative/conditional bodies, actual role/source, unexamined
+images, plain-text escaping and the complete rendered budget. Store tests
+revalidate exact sources and recipient project in real answer transactions,
+including external WAL changes, rollback and accepted-receipt idempotence.
+Actual HTTP manager/worker and Responses tests check that free prose and
+unaccepted response content cannot leak into live output, Trace or replay.
+Handoff, Stop/deletion, pending restore and schedule findings use the same
+private answer admission; a correction must not repeat an already completed
+action. Explicit-entry tests cover the durable flag before model input,
+steer/ask/follow-up refusal, slash-command conflicts and report edit inheritance.
+Registry claim/recovery tests require a durable ownership edge before detaching
+or occupying state, retain the original worker read owner across real HTTP
+checks/cold recovery, and contrast an unrelated fresh Registry. Restored running
+and finished-uncollected generations need actual checkpoint/spawn ownership;
+settled archives cannot manufacture inheritance. The corresponding lifecycle
+model check remains separate from those real-boundary regressions.
+Multiple recovered owners need proof through existing single-parent Registry
+edges; missing, foreign, broken or unrelated chains fail before a model starts.
+`restore_snapshot_lock_test.go` interleaves the actual fresh Registry claim and
+generation-interruption notification in a subprocess. The old lock cycle leaves
+its Go timeout stack; the parent's private TMPDIR owns all child fixture data.
+The cache test verifies that claim preparation is read-only while normal startup
+still seeds generation state with one checkpoint lookup and one filtered scan.
+
+```bash
+go test -race -count=1 ./internal/history
+go test -race ./internal/store -run 'TestCanonicalHistory|TestHistory|TestDurableHistory'
+go test -race ./internal/engine -run 'TestHistory|TestProjectHistory|TestOldHistoryQueries|TestDelegatedWorkerQueries|TestExplicitHistory|TestEditingAReport'
+go test -race ./internal/server -run 'TestHTTPHistoryReport|TestHistoryMode'
+cd frontend
+ZWAI_E2E_PROJECT_HISTORY=1 ZWAI_E2E_PORT=18828 \
+ZWAI_E2E_DATA_DIR=/absolute/private/history-data \
+npm run e2e -- --output=/absolute/private/history-output
+```
+
+The opt-in Web cases own a loopback provider and exercise schema → actual SQL →
+raw peer records → host evidence/proposals → tool rows/SSE/Trace/reload. The real
+project-menu entry must create the correct titled conversation, send the flag,
+preserve another composer draft and leave global settings unchanged. SQL write
+refusal and correction remain covered. Each concurrent run needs its own port,
+data and output directories. These cases use scripted offline model responses;
+they establish integration rather than real-model summarization quality or
+native desktop behavior.
+
+For content effect, use the frozen independent synthetic raw sources and rubric
+in [project-history evals](../evals/project-history/README.md). The actual model
+chooses SQL from the same natural request in both original/candidate arms.
+Freeze binary/source/harness/fixture hashes, provider/model and reasoning
+condition before the fixed runs; preserve every failed round and cleanup result.
+Do not retry unchanged runs until green, alter the rubric, or replace a default
+condition's failure with a requested-high result. An application effort field
+is not proof of upstream computation.
+
+Audit source selection and every model-written proposal/title/priority against
+the originals, including conflicting decisions, exclusions, attribution,
+locators and foreign-project interference. Host quotation of a historical
+assistant claim is a cited record, not current-state verification. Merely
+showing all raw records or passing structured JSON checks cannot satisfy the
+semantic task. Citation fidelity does not prove that advice follows from it.
+Source coverage/tool receipts are structural observations; keep semantic verdicts
+independent and leave them unreviewed until the saved answer/Trace is audited.
+Neither offline tests nor a source renderer alone establishes that a configured
+model passes this task. No real user history is seeded or read by the harness.
+
+`binary_test.go` builds a normal non-race reader against empty TEXT/BLOB/NULL
+and NUL-containing originals. The pinned driver's scalar callback has different
+empty-BLOB behavior in that compiler mode; race tests alone did not reveal the
+original panic. The collector transports nonempty prefixed bytes and removes
+the prefix without recovering away a lost row. Web SQL also reads real empty
+source/reasoning/goal fields. The ordinary-worker restart fixture distinguishes
+the exact tool-free session briefing protocol from workers: legitimate prompt
+growth may cross the existing token threshold without restarting a worker.
+
 ## Host verification admission (`F-430`, `C-010`)
 
 `tools/release_host_lease.py` serializes cooperating local release verification

@@ -225,6 +225,12 @@ type Registry struct {
 	// prompt — OS, shell, date — so they do not invent the wrong userland.
 	WorkerPreamble string
 
+	// WorkerContextValues copies explicitly selected host values onto a fresh
+	// detached base before a worker starts. Configure it before the first spawn.
+	// The returned context must be nonnil; its cancellation/deadline is ignored.
+	// Nil preserves the default independent worker context and carries no values.
+	WorkerContextValues func(parent context.Context, detached context.Context) context.Context
+
 	// OnEvent, if set, receives every inner agent event (streamed lifecycle,
 	// tool calls, assistant output) with the spawning role attached.
 	OnEvent func(role, agentID string, ev *adk.AgentEvent)

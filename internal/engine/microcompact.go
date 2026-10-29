@@ -29,7 +29,7 @@ func microCompact(msgs []*schema.Message, keep int) []*schema.Message {
 		if m == nil || m.Role != schema.Tool {
 			continue
 		}
-		if !tools.ReplayableResult(names[i]) {
+		if names[i] != ToolQueryHistory && !tools.ReplayableResult(names[i]) {
 			continue
 		}
 		if strings.TrimSpace(m.Content) == "" || strings.TrimSpace(m.Content) == microcompactPlaceholder {

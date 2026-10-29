@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 
 import { ToolRow } from "./tool-row"
 import type { Block } from "@/lib/transcript"
+import { useApp } from "@/store/app"
 
 function toolBlock(partial: Partial<NonNullable<Block["tool"]>>): Block {
   return {
@@ -28,6 +29,28 @@ const searchHits = JSON.stringify({
 })
 
 describe("ToolRow", () => {
+  it.each([["en", "Inspect history schema"], ["zh", "查看历史数据结构"]] as const)("labels history discovery in %s", (locale, label) => {
+    const previous = useApp.getState().locale
+    useApp.setState({ locale })
+    const rendered = render(<ToolRow block={toolBlock({ name: "query_history", args: "{}", result: '{"ok":true,"tables":[]}' })} />)
+    try {
+      expect(screen.getByRole("button", { name: new RegExp(`query_history.*${label}`) })).toBeInTheDocument()
+    } finally {
+      rendered.unmount()
+      useApp.setState({ locale: previous })
+    }
+  })
+
+  it("marks a refused history query red without discarding its repairable error", () => {
+    render(<ToolRow block={toolBlock({ name: "query_history", args: '{"sql":"DELETE FROM messages"}', result: '{"ok":false,"error":{"code":"query_failed","message":"Only read-only queries are allowed"}}' })} />)
+    const toggle = screen.getByRole("button", { name: /query_history/ })
+    expect(toggle).toHaveAttribute("aria-invalid", "true")
+    expect(toggle).toHaveTextContent("Only read-only queries are allowed")
+    fireEvent.click(toggle)
+    expect(screen.getByRole("alert")).toHaveTextContent("Only read-only queries are allowed")
+    expect(screen.getByTestId("tool-output")).toHaveTextContent('"code":"query_failed"')
+  })
+
   it("keeps a skill patch collapsed and opens its original change after completion", () => {
     const block = toolBlock({
       name: "skill_manage", pending: true,

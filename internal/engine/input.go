@@ -45,6 +45,9 @@ type ImageInput struct {
 type UserInput struct {
 	Text   string
 	Images []ImageInput
+	// HistoryReport explicitly requests a source-bound history answer. Its
+	// durable turn event preserves this choice across restart and compaction.
+	HistoryReport bool
 	// Files are workspace-relative paths of uploads attached to THIS send.
 	// They already live in uploads/; naming them here is what stops the
 	// model treating an older leftover as "the" file.

@@ -52,6 +52,17 @@ func TestMicroCompactLeavesLifecycleAndMemoryResults(t *testing.T) {
 	}
 }
 
+func TestOldHistoryQueriesCanBeRereadAfterMicrocompact(t *testing.T) {
+	msgs := []*schema.Message{
+		{Role: schema.Assistant, ToolCalls: []schema.ToolCall{{ID: "history", Function: schema.FunctionCall{Name: ToolQueryHistory}}}},
+		{Role: schema.Tool, ToolCallID: "history", Content: "original source records"},
+	}
+	got := microCompact(msgs, 0)
+	if got[1].Content != microcompactPlaceholder || msgs[1].Content != "original source records" {
+		t.Fatal("history results must be clearable without changing the durable original source")
+	}
+}
+
 func TestMicroCompactIsANoopWhenNothingIsOld(t *testing.T) {
 	msgs := []*schema.Message{
 		schema.UserMessage("hi"),

@@ -40,12 +40,12 @@ func (s *Store) nextEventSeq(threadID string) (int64, error) {
 
 // The terminal event and its attention watermark commit before broadcasting.
 // A reader can acknowledge the event even while FinishTurn is still pending.
-func (s *Store) appendCompletionEvent(e *Event) error {
+func (s *Store) appendCompletionEvent(db *gorm.DB, e *Event) error {
 	e.Completion = false
 	if !primaryTerminal(e) {
-		return s.db.Create(e).Error
+		return db.Create(e).Error
 	}
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
 		if !e.SuppressCompletion && e.TurnID != "" {
 			var turn Turn
 			err := tx.First(&turn, "id = ? AND thread_id = ?", e.TurnID, e.ThreadID).Error

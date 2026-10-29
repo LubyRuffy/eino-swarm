@@ -80,16 +80,16 @@ func TestParkedWorkerCleanupPrecedesTheNextRegistryClaim(t *testing.T) {
 			idle := make(chan struct{})
 			t.Cleanup(func() { rt.release(cancel, idle, next.ID) })
 			type claim struct {
-				taken    *swarm.Registry
-				occupied bool
+				registry *swarm.Registry
+				reused   bool
 				worker   *swarm.Handle
 				err      error
 			}
 			claimed := make(chan claim, 1)
 			go func() {
-				out := claim{taken: rt.takeParkedRegistry()}
-				out.occupied = rt.occupy(nextReg, cancel, next.ID, idle)
-				if out.occupied {
+				out := claim{}
+				out.registry, out.reused, out.err = rt.claimRegistry(ctx, next, cancel, idle, func() (*swarm.Registry, error) { return nextReg, nil }, nil)
+				if out.err == nil {
 					out.worker, out.err = nextReg.Spawn(ctx, "next-inspector", "inspect the next assigned work", nextReg.ModelBuilder)
 				}
 				claimed <- out
@@ -115,7 +115,7 @@ func TestParkedWorkerCleanupPrecedesTheNextRegistryClaim(t *testing.T) {
 			if premature {
 				t.Fatal("the next registry and worker started before the old global cleanup could be persisted")
 			}
-			if out.taken != nil || !out.occupied || out.err != nil || out.worker == nil {
+			if out.registry != nextReg || out.reused || out.err != nil || out.worker == nil {
 				t.Fatalf("replacement claim=%+v", out)
 			}
 			if !hasKind(t, e, th.ID, KindCleanup) {

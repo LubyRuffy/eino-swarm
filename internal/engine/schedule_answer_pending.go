@@ -16,16 +16,17 @@ import (
 // This payload lives only in the private admission table. It is never an
 // assistant message, public event, compaction input or planned-handoff receipt.
 type pendingScheduleAnswer struct {
-	Version        int               `json:"version"`
-	AnswerID       string            `json:"answer_id"`
-	Text           []string          `json:"text,omitempty"`
-	Events         []store.Event     `json:"events,omitempty"`
-	Final          string            `json:"final,omitempty"`
-	Transcript     []*schema.Message `json:"transcript,omitempty"`
-	MaxIterations  bool              `json:"max_iterations,omitempty"`
-	CommittedRearm []string          `json:"committed_rearm,omitempty"`
-	ToolCallID     string            `json:"tool_call_id,omitempty"`
-	ToolResult     string            `json:"tool_result,omitempty"`
+	Version        int                   `json:"version"`
+	AnswerID       string                `json:"answer_id"`
+	Text           []string              `json:"text,omitempty"`
+	Events         []store.Event         `json:"events,omitempty"`
+	Final          string                `json:"final,omitempty"`
+	Transcript     []*schema.Message     `json:"transcript,omitempty"`
+	MaxIterations  bool                  `json:"max_iterations,omitempty"`
+	CommittedRearm []string              `json:"committed_rearm,omitempty"`
+	ToolCallID     string                `json:"tool_call_id,omitempty"`
+	ToolResult     string                `json:"tool_result,omitempty"`
+	HistoryReport  *pendingHistoryReport `json:"history_report,omitempty"`
 }
 
 const scheduleAnswerDeferredCue = "The runtime deferred read-only verification of an unpublished answer after repeated request failures. That candidate remains private and is not a delivered answer or evidence. Continue the authorized task in this same turn from actual tool receipts and existing workers. Do not rerun completed tools, recreate workers, or repeat scheduling changes to reconstruct the withheld answer. This is not a finding that its claims were false."
@@ -56,7 +57,7 @@ func (e *Engine) savePendingScheduleAnswer(turn *store.Turn, kind, id string, pa
 
 func (b *managerAnswerBuffer) prepare(turn *store.Turn, res swarm.RunResult, runErr error) (*store.PendingScheduleAnswer, *scheduleAnswerError) {
 	b.mu.Lock()
-	payload := pendingScheduleAnswer{AnswerID: b.id, Text: b.textLocked(), Final: res.Final, Transcript: res.Transcript, MaxIterations: isMaxIterations(runErr)}
+	payload := pendingScheduleAnswer{AnswerID: b.id, Text: b.textLocked(), Final: res.Final, Transcript: res.Transcript, MaxIterations: isMaxIterations(runErr), HistoryReport: b.historyReport}
 	for _, note := range b.complete {
 		payload.Events = append(payload.Events, b.acc.event(note, swarm.NotifyAgentMessage.String()))
 	}
@@ -186,12 +187,22 @@ func (rt *runtime) admitPendingScheduleReports(ctx context.Context, turn *store.
 		if failure != nil {
 			return failure
 		}
-		evidence, failure := rt.verifyPendingScheduleAnswer(ctx, turn, row, candidate)
+		if len(candidate.Text) > 0 || candidate.HistoryReport != nil {
+			failure = rt.engine.verifyPendingHistoryAnswer(ctx, turn, candidate)
+		}
+		var evidence []store.Schedule
 		if failure == nil {
-			failure = rt.engine.admitScheduleAnswer(turn.ThreadID, turn.ID, evidence, candidate.Events, row.ID)
+			evidence, failure = rt.verifyPendingScheduleAnswer(ctx, turn, row, candidate)
+		}
+		if failure == nil {
+			var history *store.HistoryEvidence
+			if candidate.HistoryReport != nil {
+				history = &candidate.HistoryReport.Evidence
+			}
+			failure = rt.engine.admitScheduleAnswerWithHistory(turn.ThreadID, turn.ID, evidence, candidate.Events, history, row.ID)
 		}
 		if failure != nil {
-			if failure.Code == "no_matching_schedule" || failure.Code == "schedule_state_changed" || failure.Code == "answer_superseded" {
+			if failure.Code == "no_matching_schedule" || failure.Code == "schedule_state_changed" || failure.Code == "answer_superseded" || isHistoryAnswerCorrection(failure) {
 				if rejected := rt.rejectPendingScheduleAnswer(turn, row); rejected != nil {
 					return rejected
 				}

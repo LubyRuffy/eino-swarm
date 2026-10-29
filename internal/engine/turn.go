@@ -183,6 +183,12 @@ func (rt *runtime) occupy(reg *swarm.Registry, cancel context.CancelFunc, turnID
 	if rt.running {
 		return false
 	}
+	rt.occupyLocked(reg, cancel, turnID, idle)
+	return true
+}
+
+// occupyLocked publishes one already-admitted Registry while rt.mu is held.
+func (rt *runtime) occupyLocked(reg *swarm.Registry, cancel context.CancelFunc, turnID string, idle chan struct{}) {
 	rt.bindWorkerAccountingLocked(reg, turnID)
 	rt.reg, rt.cancel, rt.turnID, rt.startedAt, rt.running, rt.idle = reg, cancel, turnID, time.Now(), true, idle
 	rt.abandoned = false
@@ -191,7 +197,6 @@ func (rt *runtime) occupy(reg *swarm.Registry, cancel context.CancelFunc, turnID
 	rt.acceptedAsk, rt.acceptedContinue = nil, nil
 	rt.userStopped = false
 	rt.planImplement = false
-	return true
 }
 
 func (rt *runtime) waitIdle(d time.Duration) {
@@ -246,8 +251,11 @@ func (e *Engine) wireWorkerSurface(reg *swarm.Registry, toolset *tools.Set, pc *
 	}))
 	workers = append(workers, denyScheduleTools()...)
 	reg.SubAgentTools = workers
-	reg.WorkerPreamble = JoinPromptSections(WorkerEnvironmentPrompt(toolset.WorkspaceDir), pc.workerPreambleTail())
+	reg.WorkerPreamble = JoinPromptSections(WorkerEnvironmentPrompt(toolset.WorkspaceDir), historyPrompt(toolset), pc.workerPreambleTail())
 	reg.ToolOutputBinder = tools.BindExecOutput
+	if reg.WorkerContextValues == nil {
+		reg.WorkerContextValues = historyWorkerContextValues
+	}
 }
 
 // attachHostNotify keeps worker events flowing after RunWith restores a nil
@@ -296,6 +304,11 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 		if err != nil {
 			return nil, err
 		}
+		requested, readErr := e.historyReportRequestAt(threadID, in.FromEventSeq)
+		if readErr != nil {
+			return nil, readErr
+		}
+		in.HistoryReport = in.HistoryReport || requested
 	}
 
 	rt := e.runtimeFor(threadID)
@@ -303,6 +316,9 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 	// command, and a leading /plan owns any trailing /goal in its argument.
 	_, goalCommand := slash.Lookup(in.Text, "goal")
 	_, planCommand := slash.Lookup(in.Text, "plan")
+	if in.HistoryReport && (goalCommand || planCommand) {
+		return nil, fmt.Errorf("history report requests cannot execute goal or plan commands")
+	}
 	if !planCommand {
 		if turn, done, err := e.applySlashGoal(threadID, &in); err != nil {
 			return nil, err
@@ -322,7 +338,7 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 		return nil, err
 	}
 	if in.FromEventSeq == 0 {
-		if !in.ContinueGoal && !in.ImplementPlan && !in.ContinueSchedule && rt.awaitingAnswer() {
+		if !in.HistoryReport && !in.ContinueGoal && !in.ImplementPlan && !in.ContinueSchedule && rt.awaitingAnswer() {
 			if err := e.AnswerTurnText(threadID, in.Text); err != nil {
 				return nil, err
 			}
@@ -369,7 +385,7 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 	if err != nil {
 		return nil, err
 	}
-	toolset, err := tools.Build(context.Background(), e.cfg, e.WorkspaceDir(threadID))
+	toolset, err := e.conversationTools(context.Background(), th)
 	if err != nil {
 		return nil, err
 	}
@@ -420,6 +436,13 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 	}); err != nil {
 		return nil, err
 	}
+	if in.HistoryReport {
+		if err := e.recordHistoryReportRequest(turn); err != nil {
+			_ = e.store.FinishTurn(turn.ID, store.TurnError, "", err.Error())
+			e.finishScheduledRun(turn, store.TurnError, "", err.Error())
+			return nil, err
+		}
+	}
 
 	builder, err := e.pool.ModelBuilder(context.Background(), prov.ID, prov.Model, effort, e.callRecorder(threadID, turn.ID))
 	if err != nil {
@@ -428,29 +451,30 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 		return nil, err
 	}
 
-	reg := rt.takeParkedRegistry()
-	reused := reg != nil
-	if reused {
+	ctx, cancel := context.WithCancel(context.Background())
+	idle := make(chan struct{})
+	var workerPlan *leftoverWorkerPlan
+	reg, reused, err := rt.claimRegistry(ctx, turn, cancel, idle, func() (*swarm.Registry, error) {
+		var prepareErr error
+		workerPlan, prepareErr = rt.prepareLeftoverWorkers(ctx, turn)
+		if prepareErr != nil {
+			return nil, prepareErr
+		}
+		return e.newTurnRegistry(builder, toolset, pc), nil
+	}, func(reg *swarm.Registry) {
 		reg.ModelBuilder = builder
 		e.bindSwarmLimits(reg)
 		e.wireWorkerSurface(reg, toolset, pc)
-	} else {
-		reg = e.newTurnRegistry(builder, toolset, pc)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	idle := make(chan struct{})
-
-	if !rt.occupy(reg, cancel, turn.ID, idle) {
+	})
+	if err != nil {
 		cancel()
-		if reused {
-			rt.parkRegistry(reg)
-		} else {
-			reg.Close()
+		status := store.TurnError
+		if errors.Is(err, ErrBusy) {
+			status = store.TurnCancelled
 		}
-		_ = e.store.FinishTurn(turn.ID, store.TurnCancelled, "", ErrBusy.Error())
-		e.finishScheduledRun(turn, store.TurnCancelled, "", ErrBusy.Error())
-		return nil, ErrBusy
+		_ = e.store.FinishTurn(turn.ID, status, "", err.Error())
+		e.finishScheduledRun(turn, status, "", err.Error())
+		return nil, err
 	}
 	if in.ImplementPlan {
 		rt.mu.Lock()
@@ -467,7 +491,7 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 	}
 
 	messages := history
-	messages = rt.attachLeftoverWorkers(reused, reused || in.ContinueGoal || in.ContinueSchedule, liveWorkers(reg.Progress()), messages)
+	messages = rt.applyLeftoverWorkers(workerPlan, reused, reused || in.ContinueGoal || in.ContinueSchedule, liveWorkers(reg.Progress()), messages)
 	if in.retryWorkers || (!in.ContinueGoal && !in.ContinueSchedule && !in.ImplementPlan) {
 		reg.ResetWorkerTimeouts()
 		rt.resetRestoredWorkerTimeouts()
@@ -489,6 +513,9 @@ func (e *Engine) Steer(threadID, text string) error {
 }
 
 func (e *Engine) SteerInput(threadID string, in UserInput) error {
+	if in.HistoryReport {
+		return fmt.Errorf("history report requests must start an idle turn")
+	}
 	return e.steerInput(threadID, in, true)
 }
 

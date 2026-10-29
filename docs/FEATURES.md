@@ -302,6 +302,10 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-410 Local conversation storage and search
 
+- 原始项目历史提炼：入口：项目菜单“提炼项目历史”，在所选项目新建明确标题的报告会话并保留原草稿；既有会话也可自然语言请求并自主调用 `query_history`。manager／worker 自选 SELECT／WITH，空 SQL 发现 Schema；项目视图自动绑定所属项目，独立会话保留跨项目视图，Memory 关闭及计划模式仍可读。该入口不改变 Full access 的系统权限。关联：`C-036`、`C-008`；实现证据：`frontend/src/App.tsx`、`internal/engine/history_tool.go`、`internal/history/scope.go`；验证：`internal/server/history_report_request_test.go`、`internal/engine/history_tool_http_test.go`、`internal/engine/history_worker_http_test.go`、`frontend/e2e/project-history.spec.ts`。
+
+- 历史原文与建议：显式报告或实际历史读取后，host 依据规范 message／event 引用核验原文及真实归属，完整展示正文、来源、日期和定位；建议与问题另列，计数／区块由 host 生成。原文变化／缺失／越项目／超限时阻断旧答案，复用持久门禁纠正与恢复；建议本身是否成立仍需内容验收，不把原文展示当作语义通过。不会因读取历史而自动保存人工 summary 或写入 Memory。关联：`C-036`；实现：`internal/engine/history_report.go`、`internal/engine/history_answer.go`、`internal/store/history_evidence.go`；验证：`internal/engine/history_report_test.go`、`internal/engine/history_answer_http_test.go`、`internal/engine/history_answer_schedule_test.go`、`internal/engine/history_answer_recovery_http_test.go`、`tools/project_history_eval.py`。
+
 - PC `⌘K` 同时筛选操作和检索会话；会话命中保留服务端排序，语义命中不要求包含原词。请求中、无匹配与请求失败分别显示状态；失败时仅回退到匹配的本地会话，旧查询／关闭面板后的响应不得覆盖当前结果。关键词检索覆盖标题、目标与用户／助手正文，不包含工具日志或归档会话。证据：`frontend/src/components/app/palette.tsx`、`frontend/src/components/app/palette.test.tsx`、`frontend/e2e/palette-search.spec.ts`、`internal/store/search.go`。
 
 - 会话摘要与成功记忆复核从完整持久历史获得当前 worker ID、generation、生命周期和独立收取状态；早期完成事件即使落在正文尾窗外仍有身份事实，同 ID 续办不沿用旧代完成。快照整行限额并明确省略数量，不自动改写旧摘要或笔记。关联 `C-008`、`C-012`；证据：`internal/engine/worker_lifecycle_identity_test.go`。

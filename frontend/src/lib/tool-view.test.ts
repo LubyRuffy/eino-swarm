@@ -57,6 +57,31 @@ describe("execCommand", () => {
 })
 
 describe("viewTool", () => {
+  it("keeps history SQL ahead of bound values and labels schema discovery for translation", () => {
+    expect(summariseToolCall("query_history", JSON.stringify({ params: ["project-a"], sql: "SELECT id\nFROM threads" }))).toBe("SELECT id FROM threads")
+    const schema = viewTool("query_history", "{}")
+    expect(schema.summary).toBe("")
+    expect(schema.summaryKey).toBe("tool.historySchema")
+    expect(viewTool("query_history", '{"sql":"  "}').summaryKey).toBe("tool.historySchema")
+  })
+
+  it("shows a recoverable history refusal as failed while preserving the complete result", () => {
+    const raw = JSON.stringify({ ok: false, context: { project_id: "project-a" }, error: { code: "query_failed", message: "Only read-only history queries are permitted" } })
+    const view = viewTool("query_history", '{"sql":"DELETE FROM messages"}', raw)
+    expect(view.failed).toBe(true)
+    expect(view.error).toBe("Only read-only history queries are permitted")
+    expect(view.body).toBe(raw)
+    expect(toolRowSummary(view)).toBe("DELETE FROM messages · Only read-only history queries are permitted")
+  })
+
+  it("does not treat error wording inside a successful history row as a failed query", () => {
+    const raw = JSON.stringify({ ok: true, columns: ["content"], rows: [["An earlier query failed: only read-only queries are permitted"]] })
+    const view = viewTool("query_history", '{"sql":"SELECT content FROM messages"}', raw)
+    expect(view.failed).toBe(false)
+    expect(view.error).toBeUndefined()
+    expect(view.body).toBe(raw)
+  })
+
   it("surfaces a failed command in red-ready fields, not as pretty JSON", () => {
     const raw = JSON.stringify({
       exit_code: 127,

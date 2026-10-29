@@ -51,6 +51,9 @@ type scheduleAnswerError struct {
 }
 
 func (e *scheduleAnswerError) Error() string {
+	if strings.HasPrefix(e.Code, "history_") {
+		return "history_report_unverified: the history report could not be validated; no unverified answer was published (" + e.Code + ")"
+	}
 	return "schedule_claim_unverified: the claimed future check could not be verified; no unverified answer was published (" + e.Code + ")"
 }
 
@@ -379,7 +382,7 @@ func (e *Engine) scheduleAnswerContinued(turn *store.Turn, snapshots ...*restore
 	}
 	for _, ev := range events {
 		var body struct{ Reason string }
-		if ev.Kind == KindModelRetry && isManagerAgent(ev.AgentID) && json.Unmarshal([]byte(ev.Text), &body) == nil && body.Reason == "schedule_claim_unverified" {
+		if ev.Kind == KindModelRetry && isManagerAgent(ev.AgentID) && json.Unmarshal([]byte(ev.Text), &body) == nil && (body.Reason == "schedule_claim_unverified" || body.Reason == "answer_unverified") {
 			return true, nil
 		}
 	}
@@ -388,6 +391,9 @@ func (e *Engine) scheduleAnswerContinued(turn *store.Turn, snapshots ...*restore
 
 func (rt *runtime) recordScheduleAnswerRetry(turn *store.Turn, failure *scheduleAnswerError) *scheduleAnswerError {
 	receipt := map[string]any{"attempt": 1, "cap": 1, "reason": "schedule_claim_unverified", "code": failure.Code, "claim_count": failure.Claims, "candidate_sha256": failure.Hash}
+	if isHistoryAnswerCorrection(failure) {
+		receipt["reason"] = "answer_unverified"
+	}
 	if failure.Unmatched != nil {
 		receipt["unmatched"] = failure.Unmatched
 	}

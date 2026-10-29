@@ -29,6 +29,29 @@ func firstRestore(snapshots []*restoreSnapshot) *restoreSnapshot {
 }
 
 func (e *Engine) loadRestoreSnapshot(ctx context.Context, threadID string) (*restoreSnapshot, error) {
+	s, err := e.readRestoreSnapshot(ctx, threadID)
+	if err != nil {
+		return nil, err
+	}
+	e.generations.Lock()
+	if e.generations.threads == nil {
+		e.generations.threads = map[string]*generationLog{}
+	}
+	if e.generations.threads[threadID] == nil {
+		log := &generationLog{open: map[string]store.Event{}, pending: map[string]store.Event{}}
+		for _, ev := range s.events {
+			log.apply(ev)
+		}
+		e.generations.threads[threadID] = log
+	}
+	e.generations.Unlock()
+	return s, nil
+}
+
+// readRestoreSnapshot only reads immutable recovery input. Registry claim may
+// hold rt.mu, while generation notifications take generations before rt.mu;
+// this path must not initialize the generation cache or acquire its lock.
+func (e *Engine) readRestoreSnapshot(ctx context.Context, threadID string) (*restoreSnapshot, error) {
 	var accepted *restartCheckpoint
 	cp, err := e.store.LatestEventOfKind(ctx, threadID, KindRestartCheckpoint, func(event *store.Event) bool {
 		var checkpoint restartCheckpoint
@@ -98,18 +121,6 @@ func (e *Engine) loadRestoreSnapshot(ctx context.Context, threadID string) (*res
 		}
 	}
 	s.running, s.finished = orphanedWorkersFromCheckpoint(s.events, s.checkpoint, index)
-	e.generations.Lock()
-	if e.generations.threads == nil {
-		e.generations.threads = map[string]*generationLog{}
-	}
-	if e.generations.threads[threadID] == nil {
-		log := &generationLog{open: map[string]store.Event{}, pending: map[string]store.Event{}}
-		for _, ev := range s.events {
-			log.apply(ev)
-		}
-		e.generations.threads[threadID] = log
-	}
-	e.generations.Unlock()
 	return s, nil
 }
 

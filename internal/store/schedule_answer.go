@@ -19,7 +19,11 @@ var ErrScheduleAnswerAlreadyAdmitted = errors.New("store: scheduling answer was 
 // Candidate decisions commit with those rows, including an empty public answer.
 // ErrScheduleAnswerAlreadyAdmitted means callers must not broadcast again.
 func (s *Store) AdmitScheduleAnswer(threadID, turnID string, expected []Schedule, events []Event, candidateIDs ...string) error {
-	if len(events) == 0 && len(candidateIDs) == 0 {
+	return s.admitScheduleAnswer(threadID, turnID, expected, events, nil, candidateIDs...)
+}
+
+func (s *Store) admitScheduleAnswer(threadID, turnID string, expected []Schedule, events []Event, history *HistoryEvidence, candidateIDs ...string) error {
+	if len(events) == 0 && len(candidateIDs) == 0 && history == nil {
 		return nil
 	}
 	msgs := make([]Message, 0, len(events))
@@ -54,6 +58,9 @@ func (s *Store) AdmitScheduleAnswer(threadID, turnID string, expected []Schedule
 			if !sameScheduleAnswerEvidence(want, got) {
 				return ErrScheduleAnswerChanged
 			}
+		}
+		if err := verifyHistoryEvidence(tx, threadID, history); err != nil {
+			return err
 		}
 		if len(events) > 0 {
 			if err := requireScheduleAnswerWrite(tx.Create(&events), int64(len(events))); err != nil {

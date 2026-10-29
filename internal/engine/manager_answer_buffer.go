@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 
@@ -26,6 +27,8 @@ type managerAnswerBuffer struct {
 	pending       *swarm.Notification
 	generated     []*schema.Message
 	reportFailure *scheduleAnswerError
+	historyReport *pendingHistoryReport
+	historyScope  *string
 }
 
 type scheduleAnswerBufferContextKey struct{}
@@ -210,6 +213,10 @@ func withoutPendingManagerProse(messages []*schema.Message) []*schema.Message {
 }
 
 func (e *Engine) admitScheduleAnswer(threadID, turnID string, expected []store.Schedule, events []store.Event, candidates ...string) *scheduleAnswerError {
+	return e.admitScheduleAnswerWithHistory(threadID, turnID, expected, events, nil, candidates...)
+}
+
+func (e *Engine) admitScheduleAnswerWithHistory(threadID, turnID string, expected []store.Schedule, events []store.Event, history *store.HistoryEvidence, candidates ...string) *scheduleAnswerError {
 	// Stop/restart ownership and publication share the established rt.mu ->
 	// recordMu order. A still-running turn row alone does not prove ownership.
 	rt := e.runtimeFor(threadID)
@@ -229,7 +236,41 @@ func (e *Engine) admitScheduleAnswer(threadID, turnID string, expected []store.S
 	if _, dropped := e.droppedTurns[turnID]; dropped {
 		return &scheduleAnswerError{Code: "answer_owner_deleted"}
 	}
-	if err := e.store.AdmitScheduleAnswer(threadID, turnID, expected, events, candidates...); err != nil {
+	// A worker can start a history read while manager policy verification is
+	// pending. Tool-call recording shares recordMu, so the final mode decision
+	// cannot race a newly durable query/request into an unstructured answer.
+	if history == nil {
+		for _, event := range events {
+			if (event.Kind != swarm.NotifyAgentMessage.String() && event.Kind != KindScheduleReport) || event.Text == "" {
+				continue
+			}
+			required, queried, failure := e.historyAnswerMode(&store.Turn{ID: turnID, ThreadID: threadID})
+			if failure != nil {
+				return failure
+			}
+			if !required {
+				break
+			}
+			prose := true
+			if event.Kind == KindScheduleReport {
+				var report struct {
+					Findings string `json:"findings"`
+				}
+				if err := json.Unmarshal([]byte(event.Text), &report); err != nil {
+					return &scheduleAnswerError{Code: "history_report_invalid", Cause: err}
+				}
+				prose = report.Findings != ""
+			}
+			if !prose {
+				continue
+			}
+			if !queried {
+				return &scheduleAnswerError{Code: "history_read_required"}
+			}
+			return &scheduleAnswerError{Code: "history_report_invalid"}
+		}
+	}
+	if err := e.store.AdmitScheduleAnswerWithHistory(threadID, turnID, expected, events, history, candidates...); err != nil {
 		if errors.Is(err, store.ErrScheduleAnswerAlreadyAdmitted) {
 			return nil
 		}
@@ -241,7 +282,9 @@ func (e *Engine) admitScheduleAnswer(threadID, turnID string, expected []store.S
 			return &scheduleAnswerError{Code: "answer_owner_stopped", Cause: err}
 		}
 		code := "answer_storage_failed"
-		if errors.Is(err, store.ErrScheduleAnswerChanged) {
+		if errors.Is(err, store.ErrHistoryEvidenceChanged) {
+			code = "history_source_changed"
+		} else if errors.Is(err, store.ErrScheduleAnswerChanged) {
 			code = "schedule_state_changed"
 		} else {
 			e.log.Warn("could not persist an admitted manager answer", "thread", threadID, "turn", turnID, "code", code, "err", err)

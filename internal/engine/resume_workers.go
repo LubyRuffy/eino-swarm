@@ -91,13 +91,24 @@ func (e *Engine) readWorkersFromThread(threadID string, snapshots ...*restoreSna
 // Later turns drop tool results; identity must survive without replaying
 // historical workers as new tool executions.
 func (rt *runtime) attachLeftoverWorkers(reused, pin bool, live int, messages []adk.Message) []adk.Message {
+	return rt.applyLeftoverWorkers(nil, reused, pin, live, messages)
+}
+
+// applyLeftoverWorkers installs a plan admitted before runtime claim. A reused
+// registry already owns its worker state; its optional read only builds roster
+// context and does not decide original-history ownership.
+func (rt *runtime) applyLeftoverWorkers(plan *leftoverWorkerPlan, reused, pin bool, live int, messages []adk.Message) []adk.Message {
 	if rt == nil || rt.engine == nil {
 		return messages
 	}
-	running, finished, err := rt.engine.readWorkersFromThread(rt.threadID)
-	if err != nil {
-		return messages
+	if plan == nil {
+		running, finished, err := rt.engine.readWorkersFromThread(rt.threadID)
+		if err != nil {
+			return messages
+		}
+		plan = &leftoverWorkerPlan{running: running, finished: finished}
 	}
+	running, finished := plan.running, plan.finished
 	if !reused {
 		rt.setWorkerRestore(running, finished)
 	}

@@ -15,12 +15,14 @@ import { Disclosure } from "@/components/ui/collapsible"
 import { applyCarriageReturns, lastLine } from "@/lib/carriage"
 import { execCommand, toolRowSummary, viewTool } from "@/lib/tool-view"
 import type { Block } from "@/lib/transcript"
+import { useT } from "@/lib/use-t"
 
 export function ToolRow({ block, reveal, defaultCollapsed = false }: {
   block: Block
   reveal?: boolean
   defaultCollapsed?: boolean
 }) {
+  const t = useT()
   const tool = block.tool
   // null until they click. useState(pending) opened a live exec and then
   // left the dump on screen after it returned — a wall nobody asked for.
@@ -37,6 +39,7 @@ export function ToolRow({ block, reveal, defaultCollapsed = false }: {
     return viewTool(toolName, toolArgs, toolResult, toolFailed)
   }, [toolName, toolArgs, toolResult, toolFailed])
   if (!tool || !view) return null
+  const summary = toolRowSummary(view.summaryKey ? { ...view, summary: t(view.summaryKey) } : view)
   const command = tool.name === "exec" ? execCommand(tool.args) : ""
   const liveLine = tool.pending && view.body ? lastLine(applyCarriageReturns(view.body)) : ""
   const watchLive =
@@ -62,7 +65,7 @@ export function ToolRow({ block, reveal, defaultCollapsed = false }: {
           <span className="shrink-0 font-mono text-[13px] text-foreground">{tool.name}</span>
           {tool.pending ? (
             <MarqueeText
-              text={liveLine || toolRowSummary(view)}
+              text={liveLine || summary}
               active
               className={view.failed ? "text-[13px] text-destructive" : "text-[13px] text-muted-foreground"}
             />
@@ -72,7 +75,7 @@ export function ToolRow({ block, reveal, defaultCollapsed = false }: {
             </span>
           ) : (
             <MarqueeText
-              text={toolRowSummary(view)}
+              text={summary}
               className={view.failed ? "text-[13px] text-destructive" : "text-[13px] text-muted-foreground"}
             />
           )}

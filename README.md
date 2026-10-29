@@ -901,6 +901,29 @@ like Finder.
 
 ### Projects
 
+Use the project's menu → **Summarize project history** to open an explicitly
+titled conversation in that project and request a source-backed report. This
+keeps your existing composer draft in its original conversation. You can also
+ask an existing conversation about earlier discussions. The manager and its
+workers choose their own read-only SQL through `query_history`; Memory can be
+off, and no maintained summary or files in `uploads` are needed.
+
+In a project conversation, the SQL views expose only that project's retained
+records; query predicates cannot switch projects. A standalone conversation
+retains access to history across projects. This binding applies to the SQL
+tool, while agents keep their existing full filesystem and exec access.
+
+The report displays complete cited original records with host-resolved
+role/source, dates and message/event locations, followed by clearly labelled
+suggestions and open questions. Historical statements and citations do not
+establish approval, current implementation or independent verification. The
+host checks source identity and scope, not whether a suggested plan follows
+from the evidence. Only the cited range is reported, so it does not claim a
+complete project review. Reading history does not itself save a summary or
+change Memory; ordinary post-turn review retains its existing rules.
+See [the SQL history contract](docs/CONTRACTS.md#c-036-original-history-is-queryable-through-read-only-sql)
+and [table semantics](docs/DATA_MODEL.md#read-only-history-sql).
+
 Work that comes back — one repository, one report, one recurring chore — belongs
 in a project. The title bar prefixes the conversation name with the project's
 (`project · title`) so you can see which directory the tools are pointed at.

@@ -26,6 +26,7 @@ CONSTANTS
     FinishUngated,          \* handoff does not wait for an in-progress finalization
     ParkedNotCheckpointed,  \* handoff checkpoints running managers only
     IdleCountsOnlyManagers, \* idle load ignores parked workers, restoration and handoff
+    ParkedAdmissionNonAtomic, \* choose/take drops the parked runtime before successor occupancy
     MaxTurns
 
 Engines == {"old", "new"}
@@ -53,10 +54,11 @@ VARIABLES
     stopped,      \* durable human Stop for the current turn
     stopAcked,    \* the human was told the Stop succeeded
     gate,         \* normal finalization holds the finish gate (lockFinish)
-    turns         \* turns started through the window, bounded by MaxTurns
+    turns,        \* turns started through the window, bounded by MaxTurns
+    successor     \* last parked admission: none, refused, admitted, or privately detached
 
 vars == <<eng, lease, stopping, sampled, hold, launcher, target, deadline, work,
-          owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+          owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 Alive(e) == eng[e] \in Live
 
@@ -87,6 +89,7 @@ Init ==
     /\ stopAcked = FALSE
     /\ gate = FALSE
     /\ turns = 0
+    /\ successor = "none"
 
 -----------------------------------------------------------------------------
 (* Work on its owner. *)
@@ -98,7 +101,42 @@ StartTurn ==
     /\ work' = "running" /\ owner' = target
     /\ stopped' = FALSE /\ stopAcked' = FALSE /\ turns' = turns + 1
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
+                   checkpoint, restorePhase, snapshot, gate, successor>>
+
+(* A retained Registry changes manager turns without losing its runtime.  *)
+(* The host holds rt.mu across choosing it, recording its real owner edge, *)
+(* and claiming the successor. The fixed edge write is represented only by *)
+(* success/refusal here: this model does not prove SQLite atomicity.        *)
+CanStartParkedSuccessor ==
+    /\ launcher = "opened" /\ hold
+    /\ eng[target] = "serving" /\ ~stopping[target]
+    /\ owner = target /\ work = "parked" /\ ~gate
+    /\ checkpoint = "none" /\ turns < MaxTurns
+
+StartParkedSuccessor ==
+    /\ ~ParkedAdmissionNonAtomic /\ CanStartParkedSuccessor
+    /\ work' = "running" /\ owner' = target
+    /\ stopped' = FALSE /\ stopAcked' = FALSE /\ turns' = turns + 1
+    /\ successor' = "admitted"
+    /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
                    checkpoint, restorePhase, snapshot, gate>>
+
+(* A failed lineage write leaves the original parked work and owner intact. *)
+RefuseParkedSuccessor ==
+    /\ CanStartParkedSuccessor
+    /\ successor' = "refused"
+    /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
+                   work, owner, checkpoint, restorePhase, snapshot, stopped,
+                   stopAcked, gate, turns>>
+
+(* Seed the split choose/take -> occupy design. The Registry still contains *)
+(* owned workers, but ActiveWork can no longer see them in the runtime.    *)
+DetachParkedSuccessor ==
+    /\ ParkedAdmissionNonAtomic /\ CanStartParkedSuccessor
+    /\ work' = "none" /\ successor' = "detached"
+    /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
+                   owner, checkpoint, restorePhase, snapshot, stopped,
+                   stopAcked, gate, turns>>
 
 (* Finalization releases the runtime, then persists the terminal receipt or *)
 (* parks the workers. lockFinish holds the gate across both steps.          *)
@@ -107,19 +145,19 @@ BeginFinish ==
     /\ FinishUngated \/ ~gate
     /\ work' = "finishing" /\ gate' = ~FinishUngated
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
-                   owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, turns>>
+                   owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, turns, successor>>
 
 EndFinish ==
     /\ work = "finishing" /\ Alive(owner)
     /\ work' \in {"none", "parked"} /\ gate' = FALSE
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
-                   owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, turns>>
+                   owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, turns, successor>>
 
 WorkerDone ==
     /\ work = "parked" /\ eng[owner] = "serving"
     /\ work' = "none"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
-                   owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 (* interruptThread on a live runtime: a running manager or parked workers. *)
 StopLive ==
@@ -127,7 +165,7 @@ StopLive ==
     /\ work \in {"running", "parked"} /\ ~stopped
     /\ work' = "none" /\ stopped' = TRUE /\ stopAcked' = TRUE
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
-                   owner, checkpoint, restorePhase, snapshot, gate, turns>>
+                   owner, checkpoint, restorePhase, snapshot, gate, turns, successor>>
 
 (* stopBeforeRestore: no runtime yet, the Stop is recorded durably. restoreMu *)
 (* keeps it out of the window between reading and occupying a checkpoint.   *)
@@ -137,7 +175,7 @@ StopBeforeRestore ==
     /\ restorePhase = "pending" \/ (StopRacesRestore /\ restorePhase = "read")
     /\ stopped' = TRUE /\ stopAcked' = TRUE
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
-                   work, owner, checkpoint, restorePhase, snapshot, gate, turns>>
+                   work, owner, checkpoint, restorePhase, snapshot, gate, turns, successor>>
 
 -----------------------------------------------------------------------------
 (* C-027 handoff, driven by the shell of the new build. *)
@@ -146,7 +184,7 @@ BeginHandoff ==
     /\ launcher = "start" /\ target = "new" /\ lease = "old"
     /\ launcher' = "handoff"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 (* PrepareRestart: lockRestartFinishes under the shared deadline, then one    *)
 (* checkpoint covering active and parked registries, then cancel them.      *)
@@ -160,47 +198,47 @@ Freeze ==
     /\ checkpoint' = IF captured THEN work ELSE checkpoint
     /\ work' = IF captured THEN "none" ELSE work
     /\ UNCHANGED <<lease, stopping, sampled, hold, launcher, target, deadline, owner,
-                   restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 Ack ==
     /\ launcher = "handoff" /\ eng["old"] = "frozen" /\ ~deadline
     /\ launcher' = "acked"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 (* replaceEngine failed but discovery finds no holder: continue to launch. *)
 OldAlreadyGone ==
     /\ launcher = "handoff" /\ eng["old"] = "exited"
     /\ launcher' = "acked"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 (* Before ACK an expired budget is an error that leaves the old engine as is. *)
 HandoffTimesOut ==
     /\ launcher = "handoff" /\ deadline
     /\ launcher' = "failed"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 OldExits ==
     /\ launcher = "acked" /\ eng["old"] = "frozen"
     /\ eng' = [eng EXCEPT !["old"] = "exited"]
     /\ lease' = IF lease = "old" THEN "none" ELSE lease
     /\ UNCHANGED <<stopping, sampled, hold, launcher, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 Spawn ==
     /\ launcher = "acked" /\ eng["old"] = "exited" /\ eng["new"] = "absent"
     /\ eng' = [eng EXCEPT !["new"] = "booting"]
     /\ launcher' = "spawned"
     /\ UNCHANGED <<lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 DeadlineExpires ==
     /\ launcher \in {"handoff", "acked", "spawned"} /\ ~deadline
     /\ deadline' = TRUE
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 (* spawnEngineContext killing its child when the launch context expires. *)
 DeadlineKillsReplacement ==
@@ -209,7 +247,7 @@ DeadlineKillsReplacement ==
     /\ eng' = [eng EXCEPT !["new"] = "exited"]
     /\ launcher' = "failed"
     /\ UNCHANGED <<lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 (* An explicit human cancellation may always reap the launcher's own child. *)
 HumanCancelsLaunch ==
@@ -217,7 +255,7 @@ HumanCancelsLaunch ==
     /\ eng' = [eng EXCEPT !["new"] = "exited"]
     /\ launcher' = "cancelled"
     /\ UNCHANGED <<lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 -----------------------------------------------------------------------------
 (* The replacement publishes and restores (serveEngine, Engine.Restore). *)
@@ -230,14 +268,14 @@ Publish ==
     /\ eng' = [eng EXCEPT !["new"] = IF RestoreBeforeListen THEN "serving" ELSE "restoring"]
     /\ lease' = "new"
     /\ UNCHANGED <<stopping, sampled, hold, launcher, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 ReadCheckpoint ==
     /\ eng["new"] = RestoringHere /\ restorePhase = "pending"
     /\ snapshot' = IF stopped THEN "none" ELSE checkpoint
     /\ restorePhase' = "read"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
-                   work, owner, checkpoint, stopped, stopAcked, gate, turns>>
+                   work, owner, checkpoint, stopped, stopAcked, gate, turns, successor>>
 
 OccupyRuntime ==
     /\ eng["new"] = RestoringHere /\ restorePhase = "read"
@@ -246,7 +284,7 @@ OccupyRuntime ==
     /\ checkpoint' = "none" /\ snapshot' = "none" /\ restorePhase' = "done"
     /\ eng' = IF RestoreBeforeListen THEN eng ELSE [eng EXCEPT !["new"] = "serving"]
     /\ UNCHANGED <<lease, stopping, sampled, hold, launcher, target, deadline,
-                   stopped, stopAcked, gate, turns>>
+                   stopped, stopAcked, gate, turns, successor>>
 
 -----------------------------------------------------------------------------
 (* Shell presence (desktop launch and the presence endpoints). *)
@@ -259,7 +297,7 @@ Reserve ==
                    ELSE IF stopping[target] THEN "relaunch"
                    ELSE "reserved"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 (* presence.attach: refused once idle exit committed or the engine left. *)
 Attach ==
@@ -268,20 +306,20 @@ Attach ==
        THEN hold' = TRUE /\ launcher' = "opened"
        ELSE hold' = hold /\ launcher' = "relaunch"
     /\ UNCHANGED <<eng, lease, stopping, sampled, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 FrontendAttaches ==
     /\ PresenceAfterWindow /\ launcher = "opened" /\ ~hold
     /\ Alive(target) /\ ~stopping[target]
     /\ hold' = TRUE
     /\ UNCHANGED <<eng, lease, stopping, sampled, launcher, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 WindowCloses ==
     /\ launcher = "opened" /\ hold
     /\ hold' = FALSE /\ launcher' = "closed"
     /\ UNCHANGED <<eng, lease, stopping, sampled, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 -----------------------------------------------------------------------------
 (* Idle exit (lease.Watcher with Server.TryIdleShutdown). *)
@@ -291,14 +329,14 @@ IdleCommit(e) ==
     /\ eng[e] \in Watched /\ ~stopping[e] /\ Idle(e)
     /\ stopping' = [stopping EXCEPT ![e] = TRUE]
     /\ UNCHANGED <<eng, lease, sampled, hold, launcher, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 IdleSample(e) ==
     /\ IdleCommitNonAtomic
     /\ eng[e] \in Watched
     /\ sampled' = [sampled EXCEPT ![e] = Idle(e)]
     /\ UNCHANGED <<eng, lease, stopping, hold, launcher, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 IdleExit(e) ==
     /\ eng[e] \in Watched
@@ -306,12 +344,13 @@ IdleExit(e) ==
     /\ eng' = [eng EXCEPT ![e] = "exited"]
     /\ lease' = IF lease = e THEN "none" ELSE lease
     /\ UNCHANGED <<stopping, sampled, hold, launcher, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 -----------------------------------------------------------------------------
 
 Next ==
-    \/ StartTurn \/ BeginFinish \/ EndFinish \/ WorkerDone
+    \/ StartTurn \/ StartParkedSuccessor \/ RefuseParkedSuccessor \/ DetachParkedSuccessor
+    \/ BeginFinish \/ EndFinish \/ WorkerDone
     \/ StopLive \/ StopBeforeRestore
     \/ BeginHandoff \/ Freeze \/ Ack \/ OldAlreadyGone \/ HandoffTimesOut
     \/ OldExits \/ Spawn \/ DeadlineExpires \/ DeadlineKillsReplacement
@@ -343,6 +382,7 @@ TypeOK ==
     /\ stopAcked \in BOOLEAN
     /\ gate \in BOOLEAN
     /\ turns \in 0..MaxTurns
+    /\ successor \in {"none", "refused", "admitted", "detached"}
 
 (* A manager, a finalization or a parked worker never outlives its process. *)
 WorkHasLiveOwner == work # "none" => Alive(owner)
@@ -356,6 +396,9 @@ CheckpointHasOwner ==
 (* An acknowledged Stop is never undone by restoration. *)
 StopIsFinal == stopAcked => work = "none"
 
+(* A privately held parked Registry must still be counted by its runtime. *)
+RegistryAlwaysAccounted == successor = "detached" => work # "none"
+
 (* A window the shell opened has an engine behind it until the window closes. *)
 WindowHasEngine == launcher = "opened" => Alive(target)
 
@@ -366,6 +409,8 @@ WindowHasEngine == launcher = "opened" => Alive(target)
 NeverRestoredIntoWindow ==
     ~(launcher = "opened" /\ target = "new" /\ owner = "new" /\ work # "none")
 NeverParkedCheckpoint == ~(checkpoint = "parked")
+NeverParkedSuccessor == ~(successor = "admitted" /\ work = "running" /\ turns > 0)
+NeverRefusedParkedSuccessor == ~(successor = "refused" /\ work = "parked")
 NeverStopBeforeRestore == ~(stopAcked /\ checkpoint # "none")
 NeverOpenedAfterDeadline == ~(deadline /\ launcher = "opened" /\ eng["new"] = "serving")
 NeverIdleExitAfterClose == ~(launcher = "closed" /\ eng[target] = "exited")

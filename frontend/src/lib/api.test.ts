@@ -18,6 +18,17 @@ afterEach(() => {
   localStorage.removeItem(LOCALE_KEY)
 })
 
+describe("history report request", () => {
+  it("sends the explicit mode with the turn while ordinary sends keep their shape", async () => {
+    const fetch = vi.fn(async (_url: unknown, _init?: RequestInit) => respond({ turn: { id: "tn_report" } }))
+    vi.stubGlobal("fetch", fetch)
+    await api.startTurn("th_report", "Read original records", undefined, undefined, undefined, true)
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({ text: "Read original records", history_report: true })
+    await api.startTurn("th_report", "Ordinary message")
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({ text: "Ordinary message" })
+  })
+})
+
 describe("settings", () => {
   it("reads null tool lists as empty ones", async () => {
     vi.stubGlobal(

@@ -2,6 +2,22 @@
 
 Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user entry points and [CHANGELOG.md](../CHANGELOG.md) for history. Contract IDs are stable.
 
+## C-036 Original history is queryable through read-only SQL
+
+- 状态：active；类型：data / security / compatibility；作用范围：项目历史入口、host manager／worker 的 `query_history`、原文证据及答案发布；关联功能：`F-410`、`F-130`。
+- 显式入口：项目菜单“提炼项目历史”在所选项目创建具有明确标题的新会话，通过 start-turn 的 `history_report:true` 请求报告，保留原输入框草稿，不改变全局模型／设置。`history_report_requested` 必须在模型执行前保存；不能把该请求当作 ask 答案、follow-up、steer 或 goal／plan 控制命令，`/steer` 明确拒绝此 flag。编辑重发在删除旧 turn 前读取并保留原显式选择。普通自然语言会话仍可自主使用历史工具；不能仅靠关键词猜测报告模式。
+- 查询与范围：新建、恢复、parked registry 及计划模式统一挂载工具，不依赖 Memory。空 SQL 返回实时表／列、规范字段语义及本轮项目／会话快照；非空 SQL 由模型自主选择单条 SELECT／WITH，标量 `params` 保留 int64 精度。项目会话的 TEMP 视图按实际所属关系绑定该项目，模型的 SQL／参数不能切换；绑定项目缺失明确失败，不退回全局。独立会话继续保留跨项目历史视图。该约束只覆盖此 SQL 入口，不收窄 Full access／exec 权限。
+- 可读来源：projects、threads、messages、turns、公开 events、attachments、schedules、schedule_runs、llm_calls。项目 schedules 依实际目的会话或无会话任务的 project_id 归属，已有目的会话的 run 依该会话归属；origin 不授予其他项目可见性。events 排除 engine_restart_checkpoint；非历史表／源视图不可经该入口读取，尤其未发送草稿、未发布候选及内部设备／策略状态。删除／倒带已移除的行不承诺恢复，图片／附件正文仍为文件引用。messages／events 的重叠表示与保留的派生摘要不是独立佐证，报告仍回到规范 message／event 原文。
+- 只读与取消：独立原生只读连接不占 engine 写连接，不迁移源库；同一读事务固定 Schema、实际 EXPLAIN 准入和执行快照。拒绝写入、prepare 尾部语句、显式 schema 绕过、私有根页、虚表及非 innocuous 内置函数。实际扫描保留驱动中断观察；调用取消和五秒预算请求 SQLite 原生中断，在其检查点生效，不承诺不可中断内部步骤或 OS 调度具有严格墙钟截止。
+- SQL 输出：按 SQL 标签键控的对象行与有序 columns 无损对应；SQLite 外层投影消歧，异常重复元数据明确拒绝，不覆盖字段。field_semantics 解释原始表的规范字段，SQL 别名不证明来源。最终 JSON 计入 tools.result_max_chars；超限整行省略并给 row_count、truncated／reason，不静默裁原文字段。TEXT／BLOB 的空值与 NUL 保留。普通错误返回 ok:false、code／message 和身份供修正；诊断可明确截短，最小 metadata_too_large 拒绝可省略 context，仍装不下则返回 tool error。SSE／Trace 保留实际调用／结果；旧结果可 microcompact 后重读。
+- 读取归属：实际 reader 执行前必须以 host 提供的原 turn 身份保存 `history_read_started`，worker 继承该身份，模型参数不能指定 owner。取消、归属不匹配、已删除 owner 或保存失败时不返回原文，并阻断未验证答案。该事件仅证明开始一次读取尝试，不证明查询成功、覆盖完整或执行验证。
+- Registry 继承：host 实际复用 parked Registry 或安装恢复的运行／未收取 worker 状态前，必须保存同会话、源 turn 早于目标 turn 的 `history_registry_inherited` edge（source_turn_id）。相同 edge 幂等，冲突归属／保存失败不 detach 原 Registry 或占据新 runtime；未知来源不能靠最近 turn 猜测，已结清 archive 不触发继承。多个恢复 owner 只在已有单父链能证明其同属实际继承 Registry 时接受。沿真实持久链继承此前 read／request 状态，worker 原 owner 不改写，无关联的新 Registry 不继承旧 turn 的模式。
+- 报告协议：显式请求或本轮历史读取使最终答案使用 version=1、language=zh／en 的单个严格 JSON 对象，仅含 sources、proposals、questions 等规定字段。sources 使用唯一 local key 与规范 `{kind:message|event,thread_id,seq}`；不接受模型事实摘要、quote、作者、批准／实施状态或自由定位字段。host 从 Store 重读并按序核对真实原文、role／source、日期、错误与定位，展示每条完整 Text，保留空文／NUL／否定条件；图片只显示引用及未解读提示。message_id、message_seq、event_seq 不混用，event 的记录 role 不自动视作消息作者。
+- 建议与预算：host 固定“建议纳入／建议排除／待验证候选”和问题区块，生成计数并转义模型标题／优先级／正文；这些仍只是建议，引用不证明推导成立或获得人类批准。无 sources 的新建议允许，但明确没有历史依据；引用不存在的 key 拒绝。只描述实际引用范围，不声称整个项目已审完。最终完整报告超预算则拒绝，不能裁原文。
+- 发布与恢复：复用私有 pending answer 保存 typed report、规范来源快照和 host rendering；未接受自由文案不进入公开答案／后续 replay。pending 恢复重查来源，发布事务再次核对实际项目归属与完整快照后原子接受；变更／删除／移出项目阻断旧答案。accepted 保留冻结渲染和原发布身份。非空 `report_schedule.findings` 同样使用该 JSON 协议并在 rearm 前校验；纠正／恢复不能重复已提交的动作或收据。普通未读取历史的 schedule findings 沿原规则。
+- 失败及效果边界：机械错误沿现有持久答案门禁共享一次自动纠正，继续失败保留同 turn 等待人类 Continue／Stop；存储／归属错误不靠自由文案 fallback。历史与助手自述不是新授权，role=user 也不自动表示批准；模型仍须保留后续纠正、否定和条件。host 能核验原文身份／范围／完整性，不能保证建议质量、证据充分性或语义支持。离线／UI 回归、真实模型效果、原生验收分别记录；不得用结构得分或展示原文代替内容验收，不自动写入 Memory。
+- 实现 `internal/history`、`internal/engine/history_tool.go`、`internal/engine/history_format.go`、`internal/engine/history_read_guard.go`、`internal/engine/history_request.go`、`internal/engine/registry_claim.go`、`internal/engine/history_answer_restore_bridge.go`、`internal/engine/history_report.go`、`internal/engine/history_answer.go`、`internal/store/history_evidence.go`、`frontend/src/App.tsx`、`frontend/src/lib/tool-view.ts`；验证：`internal/history/scope_test.go`、`internal/engine/history_read_guard_test.go`、`internal/engine/history_report_test.go`、`internal/engine/history_answer_http_test.go`、`internal/engine/history_answer_schedule_test.go`、`internal/engine/history_answer_parked_test.go`、`internal/engine/history_answer_restore_bridge_test.go`、`internal/engine/registry_claim_test.go`、`internal/engine/history_answer_recovery_http_test.go`、`internal/server/history_report_request_test.go`、`frontend/e2e/project-history.spec.ts`、`tools/test_project_history_eval.py`；变更类型：Added；来源：Issue #128。
+
 ## C-033 Composer drafts are durable versioned snapshots
 
 - 状态：active；类型：data / consistency / lifecycle / security；作用范围：PC 输入框、草稿 API、SQLite 和首发迁移；关联功能：`F-145`, `F-140`, `F-180`。

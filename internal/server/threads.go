@@ -298,10 +298,11 @@ func (s *Server) deleteThread(c *gin.Context) {
 // ---------- turns ----------
 
 type turnRequest struct {
-	Text         string         `json:"text"`
-	Images       []rawImageJSON `json:"images"`
-	Files        []string       `json:"files"`
-	FromEventSeq int64          `json:"from_event_seq"`
+	Text          string         `json:"text"`
+	Images        []rawImageJSON `json:"images"`
+	Files         []string       `json:"files"`
+	FromEventSeq  int64          `json:"from_event_seq"`
+	HistoryReport bool           `json:"history_report"`
 }
 
 type rawImageJSON struct {
@@ -315,7 +316,7 @@ func (req turnRequest) input() (engine.UserInput, error) {
 	if err != nil {
 		return engine.UserInput{}, err
 	}
-	return engine.UserInput{Text: req.Text, Images: images, Files: req.Files}, nil
+	return engine.UserInput{Text: req.Text, Images: images, Files: req.Files, HistoryReport: req.HistoryReport}, nil
 }
 
 func rawImages(in []rawImageJSON) []engine.RawImage {
@@ -365,6 +366,10 @@ func (s *Server) steer(c *gin.Context) {
 	var req turnRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "could not read the request body: %v", err)
+		return
+	}
+	if req.HistoryReport {
+		badRequest(c, "history report requests must start a new turn")
 		return
 	}
 	in, err := req.input()

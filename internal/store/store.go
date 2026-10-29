@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -498,13 +499,23 @@ func (s *Store) MarkStaleTurnsCancelled() (int64, error) {
 // AppendEvent stores one timeline event, assigning its per-thread sequence
 // number. The assigned Seq is written back into e.
 func (s *Store) AppendEvent(e *Event) error {
+	return s.appendEvent(s.db, e)
+}
+
+// AppendEventContext stores an event using the caller's cancellation context.
+// The existing cold-cache sequence lookup does not use ctx.
+func (s *Store) AppendEventContext(ctx context.Context, e *Event) error {
+	return s.appendEvent(s.db.WithContext(ctx), e)
+}
+
+func (s *Store) appendEvent(db *gorm.DB, e *Event) error {
 	seq, err := s.nextEventSeq(e.ThreadID)
 	if err != nil {
 		return fmt.Errorf("store: seed event sequence: %w", err)
 	}
 	e.Seq = seq
 	e.CreatedAt = time.Now().UTC()
-	if err := s.threadWriteErr(e.ThreadID, s.appendCompletionEvent(e)); err != nil {
+	if err := s.threadWriteErr(e.ThreadID, s.appendCompletionEvent(db, e)); err != nil {
 		return fmt.Errorf("store: append event: %w", err)
 	}
 	return nil

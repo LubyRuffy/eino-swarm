@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "notice": "Independent human review rubric. Never seed this file into an engine workspace or model context. Retrieval coverage is not semantic success.",
+  "cases": {
+    "asset-mcp": {
+      "required_sources": [["a01"], ["a05"], ["a08"], ["a09"], ["a12"]],
+      "foreign_markers": ["SIDE_PROJECT_ONLY_BULK_EXPORT_7H9"],
+      "rubric": [
+        {"id": "scope", "sources": ["a01", "a12"], "expect": "首批只读；排除主动扫描与实时探测。没有把历史提议当成人类批准。"},
+        {"id": "lookup", "sources": ["a01", "a02"], "expect": "提炼资产检索/详情，包含稳定ID、组织/服务/时间及证据编号；区分已验证内部接口与尚未实现的MCP封装。"},
+        {"id": "latest-decision", "sources": ["a03", "a05"], "expect": "采用7天/每15分钟更新的新确认范围；24小时/每日是作废草案，不能并列为当前有效范围。"},
+        {"id": "changes", "sources": ["a05", "a06"], "expect": "提炼变更列表或资产时间线，并保留窗口外不能推断无变化的边界。"},
+        {"id": "unverified", "sources": ["a07", "a08"], "expect": "指纹匹配只能是待验证候选，不能声称已支持、验收或生产可用。"},
+        {"id": "negation", "sources": ["a09"], "expect": "统计按org_id/service_id；不支持个人email聚合；证据只脱敏摘要/编号，不输出原始凭据/内部备注。"},
+        {"id": "sources-and-priority", "sources": ["a01", "a05", "a08", "a09", "a12"], "expect": "重要建议可追溯到具体会话/记录，给出有依据的优先级，覆盖各独立已确认能力；不能只写通用MCP工具清单。"},
+        {"id": "isolation", "sources": [], "expect": "不纳入其他项目的全量导出或批量写入决定；未把查不到的内容编造成项目事实。"}
+      ]
+    },
+    "document-mcp": {
+      "required_sources": [["d01"], ["d05"], ["d08"]],
+      "foreign_markers": ["OTHER_PROJECT_ONLY_DELETE_4Q2"],
+      "rubric": [
+        {"id": "read-capabilities", "sources": ["d01", "d02"], "expect": "首批包括关键词检索和指定版本原文阅读；结果保留document_id/version_id/页码，权限检查也适用于摘要。"},
+        {"id": "latest-decision", "sources": ["d03", "d05"], "expect": "新决定允许创建批注，旧纯只读限制已撤回；不能机械套用资产case的禁止全部写入。"},
+        {"id": "controlled-write", "sources": ["d05", "d06"], "expect": "创建批注必须用户明确提交及幂等键；不推导允许更新或删除文档。"},
+        {"id": "unverified", "sources": ["d07", "d08"], "expect": "OCR尚未验证；版本差异已确认且只比较两个指定版本，不支持跨文档自动合并。"},
+        {"id": "sources-and-priority", "sources": ["d01", "d05", "d08"], "expect": "给出有依据的首批优先级和具体原始来源，区分内部接口验收、MCP建议及尚未完成封装。"},
+        {"id": "isolation", "sources": [], "expect": "没有引入其他项目无权限批量删除的规则；没有把提议当成批准。"}
+      ]
+    }
+  }
+}

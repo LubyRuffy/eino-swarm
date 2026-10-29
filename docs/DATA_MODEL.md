@@ -60,6 +60,98 @@ erDiagram
   SCHEDULE ||--o{ SCHEDULERUN : fires
 ```
 
+## Read-only history SQL
+
+`query_history` reads retained originals without a maintained summary table.
+Its query connection does not migrate or write the source database. Call it
+with `{}` to obtain current `schema: [{name, columns: [{name, type}]}]`,
+canonical `field_semantics`, and
+`context: {project_id, project_name, thread_id}`. Then pass one unqualified
+SQLite SELECT/WITH in `sql`, with optional positional scalar `params`.
+Success returns `ok`, ordered `columns`, complete object `rows` keyed by SQL
+output labels, returned `row_count`, `truncated` and optional `reason`, plus
+context. Errors return `ok:false` and `error:{code,message}` for correction.
+The final JSON envelope is budgeted. Oversized rows are omitted whole, never
+silently shortened; explicit substring paging is a caller-selected projection,
+not a complete source. BLOB values retain JSON's base64 encoding.
+
+A project conversation binds every available raw table to its actual project
+before executing model SQL. `projects.id = threads.project_id`, then
+`threads.id = messages/turns/events/attachments/llm_calls.thread_id`. A schedule
+with a destination thread follows that thread; one without a destination uses
+its own `project_id`. A run with its own thread follows that thread, otherwise
+it inherits the job's destination. Origin/creation references do not confer
+visibility. Predicates cannot escape this binding; missing bound projects fail.
+Standalone conversations retain the global history view.
+
+`messages` is the attributed transcript; `events` is the overlapping UI/runtime
+timeline with worker/tool observations. `turns.status` is a recorded outcome,
+not proof of every assistant assertion. `source=runtime` is not human input.
+Retained compact/session-summary metadata is derived content, not independent
+corroboration; report sources still resolve original message/event records.
+Schema semantics distinguish table-wide `messages.id`, per-thread
+`messages.seq`, the separate per-thread `events.seq`, and `events.message_id`
+for a model output stream. They are not interchangeable. SQL aliases remain
+caller labels, not base-table provenance or approval. SQLite's outer projection
+disambiguates labels; unexpected duplicate metadata is refused without loss.
+Archived threads remain readable; deleted/rewound rows do not reappear.
+
+TEMP views exclude private restart checkpoints and mask non-history tables and
+views, including admission payloads and unsent drafts. Reads use native
+read-only, WAL-aware snapshots, never immutable mode or an incomplete copy of
+the main file. The binding protects this SQL connection; it does not restrict
+full-access filesystem or exec tools. See `C-036` in [CONTRACTS.md](CONTRACTS.md).
+
+### Source-bound reports
+
+The explicit turn input `history_report:true` is stored as an owned
+`history_report_requested` event before model execution. A trusted manager or
+worker read records `history_read_started` before SQL executes; its original
+turn owner is supplied by the host, not arguments. This is a read-attempt
+marker, not a successful query result or completion receipt.
+
+`history_registry_inherited` reuses `events.source_turn_id` to record a
+host-observed Registry/worker-state transfer within one conversation. The source
+turn must precede its successor, and repeated identical edges are idempotent;
+conflicting parents are refused. Indexed recursive lookup follows these edges
+for read/request state. The worker retains its original turn owner, and a fresh
+unrelated Registry does not inherit merely because an older turn read history.
+Multiple restored worker owners are accepted only when the existing single-parent
+lineage proves they belong to the same inherited Registry; an unrelated latest
+turn is not an ownership fallback.
+The edge is saved before runtime claim or restored worker installation; failure
+cannot silently switch to an untracked owner. Edit/resend reads the old explicit
+request marker before deletion and saves it on the replacement turn.
+
+The model report is versioned JSON with only `version`, `language`, `sources`,
+`proposals`, and `questions`. Each source binds a unique local key to
+`{kind: message|event, thread_id, seq}`. Proposals carry plain-text title,
+priority, disposition (`include|exclude|candidate`), proposal and local source
+keys. There is no model-provided fact summary, quote, author, approval/status
+or locator field. Empty source arrays are permitted for explicitly ungrounded
+new suggestions.
+
+The Store resolves those references to complete `HistorySource` records:
+canonical reference, table row ID, thread title/project, actual role/source,
+agent, full text, event kind/error, date and image references. Events have no
+message-source column; their recorded role and event/agent identity are kept
+separate from message authorship. The host displays full source bodies and
+fixed suggestion groups, escapes model text, and states only the cited date
+range/record count. Images are references, not a claim of image interpretation.
+The final rendered output is rejected if it cannot fit without truncating a
+source. Citation identity and fidelity do not prove semantic entailment,
+current implementation or approval.
+
+The existing private `pending_schedule_answers.payload` adds an optional typed
+`history_report` containing request, `HistoryEvidence{project_id,sources}` and
+rendered text; no curated summary is written. Pending recovery revalidates
+canonical originals; the publication transaction compares recipient project
+membership, full source identity/metadata/text/images and errors before
+committing the public answer and accepted receipt. Missing, changed or moved
+sources reject stale publication. Accepted reports keep their frozen rendered
+bytes and original publication identity. Private payloads remain unavailable
+to history SQL, SSE and ordinary replay.
+
 ## Durable composer snapshots (`F-145` / `C-033`)
 
 `composer_drafts` stores one current snapshot per `draft_key` (primary key):

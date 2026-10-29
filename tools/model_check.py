@@ -59,8 +59,10 @@ MODELS = {
         Model(
             "lifecycle", ROOT / "models" / "lifecycle" / "EngineLifecycle.tla",
             ("DeadlineKillsChild", "RestoreBeforeListen", "StopRacesRestore", "PresenceAfterWindow",
-             "IdleCommitNonAtomic", "FinishUngated", "ParkedNotCheckpointed", "IdleCountsOnlyManagers"),
-            ("TypeOK", "WorkHasLiveOwner", "CheckpointHasOwner", "StopIsFinal", "WindowHasEngine"),
+             "IdleCommitNonAtomic", "FinishUngated", "ParkedNotCheckpointed", "IdleCountsOnlyManagers",
+             "ParkedAdmissionNonAtomic"),
+            ("TypeOK", "WorkHasLiveOwner", "CheckpointHasOwner", "StopIsFinal", "WindowHasEngine",
+             "RegistryAlwaysAccounted"),
             (("MaxTurns", 2),),
         ),
         Model(
@@ -133,9 +135,14 @@ CASES: tuple[Case, ...] = (
     _case("idle-counts-only-managers", "guard required by f341e05: idle load includes parked "
           "workers, restoration and handoff (Engine.ActiveWork)",
           ("IdleCountsOnlyManagers",), "WorkHasLiveOwner"),
+    _case("parked-successor-detached", "seeded split choose/take then occupy: retained workers "
+          "temporarily disappear from the runtime before successor admission",
+          ("ParkedAdmissionNonAtomic",), "RegistryAlwaysAccounted"),
     # Witnesses: the scenarios behind the invariants are reachable.
     _case("reach-restored-window", "witness", witness="NeverRestoredIntoWindow"),
     _case("reach-parked-checkpoint", "witness", witness="NeverParkedCheckpoint"),
+    _case("reach-parked-successor", "witness", witness="NeverParkedSuccessor"),
+    _case("reach-refused-parked-successor", "witness", witness="NeverRefusedParkedSuccessor"),
     _case("reach-stop-before-restore", "witness", witness="NeverStopBeforeRestore"),
     _case("reach-opened-after-deadline", "witness", witness="NeverOpenedAfterDeadline"),
     _case("reach-idle-exit-after-close", "witness", witness="NeverIdleExitAfterClose"),

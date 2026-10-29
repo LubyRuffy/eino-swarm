@@ -109,6 +109,7 @@ export function Sidebar({
   onSelectProject,
   onNewProject,
   onNewInProject,
+  onHistoryReport,
   onEditProject,
   onDeleteProject,
   onOpenSkill,
@@ -135,6 +136,7 @@ export function Sidebar({
   onSelectProject: (id?: string) => void
   onNewProject: () => void
   onNewInProject: (project: Project) => void
+  onHistoryReport?: (project: Project) => void
   onEditProject: (project: Project) => void
   onDeleteProject: (project: Project) => void
   onOpenSkill: (project: Project, skill?: SkillInfo) => void
@@ -258,6 +260,7 @@ export function Sidebar({
                 }}
                 onNew={onNewProject}
                 onNewConversation={onNewInProject}
+                onHistoryReport={onHistoryReport}
                 onEdit={onEditProject}
                 onDelete={onDeleteProject}
                 onOpenSkill={onOpenSkill}

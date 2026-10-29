@@ -31,6 +31,9 @@ func (e *Engine) restorePendingScheduleAnswer(turn *store.Turn) (*store.PendingS
 		if failure != nil {
 			return nil, nil, failure
 		}
+		if err := validateStoredHistoryReport(payload, e.cfg.Tools.ToolResultLimit()); err != nil {
+			return nil, nil, &scheduleAnswerError{Code: "answer_restore_invalid", Cause: err}
+		}
 		// Deferral releases the candidate's execution claim. Its private
 		// transcript may predate later tool calls in the real checkpoint.
 		if row.State == "deferred" {

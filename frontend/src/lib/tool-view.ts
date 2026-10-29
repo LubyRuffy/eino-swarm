@@ -1,4 +1,5 @@
 import { parseFileChange, type EditDiff } from "./edit-diff"
+import type { MessageKey } from "./i18n"
 
 /** How a built-in tool call should read on one line, and how its payload
  *  should look once expanded. Field names come from the tool schemas — not
@@ -25,12 +26,14 @@ const PRIMARY: Record<string, string[]> = {
   memory: ["action", "content", "old_text"],
   skill_view: ["name"],
   skill_manage: ["action", "name", "sources"],
+  query_history: ["sql"],
 }
 
 export type SearchHit = { title: string; url: string; snippet: string }
 
 export type ToolView = {
   summary: string
+  summaryKey?: MessageKey
   failed: boolean
   error?: string
   body: string
@@ -85,10 +88,18 @@ export function toolRowSummary(view: ToolView): string {
 export function viewTool(name: string, args: string, result?: string, flagged?: boolean): ToolView {
   const diff = parseFileChange(name, args)
   const summary = summariseToolCall(name, args)
+  const summaryKey = name === "query_history" && parseObject(args) && !summary ? "tool.historySchema" as const : undefined
   if (result === undefined) {
-    return { summary, failed: Boolean(flagged), body: "", diff }
+    return { summary, summaryKey, failed: Boolean(flagged), body: "", diff }
   }
   const prefix = errorPrefix(result)
+  if (name === "query_history") {
+    const obj = parseObject(result)
+    const refused = obj?.ok === false
+    const detail = isRecord(obj?.error) ? obj.error : undefined
+    const error = refused ? asText(detail?.message) || asText(obj?.error) || asText(detail?.code) || "refused" : prefix
+    return { summary, summaryKey, failed: Boolean(flagged || prefix || refused), error, body: result }
+  }
   if (name === "exec" || name === "python_runner") {
     const run = parseRunResult(result)
     if (run) {

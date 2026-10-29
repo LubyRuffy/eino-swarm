@@ -1413,6 +1413,27 @@ afterwards. Responds `{"threads": […]}`.
 ### `POST /api/threads/:id/turns` → `202`
 
 Body `{"text": "…", "images": [{"name": "clip.png", "mime": "image/png", "data": "<base64>"}], "files": ["uploads/notes.md"], "from_event_seq": 12}`.
+Optional `history_report:true` explicitly requests a source-bound history
+report for this turn. The project menu creates an explicitly titled thread in
+the selected project and sends this flag without transferring or clearing the
+existing composer draft. The flag is durably recorded before model execution;
+if that write fails, no model request starts. It cannot become an ask answer,
+a follow-up, steering, or a goal/plan command. A busy target returns `409 busy`
+unless an explicit `from_event_seq` edit is being admitted. A report edit
+inherits the original turn's explicit choice even if the client omits the flag
+or sends false.
+`POST …/steer` rejects `history_report:true` with `400`.
+
+In this mode, the manager must query original history and submit the strict
+versioned source-report protocol; reading history in an ordinary turn also
+requires that protocol. Project-bound SQL views cannot read another project's
+records; standalone conversations keep the global history view. The public
+turn answer is host-rendered complete evidence plus labelled proposals, not
+the model's raw JSON. A model suggestion/citation is not approval or a semantic
+support guarantee. Invalid references, missing/changed sources and complete
+output-budget failures withhold the answer via the existing durable correction
+and Continue/Stop path. See `C-036` and [source identities](DATA_MODEL.md#source-bound-reports).
+
 `text` may be empty when `images` or `files` is not, or when `from_event_seq`
 points at a `user_message` that still has its original images. Each image is sniffed (png/jpeg/gif/webp);
 a renamed HTML file is rejected. At most 8 images, 8 MiB decoded each. They are
@@ -1813,6 +1834,9 @@ shortening only the bounded detail text.
 | kind | meaning |
 |---|---|
 | `user_message` | the request that started this turn. `images` is `{id,name,mime}[]` when the send carried pasted vision input; never the pixels |
+| `history_report_requested` | an explicit source-report choice owned by this turn and saved before model execution; no model-generated prose or authorization |
+| `history_read_started` | host-owned admission to a `query_history` read attempt, before the reader returns any bytes; `text` is the original arguments and `tool_call_id` is retained when available. Not a successful read, complete coverage or execution receipt |
+| `history_registry_inherited` | host-observed reuse/restoration of actual Registry worker state; `source_turn_id` identifies an earlier turn in this conversation. Saved before successor occupation, idempotent and used to inherit read/request state; it neither changes worker authorship nor makes an unrelated fresh Registry inherit history mode |
 | `generation_started` | durable model-output start identity; internal lifecycle evidence for recovery and Trace, not a chat row |
 | `generation_completed` | the output finished normally; closes its generation identity without completing its worker |
 | `generation_interrupted` | interrupted model output; `message_id` identifies that output and `text` is JSON `{reason,detail,recovery}` (see below). It does not mark the worker failed |
@@ -1956,6 +1980,14 @@ state and admission read/write failures remain explicit failures.
 Public answer events, replay messages and the accepted candidate decision
 commit together, preventing duplicate publication after restart. The policy
 model interprets prose; the schedule database remains the source of facts.
+
+When the turn is in history-report mode, nonempty `report_schedule.findings`
+must contain the same strict source-report JSON as a final answer. The host
+resolves complete sources and renders the findings before committing a rearm.
+Unrendered history claims cannot bypass final-answer admission through this
+outlet. Empty findings retain quiet-report behavior. Existing non-history
+findings retain their ordinary classification rules, and recovery uses the
+original action/tool receipt rather than repeating it.
 
 On the real manager-tool path, `report_schedule` returns
 `{"ok":true,"quiet":false,"report_pending":true}` after its scheduling action

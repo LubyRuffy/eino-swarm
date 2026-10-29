@@ -166,7 +166,7 @@ func (e *Engine) resumeTurn(restoreCtx context.Context, turn *store.Turn, snapsh
 	if err != nil {
 		return err
 	}
-	toolset, err := tools.Build(restoreCtx, e.cfg, e.WorkspaceDir(turn.ThreadID))
+	toolset, err := e.conversationTools(restoreCtx, th)
 	if err != nil {
 		return err
 	}
@@ -199,17 +199,26 @@ func (e *Engine) resumeTurn(restoreCtx context.Context, turn *store.Turn, snapsh
 	messages = dropSteerMessages(messages, unread)
 
 	rt := e.runtimeFor(turn.ThreadID)
-	ctx, cancel := context.WithCancel(context.Background())
-	idle := make(chan struct{})
-	if !rt.occupy(reg, cancel, turn.ID, idle) {
-		cancel()
+	rt.mu.Lock()
+	if rt.running {
+		rt.mu.Unlock()
 		reg.Close()
 		return ErrBusy
 	}
+	plan, err := rt.prepareLeftoverWorkers(restoreCtx, turn, snapshot)
+	if err != nil {
+		rt.mu.Unlock()
+		reg.Close()
+		return err
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	idle := make(chan struct{})
+	rt.occupyLocked(reg, cancel, turn.ID, idle)
+	rt.mu.Unlock()
 	for _, m := range unread {
 		_ = reg.SteerManagerMessage(m)
 	}
-	rt.setWorkerRestore(e.workersFromThread(turn.ThreadID, snapshot))
+	rt.setWorkerRestore(plan.running, plan.finished)
 	if checkpoint := e.checkpointForTurn(turn.ID, snapshot); checkpoint != nil {
 		if checkpoint.Pause == "cap" || checkpoint.Pause == "worker_collection" {
 			rt.mu.Lock()

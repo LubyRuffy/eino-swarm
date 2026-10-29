@@ -54,6 +54,9 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	snapshots ...*restoreSnapshot,
 ) (swarm.RunResult, error) {
 	e := rt.engine
+	// Bind the actual owner before restoring or spawning workers. A worker may
+	// outlive this manager check and must keep this original turn identity.
+	ctx = withHistoryReadOwner(ctx, turn.ThreadID, turn.ID)
 	rt.mu.Lock()
 	paused := rt.restartCap
 	rt.restartCap = nil
@@ -113,7 +116,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	if err != nil {
 		return swarm.RunResult{}, err
 	}
-	instruction := ManagerPrompt(toolset, JoinPromptSections(taskCoordinationPrompt,
+	instruction := ManagerPrompt(toolset, JoinPromptSections(historyPrompt(toolset), taskCoordinationPrompt,
 		managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID)), humanReply, rt.finalGoalWorkerSection(th)))
 	// Fresh slice: pc.managerTools may return the workspace toolset's
 	// backing array, and appending complete_goal / block_goal in place
@@ -179,6 +182,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	for {
 		var modelRounds atomic.Int32
 		answer := newManagerAnswerBuffer(acc)
+		answer.historyScope = historyScopeFromTools(toolset)
 		var candidate *pendingScheduleAnswer
 		var row *store.PendingScheduleAnswer
 		if restoredAnswer != nil {
@@ -220,7 +224,11 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 			failure = answer.reportError()
 			if failure == nil {
 				if row == nil {
-					row, failure = answer.prepare(turn, res, runErr)
+					res, failure = answer.prepareHistoryAnswer(ctx, turn, toolset, res, runErr)
+					if failure == nil {
+						reg.SetHistory(res.Transcript)
+						row, failure = answer.prepare(turn, res, runErr)
+					}
 					if failure == nil {
 						candidate = &pendingScheduleAnswer{}
 						if err := json.Unmarshal([]byte(row.Payload), candidate); err != nil {
@@ -230,7 +238,10 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 				}
 				if failure == nil {
 					policyCtx, endPolicy := rt.scheduleAnswerContext(ctx, reg)
-					failure = rt.admitPendingScheduleReports(policyCtx, turn)
+					failure = e.verifyPendingHistoryAnswer(policyCtx, turn, candidate)
+					if failure == nil {
+						failure = rt.admitPendingScheduleReports(policyCtx, turn)
+					}
 					if failure == nil {
 						evidence, failure = rt.verifyPendingScheduleAnswer(policyCtx, turn, row, candidate)
 					}
@@ -355,7 +366,11 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 						continue
 					}
 				}
-				failure = e.admitScheduleAnswer(turn.ThreadID, turn.ID, evidence, candidate.Events, row.ID)
+				var history *store.HistoryEvidence
+				if candidate.HistoryReport != nil {
+					history = &candidate.HistoryReport.Evidence
+				}
+				failure = e.admitScheduleAnswerWithHistory(turn.ThreadID, turn.ID, evidence, candidate.Events, history, row.ID)
 			}
 			if failure != nil {
 				res = answer.reject(res)
@@ -379,7 +394,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 				}
 				// Infrastructure/storage refusal is not a finding about the
 				// manager's claim and cannot authorize repeating its tools.
-				if failure.Code != "no_matching_schedule" && failure.Code != "schedule_state_changed" {
+				if failure.Code != "no_matching_schedule" && failure.Code != "schedule_state_changed" && !isHistoryAnswerCorrection(failure) {
 					return res, failure
 				}
 				if answerContinued {
@@ -389,7 +404,11 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 				if err := rt.recordScheduleAnswerRetry(turn, failure); err != nil {
 					return res, err
 				}
-				messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()), runtimeUserMessage(scheduleAnswerCorrectionCue))
+				cue := scheduleAnswerCorrectionCue
+				if isHistoryAnswerCorrection(failure) {
+					cue = historyAnswerCorrectionCue
+				}
+				messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()), runtimeUserMessage(cue))
 				continue
 			}
 			res = answer.accept(res)

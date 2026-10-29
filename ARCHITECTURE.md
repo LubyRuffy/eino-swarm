@@ -635,6 +635,78 @@ limit is implied. See `C-029` and
 
 ## Conversation search
 
+The host also mounts `query_history` on manager and worker surfaces for new,
+resumed and parked turns, including planning and Memory-off conversations.
+`internal/engine/history_tool.go` contributes the current project/thread snapshot
+and task-independent retrieval/evidence instructions. It does not inject peer
+transcripts or curate a project summary. Empty SQL discovers current columns;
+the model chooses SELECT/WITH queries and positional scalar parameters.
+Project conversations bind the connection's TEMP views to that project before
+model SQL executes, using each table's actual destination/owner relationship.
+Predicates and parameters cannot change the binding. Standalone conversations
+keep an unscoped history reader; a missing bound project fails instead of
+falling back to that global view.
+The tool response names each value in an object row and retains column order
+separately. Schema discovery describes canonical identity/source fields;
+arbitrary SQL labels do not acquire source authority. The engine formatter
+applies the configured cap to the final object JSON and omits only whole rows.
+
+`internal/history` opens an independent `mode=ro` connection and holds one read
+snapshot through schema discovery, SELECT admission and execution. Trusted TEMP
+views exclude private recovery checkpoints and mask non-history tables/views;
+single-statement/schema checks and actual EXPLAIN root-page/function checks
+prevent bypass. Public history remains original rows. The pinned SQLite driver
+does not retain its context watcher during Rows.Next, so a private row collector
+under one ExecContext aggregate step owns the cancellable scan. User SQL cannot
+call this collector. Queries use a five-second cancellation budget and the configured
+tool result-character cap; complete omitted rows produce explicit truncation,
+never a silently shortened original. Old query results can be microcompacted
+and reread. These guarantees cover this query connection; full-access filesystem
+and exec permissions remain the existing access model. See `C-036`.
+
+The project menu creates an explicitly titled conversation and submits
+`history_report:true` through the normal start-turn endpoint. Its
+`history_report_requested` event must be durable before the model builder runs;
+the request cannot become an answer to a pending question, a queued follow-up
+or steering. Existing drafts and global model/settings values are not changed.
+
+`history_read_guard.go` persists `history_read_started` before executing the
+reader, with a host-supplied original turn owner inherited by workers. A failed
+guard returns no history bytes and records an answer-admission failure. This
+event proves admission to a read attempt, not a successful query or independent
+verification. Explicit request/read state requires the manager to use the
+versioned JSON protocol in `history_report.go`. It supplies canonical
+`{kind,thread_id,seq}` references and separate proposals/questions, never
+model-authored excerpts, authorship or approval fields.
+
+When the host actually reuses a parked Registry, or restores executable/unread
+worker state into a fresh one, it saves `history_registry_inherited` with the
+original `source_turn_id` before occupation or worker restoration. The claim
+keeps Stop/idle ownership serialized while that edge is admitted. Missing or
+conflicting ownership fails without detaching the previous Registry; settled
+archives do not by themselves establish inheritance. Indexed same-conversation,
+forward-turn edges carry earlier read/request state to successors without
+rewriting a worker's original owner. An unrelated fresh Registry has no such
+inheritance. Edit/resend reads the original explicit-report marker before the
+rewind deletes it and records that choice on the replacement turn.
+Claim preparation uses a cache-free `readRestoreSnapshot`; ordinary startup's
+`loadRestoreSnapshot` still seeds generation state from that same single read.
+This keeps a held runtime claim from waiting on a generation notification's lock.
+
+`history_answer.go` resolves each reference through the Store and replaces
+manager prose with one host-rendered report. Complete source text, errors,
+attribution, dates and original sequence namespaces remain intact. Model
+proposals are escaped plain text in fixed suggestion groups; image references
+are marked as uninterpreted. A citation is not an entailment or approval check.
+The full rendered report must fit the configured result budget; it is refused
+rather than shortening a source. The existing private pending-answer payload
+stores the typed request, canonical source snapshots and rendering. Pending
+restoration rechecks these sources, and the publication transaction rechecks
+membership and the exact snapshot before atomically accepting it. Accepted
+answers retain their frozen rendering. Nonempty `report_schedule.findings`
+uses the same protocol before committing its scheduling action; correction or
+recovery does not repeat an already committed rearm or receipt.
+
 ⌘K is `GET /api/search`, not a client substring on sidebar titles. The store
 always maintains an FTS5 trigram index (`search_docs` / `thread_fts`) of
 titles, standing goals and user/assistant messages — tool JSON stays out so
@@ -650,7 +722,7 @@ worker before closing SQLite.
 ## A turn, end to end
 
 1. **`POST /api/threads/:id/turns`** → `engine.StartTurn`. Body is
-   `{text, images?, files?, from_event_seq?}`. Pasted images are decoded,
+   `{text, images?, files?, from_event_seq?, history_report?}`. Pasted images are decoded,
    sniffed, stored under `$ZWAI_HOME/inputs/<thread>/` and sent as eino
    `UserInputMultiContent` (caption in a text part, not also on `Content` —
    OpenAI cannot marshal both), not as workspace files. A `/goal <objective>`

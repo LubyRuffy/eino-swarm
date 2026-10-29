@@ -97,6 +97,9 @@ export const en = {
   "projects.newIn": "New conversation in {name}",
   "projects.options": "Project options for {name}",
   "projects.viewSkills": "View skills",
+  "projects.summarizeHistory": "Summarize project history",
+  "projects.historyTitle": "Project history report",
+  "projects.historyPrompt": "Review this project's original discussions. Extract requirements and decisions, distinguish them from suggestions, and propose next steps with source evidence. Preserve later corrections, exclusions and unknowns.",
 
   "palette.placeholder": "Search conversations, or type a command…",
   "palette.empty": "Nothing matches that.",
@@ -389,6 +392,7 @@ export const en = {
   "tool.noOutput": "(no output)",
   "tool.emptyFile": "(empty file)",
   "tool.diffMore": "{n} more lines",
+  "tool.historySchema": "Inspect history schema",
 
   "status.unread": "Completed, unread",
   "sidebar.unreadOne": "{count} unread completed task",

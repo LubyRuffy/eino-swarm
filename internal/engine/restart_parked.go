@@ -133,7 +133,8 @@ func (e *Engine) resumeParkedThreadContext(ctx context.Context, th *store.Thread
 		}
 	}
 	for _, w := range running {
-		if _, err := reg.Restore(context.Background(), w, reg.ModelBuilder, workerTools...); err != nil {
+		ownerContext := withHistoryReadOwner(ctx, th.ID, turn.ID)
+		if _, err := reg.Restore(ownerContext, w, reg.ModelBuilder, workerTools...); err != nil {
 			rt.reapParked()
 			return 0, err
 		}
@@ -147,7 +148,7 @@ func (e *Engine) parkedRegistry(th *store.Thread, turn *store.Turn) (*swarm.Regi
 	if err != nil {
 		return nil, err
 	}
-	set, err := tools.Build(context.Background(), e.cfg, e.WorkspaceDir(th.ID))
+	set, err := e.conversationTools(context.Background(), th)
 	if err != nil {
 		return nil, err
 	}

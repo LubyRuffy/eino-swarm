@@ -44,7 +44,7 @@ import type { Project, SkillInfo } from "@/lib/types"
 import { startSidebarSync } from "@/lib/sidebar-sync"
 import { observeSystemTheme } from "@/lib/system-theme"
 import { askingThreadIds } from "@/lib/thread-title"
-import { toggleLocalePref } from "@/lib/use-t"
+import { toggleLocalePref, useT } from "@/lib/use-t"
 import { isMac, readSidebarOpen, writeSidebarOpen } from "@/lib/utils"
 import { desktopShell, openLinksNatively } from "@/lib/shell"
 import { applyTheme, useApp } from "@/store/app"
@@ -124,6 +124,7 @@ function TaskBody({ chat }: { chat: ReactNode }) {
  *  The composer's usage ring subscribes in a child so a token/usage pulse
  *  cannot rewrite the textarea while a CJK IME is composing. */
 function AppShell() {
+  const t = useT()
   const [panelOpen, setPanelOpen] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(readSidebarOpen)
   const [panelTab, setPanelTab] = useState<PanelTab>("agents")
@@ -375,6 +376,15 @@ function AppShell() {
             onToggleLocale={toggleLocale}
             onNewProject={() => setProjectDialog({ open: true })}
             onNewInProject={(project) => void startThreadInProject(project)}
+            onHistoryReport={(project) => {
+              closeClient()
+              if (useApp.getState().creatingThread) return
+              useProjects.getState().select(project.id)
+              void (async () => {
+                const id = await newThread(project.id, undefined, t("projects.historyTitle"))
+                if (id) await useApp.getState().send(t("projects.historyPrompt"), undefined, { threadId: id, historyReport: true })
+              })()
+            }}
             onEditProject={(project) => setProjectDialog({ open: true, project })}
             onDeleteProject={setDoomedProject}
             onOpenSkill={(project, skill) => {
@@ -552,6 +562,7 @@ function AppSidebar({
   onToggleLocale,
   onNewProject,
   onNewInProject,
+  onHistoryReport,
   onEditProject,
   onDeleteProject,
   onOpenSkill,
@@ -564,6 +575,7 @@ function AppSidebar({
   onToggleLocale: () => void
   onNewProject: () => void
   onNewInProject: (project: Project) => void
+  onHistoryReport?: (project: Project) => void
   onEditProject: (project: Project) => void
   onDeleteProject: (project: Project) => void
   onOpenSkill: (project: Project, skill?: SkillInfo) => void
@@ -616,6 +628,7 @@ function AppSidebar({
       onSelectProject={(id) => void selectProject(id)}
       onNewProject={onNewProject}
       onNewInProject={onNewInProject}
+      onHistoryReport={onHistoryReport}
       onEditProject={onEditProject}
       onDeleteProject={onDeleteProject}
       onOpenSkill={onOpenSkill}

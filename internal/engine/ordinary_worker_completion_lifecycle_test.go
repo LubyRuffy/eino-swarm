@@ -91,6 +91,16 @@ func newOrdinaryLifecycleFixture(t *testing.T, mode string) *ordinaryLifecycleFi
 			http.Error(w, "invalid fixture request", http.StatusBadRequest)
 			return
 		}
+		// The history capability adds legitimate prompt tokens. A restored
+		// manager may now request a session briefing at the existing threshold;
+		// that tool-free auxiliary request is not another worker execution.
+		if len(input.Messages) > 0 && input.Messages[0].Role == schema.System && input.Messages[0].Content == sessionMemoryPrompt() {
+			if !input.Stream || len(input.Tools) != 0 || len(input.Messages) != 2 || input.Messages[1].Role != schema.User {
+				t.Error("session briefing must retain its separate tool-free protocol")
+			}
+			writeContextFlowReply(w, input.Stream, map[string]any{"content": "The original worker lifecycle remains recorded in its source events."}, "stop")
+			return
+		}
 		if len(input.Messages) > 0 && input.Messages[0].Role == schema.System && input.Messages[0].Content == scheduleAnswerPrompt {
 			if input.Stream || len(input.Tools) != 0 || input.ToolChoice != "none" || len(input.Messages) != 2 || input.Messages[1].Role != schema.User {
 				t.Error("schedule policy must remain separate, non-streaming and tool-free")

@@ -13,6 +13,21 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-410`, `C-036` (Issue #128): **Summarize project history** opens a titled
+  conversation in the selected project without replacing the existing draft.
+  Managers and workers choose read-only `query_history` SQL over retained
+  originals, including planning and Memory-off turns. Project-bound views
+  prevent SQL from selecting another project's records; standalone conversations
+  retain the global history view. The host resolves canonical source references,
+  displays complete original records with their actual attribution and locations,
+  and separates model proposals from that evidence. Invalid or changed sources
+  withhold publication through the existing durable answer admission path.
+  Raw SQL rows remain bounded and cancellable with explicit truncation; private
+  drafts, unpublished candidates and recovery checkpoints stay excluded.
+  Offline adapter/UI regressions and opt-in synthetic model measurements have
+  separate evidence; source fidelity does not prove semantic recommendation
+  quality or native acceptance.
+
 - `F-420`, `C-025` (Issue #125): **View details** on memory-review notices and review status
   expands saved additions/deletions. Committed note edits and skill
   create/patch/delete retain available full before/after snapshots; old records

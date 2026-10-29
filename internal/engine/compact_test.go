@@ -14,9 +14,9 @@ import (
 )
 
 func TestCompactFoldsOlderReplayAndKeepsRecent(t *testing.T) {
-	e := newTestEngine(t)
+	e := newManualCompactEngine(t)
 	e.Config().Swarm.CompactKeepMessages = 2
-	th, _ := e.CreateThread("", "", "")
+	th, _ := e.CreateThread("manual compact fixture", "", "")
 
 	first, err := e.StartTurn(th.ID, "the first request")
 	if err != nil {
@@ -92,9 +92,9 @@ func TestCompactFoldsOlderReplayAndKeepsRecent(t *testing.T) {
 }
 
 func TestCompactUsesSessionMemoryInsteadOfASecondSummarizer(t *testing.T) {
-	e := newTestEngine(t)
+	e := newManualCompactEngine(t)
 	e.Config().Swarm.CompactKeepMessages = 2
-	th, _ := e.CreateThread("", "", "")
+	th, _ := e.CreateThread("manual compact fixture", "", "")
 	for _, text := range []string{"one", "two"} {
 		turn, err := e.StartTurn(th.ID, text)
 		if err != nil {
@@ -142,8 +142,8 @@ func TestCompactUsesSessionMemoryInsteadOfASecondSummarizer(t *testing.T) {
 }
 
 func TestCompactDoesNothingWhenTheConversationIsShort(t *testing.T) {
-	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "", "")
+	e := newManualCompactEngine(t)
+	th, _ := e.CreateThread("manual compact fixture", "", "")
 	if _, err := e.CompactThread(th.ID); !errors.Is(err, ErrNothingToCompact) {
 		t.Fatalf("empty conversation: %v", err)
 	}
@@ -158,8 +158,8 @@ func TestCompactDoesNothingWhenTheConversationIsShort(t *testing.T) {
 }
 
 func TestCompactIsBusyWhileATurnRuns(t *testing.T) {
-	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "", "")
+	e := newManualCompactEngine(t)
+	th, _ := e.CreateThread("manual compact fixture", "", "")
 	turn, err := e.StartTurn(th.ID, "still running")
 	if err != nil {
 		t.Fatal(err)
@@ -171,9 +171,9 @@ func TestCompactIsBusyWhileATurnRuns(t *testing.T) {
 }
 
 func TestCompactRecordsAFailedModelCall(t *testing.T) {
-	e := newTestEngine(t)
+	e := newManualCompactEngine(t)
 	e.Config().Swarm.CompactKeepMessages = 2
-	th, _ := e.CreateThread("", "", "")
+	th, _ := e.CreateThread("manual compact fixture", "", "")
 	first, _ := e.StartTurn(th.ID, "one")
 	waitForTurn(t, e, first.ID)
 	second, _ := e.StartTurn(th.ID, "two")
@@ -205,9 +205,9 @@ func TestCompactRecordsAFailedModelCall(t *testing.T) {
 }
 
 func TestASecondCompactSkipsAlreadyFoldedMessages(t *testing.T) {
-	e := newTestEngine(t)
+	e := newManualCompactEngine(t)
 	e.Config().Swarm.CompactKeepMessages = 2
-	th, _ := e.CreateThread("", "", "")
+	th, _ := e.CreateThread("manual compact fixture", "", "")
 	for _, text := range []string{"one", "two"} {
 		turn, err := e.StartTurn(th.ID, text)
 		if err != nil {
@@ -224,9 +224,9 @@ func TestASecondCompactSkipsAlreadyFoldedMessages(t *testing.T) {
 }
 
 func TestCompactCallDoesNotAddADeadline(t *testing.T) {
-	e := newTestEngine(t)
+	e := newManualCompactEngine(t)
 	e.Config().Swarm.CompactKeepMessages = 2
-	th, _ := e.CreateThread("", "", "")
+	th, _ := e.CreateThread("manual compact fixture", "", "")
 	for _, text := range []string{"one", "two"} {
 		turn, err := e.StartTurn(th.ID, text)
 		if err != nil {
@@ -236,7 +236,9 @@ func TestCompactCallDoesNotAddADeadline(t *testing.T) {
 	}
 
 	prev := compactGenerate
+	calls := 0
 	compactGenerate = func(ctx context.Context, m model.BaseChatModel, msgs []*schema.Message) (*schema.Message, error) {
+		calls++
 		if _, ok := ctx.Deadline(); ok {
 			t.Fatal("compact must not add a total deadline; silence is the provider idle timeout")
 		}
@@ -246,6 +248,9 @@ func TestCompactCallDoesNotAddADeadline(t *testing.T) {
 
 	if _, err := e.CompactThread(th.ID); err != nil {
 		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("manual compact must exercise the fallback summarizer, calls=%d", calls)
 	}
 }
 
@@ -267,11 +272,11 @@ func TestCompactStreamStopsWhenTheCallerCancels(t *testing.T) {
 }
 
 func TestCompactHonoursAPinnedModel(t *testing.T) {
-	e := newTestEngine(t)
+	e := newManualCompactEngine(t)
 	e.Config().Swarm.CompactKeepMessages = 2
 	e.Config().Swarm.CompactProvider = e.Config().Models.Default
 	e.Config().Swarm.CompactModel = "tiny"
-	th, _ := e.CreateThread("", "", "")
+	th, _ := e.CreateThread("manual compact fixture", "", "")
 	for _, text := range []string{"one", "two"} {
 		turn, err := e.StartTurn(th.ID, text)
 		if err != nil {
@@ -355,9 +360,9 @@ func TestCompactStreamModelGenerateDrainsTheInnerStream(t *testing.T) {
 }
 
 func TestCompactCallStreamsInsteadOfGenerate(t *testing.T) {
-	e := newTestEngine(t)
+	e := newManualCompactEngine(t)
 	e.Config().Swarm.CompactKeepMessages = 2
-	th, _ := e.CreateThread("", "", "")
+	th, _ := e.CreateThread("manual compact fixture", "", "")
 	for _, text := range []string{"one", "two"} {
 		turn, err := e.StartTurn(th.ID, text)
 		if err != nil {
@@ -429,9 +434,9 @@ func (m *chunkStreamModel) Stream(_ context.Context, _ []*schema.Message, _ ...m
 }
 
 func TestCompactThreadDoesNotPersistATranscriptDump(t *testing.T) {
-	e := newTestEngine(t)
+	e := newManualCompactEngine(t)
 	e.Config().Swarm.CompactKeepMessages = 2
-	th, _ := e.CreateThread("", "", "")
+	th, _ := e.CreateThread("manual compact fixture", "", "")
 	for _, text := range []string{"one", "two"} {
 		turn, err := e.StartTurn(th.ID, text)
 		if err != nil {
@@ -471,8 +476,8 @@ func TestCompactThreadDoesNotPersistATranscriptDump(t *testing.T) {
 }
 
 func TestCompactThreadCopiesSessionMemoryWhenReplayIsShort(t *testing.T) {
-	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "", "")
+	e := newManualCompactEngine(t)
+	th, _ := e.CreateThread("manual compact fixture", "", "")
 	turn, err := e.StartTurn(th.ID, "only one exchange")
 	if err != nil {
 		t.Fatal(err)
