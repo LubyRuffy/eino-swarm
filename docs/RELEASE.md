@@ -426,9 +426,25 @@ existing `issue-automation/delivery-state.json`. Source must be clean and in fre
 fetched `origin/main`; GitHub repository must match `go.mod`. The default entry
 reads required, still-unpublished platforms from the allocated batch; a
 single-platform recovery can use `--platform macos|android|ios`. A tag already published
-must resolve to exactly this SHA. To resume a frozen historical source with the
-new orchestration code, run the script from current main with the accepted installer
-in the frozen checkout's `bin/`. The public tag must point at the frozen source SHA:
+must resolve to exactly this SHA. An already qualified and allocated, still-unpublished
+batch can also resume when its frozen source remains an ancestor of freshly fetched
+main. Recovery requires a valid allocation timestamp, an unchanged finalized
+Issue/platform workset, explicit empty active-Issue fields, accepted Issue source
+identities, and a nonempty frozen `required_scope_source_shas` list covering every
+additional platform's direct and inherited sources. The frozen list must also
+contain exactly the accepted Issue source and additional-source union, with no
+orphaned identities. The complete Issue/additional platform union, including
+already delivered platforms, must match the declared workset. All sources must
+be in the candidate. Later main changes stay outside the allocation. Missing or changed
+scope evidence refuses recovery rather than reconstructing it from newer main.
+The optional scope list in `finalized_workset`, when present, must match as well.
+This path neither allocates a version nor waives native/package/signing, State,
+remote tag or version-ordering checks. New allocations retain latest-main/live-audit
+requirements; no tag or tracking ref is manufactured to admit recovery.
+
+To resume the frozen source using current official orchestration code, keep its
+accepted installer in the frozen checkout's `bin/`. Any existing public tag must
+point at the frozen source SHA; an unpublished allocation does not require a tag:
 
 ```bash
 python3 tools/release.py --version x.y.z --platform macos --source-dir /absolute/isolated/frozen-checkout
