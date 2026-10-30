@@ -3,6 +3,7 @@ import { generationHistory } from "./mock-generation"
 import { backoffHistory } from "./mock-backoff"
 import { workerCollectionHistory, workerCollectionStopHistory, workerCollectionPaged } from "./mock-worker-collection"
 import { reasoningOnlyTurn, scriptedTurn, type Step } from "./mock-turn"
+import { mockGoalDetail, mockGoalFixture, resumeMockGoal, type MockGoalFields } from "./mock-goal"
 import {
   OpAnswer,
   OpCancelWait,
@@ -87,7 +88,7 @@ function mockPauseClientsMs(search = location.search): number {
   return new URLSearchParams(search).get("pause") === "clients" ? 1200 : 0
 }
 
-type MockThread = {
+type MockThread = MockGoalFields & {
   id: string
   title: string
   projectID: string
@@ -97,9 +98,6 @@ type MockThread = {
   action: string
   askUser: boolean
   minutesAgo: number
-  goal?: string
-  goalComplete?: boolean
-  goalCapped?: boolean
   providerID?: string
   model?: string
   reasoning?: string
@@ -232,18 +230,15 @@ export class MockHost {
   constructor(readonly tickMs = mockTickMs()) {
     const live = this.find("t-live")
     if (live) {
+      const goalFixture = mockGoalFixture(new URLSearchParams(location.search).get("history"))
       if (new URLSearchParams(location.search).get("history") === "reasoning-only") {
         this.seed(live, reasoningOnlyTurn(true), true)
       } else if (new URLSearchParams(location.search).get("history") === "restart-ask") {
         live.askUser = true
         this.seed(live, restartAskHistory(), true)
-      } else if (new URLSearchParams(location.search).get("history") === "goal-complete") {
-        live.goal = "Verify current work"
-        this.seed(live, [{ kind: "goal", text: live.goal }], false)
-      } else if (new URLSearchParams(location.search).get("history") === "goal-paused") {
-        live.goal = "Verify the required artifact."
-        live.goalCapped = true
-        this.seed(live, [{ kind: "goal", text: live.goal }, { kind: "goal_capped", text: '{"auto_turns":1,"cap":1}' }], false)
+      } else if (goalFixture) {
+        Object.assign(live, goalFixture.fields)
+        this.seed(live, goalFixture.events, false)
       } else if (new URLSearchParams(location.search).get("history") === "generation-interruption") {
         this.seed(live, generationHistory(), true)
       } else if (new URLSearchParams(location.search).get("history") === "answer-backoff") {
@@ -566,10 +561,7 @@ export class MockHost {
       id: th.id,
       title: th.title,
       ...(this.legacyCompletion ? {} : { unread: (th.completedSeq ?? 0) > (th.readSeq ?? 0), completed_seq: th.completedSeq ?? 0 }),
-      goal: th.goal,
-      goal_on: Boolean(th.goal),
-      goal_complete: th.goalComplete,
-      goal_capped: th.goalCapped,
+      ...mockGoalDetail(th),
       waiting: th.waiting,
       wake: th.waiting
         ? { id: "w-" + th.id, next_run_at: new Date(Date.now() + 9 * 60_000).toISOString() }
@@ -924,8 +916,7 @@ export class MockLink {
         const th = thread()
         if (!th) return this.missing(id)
         if (req.op === OpResumeGoal) {
-          th.goalCapped = false
-          th.goalComplete = false
+          resumeMockGoal(th)
           this.host.push(th, { kind: "goal_resumed" })
         }
         if (req.op === OpAnswer && th.askUser) {

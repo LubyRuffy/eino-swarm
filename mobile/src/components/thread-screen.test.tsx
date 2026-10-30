@@ -410,7 +410,7 @@ describe("ThreadScreen", () => {
         onResumeGoal={onResumeGoal}
       />,
     )
-    expect(screen.getByTestId("goal-banner")).toHaveTextContent("Paused")
+    expect(screen.getByTestId("goal-banner")).toHaveTextContent("Auto-run paused")
     fireEvent.click(screen.getByRole("button", { name: "Start goal" }))
     expect(onResumeGoal).toHaveBeenCalled()
   })
@@ -456,7 +456,7 @@ describe("ThreadScreen", () => {
         onAnswerStructured={vi.fn()}
       />,
     )
-    expect(screen.getByTestId("goal-banner")).toHaveTextContent("Blocked")
+    expect(screen.getByTestId("goal-banner")).toHaveTextContent("Auto-run paused")
     expect(screen.getByTestId("goal-banner")).toHaveTextContent("The last turn failed.")
     rerender(
       <ThreadScreen
@@ -477,7 +477,7 @@ describe("ThreadScreen", () => {
         onAnswerStructured={vi.fn()}
       />,
     )
-    expect(screen.getByTestId("goal-banner")).toHaveTextContent("Blocked")
+    expect(screen.getByTestId("goal-banner")).toHaveTextContent("Auto-run paused")
     expect(screen.getByTestId("goal-banner")).not.toHaveTextContent(
       "The last turn failed.",
     )
@@ -507,7 +507,7 @@ describe("ThreadScreen", () => {
         onCancelWait={vi.fn()}
       />,
     )
-    expect(screen.getByTestId("goal-banner")).toHaveTextContent("Paused")
+    expect(screen.getByTestId("goal-banner")).toHaveTextContent("Auto-run paused")
     expect(screen.getByTestId("schedule-banner")).toHaveTextContent("Continue the wait.")
     expect(screen.getByTestId("schedule-banner")).toHaveTextContent("not-a-date")
   })

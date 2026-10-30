@@ -304,7 +304,7 @@ export interface Thread {
   goal?: string
   /** True after complete_goal. The text stays so the banner can show it. */
   goal_complete?: boolean
-  /** True after block_goal. Auto-continue stops until resume or a human message. */
+  /** True after block_goal. Only explicit resume restarts automatic pursuit; a human message answers once. */
   goal_blocked?: boolean
   goal_block_reason?: string
   /** True after consecutive auto-continues hit the cap. */

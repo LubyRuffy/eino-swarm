@@ -37,20 +37,17 @@ export function GoalBanner({
       ? formatGoalAge(started, new Date(now))
       : ""
   const held = state === "paused"
+  const paused = held || state === "blocked"
   const canStart = !running && Boolean(onResume) && (held || state === "blocked")
   const label =
-    state === "blocked"
-      ? t("goal.blocked")
-      : held
-        ? t("goal.paused")
-        : t("goal.pursuing")
+    paused ? t("goal.executionPaused") : t("goal.pursuing")
   const reason =
     state === "blocked"
       ? displayBlock(detail.goal_block_reason)
       : held && !running
         ? detail.goal_idle && !detail.goal_capped
-          ? t("goal.idleHint")
-          : t("goal.capHint")
+          ? t("goal.idleReason")
+          : t("goal.capReason")
         : waiting && !running
           ? t("goal.waitHint")
           : ""
@@ -73,7 +70,11 @@ export function GoalBanner({
             >
               {label}
             </span>
-            {age ? <span className="text-xs tabular-nums text-muted-foreground">{age}</span> : null}
+            {age ? (
+              <span data-testid="goal-age" className="text-xs tabular-nums text-muted-foreground">
+                {t("goal.age", { age })}
+              </span>
+            ) : null}
           </div>
           <p data-testid="goal-text" className="mt-1 truncate text-sm">
             {detail.goal}
@@ -93,7 +94,16 @@ export function GoalBanner({
           </Button>
         ) : null}
       </div>
-      {reason ? <p className="mt-2 break-words text-xs text-muted-foreground">{reason}</p> : null}
+      {reason ? (
+        <p data-testid="goal-reason" className="mt-2 break-words text-xs text-muted-foreground">
+          {paused ? t("goal.pauseReason", { reason }) : reason}
+        </p>
+      ) : null}
+      {canStart ? (
+        <p className="mt-1 break-words text-xs text-muted-foreground">
+          {t("goal.manualWhilePaused")}
+        </p>
+      ) : null}
     </div>
   )
 }

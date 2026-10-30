@@ -22,10 +22,12 @@ test("a human send answers once and keeps a capped goal paused until Start", asy
     await composer(page).press("Enter")
     await expect.poll(async () => (await (await request.get(`/api/threads/${threadId}`)).json()).thread.goal_capped).toBe(true)
     await waitForIdle(page)
-    await expect(page.getByTestId("goal-banner")).toContainText("Paused")
+    await expect(page.getByTestId("goal-banner")).toContainText("Auto-run paused")
     await expect(page.getByTestId("goal-start")).toBeVisible()
     const before = (await (await request.get(`/api/threads/${threadId}/turns`)).json()).turns
     expect(before).toHaveLength(2)
+    const pausedThread = (await (await request.get(`/api/threads/${threadId}`)).json()).thread
+    expect(pausedThread.goal_started_at).toBeTruthy()
 
     await composer(page).fill("Describe the current state.")
     await composer(page).press("Enter")
@@ -35,12 +37,20 @@ test("a human send answers once and keeps a capped goal paused until Start", asy
     }).toBe(true)
     await waitForIdle(page)
     const afterSend = await (await request.get(`/api/threads/${threadId}`)).json()
-    expect(afterSend.thread).toMatchObject({ goal_capped: true })
-    expect((await (await request.get(`/api/threads/${threadId}/turns`)).json()).turns).toHaveLength(3)
-    await expect(page.getByTestId("goal-banner")).toContainText("Paused")
+    expect(afterSend.thread).toMatchObject({ goal_capped: true, goal_complete: false, goal_started_at: pausedThread.goal_started_at })
+    const afterSendTurns = (await (await request.get(`/api/threads/${threadId}/turns`)).json()).turns
+    expect(afterSendTurns).toHaveLength(3)
+    expect(afterSendTurns.at(-1)).toMatchObject({ status: "done" })
+    expect(afterSendTurns.at(-1).final.trim()).not.toBe("")
+    await expect(page.getByTestId("goal-banner")).toContainText("Auto-run paused")
+    await expect(page.getByTestId("goal-banner")).toContainText("You can keep chatting manually. Start goal resumes automatic pursuit.")
+    await expect(page.getByTestId("goal-age")).toContainText("Goal age:")
     await expect(page.getByTestId("goal-start")).toBeVisible()
+    const pausedLog = await (await request.get(`/api/threads/${threadId}/log`)).json()
+    expect(pausedLog.events.filter((event: { kind: string }) => event.kind === "goal_complete" || event.kind === "goal_resumed")).toHaveLength(0)
     await reloadOpenConversation(page)
-    await expect(page.getByTestId("goal-banner")).toContainText("Paused")
+    await expect(page.getByTestId("goal-banner")).toContainText("Auto-run paused")
+    await expect(page.getByTestId("goal-age")).toContainText("Goal age:")
     await expect(page.getByTestId("goal-start")).toBeVisible()
     await writeFile(info.outputPath("paused-after-human-send.png"), await page.screenshot({ animations: "disabled" }), { mode: 0o600 })
 
@@ -56,7 +66,7 @@ test("a human send answers once and keeps a capped goal paused until Start", asy
       const { turns } = await (await request.get(`/api/threads/${threadId}/turns`)).json()
       return turns.length === 5 && turns.at(-1).status === "done"
     }).toBe(true)
-    await expect(page.getByTestId("goal-banner")).toContainText("Paused")
+    await expect(page.getByTestId("goal-banner")).toContainText("Auto-run paused")
     await expect(page.getByTestId("goal-start")).toBeVisible()
     const evidence = await (await request.get(`/api/threads/${threadId}/log`)).json()
     expect(evidence.events.filter((event: { kind: string }) => event.kind === "goal_resumed")).toHaveLength(1)

@@ -186,6 +186,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-009 Editable configuration and scheduled waits
 
+- 目标状态展示：暂停目标的状态和原因明确归属于自动执行，不能把后续手动回答的完成解释为整个目标已完成或已恢复。目标条时钟从目标设立时刻累计并明确标注目标年龄，包含暂停时间，不承担暂停时长或当前回合时长的语义。恢复操作提示仅随实际可用的恢复控件显示，暂停原因不依赖该控件是否可用。关联功能：`F-150`、`F-220`；证据：`frontend/src/components/app/goal-banner.test.tsx`、`mobile/src/components/goal-pause-meaning.test.tsx`、`mobile/src/lib/goal-pause.test.ts`、`frontend/e2e/goal-pause.spec.ts`、`mobile/e2e/goal-pause.spec.ts`；变更类型：Fixed；来源：Issue #131。
+
 - Cron 触发时刻：下一次触发是严格晚于当前时刻、墙钟在计划时区（默认服务器本地时区）匹配的第一个绝对分钟。夏令时跳过的墙钟时刻不触发，也不推迟到其他日期；跳变当天其后匹配的时刻照常触发，重复的墙钟小时按第一个匹配的绝对分钟。关联功能：`F-150`；证据：`internal/engine/schedule_spec.go`、`internal/engine/schedule_spec_fuzz_test.go`（fuzz 目标与已提交的失败种子）；变更类型：Fixed。
 
 - 末轮目标收取：自动计数已到 cap 且没有 active 同对话 wake 时，不再授予跨轮 worker 归属；Goal 提示必须说明没有下一自动轮承接，结束前真实 wait 收取当前代终态或显式 close 放弃。运行中与已结束待收取项分组携带 generation；不得为绕过收取临时编造 wake，也不得把历史归档当作收取。证据：`internal/engine/prompt_goal_worker.go`、`internal/engine/worker_completion.go`、`internal/engine/worker_completion_wake_test.go`；关联 `C-019`、`F-150`；变更类型：Fixed。

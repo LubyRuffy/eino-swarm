@@ -217,6 +217,12 @@ export const en = {
   "goal.pursuing": "Pursuing",
   "goal.paused": "Paused",
   "goal.blocked": "Blocked",
+  "goal.executionPaused": "Auto-run paused",
+  "goal.pauseReason": "Auto-run pause reason: {reason}",
+  "goal.capReason": "Automatic continuation reached its current limit.",
+  "goal.idleReason": "The last automatic continuation made no progress.",
+  "goal.age": "Goal age: {age}",
+  "goal.manualWhilePaused": "You can keep chatting manually. Start goal resumes automatic pursuit.",
   "goal.failedTurn": "The last turn failed.",
   "goal.start": "Start goal",
   "goal.waitHint":

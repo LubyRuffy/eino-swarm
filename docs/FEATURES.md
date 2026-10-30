@@ -163,6 +163,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-150 Goals and scheduled waits
 
+- 暂停状态的含义：PC 与手机目标条明确显示“自动执行已暂停”和自动执行暂停原因；时间标为“目标设立至今”，从 `goal_started_at` 累计，包含暂停期间。后续普通手动答复不会解除既有目标暂停；显式恢复、目标完成、清除或重新设定目标按各自回执更新状态；实际可用的 Start 控件旁才显示恢复操作提示。无恢复入口时仍显示已记录的暂停原因。关联契约：`C-009`；实现／验证：`frontend/src/components/app/goal-banner.tsx`、`frontend/src/components/app/goal-banner.test.tsx`、`frontend/e2e/goal-pause.spec.ts`、`mobile/src/components/status-banners.tsx`、`mobile/src/components/goal-pause-meaning.test.tsx`、`mobile/src/lib/goal-pause.test.ts`、`mobile/e2e/goal-pause.spec.ts`；来源：Issue #131。
+
 - 最后一轮自动续跑且无活动同对话 wake 时，Goal 明确要求本轮收齐或显式放弃 pending worker，不能承诺下一自动轮接管；历史 finished 与 running 分组提示。运行代完成唤醒遵循 `C-019` 的每 turn 一次额度及重启身份边界。证据：`internal/engine/prompt_goal_worker.go`、`internal/engine/worker_completion_wake_test.go`。
 
 - 暂停后的单轮回答：capped／blocked／idle 目标遇普通 PC／手机发送时保留暂停标志和自动续轮计数（包括调度声明连续失败封顶及其原 reason／attempt／cap），仅回答当前消息；System 段携带人类来源与当前 turn 请求，工具限于该回答，暂停目标不授权新调查 worker。显式 Start、HTTP `goal_resume`、RPC `resume_goal` 才恢复追求；未暂停时人话仍归零连续计数。开放目标缺少可观察交付物或停止条件时，提示模型先对同一目标文本用一次 `ask_user` 明确完成判据，不逐轮重问；完成仍需 `complete_goal`。关联契约：`C-009`、`C-006`、`C-008`；实现／验证：`internal/engine/goal.go`、`internal/engine/prompt_goal_pause.go`、`internal/engine/goal_test.go`、`internal/engine/prompt_goal_pause_test.go`、`internal/server/goal_pause_integration_test.go`、`frontend/e2e/goal-pause.spec.ts`。

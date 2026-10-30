@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
+import { useApp } from "@/store/app"
+
 import { formatGoalAge, GoalBanner } from "./goal-banner"
 
 describe("formatGoalAge", () => {
@@ -74,11 +76,24 @@ describe("GoalBanner", () => {
 
   it("marks a capped objective", () => {
     render(<GoalBanner goal="keep going" capped onResume={vi.fn()} onClear={vi.fn()} />)
-    expect(screen.getByTestId("goal-banner").textContent).toContain("Paused")
-    expect(screen.getByTestId("goal-reason").textContent).toMatch(/Auto-continue paused/)
+    expect(screen.getByTestId("goal-banner").textContent).toContain("Auto-run paused")
+    expect(screen.getByTestId("goal-reason")).toHaveTextContent("Auto-run pause reason: Automatic continuation reached its current limit.")
     expect(screen.getByTestId("goal-reason").textContent).not.toMatch(/not an error/)
-    expect(screen.getByTestId("goal-reason").textContent).toMatch(/Press Start/)
+    expect(screen.getByText("You can keep chatting manually. Start goal resumes automatic pursuit.")).toBeVisible()
     expect(screen.getByRole("button", { name: "Start goal" })).toBeInTheDocument()
+  })
+
+  it.each([
+    { pause: { blocked: true, blockReason: "needs an external change" }, reason: "needs an external change" },
+    { pause: { capped: true }, reason: "Automatic continuation reached its current limit." },
+    { pause: { idle: true }, reason: "The last automatic continuation made no progress." },
+  ])("retains the pause cause without directing to an unavailable Start: %j", ({ pause, reason }) => {
+    render(<GoalBanner goal="keep going" {...pause} onClear={vi.fn()} />)
+    expect(screen.getByTestId("goal-banner")).toHaveTextContent("Auto-run paused")
+    expect(screen.getByTestId("goal-reason")).toHaveTextContent("Auto-run pause reason: " + reason)
+    expect(screen.queryByTestId("goal-start")).toBeNull()
+    expect(screen.queryByText("You can keep chatting manually. Start goal resumes automatic pursuit.")).toBeNull()
+    expect(screen.getByTestId("goal-banner")).not.toHaveTextContent("Press Start")
   })
 
   it("marks a blocked objective and can resume", () => {
@@ -92,9 +107,9 @@ describe("GoalBanner", () => {
         onClear={vi.fn()}
       />,
     )
-    expect(screen.getByTestId("goal-banner").textContent).toContain("Blocked")
+    expect(screen.getByTestId("goal-banner").textContent).toContain("Auto-run paused")
     expect(screen.getByTestId("goal-reason").textContent).toContain(
-      "needs an external change",
+      "Auto-run pause reason: needs an external change",
     )
     fireEvent.click(screen.getByRole("button", { name: "Start goal" }))
     expect(onResume).toHaveBeenCalled()
@@ -139,6 +154,7 @@ describe("GoalBanner", () => {
       />,
     )
     expect(screen.queryByTestId("goal-start")).toBeNull()
+    expect(screen.queryByText("You can keep chatting manually. Start goal resumes automatic pursuit.")).toBeNull()
   })
 
   it("shows start after a no-progress continuation", () => {
@@ -146,9 +162,9 @@ describe("GoalBanner", () => {
     render(
       <GoalBanner goal="keep going" idle onResume={onResume} onClear={vi.fn()} />,
     )
-    expect(screen.getByTestId("goal-banner").textContent).toContain("Paused")
+    expect(screen.getByTestId("goal-banner").textContent).toContain("Auto-run paused")
     expect(screen.getByTestId("goal-reason").textContent).toMatch(/no progress/)
-    expect(screen.getByTestId("goal-reason").textContent).toMatch(/Press Start/)
+    expect(screen.getByText("You can keep chatting manually. Start goal resumes automatic pursuit.")).toBeVisible()
     fireEvent.click(screen.getByTestId("goal-start"))
     expect(onResume).toHaveBeenCalled()
   })
@@ -215,6 +231,49 @@ describe("GoalBanner", () => {
         onClear={vi.fn()}
       />,
     )
-    expect(screen.getByTestId("goal-age").textContent).toMatch(/\d+s/)
+    expect(screen.getByTestId("goal-age").textContent).toMatch(/^Goal age: .*\d+s$/)
+  })
+
+  it.each([
+    { blocked: true, blockReason: "needs an external change" },
+    { capped: true },
+    { idle: true },
+  ])("identifies the paused activity without completing or resuming it: %j", (pause) => {
+    const onResume = vi.fn()
+    const onClear = vi.fn()
+    const props = { goal: "keep going", startedAt: "2026-01-01T00:00:00.000Z", onResume, onClear, ...pause }
+    const { rerender } = render(<GoalBanner {...props} running />)
+    expect(screen.getByTestId("goal-banner")).toHaveTextContent("Auto-run paused")
+
+    // Ending a manual reply does not change the durable goal's completion or pause.
+    rerender(<GoalBanner {...props} running={false} />)
+    expect(screen.getByTestId("goal-banner")).toHaveTextContent("Auto-run paused")
+    expect(screen.getByText("You can keep chatting manually. Start goal resumes automatic pursuit.")).toBeVisible()
+    expect(screen.getByTestId("goal-age")).toHaveTextContent(/^Goal age: /)
+    expect(screen.getByRole("button", { name: "Start goal" })).toBeVisible()
+    expect(onResume).not.toHaveBeenCalled()
+    expect(onClear).not.toHaveBeenCalled()
+
+    rerender(<GoalBanner {...props} complete />)
+    expect(screen.queryByTestId("goal-banner")).toBeNull()
+    expect(onResume).not.toHaveBeenCalled()
+    expect(onClear).not.toHaveBeenCalled()
+  })
+
+  it("distinguishes automatic pause and goal age in Chinese", () => {
+    const previousLocale = useApp.getState().locale
+    useApp.setState({ locale: "zh" })
+    const view = render(
+      <GoalBanner goal="继续核验目标" blocked blockReason="等待外部条件" startedAt="2026-01-01T00:00:00.000Z" onResume={vi.fn()} onClear={vi.fn()} />,
+    )
+    try {
+      expect(screen.getByTestId("goal-banner")).toHaveTextContent("自动执行已暂停")
+      expect(screen.getByTestId("goal-reason")).toHaveTextContent("自动执行暂停原因：等待外部条件")
+      expect(screen.getByTestId("goal-age")).toHaveTextContent(/^目标设立至今 /)
+      expect(screen.getByText("可手动继续对话；点「开始目标」恢复目标自动执行。")).toBeVisible()
+    } finally {
+      view.unmount()
+      useApp.setState({ locale: previousLocale })
+    }
   })
 })

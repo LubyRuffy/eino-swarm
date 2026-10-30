@@ -109,11 +109,7 @@ export function GoalBanner({
   if (!goal.trim() || complete) return null
 
   const held = Boolean(capped || idle)
-  const state = blocked
-    ? t("goal.blocked")
-    : held
-      ? t("goal.paused")
-      : t("goal.pursuing")
+  const state = blocked || held ? t("goal.executionPaused") : t("goal.pursuing")
   // Codex: Play is resume, not "the last turn ended". An active goal
   // between auto-continue sessions stays Pursuing with no control.
   const canStart =
@@ -128,9 +124,10 @@ export function GoalBanner({
     ? displayGoalBlockReason(blockReason ?? "", turnError, t)
     : held && !running
       ? idle && !capped
-        ? t("goal.idleHint")
-        : t("goal.capHint")
+        ? t("goal.idleReason")
+        : t("goal.capReason")
       : ""
+  const reasonLabel = reason ? t("goal.pauseReason", { reason }) : ""
 
   const save = async () => {
     if (!open.current || disabled || pending.current) return
@@ -198,7 +195,7 @@ export function GoalBanner({
             data-testid="goal-text"
             className="min-w-0 flex-1 truncate text-left hover:underline"
             aria-label={t("goal.edit")}
-            title={reason || goal}
+            title={reasonLabel || goal}
             disabled={blockedAction}
             onClick={() => {
               if (!onEdit) return
@@ -215,7 +212,7 @@ export function GoalBanner({
             data-testid="goal-age"
             className="shrink-0 tabular-nums text-muted-foreground"
           >
-            {age}
+            {t("goal.age", { age })}
           </span>
         ) : null}
         {canStart ? (
@@ -247,10 +244,13 @@ export function GoalBanner({
         <p
           data-testid="goal-reason"
           className="mt-0.5 truncate text-muted-foreground"
-          title={reason}
+          title={reasonLabel}
         >
-          {reason}
+          {reasonLabel}
         </p>
+      ) : null}
+      {canStart ? (
+        <p className="mt-0.5 text-muted-foreground">{t("goal.pausedHint")}</p>
       ) : null}
     </div>
   )

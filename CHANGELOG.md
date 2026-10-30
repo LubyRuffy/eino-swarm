@@ -6,6 +6,8 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Clarified PC and phone goal banners: paused labels and reasons describe automatic pursuit, and the timer is explicitly the goal's age. A completed manual reply retains the goal's durable pause until explicit resume or completion. (#131)
+
 - Fixed native startup readiness to reacquire only a fully recorded, incomplete initial AX Role observation within its original deadline. Structured helper read refusals retain the first error and never authorize input from a partial graph. (#135)
 
 - Fixed release recovery for an already qualified, allocated but unpublished source after main advances. The existing `--source-dir` path validates its complete frozen workset and source scope while retaining native, package, State and remote identity gates; new allocations still use latest main. (#134)
