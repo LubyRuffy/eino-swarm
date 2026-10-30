@@ -59,7 +59,9 @@ class InputEvidenceTests(unittest.TestCase):
             def log_message(self, *args):
                 pass
         self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        # Keep per-test shutdown polling short without changing HTTP request deadlines.
+        self.thread = threading.Thread(target=self.server.serve_forever,
+                                       kwargs={"poll_interval": 0.01}, daemon=True)
         self.thread.start()
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
