@@ -8,7 +8,31 @@ $ZWAI_HOME (default ~/.zwai-swarm)/zwai.db
 ```
 
 Phone pairing keys are not in this database. `$ZWAI_HOME/remote/host_token` and
-`$ZWAI_HOME/remote/identity` are 0600 files. Bindings (id, fingerprint,
+`$ZWAI_HOME/remote/identity` are 0600 files under the private remote directory.
+`host_token` accepts a legacy raw token or a schema-1 JSON record containing
+`token`, `origin`, `authorized`, optional `host_id`, `user_id` and `username`.
+NOSEC requires a complete origin/account/host-bound authorized receipt; mode
+selection itself is not authorization. The X25519 identity remains stable.
+Reading legacy raw files is backward compatible in this client; downgrading to
+an older client that only reads raw text cannot consume an activated schema-1
+JSON receipt. Reconfigure with the older client or use the original private
+raw-token backup for that Hub; the JSON document is not a raw token. See
+[remote configuration](CONFIG.md#remote) for downgrade handling.
+`pending-host-token-*` files contain private candidate token, origin, public key,
+creation time and optional `proven_rejected` boolean (default false). They are synced before starting a login and retained after
+cancel/uncertain failure so a successful server activation with a lost response
+can be reconciled. An existing candidate reuses its file; at most 128 records of
+16 KiB each are retained, and overflow refuses new candidates without removing
+recovery proofs. A scope may have only one unresolved candidate. Normal retry
+uses it before an older active receipt. Only a real current-attempt start `409`
+marks it proven rejected; normal retry durably resets the flag before sending
+it again, while explicit new-device recovery may stage a replacement first and
+retire only proven-rejected records in that same scope. A network/cancel/lost
+poll result remains unresolved. Successful activation and cleanup are serialized
+under the Host lock and synced; foreign origin/public-key records are untouched.
+A storage failure reports `credential_unavailable`. Device code and PKCE verifier live only in the
+bounded Go login attempt, never SQLite, YAML, browser URL or renderer status.
+Bindings (id, fingerprint,
 session) live on the pairlink hub. The phone-reported model and last-seen
 time live here in `remote_devices`, keyed by that fingerprint, so Settings
 can name a bound phone after it has connected once.
@@ -701,6 +725,10 @@ $ZWAI_HOME (default ~/.zwai-swarm)/
 ├── engine.json                pid, url, mock, started_at, version, exe_dev, exe_ino of the live engine
 ├── engine.log                 stderr of an engine a shell spawned
 ├── zwai.db
+├── remote/                    private connection state (0700)
+│   ├── identity               long-term X25519 identity (0600)
+│   ├── host_token             legacy token or bound authorized receipt (0600)
+│   └── pending-host-token-*   bounded retry candidates (0600)
 ├── inputs/
 │   └── th_ab12…/              pasted images, named by `img_` id
 ├── workspaces/

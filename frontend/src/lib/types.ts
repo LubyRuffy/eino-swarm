@@ -618,6 +618,7 @@ export interface SearchResult {
 export interface RemoteSettings {
   enabled: boolean
   hub_url: string
+  auth_mode?: "legacy" | "nosec"
   thread_limit: number
   summary_chars: number
   open_turns: number
@@ -633,6 +634,7 @@ export function defaultRemoteSettings(
   return {
     enabled: remote?.enabled ?? false,
     hub_url: remote?.hub_url ?? "",
+    auth_mode: remote?.auth_mode ?? "legacy",
     thread_limit: remote?.thread_limit && remote.thread_limit > 0 ? remote.thread_limit : 5,
     summary_chars:
       remote?.summary_chars && remote.summary_chars > 0 ? remote.summary_chars : 280,
@@ -653,6 +655,21 @@ export interface RemoteStatus {
   awake?: boolean
   fingerprint?: string
   error?: string
+  auth_mode?: "legacy" | "nosec"
+  login_available?: boolean
+  login?: RemoteLoginStatus
+}
+
+/** Only public device approval information; proof and host credentials stay in Go. */
+export interface RemoteLoginStatus {
+  state: "signed_out" | "starting" | "authorization_pending" | "account_pending"
+    | "account_rejected" | "authorized" | "access_denied" | "expired" | "error" | "cancelled"
+  user_code?: string
+  host_fp?: string
+  host_id?: string
+  user_id?: string
+  username?: string
+  error_code?: string
 }
 
 export interface RemoteOffer {

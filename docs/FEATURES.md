@@ -236,6 +236,8 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：安全绑定手机和 PC；使用者：手机用户；入口：Settings → Phone QR、扫码或粘贴；输入：pairlink URI；输出：加密连接和设备列表；前置条件：hub 和 PC 在线；失败表现：网络、过期或 host offline；关联契约：`C-006`；实现证据：`internal/remote`, `mobile/src/components/scan-screen.tsx`, `mobile/src/lib/link.ts`。
 - PC 的 hub 注册在受控后台生命周期内执行；网络迟缓只影响手机连接，不阻塞本地程序启动。Stop／Reload 可取消注册，旧结果不得重新启用已停止或已替换的 host。证据：`internal/remote/host.go`、`internal/remote/host_start.go`、`internal/remote/host_start_test.go`、`internal/app/startup_remote_test.go`。
 
+- 管理型 Gateway 连接：Settings → Phone 的 Connection sign-in 可选 `legacy`（兼容默认）或 `nosec`。后者在系统浏览器登录，核对公开确认码／PC 指纹并明确授权，待审／拒审／过期／取消／网络失败分别可见；管理员批准账号后仍需浏览器确认设备。授权与 PC WebSocket 上线分开，只有同时满足才可显示配对 QR；明确确认的新设备重连用于删除／撤销后的恢复，不复活旧凭据或认领其他账号设备。Hub 来自设置，Go 持有凭据和轮询 proof，前端只读本地安全状态；配置切换丢弃旧结果。关联 `C-006`；实现：`internal/config/remote_auth.go`、`internal/remote/login.go`、`internal/remote/login_wire.go`、`internal/server/remote.go`、`frontend/src/lib/use-remote-status.ts`、`frontend/src/components/app/settings-remote-login.tsx`；验证：`internal/remote/nosec_login_test.go`、`internal/remote/login_lifecycle_test.go`、`internal/server/remote_login_test.go`、`frontend/src/components/app/settings-remote-login.test.tsx`、`frontend/e2e/remote-nosec.spec.ts`。
+
 ### F-220 Read and control PC conversations
 
 - 手机主管／子 Agent／直连聊天的纯思考组直接显示每条默认收起的「思考」控件，一次点击可查看原文，不再额外包装活动末行摘要；包含工具时保留过程聚合，展开后每条思考仍以独立的「思考」控件默认收起；用户再次展开才挂载完整原文，显式开合选择在同一条实时追加和完成后保持，关闭外层再打开则从收起开始。回答继续可见，工具保持既有独立折叠。子 Agent 详情与直连聊天复用同一日志，Clients 的 thinking 条目复用同一思考控件。关联 `F-222`、`F-223`、`F-230`／`C-006`；证据：`mobile/src/components/thought.tsx`、`mobile/src/components/thread-blocks-reasoning.test.tsx`、`mobile/src/components/client-groups.test.tsx`、`mobile/e2e/reasoning-fold.spec.ts`；来源：Issue #118、#129。

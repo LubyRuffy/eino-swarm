@@ -17,7 +17,24 @@ co-working app built on it. The library API is unchanged except where noted
 (`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`,
 `SetMaxConcurrent`, `SetAgentTimeout`, `SetMaxTurns`, the one-hour default worker lifetime).
 
+- `F-210` / `C-006`: An uncertain device sign-in retains one candidate per
+  origin/public key and normal retries recover it before an older active receipt.
+  Explicit replacement requires proven rejection; retry resets that private
+  marker before network work, and synchronized scoped cleanup cannot delete a
+  concurrent retry's proof or another origin's records.
+
 ### Added
+
+- `F-210` / `C-006`: Settings → Phone supports explicit NOSEC sign-in for a
+  managed Gateway alongside compatible legacy hubs. The desktop opens the
+  system browser, shows the public confirmation code/fingerprint and review
+  state, and waits for explicit device authorization and a live PC connection
+  before offering a pairing QR. Go keeps all proof and connection credentials
+  private, binds them to the configured origin/account, cancels stale work and
+  supports explicitly confirmed recovery after a PC credential is revoked.
+  Older raw credentials remain readable by this client; downgrading after a
+  schema-1 private record is written requires pairing reconfiguration or the
+  original compatible private credential backup.
 
 - `F-140`: PC workspace image previews offer zoom in/out, a zoom percentage,
   actual size (100%) and fit-to-window controls. Enlarged images remain fully

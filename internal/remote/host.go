@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -37,7 +38,12 @@ type Host struct {
 	// Tests stretch it so a short hub Idle can drop the socket.
 	keepAlive time.Duration
 	// version is this PC build. The hub stores it; this package does not invent one.
-	version string
+	version     string
+	loginActive *loginAttempt
+	login       LoginStatus
+	loginWait   func(context.Context, time.Duration) error
+	// afterLoginActivation synchronizes the private-file handoff regression.
+	afterLoginActivation func()
 
 	// wake is the sleep assertion. It follows config, not the hub
 	// socket: Reload must not release and re-acquire or idle sleep
@@ -65,10 +71,13 @@ func New(eng *engine.Engine, cfg *config.Config, log *slog.Logger) *Host {
 
 func (h *Host) Reload() {
 	h.mu.Lock()
+	login := h.cancelLoginLocked()
+	h.login = LoginStatus{}
 	previous := h.stopLocked()
 	attempt, launch := h.prepareStartLocked(context.Background())
 	h.applyWakeLocked()
 	h.mu.Unlock()
+	finishLogin(login)
 	previous.finish()
 	h.finishStart(attempt, launch)
 }
@@ -84,11 +93,14 @@ func (h *Host) Start() {
 
 func (h *Host) Stop() {
 	h.mu.Lock()
+	login := h.cancelLoginLocked()
+	h.login = LoginStatus{State: "cancelled"}
 	previous := h.stopLocked()
 	if h.wake != nil {
 		_ = h.wake.Set(false)
 	}
 	h.mu.Unlock()
+	finishLogin(login)
 	previous.finish()
 }
 
@@ -98,8 +110,9 @@ func (h *Host) applyWakeLocked() {
 	}
 	enabled, keep := false, false
 	if h.cfg != nil {
-		enabled = h.cfg.Remote.Enabled
-		keep = h.cfg.Remote.KeepAwake
+		cfg := h.cfg.Snapshot()
+		enabled = cfg.Remote.Enabled
+		keep = cfg.Remote.KeepAwake
 	}
 	if err := h.wake.Set(wakeup.Wanted(enabled, keep)); err != nil {
 		h.log.Warn("keep-awake failed", "err", err)
@@ -129,27 +142,36 @@ func (h *Host) Offer(ctx context.Context) (*Offer, error) {
 		return nil, err
 	}
 	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.conn == nil {
-		if h.err != "" {
-			return nil, fmt.Errorf("%s", h.err)
-		}
-		return nil, fmt.Errorf("remote is offline")
-	}
 	h.waitConnectedLocked(time.Now().Add(2 * time.Second))
 	if h.conn == nil || !h.conn.Connected() {
-		if h.err != "" {
-			return nil, fmt.Errorf("%s", h.err)
+		message := h.err
+		if message == "" {
+			message = "remote is offline"
 		}
-		return nil, fmt.Errorf("remote is offline")
+		h.mu.Unlock()
+		return nil, fmt.Errorf("%s", message)
 	}
-	uri, pairingID, err := h.conn.CreateOffer(ctx)
+	conn := h.conn
+	remoteConfig := h.cfg.Snapshot().Remote
+	h.mu.Unlock()
+	// The HTTP request may outlive a hub or mode change. Stop and login
+	// cancellation must not wait for its network deadline while holding mu.
+	uri, pairingID, err := conn.CreateOffer(ctx)
 	if err != nil {
+		if remoteConfig.AuthMode == config.RemoteAuthNOSEC {
+			return nil, errors.New("remote: pairing offer unavailable")
+		}
 		return nil, err
 	}
 	png, err := qr.PNG(uri, 320)
 	if err != nil {
 		return nil, err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	current := h.cfg.Snapshot().Remote
+	if h.conn != conn || !conn.Connected() || current.Enabled != remoteConfig.Enabled || current.HubURL != remoteConfig.HubURL || current.AuthMode != remoteConfig.AuthMode {
+		return nil, errors.New("remote: connection changed during pairing")
 	}
 	h.offerURI = uri
 	h.offerAt = time.Now()
@@ -158,25 +180,30 @@ func (h *Host) Offer(ctx context.Context) (*Offer, error) {
 }
 
 type Status struct {
-	Enabled     bool   `json:"enabled"`
-	HubURL      string `json:"hub_url"`
-	HasToken    bool   `json:"has_token"`
-	Online      bool   `json:"online"`
-	KeepAwake   bool   `json:"keep_awake"`
-	Awake       bool   `json:"awake"`
-	Fingerprint string `json:"fingerprint,omitempty"`
-	Error       string `json:"error,omitempty"`
+	AuthMode       string       `json:"auth_mode"`
+	Login          *LoginStatus `json:"login,omitempty"`
+	LoginAvailable bool         `json:"login_available"`
+	Enabled        bool         `json:"enabled"`
+	HubURL         string       `json:"hub_url"`
+	HasToken       bool         `json:"has_token"`
+	Online         bool         `json:"online"`
+	KeepAwake      bool         `json:"keep_awake"`
+	Awake          bool         `json:"awake"`
+	Fingerprint    string       `json:"fingerprint,omitempty"`
+	Error          string       `json:"error,omitempty"`
 }
 
 func (h *Host) Status() Status {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	cfg := h.cfg.Snapshot()
 	st := Status{
-		Enabled:   h.cfg.Remote.Enabled,
-		HubURL:    h.cfg.Remote.HubURL,
-		HasToken:  h.cfg.HasHostToken(),
+		AuthMode: cfg.Remote.AuthMode, Login: h.loginStatusLocked(cfg),
+		Enabled:   cfg.Remote.Enabled,
+		HubURL:    cfg.Remote.HubURL,
+		HasToken:  cfg.HasHostToken(),
 		Online:    h.conn != nil && h.conn.Connected(),
-		KeepAwake: h.cfg.Remote.KeepAwake,
+		KeepAwake: cfg.Remote.KeepAwake,
 		Error:     h.err,
 	}
 	if h.wake != nil {
@@ -189,14 +216,23 @@ func (h *Host) Status() Status {
 }
 
 func (h *Host) ListBindings(ctx context.Context) ([]Binding, error) {
-	token, err := h.cfg.HostToken()
+	cfg := h.cfg.Snapshot()
+	token, err := cfg.HostToken()
+	if errors.Is(err, config.ErrRemoteApprovalRequired) {
+		return []Binding{}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
-	if token == "" || h.cfg.Remote.HubURL == "" {
+	if token == "" || cfg.Remote.HubURL == "" {
 		return []Binding{}, nil
 	}
-	raw, err := client.ListBindings(ctx, h.cfg.Remote.HubURL, token)
+	var raw []client.BindingView
+	if cfg.Remote.AuthMode == config.RemoteAuthNOSEC {
+		raw, err = privateBindings(ctx, cfg.Remote.HubURL, token)
+	} else {
+		raw, err = client.ListBindings(ctx, cfg.Remote.HubURL, token)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -208,9 +244,13 @@ func (h *Host) ListBindings(ctx context.Context) ([]Binding, error) {
 }
 
 func (h *Host) RevokeBinding(ctx context.Context, id string) error {
-	token, err := h.cfg.HostToken()
+	cfg := h.cfg.Snapshot()
+	token, err := cfg.HostToken()
 	if err != nil {
 		return err
 	}
-	return client.RevokeBinding(ctx, h.cfg.Remote.HubURL, token, id)
+	if cfg.Remote.AuthMode == config.RemoteAuthNOSEC {
+		return privateRevokeBinding(ctx, cfg.Remote.HubURL, token, id)
+	}
+	return client.RevokeBinding(ctx, cfg.Remote.HubURL, token, id)
 }

@@ -478,6 +478,48 @@ and terminal startup available while the phone reports its connection state.
 Stop and Reload cancel pending registration; late results cannot install a
 host after its lifecycle has ended.
 
+NOSEC is an explicit `remote.auth_mode` alongside compatible `legacy` hubs.
+`internal/remote/login.go` owns the desktop device-authorization lifecycle:
+Go stages a private candidate credential before starting a Gateway flow,
+opens only the validated same-origin NOSEC verification URL in the system
+browser, and polls with its secret device code and S256 proof. The browser
+receives only the public user code; the renderer receives only safe status,
+code, fingerprint and account metadata. Pending/rejected accounts do not
+register a host. Only a complete authorized receipt atomically replaces the
+private credential with its origin/account/host binding, after which the usual
+pairlink registration and WebSocket lifecycle starts. Authorization is distinct
+from `online`; NOSEC QR creation requires both. Device flows last at most ten
+minutes, with five-second polling and bounded retries; server rate-limit delays
+are respected. Cancel, Stop and configuration Reload cancel and join owned work,
+so late replies cannot activate a credential for a changed origin. A local
+settings save and its status echo precede a new UI login action.
+
+`internal/config/remote_auth.go` keeps credentials outside YAML and SQLite.
+Legacy raw tokens remain readable. After a successful legacy connection the
+record binds to that hub; NOSEC authorization additionally binds the account and
+host. Changing the configured Hub does not reuse a credential already bound
+to the previous configured origin. NOSEC private REST requests also reject
+redirects; legacy redirect handling is unchanged. Clients released before this
+schema cannot read its JSON receipt, so downgrade requires reconfiguration or
+the original private raw-token backup rather than using the JSON as a token.
+Candidate files are private, synced and bounded to 128 records (at most 16 KiB each); a repeated
+candidate reuses its record, and a full directory refuses new candidates while
+retaining existing recovery proofs. Cancel/failed polling retains candidates
+for an explicit retry, including a response lost after server authorization.
+A normal retry prioritizes the retained origin/public-key candidate over an
+older active receipt. While that candidate's outcome is unresolved, a local
+`409` blocks a second new-device candidate and tells the user to retry the
+previous login. Only a real current-attempt Gateway start `409` records private
+proven rejection; retries reset that marker durably before sending the same
+candidate. An explicitly confirmed new-device login can then save a replacement
+and retire the rejected same-scope record. Success activates and cleans up under
+the Host lock with directory sync, preserving other origins/public keys and
+refusing success on storage failure. No path restores a revoked digest or claims
+another account's active device.
+`frontend/src/lib/use-remote-status.ts` watches the local safe status, cancels
+reads on exit and rejects replies from older mutations or Hub configurations.
+It does not implement a second device-code exchange.
+
 `host_links.go` owns the connected lifecycle that pairlink's inbox does not
 close. Each current connection group admits one handler per device, cancels its
 previous watch/catalog on reconnect and joins all handlers on Stop/Reload.

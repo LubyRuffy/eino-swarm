@@ -1,13 +1,13 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import { SelectItem } from "@/components/ui/select"
 import { api } from "@/lib/api"
 import type {
   RemoteBinding,
   RemoteOffer,
-  RemoteStatus,
   Settings,
 } from "@/lib/types"
 import {
@@ -20,15 +20,18 @@ import { chromeTypeClass } from "@/lib/chrome-type"
 import { defaultRemoteSettings } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
+import { useRemoteStatus } from "@/lib/use-remote-status"
 import { errorMessage, toastError, useToasts } from "@/store/toasts"
 
 import {
   Field,
   SettingsPage,
   SettingsSection,
+  SettingsChoice,
   settingsHintClass,
   settingsLabelClass,
 } from "./settings-field"
+import { RemoteLoginSection } from "./settings-remote-login"
 
 const remoteToastId = "settings:remote"
 
@@ -36,25 +39,40 @@ const remoteToastId = "settings:remote"
  *  page remounting. Leaving Phone was the only refresh. */
 export const BINDING_WATCH_MS = 1000
 
-export function RemoteTab({
-  settings,
-  onChange,
-  query = "",
-}: {
+type RemoteTabProps = {
   settings: Settings
   onChange: (s: Settings) => void
   query?: string
-}) {
+}
+
+export function RemoteTab(props: RemoteTabProps) {
+  const remote = defaultRemoteSettings(props.settings.remote)
+  const authority = JSON.stringify([remote.enabled, remote.hub_url, remote.auth_mode])
+  return <RemoteTabBody key={authority} {...props} />
+}
+
+function RemoteTabBody({
+  settings,
+  onChange,
+  query = "",
+}: RemoteTabProps) {
   const t = useT()
   const remote = defaultRemoteSettings(settings.remote)
   const update = (patch: Partial<typeof remote>) =>
     onChange({ ...settings, remote: { ...remote, ...patch } })
 
-  const [status, setStatus] = useState<RemoteStatus>()
+  const connection = useRemoteStatus(remote)
+  const { status } = connection
   const [offer, setOffer] = useState<RemoteOffer>()
   const [bindings, setBindings] = useState<RemoteBinding[]>([])
   const [busy, setBusy] = useState(false)
   const [now, setNow] = useState(() => Date.now())
+  const alive = useRef(true)
+  const nosec = remote.auth_mode === "nosec"
+  const canPair = !nosec || (!!status?.online && status.login?.state === "authorized" && !connection.unavailable)
+  const pairingEpoch = useRef(0)
+  const pairingAllowed = useRef(canPair)
+  pairingAllowed.current = canPair
 
   const fail = (e: unknown) =>
     toastError(errorMessage(e), {
@@ -64,16 +82,22 @@ export function RemoteTab({
   const clearFail = () => useToasts.getState().dismiss(remoteToastId)
 
   const reload = () => {
-    void api.remoteStatus().then(setStatus).catch(fail)
+    void connection.refresh()
     void api
       .remoteBindings()
-      .then(setBindings)
-      .catch(() => setBindings([]))
+      .then((list) => { if (alive.current) setBindings(list) })
+      .catch(() => {})
   }
 
   useEffect(() => {
+    alive.current = true
     reload()
+    return () => { alive.current = false }
   }, [])
+
+  useEffect(() => {
+    if (!canPair) { pairingEpoch.current++; setOffer(undefined) }
+  }, [canPair])
 
   useEffect(() => {
     if (!offer?.expires_at) return
@@ -104,18 +128,29 @@ export function RemoteTab({
     : 0
 
   const showQr = async () => {
+    if (!canPair) return
+    const owner = pairingEpoch.current
     setBusy(true)
     clearFail()
     try {
       const next = await api.remoteOffer()
+      if (!alive.current || !pairingAllowed.current || owner !== pairingEpoch.current) return
       setOffer(next)
       reload()
     } catch (e) {
-      setOffer(undefined)
-      fail(e)
+      if (alive.current) { setOffer(undefined); fail(e) }
     } finally {
-      setBusy(false)
+      if (alive.current) setBusy(false)
     }
+  }
+
+  const login = (newDevice: boolean) => {
+    clearFail()
+    void connection.perform(() => api.startRemoteLogin(newDevice)).catch(fail)
+  }
+  const cancelLogin = () => {
+    clearFail()
+    void connection.perform(api.cancelRemoteLogin).catch(fail)
   }
 
   const revoke = async (id: string) => {
@@ -146,6 +181,16 @@ export function RemoteTab({
             onCheckedChange={(v) => update({ enabled: v })}
           />
         </Field>
+        <SettingsChoice
+          query={query}
+          label={t("settings.remote.authMode")}
+          hint={t("settings.remote.authModeHint")}
+          value={remote.auth_mode ?? "legacy"}
+          onValueChange={(value) => update({ auth_mode: value as "legacy" | "nosec" })}
+        >
+          <SelectItem value="legacy">{t("settings.remote.authLegacy")}</SelectItem>
+          <SelectItem value="nosec">{t("settings.remote.authNOSEC")}</SelectItem>
+        </SettingsChoice>
         <Field
           query={query}
           label={t("settings.remote.hubUrl")}
@@ -211,6 +256,15 @@ export function RemoteTab({
         </Field>
       </SettingsSection>
 
+      {nosec ? <RemoteLoginSection
+        enabled={remote.enabled}
+        status={status}
+        unavailable={connection.unavailable}
+        busy={connection.busy}
+        onStart={login}
+        onCancel={cancelLogin}
+      /> : null}
+
       <SettingsSection
         title={t("settings.remote.qr")}
         description={
@@ -222,14 +276,14 @@ export function RemoteTab({
           <Button
             type="button"
             size="sm"
-            disabled={busy}
+            disabled={busy || connection.busy || !canPair}
             onClick={() => void showQr()}
           >
             {t("settings.remote.showQr")}
           </Button>
         }
       >
-        {offer?.png ? (
+        {offer?.png && canPair ? (
           <div className="flex flex-col items-center gap-3 px-4 py-5" data-settings-row="">
             <div className="bg-qr-plate p-3">
               <img
@@ -263,7 +317,7 @@ export function RemoteTab({
       </SettingsSection>
 
       <SettingsSection title={t("settings.remote.devices")}>
-        {bindings.length === 0 ? (
+        {bindings.length === 0 || !canPair ? (
           <p
             className={cn(chromeTypeClass, "px-4 py-2.5 text-muted-foreground")}
             data-settings-row=""

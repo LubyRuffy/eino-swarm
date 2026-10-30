@@ -4,6 +4,42 @@ For the shortest repeatable native workflow, start with
 [原生测试最短路径](NATIVE_TESTING_FAST_PATH.md). It selects the existing commands
 and affected scenarios; the detailed requirements and evidence below remain authoritative.
 
+## NOSEC desktop device login (`F-210`, `C-006`)
+
+The config tests cover legacy raw-token reads, origin-bound receipts, private
+permissions, atomic activation, pending-candidate reuse and the 128/129 capacity
+boundary. Remote tests use real HTTP Gateway-wire fixtures for pending/rejected
+accounts, approval plus explicit confirmation, PKCE exchange, actual pairlink
+registration/WebSocket connection, origin changes, cancellation/late receipts,
+redirect denial, bounded responses and explicit deleted-device recovery.
+`internal/remote/login_recovery_test.go` covers retained-candidate priority over
+an older active receipt, local refusal of a second uncertain candidate, 409 proof
+reset before a retry, lost responses/restart, and cleanup concurrent with retry.
+`internal/config/remote_auth_test.go` covers scoped cleanup and proven-rejection
+persistence. Server
+contracts cover strict start bodies, missing system-browser capability and
+manual-token denial in NOSEC mode. These tests use isolated local state and
+require no real NOSEC account or production writes.
+
+```bash
+go test -race ./internal/config ./internal/remote ./internal/server -run 'TestRemote|TestNOSEC|TestDesktopLogin'
+cd frontend
+npm run lint
+npm test
+ZWAI_E2E_PORT=18879 ZWAI_E2E_DATA_DIR=.e2e-nosec-login npm run e2e -- remote-nosec.spec.ts remote.spec.ts --output=output/playwright/nosec-login
+npm run build
+```
+
+The Phone component tests exercise explicit start/cancel, all review states,
+authorization without an online PC, new-device confirmation, saved-config
+matching, stale Hub/read/QR responses, failed-status recovery and unmount
+cleanup. Browser cases drive the real built page and isolated local web server;
+controlled local status/login responses exercise the UI, while saved-configuration
+checks use the actual Go status route. Browserless capability refusal is covered
+by component and server contract tests. They do not prove a native system-browser launch,
+real NOSEC service allowlisting, production deployment, or physical-phone
+pairing. Those require candidate-specific integration/native acceptance.
+
 ## Original project-history SQL and source reports (`F-410`, `C-036`)
 
 `internal/history` uses real temporary WAL databases for single-statement

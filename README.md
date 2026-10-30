@@ -645,9 +645,18 @@ end-to-end tests run on and the fastest way to see the UI work.
 
 ### Scan a phone to this PC
 
-1. zwai **Settings → Phone**: turn pairing on and paste the hub URL
-   (`https://…`). The Host Token is minted on this PC and hidden; it is not
-   a Gateway Key. A missing hub toasts over the sheet (× to close).
+1. zwai **Settings → Phone**: turn pairing on, paste the hub URL
+   (`https://…`) and choose **Connection sign-in**. **Independent hub (legacy)**
+   is the compatible default: this PC mints its hidden Host Token locally;
+   it is separate from a Gateway API Key. For a managed Gateway, select
+   **NOSEC account** and wait for the saved settings to take effect. Click
+   **Sign in with NOSEC** to open the system browser. Compare the confirmation
+   code and PC fingerprint, sign in, then explicitly authorize this PC there.
+   A new account waits for administrator approval; rejected or pending accounts
+   cannot connect a PC. Approval alone does not authorize a device: return to
+   the browser confirmation page and confirm it. The Phone page distinguishes
+   authorization from the actual PC connection. A missing hub toasts over the
+   sheet (× to close).
    **Keep this computer awake** stays on by default so a plugged-in host
    does not idle-sleep while a phone still expects it. Turn it off if you
    want the machine to sleep. **This computer's name** is what the phone
@@ -656,10 +665,19 @@ end-to-end tests run on and the fastest way to see the UI work.
    model the phone reports after it connects, not only the fingerprint. The
    phone also sends that model line when it redeems the QR, so a gateway
    list can show it without reading the sealed session.
-2. **Show pairing QR**. The plate is large and high-contrast. The same URI can
+2. Once the PC is online, **Show pairing QR**. In NOSEC mode this stays
+   unavailable until the device is authorized and its hub WebSocket is online.
+   The plate is large and high-contrast. The same URI can
    be pasted if the camera is missing. While that plate is up, **Bound phones**
    refreshes on its own, so a phone that just bound shows up without leaving
    the page.
+   If an administrator deletes this PC or revokes its connection credential,
+   use **Reconnect as a new device** and confirm the action, then authorize in
+   the browser again. A revoked credential stays revoked. The existing local
+   credential is replaced only after the new authorization succeeds. This
+   action cannot claim a device that belongs to another account. If it asks you
+   to retry the previous login first, use **Sign in with NOSEC** to recover that
+   result; do not create another device while the earlier result is uncertain.
 3. On the phone, open the **zwai** iOS or Android app. The Android sideload
    APK is on the newest [GitHub Release containing an Android APK](https://github.com/LubyRuffy/eino-swarm/releases)
    (`zwai-<version>-android.apk`). A newer Android build offers **Update** on the

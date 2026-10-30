@@ -1,3 +1,4 @@
+import { remoteLoginEn } from "./messages-remote-login"
 import { memoryEn } from "./messages-memory-en"
 import { generationEn } from "./messages-generation"
 import { updateEN } from "./messages-update"
@@ -7,6 +8,7 @@ import { agentFailureEn } from "./messages-agent-failure-en"
 /** English UI chrome. Keys are stable; Chinese lives in messages-zh.ts.
  *  Agent replies and protocol markers (quoted-send wrappers) stay English. */
 export const en = {
+  ...remoteLoginEn,
   ...draftEN,
   "startup.failed": "{failed} conversations could not be restored. Check Trace or logs.",
   "startup.restoring": "Restoring unfinished tasks {completed}/{total}",
@@ -852,7 +854,7 @@ export const en = {
   "settings.remote.hub": "Hub",
   "settings.remote.enabled": "Accept phone pairing",
   "settings.remote.enabledHint":
-    "This PC registers with the hub and shows a pairing QR. Leave off if you are not using a phone.",
+    "Enable this PC’s phone connection. NOSEC mode also requires sign-in and device authorization.",
   "settings.remote.hubUrl": "Hub URL",
   "settings.remote.hubUrlHint":
     "The pairlink hub you typed in Settings — never a compiled-in host.",
@@ -879,7 +881,7 @@ export const en = {
   "settings.remote.uri": "Pairing URI",
   "settings.remote.expires": "Expires in {s}s. Refresh for a new code.",
   "settings.remote.online": "Online · {fp}",
-  "settings.remote.offline": "Offline until a hub URL is set and pairing is on.",
+  "settings.remote.offline": "This PC is not connected to the hub.",
   "settings.remote.devices": "Bound phones",
   "settings.remote.noDevices": "No phones bound yet.",
   "settings.remote.lastSeen": "Last connected {time}",

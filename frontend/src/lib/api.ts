@@ -695,7 +695,12 @@ export const api = {
   markScheduleRunRead: (rid: string) =>
     request<void>(`/api/schedules/runs/${rid}/read`, { method: "POST" }),
 
-  remoteStatus: () => request<RemoteStatus>("/api/remote/status"),
+  remoteStatus: (signal?: AbortSignal) => request<RemoteStatus>("/api/remote/status", { signal }),
+  startRemoteLogin: (newDevice = false) => request<RemoteStatus>("/api/remote/login", {
+    method: "POST",
+    body: JSON.stringify(newDevice ? { new_device: true, confirmed: true } : {}),
+  }),
+  cancelRemoteLogin: () => request<RemoteStatus>("/api/remote/login", { method: "DELETE" }),
   saveRemoteToken: (token: string) =>
     request<RemoteStatus>("/api/remote/token", {
       method: "PUT",
