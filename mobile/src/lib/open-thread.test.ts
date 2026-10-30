@@ -52,6 +52,22 @@ function pendingReply() {
 }
 
 describe("opening a phone conversation", () => {
+  it.each(["done", "empty-answer", "packed-answer"])("loads a previous message when a waiting task only has %s", async (tail) => {
+    const event = historyEvent(30, tail === "done"
+      ? { kind: "done", text: "" }
+      : { text: tail === "empty-answer" ? "  " : '{"agents":[{"agent_id":"worker","status":"done"}]}' })
+    const h = harness(async (op) => op === OpWatch
+      ? { ...ready, detail: { ...detail, waiting: true }, seq: 30, more: true,
+        status: { running: false, waiting: true }, events: [event] }
+      : { v: 1, id: "older", ok: true, events: [historyEvent(18)], seq: 18, more: true })
+    expect(await openPhoneThread(h.opts)).toBe(true)
+    expect(h.rpc.mock.calls.map(([req]) => req.op)).toEqual([OpWatch, OpLog])
+    expect(h.view().blocks.some((block) => block.text === "Earlier manager answer")).toBe(true)
+    expect(h.view().detail?.waiting).toBe(true)
+    expect(h.view().lastSeq).toBe(30)
+    expect(h.view().hasMore).toBe(true)
+  })
+
   it("paints the header and conversation after one watch response", async () => {
     const h = harness(async () => ({ ...ready, detail }))
     expect(await openPhoneThread(h.opts)).toBe(true)

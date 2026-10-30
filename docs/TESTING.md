@@ -343,8 +343,10 @@ fallback and automatic `log` reads when manager separation and phone folding
 leave no visible items. Cover filtered empty pages with a descending cursor,
 exhaustion, an empty ready's `seq+1` cursor, non-progress termination, live and
 seq=0 output during a read, and stale success/error after Back, another thread or
-a new opening of the same thread. Existing visible items, including turn-end
-dividers, must not trigger extra reads. History errors keep ready and are not
+a new opening of the same thread. A turn-end divider, blank bubble or filtered
+roster-only answer is not conversation content: waiting tasks must backfill
+past these to an actual visible item. Image-only human messages remain content.
+Existing visible content must not trigger extra reads. History errors keep ready and are not
 retried. `open-thread.test.ts` and `mobile/src/app.test.tsx` cover both orders of
 automatic/manual pagination; the App case exercises a manual reply arriving
 after automatic advancement, so a late page cannot clear a newer cursor's

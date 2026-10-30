@@ -259,11 +259,13 @@ export class MockHost {
           { kind: "user_message", agentID: "manager", text: "Check the current workspace" },
         ], true)
       } else if (new URLSearchParams(location.search).get("history") === "hidden") {
+        const waiting = new URLSearchParams(location.search).get("waiting") === "1"
         this.seed(live, [
           { kind: "agent_message", agentID: "manager", text: "Earlier answer" },
           { kind: "tool_call", agentID: "manager", callID: "hidden-spawn", text: "spawn_agent({})" },
-          { kind: "tool_result", agentID: "manager", callID: "hidden-spawn", text: "started" },
-        ], true)
+          waiting ? { kind: "done", text: "" } : { kind: "tool_result", agentID: "manager", callID: "hidden-spawn", text: "started" },
+        ], !waiting)
+        live.waiting = waiting
       } else if (new URLSearchParams(location.search).get("ask") === "1") {
         live.askUser = true
         this.seed(live, [{
