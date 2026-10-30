@@ -638,7 +638,31 @@ Settings invalidate clients, not gates.
 The adapter's one header-timeout reconnect releases its failed permit and
 waits at the same gate before resending. Response-header budgets start at the
 actual HTTP attempt, after admission; the caller's context still bounds the whole
-operation. No retry count is added. Per-agent
+operation. This gate does not increase the ordinary model-error retry budget.
+An HTTP-layer-confirmed 503 `provider_unavailable` with the exact message
+`no healthy provider can serve this model`, fully received within the provider's
+first-byte budget, has a separate route-recovery policy. Before Generate returns
+or Stream is established, the recording wrapper keeps the same logical call
+waiting and probes through this gate without consuming the manager's two
+model-error retries or publishing interrupted/recovered generation events.
+Every actual rejected request retains its own call record. The probe sends the
+original model request and delivers its successful response directly; it adds
+neither a health endpoint nor a second request after success.
+Route recovery has no additional total deadline: success, a different error or
+caller cancellation ends it. Stop cancels waits and requests; explicit caller
+deadlines and worker watchdogs still apply. Per-request header/idle timeouts and
+the gateway's body limit do not define this recovery period. Ordinary 503s,
+accepted requests that hang, and stream failures keep the existing bounded
+model-error retries. Post-turn session briefing and automatic memory review are
+skipped while their origin still has this route outage; a skipped review is not
+a successful review or saved notes. Post-turn briefing, all memory reviews, and
+conversation/schedule titles use `WithoutRouteRecovery`: they still participate
+in shared admission and record real failures, but a routing refusal returns
+without repeatedly probing up to their existing timeout. Manual compact also
+disables continuous route recovery because it has no active turn cancellation
+owner. Context-owned session briefing and auto-compact retain cancellable
+recovery. Isolated policy classification bypasses this
+route-recovery loop as well as the shared gate. Per-agent
 recorders persist `model_backoff` waits on the original turn separately from
 LLM calls. Origin waits carry `scope: "origin"` and an opaque, process-local
 `cooldown_id` shared by every role waiting in that generation. PC/phone chat

@@ -15,23 +15,25 @@ const (
 	backoffCanceled backoffOutcome = iota
 	backoffSuccess
 	backoffFailure
+	backoffRouteUnavailable
 )
 
 // A gate belongs to an endpoint, so workers cannot turn one outage into many
 // independent retry loops. Healthy requests remain concurrent.
 type backoffGate struct {
-	id         string
-	mu         sync.Mutex
-	initial    time.Duration
-	max        time.Duration
-	delay      time.Duration
-	failures   int
-	next       time.Time
-	probe      bool
-	probeReady bool
-	generation uint64
-	changed    chan struct{}
-	clock      timing.Clock
+	id               string
+	mu               sync.Mutex
+	initial          time.Duration
+	max              time.Duration
+	delay            time.Duration
+	failures         int
+	next             time.Time
+	probe            bool
+	probeReady       bool
+	generation       uint64
+	changed          chan struct{}
+	clock            timing.Clock
+	routeUnavailable bool
 }
 
 type backoffTicket struct {
@@ -129,7 +131,10 @@ func (t *backoffTicket) finish(outcome backoffOutcome) {
 			return
 		}
 		switch outcome {
-		case backoffFailure:
+		case backoffFailure, backoffRouteUnavailable:
+			if outcome == backoffRouteUnavailable {
+				g.routeUnavailable = true
+			}
 			g.failures++
 			if g.failures == 1 {
 				g.delay = g.initial
@@ -145,6 +150,7 @@ func (t *backoffTicket) finish(outcome backoffOutcome) {
 				return
 			}
 			g.failures, g.delay = 0, 0
+			g.routeUnavailable = false
 			g.next = time.Time{}
 			g.generation++
 		case backoffCanceled:

@@ -6902,8 +6902,47 @@ Generate/Stream wrappers, stream-completion observer, engine wait recording
 and call-recorder dispatch reached 100% target statement coverage in focused
 race runs. These are separate pre-integration observations, not coverage of
 the merged candidate, which requires a fresh run. The 2026-10-19 loopback 502
-browser run observed HTTP arrival gaps of 5002ms and 10003ms for the unchanged
-three-call budget; rerun that fixture for the merged candidate.
+browser run observed HTTP arrival gaps of 5002ms and 10003ms for the ordinary
+model-error three-call budget; rerun that fixture for the merged candidate.
+The immediate, confirmed gateway routing refusal below has a separate recovery
+policy and does not consume this ordinary budget.
+
+`internal/provider/route_rejection_test.go` checks the actual HTTP adapter's
+recognition of a routing refusal: status 503, a completely read JSON body of at
+most 4096 bytes, exact `error.code: provider_unavailable` and
+`error.message: no healthy provider can serve this model`, received within the
+configured first-byte budget. Other statuses, malformed/oversized bodies,
+different or missing error fields and delayed bodies retain ordinary failure
+handling. `internal/provider/route_recovery_test.go` verifies that repeated
+confirmed refusals wait through the shared origin gate in
+one logical Generate/Stream call; each HTTP attempt retains its own call record,
+and a successful probe response is consumed without another send.
+`internal/provider/route_recovery_protocol_test.go` checks the same behavior
+through Responses, origin aliases/cache invalidation, and isolated policy calls
+that neither wait nor mutate origin health. A refusal fully observed before
+Stop remains outage evidence for optional post-turn admission.
+`internal/engine/route_recovery_http_test.go` drives StartTurn, Registry, ADK and
+HTTP across more than two routing refusals, recovery, and Stop during cooldown
+or an active probe. It checks the original turn/generation identity, actual
+request count and absence of spurious model retries, generation interruptions
+or post-turn model work while waiting. No additional recovery total deadline is
+introduced; existing caller deadlines and worker watchdogs still apply.
+`internal/engine/route_unavailable_test.go` checks that unavailable-origin
+post-turn briefing/review do not send more probes or fabricate results, queued
+work rechecks the origin, healthy alternate providers still run, and explicit
+session-memory synchronization with a caller-owned context retains cancellable recovery. Manual `CompactThread` is exercised separately against a real 503 and retains its single-request failure policy. Local deterministic
+skill folding with automatic model review disabled is not suppressed. These loopback fixtures
+do not contact a real gateway or establish native acceptance.
+Post-turn briefing, memory reviews and title calls explicitly disable continuous
+route recovery while retaining shared gate admission, failure recording and
+their existing deadlines. Their first routing rejection must return without
+using those deadlines for repeated probes. Manual compact also disables route
+recovery because its background context has no active turn cancellation owner.
+`frontend/e2e/route-recovery.spec.ts` checks more than two rejected requests,
+recovery in the original working turn, reload during cooldown, retained call
+errors without model retry/generation recovery events, and Stop with no later
+request after the original cooldown. It uses a keyless loopback fixture and
+does not establish recovery against a live gateway.
 
 `internal/provider/backoff_test.go` uses `testing/synctest` to assert the actual
 5/10/20/30-second sequence without wall-clock sleeps. It covers one recovery

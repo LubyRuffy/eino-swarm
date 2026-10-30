@@ -112,6 +112,7 @@ func (t *idleTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func (t *idleTransport) roundTrip(req *http.Request) (*http.Response, error) {
+	started := time.Now()
 	resp, err := t.base.RoundTrip(req)
 	if err != nil {
 		if headerWaitTimedOut(err) {
@@ -125,6 +126,9 @@ func (t *idleTransport) roundTrip(req *http.Request) (*http.Response, error) {
 			completion.http.Store(true)
 			resp.Body = &streamCompletionBody{ReadCloser: resp.Body, completion: completion}
 		}
+	}
+	if resp != nil {
+		observeRouteResponse(req, resp, started, t.firstByte)
 	}
 	return resp, nil
 }

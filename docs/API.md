@@ -1897,6 +1897,30 @@ shortening only the bounded detail text.
 | `error` | the turn failed; `err` explains |
 | `ready` | replay is complete (no `seq`, not stored) |
 
+The `model_unavailable` retry category excludes a confirmed immediate gateway
+route refusal: HTTP 503 `provider_unavailable` with exact message
+`no healthy provider can serve this model`, fully received within the provider's
+first-byte budget. Before a Generate result or Stream is established, these
+rejections keep the original logical call waiting through the origin gate.
+They do not consume `model_retry` attempts or emit `generation_interrupted` /
+`generation_recovered`; the turn remains active. Each actual HTTP rejection
+still has its own `llm_calls` record and the next cooldown uses the existing
+`model_backoff` schema. The successful probe is the original model request's
+response and is consumed directly, without a separate health request or resend.
+There is no additional route-recovery total deadline; Stop, an explicit caller
+deadline or the worker watchdog can cancel it. Other failures, including an
+accepted probe that hangs, retain existing timeout and retry behavior. While
+the origin's route failure remains active, post-turn session briefing and
+automatic memory review do not start on it; skipping does not emit a successful
+review or report notes saved. Post-turn briefing, memory reviews (including
+Review now), and conversation/schedule titles retain their original failure
+policy: if one first encounters the route rejection, it records that request
+without continuing probes up to its existing timeout. They still participate in
+shared origin admission. Manual compact retains its single-request failure
+policy because it has no active turn cancellation owner.
+Isolated scheduling-answer classification does not enter this route-recovery
+loop. See `C-029`.
+
 `model_retry.reason: "schedule_claim_unverified"` is the original turn's
 single correction for a scheduling claim that classification and current
 persisted facts cannot support. It is not a classifier-service retry or proof

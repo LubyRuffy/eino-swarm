@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/schema"
 )
@@ -258,6 +259,11 @@ func lastEventSeq(events []store.Event) int64 {
 	return n
 }
 
+// postTurnMemoryKey marks optional work that must not follow a known routing
+// outage with another model request. Explicit compact requests keep their own
+// normal admission and error semantics.
+type postTurnMemoryKey struct{}
+
 func (e *Engine) syncSessionMemory(ctx context.Context, threadID, turnID string, force bool) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -314,6 +320,9 @@ func (e *Engine) syncSessionMemory(ctx context.Context, threadID, turnID string,
 		return nil
 	}
 	if strings.TrimSpace(sessionMemoryInput("", fresh)) == "" {
+		return nil
+	}
+	if ctx.Value(postTurnMemoryKey{}) == true && e.pool.RouteUnavailable(th.ProviderID) {
 		return nil
 	}
 	input, _ := sessionMemorySource(th.SessionMemory, fresh, events)
@@ -400,7 +409,8 @@ func (e *Engine) scheduleSessionAndReview(threadID string, turn *store.Turn, sta
 				e.log.Error("session briefing panicked", "turn", turnID, "panic", r)
 			}
 		}()
-		if err := e.syncSessionMemory(context.Background(), threadID, turnID, false); err != nil {
+		ctx := context.WithValue(provider.WithoutRouteRecovery(context.Background()), postTurnMemoryKey{}, true)
+		if err := e.syncSessionMemory(ctx, threadID, turnID, false); err != nil {
 			e.log.Warn("could not refresh the session briefing", "turn", turnID, "err", err)
 		}
 		e.scheduleReview(threadID, turn, status, pc, final)

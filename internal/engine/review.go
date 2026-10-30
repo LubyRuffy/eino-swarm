@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/memory"
+	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
@@ -129,7 +130,10 @@ func (e *Engine) scheduleReview(threadID string, turn *store.Turn, status string
 		e.log.Warn("could not read events for the memory review", "turn", turn.ID, "err", err)
 		return
 	}
-	skipLLM := !e.cfg.Memory.AutoReview
+	skipLLM := !e.cfg.Memory.AutoReview || e.pool.RouteUnavailable(turn.ProviderID)
+	if status == store.TurnError && skipLLM {
+		return
+	}
 	var input reviewSourceInput
 	if !skipLLM {
 		if status == store.TurnError {
@@ -159,6 +163,9 @@ func (e *Engine) scheduleReview(threadID string, turn *store.Turn, status string
 		defer e.reviews.done()
 		gate <- struct{}{}
 		defer func() { <-gate }()
+		if !skipLLM && e.pool.RouteUnavailable(turn.ProviderID) {
+			skipLLM = true
+		}
 		defer func() {
 			if r := recover(); r != nil {
 				// A review is an extra; it must never take the process with it.
@@ -166,7 +173,9 @@ func (e *Engine) scheduleReview(threadID string, turn *store.Turn, status string
 			}
 		}()
 		if skipLLM {
-			e.foldSkillsAfterTurn(threadID, turn, pc)
+			if status == store.TurnDone {
+				e.foldSkillsAfterTurn(threadID, turn, pc)
+			}
 			return
 		}
 		e.runReviewInput(threadID, turn, pc, input, events)
@@ -396,6 +405,7 @@ func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectCo
 func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOutcome) {
 	ctx, cancel := context.WithTimeout(context.Background(), e.cfg.SwarmSnapshot().AgentTimeout())
 	defer cancel()
+	ctx = provider.WithoutRouteRecovery(ctx)
 
 	if run.maxIter <= 0 {
 		run.maxIter = e.cfg.Memory.ReviewIterations()

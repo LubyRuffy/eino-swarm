@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/schema"
 )
@@ -52,6 +53,7 @@ func (e *Engine) kickScheduleTitle(row *store.Schedule) {
 func (e *Engine) runScheduleTitle(id, origin, prompt, providerID, model string) {
 	ctx, cancel := context.WithTimeout(context.Background(), titleCallTimeout)
 	defer cancel()
+	ctx = provider.WithoutRouteRecovery(ctx)
 
 	turnID := ""
 	if origin != "" {

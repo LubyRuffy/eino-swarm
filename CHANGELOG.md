@@ -504,6 +504,20 @@ co-working app built on it. The library API is unchanged except where noted
   (directly or through an inherited Registry) selects that protocol, and the
   manager prompt carries the protocol only then.
 
+- `F-130`, `C-029`: an immediate gateway 503 that explicitly rejects routing
+  because no provider is healthy now waits inside the original model call
+  through shared 5/10/20/30-second cooldowns. It no longer exhausts the turn's
+  two model-error retries or emits interrupted/recovered generation states for
+  those rejections. Every sent request keeps its call record; the successful
+  probe response continues directly. This recovery has no additional total
+  deadline, while Stop, caller deadlines and worker watchdogs still apply.
+  Ordinary failures and accepted requests that hang keep their existing retry
+  budgets. Post-turn briefing and automatic memory review skip an origin whose
+  route outage remains active, without claiming a completed review or saved notes.
+  Briefing, memory reviews, titles and manual compact retain their original
+  single-request failure policy if they first discover an outage. Manual compact
+  has no active turn cancellation owner and cannot start a continuous wait.
+
 - Phone reasoning-only groups use one initially closed Thought control, removing
   the extra activity-summary layer. Mixed tool groups keep their work summary,
   and the same thought retains its disclosure choice as tools join or leave

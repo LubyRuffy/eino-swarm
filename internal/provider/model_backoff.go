@@ -93,6 +93,10 @@ func (r *recordingModel) admit(ctx context.Context) (context.Context, func(error
 	})
 	return ctx, func(err error) {
 		switch {
+		case isRouteUnavailable(err):
+			// A complete refusal observed before Stop remains outage evidence;
+			// cancellation must not admit automatic post-turn work into it.
+			ticket.finish(backoffRouteUnavailable)
 		case ctx.Err() != nil, errors.Is(err, context.Canceled):
 			ticket.finish(backoffCanceled)
 		case isBackoffFailure(err):
