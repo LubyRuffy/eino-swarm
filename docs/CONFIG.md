@@ -479,7 +479,8 @@ in Settings → Phone.
 | key | default | meaning |
 |---|---|---|
 | `enabled` | `false` | register this PC with the hub and accept sealed RPC from bound phones |
-| `hub_url` | `""` | pairlink hub origin (`https://…`). Never compiled in |
+| `hub_url` | `""` | pairlink hub origin (`https://…`). Never compiled in. NOSEC accepts an HTTPS origin with no path/query/fragment or user info; HTTP is allowed only on loopback for local testing |
+| `auth_mode` | `legacy` | `legacy` keeps independent pairlink registration; `nosec` requires browser sign-in, administrator account approval and explicit device authorization before registration. Editable in Settings → Phone → Connection sign-in |
 | `display_name` | this machine's hostname | name a bound phone paints on its host chip. Blank seeds `os.Hostname()` (or stays empty if that fails). Editable in Settings → Phone. Clipped to 40 runes. Not a compiled label |
 | `thread_limit` | `5` | how many idle recents the phone lists below In progress before More. Live rows (`list.running`) are a separate roster and do not count |
 | `summary_chars` | `280` | truncate assistant/summary text on the phone. Inbox `action` / `summary` are human one-liners (findings, a command, prose), not raw `tool_call` JSON |
@@ -495,10 +496,52 @@ $ZWAI_HOME/remote/host_token   0600
 $ZWAI_HOME/remote/identity     0600
 ```
 
-`GET /api/settings` never echoes the token. Enabling pairing with a hub URL
-mints `host_token` if the file is missing. `PUT /api/remote/token` can still
-replace it. Empty hub leaves remote offline; **Show pairing QR** then toasts
-over Settings instead of a red line under Phone.
+`GET /api/settings` never echoes the token. In `legacy` mode, enabling pairing
+with a hub URL mints `host_token` if missing; `PUT /api/remote/token` can replace
+it. In `nosec` mode, enabling pairing does not register anonymously. Use
+**Sign in with NOSEC** in the desktop app, compare the public browser code and
+fingerprint, then confirm device authorization after an administrator approves
+the account. The renderer never receives a token, device code or proof verifier.
+Manual token writes return `403 remote_login_required` in this mode.
+
+The active file supports a schema-1 JSON credential with origin, authorized
+flag, host/account IDs and account label, while legacy raw-token files remain
+readable. `pending-host-token-*` under the same private directory retain candidate
+tokens bound to origin and public key for safe retry after an uncertain result.
+Each is limited to 16 KiB; at most 128 are retained (2 MiB maximum), scans are
+bounded to 128, and staging an existing candidate reuses its file. Capacity
+refuses new candidates without deleting old recovery proofs. They are not
+activated by cancellation, expiry or mere account approval.
+
+Only one unresolved candidate is allowed per configured origin and device public
+key. A normal sign-in retry prefers that retained candidate over an older active
+credential. **Reconnect as a new device** returns local `409` with a message to
+retry the previous login while its result is uncertain, because authorization
+may already have succeeded remotely. A real `409` from the currently owned
+Gateway start attempt records `proven_rejected=true` privately; it does not
+remove the recoverable token. Normal retry still uses that token and durably
+clears the marker before any network request. Only explicit new-device recovery
+may replace a proven-rejected candidate, saving the new candidate before retiring
+old rejected records for the same origin/public key. Network failure, cancel and
+a lost poll response after `201` never mark a candidate rejected. Successful
+activation and same-scope cleanup run under the Host lock with directory sync;
+foreign origin/public-key records are retained. Cleanup/storage failure reports
+`credential_unavailable` rather than claiming connection success.
+Changing Hub or mode, disabling pairing, and Stop cancel/join current login work.
+Changing the configured Hub does not reuse a credential bound to the previous
+configured origin. NOSEC private REST rejects redirects; legacy redirect
+handling is unchanged. Deleted/revoked PC recovery requires the explicit **Reconnect as a new device** confirmation;
+the old active credential is retained until a new authorized receipt is saved.
+Foreign active device ownership remains a Gateway rejection. NOSEC pairing QR
+requires both authorized state and an actual online socket.
+
+Downgrade compatibility is one-way: this client can read an older raw
+`host_token`, but clients released before schema-1 receipts read the file as
+raw text and cannot interpret an activated JSON receipt. Before downgrading,
+retain the original credential backup privately. Reconfigure pairing with the
+older client or restore its original compatible raw-token backup for the same
+Hub. Do not supply the JSON document as a raw token. This change does not
+convert or restore private credential files automatically.
 
 ## `clients`
 

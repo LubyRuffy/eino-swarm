@@ -45,3 +45,20 @@ func TestRemoteHandlersWithoutAHost(t *testing.T) {
 		t.Fatalf("revoke %d", w.Code)
 	}
 }
+
+func TestRemoteLoginHandlersWithoutAHost(t *testing.T) {
+	s := &Server{opts: Options{OpenURL: func(string) error { return nil }}}
+	for _, method := range []string{http.MethodPost, http.MethodDelete} {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(method, "/api/remote/login", strings.NewReader(`{}`))
+		if method == http.MethodPost {
+			s.postRemoteLogin(c)
+		} else {
+			s.deleteRemoteLogin(c)
+		}
+		if w.Code != http.StatusConflict {
+			t.Fatalf("host-less login returned %d", w.Code)
+		}
+	}
+}

@@ -595,20 +595,23 @@ These endpoints drive the desktop QR. They are still same-origin loopback HTTP.
 The phone does **not** call them; it talks pairlink to the hub, and the hub
 forwards sealed frames to this process.
 
-`remote` in `GET/PUT /api/settings` is `{enabled, hub_url, display_name, thread_limit,
+`remote` in `GET/PUT /api/settings` is `{enabled, hub_url, auth_mode, display_name, thread_limit,
 summary_chars, open_turns, event_chars, watch_events, keep_awake}`. `hub_url` is whatever you typed — never compiled
 in. `display_name` is this computer's name on a bound phone's host chip; blank
 seeds the machine hostname. A PUT of `remote` reloads the pairlink host. `keep_awake` (default true)
 holds a system sleep assertion while pairing is on; it is not tied to the hub
 socket. The Host Token is **not** in
-settings JSON; it lives under `$ZWAI_HOME/remote/`. Enabling pairing mints it
-if missing. `PUT /api/remote/token` can replace it.
+settings JSON; it lives under `$ZWAI_HOME/remote/`. `auth_mode` defaults to
+`legacy`, which mints a missing token on registration and permits manual token
+replacement. `nosec` requires the browser account/device flow below and never
+falls back to anonymous registration or manual-token admission.
 
 ### `GET /api/remote/status`
 
 ```json
 {"enabled": false, "hub_url": "", "has_token": false, "online": false,
- "keep_awake": true, "awake": false, "fingerprint": "", "error": ""}
+ "keep_awake": true, "awake": false, "fingerprint": "", "error": "",
+ "auth_mode": "legacy", "login_available": false}
 ```
 
 `has_token` is a boolean. The Host Token is never returned. `keep_awake` is
@@ -620,15 +623,69 @@ new QR can redeem. The phone ticket socket does the same (punch-ping data
 frames, not WebSocket control pings). A drop is a reconnect banner on the
 inbox or transcript; Retry uses the saved ticket and does not unlink.
 
+In NOSEC mode, optional `login` contains `state` and public metadata only:
+`user_code`, `host_fp`, `host_id`, `user_id`, `username`, `error_code`.
+`state` is `signed_out`, `starting`, `authorization_pending`, `account_pending`,
+`account_rejected`, `authorized`, `access_denied`, `expired`, `error` or
+`cancelled`. `authorized` alone does not prove the WebSocket is online.
+`login_available` means this local server can open the system browser; a web
+server without that capability cannot begin login. The Phone page polls this
+local endpoint once a second, pauses while hidden and cancels on exit. It starts
+login only after enabled/Hub/mode match the saved status. Network read failure
+pauses QR creation until status recovers; old configuration/mutation replies
+cannot update the new view.
+
+### `POST /api/remote/login`
+
+Body `{}` starts or retries a NOSEC login. Go stages a private candidate, opens
+the validated Gateway verification URL in the system browser, and owns polling
+with S256 proof. It returns `202` with the same safe status; a later status read
+shows the public confirmation code and PC fingerprint. No verification URL,
+Host Token, secret device code or verifier is returned to the renderer.
+
+The account must pass administrator review, and the browser must explicitly
+confirm the matching PC before a host is activated. Pending/rejected accounts
+remain unconnected. Expired/cancelled attempts require an explicit new start.
+Go respects Gateway `429 Retry-After`, with a ten-minute/120-poll bound. Safe
+login error codes are `network_unavailable`, `gateway_unavailable`,
+`device_conflict`, `access_denied`, `unsafe_response`, `browser_unavailable`
+and `credential_unavailable`. They do not carry remote response bodies.
+Missing system-browser support returns `501 remote_login_unavailable`;
+incompatible config or unavailable local credentials returns
+`409 remote_login_unavailable`; malformed/extra request fields return `400`.
+
+Body `{"new_device":true,"confirmed":true}` is the explicitly confirmed recovery
+for a deleted/revoked PC. It stages a fresh private token; existing active local
+credentials are replaced only after a complete new authorized receipt. It
+never restores a revoked digest or claims another account's active public key.
+`new_device:true` without `confirmed:true` is `400`. If a retained login for
+this origin/device has an uncertain result, new-device recovery returns local
+`409 remote_login_unavailable` with an explicit instruction to retry the previous
+login; the Phone error toast shows that message. Normal `{}` retry reuses the
+retained candidate before an older active credential. Only a real Gateway start
+`409` proves a candidate rejected, permitting an explicitly confirmed replacement.
+Ordinary retry of that candidate clears its rejection marker durably before
+network work, so a later success/lost response cannot be mistaken for a rejection.
+Candidate markers are private files and add no fields to the renderer API.
+
+### `DELETE /api/remote/login`
+
+No body. Cancels and joins the current local flow and returns safe status with
+`login.state=cancelled`. Candidate proof is retained privately for explicit
+retry after an uncertain server result. This does not revoke a Gateway device.
+
 ### `PUT /api/remote/token`
 
-Body `{"token": "…"}`. Empty string deletes the stored token. Reloads the
-pairlink host. Returns the same JSON as `GET /api/remote/status`.
+Legacy mode only. Body `{"token": "…"}`; an empty string deletes the stored
+token. Reloads the pairlink host and returns safe status. NOSEC mode rejects
+this endpoint with `403 remote_login_required`, including empty-token writes.
 
 ### `POST /api/remote/offer`
 
 Mints a short-lived pairing code and a PNG. `409` `remote_offline` when the
-hub URL is missing or the host cannot register.
+hub URL is missing or the host cannot register. In NOSEC mode a current
+origin-bound authorized receipt and an actual online WebSocket are required;
+waiting for account approval or browser confirmation cannot create a QR.
 
 ```json
 {"uri": "pairlink:v1:<hub_url>:<code>:<host_spk>",

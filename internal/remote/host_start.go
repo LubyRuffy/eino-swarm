@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -14,10 +15,11 @@ import (
 const hostConnectTimeout = 15 * time.Second
 
 type hostStart struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	done   chan struct{}
-	config client.Config
+	ctx     context.Context
+	cancel  context.CancelFunc
+	done    chan struct{}
+	config  client.Config
+	private bool
 }
 
 // StartBackground starts one cancellable connection attempt. Local readiness
@@ -40,11 +42,18 @@ func (h *Host) prepareStartLocked(parent context.Context) (*hostStart, bool) {
 		return h.starting, false
 	}
 	cfg := h.cfg
+	if cfg != nil {
+		cfg = cfg.Snapshot()
+	}
 	if cfg == nil || !cfg.Remote.Enabled {
 		return nil, false
 	}
 	if cfg.Remote.HubURL == "" {
 		h.err = "remote needs hub_url"
+		return nil, false
+	}
+	if cfg.Remote.AuthMode == config.RemoteAuthNOSEC && (h.loginActive != nil || h.login.State != "" && h.login.State != "authorized") {
+		h.err = "remote: NOSEC login and account approval are required"
 		return nil, false
 	}
 	token, err := cfg.EnsureHostToken()
@@ -59,12 +68,15 @@ func (h *Host) prepareStartLocked(parent context.Context) (*hostStart, bool) {
 	}
 	ctx, cancel := context.WithTimeout(parent, hostConnectTimeout)
 	attempt := &hostStart{
-		ctx: ctx, cancel: cancel, done: make(chan struct{}),
+		ctx: ctx, cancel: cancel, done: make(chan struct{}), private: cfg.Remote.AuthMode == config.RemoteAuthNOSEC,
 		config: client.Config{
 			HubURL: cfg.Remote.HubURL, Identity: id, Token: token,
 			KeepAlive: h.keepAlive,
 			Name:      config.SeedRemoteDisplayName(cfg.Remote.DisplayName), Version: h.version,
 		},
+	}
+	if attempt.private {
+		attempt.config.HTTPClient = newLoginClient()
 	}
 	h.starting = attempt
 	h.err = ""
@@ -129,6 +141,14 @@ func (h *Host) connect(attempt *hostStart) {
 		h.log.Warn("remote host connect failed", "err", err)
 		return
 	}
+	if origin, originErr := config.RemoteOrigin(attempt.config.HubURL); originErr == nil {
+		if err := h.cfg.BindRemoteOrigin(attempt.config.Token, origin); err != nil {
+			h.err = "remote: connection credential origin changed"
+			h.mu.Unlock()
+			_ = conn.Close()
+			return
+		}
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	links := &hostLinkGroup{ctx: ctx, cancel: cancel, current: make(map[string]*hostLink)}
 	h.conn = conn
@@ -141,11 +161,17 @@ func (h *Host) connect(attempt *hostStart) {
 
 func (s *hostStart) connect() (*client.Conn, error) {
 	cfg := s.config
-	if err := client.RegisterHostMeta(s.ctx, nil, cfg.HubURL, cfg.Token, cfg.Name, cfg.Version, cfg.Identity); err != nil {
+	if err := client.RegisterHostMeta(s.ctx, cfg.HTTPClient, cfg.HubURL, cfg.Token, cfg.Name, cfg.Version, cfg.Identity); err != nil {
+		if s.private {
+			return nil, errors.New("remote: authorized host registration failed")
+		}
 		return nil, fmt.Errorf("register remote host: %w", err)
 	}
 	conn, err := dialHost(s.ctx, cfg)
 	if err != nil {
+		if s.private {
+			return nil, errors.New("remote: authorized host connection failed")
+		}
 		return nil, fmt.Errorf("connect remote host: %w", err)
 	}
 	return conn, nil

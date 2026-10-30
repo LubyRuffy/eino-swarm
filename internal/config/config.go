@@ -579,6 +579,9 @@ func Load(dataDir string) (*Config, error) {
 
 	cfg.dataDir = abs
 	cfg.seedFromEnv()
+	if err := cfg.validateRemoteAuth(); err != nil {
+		return nil, err
+	}
 	if err := cfg.validateProviders(); err != nil {
 		return nil, err
 	}
@@ -855,6 +858,9 @@ func (c *Config) Save() error {
 }
 
 func (c *Config) save() error {
+	if err := c.validateRemoteAuth(); err != nil {
+		return err
+	}
 	if err := c.validateProviders(); err != nil {
 		return err
 	}

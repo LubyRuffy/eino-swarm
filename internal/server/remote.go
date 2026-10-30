@@ -2,6 +2,9 @@ package server
 
 import (
 	"encoding/base64"
+	"encoding/json"
+	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"io"
 	"net/http"
 	"strings"
 
@@ -20,10 +23,16 @@ func (s *Server) getRemoteStatus(c *gin.Context) {
 		})
 		return
 	}
-	c.JSON(http.StatusOK, s.remote.Status())
+	status := s.remote.Status()
+	status.LoginAvailable = s.opts.OpenURL != nil
+	c.JSON(http.StatusOK, status)
 }
 
 func (s *Server) putRemoteToken(c *gin.Context) {
+	if s.engine.Config().Snapshot().Remote.AuthMode == config.RemoteAuthNOSEC {
+		c.JSON(http.StatusForbidden, gin.H{"error": "NOSEC login and account approval are required", "code": "remote_login_required"})
+		return
+	}
 	var req struct {
 		Token string `json:"token"`
 	}
@@ -82,4 +91,45 @@ func (s *Server) revokeRemoteBinding(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"revoked": true})
+}
+
+func (s *Server) postRemoteLogin(c *gin.Context) {
+	if s.opts.OpenURL == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "system browser is unavailable", "code": "remote_login_unavailable"})
+		return
+	}
+	if s.remote == nil {
+		remoteOffline(c, "remote is not running")
+		return
+	}
+	var request *struct {
+		NewDevice bool `json:"new_device"`
+		Confirmed bool `json:"confirmed"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(c.Writer, c.Request.Body, 1024))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil || request == nil {
+		badRequest(c, "invalid login request")
+		return
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF || request.NewDevice && !request.Confirmed {
+		badRequest(c, "new device login requires explicit confirmation")
+		return
+	}
+	if err := s.remote.StartLogin(s.opts.OpenURL, request.NewDevice); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "remote_login_unavailable"})
+		return
+	}
+	status := s.remote.Status()
+	status.LoginAvailable = true
+	c.JSON(http.StatusAccepted, status)
+}
+func (s *Server) deleteRemoteLogin(c *gin.Context) {
+	if s.remote == nil {
+		remoteOffline(c, "remote is not running")
+		return
+	}
+	s.remote.CancelLogin()
+	s.getRemoteStatus(c)
 }

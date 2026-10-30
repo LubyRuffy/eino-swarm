@@ -3,6 +3,7 @@ package config
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,8 +27,9 @@ const (
 // typed in Settings — never a compiled-in host. The Host Token is minted on
 // this PC when pairing starts; GET /api/settings cannot echo it.
 type RemoteConfig struct {
-	Enabled bool   `yaml:"enabled" json:"enabled"`
-	HubURL  string `yaml:"hub_url" json:"hub_url"`
+	AuthMode string `yaml:"auth_mode" json:"auth_mode"`
+	Enabled  bool   `yaml:"enabled" json:"enabled"`
+	HubURL   string `yaml:"hub_url" json:"hub_url"`
 	// DisplayName is what a bound phone paints on its host chip.
 	// Blank seeds the machine hostname; it is not a compiled label.
 	DisplayName string `yaml:"display_name" json:"display_name"`
@@ -58,6 +60,9 @@ func (c *Config) remoteTokenPath() string {
 }
 
 func (c *Config) normalizeRemote() {
+	if c.Remote.AuthMode == "" {
+		c.Remote.AuthMode = RemoteAuthLegacy
+	}
 	c.Remote.HubURL = strings.TrimSpace(c.Remote.HubURL)
 	c.Remote.DisplayName = SeedRemoteDisplayName(c.Remote.DisplayName)
 	if c.Remote.ThreadLimit <= 0 {
@@ -122,14 +127,20 @@ func (c *Config) WriteHostToken(token string) error {
 
 // HostToken reads the stored token. Missing file is empty, not an error.
 func (c *Config) HostToken() (string, error) {
-	raw, err := os.ReadFile(c.remoteTokenPath())
+	if c.Remote.AuthMode == RemoteAuthNOSEC {
+		return c.AuthorizedHostToken()
+	}
+	credential, err := c.ReadRemoteCredential()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil
-		}
 		return "", err
 	}
-	return strings.TrimSpace(string(raw)), nil
+	if credential.Origin != "" {
+		origin, err := RemoteOrigin(c.Remote.HubURL)
+		if err != nil || origin != credential.Origin {
+			return "", errors.New("remote: credential belongs to another gateway")
+		}
+	}
+	return credential.Token, nil
 }
 
 func (c *Config) HasHostToken() bool {
@@ -141,6 +152,12 @@ func (c *Config) HasHostToken() bool {
 // file is missing. The hub admits that token when open registration is on.
 // This is not a Gateway Key and never goes in config.yaml.
 func (c *Config) EnsureHostToken() (string, error) {
+	if c.Remote.AuthMode == RemoteAuthNOSEC {
+		return c.AuthorizedHostToken()
+	}
+	if c.Remote.AuthMode != "" && c.Remote.AuthMode != RemoteAuthLegacy {
+		return "", errors.New("remote: invalid authentication mode")
+	}
 	tok, err := c.HostToken()
 	if err != nil {
 		return "", err

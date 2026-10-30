@@ -1,3 +1,4 @@
+import { remoteLoginZh } from "./messages-remote-login"
 import { memoryZh } from "./messages-memory-zh"
 import { generationZh } from "./messages-generation"
 import { updateZH } from "./messages-update"
@@ -8,6 +9,7 @@ import type { en } from "./messages-en"
 
 /** Chinese UI chrome. Every key in messages-en.ts must have a string here. */
 export const zh: { [K in keyof typeof en]: string } = {
+  ...remoteLoginZh,
   ...draftZH,
   "startup.failed": "有 {failed} 个会话恢复失败，请查看 Trace 或日志。",
   "startup.restoring": "正在恢复未完成任务 {completed}/{total}",
@@ -807,7 +809,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.remote.hub": "中转",
   "settings.remote.enabled": "接受手机配对",
   "settings.remote.enabledHint":
-    "这台电脑向中转登记并出示配对 QR。不用手机就关掉。",
+    "打开这台电脑的手机连接。NOSEC 模式还需要登录并授权设备。",
   "settings.remote.hubUrl": "中转地址",
   "settings.remote.hubUrlHint": "你在设置里填的 pairlink 中转，不是写死的域名。",
   "settings.remote.displayName": "这台电脑的名称",
@@ -833,7 +835,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.remote.uri": "配对 URI",
   "settings.remote.expires": "{s} 秒后过期。刷新会换新码。",
   "settings.remote.online": "在线 · {fp}",
-  "settings.remote.offline": "填好转发地址并打开配对才会上线。",
+  "settings.remote.offline": "这台电脑尚未连接中转。",
   "settings.remote.devices": "已绑定的手机",
   "settings.remote.noDevices": "还没有绑定手机。",
   "settings.remote.lastSeen": "最近连接 {time}",

@@ -183,6 +183,8 @@ func New(opts Options) (*Server, error) {
 		api.GET("/trace/:turn", s.getTrace)
 
 		api.GET("/remote/status", s.getRemoteStatus)
+		api.POST("/remote/login", s.postRemoteLogin)
+		api.DELETE("/remote/login", s.deleteRemoteLogin)
 		api.PUT("/remote/token", s.putRemoteToken)
 		api.POST("/remote/offer", s.postRemoteOffer)
 		api.GET("/remote/bindings", s.listRemoteBindings)
