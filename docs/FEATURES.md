@@ -191,6 +191,7 @@ This is the current user-facing capability map. The code and tests named below a
 - Worker 创建核验：按真实 turn 的调用、拒绝回执和生命周期事件区分新建、续办／恢复、完成及清理，不从历史名册或模型自述推断本轮创建量。证据：`internal/engine/worker_lifecycle_facts.go`、`internal/engine/worker_lifecycle_facts_test.go`、`frontend/e2e/worker-roster-history.spec.ts`。
 
 - 模型冷却以 `model_backoff.scope:origin`、不含端点的 cooldown_id 保留真实调用者与等待信息，不计作 LLM 请求；PC／手机聊天及历史每会话每代只显示一条有时长的等待，wait_ms:0 不另成行，Trace 保留各角色原始观察。wait_ms:0 表示探测尚未交出有效内容、等待余时未知；首段有效内容放行并发不代表故障档位已清零，最终结果规则沿用 `F-130`（`C-029`）。证据：`internal/engine/model_backoff.go`、`internal/engine/model_backoff_test.go`、`frontend/src/lib/transcript-backoff.test.ts`、`mobile/src/lib/transcript-backoff.test.tsx`、`mobile/e2e/api-error.spec.ts`。
+- 桌面／Web 等待提示支持展开“重试说明”：显示主管、真实子代理角色／ID 或标题／压缩／记忆／调度核对等实际等待步骤，以及已记录次数／核对诊断；共享冷却同代调用者合并在一条说明中，不将等待等同于步骤失败。关联契约：`C-029`；证据：`frontend/src/components/app/backoff-notice.tsx`、`frontend/src/components/app/backoff-notice.test.tsx`、`frontend/e2e/api-error.spec.ts`。
 - 模型流的错误或 EOF 在本次调用记录回调结束后才交给消费端；部分 usage、调用者及错误类别保持，消费端在保存期间关闭也只记录一次。关联契约：`C-012`；证据：`internal/provider/provider.go`、`internal/provider/stream_terminal_order_test.go`。
 
 ### F-170 Settings and providers

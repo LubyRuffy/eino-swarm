@@ -1,4 +1,5 @@
 import { IterationLimitCard } from "./iteration-limit-card"
+import { BackoffNotice } from "./backoff-notice"
 import { GenerationNotice } from "./generation-notice"
 import {
   ChevronDown,
@@ -401,6 +402,7 @@ const BlockView = memo(function BlockView({
       return <IterationLimitCard block={block} />
 
     case "notice":
+      if (block.backoff) return <BackoffNotice block={block} />
       if (block.generation) return <GenerationNotice block={block} />
       if (block.cloudTool) return <CloudToolNotice block={block} />
       return isScheduleNotice(block) ? <ScheduleNotice block={block} /> : <CompactNotice block={block} />

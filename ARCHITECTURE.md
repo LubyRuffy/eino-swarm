@@ -644,6 +644,10 @@ LLM calls. Origin waits carry `scope: "origin"` and an opaque, process-local
 `cooldown_id` shared by every role waiting in that generation. PC/phone chat
 and replay show one timed notice per conversation/generation and omit unknown
 probe waits before valid content (`wait_ms: 0`); Trace retains each original caller observation.
+Desktop/Web notice details aggregate callers from those receipts, including
+zero-duration waits attached to an existing notice, without creating workers.
+Rewind removes caller observations at or after its cut. The explanation does
+not infer a failure of every waiting caller or identify the cooldown trigger.
 Classification recovery instead uses `scope: "schedule_answer"`, candidate ID
 and a failure/deferred code, with separate readable notices. Its isolated
 requests cannot start, recover or wait on this origin gate. Discovery and

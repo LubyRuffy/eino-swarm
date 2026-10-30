@@ -673,6 +673,13 @@ its offline HTTP model does not call an external provider.
 `frontend/src/lib/schedule-claim-notice.test.ts` and
 `mobile/src/lib/transcript-schedule-claim.test.ts` check the correction notice
 and Chinese display without exposing internal JSON or claiming a wait exists.
+`frontend/src/components/app/backoff-notice.test.tsx` checks the desktop/Web
+expand/collapse control, language switching, immutable caller aggregation,
+zero-duration callers on an existing notice, cold replay and rewind. Unknown
+and private payloads stay out of the explanation. `frontend/e2e/api-error.spec.ts`
+expands the live and reloaded real HTTP cooldown notices with keyboard input
+and verifies manager attribution without inferring all waiting steps failed.
+
 `frontend/src/lib/transcript-backoff.test.ts` and
 `mobile/src/lib/transcript-backoff.test.tsx` check one origin notice across roles
 and turns per cooldown ID, separate candidates/deferral, zero-delay probe

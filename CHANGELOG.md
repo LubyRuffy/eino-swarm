@@ -13,6 +13,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- Desktop/Web model retry waits offer **Retry details** with the actual waiting
+  steps/Agent identities, service failure count and scheduling-verification
+  diagnostics. Shared cooldowns collect waiting callers into one explanation;
+  live delivery, history and rewind preserve attribution without exposing private
+  answer payloads or treating every waiting caller as a failed request. Legacy
+  receipts without a known scope omit source-specific attempt counts.
+
 - A project-local [native testing fast path](docs/NATIVE_TESTING_FAST_PATH.md)
   documents existing commands, exact-input reuse, scenario selection, bounded
   retries and cleanup, with separate preparation/queue/execution timing.
