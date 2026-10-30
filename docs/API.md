@@ -1425,8 +1425,10 @@ or sends false.
 `POST …/steer` rejects `history_report:true` with `400`.
 
 In this mode, the manager must query original history and submit the strict
-versioned source-report protocol; reading history in an ordinary turn also
-requires that protocol. Project-bound SQL views cannot read another project's
+versioned source-report protocol. Only this flag (or a Registry the turn
+actually inherited from such a turn) selects that protocol: an ordinary turn
+may call `query_history` for leads and still publishes its ordinary answer.
+Project-bound SQL views cannot read another project's
 records; standalone conversations keep the global history view. The public
 turn answer is host-rendered complete evidence plus labelled proposals, not
 the model's raw JSON. A model suggestion/citation is not approval or a semantic
@@ -1834,9 +1836,9 @@ shortening only the bounded detail text.
 | kind | meaning |
 |---|---|
 | `user_message` | the request that started this turn. `images` is `{id,name,mime}[]` when the send carried pasted vision input; never the pixels |
-| `history_report_requested` | an explicit source-report choice owned by this turn and saved before model execution; no model-generated prose or authorization |
-| `history_read_started` | host-owned admission to a `query_history` read attempt, before the reader returns any bytes; `text` is the original arguments and `tool_call_id` is retained when available. Not a successful read, complete coverage or execution receipt |
-| `history_registry_inherited` | host-observed reuse/restoration of actual Registry worker state; `source_turn_id` identifies an earlier turn in this conversation. Saved before successor occupation, idempotent and used to inherit read/request state; it neither changes worker authorship nor makes an unrelated fresh Registry inherit history mode |
+| `history_report_requested` | an explicit source-report choice owned by this turn and saved before model execution; no model-generated prose or authorization. Trace-only engine receipt, not a chat row |
+| `history_read_started` | host-owned admission to a `query_history` read attempt, before the reader returns any bytes; `text` is the original arguments and `tool_call_id` is retained when available. Not a successful read, complete coverage or execution receipt, and it does not select the report protocol. Trace-only engine receipt, not a chat row |
+| `history_registry_inherited` | host-observed reuse/restoration of actual Registry worker state; `source_turn_id` identifies an earlier turn in this conversation. Saved before successor occupation, idempotent and used to inherit read/request state; it neither changes worker authorship nor makes an unrelated fresh Registry inherit history mode. Trace-only engine receipt, not a chat row |
 | `generation_started` | durable model-output start identity; internal lifecycle evidence for recovery and Trace, not a chat row |
 | `generation_completed` | the output finished normally; closes its generation identity without completing its worker |
 | `generation_interrupted` | interrupted model output; `message_id` identifies that output and `text` is JSON `{reason,detail,recovery}` (see below). It does not mark the worker failed |

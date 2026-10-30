@@ -7,7 +7,10 @@ type HistoryResult = { ok?: boolean; columns?: string[]; rows?: Record<string, u
 
 // This endpoint exercises the real model adapter and tool executor. It is a
 // protocol fixture, not evidence that a model can interpret project history.
-export async function startProjectHistoryFixture({ repairWrite = false, omitProjectFilter = false }: { repairWrite?: boolean; omitProjectFilter?: boolean } = {}) {
+// `report` is the explicit project-report entry. Without it the manager may
+// still read history, but answers in its own words and never sees the report
+// protocol in its System prompt.
+export async function startProjectHistoryFixture({ repairWrite = false, omitProjectFilter = false, report = true }: { repairWrite?: boolean; omitProjectFilter?: boolean; report?: boolean } = {}) {
   const errors: string[] = []
   const requests: Input[] = []
   const sourceReplies = new Map<string, string>()
@@ -65,6 +68,7 @@ export async function startProjectHistoryFixture({ repairWrite = false, omitProj
           return
         }
         if (!projectID || !threadID || !system.includes(projectID) || !system.includes(threadID)) throw new Error("Current project/thread identity did not reach model input")
+        if (system.includes("This turn is an explicit history-report request.") !== report) throw new Error(`History report protocol presence does not match report=${report}`)
         const latest = input.messages.findLast((message) => message.role === "tool")
         if (!latest) {
           call(response, input, "history-schema", {})
@@ -100,7 +104,9 @@ export async function startProjectHistoryFixture({ repairWrite = false, omitProj
         if (records.some((row) => !sourceReplies.has(String(row.content)))) throw new Error("Query did not preserve the complete original source text")
         if (records.some((row) => row.source !== "human" || row.reasoning !== "" || row.goal !== "")) throw new Error("Query did not preserve the original empty text fields and human attribution")
         finalSourceTexts = records.map((row) => String(row.content))
-        finalAnswer = JSON.stringify({ version: 1, language: "zh", sources: records.map((row, index) => ({ key: `original-${index + 1}`, source: { kind: "message", thread_id: String(row.thread_id), seq: row.seq } })), proposals: [], questions: [] })
+        finalAnswer = report
+          ? JSON.stringify({ version: 1, language: "zh", sources: records.map((row, index) => ({ key: `original-${index + 1}`, source: { kind: "message", thread_id: String(row.thread_id), seq: row.seq } })), proposals: [], questions: [] })
+          : records.map((row) => `- \`${String(row.thread_id)}\` seq ${String(row.seq)}: ${String(row.content)}`).join("\n")
         knownAnswers.add(finalAnswer)
         reply(response, input, { role: "assistant", content: finalAnswer })
       } catch (error) {

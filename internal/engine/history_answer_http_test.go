@@ -10,11 +10,69 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
-// A real history read must not be followed by freely authored historical
-// conclusions reaching either the final answer or the durable public log.
+// An operational task may consult history for leads. That read must not turn
+// its deliverable into a source report: the manager's ordinary answer is
+// published as written, with no correction round and no report protocol in
+// its System prompt.
+func TestIncidentalHistoryReadKeepsTheOrdinaryAnswerAtTheActualManagerBoundary(t *testing.T) {
+	const answer = "Service map: api runs from repository one; worker runs from repository two."
+	e, fixture := newScheduleCompletionHTTPEngine(t, func(w http.ResponseWriter, _ *http.Request, step int, request scheduleCompletionRequest) {
+		if strings.Contains(joinedContent(request.Messages), historyReportPrompt()) {
+			t.Error("an ordinary task was told to answer in the history report protocol")
+		}
+		if step == 1 {
+			writeScheduleCompletionTool(w, request, ToolQueryHistory, `{}`)
+			return
+		}
+		writeContextFlowReply(w, request.Stream, map[string]any{"content": answer}, "stop")
+	})
+	project, err := e.CreateProject("Operational task", "", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := e.CreateThread("Map running services", "", project.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := e.StartTurn(thread.ID, "Map each running service to its repository.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := waitForTurn(t, e, turn.ID)
+	waitSettled(t, e, thread.ID)
+	if got.Status != store.TurnDone || got.Final != answer {
+		t.Fatalf("incidental history read rewrote the ordinary answer: status=%q final=%q error=%q", got.Status, got.Final, got.Error)
+	}
+	if requests := fixture.snapshot(); len(requests) != 2 {
+		t.Fatalf("manager requests=%d, want the read and one answer without correction", len(requests))
+	}
+	events, err := e.store.ListTurnEvents(turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := 0
+	for _, event := range events {
+		if event.Kind == KindHistoryReadStarted {
+			started++
+		}
+		if event.Kind == KindModelRetry {
+			t.Fatalf("ordinary answer needed a history correction: %s", event.Text)
+		}
+	}
+	if started != 1 {
+		t.Fatalf("history read receipts=%d, the read must stay traceable", started)
+	}
+}
+
+// In an explicit report turn a real history read must not be followed by
+// freely authored historical conclusions reaching either the final answer or
+// the durable public log.
 func TestHistoryReadWithholdsUnstructuredConclusionsAtTheActualManagerBoundary(t *testing.T) {
 	const unverified = "A freely invented historical decision must never be delivered."
 	e, fixture := newScheduleCompletionHTTPEngine(t, func(w http.ResponseWriter, _ *http.Request, step int, request scheduleCompletionRequest) {
+		if !strings.Contains(joinedContent(request.Messages), historyReportPrompt()) {
+			t.Error("explicit report turn lost the report protocol")
+		}
 		if step == 1 {
 			writeScheduleCompletionTool(w, request, ToolQueryHistory, `{}`)
 			return
@@ -32,7 +90,7 @@ func TestHistoryReadWithholdsUnstructuredConclusionsAtTheActualManagerBoundary(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	turn, err := e.StartTurn(thread.ID, "Inspect the retained original records and report their sources.")
+	turn, err := e.StartTurnInput(thread.ID, UserInput{Text: "Inspect the retained original records and report their sources.", HistoryReport: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +169,7 @@ func TestHistoryReportRepairsItsProtocolWithoutRepeatingTheReadAndPublishesOnlyH
 			}
 			sub := e.Subscribe(thread.ID)
 			defer sub.Close()
-			turn, err := e.StartTurn(thread.ID, "Inspect the original records and propose next work.")
+			turn, err := e.StartTurnInput(thread.ID, UserInput{Text: "Inspect the original records and propose next work.", HistoryReport: true})
 			if err != nil {
 				t.Fatal(err)
 			}

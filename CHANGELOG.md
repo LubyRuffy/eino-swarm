@@ -474,6 +474,19 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `C-036`: the desktop chat no longer shows raw `query_history` SQL as a
+  sparkle notice card. The `history_read_started`, `history_report_requested`
+  and `history_registry_inherited` engine receipts fell through to the
+  reducer's unknown-kind notice after a reload. They now appear only in the
+  Trace Full log, and a guard test requires every stored event kind to have an
+  explicit desktop transcript decision.
+- `C-036`: an ordinary turn that reads history, for example to reuse an earlier
+  approach, keeps its own answer. Previously any `query_history` call forced the
+  manager's final answer into the strict source-report JSON, withholding
+  ordinary operational answers. Only an explicit `history_report:true` request
+  (directly or through an inherited Registry) selects that protocol, and the
+  manager prompt carries the protocol only then.
+
 - Phone reasoning-only groups use one initially closed Thought control, removing
   the extra activity-summary layer. Mixed tool groups keep their work summary,
   and the same thought retains its disclosure choice as tools join or leave

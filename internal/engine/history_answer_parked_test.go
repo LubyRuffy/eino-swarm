@@ -179,6 +179,7 @@ func TestHistoryColdParkedWorkerKeepsItsOwnerAndOnlyTheReusedRegistryInheritsRep
 				// This is the durable crash window after turn creation, before
 				// a runtime has attached the prior worker state.
 				second = mustStoredTurn(t, e, thread.ID, store.Turn{UserText: "Collect and inspect the existing source result."})
+				historyReportRequested(e, second)
 				if err := e.store.AppendMessages(thread.ID, second.ID, []store.Message{{Role: "user", Source: store.MessageSourceHuman, Content: second.UserText}}); err != nil {
 					t.Fatal(err)
 				}
@@ -219,7 +220,7 @@ func TestHistoryColdParkedWorkerKeepsItsOwnerAndOnlyTheReusedRegistryInheritsRep
 					t.Fatalf("unfinished successor recovery=%d %v", count, err)
 				}
 			} else {
-				second, err = next.StartTurn(thread.ID, "Collect and inspect the existing source result.")
+				second, err = next.StartTurnInput(thread.ID, UserInput{Text: "Collect and inspect the existing source result.", HistoryReport: true})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -251,6 +252,9 @@ func TestHistoryColdParkedWorkerKeepsItsOwnerAndOnlyTheReusedRegistryInheritsRep
 			}
 			if inherited, err := next.store.TurnHasHistoryQuery(thread.ID, third.ID); err != nil || inherited {
 				t.Fatalf("unrelated registry inherited source mode: %t %v", inherited, err)
+			}
+			if inherited, err := next.store.TurnHasHistoryReportRequest(thread.ID, third.ID); err != nil || inherited {
+				t.Fatalf("unrelated registry inherited the explicit report request: %t %v", inherited, err)
 			}
 		})
 	}

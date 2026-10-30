@@ -12,13 +12,18 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
-// report_schedule is another public prose outlet. Its source protocol must be
-// checked before rearming; a valid report binds the same canonical snapshots
-// in its eventual publication transaction as the manager's final answer.
+// report_schedule is another public prose outlet. In an explicit report turn
+// (here, one that inherited that mode) its source protocol must be checked
+// before rearming; a valid report binds the same canonical snapshots in its
+// eventual publication transaction as the manager's final answer. A scheduled
+// check that only consulted history keeps ordinary findings.
 func TestHistoryScheduleFindingsValidateBeforeRearmAndPublishOnlyHostRendering(t *testing.T) {
-	for _, invalid := range []bool{false, true} {
-		t.Run(map[bool]string{false: "canonical", true: "invalid-before-action"}[invalid], func(t *testing.T) {
-			var peerID string
+	const ordinaryFindings = "Checked the service; it is still reachable."
+	for _, mode := range []string{"canonical", "invalid-before-action", "incidental-read"} {
+		t.Run(mode, func(t *testing.T) {
+			invalid, incidental := mode == "invalid-before-action", mode == "incidental-read"
+			var peerID, threadID string
+			var e *Engine
 			var managers atomic.Int32
 			endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var request scheduleCompletionRequest
@@ -44,26 +49,39 @@ func TestHistoryScheduleFindingsValidateBeforeRearmAndPublishOnlyHostRendering(t
 				}
 				switch step := managers.Add(1); step {
 				case 1:
+					if !incidental {
+						turnID, err := e.store.LatestTurnID(threadID)
+						if err != nil {
+							t.Error(err)
+						}
+						historyReportRequested(e, &store.Turn{ID: turnID, ThreadID: threadID})
+					}
 					writeHistoryTool(w, request, "history-for-report", ToolQueryHistory, `{}`)
 				case 2:
 					findings := historyAnswerJSON(peerID)
 					if invalid {
 						findings = "A fabricated historical approval."
+					} else if incidental {
+						findings = ordinaryFindings
 					}
 					args, _ := json.Marshal(map[string]any{"findings": findings, "next_in_s": 90})
 					writeHistoryTool(w, request, "history-schedule-report", ToolReportSchedule, string(args))
 				case 3, 4:
 					if step == 4 && !invalid {
-						t.Error("valid canonical schedule report unexpectedly needed correction")
+						t.Error("valid schedule report unexpectedly needed correction")
 					}
-					writeContextFlowReply(w, request.Stream, map[string]any{"content": historyAnswerJSON(peerID)}, "stop")
+					final := historyAnswerJSON(peerID)
+					if incidental {
+						final = ordinaryFindings
+					}
+					writeContextFlowReply(w, request.Stream, map[string]any{"content": final}, "stop")
 				default:
 					t.Errorf("unexpected report manager request %d", step)
 					writeContextFlowReply(w, request.Stream, map[string]any{"content": "Unexpected request."}, "stop")
 				}
 			}))
 			t.Cleanup(endpoint.Close)
-			e := newTestEngine(t)
+			e = newTestEngine(t)
 			e.cfg.Swarm.AutoTitle = false
 			e.cfg.Memory.AutoReview = false
 			e.cfg.Models.Providers[0].BaseURL = endpoint.URL
@@ -85,6 +103,7 @@ func TestHistoryScheduleFindingsValidateBeforeRearmAndPublishOnlyHostRendering(t
 			if err != nil {
 				t.Fatal(err)
 			}
+			threadID = thread.ID
 			wake, err := e.CreateSchedule(ScheduleInput{Kind: store.ScheduleThread, ThreadID: thread.ID, EveryS: 120, Title: "History report verification", Prompt: "Inspect original project records.", CreatedBy: store.ScheduleCreatedManager})
 			if err != nil {
 				t.Fatal(err)
@@ -101,7 +120,11 @@ func TestHistoryScheduleFindingsValidateBeforeRearmAndPublishOnlyHostRendering(t
 			}
 			got := waitForTurn(t, e, turn.ID)
 			waitSettled(t, e, thread.ID)
-			if got.Status != store.TurnDone || !strings.Contains(got.Final, historyRecoveryOriginal) {
+			wantFinal := historyRecoveryOriginal
+			if incidental {
+				wantFinal = ordinaryFindings
+			}
+			if got.Status != store.TurnDone || !strings.Contains(got.Final, wantFinal) {
 				t.Fatalf("scheduled history report=%+v", got)
 			}
 			var rearms int64
@@ -126,7 +149,7 @@ func TestHistoryScheduleFindingsValidateBeforeRearmAndPublishOnlyHostRendering(t
 					var body struct {
 						Findings string `json:"findings"`
 					}
-					if json.Unmarshal([]byte(event.Text), &body) != nil || !strings.Contains(body.Findings, historyRecoveryOriginal) || strings.Contains(body.Findings, `"version":1`) {
+					if json.Unmarshal([]byte(event.Text), &body) != nil || !strings.Contains(body.Findings, wantFinal) || strings.Contains(body.Findings, `"version":1`) {
 						t.Fatalf("raw schedule findings escaped host rendering: %s", event.Text)
 					}
 				}
@@ -144,7 +167,7 @@ func TestHistoryScheduleFindingsValidateBeforeRearmAndPublishOnlyHostRendering(t
 
 func TestPreviouslyRearmedHistoryFindingsAreRejectedWithoutRepeatingTheAction(t *testing.T) {
 	e, turn, _, _, _ := historyAnswerFixture(t)
-	historyReadEvent(e, turn, "manager")
+	historyReportRead(e, turn, "manager")
 	const originalReceipt = `{"ok":true,"report_pending":true,"quiet":false}`
 	payload := pendingScheduleAnswer{AnswerID: turn.ID + ":already-rearmed", Text: []string{"Unverified historical approval."}, Events: []store.Event{{ThreadID: turn.ThreadID, TurnID: turn.ID, AgentID: "manager", Kind: KindScheduleReport, Text: `{"findings":"Unverified historical approval.","quiet":false}`}}, ToolCallID: "already-rearmed", ToolResult: originalReceipt, CommittedRearm: []string{"previous-action"}}
 	row, failure := e.savePendingScheduleAnswer(turn, "report", payload.AnswerID, payload)
@@ -184,7 +207,7 @@ func TestHistorySynchronousReportUsesCanonicalEvidenceAndQuietReportsRemainQuiet
 	if err := e.store.DB().Model(&store.Turn{}).Where("id = ?", turn.ID).Updates(map[string]any{"schedule_continue": true, "schedule_run_id": run.ID}).Error; err != nil {
 		t.Fatal(err)
 	}
-	historyReadEvent(e, turn, "manager")
+	historyReportRead(e, turn, "manager")
 	args, _ := json.Marshal(map[string]any{"findings": historyAnswerJSON(peer.ID)})
 	body, err := e.reportScheduleContextJSON(t.Context(), turn.ThreadID, turn.ID, string(args))
 	if err != nil || !strings.Contains(body, `"ok":true`) {

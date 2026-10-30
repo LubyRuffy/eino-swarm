@@ -166,22 +166,37 @@ func TestHistoryToolReturnsRepairableErrorsAndRetainsOwnership(t *testing.T) {
 
 func TestHistoryPromptDescribesOnlyMountedGenericCapabilities(t *testing.T) {
 	_, query, set := historyToolFixture(t)
-	if historyPrompt(&tools.Set{}) != "" || historyPrompt(&tools.Set{Tools: set.Tools[:1]}) != "" {
-		t.Fatal("unmounted tools were advertised")
-	}
-	prompt := historyPrompt(set)
-	for _, want := range []string{query.context.ThreadID, "query_history", "project_id", "source material", "negation", "truncated", "runtime", "messages", "turns", "events"} {
-		if !strings.Contains(prompt, want) {
-			t.Errorf("missing history guidance %q", want)
+	for _, audience := range []historyAudience{historyForWorker, historyForManager, historyForManagerReport} {
+		if historyPrompt(&tools.Set{}, audience) != "" || historyPrompt(&tools.Set{Tools: set.Tools[:1]}, audience) != "" {
+			t.Fatal("unmounted tools were advertised")
+		}
+		prompt := historyPrompt(set, audience)
+		for _, want := range []string{query.context.ThreadID, "query_history", "project_id", "source material", "negation", "truncated", "runtime", "messages", "turns", "events"} {
+			if !strings.Contains(prompt, want) {
+				t.Errorf("audience %d missing history guidance %q", audience, want)
+			}
+		}
+		for _, sample := range []string{"fofa", "fobrain", "gitlab", "mcp", "mythic", "glm-5"} {
+			if strings.Contains(strings.ToLower(prompt), sample) {
+				t.Errorf("a user's example leaked into the product prompt: %s", sample)
+			}
+		}
+		if strings.Contains(prompt, `\n`) {
+			t.Fatal("prompt contains an accidental escaped newline")
 		}
 	}
-	for _, sample := range []string{"fofa", "mcp", "mythic", "glm-5"} {
-		if strings.Contains(strings.ToLower(prompt), sample) {
-			t.Errorf("a user's example leaked into the product prompt: %s", sample)
-		}
+	// A task that merely consults history must not be told to answer in the
+	// report protocol: that turned an operational deliverable into a JSON
+	// proposal list with no factual statements allowed.
+	protocol := historyReportPrompt()
+	if manager := historyPrompt(set, historyForManager); strings.Contains(manager, protocol) || !strings.Contains(manager, "not an explicit history-report request") {
+		t.Fatalf("ordinary manager turn received the report protocol:\n%s", manager)
 	}
-	if strings.Contains(prompt, `\n`) {
-		t.Fatal("prompt contains an accidental escaped newline")
+	if worker := historyPrompt(set, historyForWorker); strings.Contains(worker, protocol) || !strings.Contains(worker, "{kind, thread_id, seq}") {
+		t.Fatalf("worker preamble lost neutral source citation:\n%s", worker)
+	}
+	if report := historyPrompt(set, historyForManagerReport); !strings.Contains(report, protocol) || !strings.Contains(report, "is an explicit history-report request") {
+		t.Fatalf("explicit report turn lost its protocol:\n%s", report)
 	}
 	if query.context.ProjectID != "" || query.context.ProjectName != "" {
 		t.Fatal("standalone conversation inherited a project")

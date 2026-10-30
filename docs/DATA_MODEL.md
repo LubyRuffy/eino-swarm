@@ -108,7 +108,9 @@ The explicit turn input `history_report:true` is stored as an owned
 `history_report_requested` event before model execution. A trusted manager or
 worker read records `history_read_started` before SQL executes; its original
 turn owner is supplied by the host, not arguments. This is a read-attempt
-marker, not a successful query result or completion receipt.
+marker, not a successful query result or completion receipt, and it never by
+itself selects the report protocol; only `history_report_requested` (directly
+or through inherited Registry lineage) does.
 
 `history_registry_inherited` reuses `events.source_turn_id` to record a
 host-observed Registry/worker-state transfer within one conversation. The source

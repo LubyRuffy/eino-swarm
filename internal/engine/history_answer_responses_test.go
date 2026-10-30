@@ -126,7 +126,7 @@ func TestHistoryHostRenderingIsTheOnlyAnswerInActualResponsesContinuation(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	turn, err := e.StartTurn(thread.ID, "Inspect original project records.")
+	turn, err := e.StartTurnInput(thread.ID, UserInput{Text: "Inspect original project records.", HistoryReport: true})
 	if err != nil {
 		t.Fatal(err)
 	}

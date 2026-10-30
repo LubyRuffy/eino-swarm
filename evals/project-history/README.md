@@ -78,10 +78,14 @@ every rubric item, including baseline and failed runs. Reports deliberately stay
 `semantic_status: unreviewed` until this independent review is completed. No
 automatic pass rate or efficacy claim is produced by the harness.
 
-For the source-report candidate, retain the same raw fixture, independent
-rubric and ordinary request; do not inject the report schema, SQL or expected
-facts through the harness. The product must select history retrieval itself.
-Review model-selected references and each proposal/title/priority separately
+The harness sends an ordinary request without `history_report`, so the product
+must select history retrieval itself and answers in ordinary prose: reading
+history never switches that turn into the source-report protocol. Do not
+inject the report schema, SQL or expected facts through the harness. A
+source-report measurement needs the explicit start-turn flag, which this
+harness does not send; label such a run separately rather than comparing it
+with ordinary-request rounds as the same condition. For a report answer, review
+model-selected references and each proposal/title/priority separately
 from the host's full raw evidence section. An attributed quote of an older
 assistant claim is not a new assertion that the claim is verified, but repeating
 it as a current premise in a proposal still needs support. Full raw-record

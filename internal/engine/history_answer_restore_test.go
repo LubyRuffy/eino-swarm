@@ -16,7 +16,7 @@ import (
 
 func TestPendingHistoryReportRestoresTypedSourcesAndRechecksChanges(t *testing.T) {
 	e, turn, peer, b, set := historyAnswerFixture(t)
-	historyReadEvent(e, turn, "manager")
+	historyReportRead(e, turn, "manager")
 	res, failure := b.prepareHistoryAnswer(t.Context(), turn, set, historyCandidate(b, historyAnswerJSON(peer.ID)), nil)
 	if failure != nil {
 		t.Fatal(failure, failure.Cause)
@@ -45,7 +45,7 @@ func TestPendingHistoryRestorePreservesEmptyImagesAcrossPrivateJSON(t *testing.T
 	if err := e.store.DB().Model(&store.Message{}).Where("thread_id = ?", peer.ID).Update("images", "[]").Error; err != nil {
 		t.Fatal(err)
 	}
-	historyReadEvent(e, turn, "manager")
+	historyReportRead(e, turn, "manager")
 	res, failure := b.prepareHistoryAnswer(t.Context(), turn, set, historyCandidate(b, historyAnswerJSON(peer.ID)), nil)
 	if failure != nil {
 		t.Fatal(failure, failure.Cause)
@@ -128,7 +128,7 @@ func TestHistoryPublicationRefusesAnUnreadableExplicitRequestMarker(t *testing.T
 
 func TestAcceptedHistoryReportRestoresTheSameFrozenRenderingWithoutAnotherPublication(t *testing.T) {
 	e, turn, peer, b, set := historyAnswerFixture(t)
-	historyReadEvent(e, turn, "manager")
+	historyReportRead(e, turn, "manager")
 	res, failure := b.prepareHistoryAnswer(t.Context(), turn, set, historyCandidate(b, historyAnswerJSON(peer.ID)), nil)
 	if failure != nil {
 		t.Fatal(failure, failure.Cause)
@@ -176,7 +176,7 @@ func TestRestoredHistoryPayloadCannotReintroduceGeneratedProseOrForgedRendering(
 	for _, corrupt := range []string{"rendered", "final", "text", "events", "content", "missing-transcript", "multimodal", "responses"} {
 		t.Run(corrupt, func(t *testing.T) {
 			e, turn, peer, b, set := historyAnswerFixture(t)
-			historyReadEvent(e, turn, "manager")
+			historyReportRead(e, turn, "manager")
 			res, failure := b.prepareHistoryAnswer(t.Context(), turn, set, historyCandidate(b, historyAnswerJSON(peer.ID)), nil)
 			if failure != nil {
 				t.Fatal(failure, failure.Cause)
@@ -224,7 +224,7 @@ func TestRestoredHistoryPayloadCannotReintroduceGeneratedProseOrForgedRendering(
 
 func TestHistoryModeReadFailuresAndToolRoundBoundariesDoNotPublishProse(t *testing.T) {
 	e, turn, peer, b, set := historyAnswerFixture(t)
-	historyReadEvent(e, turn, "manager")
+	historyReportRead(e, turn, "manager")
 	res := historyCandidate(b, "")
 	res.Transcript = append(res.Transcript, markPendingAnswer(schema.AssistantMessage("intermediate prose", nil), b.id))
 	got, failure := b.prepareHistoryAnswer(t.Context(), turn, set, res, adk.ErrExceedMaxIterations)

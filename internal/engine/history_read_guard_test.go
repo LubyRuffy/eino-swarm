@@ -70,11 +70,12 @@ func TestHistoryReadPersistsItsRealOwnerAndCompleteArgumentsBeforeReading(t *tes
 	if err != nil || len(events) != 1 || events[0].Kind != "history_read_started" || events[0].ThreadID != turn.ThreadID || events[0].TurnID != turn.ID || events[0].Text != args || events[0].ToolCallID != "" {
 		t.Fatalf("durable start receipt changed owner/arguments or pretended completion: %#v %v", events, err)
 	}
-	// A new Engine only has persisted state. It must still require the host
-	// report even if the best-effort ordinary tool-call receipt was missing.
+	// A new Engine only has persisted state. The read start alone still proves
+	// the read when the best-effort ordinary tool-call receipt is missing; a
+	// read without an explicit request never selects the report protocol.
 	next := &Engine{store: e.store}
 	required, queried, failure := next.historyAnswerMode(turn)
-	if failure != nil || !required || !queried {
+	if failure != nil || required || !queried {
 		t.Fatalf("durable start mode was lost by a new engine: %v %v %+v", required, queried, failure)
 	}
 }
@@ -202,7 +203,7 @@ func TestActualHistoryReadWithMissingOrdinaryCallReceiptStillUsesHostRendering(t
 	}); err != nil {
 		t.Fatal(err)
 	}
-	turn, err := e.StartTurn(thread.ID, "Inspect original project records.")
+	turn, err := e.StartTurnInput(thread.ID, UserInput{Text: "Inspect original project records.", HistoryReport: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +240,7 @@ func TestActualHistoryReadStartStorageFailureStopsBeforeAnotherManagerRequest(t 
 	}); err != nil {
 		t.Fatal(err)
 	}
-	turn, err := e.StartTurn(thread.ID, "Inspect original project records.")
+	turn, err := e.StartTurnInput(thread.ID, UserInput{Text: "Inspect original project records.", HistoryReport: true})
 	if err != nil {
 		t.Fatal(err)
 	}

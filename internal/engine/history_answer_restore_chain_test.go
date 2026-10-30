@@ -52,6 +52,7 @@ func TestFreshRegistryRestoresUnreadWorkersOnlyWhenTheirRecordedOwnersHaveAProve
 			}
 			first := mustStoredTurn(t, e, thread.ID, store.Turn{UserText: "Earlier generation."})
 			plantFinishedWorker(t, e, thread.ID, first.ID, "earlier-reader", "reader", "Earlier generation unread result.")
+			historyReportRequested(e, first)
 			historyReadEvent(e, first, "earlier-reader")
 			if err := e.store.FinishTurn(first.ID, store.TurnDone, "Earlier check ended.", ""); err != nil {
 				t.Fatal(err)
