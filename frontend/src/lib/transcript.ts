@@ -12,7 +12,7 @@ import {
   modelRetryNotice,
 } from "./transcript-notices"
 import { parseReview, reviewNotice } from "./transcript-review"
-import { modelBackoffNotice } from "./transcript-backoff"
+import { backoffBlocks, rewindBackoff, type BackoffContext } from "./transcript-backoff-blocks"
 import { recordRecovery, type RecoveryEvent } from "./transcript-recovery"
 import { askCardFromEvent, askRecoveryCard, applyAskRecovery, settleAskCard, type AskCard } from "./transcript-ask"
 import { isPlanEvent, planNotice } from "./transcript-plan"
@@ -88,6 +88,7 @@ export interface Block {
   compacted?: boolean
   /** Shared service cooldown identity, independent of the waiting role/turn. */
   cooldownId?: string
+  backoff?: BackoffContext
   /** One model output can span several manager turns and durable checkpoints. */
   messageId?: string
   /** Still being streamed. Complete blocks stop showing a cursor and can be
@@ -399,11 +400,9 @@ export function reduceEvent(
     return next
   }
   if (ev.kind === "model_backoff") {
-    const notice = modelBackoffNotice(ev.text)
-    const row = notice && { ...block(ev, "notice", notice.text), cooldownId: notice.cooldownId }
-    if (row && !next.agents[MANAGER_ID]?.blocks.some((old) => old.id === row.id || row.cooldownId && old.cooldownId === row.cooldownId)) {
-      append(touchAgent(next, MANAGER_ID), row)
-    }
+    const previous = next.agents[MANAGER_ID]?.blocks ?? []
+    const blocks = backoffBlocks(previous, ev, next.agents[ev.agent_id || MANAGER_ID]?.role)
+    if (blocks !== previous) touchAgent(next, MANAGER_ID).blocks = blocks
     return sealQuietTurns(next, ev)
   }
   if (ev.kind === "goal_edited") {
@@ -802,7 +801,7 @@ export function rewindTranscript(
   for (const id of state.agentOrder) {
     const agent = state.agents[id]
     if (!agent) continue
-    const blocks = agent.blocks.filter(keep)
+    const blocks = agent.blocks.filter(keep).map((block) => rewindBackoff(block, fromSeq))
     if (id !== MANAGER_ID && blocks.length === 0) continue
     agents[id] = {
       ...agent,

@@ -64,6 +64,14 @@ test(`${responseCase.name} stays visible in Chat and the same turn Trace after r
     const backoffNotices = [5, 10].map((seconds) => `Waiting ${seconds}s before retrying the model request.`)
     if (responseCase.status === 502) {
       await expect(transcript.getByText(backoffNotices[0], { exact: true })).toBeVisible()
+      const row = transcript.getByTestId("backoff-notice").filter({ hasText: backoffNotices[0] })
+      const details = row.getByRole("button", { name: "Retry details", exact: true })
+      await details.focus()
+      await details.press("Enter")
+      await expect(row.getByRole("region", { name: "Retry details" })).toBeVisible()
+      await expect(row).toContainText("Manager model request · manager")
+      await expect(row).toContainText("does not mean each step failed")
+      await row.getByRole("button", { name: "Hide details" }).click()
       await expect(transcript).not.toContainText('"wait_ms"')
     }
     await waitForIdle(page)
@@ -141,6 +149,9 @@ test(`${responseCase.name} stays visible in Chat and the same turn Trace after r
     await expect(log.getByText(responseCase.notice, { exact: true })).toHaveCount(2)
     if (responseCase.status === 502) {
       for (const notice of backoffNotices) await expect(log.getByText(notice, { exact: true })).toBeVisible()
+      const replayed = transcript.getByTestId("backoff-notice").filter({ hasText: backoffNotices[0] })
+      await replayed.getByRole("button", { name: "Retry details", exact: true }).click()
+      await expect(replayed.getByRole("region", { name: "Retry details" })).toContainText("Manager model request · manager")
       await expect(transcript).not.toContainText('"wait_ms"')
     }
     expect(attempts).toHaveLength(3)

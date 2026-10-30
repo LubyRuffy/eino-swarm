@@ -518,7 +518,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   Trace records `model_backoff` waits separately from actual calls and retries,
   distinguishing origin cooldowns from candidate checks. PC/phone chat and
   replay show one timed explanation per conversation/cooldown generation;
-  unknown-duration probe waits add no extra row. Trace keeps each caller record.
+  unknown-duration probe waits add no extra row. On desktop/Web, expand **Retry
+  details** to see the waiting steps and Agent identities, the recorded service
+  failure count or answer-verification diagnosis. Shared waits do not establish
+  which request originally failed. Trace keeps each caller record.
   Stream errors and EOF reach the consumer after the call-record callback finishes,
   retaining received usage before the turn can finish or storage can shut down.
   Model API errors retain their HTTP status and concrete rejection or response
