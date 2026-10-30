@@ -129,6 +129,161 @@ class PublicRecoveryTests(unittest.TestCase):
             return {'data': {'attributes': {'version': self.marketing}}}
         raise AssertionError(route)
 
+    def allocated_unpublished(self):
+        self.batch.update(version_locked=False, ios='pending',
+            allocated_at='2026-01-01T00:00:00+00:00',
+            required_scope_source_shas=[self.sha],
+            additional_platforms={'macos': {'source_shas': [self.sha],
+                'status': 'pending_native_complete_main_scope_acceptance'},
+                'android': {'source_shas': [self.sha], 'inherited_source_shas': [self.sha],
+                    'status': 'pending_native_device_acceptance'}})
+        self.delivery['issues'] = {'1': {'code': 'verified_integrated_and_pushed',
+            'fix_sha': self.sha, 'macos': 'pending_native_window_acceptance',
+            'android': 'pending_native_device_acceptance', 'ios': 'pending'}}
+        self.state = {'version': '1.2.3', 'source_sha': self.sha}
+        self.ledger = {'releases': []}
+        self.persist()
+        (self.root / 'later.txt').write_text('Later main work stays outside this allocation.\n')
+        self.git('add', 'later.txt')
+        self.git('commit', '-m', 'Later independent main work')
+        self.git('push', 'origin', 'main')
+        self.later_sha = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '--detach', self.sha)
+
+    def test_allocated_unpublished_source_resumes_after_main_advances(self):
+        self.allocated_unpublished()
+        originals = {p: p.read_bytes() for p in (self.delivery_path, self.state_path, self.ledger_path)}
+        self.assertEqual(release.source_preflight(self.root, '1.2.3', ('macos',)), self.sha)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), self.sha)
+        self.assertEqual(self.git('rev-parse', 'origin/main'), self.later_sha)
+        self.assertEqual(self.git('ls-remote', 'origin', 'refs/tags/v1.2.3'), '')
+        self.assertEqual(originals, {p: p.read_bytes() for p in originals})
+        self.assertFalse(any(call[0] in (sys.executable, 'make', 'go', 'GET') for call in self.calls))
+        self.batch['finalized_workset']['required_scope_source_shas'] = [self.sha]
+        self.persist()
+        self.assertEqual(release.source_preflight(self.root, '1.2.3', ('macos',)), self.sha)
+
+    def test_unpublished_recovery_keeps_remote_version_and_tag_conflicts(self):
+        self.allocated_unpublished()
+        command = release.run
+        def occupied(args, **kwargs):
+            if args[:4] == ['gh', 'api', '--paginate', '--slurp']:
+                return json.dumps([[{'tag_name': 'v1.2.3'}]])
+            return command(args, **kwargs)
+        with patch.object(release, 'run', side_effect=occupied), \
+                self.assertRaisesRegex(ValueError, 'strictly greater'):
+            release.source_preflight(self.root, '1.2.3', ('macos',))
+        self.git('tag', 'v1.2.3', self.later_sha)
+        self.git('push', 'origin', 'refs/tags/v1.2.3')
+        with self.assertRaisesRegex(ValueError, 'frozen at another source'):
+            release.source_preflight(self.root, '1.2.3', ('macos',))
+
+    def test_unpublished_recovery_refuses_incomplete_or_changed_allocation(self):
+        self.allocated_unpublished()
+        original = copy.deepcopy(self.delivery)
+        changes = [
+            lambda d: d['pending_new_batch'].update(qualified_for_new_release=False),
+            lambda d: d['pending_new_batch'].update(version_locked=None),
+            lambda d: d['pending_new_batch'].update(source_sha=self.later_sha),
+            lambda d: d['pending_new_batch'].pop('allocated_at'),
+            lambda d: d['pending_new_batch'].update(allocated_at='not-a-date'),
+            lambda d: d['pending_new_batch'].update(allocated_at='2026-01-01'),
+            lambda d: d.update(active_issue=2),
+            lambda d: d.pop('active_issue'),
+            lambda d: d['pending_new_batch']['finalized_workset'].update(active_issue=2),
+            lambda d: d['pending_new_batch']['finalized_workset'].pop('active_issue'),
+            lambda d: d['pending_new_batch']['finalized_workset'].update(source_sha=self.later_sha),
+            lambda d: d['pending_new_batch']['finalized_workset'].update(issues=[2]),
+            lambda d: d['pending_new_batch']['finalized_workset'].update(platforms_to_release=['macos']),
+            lambda d: d['pending_new_batch'].update(platforms_to_release=['ios']),
+            lambda d: d['pending_new_batch'].update(issues=[1, 1]),
+            lambda d: d['pending_new_batch'].update(required_scope_source_shas=[]),
+            lambda d: d['pending_new_batch'].pop('required_scope_source_shas'),
+            lambda d: d['pending_new_batch'].update(required_scope_source_shas=[self.sha, self.sha]),
+            lambda d: d['pending_new_batch'].update(required_scope_source_shas=['unknown']),
+            lambda d: d['pending_new_batch'].update(required_scope_source_shas=[self.later_sha]),
+            lambda d: d['pending_new_batch']['finalized_workset'].update(required_scope_source_shas=[self.later_sha]),
+            lambda d: d['pending_new_batch'].update(additional_platforms=[]),
+            lambda d: d['pending_new_batch']['additional_platforms'].update(server={'source_shas': [self.sha]}),
+            lambda d: d['pending_new_batch']['additional_platforms']['macos'].update(source_shas=[]),
+            lambda d: d['pending_new_batch']['additional_platforms']['macos'].update(source_shas=[self.later_sha]),
+            lambda d: d['pending_new_batch']['additional_platforms']['android'].update(inherited_source_shas=[self.later_sha]),
+            lambda d: d['pending_new_batch']['additional_platforms']['android'].update(inherited_source_shas='unknown'),
+            lambda d: d['issues']['1'].update(code='pending'),
+            lambda d: d['issues']['1'].update(fix_sha=self.later_sha),
+            lambda d: d['issues']['1'].update(fix_sha={}),
+        ]
+        for index, change in enumerate(changes):
+            self.delivery = copy.deepcopy(original)
+            change(self.delivery)
+            self.persist()
+            with self.subTest(change=index), self.assertRaises((ValueError, RuntimeError)):
+                release.source_preflight(self.root, '1.2.3', ('macos',))
+        self.assertFalse(any(call[0] in ('make', 'go', 'GET') for call in self.calls))
+
+    def test_unpublished_recovery_refuses_coordinated_platform_shrink(self):
+        self.allocated_unpublished()
+        original = copy.deepcopy(self.delivery)
+        for delivered in (False, True):
+            self.delivery = copy.deepcopy(original)
+            batch = self.delivery['pending_new_batch']
+            if delivered:
+                self.delivery['issues']['1'].update(android='published', ios='delivered')
+            batch['platforms_to_release'] = ['macos']
+            batch['finalized_workset']['platforms_to_release'] = ['macos']
+            del batch['additional_platforms']['android']
+            self.persist()
+            with self.subTest(delivered=delivered), self.assertRaisesRegex(ValueError, 'platform scope'):
+                release.source_preflight(self.root, '1.2.3', ('macos',))
+
+    def test_unpublished_recovery_refuses_orphaned_extra_scope(self):
+        (self.root / 'extra.txt').write_text('Independent additional desktop scope.\n')
+        self.git('add', 'extra.txt')
+        self.git('commit', '-m', 'Additional behavior')
+        extra_sha = self.git('rev-parse', 'HEAD')
+        (self.root / 'fix.txt').write_text('Accepted Issue fix.\n')
+        self.git('add', 'fix.txt')
+        self.git('commit', '-m', 'Issue behavior')
+        self.sha = self.git('rev-parse', 'HEAD')
+        self.batch['source_sha'] = self.sha
+        self.batch['finalized_workset']['source_sha'] = self.sha
+        self.allocated_unpublished()
+        self.batch['required_scope_source_shas'] = [self.sha, extra_sha]
+        self.batch['additional_platforms']['macos']['source_shas'] = [extra_sha]
+        self.persist()
+        self.assertEqual(release.source_preflight(self.root, '1.2.3', ('macos',)), self.sha)
+        del self.batch['additional_platforms']['macos']
+        self.persist()
+        with self.assertRaisesRegex(ValueError, 'scope identities'):
+            release.source_preflight(self.root, '1.2.3', ('macos',))
+
+    def test_unpublished_recovery_keeps_state_and_native_gates(self):
+        self.allocated_unpublished()
+        with self.assertRaisesRegex(ValueError, 'native acceptance'):
+            release.platform_acceptance_gate('1.2.3', 'macos')
+        self.state['source_sha'] = self.later_sha
+        self.persist()
+        with self.assertRaisesRegex(ValueError, 'another version/source'):
+            release.execute(self.root, '1.2.3', 'macos', self.state_path)
+        self.assertFalse(any(call[0] in ('make', 'go', 'GET') for call in self.calls))
+
+    def test_actual_cli_uses_source_dir_for_unpublished_recovery_without_writes(self):
+        self.allocated_unpublished()
+        originals = {p: p.read_bytes() for p in (self.delivery_path, self.state_path, self.ledger_path)}
+        command = release.run
+        def no_build(args, **kwargs):
+            if args[0] == 'go':
+                self.calls.append(args)
+                self.assertEqual(args, ['go', 'run', './internal/release/cmd', '-version', '1.2.3', '-check'])
+                return ''
+            return command(args, **kwargs)
+        with patch.object(sys, 'argv', ['release.py', '--version', '1.2.3', '--platform', 'macos',
+                '--source-dir', str(self.root), '--check']), patch.object(release, 'run', side_effect=no_build):
+            self.assertEqual(release.main(), 0)
+        self.assertEqual(originals, {p: p.read_bytes() for p in originals})
+        self.assertEqual(self.git('rev-parse', 'HEAD'), self.sha)
+        self.assertEqual(self.git('ls-remote', 'origin', 'refs/tags/v1.2.3'), '')
+
     def test_ios_first_without_tag_resumes_both_installers_after_main_advances(self):
         (self.root / 'later.txt').write_text('A later batch must not enter the frozen version.\n')
         self.git('add', 'later.txt')

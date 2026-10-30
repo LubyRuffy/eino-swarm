@@ -6326,6 +6326,14 @@ when the tag matches. The ordinary unaccepted pending build path remains covered
 builds an APK, installs it, contacts GitHub or uploads; actual device acceptance
 and signature/upgrade checks remain separate.
 
+The same suite regresses assigned-but-unpublished ancestor recovery with real
+private Git repositories and a later pushed main, without precreating a tag.
+It checks unchanged ledgers/State, complete direct and inherited scope evidence,
+coordinated platform-list shrinking, deleted additional-scope records, invalid
+allocations, retained native/State refusals and the actual `main` CLI's
+existing `--source-dir --check` path with the Go command replaced by a recorder.
+The first run must fail on the original latest-main gate before the fix.
+
 `python3 -m unittest discover -s tools -p 'test_release_public_recovery.py'`
 uses real temporary local Git remotes and an offline Apple adapter to reproduce
 TestFlight-first publication without a GitHub tag. It checks frozen recovery
