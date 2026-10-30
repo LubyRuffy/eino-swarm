@@ -21,9 +21,12 @@ async function createThread(request: APIRequestContext, projectID: string, title
 }
 
 for (const { repairWrite, menu } of [{ repairWrite: false, menu: false }, { repairWrite: true, menu: false }, { repairWrite: false, menu: true }]) {
-test(`a project ${menu ? "uses its history menu and an unfiltered query for" : repairWrite ? "repairs a refused write and queries" : "queries"} raw discussions and keeps sources after reload`, async ({ page, request }, info) => {
+// Only the history menu is an explicit report: the host renders its sources.
+// An ordinary request may query the same raw discussions and keeps its own
+// answer; reading history never switches it into the report protocol.
+test(`a project ${menu ? "uses its history menu and an unfiltered query for" : repairWrite ? "repairs a refused write and queries" : "queries"} raw discussions and keeps ${menu ? "sources" : "its own answer"} after reload`, async ({ page, request }, info) => {
   test.skip(process.env.ZWAI_E2E_PROJECT_HISTORY !== "1", "requires the keyless raw history fixture")
-  const fixture = await startProjectHistoryFixture({ repairWrite, omitProjectFilter: menu })
+  const fixture = await startProjectHistoryFixture({ repairWrite, omitProjectFilter: menu, report: menu })
   const queryCount = repairWrite ? 3 : 2
   const nonce = randomUUID()
   const sourceTexts = [`查询结果必须包含来源时间，证据标识 ${nonce}-first。`, `导出能力仍处于建议阶段，尚未实现，证据标识 ${nonce}-second。`]
@@ -138,9 +141,17 @@ test(`a project ${menu ? "uses its history menu and an unfiltered query for" : r
     expect(live.filter((event) => event.kind === "tool_call")).toHaveLength(queryCount)
     expect(live.filter((event) => event.kind === "tool_result")).toHaveLength(queryCount)
     expect(trace.turn).toMatchObject({ id: turn.id, thread_id: targetID, status: "done" })
-    expect(trace.turn.final).not.toBe(fixture.answer())
-    expect(trace.turn.final).toContain("原文证据")
+    if (menu) {
+      expect(trace.turn.final).not.toBe(fixture.answer())
+      expect(trace.turn.final).toContain("原文证据")
+    } else {
+      expect(trace.turn.final).toBe(fixture.answer())
+      expect(trace.events.some((event) => event.kind === "history_report_requested")).toBe(false)
+      expect(trace.events.some((event) => event.kind === "model_retry")).toBe(false)
+    }
     expect(trace.turn.final).not.toContain('"version":1')
+    expect(trace.events.some((event) => event.kind === "history_read_started")).toBe(true)
+    await expect(transcript).not.toContainText("history_read_started")
     for (const text of sourceTexts) expect(trace.turn.final).toContain(text)
     const calls = trace.events.filter((event) => event.kind === "tool_call")
     expect(calls).toHaveLength(queryCount)

@@ -305,7 +305,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-410 Local conversation storage and search
 
-- 原始项目历史提炼：入口：项目菜单“提炼项目历史”，在所选项目新建明确标题的报告会话并保留原草稿；既有会话也可自然语言请求并自主调用 `query_history`。manager／worker 自选 SELECT／WITH，空 SQL 发现 Schema；项目视图自动绑定所属项目，独立会话保留跨项目视图，Memory 关闭及计划模式仍可读。该入口不改变 Full access 的系统权限。关联：`C-036`、`C-008`；实现证据：`frontend/src/App.tsx`、`internal/engine/history_tool.go`、`internal/history/scope.go`；验证：`internal/server/history_report_request_test.go`、`internal/engine/history_tool_http_test.go`、`internal/engine/history_worker_http_test.go`、`frontend/e2e/project-history.spec.ts`。
+- 原始项目历史提炼：入口：项目菜单“提炼项目历史”，在所选项目新建明确标题的报告会话并保留原草稿；既有会话也可自然语言请求并自主调用 `query_history`，此时只把读取结果当线索并给出普通回答，host 渲染的原文证据报告仅由菜单入口的显式请求产生。manager／worker 自选 SELECT／WITH，空 SQL 发现 Schema；项目视图自动绑定所属项目，独立会话保留跨项目视图，Memory 关闭及计划模式仍可读。该入口不改变 Full access 的系统权限。关联：`C-036`、`C-008`；实现证据：`frontend/src/App.tsx`、`internal/engine/history_tool.go`、`internal/history/scope.go`；验证：`internal/server/history_report_request_test.go`、`internal/engine/history_tool_http_test.go`、`internal/engine/history_worker_http_test.go`、`frontend/e2e/project-history.spec.ts`。
 
 - 历史原文与建议：显式报告或实际历史读取后，host 依据规范 message／event 引用核验原文及真实归属，完整展示正文、来源、日期和定位；建议与问题另列，计数／区块由 host 生成。原文变化／缺失／越项目／超限时阻断旧答案，复用持久门禁纠正与恢复；建议本身是否成立仍需内容验收，不把原文展示当作语义通过。不会因读取历史而自动保存人工 summary 或写入 Memory。关联：`C-036`；实现：`internal/engine/history_report.go`、`internal/engine/history_answer.go`、`internal/store/history_evidence.go`；验证：`internal/engine/history_report_test.go`、`internal/engine/history_answer_http_test.go`、`internal/engine/history_answer_schedule_test.go`、`internal/engine/history_answer_recovery_http_test.go`、`tools/project_history_eval.py`。
 

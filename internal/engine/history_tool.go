@@ -179,10 +179,44 @@ func (t *historyQueryTool) failure(code string, err error) (string, error) {
 	return string(body), nil
 }
 
-func historyPrompt(set *tools.Set) string {
+// historyAudience selects how history results may shape an answer. Only an
+// explicitly requested report binds the manager's final answer to the source
+// protocol; an incidental read in any other task keeps its normal answer.
+type historyAudience int
+
+const (
+	historyForWorker historyAudience = iota
+	historyForManager
+	historyForManagerReport
+)
+
+const historyIncidentalAnswer = `This turn is not an explicit history-report request. Reading history does not
+change your answer format: answer the human's actual request normally. Treat
+what you read as leads: verify current state with tools before reporting it as
+current, and attribute any historical statement you rely on to its conversation
+and seq instead of presenting it as approval or verified fact.`
+
+const historyWorkerFindings = `When your findings rely on retained history, cite each original record as
+{kind, thread_id, seq}. They remain unverified findings for the manager.`
+
+const historyReportAnswer = `This turn is an explicit history-report request. The manager's final answer
+must use the following source-report protocol. Workers may return source
+references as unverified findings; the manager still collects them and submits
+its own final report. The host supplies complete original text, real
+role/source, titles and locators. Do not paraphrase facts or invent an
+authority label in a free-form conclusion.`
+
+func historyPrompt(set *tools.Set, audience historyAudience) string {
 	for _, base := range set.Tools {
 		if reader, ok := base.(*historyQueryTool); ok {
 			identity, _ := json.Marshal(reader.context)
+			tail := historyWorkerFindings
+			switch audience {
+			case historyForManager:
+				tail = historyIncidentalAnswer
+			case historyForManagerReport:
+				tail = historyReportAnswer + "\n\n" + historyReportPrompt()
+			}
 			return "## Original conversation history\n\nCurrent identity (a snapshot for this turn): " + string(identity) + "\n" + `
 query_history is available to you and your workers even when Memory is off.
 For a request about this project's discussions, decisions or earlier work, query
@@ -211,13 +245,9 @@ Preserve negation, conditions, dates and ownership. Read complete needed records
 LIMIT and truncated results cannot prove full coverage. Use keyset/substring paging when
 needed. Retained history excludes deleted/rewound records; images and attachment
 bytes may require reading referenced files. Source record seq namespaces differ
-between messages and events. After any query_history call by you or your workers,
-the manager's final answer must use the following source-report protocol.
-Workers may return these source references as unverified findings; the manager
-still collects them and submits its own final report. The host supplies complete
-original text, real role/source, titles and locators. Do not paraphrase facts or
-invent an authority label in a free-form conclusion.
-` + "\n" + historyReportPrompt() + "\n"
+between messages and events.
+
+` + tail + "\n"
 		}
 	}
 	return ""

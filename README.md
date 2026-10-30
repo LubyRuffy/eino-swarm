@@ -911,7 +911,11 @@ titled conversation in that project and request a source-backed report. This
 keeps your existing composer draft in its original conversation. You can also
 ask an existing conversation about earlier discussions. The manager and its
 workers choose their own read-only SQL through `query_history`; Memory can be
-off, and no maintained summary or files in `uploads` are needed.
+off, and no maintained summary or files in `uploads` are needed. Only the menu
+entry produces the source-backed report below. When an ordinary request reads
+history, for example to reuse an earlier approach, you get an ordinary answer.
+The SQL appears in that tool's row and the Trace tab, never as a separate chat
+card.
 
 In a project conversation, the SQL views expose only that project's retained
 records; query predicates cannot switch projects. A standalone conversation

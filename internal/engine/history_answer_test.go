@@ -23,7 +23,7 @@ func historyAnswerJSON(thread string) string {
 
 func TestHistoryFormattingBudgetAndUnavailableScopeCannotFallBackToGeneratedProse(t *testing.T) {
 	e, turn, peer, b, set := historyAnswerFixture(t)
-	historyReadEvent(e, turn, "manager")
+	historyReportRead(e, turn, "manager")
 	res, failure := b.prepareHistoryAnswer(t.Context(), turn, set, historyCandidate(b, historyAnswerJSON(peer.ID)), nil)
 	if failure != nil {
 		t.Fatal(failure, failure.Cause)
@@ -80,6 +80,18 @@ func historyReadEvent(e *Engine, turn *store.Turn, agent string) {
 	e.record(store.Event{ThreadID: turn.ThreadID, TurnID: turn.ID, Kind: "tool_call", AgentID: agent, ToolCallID: "history-call", Text: "query_history({})"})
 }
 
+// historyReportRequested is the explicit project-report request that selects
+// the source protocol. A read alone leaves the turn's answer ordinary.
+func historyReportRequested(e *Engine, turn *store.Turn) {
+	e.record(store.Event{ThreadID: turn.ThreadID, TurnID: turn.ID, Kind: KindHistoryReportRequested, AgentID: "manager"})
+}
+
+// historyReportRead is an explicit report turn that has actually read history.
+func historyReportRead(e *Engine, turn *store.Turn, agent string) {
+	historyReportRequested(e, turn)
+	historyReadEvent(e, turn, agent)
+}
+
 func historyCandidate(b *managerAnswerBuffer, text string) swarm.RunResult {
 	message := markPendingAnswer(schema.AssistantMessage(text, nil), b.id)
 	b.generated = []*schema.Message{message}
@@ -89,7 +101,7 @@ func historyCandidate(b *managerAnswerBuffer, text string) swarm.RunResult {
 
 func TestHistoryAnswerReplacesEveryCurrentProseRepresentationAndKeepsOriginalAuthority(t *testing.T) {
 	e, turn, peer, b, set := historyAnswerFixture(t)
-	historyReadEvent(e, turn, "worker-source-reader")
+	historyReportRead(e, turn, "worker-source-reader")
 	res := historyCandidate(b, historyAnswerJSON(peer.ID))
 	intermediate := markPendingAnswer(schema.AssistantMessage("Unverified intermediate conclusion", []schema.ToolCall{{ID: "actual-call", Function: schema.FunctionCall{Name: "read_task_messages", Arguments: "{}"}}}), b.id)
 	intermediate.ReasoningContent = "Actual model reasoning."
@@ -189,7 +201,7 @@ func TestHistorySourceChangesCannotPublishAnEarlierValidatedReport(t *testing.T)
 	for _, change := range []string{"body", "project", "deleted", "stop", "owner-deleted"} {
 		t.Run(change, func(t *testing.T) {
 			e, turn, peer, b, set := historyAnswerFixture(t)
-			historyReadEvent(e, turn, "manager")
+			historyReportRead(e, turn, "manager")
 			got, failure := b.prepareHistoryAnswer(t.Context(), turn, set, historyCandidate(b, historyAnswerJSON(peer.ID)), nil)
 			if failure != nil {
 				t.Fatal(failure, failure.Cause)
@@ -248,7 +260,10 @@ func TestHistorySourceFailureClassificationDoesNotRepeatStorageOrCancellation(t 
 	}
 }
 
-func TestHistoryReadArrivingAfterPreparationCannotPublishFreeProse(t *testing.T) {
+// Admission rechecks durable mode. A late explicit request still withholds
+// prose prepared without it; a late incidental read in an ordinary task does
+// not, because reading history never changes what the human asked for.
+func TestLateExplicitReportRequestWithholdsPreparedProseButALateReadDoesNot(t *testing.T) {
 	for _, marker := range []string{"query", "request"} {
 		t.Run(marker, func(t *testing.T) {
 			e, turn, _, b, set := historyAnswerFixture(t)
@@ -266,12 +281,14 @@ func TestHistoryReadArrivingAfterPreparationCannotPublishFreeProse(t *testing.T)
 				e.record(store.Event{ThreadID: turn.ThreadID, TurnID: turn.ID, Kind: "history_report_requested", AgentID: "manager"})
 			}
 			failure = e.admitScheduleAnswer(turn.ThreadID, turn.ID, nil, []store.Event{{Kind: "agent_message", AgentID: "manager", Text: res.Final}}, row.ID)
-			want := "history_report_invalid"
-			if marker == "request" {
-				want = "history_read_required"
+			if marker == "query" {
+				if failure != nil {
+					t.Fatalf("an incidental read withheld an ordinary answer: %+v", failure)
+				}
+				return
 			}
-			if failure == nil || failure.Code != want {
-				t.Fatalf("late durable history mode escaped admission: %+v", failure)
+			if failure == nil || failure.Code != "history_read_required" {
+				t.Fatalf("late explicit history mode escaped admission: %+v", failure)
 			}
 		})
 	}

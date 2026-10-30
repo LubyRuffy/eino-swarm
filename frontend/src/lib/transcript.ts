@@ -14,6 +14,7 @@ import {
 import { parseReview, reviewNotice } from "./transcript-review"
 import { backoffBlocks, rewindBackoff, type BackoffContext } from "./transcript-backoff-blocks"
 import { recordRecovery, type RecoveryEvent } from "./transcript-recovery"
+import { traceOnlyBlock } from "./transcript-trace"
 import { askCardFromEvent, askRecoveryCard, applyAskRecovery, settleAskCard, type AskCard } from "./transcript-ask"
 import { isPlanEvent, planNotice } from "./transcript-plan"
 import { applyWorkerCollectionDecline, parseIterationLimit, parsePulse, settleWorkerCollectionPause, updateWorkerCollectionPause, type ManagerPause } from "./transcript-pulse"
@@ -75,6 +76,7 @@ export type BlockKind =
   | "error"
   | "title"
   | "session_memory"
+  | "trace"
 
 export interface Block {
   id: string
@@ -105,6 +107,8 @@ export interface Block {
   cloudTool?: Record<string, unknown>
   /** One interrupted output, independent of the worker lifecycle. */
   generation?: GenerationInterruption
+  /** Trace blocks only: the stored event kind the Full log names. */
+  traceKind?: string
   /** Tool blocks only. */
   tool?: {
     callId: string
@@ -326,22 +330,9 @@ export function reduceEvent(
     if (!manager.blocks.some((b) => b.id === notice.id)) append(manager, notice)
     return next
   }
-  // A generated title is metadata for the sidebar, not a chat row. It still
-  // lives on the manager as a quiet block so the Trace tab's Full log can show it
-  // without inventing a "title-namer" worker in the roster.
-  if (ev.kind === "title") {
-    const row = block(ev, "title", ev.text || ev.err || "")
-    row.quiet = true
-    append(touchAgent(next, MANAGER_ID), row)
-    return next
-  }
-  // Rolling session briefing: compact and the reviewer read it. The chat
-  // does not — inventing a "session-memory" worker would be the same bug
-  // as a title-namer row.
-  if (ev.kind === "session_memory") {
-    const row = block(ev, "session_memory", ev.text || ev.err || "")
-    row.quiet = true
-    append(touchAgent(next, MANAGER_ID), row)
+  const metadata = traceOnlyBlock(ev)
+  if (metadata) {
+    append(touchAgent(next, MANAGER_ID), metadata)
     return next
   }
   if (ev.kind === "resumed" || ev.kind === "restart_resumed") {

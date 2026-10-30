@@ -161,7 +161,7 @@ func TestHistoryReadByRetainedWorkerCannotEscapeASuccessorAfterItsCallWriteFails
 	}); err != nil {
 		t.Fatal(err)
 	}
-	second, err := e.StartTurn(thread.ID, "Collect the existing worker's original evidence.")
+	second, err := e.StartTurnInput(thread.ID, UserInput{Text: "Collect the existing worker's original evidence.", HistoryReport: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestDelegatedHistoryReadRequiresTheManagerToPublishACanonicalReport(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	turn, err := e.StartTurn(thread.ID, "Delegate reading original records, collect the worker, and report the sources.")
+	turn, err := e.StartTurnInput(thread.ID, UserInput{Text: "Delegate reading original records, collect the worker, and report the sources.", HistoryReport: true})
 	if err != nil {
 		t.Fatal(err)
 	}

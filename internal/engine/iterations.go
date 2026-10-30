@@ -116,7 +116,13 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	if err != nil {
 		return swarm.RunResult{}, err
 	}
-	instruction := ManagerPrompt(toolset, JoinPromptSections(historyPrompt(toolset), taskCoordinationPrompt,
+	audience := historyForManager
+	if report, _, failure := e.historyAnswerMode(turn); failure != nil {
+		return swarm.RunResult{}, failure
+	} else if report {
+		audience = historyForManagerReport
+	}
+	instruction := ManagerPrompt(toolset, JoinPromptSections(historyPrompt(toolset, audience), taskCoordinationPrompt,
 		managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID)), humanReply, rt.finalGoalWorkerSection(th)))
 	// Fresh slice: pc.managerTools may return the workspace toolset's
 	// backing array, and appending complete_goal / block_goal in place

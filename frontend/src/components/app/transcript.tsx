@@ -415,6 +415,9 @@ const BlockView = memo(function BlockView({
       // Compact/review briefing. Same Full-log-only treatment as a title.
       return null
 
+    case "trace":
+      return null
+
     default:
       return (
         <p className="px-2 py-1 text-xs text-muted-foreground">{block.text}</p>

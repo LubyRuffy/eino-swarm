@@ -697,10 +697,17 @@ or steering. Existing drafts and global model/settings values are not changed.
 reader, with a host-supplied original turn owner inherited by workers. A failed
 guard returns no history bytes and records an answer-admission failure. This
 event proves admission to a read attempt, not a successful query or independent
-verification. Explicit request/read state requires the manager to use the
-versioned JSON protocol in `history_report.go`. It supplies canonical
-`{kind,thread_id,seq}` references and separate proposals/questions, never
-model-authored excerpts, authorship or approval fields.
+verification. Only an explicit request, on this turn or along its inherited
+Registry lineage, requires the manager to use the versioned JSON protocol in
+`history_report.go`; `historyPrompt` adds that protocol only for such a
+manager. An incidental read in an ordinary turn is a lead and keeps the
+ordinary answer. The protocol supplies canonical `{kind,thread_id,seq}`
+references and separate proposals/questions, never model-authored excerpts,
+authorship or approval fields. These three history events are engine receipts:
+the desktop reducer (`frontend/src/lib/transcript-trace.ts`) keeps them out of
+chat and shows them only in the Trace Full log, and
+`internal/engine/event_kinds_ui_test.go` requires every stored kind to have an
+explicit reducer decision.
 
 When the host actually reuses a parked Registry, or restores executable/unread
 worker state into a fresh one, it saves `history_registry_inherited` with the

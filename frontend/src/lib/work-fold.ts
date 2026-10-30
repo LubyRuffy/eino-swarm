@@ -37,7 +37,7 @@ export type WorkFoldStats = {
 /** Bookkeeping rows that BlockView already drops. Folding them would open
  *  an empty group for a spawn_agent the chat never showed. */
 export function isOmittedBlock(block: Block): boolean {
-  if (block.kind === "title" || block.kind === "session_memory") return true
+  if (block.kind === "title" || block.kind === "session_memory" || block.kind === "trace") return true
   // A finished spawn_agent is bookkeeping: the roster row is the signal.
   // While its arguments are still streaming the call has not started, and
   // hiding it is what makes a long compose look like a frozen planner.

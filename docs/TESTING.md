@@ -51,9 +51,10 @@ still seeds generation state with one checkpoint lookup and one filtered scan.
 ```bash
 go test -race -count=1 ./internal/history
 go test -race ./internal/store -run 'TestCanonicalHistory|TestHistory|TestDurableHistory'
-go test -race ./internal/engine -run 'TestHistory|TestProjectHistory|TestOldHistoryQueries|TestDelegatedWorkerQueries|TestExplicitHistory|TestEditingAReport'
+go test -race ./internal/engine -run 'TestHistory|TestProjectHistory|TestOldHistoryQueries|TestDelegatedWorkerQueries|TestExplicitHistory|TestEditingAReport|TestIncidentalHistory|TestLateExplicit|TestEveryStoredEventKind'
 go test -race ./internal/server -run 'TestHTTPHistoryReport|TestHistoryMode'
 cd frontend
+npx vitest run src/components/app/transcript-engine-receipts.test.tsx
 ZWAI_E2E_PROJECT_HISTORY=1 ZWAI_E2E_PORT=18828 \
 ZWAI_E2E_DATA_DIR=/absolute/private/history-data \
 npm run e2e -- --output=/absolute/private/history-output
@@ -63,7 +64,13 @@ The opt-in Web cases own a loopback provider and exercise schema → actual SQL 
 raw peer records → host evidence/proposals → tool rows/SSE/Trace/reload. The real
 project-menu entry must create the correct titled conversation, send the flag,
 preserve another composer draft and leave global settings unchanged. SQL write
-refusal and correction remain covered. Each concurrent run needs its own port,
+refusal and correction remain covered. Only the menu case is an explicit report;
+the ordinary composer cases also read history and must publish the model's own
+answer unchanged, with no report protocol, retry or chat card for the
+`history_read_started` receipt. `TestEveryStoredEventKindHasAnExplicitDesktopTranscriptDecision`
+parses the engine/store sources and fails when a stored event kind has no
+explicit decision in `frontend/src/lib/transcript*.ts`; such a kind would
+otherwise render its raw text as a chat notice. Each concurrent run needs its own port,
 data and output directories. These cases use scripted offline model responses;
 they establish integration rather than real-model summarization quality or
 native desktop behavior.

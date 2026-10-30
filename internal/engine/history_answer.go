@@ -40,6 +40,10 @@ func historySourceFailure(err error) *scheduleAnswerError {
 	return &scheduleAnswerError{Code: code, Cause: err}
 }
 
+// historyAnswerMode reports whether the turn (or a Registry it inherited)
+// explicitly requested a source report, and whether history was actually read.
+// A read alone never selects the report protocol: an operational task that
+// consults history for leads still owes its human an ordinary answer.
 func (e *Engine) historyAnswerMode(turn *store.Turn) (bool, bool, *scheduleAnswerError) {
 	queried, err := e.store.TurnHasHistoryQuery(turn.ThreadID, turn.ID)
 	if err != nil {
@@ -49,7 +53,7 @@ func (e *Engine) historyAnswerMode(turn *store.Turn) (bool, bool, *scheduleAnswe
 	if err != nil {
 		return false, false, &scheduleAnswerError{Code: "history_state_unavailable", Cause: err}
 	}
-	return queried || requested, queried, nil
+	return requested, queried, nil
 }
 
 func historyReportReferences(request historyReportRequest) []store.HistoryReference {
