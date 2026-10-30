@@ -141,11 +141,12 @@ describe("viewTool", () => {
       JSON.stringify({ success: true, changed: true, usage: "24/2200", entries: ["User prefers terse replies"] }),
     )
     expect(view.failed).toBe(false)
-    expect(view.body).toContain("User prefers terse replies")
-    expect(view.body).toContain("24/2200")
+    expect(view.body).toBe("")
+    expect(view.diff).toMatchObject({ path: "MEMORY.md", added: 1, removed: 0 })
+    expect(view.noticeKey).toBe("tool.memoryPreview")
   })
 
-  it("flags a refused memory write and lists what is already stored", () => {
+  it("flags a refused memory write and shows the attempted change", () => {
     const view = viewTool(
       "memory",
       `{"action":"add","content":"another"}`,
@@ -157,7 +158,9 @@ describe("viewTool", () => {
     )
     expect(view.failed).toBe(true)
     expect(view.error).toContain("30/30")
-    expect(view.body).toBe("the one that is already there")
+    expect(view.body).toBe("")
+    expect(view.diff?.hunks[0].lines).toEqual([{ op: "add", text: "another" }])
+    expect(view.noticeKey).toBe("tool.requestedChange")
   })
 
   it("shows a missing skill once, and lists the ones that exist", () => {

@@ -1552,6 +1552,14 @@ diff, reconstructed from the recorded `old_text` / `new_text` with the skill
 name as its label. Empty or omitted `new_text` shows deletion. History uses
 that original call, never the current skill file. A failed patch retains its
 refusal above the attempted change, as a failed edit does.
+`memory` add/replace/remove uses that same disclosure and highlighted diff.
+Successful writes return complete `before` / `after` entry images, including an
+empty side for add/remove; the old image is captured under the store write lock,
+because `old_text` identifies a note by substring. The body shows only that
+change, not the usage and complete entry list. Historical results without both
+images show an explicitly labelled request-fragment preview. Pending and refused
+calls label the attempted change; refusals retain their error. A duplicate add
+(`changed: false`) shows no change rather than an invented addition.
 A turn that ends (`done` / `error`, including a user interrupt) or an
 agent that `finished` closes any tool still `pending`: interrupt cancels
 in-flight calls without a `tool_result`, and leaving them pending keeps the

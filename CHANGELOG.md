@@ -228,6 +228,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-130`, `C-025`: Desktop/Web `memory` add/replace/remove rows now use
+  edit-style collapsed line counts and highlighted diffs of the affected note.
+  Successful writes retain complete before/after entry snapshots; old receipts
+  label their request-fragment preview, refused calls keep their error and
+  attempted change, and duplicate additions show no change without dumping the
+  full memory entry list.
+
 - Engine fixtures prepare independent disk Stores with bounded concurrency and
   use instance clocks for retry-policy waits. Every database still runs its real
   migrations; normal runtime timing, race coverage and real HTTP deadline tests

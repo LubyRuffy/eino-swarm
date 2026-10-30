@@ -379,6 +379,9 @@ export const zh: { [K in keyof typeof en]: string } = {
   "tool.noOutput": "（无输出）",
   "tool.emptyFile": "（空文件）",
   "tool.diffMore": "还有 {n} 行",
+  "tool.requestedChange": "请求的修改",
+  "tool.memoryPreview": "请求片段预览；未记录完整旧条目。",
+  "tool.memoryUnchanged": "记忆未发生变化。",
   "tool.historySchema": "查看历史数据结构",
 
   "status.unread": "已完成，未读",

@@ -392,6 +392,9 @@ export const en = {
   "tool.noOutput": "(no output)",
   "tool.emptyFile": "(empty file)",
   "tool.diffMore": "{n} more lines",
+  "tool.requestedChange": "Requested change",
+  "tool.memoryPreview": "Request preview; the complete previous entry was not recorded.",
+  "tool.memoryUnchanged": "No memory change.",
   "tool.historySchema": "Inspect history schema",
 
   "status.unread": "Completed, unread",

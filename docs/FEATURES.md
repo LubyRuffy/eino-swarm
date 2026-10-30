@@ -87,6 +87,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
+- 桌面/Web 的 `memory add/replace/remove` 工具行复用 edit 的默认折叠、增删行数和红绿差异视图，展开只显示本次条目变更。新成功回执保存完整 before/after，旧记录缺快照时明确标注请求片段预览；失败保留错误和请求，重复添加显示未变化。关联 `C-025`；证据：`internal/memory/tool_result_test.go`、`frontend/src/lib/memory-diff.ts`、`frontend/src/components/app/tool-row.test.tsx`、`frontend/e2e/memory-diff.spec.ts`。
+
 - 桌面/Web 的 `skill_manage patch` 工具行默认折叠，显示新增／删除行数；展开后按差异展示原始修改前后文本，支持纯删除和再次收起。实时与历史重放使用该次调用参数，失败仍保留原错误及尝试的修改。证据：`frontend/src/lib/edit-diff.ts`、`frontend/src/lib/tool-view.ts`、`frontend/src/components/app/tool-row.test.tsx`、`frontend/e2e/skill-patch.spec.ts`。
 
 - 收取暂停后选择停止，实时聊天与 Reload／分页历史保持相同的停止展示；内部 `workers_collection_declined` 回执留在 Trace，不额外显示原始 JSON，也不依据其中的历史 running 字段复活子代理。关联 `C-003`、`C-019`；证据：`frontend/src/store/app-stream-worker-collection.test.ts`、`frontend/e2e/worker-completion.spec.ts`。

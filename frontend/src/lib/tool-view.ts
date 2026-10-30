@@ -1,5 +1,6 @@
 import { parseFileChange, type EditDiff } from "./edit-diff"
 import type { MessageKey } from "./i18n"
+import { memoryChangeView } from "./memory-diff"
 
 /** How a built-in tool call should read on one line, and how its payload
  *  should look once expanded. Field names come from the tool schemas — not
@@ -38,7 +39,8 @@ export type ToolView = {
   error?: string
   body: string
   hits?: SearchHit[]
-  /** Present for edit/write/skill patch. Parsed once so the row and the expanded
+  noticeKey?: MessageKey
+  /** Present for edit/write/memory/skill patch. Parsed once so the row and the expanded
    *  body share the same hunk instead of re-parsing the args. */
   diff?: EditDiff
 }
@@ -86,11 +88,13 @@ export function toolRowSummary(view: ToolView): string {
 }
 
 export function viewTool(name: string, args: string, result?: string, flagged?: boolean): ToolView {
-  const diff = parseFileChange(name, args)
+  const memory = name === "memory" ? memoryChangeView(args, result, flagged) : undefined
+  const diff = memory?.diff ?? parseFileChange(name, args)
+  const noticeKey = memory?.noticeKey
   const summary = summariseToolCall(name, args)
   const summaryKey = name === "query_history" && parseObject(args) && !summary ? "tool.historySchema" as const : undefined
   if (result === undefined) {
-    return { summary, summaryKey, failed: Boolean(flagged), body: "", diff }
+    return { summary, summaryKey, failed: Boolean(flagged), body: "", diff, noticeKey }
   }
   const prefix = errorPrefix(result)
   if (name === "query_history") {
@@ -123,15 +127,16 @@ export function viewTool(name: string, args: string, result?: string, flagged?: 
         summary,
         failed: Boolean(flagged || !mem.success),
         error: mem.error || prefix,
-        body: diff ? "" : mem.body,
+        body: diff || noticeKey ? "" : mem.body,
         diff,
+        noticeKey,
       }
     }
   }
   // Status sentences (`ok: replaced block`, `Updated file … (N bytes)`) are not the
   // body once we have a hunk — the hunk is. Leaving them in body would
   // paint the same change twice if a later surface dumps view.body.
-  return { summary, failed, error: prefix, body: diff ? "" : result, diff }
+  return { summary, failed, error: prefix, body: diff ? "" : result, diff, noticeKey }
 }
 
 function summariseMemoryCall(

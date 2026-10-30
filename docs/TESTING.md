@@ -5672,6 +5672,15 @@ Several things are tested here, some as pure logic and some in jsdom:
   original `old_text` / `new_text`, preserving indentation and accepting empty
   or omitted replacement text as deletion. Other actions and malformed text
   fields do not invent a diff.
+- **`src/lib/memory-diff.ts`**: successful memory writes use both recorded
+  entry images, not the substring selector or today's entries. Add/remove
+  preserve the known empty side; duplicate add has no false additions. Legacy
+  results label the request-fragment preview; pending/refused calls label the
+  attempted change and retain the original error. Malformed args cannot invent
+  a hunk. `internal/memory/tool_result_test.go` checks real tool writes,
+  normalization, full substring-matched notes and snapshot-free duplicates and
+  refusals. `e2e/memory-diff.spec.ts` checks default collapse, counts, add/delete
+  rows, re-collapse, named SSE/history and reload without dumping all notes.
 - **`src/lib/shell-highlight.ts`**: an `exec` command tokenizes into
   keywords / strings / flags / variables without dropping characters; a
   too-long line falls back to plain text.
