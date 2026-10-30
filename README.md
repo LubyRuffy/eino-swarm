@@ -864,7 +864,11 @@ What you get:
    (`~/.zwai-swarm/workspaces/<thread-id>/`). Uploads land in `uploads/`, agent
    output lands next to it, and the **Files** tab shows a collapsible tree —
    filter at the top, directories expand like a file explorer, download on
-   hover (and, in the desktop app, "Show in Finder"). The title-bar terminal
+   hover (and, in the desktop app, "Show in Finder"). Click a file or press
+   Enter to preview it. Images offer **Zoom in**, **Zoom out**, **Actual size**
+   (100%) and **Fit to window**, with the current zoom percentage shown.
+   Enlarged images scroll in both directions; refreshing or reopening restores
+   the default fit without enlarging small images. The title-bar terminal
    (⌘J, and every click on the icon) starts a real shell in that same
    directory — a project's working directory when the conversation is in one.
    The tree is the workspace

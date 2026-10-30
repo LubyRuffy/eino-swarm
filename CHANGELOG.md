@@ -15,6 +15,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-140`: PC workspace image previews offer zoom in/out, a zoom percentage,
+  actual size (100%) and fit-to-window controls. Enlarged images remain fully
+  reachable by scrolling; refresh, changing images and reopening reset the fit.
+  Loading or failed images cannot be zoomed, and downloads keep the original
+  file bytes.
+
 - Desktop/Web model retry waits offer **Retry details** with the actual waiting
   steps/Agent identities, service failure count and scheduling-verification
   diagnostics. Shared cooldowns collect waiting callers into one explanation;

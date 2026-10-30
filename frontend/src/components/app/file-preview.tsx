@@ -11,6 +11,7 @@ import { MAX_RENDERED_PREVIEW_CHARS } from "@/lib/file-preview"
 import { isMarkdownPath } from "@/lib/read-result"
 import { languageFromPath, tokenizeSource } from "@/lib/source-highlight"
 import { useFilePreview } from "@/lib/use-file-preview"
+import { FilePreviewImage } from "@/components/app/file-preview-image"
 import { useT } from "@/lib/use-t"
 
 export function FilePreviewDialog({ threadId, path, canReveal, onReveal, onClose, onReturnFocus }: {
@@ -24,7 +25,6 @@ export function FilePreviewDialog({ threadId, path, canReveal, onReveal, onClose
   const t = useT()
   const { file, url, error, loading, refresh } = useFilePreview(threadId, path)
   const [mode, setMode] = useState("preview")
-  const [failedImage, setFailedImage] = useState<string>()
   const markdown = file?.kind === "text" && isMarkdownPath(path) && file.text.length <= MAX_RENDERED_PREVIEW_CHARS
   const name = path.slice(path.lastIndexOf("/") + 1)
 
@@ -64,13 +64,11 @@ export function FilePreviewDialog({ threadId, path, canReveal, onReveal, onClose
             </Button>
           </div>
         </div>
-        <section aria-label={t("files.content")} aria-busy={loading} className="thin-scrollbar min-h-0 min-w-0 flex-1 overflow-auto p-5">
+        <section aria-label={t("files.content")} aria-busy={loading} className={`thin-scrollbar min-h-0 min-w-0 flex-1 ${file?.kind === "image" ? "overflow-hidden" : "overflow-auto p-5"}`}>
           {loading ? <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />{t("files.loading")}</p> : null}
           {error ? <p role="alert" className="break-words text-sm text-destructive">{error}</p> : null}
           {file?.kind === "download" ? <p className="text-sm text-muted-foreground">{t(file.reason === "too-large" ? "files.tooLarge" : "files.unsupported")}</p> : null}
-          {file?.kind === "image" && url ? failedImage === url ? (
-            <p role="alert" className="text-sm text-destructive">{t("files.invalidImage")}</p>
-          ) : <img src={url} alt={name} onError={() => setFailedImage(url)} className="mx-auto max-h-full max-w-full object-contain" /> : null}
+          {file?.kind === "image" && url ? <FilePreviewImage key={url} src={url} name={name} /> : null}
           {file?.kind === "text" ? (
             file.text === "" ? <p className="text-sm text-muted-foreground">{t("files.emptyFile")}</p> : markdown && mode === "preview" ? (
               <article className="md break-words [overflow-wrap:anywhere] [&>:first-child]:mt-0"><MemoMarkdown text={file.text} /></article>

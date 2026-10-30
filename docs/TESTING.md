@@ -6853,13 +6853,18 @@ Directory identity regressions in `internal/engine/project_workdir_identity_test
 `frontend/src/lib/file-preview.test.ts` checks actual streamed-byte limits,
 UTF-8/binary classification, safe image MIME selection, cancellation and failed
 HTTP reads. The file-preview hook/component and Files-tab unit tests cover
-loading, refresh, conversation ownership, closing and safe text rendering.
+loading, refresh, conversation ownership, closing and safe text rendering,
+plus image zoom limits, actual-size/fit switching, disabled loading/error
+controls and reset on refresh or changing images.
 `frontend/e2e/file-preview.spec.ts` creates conversations and uploads fixture
 bytes through the real loopback API without a model turn. It opens Markdown
 from the file tree by click and Enter, checks rendered/source switching, syntax
 highlighting and Escape focus return, keeps HTML/SVG as source, verifies a
-PNG's decoded dimensions, saved MIME and unchanged download bytes, and tests
-refresh after deletion/replacement and after equal-size writes with the same
+PNG's decoded dimensions, saved MIME and unchanged download bytes. The image
+case measures actual rendered dimensions after zooming, switches between 100%
+and fit, scrolls enlarged images to their edges and checks that controls stay
+reachable in a narrow window and fit reset on refresh/reopening. The suite also
+tests refresh after deletion/replacement and after equal-size writes with the same
 Last-Modified time. A short-window case waits for the entrance animation to
 finish, checks that long GFM tables stay inside the preview, and captures the
 reached screen.
