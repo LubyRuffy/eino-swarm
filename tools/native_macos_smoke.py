@@ -290,6 +290,7 @@ def observed_command(context, deadline, command, action, timeout, identity=None)
                shared_deadline_monotonic=deadline.ends, started_monotonic=deadline.clock(), started_wall=time.time())
     row.update(identity or {})
     original = None
+    result = None
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
         row.update(returncode=result.returncode, stdout=result.stdout, stderr=result.stderr,
@@ -317,9 +318,13 @@ def observed_command(context, deadline, command, action, timeout, identity=None)
                     write_error = error
         if original is None and write_error is not None:
             raise readiness.Failure("native_evidence_failed", action, "native command evidence could not be saved") from write_error
+        if original is None and result is not None:
+            result.native_observation = dict(row)
 
 
 def native_snapshot(context, deadline, action="snapshot", message="", expected=""):
+    if action != "snapshot":
+        context["native_input_attempted"] = True
     executable = assert_process(context, context["app_pid"], "desktop")
     requested_bundle = executable.parent.parent.parent
     try:
@@ -328,13 +333,18 @@ def native_snapshot(context, deadline, action="snapshot", message="", expected="
         raise readiness.Failure("native_source_refused", "window", "native helper source or binary identity is invalid") from error
     if context.get("ax_identity", identity)["binary_sha256"] != identity["binary_sha256"]:
         raise readiness.Failure("native_source_refused", "window", "native helper changed during the case")
-    result = observed_command(context, deadline, [str(context["ax"]), str(context["app_pid"]), action,
-                              context["case_id"], str(requested_bundle), context["origin"],
-                              message if action in ("fill", "send") else expected], action, 8,
+    command = [str(context["ax"]), str(context["app_pid"]), action,
+               context["case_id"], str(requested_bundle), context["origin"],
+               message if action in ("fill", "send") else expected]
+    result = observed_command(context, deadline, command, action, 8,
                               dict(app_pid=context["app_pid"], requested_bundle=str(requested_bundle),
                                    requested_origin=context["origin"]))
     if result.returncode:
-        raise readiness.Failure("native_helper_refused", "window", "guest native Accessibility/window check failed: " + (result.stdout + result.stderr).strip()[:500])
+        error = readiness.Failure("native_helper_refused", "window", "guest native Accessibility/window check failed: " + (result.stdout + result.stderr).strip()[:500])
+        error.native_observation = dict(index=context["native_call_count"], argv=command,
+                                        returncode=result.returncode, stdout=result.stdout, stderr=result.stderr,
+                                        row=getattr(result, "native_observation", None))
+        raise error
     row = json.loads(result.stdout)
     if (not isinstance(row, dict) or row.get("origin") != context["origin"] or row.get("pid") != context["app_pid"]
             or ("case_id" in row and row["case_id"] != context["case_id"])):
@@ -386,10 +396,78 @@ def assert_draft(row, message):
         raise RuntimeError("native draft is not exact or its unique Send button is not enabled")
 
 
-def wait_window(context, deadline, expected=""):
+def initial_window_snapshot(context, deadline):
+    """Reacquire an incomplete initial observation, never replay an input."""
+    if context.get("readiness_stage") != "window" or context.get("native_input_attempted"):
+        raise ValueError("Initial observation must precede native input in the startup window stage")
+    first = None
+    while True:
+        try:
+            deadline.remaining("initial native observation")
+            return native_snapshot(context, deadline)
+        except readiness.Failure as error:
+            record = getattr(error, "native_observation", None)
+            if error.failure_kind != "native_helper_refused" or not isinstance(record, dict):
+                raise
+            try:
+                index = record["index"]
+                if type(index) is not int or index <= 0:
+                    raise ValueError("Initial observation has no exact call index")
+                path = context["evidence"] / ("smoke-native-call-%04d.json" % index)
+                if path.is_symlink():
+                    raise ValueError("Initial observation evidence is a symlink")
+                raw = path.read_bytes()
+                saved = json.loads(raw)
+                body = json.loads(record["stdout"])
+                argv = record["argv"]
+                eligible = (not context.get("evidence_errors") and saved == record["row"]
+                    and index == context["native_call_count"]
+                    and len(argv) == 7 and argv[:4] == [str(context["ax"]), str(context["app_pid"]), "snapshot", context["case_id"]]
+                    and argv[5:] == [context["origin"], ""] and saved.get("argv") == argv
+                    and saved.get("action") == "snapshot" and saved.get("app_pid") == context["app_pid"]
+                    and saved.get("requested_bundle") == argv[4] and saved.get("requested_origin") == argv[5]
+                    and saved.get("shared_deadline_monotonic") == deadline.ends
+                    and type(saved.get("returncode")) is int and saved["returncode"] == record["returncode"] == 2
+                    and saved.get("stdout") == record["stdout"] and saved.get("stderr") == record["stderr"]
+                    and saved.get("streams") == dict(stdout=readiness.stream_record(record["stdout"]),
+                                                     stderr=readiness.stream_record(record["stderr"]))
+                    and "exception" not in saved and isinstance(body, dict)
+                    and body.get("ax_read_failed") is True and type(body.get("ax_error")) is int
+                    and body["ax_error"] == -25204 and body.get("ax_attribute") == "AXRole"
+                    and body.get("ax_read_reason") == "api_error"
+                    and ("retryable" not in body or body["retryable"] is True)
+                    and all(key not in body or body[key] is False
+                            for key in ("ready", "truncated", "filled", "submitted", "press_attempted")))
+                if not eligible:
+                    raise error
+                first = first or error
+                observation = dict(failed_call=index, failed_call_path=str(path), failed_call_sha256=hashlib.sha256(raw).hexdigest(),
+                                   partial_graph_discarded=True, input_repeated=False,
+                                   activation_policy="unchanged helper policy; at most one activation per invocation",
+                                   shared_deadline_monotonic=deadline.ends)
+                readiness.save_json(context["evidence"] / ("smoke-incomplete-initial-%04d.json" % index), observation)
+            except (OSError, ValueError, TypeError, KeyError) as secondary:
+                error.__notes__ = [*getattr(error, "__notes__", []), "initial observation evidence refused: " + type(secondary).__name__]
+                raise error from secondary
+            try:
+                pending(context, deadline, "window", "initial_ax_role_messaging_incomplete")
+            except TimeoutError as exhausted:
+                raise exhausted from first
+            except (OSError, ValueError, TypeError) as secondary:
+                error.__notes__ = [*getattr(error, "__notes__", []), "initial observation evidence refused: " + type(secondary).__name__]
+                raise error from secondary
+        except TimeoutError as exhausted:
+            if first is not None:
+                raise exhausted from first
+            raise
+
+
+def wait_window(context, deadline, expected="", *, initial=False):
+    if initial and expected:
+        raise ValueError("Initial observation cannot scroll to an expected result")
     while True:
         deadline.remaining("native rendered result" if expected else "native composer")
-        row = native_snapshot(context, deadline, expected=expected)
+        row = initial_window_snapshot(context, deadline) if initial else native_snapshot(context, deadline, expected=expected)
         reason = readiness.window_pending(row, context["app_pid"])
         if reason is None and (not expected or row.get("expected_visible")):
             assert_window(row, context["app_pid"], require_result=bool(expected))
@@ -584,7 +662,7 @@ def wait_initial_ready(context, deadline):
     attempt = 0
     while True:
         context["readiness_stage"] = "window"
-        window = wait_window(context, deadline)
+        window = wait_window(context, deadline, initial=True)
         timings["window_ready_seconds"] = deadline.clock()-deadline.started
         context["readiness_stage"] = "pixels"
         attempt += 1

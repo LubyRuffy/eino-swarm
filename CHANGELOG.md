@@ -6,6 +6,8 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed native startup readiness to reacquire only a fully recorded, incomplete initial AX Role observation within its original deadline. Structured helper read refusals retain the first error and never authorize input from a partial graph. (#135)
+
 - Fixed release recovery for an already qualified, allocated but unpublished source after main advances. The existing `--source-dir` path validates its complete frozen workset and source scope while retaining native, package, State and remote identity gates; new allocations still use latest main. (#134)
 
 The repository grew from a swarm orchestration library into a desktop

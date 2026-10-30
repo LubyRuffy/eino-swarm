@@ -354,6 +354,39 @@ class SmokeTests(unittest.TestCase):
             if expected is KeyboardInterrupt:
                 self.assertIs(caught.exception, cancelled)
 
+    def test_initial_readiness_reacquires_a_complete_snapshot_after_an_incomplete_role_read(self):
+        context = dict(self.context, ax=self.root / "formal-helper")
+        origin, lease = "http://127.0.0.1:4567", {"pid": 456}
+        failed = json.dumps(dict(ax_read_failed=True, ax_error=-25204,
+                                 ax_attribute="AXRole", ax_read_reason="api_error"))
+        ready = dict(self.native_row(), ready=True)
+        clock = mock.Mock(return_value=10)
+        deadline = smoke.Deadline(1, clock=clock)
+        original_end = deadline.ends
+        responses = [(2, failed, "first complete stderr"), (0, json.dumps(ready), "ready stderr")]
+
+        def native_call(argv, **kwargs):
+            code, stdout, stderr = responses.pop(0)
+            clock.return_value += .02
+            return subprocess.CompletedProcess(argv, code, stdout, stderr)
+
+        with mock.patch.object(smoke, "wait_engine", return_value=(origin, lease)), \
+                mock.patch.object(smoke, "assert_process", return_value=context["app"] / "Contents/MacOS/zwai"), \
+                mock.patch.object(smoke, "validate_helper", return_value={"binary_sha256": "prepared"}), \
+                mock.patch.object(smoke.subprocess, "run", side_effect=native_call) as run, \
+                mock.patch.object(smoke.time, "sleep", side_effect=lambda seconds: setattr(clock, "return_value", clock.return_value + seconds)), \
+                mock.patch.object(smoke, "capture_window", return_value={"content_visible": True}) as pixels:
+            self.assertEqual(smoke.wait_initial_ready(context, deadline), (origin, lease, ready))
+        self.assertEqual(responses, [])
+        self.assertEqual(run.call_count, 2)
+        self.assertTrue(all(call.args[0][2] == "snapshot" and call.args[0][-1] == "" for call in run.call_args_list))
+        self.assertLess(run.call_args_list[1].kwargs["timeout"], run.call_args_list[0].kwargs["timeout"])
+        self.assertEqual(deadline.ends, original_end)
+        pixels.assert_called_once()
+        original = json.loads((context["evidence"] / "smoke-native-call-0001.json").read_text())
+        self.assertEqual((original["returncode"], original["stdout"], original["stderr"]),
+                         (2, failed, "first complete stderr"))
+
     def test_native_bundle_rejects_another_directory_and_missing_identity(self):
         other = self.root / "other.app"
         other.mkdir()
@@ -590,6 +623,8 @@ int main(void) { @autoreleasepool {
 @property NSString *identity;
 @property NSDictionary *attributes;
 @property NSMutableArray *children;
+@property AXError roleStatus;
+@property AXError childrenStatus;
 @end
 @implementation FixtureNode
 - (NSUInteger)hash { return self.identity.hash; }
@@ -601,23 +636,41 @@ static FixtureNode *node(NSString *identity, NSString *role) {
 }
 static AXError fixtureCopy(AXUIElementRef element, CFStringRef key, CFTypeRef *output) {
     FixtureNode *value=(__bridge FixtureNode *)element;
+    AXError status=CFEqual(key,kAXRoleAttribute) ? value.roleStatus : CFEqual(key,kAXChildrenAttribute) ? value.childrenStatus : 0;
+    if (status) return status;
     id result=CFEqual(key,kAXChildrenAttribute) ? value.children : value.attributes[(__bridge NSString *)key];
     if (!result) return kAXErrorNoValue;
     *output=CFBridgingRetain(result); return kAXErrorSuccess;
 }
 static AXError fixturePerform(AXUIElementRef element, CFStringRef action) { abort(); }
+static CFTypeID fixtureType(CFTypeRef value) {
+    if ([(__bridge id)value isKindOfClass:FixtureNode.class]) return AXUIElementGetTypeID();
+    return CFGetTypeID(value);
+}
 #define AXUIElementCopyAttributeValue fixtureCopy
 #define AXUIElementPerformAction fixturePerform
+#define CFGetTypeID fixtureType
 #define main unused_native_main
 #include ''' + json.dumps(str(smoke.AX_SOURCE.resolve())) + '''
 #undef main
 static BOOL check(NSString *label, FixtureNode *root, NSUInteger expectedRows, NSUInteger expectedSends, BOOL expectedTruncated) {
+    // Each graph represents an independent helper invocation, not a retry that
+    // clears an unknown subtree in a running native action.
+    axReadFailed=NO; axReadStatus=kAXErrorSuccess; axReadKey=nil; axReadReason=nil;
     NSMutableArray *tree=[NSMutableArray array], *areas=[NSMutableArray array], *sends=[NSMutableArray array], *urls=[NSMutableArray array];
     BOOL visible=NO,truncated=NO;
     collect((__bridge AXUIElementRef)root,tree,areas,sends,urls,@"",CGRectZero,&visible,&truncated,0);
-    BOOL passed=truncated==expectedTruncated && (expectedTruncated || (tree.count==expectedRows && sends.count==expectedSends));
+    BOOL passed=!axReadFailed && truncated==expectedTruncated && (expectedTruncated || (tree.count==expectedRows && sends.count==expectedSends));
     if (!passed) fprintf(stderr,"%s: rows=%lu sends=%lu truncated=%d\\n",label.UTF8String,(unsigned long)tree.count,(unsigned long)sends.count,truncated);
     return passed;
+}
+static BOOL refused(FixtureNode *root, CFStringRef key) {
+    axReadFailed=NO; axReadStatus=kAXErrorSuccess; axReadKey=nil; axReadReason=nil;
+    NSMutableArray *tree=[NSMutableArray array],*areas=[NSMutableArray array],*sends=[NSMutableArray array],*urls=[NSMutableArray array];
+    BOOL visible=NO,truncated=NO;
+    collect((__bridge AXUIElementRef)root,tree,areas,sends,urls,@"",CGRectZero,&visible,&truncated,0);
+    return axReadFailed && axReadStatus==kAXErrorCannotComplete && [axReadKey isEqual:(__bridge NSString *)key]
+        && [axReadReason isEqual:@"api_error"] && failAXRead()==2;
 }
 int main(void) { @autoreleasepool {
     BOOL passed=YES;
@@ -633,13 +686,21 @@ int main(void) { @autoreleasepool {
     alias.identity=@"independent";
     passed=check(@"different-identity-same-text",root,3,2,NO) && passed;
     FixtureNode *emptyRoot=node(@"empty-root",@"AXGroup");
-    for(int i=0;i<5000;i++) [emptyRoot.children addObject:node([NSString stringWithFormat:@"empty-%d",i],nil)];
+    for(int i=0;i<5000;i++) [emptyRoot.children addObject:node([NSString stringWithFormat:@"empty-%d",i],@"AXGroup")];
     passed=check(@"empty-node-work-limit",emptyRoot,0,0,YES) && passed;
     [emptyRoot.children removeLastObject];
-    passed=check(@"exact-work-limit",emptyRoot,1,0,NO) && passed;
+    passed=check(@"exact-work-limit",emptyRoot,5000,0,NO) && passed;
     FixtureNode *deep=node(@"deep-root",@"AXGroup"), *cursor=deep;
     for(int i=0;i<46;i++) { FixtureNode *next=node([NSString stringWithFormat:@"depth-%d",i],@"AXGroup"); [cursor.children addObject:next]; cursor=next; }
     passed=check(@"unique-depth-limit",deep,0,0,YES) && passed;
+    FixtureNode *unknown=node(@"unknown-role",@"AXGroup"); unknown.roleStatus=kAXErrorCannotComplete;
+    passed=refused(unknown,kAXRoleAttribute) && passed;
+    unknown=node(@"unknown-children",@"AXGroup"); unknown.childrenStatus=kAXErrorCannotComplete;
+    passed=refused(unknown,kAXChildrenAttribute) && passed;
+    FixtureNode *leaf=node(@"known-leaf",@"AXGroup"); leaf.childrenStatus=kAXErrorNoValue;
+    passed=check(@"known-NoValue-leaf",leaf,1,0,NO) && passed;
+    leaf.childrenStatus=kAXErrorAttributeUnsupported;
+    passed=check(@"known-Unsupported-leaf",leaf,1,0,NO) && passed;
     return passed ? 0 : 1;
 } }
 ''')
@@ -648,6 +709,10 @@ int main(void) { @autoreleasepool {
                        capture_output=True, text=True, check=True, timeout=30)
         result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
+        refusals = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([(row["ax_error"], row["ax_attribute"]) for row in refusals],
+                         [(-25204, "AXRole"), (-25204, "AXChildren")])
+        self.assertTrue(all(row["ax_read_failed"] is True for row in refusals))
 
     def test_screenshot_must_decode_dimensions_and_not_accept_magic_bytes(self):
         path = self.root / "image.png"

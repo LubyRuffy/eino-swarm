@@ -1403,6 +1403,34 @@ the actual `wait_window`/`native_snapshot` boundary without resetting that deadl
 These protect existing formal behavior; they do not establish why a particular
 guest returned an empty AX list or accept its native window.
 
+Initial readiness additionally exercises `wait_initial_ready` → `wait_window` →
+`native_snapshot` → `observed_command` through the real Python caller. Only an
+empty initial snapshot with a completed, fully recorded `AXRole`/`-25204` API
+refusal may be reacquired in the same deadline. A failed partial graph is never
+passed to window/input checks. Regress continuous failures, exact current-call
+evidence mismatch, duplicate controls in the fresh graph, identity/permission/
+inventory/evidence failures, noninitial/result snapshots and input failures in
+`tools/test_native_macos_initial_observation.py`. These Python caller tests use OS
+and clock seams and do not compile helpers or accept native UI. The new module
+uses an independent `unittest.TestCase`; importing the old TestCase class or
+inheriting its tests would duplicate SDK executions during discovery.
+
+The actual Objective-C helper retains Role/Children read errors instead of
+treating an unknown subtree as an empty leaf. Explicit Children NoValue or
+Unsupported remains a known leaf. The same helper-process SystemWide two-second
+message default covers descendant references without changing other processes,
+TCC or the original whole-case budget. Actual SDK/activation/graph regressions
+in `tools/test_native_macos_activation.py` and the three SDK methods in
+`tools/test_native_macos_smoke.py` require a real host-validation window; the
+whole smoke module is not a Python-only command. SDK compilation, these seams
+and later real guest/package acceptance remain separate evidence.
+`tools/test_native_macos_ax_read_main.py` additionally includes the complete
+helper main with OS seams: process-default timeout setup/check/release precedes
+remote reads, a failed setup stops, and descendant Role/Children read failures
+retain their key/status and refuse before focus, keyboard events or Press.
+Known-leaf NoValue/Unsupported remains accepted. Its old-source RED must compile
+and fail behavior assertions; compilation errors are setup failures, not RED.
+
 Every resilience helper invocation saves a unique
 `native-actions/<id>/receipt.json` before JSON parsing or raising a shortened
 terminal error. The receipt retains the original command, case/PID, execution

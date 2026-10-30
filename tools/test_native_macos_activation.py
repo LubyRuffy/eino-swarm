@@ -113,6 +113,9 @@ static id attribute(AXUIElementRef element, CFStringRef key) {
 }
 static AXError fixtureCopy(AXUIElementRef element, CFStringRef key, CFTypeRef *out) {
     axReads++;
+    if (CFEqual(key,kAXWindowsAttribute)) {
+        *out=CFBridgingRetain(attribute(element,key)); return kAXErrorSuccess;
+    }
     if ([mode isEqual:@"unknown-role"]) return kAXErrorCannotComplete;
     if ([mode isEqual:@"missing-role"]) {*out=NULL;return kAXErrorSuccess;}
     if ([mode isEqual:@"malformed-role"]) {*out=CFRetain((__bridge CFTypeRef)@7);return kAXErrorSuccess;}
@@ -180,8 +183,11 @@ class NativeActivationTests(unittest.TestCase):
         for label, name in (("smoke", "native_macos_ax.m"),
                             ("resilience", "native_macos_resilience_ax.m")):
             source = (ROOT / name).read_text()
-            helpers = (function(source, "static void emit(")
+            first_read = ("static BOOL axReadFailed; static AXError axReadStatus; static NSString *axReadKey,*axReadReason;\n"
+                          + function(source, "static void rememberAXRead(")) if label == "smoke" else ""
+            helpers = (first_read + function(source, "static void emit(")
                        + function(source, "static int fail(")
+                       + function(source, "static int failAXRead(")
                        + function(source, "static BOOL waitForActivation(")
                        + function(source, "static int failSnapshot(")
                        + function(source, "static BOOL realWindow(")
@@ -193,7 +199,9 @@ class NativeActivationTests(unittest.TestCase):
                        + function(source, "static NSString *activationBundle(")
                        + function(source, "static int activationRefused("))
             if label == "smoke":
-                caller = source[source.index("    NSArray *windows = attribute(app, kAXWindowsAttribute)"):
+                caller_start = ("    CFTypeRef rawWindows = NULL;" if "    CFTypeRef rawWindows = NULL;" in source
+                                else "    NSArray *windows = attribute(app, kAXWindowsAttribute)")
+                caller = source[source.index(caller_start):
                                 source.index("    CGRect bounds = window ? frame(window)")]
                 action = source[source.index("    BOOL frontmost = running.active;"):
                                 source.index("    emit(result); CFRelease(app); return 0;")

@@ -1939,6 +1939,16 @@ WebView origin before observing, filling or pressing the unique enabled Send
 control; the Python scenario retains Trace, actual file bytes and screenshot
 assertions, and the runner retains shutdown/data cleanup.
 
+Initial readiness may reacquire a fresh snapshot after the strict helper reports
+an incomplete `AXRole` message (`kAXErrorCannotComplete`). The completed failed
+call's exact durable receipt must match before the existing poll continues;
+its graph is discarded and its code/streams remain unchanged. This applies only
+to empty initial snapshots in the original shared deadline. Identity, permission,
+inventory, evidence, input, timeout and malformed-graph failures still refuse.
+Snapshots retain their existing activation/raise behavior; this is observation
+reacquisition, not repeated fill/Send/Press. The helper's process-default two-second
+AX timeout bounds descendant messages, not the whole graph or native case.
+
 The iOS source Info.plist retains the authorized application-wide export declaration. Preflight reads it before an archive, and IPA verification checks the exported field matches. Frozen sources without that field use an exact private source/build confirmation. Source, IPA and exact receipt conflicts fail the platform; ordinary version increments do not require repeated classification questions. Encryption use or implementation changes require reassessment. See `tools/test_release_ios_compliance.py`.
 
 `tools/audit_pending_batch.py` joins the delivery and TestFlight ledgers with GitHub Issue states and main ancestry. It counts commits after the last public source SHA and elapsed time since the oldest accepted unallocated change. `tools/release.py` selects only that batch's outstanding desktop/mobile platforms and connects Make local builders and the GitHub publisher to `tools/release_ios.py`. The iOS adapter uses the existing private App Store Connect client for archive/export/upload, compliance, group association and review. An already qualified unpublished allocation can resume its frozen ancestor source through the existing `--source-dir` entry after main advances, with exact workset, accepted source containment and complete recorded platform-scope checks; new allocations still use latest main. Later commits remain outside that allocation, and native/package/State gates remain independent. One clean pushed main batch/version identifies the source across platforms; TestFlight archives reuse the last successfully published marketing version and advance the package-derived build number. An explicit private marketing_version starts a new train for new candidates; retained state/IPA/source receipts freeze the original train on recovery. Group association is followed by an availability read before any review request. Platforms execute serially with independent gates. The Mac and Android updaters inspect earlier GitHub Releases when the newest release has no compatible installer. Private signing configuration and resumable platform state remain under `ZWAI_HOME`, outside Git. See [docs/RELEASE.md](docs/RELEASE.md).

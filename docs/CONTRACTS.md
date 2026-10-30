@@ -500,6 +500,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-031 Native desktop tests own their guest lifecycle
 
+- 初始 `wait_window(initial=True)` 仅对空 `snapshot` 的 `AXRole`／`-25204`／`api_error` 完整非零观测允许重新观察：必须核当前独立调用收据的全部字段与原结果、case／PID／helper／bundle／origin、完整 stdout／stderr 及同一 shared deadline。每个失败图整体丢弃，原 code2／原始流不改，后续完整新图和原窗口／像素断言通过之前不得 fill／Send／Press。沿用原 pause、每调用最多一次激活和原 raise 行为，不声称 snapshot 没有激活副作用，不增期限、不重放输入；expected 非空的滚动观察不进入此分类。身份／权限、库存未知、写证失败、超时、畸形／截断或其他 AX 错误仍立即拒绝。helper 对 Role／Children 的未知读保首错，明确 NoValue／Unsupported 的 Children 才是已知叶；SystemWide 设置仅改变本 helper 进程的原两秒消息默认上限，不查询系统对象、不证明整图时长。证据：`tools/native_macos_smoke.py`、`tools/native_macos_ax.m`、`tools/test_native_macos_initial_observation.py`、`tools/test_native_macos_activation.py`；Fixed，Issue #135。
+
 - `make native-smoke` checks fresh current-invocation helper/permission/session observations under the existing exclusion lock before allocating state or copying/launching an app. The bounded probe shares the original work budget, retains classified failures and raw streams, and leaves the previous cleanup latch unchanged on refusal. An absent lock flag stays unknown; a ready route is only permission to attempt existing native behavior assertions. SSH and Terminal observations never substitute for each other. 实现 `tools/native_macos_smoke.py`, `tools/native_macos_case.py`, `tools/native_macos_ax.m`; 回归 `tools/test_native_macos_smoke_preflight.py`; 关联 `F-430`。
 
 - 状态：active

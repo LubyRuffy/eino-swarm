@@ -8,11 +8,28 @@
 #include <limits.h>
 #include <unistd.h>
 
-static id attribute(AXUIElementRef element, CFStringRef key) {
+// The first failed read remains authoritative; an unknown subtree is never absence.
+static BOOL axReadFailed;
+static AXError axReadStatus;
+static NSString *axReadKey, *axReadReason;
+static void rememberAXRead(AXError status, CFStringRef key, NSString *reason) {
+    if (axReadFailed) return;
+    axReadFailed = YES; axReadStatus = status;
+    axReadKey = [(__bridge NSString *)key copy]; axReadReason = reason;
+}
+static id readAttribute(AXUIElementRef element, CFStringRef key, BOOL optional) {
+    if (axReadFailed) return nil;
     CFTypeRef value = NULL;
-    if (AXUIElementCopyAttributeValue(element, key, &value) != kAXErrorSuccess) return nil;
+    AXError status = AXUIElementCopyAttributeValue(element, key, &value);
+    if (status != kAXErrorSuccess) {
+        if (value) CFRelease(value);
+        if (optional && (status == kAXErrorNoValue || status == kAXErrorAttributeUnsupported)) return nil;
+        rememberAXRead(status, key, @"api_error"); return nil;
+    }
+    if (!value) { rememberAXRead(status, key, @"missing_value"); return nil; }
     return CFBridgingRelease(value);
 }
+static id attribute(AXUIElementRef element, CFStringRef key) { return readAttribute(element, key, YES); }
 static NSString *text(AXUIElementRef element, CFStringRef key) {
     id value = attribute(element, key);
     return [value isKindOfClass:NSString.class] ? value : @"";
@@ -22,15 +39,24 @@ static BOOL realWindow(id candidate, pid_t expectedPID) {
     AXUIElementRef window = (__bridge AXUIElementRef)candidate;
     CFTypeRef role = NULL; pid_t owner = 0;
     AXError roleError = AXUIElementCopyAttributeValue(window, kAXRoleAttribute, &role);
+    if (roleError != kAXErrorSuccess || !role || CFGetTypeID(role) != CFStringGetTypeID()) {
+        rememberAXRead(roleError, kAXRoleAttribute, roleError ? @"api_error" : @"wrong_type");
+        if (role) CFRelease(role); return NO;
+    }
     AXError pidError = AXUIElementGetPid(window, &owner);
+    if (pidError != kAXErrorSuccess) rememberAXRead(pidError, CFSTR("AXUIElementGetPid"), @"api_error");
     BOOL valid = roleError == kAXErrorSuccess && role && CFGetTypeID(role) == CFStringGetTypeID()
         && CFEqual(role, kAXWindowRole) && pidError == kAXErrorSuccess && owner == expectedPID;
     if (role) CFRelease(role);
     return valid;
 }
 static NSArray *children(AXUIElementRef element) {
-    id value = attribute(element, kAXChildrenAttribute);
-    return [value isKindOfClass:NSArray.class] ? value : @[];
+    // Reading is required; explicit Unsupported/NoValue means a known leaf.
+    id value = readAttribute(element, kAXChildrenAttribute, YES);
+    if (!value && !axReadFailed) return @[];
+    if (!axReadFailed && ![value isKindOfClass:NSArray.class])
+        rememberAXRead(kAXErrorSuccess, kAXChildrenAttribute, @"wrong_type");
+    return axReadFailed ? @[] : value;
 }
 static CGRect frame(AXUIElementRef element) {
     id position = attribute(element, kAXPositionAttribute), size = attribute(element, kAXSizeAttribute);
@@ -50,6 +76,12 @@ static void emit(id value) {
     fwrite(data.bytes, 1, data.length, stdout); fputc('\n', stdout);
 }
 static int fail(NSString *message) { emit(@{@"error": message}); return 2; }
+static int failAXRead(void) {
+    emit(@{@"error": @"native AX read cannot establish a complete observation",
+        @"ax_read_failed": @YES, @"ax_error": @(axReadStatus),
+        @"ax_attribute": axReadKey, @"ax_read_reason": axReadReason});
+    return 2;
+}
 static int failSnapshot(AXUIElementRef app, NSMutableDictionary *result, NSString *message) {
     result[@"error"] = message; emit(result); CFRelease(app); return 2;
 }
@@ -106,7 +138,7 @@ static void collectUnique(AXUIElementRef element, NSMutableArray *tree, NSMutabl
                     NSMutableArray *sends, NSMutableArray *urls, NSString *expected,
                     CGRect window, BOOL *visible, BOOL *truncated, int depth,
                     CFMutableSetRef seen, NSUInteger *visits) {
-    if (*truncated) return;
+    if (*truncated || axReadFailed) return;
     if (++*visits > 5000) { *truncated = YES; return; }
     // AX children form a graph. Equivalent references must not become duplicate
     // editable controls, while empty nodes and repeated edges still cost work.
@@ -115,12 +147,17 @@ static void collectUnique(AXUIElementRef element, NSMutableArray *tree, NSMutabl
     CFSetAddValue(seen, element);
     NSMutableDictionary *row = [NSMutableDictionary dictionary];
     for (NSString *key in @[@"AXRole", @"AXTitle", @"AXDescription", @"AXValue", @"AXURL"]) {
-        id value = attribute(element, (__bridge CFStringRef)key);
+        id value = readAttribute(element, (__bridge CFStringRef)key, ![key isEqual:@"AXRole"]);
+        if (axReadFailed) return;
+        if ([key isEqual:@"AXRole"] && (![value isKindOfClass:NSString.class] || ![value length])) {
+            rememberAXRead(kAXErrorSuccess, kAXRoleAttribute, @"wrong_type"); return;
+        }
         if ([value isKindOfClass:NSURL.class]) value = [value absoluteString];
         if ([value isKindOfClass:NSString.class] && [value length]) row[key] = [value substringToIndex:MIN([value length], 8192)];
     }
     for (NSString *key in @[@"AXEnabled", @"AXFocused"]) {
         id value = attribute(element, (__bridge CFStringRef)key);
+        if (axReadFailed) return;
         if ([value isKindOfClass:NSNumber.class]) row[key] = value;
     }
     if ([row[@"AXRole"] isEqual:@"AXTextArea"]) [areas addObject:(__bridge id)element];
@@ -140,10 +177,16 @@ static void collectUnique(AXUIElementRef element, NSMutableArray *tree, NSMutabl
         }
     }
     if (row.count) [tree addObject:row];
-    for (id child in children(element)) {
+    if (axReadFailed) return;
+    NSArray *nodes = children(element);
+    if (axReadFailed) return;
+    for (id child in nodes) {
+        if (!child || CFGetTypeID((__bridge CFTypeRef)child) != AXUIElementGetTypeID()) {
+            rememberAXRead(kAXErrorSuccess, kAXChildrenAttribute, @"wrong_child_type"); return;
+        }
         collectUnique((__bridge AXUIElementRef)child, tree, areas, sends, urls,
                       expected, window, visible, truncated, depth+1, seen, visits);
-        if (*truncated) break;
+        if (*truncated || axReadFailed) break;
     }
 }
 static void collect(AXUIElementRef element, NSMutableArray *tree, NSMutableArray *areas,
@@ -226,18 +269,35 @@ int main(int argc, const char **argv) { @autoreleasepool {
         return fail(@"native target bundle identity mismatch");
     if (!AXIsProcessTrusted()) return fail(@"guest Accessibility permission must already be granted");
     if (!CGPreflightScreenCaptureAccess()) return fail(@"guest Screen Recording permission must already be granted");
+    // Only the system-wide reference sets this client's descendant default.
+    AXUIElementRef timeoutSystem = AXUIElementCreateSystemWide();
+    if (!timeoutSystem) return fail(@"native AX global timeout reference unavailable");
+    AXError timeoutStatus = AXUIElementSetMessagingTimeout(timeoutSystem, 2);
+    CFRelease(timeoutSystem);
+    if (timeoutStatus != kAXErrorSuccess) {
+        emit(@{@"error": @"native AX global timeout could not be bounded",
+            @"ax_timeout_failed": @YES, @"ax_error": @(timeoutStatus)}); return 2;
+    }
     AXUIElementRef app = AXUIElementCreateApplication(pid);
     AXUIElementSetMessagingTimeout(app, 2);
     AXUIElementSetAttributeValue(app, CFSTR("AXEnhancedUserInterface"), kCFBooleanTrue);
     AXUIElementSetAttributeValue(app, CFSTR("AXManualAccessibility"), kCFBooleanTrue);
-    NSArray *windows = attribute(app, kAXWindowsAttribute) ?: @[];
+    CFTypeRef rawWindows = NULL;
+    AXError windowsStatus = AXUIElementCopyAttributeValue(app, kAXWindowsAttribute, &rawWindows);
+    id windowsValue = CFBridgingRelease(rawWindows);
+    if (windowsStatus != kAXErrorSuccess || ![windowsValue isKindOfClass:NSArray.class]) {
+        rememberAXRead(windowsStatus, kAXWindowsAttribute, windowsStatus ? @"api_error" : @"wrong_type");
+        CFRelease(app); return failAXRead();
+    }
+    NSArray *windows = windowsValue;
     if (![windows isKindOfClass:NSArray.class] || windows.count > 1)
         { CFRelease(app); return fail(@"native target has malformed or multiple AX windows"); }
     __attribute__((objc_precise_lifetime)) id windowOwner = windows.count ? windows[0] : nil;
     if (windowOwner && !realWindow(windowOwner, pid))
-        { CFRelease(app); return fail(@"native AX window role or PID refused"); }
+        { CFRelease(app); return axReadFailed ? failAXRead() : fail(@"native AX window role or PID refused"); }
     AXUIElementRef window = (__bridge AXUIElementRef)windowOwner;
     if (window && [attribute(window, CFSTR("AXSheets")) count]) { CFRelease(app); return fail(@"native target has a modal sheet"); }
+    if (axReadFailed) { CFRelease(app); return failAXRead(); }
     double activationStarted = NSProcessInfo.processInfo.systemUptime;
     double activationDeadline = activationStarted + 2;
     BOOL activationRequested = [running activateWithOptions:0];
@@ -245,11 +305,13 @@ int main(int argc, const char **argv) { @autoreleasepool {
     BOOL activationReady = waitForActivation(running, activationDeadline);
     double activationElapsed = NSProcessInfo.processInfo.systemUptime - activationStarted;
     CGRect bounds = window ? frame(window) : CGRectZero;
+    if (axReadFailed) { CFRelease(app); return failAXRead(); }
     NSMutableArray *tree = [NSMutableArray array], *areas = [NSMutableArray array], *sends = [NSMutableArray array];
     NSMutableArray *urls = [NSMutableArray array], *cg = [NSMutableArray array], *values = [NSMutableArray array];
     BOOL visible = NO, truncated = NO;
     if (window) collect(window, tree, areas, sends, urls, [action isEqual:@"snapshot"] ? value : @"",
                         bounds, &visible, &truncated, 0);
+    if (axReadFailed) { CFRelease(app); return failAXRead(); }
     if (truncated) { CFRelease(app); return fail(@"native AX tree exceeded its bounded traversal"); }
     for (NSString *url in urls) if (!pageMatches(url, origin, pid)) { CFRelease(app); return fail(@"native webview origin, shell or PID mismatch"); }
     NSArray *all = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID));
@@ -259,6 +321,7 @@ int main(int argc, const char **argv) { @autoreleasepool {
     }
     for (id area in areas) [values addObject:text((__bridge AXUIElementRef)area, kAXValueAttribute)];
     BOOL sendEnabled = sends.count == 1 && [attribute((__bridge AXUIElementRef)sends[0], kAXEnabledAttribute) boolValue];
+    if (axReadFailed) { CFRelease(app); return failAXRead(); }
     BOOL frontmost = running.active;
     BOOL hasWebArea = urls.count > 0;
     BOOL ready = activationReady && frontmost && bounds.size.width > 0 && bounds.size.height > 0 &&
@@ -273,6 +336,7 @@ int main(int argc, const char **argv) { @autoreleasepool {
         @"send_enabled": @(sendEnabled), @"rect": @[@(bounds.origin.x), @(bounds.origin.y), @(bounds.size.width), @(bounds.size.height)],
         @"window_count": @(windows.count), @"windows": cg, @"screen_capture_allowed": @YES,
         @"expected_visible": @(visible), @"tree": tree} mutableCopy];
+    if (axReadFailed) { CFRelease(app); return failAXRead(); }
     if (cg.count == 1) { result[@"window_id"] = cg[0][@"id"]; result[@"window_owner_pid"] = @(pid); }
     if (!activationReady) return failSnapshot(app, result, @"native activation did not become active before its deadline");
     if ([action isEqual:@"fill"]) {
