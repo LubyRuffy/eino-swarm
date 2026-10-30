@@ -343,6 +343,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
+- 已分配未公开批次可在 main 后续前进时，从包含完整冻结工作集的原源码恢复同一版本；发布入口验证分配／范围／祖先身份，保留原生、安装包、签名、State 和远端版本门禁。新分配仍使用最新完整 main；后续改动不进入旧批次。关联契约：`C-010`；证据：`tools/release.py`、`tools/test_release_public_recovery.py`、`docs/RELEASE.md`；来源：Issue #134。
+
 - 发布版本建议：`python3 tools/next_release_version.py` 只读查询远端数字 tags、含 draft 的全部 Release 和已分配批次，按数字组件建议下一个有效 patch 版本；未知基线、无效台账或远端读取失败明确拒绝。建议不占用版本、不改源码或台账；发布重试复用已冻结版本，实际发布仍须原生验收与并发版本预检。关联契约：`C-010`；证据：`tools/next_release_version.py`、`tools/test_next_release_version.py`、`docs/RELEASE.md`。
 
 - 本机验证资源准入：`release.py --verify` 在 preflight 前到自有进程清理结束持有同宿主／UID／canonical Go module 的稳定 inode 租约，独立副本共享 mutex；锁内只读核实当前 PID/birth/cwd/module，现存手工重型验证或 unknown 只有限等待／阻断，不发送信号。旧 released 台账不能替代实际进程观测；未来绕过协议的新手工命令不受此 mutex 保证，未包装 `make test/check`。关联契约：`C-010`；实现／验证：`tools/release_host_lease.py`、`tools/test_release_host_lease.py`、`tools/release_verify.py`、`tools/test_release_verify.py`；边界见 `docs/RELEASE.md`。

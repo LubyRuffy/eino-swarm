@@ -114,6 +114,68 @@ def urgent_release_reason(value):
     return value.strip()
 
 
+def allocated_unpublished_source(root, version, source_sha, delivery, platforms):
+    """Validate the existing allocation, not later main work, before recovery."""
+    batch = delivery.get('pending_new_batch', {})
+    work = batch.get('finalized_workset', {})
+    issues, required = batch.get('issues'), batch.get('platforms_to_release')
+    if (batch.get('version') != version or batch.get('source_sha') != source_sha
+            or batch.get('version_locked') is not False
+            or batch.get('qualified_for_new_release') is not True
+            or not isinstance(issues, list) or not issues
+            or any(type(number) is not int or number <= 0 for number in issues)
+            or len(issues) != len(set(issues))
+            or not isinstance(required, list) or not required
+            or any(not isinstance(p, str) or p not in {'macos', 'android', 'ios'} for p in required)
+            or len(required) != len(set(required))
+            or not isinstance(work, dict)
+            or 'active_issue' not in delivery or delivery['active_issue'] is not None
+            or work.get('source_sha') != source_sha or 'active_issue' not in work
+            or work['active_issue'] is not None
+            or work.get('issues') != issues
+            or work.get('platforms_to_release') != required
+            or not set(platforms) <= set(required)):
+        raise ValueError('Older unpublished source requires its exact qualified allocated workset')
+    try:
+        allocated = datetime.fromisoformat(batch.get('allocated_at', ''))
+        if allocated.tzinfo is None:
+            raise ValueError('Allocation timestamp has no timezone')
+    except (TypeError, ValueError) as error:
+        raise ValueError('Allocated source needs a valid allocation timestamp') from error
+    scopes = batch.get('required_scope_source_shas')
+    if (not isinstance(scopes, list) or not scopes
+            or any(not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}', sha) for sha in scopes)
+            or len(scopes) != len(set(scopes))
+            or ('required_scope_source_shas' in work and work['required_scope_source_shas'] != scopes)):
+        raise ValueError('Allocated source needs its complete frozen scope identities')
+    sources, explained = set(scopes), set()
+    extra = batch.get('additional_platforms', {})
+    if not isinstance(extra, dict):
+        raise ValueError('Allocated additional platform scope is malformed')
+    for platform, scope in extra.items():
+        if platform not in required or not isinstance(scope, dict):
+            raise ValueError('Allocated additional platform is outside its workset')
+        direct, inherited = scope.get('source_shas', []), scope.get('inherited_source_shas', [])
+        if (not isinstance(direct, list) or not isinstance(inherited, list) or not (direct or inherited)
+                or any(not isinstance(sha, str) or sha not in sources for sha in direct + inherited)):
+            raise ValueError('Allocated scope omits an additional platform source')
+        explained.update(direct + inherited)
+    for number in issues:
+        row = delivery.get('issues', {}).get(str(number), {})
+        if not isinstance(row, dict) or row.get('code') != 'verified_integrated_and_pushed':
+            raise ValueError('Allocated Issue has not completed source integration acceptance')
+        source = row.get('fix_sha') or row.get('main_sha') or row.get('source_sha')
+        if not isinstance(source, str) or not re.fullmatch(r'[0-9a-f]{40}', source):
+            raise ValueError('Allocated Issue is missing an exact source identity')
+        explained.add(source)
+    if sources != explained:
+        raise ValueError('Allocated scope identities do not match Issues and additional platforms')
+    if set(required) != set(batch_platforms(version, pending_only=False, delivery=delivery)):
+        raise ValueError('Allocated platform scope omits accepted Issue or additional behavior')
+    for source in sorted(sources):
+        run(['git', 'merge-base', '--is-ancestor', source, source_sha], cwd=root)
+
+
 def source_preflight(root, version, platforms=('macos', 'android', 'ios'), *, urgent_reason=None):
     urgent_reason = urgent_release_reason(urgent_reason)
     version_code(version)
@@ -154,28 +216,30 @@ def source_preflight(root, version, platforms=('macos', 'android', 'ios'), *, ur
             else:
                 IOSRelease(root, version, sha, receipt).verify_publication()
             return sha
-        if run(['git', 'rev-parse', 'origin/main'], cwd=root) != sha:
-            raise ValueError('New publication must use the latest fetched complete main')
+        main_sha = run(['git', 'rev-parse', 'origin/main'], cwd=root)
         batch = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
         pending = batch.get('pending_new_batch', {})
         if (pending.get('version') != version or pending.get('source_sha') != sha
                 or not pending.get('issues') or not (pending.get('qualified_for_new_release') or urgent_reason)):
             raise ValueError('New publication requires a verified, allocated batch')
-        report = json.loads(run([sys.executable, str(ROOT / 'tools/audit_pending_batch.py'), '--state',
-            str(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')))], cwd=root))
-        timing_qualified = report.get('resume_allocated_version') or (
-            urgent_reason and report.get('batch_version') == version and report.get('version_locked') is False)
-        if (not timing_qualified or report.get('main_sha') != sha
-                or set(pending['issues']) != set(report.get('unallocated_issues', []))
-                or not set(platforms) <= set(report.get('platforms_to_release', []))):
-            raise ValueError('Live batch audit does not qualify this exact main/source batch')
-        if batch.get('active_issue') is not None:
-            raise ValueError('Issue integration is still in progress; finalize the workset before publication')
-        workset = pending.get('finalized_workset', {})
-        if (workset.get('source_sha') != sha or workset.get('active_issue') is not None
-                or set(workset.get('issues', [])) != set(report['unallocated_issues'])
-                or set(workset.get('platforms_to_release', [])) != set(report['platforms_to_release'])):
-            raise ValueError('New publication requires a finalized workset for this source and all required platforms')
+        if main_sha != sha:
+            allocated_unpublished_source(root, version, sha, batch, platforms)
+        else:
+            report = json.loads(run([sys.executable, str(ROOT / 'tools/audit_pending_batch.py'), '--state',
+                str(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')))], cwd=root))
+            timing_qualified = report.get('resume_allocated_version') or (
+                urgent_reason and report.get('batch_version') == version and report.get('version_locked') is False)
+            if (not timing_qualified or report.get('main_sha') != sha
+                    or set(pending['issues']) != set(report.get('unallocated_issues', []))
+                    or not set(platforms) <= set(report.get('platforms_to_release', []))):
+                raise ValueError('Live batch audit does not qualify this exact main/source batch')
+            if batch.get('active_issue') is not None:
+                raise ValueError('Issue integration is still in progress; finalize the workset before publication')
+            workset = pending.get('finalized_workset', {})
+            if (workset.get('source_sha') != sha or workset.get('active_issue') is not None
+                    or set(workset.get('issues', [])) != set(report['unallocated_issues'])
+                    or set(workset.get('platforms_to_release', [])) != set(report['platforms_to_release'])):
+                raise ValueError('New publication requires a finalized workset for this source and all required platforms')
         releases = [r for page in json.loads(run(['gh', 'api', '--paginate', '--slurp', f'repos/{repo}/releases'], cwd=root)) for r in page]
         if any(tuple(map(int, r['tag_name'].lstrip('v').split('.'))) >= tuple(map(int, version.split('.')))
                for r in releases if re.fullmatch(r'v?\d+\.\d+\.\d+', r['tag_name'])):
@@ -283,8 +347,9 @@ def release_notes(root, version, state):
     run(['gh', 'release', 'edit', 'v' + version, '--notes-file', str(notes)], cwd=root)
 
 
-def batch_platforms(version, pending_only):
-    delivery = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
+def batch_platforms(version, pending_only, *, delivery=None):
+    if delivery is None:
+        delivery = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
     batch, _ = delivery_batch(delivery, version)
     if not batch or not batch.get('issues'):
         return None
