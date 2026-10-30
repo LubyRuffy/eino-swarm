@@ -1848,7 +1848,7 @@ shortening only the bounded detail text.
 | `delta` | streamed answer, **full text so far** |
 | `agent_message` | a completed assistant message |
 | `tool_call` | `Text` is `name(args)`, paired by `tool_call_id` |
-| `tool_result` | the result, paired by `tool_call_id`. Newlines are kept so the UI can render a file body; clipped at 64k runes |
+| `tool_result` | the result, paired by `tool_call_id`. Newlines are kept so the UI can render a file body; clipped at 64k runes. Successful `memory` writes with `changed: true` add complete entry `before` / `after` strings (empty absent side for add/remove); duplicates and failures omit those images. Existing `success`, `changed`, `usage` and `entries` fields remain compatible |
 | `ask_recovered` | the existing unanswered human wait is restored, not executed again; original `tool_call_id`, `text` is original `{"questions":[...]}`. A confirmed answer wins over duplicate recovery or unknown-result replay; private checkpoint history is excluded |
 | `tool_delta` | live tool output while a call still runs; `text` is the accumulated payload so far (for `exec`, `{stdout,stderr}` JSON), paired by `tool_call_id`. `seq` is 0, not stored. The model still receives one `tool_result` when the call finishes |
 | `tool_call_delta` | the model is still writing a tool call. `text` is `name(N)` where `N` is the argument size in runes so far, paired by `tool_call_id`. `seq` is 0, not stored. The call has not run; `tool_call` arrives when the stream ends and replaces this row |
@@ -1896,6 +1896,30 @@ shortening only the bounded detail text.
 | `done` | the turn finished; `text` is the final answer. Empty / whitespace `text` hides chat bubbles only after `schedule_fired` when that turn did not already report findings. An armed `schedule`, `goal_continued`, compact, or other notice plus empty `done` stays visible. Non-empty `text` after a fire is findings and keeps the fired chip |
 | `error` | the turn failed; `err` explains |
 | `ready` | replay is complete (no `seq`, not stored) |
+
+The `model_unavailable` retry category excludes a confirmed immediate gateway
+route refusal: HTTP 503 `provider_unavailable` with exact message
+`no healthy provider can serve this model`, fully received within the provider's
+first-byte budget. Before a Generate result or Stream is established, these
+rejections keep the original logical call waiting through the origin gate.
+They do not consume `model_retry` attempts or emit `generation_interrupted` /
+`generation_recovered`; the turn remains active. Each actual HTTP rejection
+still has its own `llm_calls` record and the next cooldown uses the existing
+`model_backoff` schema. The successful probe is the original model request's
+response and is consumed directly, without a separate health request or resend.
+There is no additional route-recovery total deadline; Stop, an explicit caller
+deadline or the worker watchdog can cancel it. Other failures, including an
+accepted probe that hangs, retain existing timeout and retry behavior. While
+the origin's route failure remains active, post-turn session briefing and
+automatic memory review do not start on it; skipping does not emit a successful
+review or report notes saved. Post-turn briefing, memory reviews (including
+Review now), and conversation/schedule titles retain their original failure
+policy: if one first encounters the route rejection, it records that request
+without continuing probes up to its existing timeout. They still participate in
+shared origin admission. Manual compact retains its single-request failure
+policy because it has no active turn cancellation owner.
+Isolated scheduling-answer classification does not enter this route-recovery
+loop. See `C-029`.
 
 `model_retry.reason: "schedule_claim_unverified"` is the original turn's
 single correction for a scheduling claim that classification and current

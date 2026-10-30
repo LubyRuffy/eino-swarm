@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -33,7 +33,7 @@ beforeEach(() => {
     static revokeObjectURL = vi.fn()
   })
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe("Workspace file preview", () => {
   it("renders Markdown, shows its exact source, and copies the original text", async () => {
@@ -137,6 +137,45 @@ describe("Workspace file preview", () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:private-image")
     view.unmount()
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2)
+  })
+
+  it("lets readers zoom a loaded workspace image and return to fit", async () => {
+    vi.mocked(readFilePreview).mockResolvedValue({ kind: "image", blob: new Blob(["image"], { type: "image/png" }) })
+    preview("plot.png")
+    const image = await screen.findByRole("img", { name: "plot.png" })
+    Object.defineProperties(image, { naturalWidth: { value: 1200 }, naturalHeight: { value: 800 } })
+    fireEvent.load(image)
+    await userEvent.click(screen.getByRole("button", { name: "Actual size" }))
+    expect(image).toHaveStyle({ width: "1200px", height: "800px" })
+    await userEvent.click(screen.getByRole("button", { name: "Zoom in" }))
+    expect(parseFloat(image.style.width)).toBeGreaterThan(1200)
+    await userEvent.click(screen.getByRole("button", { name: "Zoom out" }))
+    expect(image).toHaveStyle({ width: "1200px", height: "800px" })
+    await userEvent.click(screen.getByRole("button", { name: "Fit to window" }))
+    expect(screen.getByRole("button", { name: "Fit to window" })).toHaveAttribute("aria-pressed", "true")
+  })
+
+  it("resets image zoom when refreshing or selecting another file", async () => {
+    vi.mocked(readFilePreview).mockResolvedValue({ kind: "image", blob: new Blob(["image"], { type: "image/png" }) })
+    vi.mocked(URL.createObjectURL).mockReturnValueOnce("blob:first").mockReturnValueOnce("blob:refreshed").mockReturnValueOnce("blob:other")
+    const view = preview("plot.png")
+    async function load(name: string) {
+      const image = await screen.findByRole("img", { name })
+      Object.defineProperties(image, { naturalWidth: { value: 1200 }, naturalHeight: { value: 800 } })
+      fireEvent.load(image)
+    }
+    await load("plot.png")
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }))
+    expect(screen.getByRole("button", { name: "Fit to window" })).toHaveAttribute("aria-pressed", "false")
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }))
+    await load("plot.png")
+    expect(screen.getByRole("button", { name: "Fit to window" })).toHaveAttribute("aria-pressed", "true")
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }))
+    view.rerender(<FilePreviewDialog {...base} path="other.png" />)
+    await load("other.png")
+    expect(screen.getByRole("button", { name: "Fit to window" })).toHaveAttribute("aria-pressed", "true")
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:first")
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:refreshed")
   })
 
   it("lets Escape close the dialog", async () => {

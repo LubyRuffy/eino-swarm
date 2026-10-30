@@ -15,6 +15,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-140`: PC workspace image previews offer zoom in/out, a zoom percentage,
+  actual size (100%) and fit-to-window controls. Enlarged images remain fully
+  reachable by scrolling; refresh, changing images and reopening reset the fit.
+  Loading or failed images cannot be zoomed, and downloads keep the original
+  file bytes.
+
 - Desktop/Web model retry waits offer **Retry details** with the actual waiting
   steps/Agent identities, service failure count and scheduling-verification
   diagnostics. Shared cooldowns collect waiting callers into one explanation;
@@ -227,6 +233,13 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-420`, `C-025`: Settings → Memory can set a separate reasoning level for automatic and manual turn review. Empty retains conversation inheritance; conversation work, catalog tidy, model and output cap are unchanged.
 
 ### Changed
+
+- `F-130`, `C-025`: Desktop/Web `memory` add/replace/remove rows now use
+  edit-style collapsed line counts and highlighted diffs of the affected note.
+  Successful writes retain complete before/after entry snapshots; old receipts
+  label their request-fragment preview, refused calls keep their error and
+  attempted change, and duplicate additions show no change without dumping the
+  full memory entry list.
 
 - Engine fixtures prepare independent disk Stores with bounded concurrency and
   use instance clocks for retry-policy waits. Every database still runs its real
@@ -483,6 +496,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-130`: update `eino-tools` to the source containing `3664a9a`. Default
+  `web_fetch` tries its existing browser renderer once after a DataDome-signalled
+  HTTP 401/403, preserving the configured proxy and returning an error if
+  rendering fails or still produces a challenge. Ordinary authorization errors
+  remain errors; this does not establish real-site bypass success.
+
 - `F-150`, `F-160`, `C-009` (Issue #132): schedule-claim admission preserves an
   unspecified destination instead of inferring an independent job from a cron
   or recurring check. Explicit scopes require a quoted scope witness, and an
@@ -505,6 +524,20 @@ co-working app built on it. The library API is unchanged except where noted
   ordinary operational answers. Only an explicit `history_report:true` request
   (directly or through an inherited Registry) selects that protocol, and the
   manager prompt carries the protocol only then.
+
+- `F-130`, `C-029`: an immediate gateway 503 that explicitly rejects routing
+  because no provider is healthy now waits inside the original model call
+  through shared 5/10/20/30-second cooldowns. It no longer exhausts the turn's
+  two model-error retries or emits interrupted/recovered generation states for
+  those rejections. Every sent request keeps its call record; the successful
+  probe response continues directly. This recovery has no additional total
+  deadline, while Stop, caller deadlines and worker watchdogs still apply.
+  Ordinary failures and accepted requests that hang keep their existing retry
+  budgets. Post-turn briefing and automatic memory review skip an origin whose
+  route outage remains active, without claiming a completed review or saved notes.
+  Briefing, memory reviews, titles and manual compact retain their original
+  single-request failure policy if they first discover an outage. Manual compact
+  has no active turn cancellation owner and cannot start a continuous wait.
 
 - Phone reasoning-only groups use one initially closed Thought control, removing
   the extra activity-summary layer. Mixed tool groups keep their work summary,

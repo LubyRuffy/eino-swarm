@@ -196,12 +196,18 @@ func (t *memoryTool) InvokableRun(_ context.Context, args string, _ ...tool.Opti
 	if changed {
 		t.onChange(changeWithContent(Change{Target: ToolMemory, Action: action, Text: clipText(text)}, before, after))
 	}
-	return marshal(map[string]any{
+	out := map[string]any{
 		"success": true,
 		"changed": changed,
 		"usage":   usage(snap),
 		"entries": snap.Entries,
-	}), nil
+	}
+	if changed {
+		// old_text is only a selector; the transcript needs the complete note
+		// captured by the mutation, including a known empty creation/deletion side.
+		out["before"], out["after"] = before, after
+	}
+	return marshal(out), nil
 }
 
 // memoryFailure turns a store error into something the model can act on. An

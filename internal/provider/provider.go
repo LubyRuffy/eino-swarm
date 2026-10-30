@@ -389,15 +389,17 @@ func (r *recordingModel) Generate(ctx context.Context, in []*schema.Message, opt
 	return out, err
 }
 
-func (r *recordingModel) generate(ctx context.Context, in []*schema.Message, opts []model.Option) (*schema.Message, error) {
+func (r *recordingModel) generateOnce(ctx context.Context, in []*schema.Message, opts []model.Option) (*schema.Message, error) {
 	ctx, finish, err := r.admit(ctx)
 	if err != nil {
 		return nil, modelCallError(err)
 	}
 	recorder := r.requestRecorder(ctx)
 	ctx, builtin := observeBuiltinTools(ctx, recorder != nil)
+	ctx, route := observeRouteRejection(ctx)
 	start := time.Now()
 	out, err := r.inner.Generate(ctx, in, opts...)
+	err = route.wrap(err)
 	finish(err)
 	if recorder == nil {
 		return out, modelCallError(err)
@@ -421,7 +423,7 @@ func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts 
 	return out, err
 }
 
-func (r *recordingModel) stream(ctx context.Context, in []*schema.Message, opts []model.Option) (*schema.StreamReader[*schema.Message], error) {
+func (r *recordingModel) streamOnce(ctx context.Context, in []*schema.Message, opts []model.Option) (*schema.StreamReader[*schema.Message], error) {
 	completion := &streamCompletion{}
 	ctx = context.WithValue(ctx, streamCompletionKey{}, completion)
 	ctx, finish, err := r.admit(ctx)
@@ -430,9 +432,11 @@ func (r *recordingModel) stream(ctx context.Context, in []*schema.Message, opts 
 	}
 	recorder := r.requestRecorder(ctx)
 	ctx, builtin := observeBuiltinTools(ctx, recorder != nil)
+	ctx, route := observeRouteRejection(ctx)
 	progress, _ := ctx.Value(backoffProgressKey{}).(func())
 	start := time.Now()
 	stream, err := r.inner.Stream(ctx, in, opts...)
+	err = route.wrap(err)
 	if err != nil {
 		finish(err)
 	}

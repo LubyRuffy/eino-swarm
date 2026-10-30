@@ -29,6 +29,64 @@ const searchHits = JSON.stringify({
 })
 
 describe("ToolRow", () => {
+  it("opens a memory replacement as the recorded change instead of the whole memory", () => {
+    render(<ToolRow block={toolBlock({ name: "memory",
+      args: JSON.stringify({ action: "replace", old_text: "selector", content: "updated note" }),
+      result: JSON.stringify({ success: true, changed: true, usage: "100/2200", entries: ["unrelated note", "updated note"],
+        before: "complete selector and condition", after: "updated note" }),
+    })} />)
+    const toggle = screen.getByRole("button", { name: /memory/ })
+    expect(toggle).toHaveAttribute("aria-expanded", "false")
+    expect(toggle).toHaveTextContent("+1")
+    expect(toggle).toHaveTextContent("−1")
+    fireEvent.click(toggle)
+    const diff = screen.getByTestId("file-diff")
+    expect(diff.querySelector('[data-diff="del"]')).toHaveTextContent("complete selector and condition")
+    expect(diff.querySelector('[data-diff="add"]')).toHaveTextContent("updated note")
+    expect(screen.queryByText("unrelated note")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("tool-output")).not.toBeInTheDocument()
+    fireEvent.click(toggle)
+    expect(screen.queryByTestId("file-diff")).not.toBeInTheDocument()
+  })
+
+  it("keeps the reader's memory disclosure open when the saved result replaces its request preview", () => {
+    const block = toolBlock({ name: "memory", pending: true,
+      args: JSON.stringify({ action: "replace", old_text: "selector", content: "updated note" }),
+    })
+    const { rerender } = render(<ToolRow block={block} />)
+    const toggle = screen.getByRole("button", { name: /^memory/ })
+    expect(toggle).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(toggle)
+    expect(screen.getByText("Requested change")).toBeInTheDocument()
+    rerender(<ToolRow block={{ ...block, tool: { ...block.tool!, pending: false,
+      result: JSON.stringify({ success: true, changed: true, before: "complete selector", after: "updated note" }),
+    } }} />)
+    expect(toggle).toHaveAttribute("aria-expanded", "true")
+    expect(screen.queryByText("Requested change")).not.toBeInTheDocument()
+    expect(screen.getByTestId("file-diff").querySelector('[data-diff="del"]')).toHaveTextContent("complete selector")
+  })
+
+  it.each([["en", "No memory change.", "Request preview; the complete previous entry was not recorded."],
+    ["zh", "记忆未发生变化。", "请求片段预览；未记录完整旧条目。"]] as const)
+  ("labels unchanged and legacy memory in %s", (locale, unchanged, preview) => {
+    const previous = useApp.getState().locale
+    useApp.setState({ locale })
+    const block = toolBlock({ name: "memory", args: '{"action":"add","content":"existing note"}',
+      result: '{"success":true,"changed":false}',
+    })
+    const rendered = render(<ToolRow block={block} reveal />)
+    try {
+      expect(screen.getByText(unchanged)).toBeInTheDocument()
+      expect(screen.queryByTestId("edit-counts")).not.toBeInTheDocument()
+      rendered.rerender(<ToolRow block={{ ...block, tool: { ...block.tool!, result: '{"success":true}' } }} reveal />)
+      expect(screen.getByText(preview)).toBeInTheDocument()
+      expect(screen.getByTestId("file-diff")).toBeInTheDocument()
+    } finally {
+      rendered.unmount()
+      useApp.setState({ locale: previous })
+    }
+  })
+
   it.each([["en", "Inspect history schema"], ["zh", "查看历史数据结构"]] as const)("labels history discovery in %s", (locale, label) => {
     const previous = useApp.getState().locale
     useApp.setState({ locale })

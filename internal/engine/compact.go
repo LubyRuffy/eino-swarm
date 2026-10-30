@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -146,7 +147,9 @@ func (e *Engine) CompactThread(threadID string) (*store.Thread, error) {
 	before := e.contextChars(th)
 	older, through, candErr := e.compactCandidates(th)
 	turnID := e.lastTurnID(threadID)
-	ctx := context.Background()
+	// This path has no running-turn cancellation owner. Keep a routing
+	// refusal as one failed request rather than an unbounded recovery wait.
+	ctx := provider.WithoutRouteRecovery(context.Background())
 	// Compact is a view of the rolling session briefing when one exists.
 	// Catch-up is the caller's job (auto-compact, /goal continue); this
 	// path must not mint a second summarizer call on the conversation model

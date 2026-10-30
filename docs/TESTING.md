@@ -5672,6 +5672,15 @@ Several things are tested here, some as pure logic and some in jsdom:
   original `old_text` / `new_text`, preserving indentation and accepting empty
   or omitted replacement text as deletion. Other actions and malformed text
   fields do not invent a diff.
+- **`src/lib/memory-diff.ts`**: successful memory writes use both recorded
+  entry images, not the substring selector or today's entries. Add/remove
+  preserve the known empty side; duplicate add has no false additions. Legacy
+  results label the request-fragment preview; pending/refused calls label the
+  attempted change and retain the original error. Malformed args cannot invent
+  a hunk. `internal/memory/tool_result_test.go` checks real tool writes,
+  normalization, full substring-matched notes and snapshot-free duplicates and
+  refusals. `e2e/memory-diff.spec.ts` checks default collapse, counts, add/delete
+  rows, re-collapse, named SSE/history and reload without dumping all notes.
 - **`src/lib/shell-highlight.ts`**: an `exec` command tokenizes into
   keywords / strings / flags / variables without dropping characters; a
   too-long line falls back to plain text.
@@ -6844,13 +6853,18 @@ Directory identity regressions in `internal/engine/project_workdir_identity_test
 `frontend/src/lib/file-preview.test.ts` checks actual streamed-byte limits,
 UTF-8/binary classification, safe image MIME selection, cancellation and failed
 HTTP reads. The file-preview hook/component and Files-tab unit tests cover
-loading, refresh, conversation ownership, closing and safe text rendering.
+loading, refresh, conversation ownership, closing and safe text rendering,
+plus image zoom limits, actual-size/fit switching, disabled loading/error
+controls and reset on refresh or changing images.
 `frontend/e2e/file-preview.spec.ts` creates conversations and uploads fixture
 bytes through the real loopback API without a model turn. It opens Markdown
 from the file tree by click and Enter, checks rendered/source switching, syntax
 highlighting and Escape focus return, keeps HTML/SVG as source, verifies a
-PNG's decoded dimensions, saved MIME and unchanged download bytes, and tests
-refresh after deletion/replacement and after equal-size writes with the same
+PNG's decoded dimensions, saved MIME and unchanged download bytes. The image
+case measures actual rendered dimensions after zooming, switches between 100%
+and fit, scrolls enlarged images to their edges and checks that controls stay
+reachable in a narrow window and fit reset on refresh/reopening. The suite also
+tests refresh after deletion/replacement and after equal-size writes with the same
 Last-Modified time. A short-window case waits for the entrance animation to
 finish, checks that long GFM tables stay inside the preview, and captures the
 reached screen.
@@ -6910,8 +6924,47 @@ Generate/Stream wrappers, stream-completion observer, engine wait recording
 and call-recorder dispatch reached 100% target statement coverage in focused
 race runs. These are separate pre-integration observations, not coverage of
 the merged candidate, which requires a fresh run. The 2026-10-19 loopback 502
-browser run observed HTTP arrival gaps of 5002ms and 10003ms for the unchanged
-three-call budget; rerun that fixture for the merged candidate.
+browser run observed HTTP arrival gaps of 5002ms and 10003ms for the ordinary
+model-error three-call budget; rerun that fixture for the merged candidate.
+The immediate, confirmed gateway routing refusal below has a separate recovery
+policy and does not consume this ordinary budget.
+
+`internal/provider/route_rejection_test.go` checks the actual HTTP adapter's
+recognition of a routing refusal: status 503, a completely read JSON body of at
+most 4096 bytes, exact `error.code: provider_unavailable` and
+`error.message: no healthy provider can serve this model`, received within the
+configured first-byte budget. Other statuses, malformed/oversized bodies,
+different or missing error fields and delayed bodies retain ordinary failure
+handling. `internal/provider/route_recovery_test.go` verifies that repeated
+confirmed refusals wait through the shared origin gate in
+one logical Generate/Stream call; each HTTP attempt retains its own call record,
+and a successful probe response is consumed without another send.
+`internal/provider/route_recovery_protocol_test.go` checks the same behavior
+through Responses, origin aliases/cache invalidation, and isolated policy calls
+that neither wait nor mutate origin health. A refusal fully observed before
+Stop remains outage evidence for optional post-turn admission.
+`internal/engine/route_recovery_http_test.go` drives StartTurn, Registry, ADK and
+HTTP across more than two routing refusals, recovery, and Stop during cooldown
+or an active probe. It checks the original turn/generation identity, actual
+request count and absence of spurious model retries, generation interruptions
+or post-turn model work while waiting. No additional recovery total deadline is
+introduced; existing caller deadlines and worker watchdogs still apply.
+`internal/engine/route_unavailable_test.go` checks that unavailable-origin
+post-turn briefing/review do not send more probes or fabricate results, queued
+work rechecks the origin, healthy alternate providers still run, and explicit
+session-memory synchronization with a caller-owned context retains cancellable recovery. Manual `CompactThread` is exercised separately against a real 503 and retains its single-request failure policy. Local deterministic
+skill folding with automatic model review disabled is not suppressed. These loopback fixtures
+do not contact a real gateway or establish native acceptance.
+Post-turn briefing, memory reviews and title calls explicitly disable continuous
+route recovery while retaining shared gate admission, failure recording and
+their existing deadlines. Their first routing rejection must return without
+using those deadlines for repeated probes. Manual compact also disables route
+recovery because its background context has no active turn cancellation owner.
+`frontend/e2e/route-recovery.spec.ts` checks more than two rejected requests,
+recovery in the original working turn, reload during cooldown, retained call
+errors without model retry/generation recovery events, and Stop with no later
+request after the original cooldown. It uses a keyless loopback fixture and
+does not establish recovery against a live gateway.
 
 `internal/provider/backoff_test.go` uses `testing/synctest` to assert the actual
 5/10/20/30-second sequence without wall-clock sleeps. It covers one recovery
@@ -7118,3 +7171,12 @@ executed, and the new clock module was covered completely. The earlier baseline
 printed 95.0% but did not retain a block profile; its 0.1 percentage-point
 difference cannot be attributed to a particular pre-existing branch from those
 rounded totals alone.
+
+### Workspace web-fetch dependency regression
+
+`internal/tools/webfetch_upgrade_test.go` runs the registered `web_fetch`
+through `Build`, its advertised parameter schema and invocation/result wrappers.
+Local HTTP and a counted renderer cover DataDome routing, ordinary authorization
+errors and one-attempt failure boundaries without a browser or external site.
+The controlled renderer verifies host context/option propagation; it does not
+accept the real Rod browser path or establish protected-site access.

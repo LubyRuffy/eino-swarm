@@ -515,6 +515,18 @@ uploads, downloads and the live event stream have exactly one implementation.
   partial content released other calls, without cancelling those calls. Stop
   cancels waiting and the active request. Read-only answer classification
   uses its own candidate recovery and cannot start or wait on this shared gate.
+  A gateway 503 that explicitly reports no healthy provider within the
+  provider's first-byte budget waits for route recovery in the same model call,
+  without spending the turn's two model-error retries or marking its generation
+  interrupted. Shared probes keep the 30-second cap and their successful response
+  continues that call directly. This waiting has no additional total deadline;
+  Stop, explicit caller deadlines and worker watchdogs remain effective. Other
+  errors and accepted requests that hang retain their existing bounded retries.
+  Post-turn session briefing and automatic memory review are skipped while that
+  origin still has the route failure, without claiming notes were saved. These
+  background calls, memory reviews and titles retain their original failure
+  policy if they first discover the outage, avoiding repeated probes up to
+  their existing timeout. Manual compact keeps its original single-request failure policy.
   Trace records `model_backoff` waits separately from actual calls and retries,
   distinguishing origin cooldowns from candidate checks. PC/phone chat and
   replay show one timed explanation per conversation/cooldown generation;
@@ -852,7 +864,11 @@ What you get:
    (`~/.zwai-swarm/workspaces/<thread-id>/`). Uploads land in `uploads/`, agent
    output lands next to it, and the **Files** tab shows a collapsible tree —
    filter at the top, directories expand like a file explorer, download on
-   hover (and, in the desktop app, "Show in Finder"). The title-bar terminal
+   hover (and, in the desktop app, "Show in Finder"). Click a file or press
+   Enter to preview it. Images offer **Zoom in**, **Zoom out**, **Actual size**
+   (100%) and **Fit to window**, with the current zoom percentage shown.
+   Enlarged images scroll in both directions; refreshing or reopening restores
+   the default fit without enlarging small images. The title-bar terminal
    (⌘J, and every click on the icon) starts a real shell in that same
    directory — a project's working directory when the conversation is in one.
    The tree is the workspace

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -156,6 +157,7 @@ func (e *Engine) scheduleTitle(threadID string, turn *store.Turn, userText, fina
 func (e *Engine) runTitle(threadID string, turn *store.Turn, userText, final string) {
 	ctx, cancel := context.WithTimeout(context.Background(), titleCallTimeout)
 	defer cancel()
+	ctx = provider.WithoutRouteRecovery(ctx)
 
 	providerID, model := e.cfg.SwarmSnapshot().ResolveTitle(turn.ProviderID, turn.Model)
 	builder, err := e.pool.ModelBuilder(ctx, providerID, model, "", e.callRecorder(threadID, turn.ID))

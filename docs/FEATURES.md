@@ -87,6 +87,10 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
+- 桌面/Web 的 `memory add/replace/remove` 工具行复用 edit 的默认折叠、增删行数和红绿差异视图，展开只显示本次条目变更。新成功回执保存完整 before/after，旧记录缺快照时明确标注请求片段预览；失败保留错误和请求，重复添加显示未变化。关联 `C-025`；证据：`internal/memory/tool_result_test.go`、`frontend/src/lib/memory-diff.ts`、`frontend/src/components/app/tool-row.test.tsx`、`frontend/e2e/memory-diff.spec.ts`。
+
+- `web_fetch` 默认先 HTTP；识别带 DataDome 信号的 401/403 后，沿已有浏览器渲染路径尝试一次并保留工具代理。普通授权错误不升级，渲染失败或仍为挑战页返回失败；不保证真实站点可访问。入口与验证：`internal/tools/tools.go`、`internal/tools/webfetch_upgrade_test.go`；配置见 `docs/CONFIG.md`。
+
 - 桌面/Web 的 `skill_manage patch` 工具行默认折叠，显示新增／删除行数；展开后按差异展示原始修改前后文本，支持纯删除和再次收起。实时与历史重放使用该次调用参数，失败仍保留原错误及尝试的修改。证据：`frontend/src/lib/edit-diff.ts`、`frontend/src/lib/tool-view.ts`、`frontend/src/components/app/tool-row.test.tsx`、`frontend/e2e/skill-patch.spec.ts`。
 
 - 收取暂停后选择停止，实时聊天与 Reload／分页历史保持相同的停止展示；内部 `workers_collection_declined` 回执留在 Trace，不额外显示原始 JSON，也不依据其中的历史 running 字段复活子代理。关联 `C-003`、`C-019`；证据：`frontend/src/store/app-stream-worker-collection.test.ts`、`frontend/e2e/worker-completion.spec.ts`。
@@ -133,6 +137,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 模型故障退避：同一上游 origin 的 manager、subagent、模型及 provider 别名共享 5→10→20→30 秒封顶冷却，到期仅放行一个恢复探测；探测流交出首段已解码非空正文、推理或工具调用增量后即恢复并发，响应头、role、空 delta、usage 和错误帧不能放行。故障档位仍仅由这条探测的最终结果改变：完整成功才清零，后续截断／空闲超时等服务失败推进冷却，期间并行请求的结果不计入且不能迟到改写后继故障代。非流式 Generate 等完整结果；Chat Completions HTTP 流缺少结束标记及 finish reason 时仍为截断错误，保留已收到的 usage。Stop 可取消等待及请求，换轮次或清缓存不能绕过。等待记录进入原 turn 的 Trace，不增加自动重试次数；quiet 报告后的迟到等待不重新显示 Chat 通知。调度答复分类独立重试，不等待或影响此 origin 门。关联契约：`C-029`；实现／测试证据：`internal/provider/backoff.go`、`internal/provider/model_backoff.go`、`internal/provider/stream_completion.go`、`internal/provider/stream_completion_test.go`、`internal/provider/backoff_integration_test.go`、`internal/engine/model_backoff_test.go`、`frontend/src/lib/transcript-backoff.test.ts`。
 
+- 网关无健康 provider 恢复：首字节预算内完整返回的明确选路 503 在原逻辑模型调用内等待同 origin 探测，不消耗两次模型重试，不生成中断／恢复状态；每次真实拒绝请求保留调用记录，成功响应直接续接。该恢复没有额外总截止，Stop、调用者 deadline 和 worker watchdog 保持有效；普通 503、挂起与断流仍按原预算处理。同 origin 仍有选路故障时跳过该回合收尾摘要和自动模型记忆复查，不误报已保存；本地确定性整理保持。摘要、所有记忆复查及标题首次发现故障时保留原单次失败，不借既有 timeout 持续探测；手动 compact 没有活跃回合取消所有者，保留单次失败语义。关联契约：`C-029`；实现／测试证据：`internal/provider/route_recovery.go`、`internal/provider/route_recovery_test.go`、`internal/provider/route_rejection_test.go`、`internal/provider/route_recovery_protocol_test.go`、`internal/engine/route_recovery_http_test.go`、`internal/engine/route_unavailable_test.go`、`frontend/e2e/route-recovery.spec.ts`。
+
 ### F-135 Independent task coordination
 
 - 目的：让不同 PC 对话的管理 Agent 发现活跃任务、协商共享资源的处理顺序；使用者：PC 用户和配对手机用户；入口：manager 工具 `list_tasks`、`send_task_message`、`read_task_messages`，对话内的协作消息通知；输入：真实 conversation ID、消息和可选收件游标；输出：活跃任务的工作目录/请求/状态、持久化发送回执、来源可追溯的消息和明确回复；前置条件：同一 host 的未归档对话；失败表现：未知/归档目标、非法参数或数据库错误返回工具错误，不伪造送达；关联契约：`C-021`、`C-012`；实现证据：`internal/engine/task_coordination.go`、`internal/engine/task_coordination_flow_test.go`、`internal/store/event_kind.go`、`frontend/e2e/task-coordination.spec.ts`、`mobile/src/lib/task-message.test.ts`。
@@ -143,7 +149,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：让对话使用工作区文件和附件；使用者：PC 用户；入口：文件面板、上传及下载 API；输入：文件或图片；输出：文件、预览或模型视觉输入；前置条件：工作区和权限可用；失败表现：上传或工具错误；关联契约：`C-004`, `C-005`；实现证据：`internal/server`, `internal/tools`, `frontend/src/components/app`。
 - 图片输入：png/jpeg/gif/webp 文件在空 MIME、通用 binary 或 UTI 标签下仍进入视觉输入；显式 text/PDF 保持文件附件。客户端只归一化 MIME 声明，不改原字节，服务端继续执行真实类型与声明匹配校验。关联契约：`C-028`；证据：`frontend/src/lib/paste-image.ts`、`frontend/src/lib/paste-image.test.ts`、`frontend/src/components/app/composer-image-drop.test.tsx`、`frontend/e2e/image-input.spec.ts`。
 - 已发送图片预览：桌面与 Web 对话中的图片缩略图可点击或通过 Enter／Space 打开放大层，多图时打开点选的图片。预览沿用已保存图片地址，按原比例适配窗口；显示加载及失败状态，可通过 Esc、遮罩或关闭按钮关闭并回到缩略图焦点，刷新重载后仍可打开。关闭预览不停止正在运行的任务。关联契约：`C-028`；证据：`frontend/src/components/app/input-thumbs.tsx`、`frontend/src/components/app/input-thumbs.test.tsx`、`frontend/e2e/image-input.spec.ts`。
-- 工作区文件预览：桌面与 Web 文件树单击文件或按 Enter 打开宽幅内容窗；Markdown 默认显示文档，可切换源码，普通 UTF-8 文本与已知源码显示完整文本及适用的语法高亮，png/jpeg/gif/webp 图片按比例显示。提供复制文本、刷新、原文件下载，原生桌面仍可在文件管理器中显示文件。Esc／关闭后焦点回到文件树，切换对话或关闭取消旧读取。预览读取最多 8 MiB，超过 256 Ki 字符回退完整纯文本；文件过大、不支持或读取失败明确显示，保留下载入口。HTML/SVG 只作为转义源码，MDX 不求值；暂不解析相对当前文档目录的链接和图片资源。关联契约：`C-004`、`C-005`；证据：`frontend/src/components/app/file-preview.tsx`、`frontend/src/lib/file-preview.ts`、`frontend/src/lib/use-file-preview.ts`、`frontend/src/components/app/files-tab.test.tsx`、`frontend/src/lib/file-preview.test.ts`、`frontend/e2e/file-preview.spec.ts`。
+- 工作区文件预览：桌面与 Web 文件树单击文件或按 Enter 打开宽幅内容窗；Markdown 默认显示文档，可切换源码，普通 UTF-8 文本与已知源码显示完整文本及适用的语法高亮，png/jpeg/gif/webp 图片按比例显示。图片提供放大、缩小、当前缩放比例、原始大小（100%）和适应窗口按钮；默认适配窗口且不放大小图，手动缩放范围为 10%—400%（超大图初始适配可低于 10%），超出视口时可横纵滚动。刷新、换图或重新打开恢复默认适配，加载中或解码失败时不能缩放；缩放不改变原图和下载字节。提供复制文本、刷新、原文件下载，原生桌面仍可在文件管理器中显示文件。Esc／关闭后焦点回到文件树，切换对话或关闭取消旧读取。预览读取最多 8 MiB，超过 256 Ki 字符回退完整纯文本；文件过大、不支持或读取失败明确显示，保留下载入口。HTML/SVG 只作为转义源码，MDX 不求值；暂不解析相对当前文档目录的链接和图片资源。关联契约：`C-004`、`C-005`；证据：`frontend/src/components/app/file-preview.tsx`、`frontend/src/lib/file-preview.ts`、`frontend/src/lib/use-file-preview.ts`、`frontend/src/components/app/files-tab.test.tsx`、`frontend/src/lib/file-preview.test.ts`、`frontend/e2e/file-preview.spec.ts`。
 
 ### F-145 Durable composer drafts
 

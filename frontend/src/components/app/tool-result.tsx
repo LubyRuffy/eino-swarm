@@ -72,11 +72,12 @@ function ParsedBody({
           {view.error}
         </p>
       ) : null}
+      {view.noticeKey ? <p className="text-muted-foreground">{t(view.noticeKey)}</p> : null}
       {view.hits ? <SearchHits hits={view.hits} /> : null}
       {diff ? <EditDiffView diff={diff} /> : view.body ? (
         <OutputPre text={applyCarriageReturns(view.body)} failed={view.failed && !view.error} follow={follow} />
       ) : null}
-      {!view.body && !view.hits && !view.error && !diff ? (
+      {!view.body && !view.hits && !view.error && !diff && !view.noticeKey ? (
         <p className="text-muted-foreground">{t("tool.noOutput")}</p>
       ) : null}
     </div>

@@ -77,7 +77,7 @@ for (const extension of ["html", "svg"]) {
   })
 }
 
-test("previews a decoded workspace image and downloads its unchanged bytes", async ({ page }, info) => {
+test("zooms a decoded workspace image, restores its fit and downloads unchanged bytes", async ({ page }, info) => {
   const { tree, threadId, path } = await workspace(page, info.title, "landscape.png", imageBytes, "image/png")
   const saved = await page.request.get(`/api/threads/${threadId}/download/${path.split("/").map(encodeURIComponent).join("/")}`)
   expect(saved.ok()).toBe(true)
@@ -89,6 +89,87 @@ test("previews a decoded workspace image and downloads its unchanged bytes", asy
   await expect(image).toBeVisible()
   await expect.poll(() => image.evaluate((element: HTMLImageElement) => [element.naturalWidth, element.naturalHeight]))
     .toEqual([imageBytes.readUInt32BE(16), imageBytes.readUInt32BE(20)])
+  await expect.poll(() => preview.evaluate((element) =>
+    element.getAnimations().every((animation) => animation.playState !== "running"),
+  )).toBe(true)
+  const viewport = preview.getByTestId("image-preview-viewport")
+  const level = preview.getByLabel("Zoom level", { exact: true })
+  const zoomIn = preview.getByRole("button", { name: "Zoom in", exact: true })
+  const zoomOut = preview.getByRole("button", { name: "Zoom out", exact: true })
+  const actualSize = preview.getByRole("button", { name: "Actual size", exact: true })
+  const fit = preview.getByRole("button", { name: "Fit to window", exact: true })
+  await expect(zoomIn).toBeEnabled()
+  const fittedSize = await image.boundingBox()
+  const fittedLevel = await level.textContent()
+  expect(fittedSize).toBeTruthy()
+  expect(fittedSize!.width).toBeLessThanOrEqual(1200)
+  expect(fittedSize!.height).toBeLessThanOrEqual(800)
+  expect(fittedSize!.width / fittedSize!.height).toBeCloseTo(1.5, 2)
+  const initialViewport = await viewport.boundingBox()
+  expect(initialViewport).toBeTruthy()
+  expect(fittedSize!.width).toBeLessThanOrEqual(initialViewport!.width + 1)
+  expect(fittedSize!.height).toBeLessThanOrEqual(initialViewport!.height + 1)
+
+  await zoomIn.click()
+  await expect.poll(async () => (await image.boundingBox())!.width).toBeGreaterThan(fittedSize!.width)
+  const enlargedSize = await image.boundingBox()
+  expect(enlargedSize!.width / enlargedSize!.height).toBeCloseTo(1.5, 2)
+  await zoomOut.click()
+  await expect.poll(async () => (await image.boundingBox())!.width).toBeLessThan(enlargedSize!.width)
+  await actualSize.click()
+  await expect(level).toHaveText("100%")
+  await expect.poll(() => image.evaluate((element) => [element.getBoundingClientRect().width, element.getBoundingClientRect().height]))
+    .toEqual([1200, 800])
+
+  for (let clicks = 0; clicks < 60 && await zoomIn.isEnabled(); clicks++) await zoomIn.click()
+  await expect(zoomIn).toBeDisabled()
+  await expect(level).toHaveText("400%")
+  await expect.poll(() => image.evaluate((element) => [element.getBoundingClientRect().width, element.getBoundingClientRect().height]))
+    .toEqual([4800, 3200])
+  const overflow = await viewport.evaluate((element) => ({
+    width: element.scrollWidth, height: element.scrollHeight, clientWidth: element.clientWidth, clientHeight: element.clientHeight,
+  }))
+  expect(overflow.width).toBeGreaterThan(overflow.clientWidth)
+  expect(overflow.height).toBeGreaterThan(overflow.clientHeight)
+  await viewport.evaluate((element) => { element.scrollLeft = element.scrollWidth; element.scrollTop = element.scrollHeight })
+  const corner = await viewport.evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+    const image = element.querySelector("img")!.getBoundingClientRect()
+    return { x: element.scrollLeft, y: element.scrollTop, right: image.right, bottom: image.bottom,
+      left: bounds.left, top: bounds.top, viewportRight: bounds.left + element.clientWidth, viewportBottom: bounds.top + element.clientHeight }
+  })
+  expect(corner.x).toBeGreaterThan(0)
+  expect(corner.y).toBeGreaterThan(0)
+  expect(corner.right).toBeGreaterThan(corner.left)
+  expect(corner.bottom).toBeGreaterThan(corner.top)
+  expect(corner.right).toBeLessThanOrEqual(corner.viewportRight + 1)
+  expect(corner.bottom).toBeLessThanOrEqual(corner.viewportBottom + 1)
+  writeFileSync(info.outputPath("image-preview-zoomed.png"), await page.screenshot(), { mode: 0o600 })
+
+  for (let clicks = 0; clicks < 60 && await zoomOut.isEnabled(); clicks++) await zoomOut.click()
+  await expect(zoomOut).toBeDisabled()
+  await expect(level).toHaveText("10%")
+  await expect.poll(() => image.evaluate((element) => [element.getBoundingClientRect().width, element.getBoundingClientRect().height]))
+    .toEqual([120, 80])
+  await fit.click()
+  await expect(level).toHaveText(fittedLevel!)
+  await expect.poll(async () => (await image.boundingBox())!.width).toBeCloseTo(fittedSize!.width, 0)
+  await expect.poll(() => viewport.evaluate((element) => [element.scrollLeft, element.scrollTop])).toEqual([0, 0])
+
+  await actualSize.click()
+  const oldImageURL = await image.getAttribute("src")
+  await preview.getByRole("button", { name: "Refresh", exact: true }).click()
+  await expect(image).toBeVisible()
+  await expect(image).not.toHaveAttribute("src", oldImageURL!)
+  await expect(level).toHaveText(fittedLevel!)
+  await expect.poll(async () => (await image.boundingBox())!.width).toBeCloseTo(fittedSize!.width, 0)
+  await actualSize.click()
+  await page.keyboard.press("Escape")
+  await expect(preview).toBeHidden()
+  await expect(tree).toBeFocused()
+  await tree.press("Enter")
+  await expect(level).toHaveText(fittedLevel!)
+
   const downloaded = page.waitForEvent("download")
   await preview.locator("a[download]").click()
   const download = await downloaded
@@ -96,6 +177,53 @@ test("previews a decoded workspace image and downloads its unchanged bytes", asy
   const downloadedPath = await download.path()
   expect(downloadedPath).toBeTruthy()
   expect(readFileSync(downloadedPath!)).toEqual(imageBytes)
+  await page.keyboard.press("Escape")
+  await page.reload()
+  await page.getByTestId("dest-chats").click()
+  await page.getByRole("button", { name: info.title, exact: true }).click()
+  await page.getByRole("tab", { name: "Files", exact: true }).click()
+  await tree.getByRole("treeitem", { name: "landscape.png", exact: true }).click()
+  await expect.poll(() => image.evaluate((element: HTMLImageElement) => [element.naturalWidth, element.naturalHeight]))
+    .toEqual([1200, 800])
+  const reloaded = await page.request.get(`/api/threads/${threadId}/download/${path.split("/").map(encodeURIComponent).join("/")}`)
+  expect(reloaded.headers()["content-type"]).toMatch(/^image\/png(?:;|$)/)
+  expect(await reloaded.body()).toEqual(imageBytes)
+
+  await page.setViewportSize({ width: 480, height: 720 })
+  await fit.click()
+  const narrowPreview = await preview.boundingBox()
+  expect(narrowPreview).toBeTruthy()
+  expect(narrowPreview!.x).toBeGreaterThanOrEqual(0)
+  expect(narrowPreview!.x + narrowPreview!.width).toBeLessThanOrEqual(481)
+  for (const control of [zoomIn, zoomOut, actualSize, fit, level, preview.locator("a[download]")]) {
+    await expect(control).toBeVisible()
+    const bounds = await control.boundingBox()
+    expect(bounds!.x).toBeGreaterThanOrEqual(narrowPreview!.x)
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(narrowPreview!.x + narrowPreview!.width + 1)
+  }
+  const narrowImage = await image.boundingBox()
+  const narrowViewport = await viewport.boundingBox()
+  expect(narrowImage!.width).toBeLessThanOrEqual(narrowViewport!.width + 1)
+  expect(narrowImage!.height).toBeLessThanOrEqual(narrowViewport!.height + 1)
+  writeFileSync(info.outputPath("image-preview-narrow.png"), await page.screenshot(), { mode: 0o600 })
+})
+
+test("does not offer working zoom controls for an image that cannot decode", async ({ page }, info) => {
+  const { tree } = await workspace(page, info.title, "broken.png", imageBytes, "image/png")
+  await page.route("**/download/**", (route) => route.fulfill({
+    status: 200, contentType: "image/png", body: Buffer.from("invalid image bytes"),
+  }))
+  await tree.getByRole("treeitem", { name: "broken.png", exact: true }).click()
+  const preview = page.getByTestId("file-preview")
+  await expect(preview.getByRole("alert")).toBeVisible()
+  for (const name of ["Zoom in", "Zoom out", "Actual size", "Fit to window"]) {
+    const button = preview.getByRole("button", { name, exact: true })
+    if (await button.count()) await expect(button).toBeDisabled()
+  }
+  await expect(preview.locator("a[download]")).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(preview).toBeHidden()
+  await expect(tree).toBeFocused()
 })
 
 test("refreshing a removed file shows its failure and can read its replacement", async ({ page }, info) => {

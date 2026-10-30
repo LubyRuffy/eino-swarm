@@ -200,6 +200,28 @@ adapter emits its finish reason. A connection ending after a partial answer cann
 reset failures. Catalog discovery and embeddings
 keep their existing request policies. See `C-029` in `docs/CONTRACTS.md`.
 
+An immediate gateway route refusal has a separate recovery policy: HTTP 503
+`provider_unavailable` with the exact message `no healthy provider can serve this
+model`, fully returned within this provider's first-byte budget, keeps the same
+logical model call waiting through the shared cooldown. These probes do not
+consume the turn's two model-error retries. Each actual HTTP rejection is still
+recorded, and a successful probe's response continues the original call without
+another send. Recovery has no additional total deadline or YAML field: it ends
+on success, a different error, or caller cancellation. Stop interrupts both the
+wait and active request; an explicit caller deadline and the worker watchdog
+remain effective. The header, stream-idle and gateway body timeouts are separate
+per-request budgets. Other 503s, request hangs and broken streams retain the
+ordinary bounded retry policy. While this origin remains in route failure,
+post-turn session briefing and automatic memory review are skipped rather than
+started as additional probes; this does not report notes as saved. Local
+deterministic skill folding remains available. Post-turn briefing, all memory
+reviews (including Review now), and conversation/schedule titles keep their
+original single-request failure policy while still participating in shared
+cooldown. If one first discovers the routing outage, it records that rejection
+without repeatedly probing until its existing timeout. Manual compact keeps its
+original single-request failure policy because it has no active turn
+cancellation owner.
+
 Scheduling-answer classification uses the conversation's provider and these
 same response-header/body-idle budgets, without a separate 30-second total
 deadline. Classification completely bypasses the shared origin gate and the HTTP
@@ -365,6 +387,14 @@ system prompt, so the model does not plan around a tool it cannot call.
 | `result_max_chars` | `40000` | most characters one workspace tool call (read, ls, tree, glob, grep, exec, web tools, …) puts in the model's context. A longer text result keeps its first two thirds and last third around a notice that names how many characters were omitted and asks the agent to narrow the path or pattern, filter the output, or read a range. A result stays in the conversation and is resent on every later call of the turn, so this is a per-call cost. `exec` without its own `max_output_kb` gets a per-stream capture budget of half this cap. The result cap then measures the complete JSON encoding, shortening stream text at Unicode boundaries while keeping both ends and setting `truncated`; it never cuts the JSON document. An explicit `max_output_kb` still limits capture, but does not bypass the final context cap. If metadata alone exceeds the cap, the result's `full_command` copy can also be shortened; the call arguments retain the actual command. Status, error and path metadata remain intact and form a soft minimum for an extremely small cap. Zero or negative is repaired to the default. Editable as **Tools → Tool result limit**. |
 | `proxy.http` / `proxy.https` | empty | outbound proxy for the network tools (`web_search`, `web_fetch`). |
 | `proxy.no_proxy` | empty | comma-separated hosts that bypass the proxy. |
+
+`web_fetch` starts with HTTP. A 401/403 carrying DataDome response signals
+triggers one attempt through its existing browser renderer without requiring
+`render: true`; it uses the configured tool proxy and needs an available
+Chromium browser. A plain authorization failure does not trigger that fallback.
+If rendering fails or still returns a challenge, the tool returns a failure
+result rather than challenge text as successful page content. This behavior
+does not guarantee access to a protected site.
 
 Tool paths resolve against the conversation's workspace, but the workspace is not
 a boundary: an absolute path or a `..` reaches outside it and `exec` runs as you.

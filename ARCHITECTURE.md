@@ -611,6 +611,14 @@ test clock and is imported only by tests.
 | `cmd/zwai` | subcommand table: `desktop`, `web`, `engine`, `tui`, `trace`, `config`. `desktop` / `web` / `tui` call `ensureEngine` and attach. `engine` is the process that holds the lock. |
 | `frontend/` | React + TypeScript + Tailwind + shadcn/ui. `go:embed` in `frontend/embed.go` is the shipped binary; from a checkout `frontend.Load` rebuilds `dist/` when the sources changed (`//go:generate go run generate.go`, same path as `make frontend`) and returns that directory, because embed is a compile-time snapshot and a clone only has `dist/.gitkeep`. The HTTP server copies the tree into memory at start so a later Vite rebuild cannot delete hashed JS out from under a live window, and a missing `/assets/*` file is a 404 rather than the SPA shell (WebKit will not execute HTML as a module). `npm install` uses `registry.npmjs.org` (project `.npmrc`) so a user-level mirror cannot write lockfile tarball hosts that npm 12 then refuses as remote packages. Chrome strings go through `frontend/src/lib/i18n.ts` (`en` / `zh`); the pin is `ui.locale` in `config.yaml` plus a `localStorage` cache, because desktop binds a random loopback. Typeface, size and conversation column width ride `ui.font` / `ui.ui_font_size` / `ui.font_size` / `ui.content_width` the same way. `ui.palette` (`zwai` / `fofa`) swaps the named color set (`html[data-palette]`; FOFA is DESIGN 7.2 / fofa.info); light / dark is still the app-menu pin. `ui_font_size` scales chrome (`--chrome-font-size`) and directory row/gap density; `font_size` scales conversation text (`--ui-font-size`) and must not pack the list. The title-bar width control (and ⌘K) flips `content_width` between the reading column and a fill that sits against the sidebars. A leftmost rail switches Projects (the default list), Conversations, Scheduled, and Clients; those lists are not stacked in one scroll or drawn over the task. Projects is pinned topics (`PATCH pinned`) plus project folders with nested conversations. Conversations is the no-project list, and New conversation is only on that list. Boot leaves the center on the home page with no conversation selected and leaves the rail on the last list. `⌘B` hides the list column and leaves the rail. **Scheduled** (a page trigger with no unread count on the icon, not a fold; `aria-current="page"` while open; the wait list is that nav column and the editor is the task column; the conversation Agents/Files/Trace rail stays off, like Settings; New task opens the task column (task description, Details Runs in + Project, Frequency; a short inbox name is generated; Expand hides the list so a long instruction is readable); `skipped_busy` alerts on the page). Schedule state lives in `frontend/src/store/app-schedule.ts` so `App.tsx` does not re-render for the inbox. An active thread wake on the open conversation is a one-line composer pin next to `/goal` (named Run now / Cancel wait as icon controls). The armed-wait notice still labels those two actions. The banner hides while that conversation is working. The sidebar listing tick also refreshes `GET /api/schedules` (a dropped GET does not toast) so a replayed arm chip cannot freeze the banner on the first `next_run_at`; a later GET or fire wins. `schedule_skipped` refreshes that list too — a busy tick advances the due time. A parked wait still marks the sidebar row with a breathing clock (`waitingThreadIds`, listing `waiting`) and the title bar says Waiting instead of Idle (`status.waiting`, kept across `done`); a live turn on that row still uses the progress dot. A conversation blocked on `ask_user` uses a pinging question mark (`askingThreadIds` / `thread.awaiting_answer`) and the title bar says **Your turn** instead of Working — the working pulse means the swarm is busy, not that the human has to pick. A project folder or Recents shows the five conversations active in the last seven days; the rest sit behind Show more. A project folder icon is the fold control (open vs closed directory). A running conversation's progress occupies that same column. A folder that contains a running conversation or a parked wait stays open like the active one, so the mark is visible without clicking in; an explicitly collapsed folder keeps a progress mark (or the wait clock, or the ask ping) on the directory glyph. Reorder is a title drag past 8px, with no grip glyph. Section headers and folders remember expand/collapse in `localStorage`. Skills stay behind `GET /api/projects/:id/skills/:name` and the Memory tab; `GET /api/projects` still carries the skill index for that panel. A drop in the sidebar is `PUT /api/threads/reorder` or `PUT /api/projects/reorder` (a click selects; a drag past 8px reorders, including from the title). The title-bar terminal (⌘J) is a bottom PTY; each click starts a new session whose working directory is the open conversation's workspace (the project's directory when it has one). |
 
+Workspace `web_fetch` keeps the upstream HTTP-first path and the host
+parameter/result wrappers. A DataDome-signalled HTTP 401/403 may invoke its
+existing browser renderer once, carrying `tools.proxy`; ordinary authorization
+errors remain failures. Render errors and challenge pages remain failed tool
+results. The host adds no browser service, challenge handler or prompt override.
+`internal/tools/webfetch_upgrade_test.go` covers the host-facing schema and
+invocation wrappers with local HTTP and a controlled renderer.
+
 ## Model service recovery
 
 Chat requests obtained from `provider.Pool` share an in-process recovery gate
@@ -638,7 +646,31 @@ Settings invalidate clients, not gates.
 The adapter's one header-timeout reconnect releases its failed permit and
 waits at the same gate before resending. Response-header budgets start at the
 actual HTTP attempt, after admission; the caller's context still bounds the whole
-operation. No retry count is added. Per-agent
+operation. This gate does not increase the ordinary model-error retry budget.
+An HTTP-layer-confirmed 503 `provider_unavailable` with the exact message
+`no healthy provider can serve this model`, fully received within the provider's
+first-byte budget, has a separate route-recovery policy. Before Generate returns
+or Stream is established, the recording wrapper keeps the same logical call
+waiting and probes through this gate without consuming the manager's two
+model-error retries or publishing interrupted/recovered generation events.
+Every actual rejected request retains its own call record. The probe sends the
+original model request and delivers its successful response directly; it adds
+neither a health endpoint nor a second request after success.
+Route recovery has no additional total deadline: success, a different error or
+caller cancellation ends it. Stop cancels waits and requests; explicit caller
+deadlines and worker watchdogs still apply. Per-request header/idle timeouts and
+the gateway's body limit do not define this recovery period. Ordinary 503s,
+accepted requests that hang, and stream failures keep the existing bounded
+model-error retries. Post-turn session briefing and automatic memory review are
+skipped while their origin still has this route outage; a skipped review is not
+a successful review or saved notes. Post-turn briefing, all memory reviews, and
+conversation/schedule titles use `WithoutRouteRecovery`: they still participate
+in shared admission and record real failures, but a routing refusal returns
+without repeatedly probing up to their existing timeout. Manual compact also
+disables continuous route recovery because it has no active turn cancellation
+owner. Context-owned session briefing and auto-compact retain cancellable
+recovery. Isolated policy classification bypasses this
+route-recovery loop as well as the shared gate. Per-agent
 recorders persist `model_backoff` waits on the original turn separately from
 LLM calls. Origin waits carry `scope: "origin"` and an opaque, process-local
 `cooldown_id` shared by every role waiting in that generation. PC/phone chat
@@ -1528,6 +1560,14 @@ diff, reconstructed from the recorded `old_text` / `new_text` with the skill
 name as its label. Empty or omitted `new_text` shows deletion. History uses
 that original call, never the current skill file. A failed patch retains its
 refusal above the attempted change, as a failed edit does.
+`memory` add/replace/remove uses that same disclosure and highlighted diff.
+Successful writes return complete `before` / `after` entry images, including an
+empty side for add/remove; the old image is captured under the store write lock,
+because `old_text` identifies a note by substring. The body shows only that
+change, not the usage and complete entry list. Historical results without both
+images show an explicitly labelled request-fragment preview. Pending and refused
+calls label the attempted change; refusals retain their error. A duplicate add
+(`changed: false`) shows no change rather than an invented addition.
 A turn that ends (`done` / `error`, including a user interrupt) or an
 agent that `finished` closes any tool still `pending`: interrupt cancels
 in-flight calls without a `tool_result`, and leaving them pending keeps the
