@@ -53,7 +53,7 @@ func TestScheduleTimeCorrectionUsesTheArmedRowWithoutRearming(t *testing.T) {
 					}
 					quote := candidate.Messages[0]
 					at := strings.TrimSuffix(strings.TrimPrefix(quote, "A future check is armed at "), ".")
-					body, _ := json.Marshal(map[string]any{"claims": []map[string]any{{"quote": quote, "stance": "affirmed", "temporal": "current", "attribution": "assistant", "scope": "thread", "new": true, "next_run_at": at}}})
+					body, _ := json.Marshal(map[string]any{"claims": []map[string]any{{"quote": quote, "stance": "affirmed", "temporal": "current", "attribution": "assistant", "scope": "unspecified", "new": true, "next_run_at": at}}})
 					writeContextFlowReply(w, false, map[string]any{"content": string(body)}, "stop")
 					return
 				}

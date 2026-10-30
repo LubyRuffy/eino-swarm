@@ -197,6 +197,20 @@ denials, status-only reports, relayed human prohibitions and ended/cancelled
 historical waits do not assert an armed wait. Quotes retain their contiguous
 semantic context rather than isolating an affirmative fragment. Missing or
 invalid classification fields retry the original candidate as malformed output.
+Scope has three values: `thread`, `independent` and `unspecified`. The classifier
+must use `unspecified` when the prose does not identify a destination; cron or
+recurrence alone does not identify one. A specific scope needs an exact
+`scope_quote` from the claim's passage, and a claimed schedule ID must occur in
+that passage. The policy request remains limited to candidate `messages` and
+`now`, without injecting a schedule inventory. Code checks an explicit ID against
+the persisted object together with any explicitly stated scope. Without an
+ID or explicit scope, the claim must have exactly one object satisfying all
+state, cadence, time and ownership requirements. Multiple matches refuse with
+`no_matching_schedule` and `unmatched.mismatched:["ambiguous_identity"]` through
+the existing one-correction path. Its correction requires an existing ID or
+removal of the assertion and forbids scheduling again to justify the prose.
+An explicitly separate job cannot be supported
+by a thread wake. These checks do not arm, replace or repair a schedule.
 The classifier still interprets prose; these structural checks do not prove
 an external model's semantic accuracy. Code checks eligible claims against
 persisted schedule rows, current state and turn ownership before publishing

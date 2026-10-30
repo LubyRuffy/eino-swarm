@@ -474,6 +474,16 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-150`, `F-160`, `C-009` (Issue #132): schedule-claim admission preserves an
+  unspecified destination instead of inferring an independent job from a cron
+  or recurring check. Explicit scopes require a quoted scope witness, and an
+  extracted schedule ID must occur in the claim's passage. Code binds the
+  exact persisted object and checks explicit scope, state, cadence, time
+  and current-turn receipts. Generic claims with multiple eligible objects
+  refuse with `no_matching_schedule` and structural `ambiguous_identity`, using
+  the existing single correction. Verification does not rearm waits or publish
+  private candidate passages.
+
 - Phone reasoning-only groups use one initially closed Thought control, removing
   the extra activity-summary layer. Mixed tool groups keep their work summary,
   and the same thought retains its disclosure choice as tools join or leave

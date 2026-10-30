@@ -507,6 +507,22 @@ is used in regression tests. Structured classification
 requires stance, time and attribution; nonaffirmative, noncurrent and reported
 items cannot require a matching armed plan. These offline fixtures prove the
 protocol and runtime boundary, not an external model's semantic accuracy.
+`internal/engine/schedule_answer_identity_test.go` and
+`internal/engine/schedule_answer_identity_boundary_test.go` cover the three-value scope
+protocol and the real Registry/HTTP answer boundary (Issue #132). A recurring
+thread wake can support an assertion that does not specify a destination;
+recurrence alone must not fabricate an independent job. Specific scopes require
+an exact `scope_quote` within the claim's passage, and any extracted ID must
+occur in that passage. An exact ID resolves to its persisted object while an
+explicitly incompatible scope still refuses. A generic claim without an ID or
+scope must match exactly one eligible object: multiple matches retain
+`no_matching_schedule`, the structural `ambiguous_identity` diagnosis and the
+existing single correction. The actual next manager input must ask for an
+existing ID or removal of the assertion and forbid scheduling to justify it.
+Counterexamples retain unknown IDs, another
+conversation's objects, inactive rows, mismatched cadence/time and missing
+current-turn receipts as refusals. Policy input remains `messages` plus `now`;
+private `quote` and `scope_quote` never enter public Trace or correction text.
 `internal/engine/goal_schedule_claim_test.go` checks the real Registry/HTTP
 path for failed and corrected scheduling claims, automatic goal continuation
 and a durable three-failure cap. It keeps `goal_blocked` false, the original

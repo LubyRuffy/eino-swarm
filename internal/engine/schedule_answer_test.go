@@ -15,27 +15,28 @@ import (
 )
 
 func TestScheduleClaimDecoderRequiresGroundedStructuredMeaning(t *testing.T) {
-	const text = "A new future check is armed."
+	const text = "A new future check is armed. A separate scheduled job remains armed. This conversation has an armed wake."
 	for _, tc := range []struct {
 		name, body string
 		valid      bool
 	}{
 		{"none", `{"claims":[]}`, true},
-		{"claim", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"A new future check is armed.","scope":"thread","new":true}]}`, true},
-		{"independent", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"future check","scope":"independent","new":false,"next_run_at":"2026-10-23T01:00:00Z"}]}`, true},
+		{"claim", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"A new future check is armed.","scope":"unspecified","new":true}]}`, true},
+		{"thread", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"This conversation has an armed wake.","scope":"thread","scope_quote":"This conversation","new":false}]}`, true},
+		{"independent", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"A separate scheduled job remains armed.","scope":"independent","scope_quote":"separate scheduled job","new":false,"next_run_at":"2026-10-23T01:00:00Z"}]}`, true},
 		{"missing-list", `{}`, false},
-		{"missing-meaning", `{"claims":[{"quote":"A new future check is armed.","scope":"thread","new":true}]}`, false},
+		{"missing-meaning", `{"claims":[{"quote":"A new future check is armed.","scope":"unspecified","new":true}]}`, false},
 		{"null-list", `{"claims":null}`, false},
 		{"unknown", `{"claims":[],"authorized":true}`, false},
 		{"trailing", `{"claims":[]} {}`, false},
 		{"invalid-json", `{`, false},
-		{"invented-quote", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"invented","scope":"thread","new":true}]}`, false},
-		{"blank-quote", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":" ","scope":"thread","new":true}]}`, false},
-		{"missing-new", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"future check","scope":"thread"}]}`, false},
+		{"invented-quote", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"invented","scope":"unspecified","new":true}]}`, false},
+		{"blank-quote", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":" ","scope":"unspecified","new":true}]}`, false},
+		{"missing-new", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"future check","scope":"unspecified"}]}`, false},
 		{"unknown-scope", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"future check","scope":"goal","new":true}]}`, false},
-		{"negative-delay", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"future check","scope":"thread","new":true,"delay_s":-1}]}`, false},
-		{"negative-interval", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"future check","scope":"thread","new":true,"every_s":-1}]}`, false},
-		{"invalid-time", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"future check","scope":"thread","new":true,"next_run_at":"tomorrow"}]}`, false},
+		{"negative-delay", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"future check","scope":"unspecified","new":true,"delay_s":-1}]}`, false},
+		{"negative-interval", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"future check","scope":"unspecified","new":true,"every_s":-1}]}`, false},
+		{"invalid-time", `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"future check","scope":"unspecified","new":true,"next_run_at":"tomorrow"}]}`, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := decodeScheduleAnswer(schema.AssistantMessage(tc.body, nil), []string{text})
@@ -177,7 +178,7 @@ func TestDecodedScheduleClaimTimeToleranceHandlesDistantDates(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			body, err := json.Marshal(map[string]any{"claims": []scheduleAnswerClaim{{
 				Quote: text, Stance: "affirmed", Temporal: "current", Attribution: "assistant",
-				Scope: "thread", New: &existing, NextRunAt: tc.stated.Format(time.RFC3339Nano),
+				Scope: "unspecified", New: &existing, NextRunAt: tc.stated.Format(time.RFC3339Nano),
 			}}})
 			if err != nil {
 				t.Fatal(err)
@@ -277,7 +278,7 @@ func TestScheduleAnswerUnknownAuthorityFailsClosed(t *testing.T) {
 					if err := e.store.DB().Exec("ALTER TABLE " + boundary + " RENAME TO hidden_answer_table").Error; err != nil {
 						t.Error(err)
 					}
-					writeContextFlowReply(w, false, map[string]any{"content": `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureScheduleClaim + `","scope":"thread","new":true}]}`}, "stop")
+					writeContextFlowReply(w, false, map[string]any{"content": `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureScheduleClaim + `","scope":"thread","scope_quote":"on this conversation","new":true}]}`}, "stop")
 				}))
 				t.Cleanup(endpoint.Close)
 				e.cfg.Models.Providers[0].BaseURL = endpoint.URL

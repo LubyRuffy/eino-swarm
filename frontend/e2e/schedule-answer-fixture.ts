@@ -48,7 +48,7 @@ export async function startScheduleAnswerFixture({ secondPolicyDelayMS = 0, seco
           // Delay headers to exercise the configured non-streaming first-byte
           // budget, independently of the shorter response-body idle budget.
           if (checks === secondPolicyFailures.length + 2 && secondPolicyDelayMS > 0) await delay(secondPolicyDelayMS)
-          policy(res, { claims: [{ quote: checks === 1 || uncorrected ? unsupportedScheduleAnswer : verifiedScheduleAnswer, scope: "thread", new: true, every_s: 90,
+          policy(res, { claims: [{ quote: checks === 1 || uncorrected ? unsupportedScheduleAnswer : verifiedScheduleAnswer, scope: "unspecified", new: true, every_s: 90,
             stance: "affirmed", temporal: "current", attribution: "assistant" }] })
           return
         }

@@ -126,7 +126,7 @@ func newScheduleAnswerFixture(t *testing.T, mode string, correct bool) (*Engine,
 			if req.Stream || len(req.Tools) != 0 || len(req.Messages) != 2 {
 				t.Errorf("claim extractor has tools/replay: %+v", req)
 			}
-			claims := `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureScheduleClaim + `","scope":"thread","new":true,"every_s":90}]}`
+			claims := `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureScheduleClaim + `","scope":"thread","scope_quote":"on this conversation","new":true,"every_s":90}]}`
 			if correct && n > 1 {
 				claims = `{"claims":[]}`
 			}
