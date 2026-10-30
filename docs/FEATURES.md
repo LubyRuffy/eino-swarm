@@ -349,6 +349,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
+- 初始原生 readiness 对已完整落证且精确匹配当前调用的 `AXRole`／`kAXErrorCannotComplete` 可在原共享期限内重新取得完整 snapshot；失败图不进入窗口／输入证明，其他未知与输入失败不重试。helper 保留严格 Role／Children 首错和当前进程 AX 消息默认上限。关联契约：`C-031`；证据：`tools/native_macos_smoke.py`、`tools/native_macos_ax.m`、`tools/test_native_macos_initial_observation.py`；来源：Issue #135。
+
 - 已分配未公开批次可在 main 后续前进时，从包含完整冻结工作集的原源码恢复同一版本；发布入口验证分配／范围／祖先身份，保留原生、安装包、签名、State 和远端版本门禁。新分配仍使用最新完整 main；后续改动不进入旧批次。关联契约：`C-010`；证据：`tools/release.py`、`tools/test_release_public_recovery.py`、`docs/RELEASE.md`；来源：Issue #134。
 
 - 发布版本建议：`python3 tools/next_release_version.py` 只读查询远端数字 tags、含 draft 的全部 Release 和已分配批次，按数字组件建议下一个有效 patch 版本；未知基线、无效台账或远端读取失败明确拒绝。建议不占用版本、不改源码或台账；发布重试复用已冻结版本，实际发布仍须原生验收与并发版本预检。关联契约：`C-010`；证据：`tools/next_release_version.py`、`tools/test_next_release_version.py`、`docs/RELEASE.md`。
