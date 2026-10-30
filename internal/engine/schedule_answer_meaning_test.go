@@ -25,7 +25,7 @@ func TestScheduleAnswerMeaningExcludesNonCurrentOrReportedAssertions(t *testing.
 		{"human-policy", "affirmed", "current", "reported"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			claim := map[string]any{"quote": "complete assertion", "scope": "thread", "new": true,
+			claim := map[string]any{"quote": "complete assertion", "scope": "unspecified", "new": true,
 				"stance": tc.stance, "temporal": tc.temporal, "attribution": tc.attribution}
 			body, _ := json.Marshal(map[string]any{"claims": []any{claim}})
 			claims, err := decodeScheduleAnswer(schema.AssistantMessage(string(body), nil), []string{"complete assertion"})
@@ -40,7 +40,7 @@ func TestScheduleAnswerMeaningExcludesNonCurrentOrReportedAssertions(t *testing.
 	}
 	for _, field := range []string{"stance", "temporal", "attribution"} {
 		for _, invalid := range []any{nil, "unknown", true} {
-			claim := map[string]any{"quote": "complete assertion", "scope": "thread", "new": true,
+			claim := map[string]any{"quote": "complete assertion", "scope": "unspecified", "new": true,
 				"stance": "affirmed", "temporal": "current", "attribution": "assistant"}
 			claim[field] = invalid
 			body, _ := json.Marshal(map[string]any{"claims": []any{claim}})
@@ -84,7 +84,7 @@ func TestNonClaimMeaningPublishesThroughRegistryAndHTTPWithoutGoalBlock(t *testi
 					}
 					claims := []any{}
 					if tc.stance != "" {
-						claims = append(claims, map[string]any{"quote": tc.text, "scope": "thread", "new": true,
+						claims = append(claims, map[string]any{"quote": tc.text, "scope": "unspecified", "new": true,
 							"stance": tc.stance, "temporal": tc.temporal, "attribution": tc.attribution})
 					}
 					body, _ := json.Marshal(map[string]any{"claims": claims})

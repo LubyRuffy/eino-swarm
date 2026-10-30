@@ -514,6 +514,22 @@ is used in regression tests. Structured classification
 requires stance, time and attribution; nonaffirmative, noncurrent and reported
 items cannot require a matching armed plan. These offline fixtures prove the
 protocol and runtime boundary, not an external model's semantic accuracy.
+`internal/engine/schedule_answer_identity_test.go` and
+`internal/engine/schedule_answer_identity_boundary_test.go` cover the three-value scope
+protocol and the real Registry/HTTP answer boundary (Issue #132). A recurring
+thread wake can support an assertion that does not specify a destination;
+recurrence alone must not fabricate an independent job. Specific scopes require
+an exact `scope_quote` within the claim's passage, and any extracted ID must
+occur in that passage. An exact ID resolves to its persisted object while an
+explicitly incompatible scope still refuses. A generic claim without an ID or
+scope must match exactly one eligible object: multiple matches retain
+`no_matching_schedule`, the structural `ambiguous_identity` diagnosis and the
+existing single correction. The actual next manager input must ask for an
+existing ID or removal of the assertion and forbid scheduling to justify it.
+Counterexamples retain unknown IDs, another
+conversation's objects, inactive rows, mismatched cadence/time and missing
+current-turn receipts as refusals. Policy input remains `messages` plus `now`;
+private `quote` and `scope_quote` never enter public Trace or correction text.
 `internal/engine/goal_schedule_claim_test.go` checks the real Registry/HTTP
 path for failed and corrected scheduling claims, automatic goal continuation
 and a durable three-failure cap. It keeps `goal_blocked` false, the original
@@ -664,6 +680,13 @@ its offline HTTP model does not call an external provider.
 `frontend/src/lib/schedule-claim-notice.test.ts` and
 `mobile/src/lib/transcript-schedule-claim.test.ts` check the correction notice
 and Chinese display without exposing internal JSON or claiming a wait exists.
+`frontend/src/components/app/backoff-notice.test.tsx` checks the desktop/Web
+expand/collapse control, language switching, immutable caller aggregation,
+zero-duration callers on an existing notice, cold replay and rewind. Unknown
+and private payloads stay out of the explanation. `frontend/e2e/api-error.spec.ts`
+expands the live and reloaded real HTTP cooldown notices with keyboard input
+and verifies manager attribution without inferring all waiting steps failed.
+
 `frontend/src/lib/transcript-backoff.test.ts` and
 `mobile/src/lib/transcript-backoff.test.tsx` check one origin notice across roles
 and turns per cooldown ID, separate candidates/deferral, zero-delay probe

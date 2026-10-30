@@ -13,6 +13,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- Desktop/Web model retry waits offer **Retry details** with the actual waiting
+  steps/Agent identities, service failure count and scheduling-verification
+  diagnostics. Shared cooldowns collect waiting callers into one explanation;
+  live delivery, history and rewind preserve attribution without exposing private
+  answer payloads or treating every waiting caller as a failed request. Legacy
+  receipts without a known scope omit source-specific attempt counts.
+
 - A project-local [native testing fast path](docs/NATIVE_TESTING_FAST_PATH.md)
   documents existing commands, exact-input reuse, scenario selection, bounded
   retries and cleanup, with separate preparation/queue/execution timing.
@@ -473,6 +480,16 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-150`, `C-009`: a scheduled check cannot complete the standing objective while its own manager-created conversation wake remains armed, including a newly armed wake ID after a one-shot fired. The final check may complete after cancelling that wait; the reverse call order and parallel tool calls cannot rearm the same continuation after completion. Conflicts return recoverable `goal_schedule_conflict` results. Human-created waits and independent jobs retain their own lifecycle; existing completed goals are not automatically reopened (Issue #79).
 
 ### Fixed
+
+- `F-150`, `F-160`, `C-009` (Issue #132): schedule-claim admission preserves an
+  unspecified destination instead of inferring an independent job from a cron
+  or recurring check. Explicit scopes require a quoted scope witness, and an
+  extracted schedule ID must occur in the claim's passage. Code binds the
+  exact persisted object and checks explicit scope, state, cadence, time
+  and current-turn receipts. Generic claims with multiple eligible objects
+  refuse with `no_matching_schedule` and structural `ambiguous_identity`, using
+  the existing single correction. Verification does not rearm waits or publish
+  private candidate passages.
 
 - `C-036`: the desktop chat no longer shows raw `query_history` SQL as a
   sparkle notice card. The `history_read_started`, `history_report_requested`
