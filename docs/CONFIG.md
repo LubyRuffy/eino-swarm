@@ -388,6 +388,14 @@ system prompt, so the model does not plan around a tool it cannot call.
 | `proxy.http` / `proxy.https` | empty | outbound proxy for the network tools (`web_search`, `web_fetch`). |
 | `proxy.no_proxy` | empty | comma-separated hosts that bypass the proxy. |
 
+`web_fetch` starts with HTTP. A 401/403 carrying DataDome response signals
+triggers one attempt through its existing browser renderer without requiring
+`render: true`; it uses the configured tool proxy and needs an available
+Chromium browser. A plain authorization failure does not trigger that fallback.
+If rendering fails or still returns a challenge, the tool returns a failure
+result rather than challenge text as successful page content. This behavior
+does not guarantee access to a protected site.
+
 Tool paths resolve against the conversation's workspace, but the workspace is not
 a boundary: an absolute path or a `..` reaches outside it and `exec` runs as you.
 See the "Full access" note in the [README](../README.md).

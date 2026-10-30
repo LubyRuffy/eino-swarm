@@ -7166,3 +7166,12 @@ executed, and the new clock module was covered completely. The earlier baseline
 printed 95.0% but did not retain a block profile; its 0.1 percentage-point
 difference cannot be attributed to a particular pre-existing branch from those
 rounded totals alone.
+
+### Workspace web-fetch dependency regression
+
+`internal/tools/webfetch_upgrade_test.go` runs the registered `web_fetch`
+through `Build`, its advertised parameter schema and invocation/result wrappers.
+Local HTTP and a counted renderer cover DataDome routing, ordinary authorization
+errors and one-attempt failure boundaries without a browser or external site.
+The controlled renderer verifies host context/option propagation; it does not
+accept the real Rod browser path or establish protected-site access.

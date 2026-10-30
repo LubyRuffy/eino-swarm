@@ -490,6 +490,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-130`: update `eino-tools` to the source containing `3664a9a`. Default
+  `web_fetch` tries its existing browser renderer once after a DataDome-signalled
+  HTTP 401/403, preserving the configured proxy and returning an error if
+  rendering fails or still produces a challenge. Ordinary authorization errors
+  remain errors; this does not establish real-site bypass success.
+
 - `F-150`, `F-160`, `C-009` (Issue #132): schedule-claim admission preserves an
   unspecified destination instead of inferring an independent job from a cron
   or recurring check. Explicit scopes require a quoted scope witness, and an
