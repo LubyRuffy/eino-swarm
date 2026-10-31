@@ -382,6 +382,7 @@ export const en = {
   "transcript.copied": "Copied",
   "transcript.copyMessage": "Copy message",
   "markdown.copyCode": "Copy code",
+  "markdown.source": "Source",
   "markdown.copyFormula": "Copy formula",
   "transcript.editMessage": "Edit message",
   "transcript.cancelEdit": "Cancel",

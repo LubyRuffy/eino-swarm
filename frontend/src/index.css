@@ -525,6 +525,18 @@
   .md .md-code {
     @apply bg-muted overflow-hidden rounded-md;
   }
+  .md .md-mermaid {
+    @apply my-3 min-w-0 max-w-full rounded-lg border border-border bg-muted/40;
+  }
+  .md .md-mermaid img {
+    @apply mx-auto block max-w-none;
+  }
+  .md-mermaid-measure {
+    position: absolute;
+    visibility: hidden;
+    pointer-events: none;
+    inset: 0 auto auto 0;
+  }
   .md .md-code pre {
     @apply bg-transparent rounded-none px-3 pb-3 pt-1 overflow-x-auto;
   }

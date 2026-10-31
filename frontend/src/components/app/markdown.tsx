@@ -19,6 +19,7 @@ import { classifyHref } from "@/lib/external-links"
 import { isMathFence } from "@/lib/math-fence"
 import { chartSpecsEqual, parseChartSpec, type ChartSpec } from "@/lib/chart-spec"
 import { closeIncompleteMarkdown } from "@/lib/stream-markdown"
+import { mermaidFenceIsClosed } from "@/lib/markdown-mermaid"
 
 const TranscriptChart = lazy(async () => {
   const mod = await import("@/components/app/transcript-chart")
@@ -30,11 +31,17 @@ const MarkdownMath = lazy(async () => {
   return { default: mod.MarkdownMath }
 })
 
+const MarkdownMermaid = lazy(async () => {
+  const mod = await import("@/components/app/markdown-mermaid")
+  return { default: mod.MarkdownMermaid }
+})
+
 /** remark plugins are module-level so a memoised markdown block is not
  *  invalidated by a new array on every parent render. */
 const PLUGINS = [remarkGfm, remarkMath]
 
 const MarkdownStreaming = createContext(false)
+const MarkdownSource = createContext("")
 
 /** Completed markdown is immutable. Without this memo, every streamed token
  *  would re-parse every finished answer in the conversation. The open
@@ -50,27 +57,38 @@ export const MemoMarkdown = memo(function MemoMarkdown({
   const source = streaming ? closeIncompleteMarkdown(text) : text
   return (
     <MarkdownStreaming.Provider value={streaming}>
-      <Markdown remarkPlugins={PLUGINS} components={COMPONENTS}>
-        {source}
-      </Markdown>
-      {streaming ? (
-        <span
-          aria-hidden
-          className="ml-0.5 inline-block h-4 w-1.5 translate-y-0.5 animate-breathe bg-foreground/70"
-        />
-      ) : null}
+      <MarkdownSource.Provider value={source}>
+        <Markdown remarkPlugins={PLUGINS} components={COMPONENTS}>
+          {source}
+        </Markdown>
+        {streaming ? (
+          <span
+            aria-hidden
+            className="ml-0.5 inline-block h-4 w-1.5 translate-y-0.5 animate-breathe bg-foreground/70"
+          />
+        ) : null}
+      </MarkdownSource.Provider>
     </MarkdownStreaming.Provider>
   )
 })
 
 function MarkdownPre({
   children,
-  node: _node,
+  node,
   ...props
 }: ComponentPropsWithoutRef<"pre"> & { node?: unknown }) {
   const streaming = useContext(MarkdownStreaming)
+  const source = useContext(MarkdownSource)
   const specRef = useRef<ChartSpec | null>(null)
   const fence = readFence(children)
+  if (fence?.lang.toLowerCase() === "mermaid" &&
+    (!streaming || mermaidFenceIsClosed(source, node))) {
+    return (
+      <Suspense fallback={<MarkdownCodeBlock fence={fence} />}>
+        <MarkdownMermaid source={fence.text} />
+      </Suspense>
+    )
+  }
   if (fence !== null && fence.lang === "chart") {
     const parsed = parseChartSpec(fence.text)
     if (parsed.ok) {

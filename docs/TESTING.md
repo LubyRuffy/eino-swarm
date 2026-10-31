@@ -83,6 +83,19 @@ by component and server contract tests. They do not prove a native system-browse
 real NOSEC service allowlisting, production deployment, or physical-phone
 pairing. Those require candidate-specific integration/native acceptance.
 
+## Mermaid Markdown (`F-120`, `F-140`, `C-005`, Issue #133)
+
+The Mermaid unit regressions exercise fence recognition, incomplete streaming
+input, source copying, syntax-error fallback, stable diagrams after later prose,
+theme changes and stale asynchronous completions. The browser regression in
+`frontend/e2e/mermaid.spec.ts` uses the real application and bundled renderer;
+it checks decoded SVG dimensions and content, multiple diagrams, file previews,
+source retention, theme changes and inert image presentation. Run the frontend
+type check, unit suite and production build, followed by the E2E suite with its
+own server port, data directory and output directory. Do not rebuild its served
+`dist` during a run. Browser results do not substitute for candidate-specific
+native macOS acceptance in `ci-macOS`.
+
 ## Original project-history SQL and source reports (`F-410`, `C-036`)
 
 `internal/history` uses real temporary WAL databases for single-statement
