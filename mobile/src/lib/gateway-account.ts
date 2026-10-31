@@ -1,4 +1,5 @@
 import { Browser } from "@capacitor/browser"
+import { AppLauncher } from "@capacitor/app-launcher"
 import { Capacitor } from "@capacitor/core"
 import { sha256 } from "@noble/hashes/sha2.js"
 import { softwareVersion } from "./app-update"
@@ -6,6 +7,7 @@ import { b64urlToBytes, bytesToB64url, bytesToHex, randomBytes, utf8 } from "./b
 import { fingerprint } from "./crypto"
 import { SESSION_ID_SIZE } from "./frame"
 import { hubDeviceFields } from "./device"
+import { gatewayFetch } from "./gateway-fetch"
 import { loadOrCreateIdentity, loadSavedLinks, removeLink, saveLink, type SavedLink } from "./store"
 
 // Official builds have a working default; self-hosted installations can override it.
@@ -146,11 +148,38 @@ function mobilePlatform(): "ios" | "android" {
   return /iPhone|iPad|iPod/i.test(navigator.userAgent) ? "ios" : "android"
 }
 
-export async function startGatewayLogin(origin = getGatewayOrigin(), fetcher: typeof fetch = fetch, signal?: AbortSignal): Promise<GatewayPending> {
+/** Bound this login's wait for a native acknowledgement. Ending the JavaScript
+ * wait does not cancel an already dispatched system-browser operation. */
+function nativeLoginStep<T>(start: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    let timer: number | undefined
+    const finish = (complete: () => void) => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timer)
+      signal?.removeEventListener("abort", aborted)
+      complete()
+    }
+    const aborted = () => finish(() => reject(new DOMException("Aborted", "AbortError")))
+    if (signal?.aborted) { aborted(); return }
+    signal?.addEventListener("abort", aborted, { once: true })
+    timer = window.setTimeout(() => finish(() => reject(new GatewayError(0, "gateway_timeout"))), 15_000)
+    try {
+      Promise.resolve(start()).then(
+        (value) => finish(() => resolve(value)),
+        (error: unknown) => finish(() => reject(error)),
+      )
+    } catch (error) { finish(() => reject(error)) }
+  })
+}
+
+export async function startGatewayLogin(origin = getGatewayOrigin(), fetcher: typeof fetch = gatewayFetch, signal?: AbortSignal): Promise<GatewayPending> {
   const base = normalizeGatewayOrigin(origin)
   const verifier = bytesToB64url(randomBytes(32))
   const candidateToken = "agm_" + bytesToHex(randomBytes(32))
-  const version = await softwareVersion()
+  const version = await nativeLoginStep(() => softwareVersion(), signal)
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError")
   const { name } = hubDeviceFields(version)
   const { data } = await request<{ device_code: string; user_code: string; verification_uri: string; expires_at: string; interval: number }>(base, "/auth/mobile/start", fetcher, "", {
     name, version, device_pub: bytesToB64url(loadOrCreateIdentity().pub), platform: mobilePlatform(),
@@ -162,11 +191,20 @@ export async function startGatewayLogin(origin = getGatewayOrigin(), fetcher: ty
   const pending = { origin: base, verifier, candidateToken, deviceCode: data.device_code, userCode: data.user_code, verificationURI: data.verification_uri, expiresAt, interval: data.interval }
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError")
   saveGatewayPending(pending)
-  await Browser.open({ url: pending.verificationURI })
+  await nativeLoginStep(async () => {
+    try {
+      if (Capacitor.getPlatform() === "android") {
+        const opened = await AppLauncher.openUrl({ url: pending.verificationURI })
+        if (opened?.completed !== true) throw new GatewayError(0, "browser_unavailable")
+      } else {
+        await Browser.open({ url: pending.verificationURI })
+      }
+    } catch { throw new GatewayError(0, "browser_unavailable") }
+  }, signal)
   return pending
 }
 
-export async function pollGatewayLogin(pending: GatewayPending, fetcher: typeof fetch = fetch, signal?: AbortSignal): Promise<{ status: GatewayStatus; session?: GatewaySession }> {
+export async function pollGatewayLogin(pending: GatewayPending, fetcher: typeof fetch = gatewayFetch, signal?: AbortSignal): Promise<{ status: GatewayStatus; session?: GatewaySession }> {
   if (Date.now() >= pending.expiresAt) return { status: "expired" }
   const { data } = await request<{ status: GatewayStatus; user?: GatewayUser; mobile_id?: string }>(pending.origin, "/auth/mobile/poll", fetcher, "", { device_code: pending.deviceCode, code_verifier: pending.verifier }, signal)
   if (!["authorization_pending", "account_pending", "account_rejected", "authorized", "access_denied", "expired"].includes(data.status)) throw new GatewayError(0, "invalid_gateway_response")
@@ -176,14 +214,14 @@ export async function pollGatewayLogin(pending: GatewayPending, fetcher: typeof 
   return { status: "authorized", session: { origin: pending.origin, token: pending.candidateToken, ...principal } }
 }
 
-export async function readGatewaySession(session: GatewaySession, fetcher: typeof fetch = fetch, signal?: AbortSignal): Promise<GatewaySession> {
+export async function readGatewaySession(session: GatewaySession, fetcher: typeof fetch = gatewayFetch, signal?: AbortSignal): Promise<GatewaySession> {
   if (Date.parse(session.device.expires_at) <= Date.now()) throw new GatewayError(401, "session_expired")
   const { data: principal } = await request<{ user: GatewayUser; device: GatewayDevice }>(session.origin, "/auth/me", fetcher, session.token, undefined, signal)
   if (principal.user?.id !== session.user.id || principal.device?.id !== session.device.id || principal.user.enabled === false || !Number.isFinite(Date.parse(principal.device.expires_at)) || Date.parse(principal.device.expires_at) <= Date.now()) throw new GatewayError(401, "session_expired")
   return { ...session, ...principal }
 }
 
-export async function refreshGatewaySession(session: GatewaySession, fetcher: typeof fetch = fetch, signal?: AbortSignal): Promise<GatewayState> {
+export async function refreshGatewaySession(session: GatewaySession, fetcher: typeof fetch = gatewayFetch, signal?: AbortSignal): Promise<GatewayState> {
   const current = await readGatewaySession(session, fetcher, signal)
   if (current.user.approval_status !== "approved") return { status: current.user.approval_status === "rejected" ? "account_rejected" : "account_pending", session: current, hosts: [] }
   const { data: bootstrap } = await request<GatewayBootstrap>(session.origin, "/bootstrap", fetcher, session.token, undefined, signal)
@@ -211,11 +249,11 @@ function validateBootstrap(origin: string, bootstrap: GatewayBootstrap, session:
   if (expected.some(([value, target]) => value !== target)) throw new GatewayError(0, "invalid_gateway_response")
 }
 
-export async function logoutGatewaySession(session: GatewaySession, fetcher: typeof fetch = fetch) {
+export async function logoutGatewaySession(session: GatewaySession, fetcher: typeof fetch = gatewayFetch) {
   await request(session.origin, "/auth/logout", fetcher, session.token, {})
 }
 
-export async function issueGatewayHostLink(session: GatewaySession, hostID: string, fetcher: typeof fetch = fetch): Promise<SavedLink> {
+export async function issueGatewayHostLink(session: GatewaySession, hostID: string, fetcher: typeof fetch = gatewayFetch): Promise<SavedLink> {
   requireCurrentGatewaySession(session)
   if (!hostID) throw new GatewayError(400, "invalid_pc")
   const { data } = await request<{ binding_id: string; ticket: string; host_pub: string; session_id: string }>(session.origin, "/link-hosts/" + encodeURIComponent(hostID) + "/connect", fetcher, session.token, {
@@ -233,7 +271,7 @@ function requireCurrentGatewaySession(session: GatewaySession) {
   if (current.user.approval_status !== "approved") throw new GatewayError(403, "access_denied")
 }
 
-export async function connectGatewayHost(session: GatewaySession, hostID: string, fetcher: typeof fetch = fetch): Promise<SavedLink> {
+export async function connectGatewayHost(session: GatewaySession, hostID: string, fetcher: typeof fetch = gatewayFetch): Promise<SavedLink> {
   const saved = await issueGatewayHostLink(session, hostID, fetcher)
   saveLink(saved)
   return saved

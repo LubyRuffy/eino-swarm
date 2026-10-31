@@ -31,7 +31,7 @@ export function GatewayAccountScreen({ account, providers, modelBusy, modelError
     : account.status === "expired" ? t("account.expired") : ""
   const connect = async (id: string) => {
     setConnecting(id); setConnectionError("")
-    try { await onConnect(id) } catch (error) { setConnectionError(t(error instanceof GatewayError && [401, 403].includes(error.status) ? "account.expired" : error instanceof GatewayError && error.status === 409 ? "scan.hostOffline" : "account.connectionFailed")) }
+    try { await onConnect(id) } catch (error) { setConnectionError(t(error instanceof GatewayError && [401, 403].includes(error.status) ? "account.expired" : error instanceof GatewayError && error.status === 409 ? "account.hostOffline" : "account.connectionFailed")) }
     finally { setConnecting("") }
   }
   return (
@@ -43,7 +43,7 @@ export function GatewayAccountScreen({ account, providers, modelBusy, modelError
       <div className="flex flex-col gap-4 p-5">
         {account.session ? <p className="break-all text-sm font-medium">{account.session.user.username}</p> : null}
         {statusText ? <p role="status" className="text-sm text-muted-foreground">{statusText}</p> : null}
-        {account.error ? <p role="alert" className="text-sm text-destructive">{t("chat.failed")}</p> : null}
+        {account.error ? <p role="alert" className="text-sm text-destructive">{t(account.error === "browser_unavailable" ? "account.browserFailed" : account.error === "gateway_timeout" ? "account.timeout" : "chat.failed")}</p> : null}
         {!authorized && (!waiting || account.status === "access_denied") ? <>
           <p className="text-sm leading-relaxed text-muted-foreground">{t("account.hint")}</p>
           <Button disabled={account.busy} onClick={() => void account.login()}>{t("account.login")}</Button>

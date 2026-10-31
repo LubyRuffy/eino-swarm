@@ -7,7 +7,7 @@ and affected scenarios; the detailed requirements and evidence below remain auth
 ## Mobile account login and model sources (`F-211`, `C-006`, `C-013`)
 
 Mobile unit tests cover device-flow secrets/PKCE, URL and response validation,
-pending/rejected request isolation, selected-PC renewal and public-key identity,
+pending/rejected request isolation, selected-PC ticket reuse and public-key identity,
 logout/late-response races, bootstrap-denied recovery isolation and same-account
 ticket cleanup. Source tests prove
 that managed credentials cannot enter personal-provider storage, identical model
@@ -15,6 +15,23 @@ names retain distinct provider IDs, a missing account source cancels its active
 stream, and a stored server thread cannot fall back to a private same-named
 model. App tests cover the startup-PC → other-PC → account-selected startup-PC
 path and Android Back closing account overlays.
+
+`gateway-login-lifecycle.test.tsx` keeps the production native metadata/opener
+promises unsettled: cancellation must end the local task, a fifteen-second wait
+must release checking, late results cannot fetch for an old flow or overwrite
+a retry, and Sign out remains usable. `gateway-login-launcher.test.ts` verifies
+the Android-only default external opener, completed-false/rejected failures,
+pre-cancellation and strict URL validation; iOS/web retain Browser. These are
+native-promise seams, not proof that an OS browser action was cancelled.
+
+`mobile/src/lib/gateway-transport.test.ts` executes the installed iOS and Android
+SDK fetch replacements to regress their dropped redirect/abort options. Gateway
+control and managed discovery must use the preserved WebView fetch, reject
+redirects, preserve the fifteen-second control deadline and refuse a missing
+native raw transport. Managed browser streams reject redirects; independent
+private-provider discovery/stream behavior remains unchanged. Native StreamBody
+keeps its existing no-redirect, timeout and cancel implementations; native fixture
+acceptance separately checks zero redirect-target requests and socket cancellation.
 
 `mobile/e2e/gateway-account.spec.ts` uses bounded HTTP fixtures for default-origin
 sign-in/review isolation, no-PC server inference, same-name source selection,
@@ -6258,7 +6275,9 @@ a client at all is verified in the engine and reducer tests.
   inbox even when it has a live or last conversation. Otherwise the inbox is the compact screen on the same conversation
   bus (send / follow-up / steer / stop / ask); the paired conversation's file
   tree and previews use read-only Pairlink RPC, while full Settings, PTY and Trace
-  stay on the PC. Paired phones also expose separate PC timeout controls. The hub hostname is typed on the PC, never shipped in the binary.
+  stay on the PC. Paired phones also expose separate PC timeout controls. Official
+  clients default to the Gateway for account login; an anonymous pairing URI
+  carries its Hub address, and another server remains an optional override.
   Simulators: iOS can use a loopback hub; Android needs `adb reverse` onto
   that same hub port. `mobile/ios/App/AppUITests/BindFlowTests.swift` pastes
   the offer from `simctl pbcopy`, taps Back if a thread already opened, asserts
@@ -7267,3 +7286,54 @@ Local HTTP and a counted renderer cover DataDome routing, ordinary authorization
 errors and one-attempt failure boundaries without a browser or external site.
 The controlled renderer verifies host context/option propagation; it does not
 accept the real Rod browser path or establish protected-site access.
+
+### Android packaged account acceptance
+
+`mobile/android/app/src/androidTest/java/com/lubyruffy/zwai/AccountLoginTest.java`
+uses native accessibility actions against the packaged app and the system Browser.
+API33 can retain a stale virtual accessibility subtree after a form expands;
+the test reads the actual packaged DOM's labels, geometry and field values as
+an observation fallback, then uses native touch and keyboard events. It never
+changes application storage, injects a session or invokes business JavaScript.
+`mobile/e2e/account-fixture` supplies a loopback-only synthetic CAS with actual
+HTTP, PKCE, Browser consent, a real Pairlink relay and an Eino PC host. It never
+uses a production NOSEC identity or model. Its default PC is hidden so the test
+must first complete a server-model answer without a PC connection. The same case
+then selects the account PC without QR, checks an encrypted conversation-list RPC,
+logs out and redeems an anonymous QR on a distinct loopback origin backed by
+the same relay and PC. Host-scoped counters require one anonymous-origin
+redemption, zero primary-origin redemptions and an anonymous-origin WebSocket.
+
+Build the fixture with `go build -o /absolute/private/account-fixture
+./mobile/e2e/account-fixture`, and build the release APK and an instrumentation APK
+with a compatible signer. `mobile/scripts/android-account-native.py --help`
+documents the runner inputs. It acquires the host validation lease, creates a
+private headless API33 arm64 AVD and ADB server, installs the previous public APK,
+upgrades to the exact candidate, and retains private command streams, screenshots,
+accessibility trees, package/signature identities and cleanup receipts. Formal
+acceptance requires a clean exact source SHA, `--version`, `--previous-apk`, a
+non-debuggable candidate and packaged web assets matching the release build's
+`mobile/dist`. `--development` permits harness debugging but always records
+`formal_acceptance: false`. No shipping assets are patched by the runner.
+The owned emulator has airplane mode enabled and WiFi/mobile data disabled;
+the native case proves reversed loopback HTTP and a WebSocket upgrade still
+work before opening the account UI. Its optional server form then selects the
+fixture origin through real native input. The fresh default-screen assertion
+proves no URL/Key is required; the later fixture flow uses that explicit QA
+override and does not establish production NOSEC connectivity.
+On failure the runner retains final fixture counters and only allowlisted
+native bridge metadata, never raw plugin options/results. The app may also
+record the pending-login entry's existence as one Boolean; its content is never
+returned or parsed for diagnostics. Run the log-filter regression with
+`python3 -m unittest discover -s mobile/scripts -p test_android_account_native.py`.
+`mobile/scripts/android-account-native.test.ts` runs the same real Python suite
+through the regular Mobile Vitest entry, including a nonzero-discovery check.
+
+The case proves pending/rejected isolation with zero business requests, then
+approved account bootstrap, server inference and owned-PC connection. Counted
+307 targets and delayed responses also exercise the actual native transport:
+account POST and model discovery refuse redirects, the account deadline aborts
+the server request, and native model streaming refuses redirects and disconnects
+on Stop. These assertions complement the installed-SDK fetch-patch unit tests;
+neither fixture evidence nor a successful local APK build proves production
+NOSEC reachability or a public installer upload.

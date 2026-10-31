@@ -14,10 +14,10 @@ const config: CapacitorConfig = {
     cleartext: true,
   },
   plugins: {
-    // The webview origin is not one a model endpoint allows. The platform
-    // HTTP stack places discover and the other calls. A completion does not
-    // use it: that stack returns the POST body in one piece. StreamBody
-    // reads the bytes as they arrive.
+    // Private model endpoints may not allow the WebView origin, so their
+    // discovery uses the platform HTTP stack. Gateway control/catalog use
+    // the preserved WebView fetch for redirect and abort guarantees. Model
+    // completions use StreamBody to read bytes as they arrive.
     CapacitorHttp: {
       enabled: true,
     },

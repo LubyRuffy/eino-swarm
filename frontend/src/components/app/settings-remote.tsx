@@ -168,7 +168,7 @@ function RemoteTabBody({
   return (
     <SettingsPage
       title={t("settings.remote.title")}
-      description={t("settings.remote.desc")}
+      description={t(nosec ? "settings.remote.accountDesc" : "settings.remote.desc")}
     >
       <SettingsSection title={t("settings.remote.hub")}>
         <Field

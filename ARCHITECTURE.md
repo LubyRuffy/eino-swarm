@@ -460,11 +460,22 @@ overwriting or re-signing an executable already used by an engine/window.
 Mobile account admission is separate from PC RPC. `gateway-account.ts` and
 `use-gateway-account.ts` own the explicit Mobile Bearer device flow, strict
 same-origin verification URL, account refresh, heartbeat and revocation. The
+Android login opens that validated URL in the default external browser through
+the official Capacitor 7 AppLauncher; iOS/web retain Browser. Version metadata
+and browser launch acknowledgements each have a fifteen-second cancellable wait.
+Late acknowledgements cannot resume cancelled work; ending that wait does not
+claim to cancel an already dispatched system-browser operation. The
 `GatewayAccountShell` blocks all other phone screens while the account is
 pending/rejected; `PhoneApp` retains the independent anonymous/PC UI. Account
 bootstrap projects an ephemeral Gateway provider, discovered without storing its
 credential among personal endpoints. Provider ID is source identity, independent
 of the model name. The direct stream stops if that source/credential disappears.
+Gateway control and managed model discovery use the native bridge's preserved
+WebView fetch, retaining redirect rejection, credential omission and cancellation
+instead of the SDK's native HTTP proxy. A native bridge without that transport
+fails closed. Native completions retain StreamBody's existing no-redirect reader;
+managed browser completions also reject redirects. Private providers retain their
+existing HTTP compatibility path.
 The Gateway's account-scoped connect API issues the existing Pairlink ticket and
 session ID for the selected PC without a QR. The phone remembers that exact
 Host ID/public key and Mobile identity, reuses the ticket on automatic reconnect

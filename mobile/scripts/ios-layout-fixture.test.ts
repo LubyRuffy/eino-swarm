@@ -21,6 +21,7 @@ function fixture(bridge = "import UIKit\nclass Bridge {\n        super.capacitor
   writeFileSync(path.join(app, "public/index.html"), "<html><head></head><body>checkout assets</body></html>")
   writeFileSync(path.join(app, "BridgeViewController.swift"), bridge)
   writeFileSync(path.join(mobile, "e2e/ios-wait-layout.swift"), "fixture driver")
+  writeFileSync(path.join(mobile, "e2e/ios-gateway-account.swift"), 'let fixtureOrigin = "__ZWAI_GATEWAY_FIXTURE_ORIGIN__"')
   const ipa = path.join(root, "ipa-public")
   mkdirSync(path.join(ipa, "assets"), { recursive: true })
   const files = {
@@ -60,4 +61,65 @@ it("refuses an unknown native bootstrap boundary without changing supplied IPA a
   expect(run.status).not.toBe(0)
   expect(run.stderr).toContain("exactly one bootstrap boundary")
   for (const [name, bytes] of Object.entries(f.files)) expect(readFileSync(path.join(f.ipa, name))).toEqual(bytes)
+})
+
+it("selects the account scenario and loopback gateway only in the private wrapper", () => {
+  const f = fixture()
+  const run = spawnSync("python3", [f.script], { encoding: "utf8", env: {
+    ...process.env, TMPDIR: f.root, IOS_LAYOUT_PUBLIC: f.ipa, IOS_LAYOUT_PRESERVE_PUBLIC: "1",
+    IOS_LAYOUT_GATEWAY_ORIGIN: "http://127.0.0.1:19440", IOS_LAYOUT_SCENARIO: "ios-gateway-account.swift",
+    IOS_LAYOUT_QUERY: "/", IOS_LAYOUT_LOCALE: "en",
+  } })
+  expect(run.status, run.stderr).toBe(0)
+  const root = run.stdout.trim()
+  const app = path.join(root, "mobile/ios/App/App")
+  for (const [name, bytes] of Object.entries(f.files)) expect(readFileSync(path.join(app, "public", name))).toEqual(bytes)
+  const bridge = readFileSync(path.join(app, "BridgeViewController.swift"), "utf8")
+  expect(bridge).toContain("zwai.phone.gateway.origin")
+  expect(bridge).toContain("http://127.0.0.1:19440")
+  expect(readFileSync(path.join(root, "mobile/ios/App/AppUITests/BindFlowTests.swift"), "utf8"))
+    .toBe('let fixtureOrigin = "http://127.0.0.1:19440"')
+  expect(readFileSync(path.join(f.app, "BridgeViewController.swift"), "utf8")).not.toContain("gateway.origin")
+})
+
+it.each(["https://gateway.example", "http://127.0.0.1:19440/path", "http://127.0.0.1:19440?token=private", "http://127.0.0.1:0", "http://127.0.0.1:invalid"])(
+  "refuses a non-loopback or non-origin account fixture URL %s", (origin) => {
+    const f = fixture()
+    const run = spawnSync("python3", [f.script], { encoding: "utf8", env: {
+      ...process.env, TMPDIR: f.root, IOS_LAYOUT_PUBLIC: f.ipa, IOS_LAYOUT_PRESERVE_PUBLIC: "1",
+      IOS_LAYOUT_GATEWAY_ORIGIN: origin, IOS_LAYOUT_SCENARIO: "ios-gateway-account.swift",
+    } })
+    expect(run.status).not.toBe(0)
+    expect(run.stderr).toContain("loopback origin")
+  },
+)
+
+it("refuses account setup that would rewrite packaged web bytes", () => {
+  const f = fixture()
+  const run = spawnSync("python3", [f.script], { encoding: "utf8", env: {
+    ...process.env, TMPDIR: f.root, IOS_LAYOUT_PUBLIC: f.ipa,
+    IOS_LAYOUT_GATEWAY_ORIGIN: "http://127.0.0.1:19440", IOS_LAYOUT_SCENARIO: "ios-gateway-account.swift",
+  } })
+  expect(run.status).not.toBe(0)
+  expect(run.stderr).toContain("preserve packaged public bytes")
+})
+
+it("refuses the account scenario before copying when no fixture origin was supplied", () => {
+  const f = fixture()
+  const run = spawnSync("python3", [f.script], { encoding: "utf8", env: {
+    ...process.env, TMPDIR: f.root, IOS_LAYOUT_PUBLIC: f.ipa, IOS_LAYOUT_PRESERVE_PUBLIC: "1",
+    IOS_LAYOUT_SCENARIO: "ios-gateway-account.swift",
+  } })
+  expect(run.status).not.toBe(0)
+  expect(run.stderr).toContain("needs a loopback origin")
+})
+
+it("refuses a scenario path outside the reviewed mobile e2e directory", () => {
+  const f = fixture()
+  const run = spawnSync("python3", [f.script], { encoding: "utf8", env: {
+    ...process.env, TMPDIR: f.root, IOS_LAYOUT_PUBLIC: f.ipa, IOS_LAYOUT_PRESERVE_PUBLIC: "1",
+    IOS_LAYOUT_SCENARIO: "../../private.swift",
+  } })
+  expect(run.status).not.toBe(0)
+  expect(run.stderr).toContain("reviewed e2e Swift file")
 })

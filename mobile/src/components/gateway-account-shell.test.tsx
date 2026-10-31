@@ -4,6 +4,8 @@ import { App } from "@/app"
 import type { useGatewayAccount } from "@/lib/use-gateway-account"
 import { saveThreads, newThread } from "@/lib/direct-threads"
 import { saveProviders } from "@/lib/direct-provider"
+import { GatewayError } from "@/lib/gateway-account"
+import { setLocale, t } from "@/lib/i18n"
 
 const mocks = vi.hoisted(() => ({ account: {} as ReturnType<typeof useGatewayAccount>, discover: vi.fn() }))
 vi.mock("@/lib/use-gateway-account", () => ({ useGatewayAccount: () => mocks.account }))
@@ -13,11 +15,26 @@ const session = { origin: "https://gateway.invalid", token: "agm_" + "a".repeat(
 const bootstrap = { user: session.user, device: session.device, models: { source_id: "gateway:owner", source_kind: "gateway" as const, label: "Team", execution: "phone" as const, api_base_url: "https://gateway.invalid/v1", catalog_url: "https://gateway.invalid/v1/models", api_access_enabled: true }, pairlink: { enabled: true, hub_url: session.origin, redeem_url: session.origin + "/pairlink/v1/pairings/redeem", websocket_url: "wss://gateway.invalid/pairlink/v1/ws", info_url: session.origin + "/pairlink/v1/info" }, heartbeat_interval: 30, presence_ttl: 90 }
 
 beforeEach(() => {
+  setLocale("en")
   mocks.account = { status: "signed_out", session: null, bootstrap: undefined, hosts: [], origin: session.origin, error: undefined, busy: false, setOrigin: vi.fn(), login: vi.fn(), refresh: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), connectHost: vi.fn() }
   mocks.discover.mockReset().mockResolvedValue(["shared-model"])
 })
 
 describe("gateway account shell", () => {
+  it.each([
+    ["en", "browser_unavailable", "Could not open the sign-in browser. Try again."],
+    ["en", "gateway_timeout", "The account operation timed out. Try again."],
+    ["zh", "browser_unavailable", "无法打开登录浏览器，请重试。"],
+    ["zh", "gateway_timeout", "账号操作超时，请重试。"],
+  ] as const)("describes %s %s as an account retry instead of a server rejection", (locale, error, message) => {
+    setLocale(locale)
+    mocks.account = { ...mocks.account, status: "error", error }
+    render(<App />)
+    fireEvent.click(screen.getByRole("button", { name: t("account.login") }))
+    expect(screen.getByRole("alert")).toHaveTextContent(message)
+    expect(screen.queryByText(t("chat.failed"))).not.toBeInTheDocument()
+  })
+
   it.each(["account_pending", "account_rejected", "access_denied"] as const)("%s exposes only account review, even with private models stored", async (status) => {
     saveProviders([{ id: "p-private", label: "Personal", baseURL: "https://private.invalid/v1", apiKey: "secret", api: "chat", model: "private-model", catalog: [], timeoutSeconds: 300 }])
     mocks.account = { ...mocks.account, status, session }
@@ -81,6 +98,18 @@ describe("gateway account shell", () => {
     await act(async () => { expect(window.__zwaiAndroidBack?.()).toBe(true) })
     expect(screen.queryByTestId("gateway-account")).not.toBeInTheDocument()
     expect(window.__zwaiAndroidBack?.()).toBe(false)
+  })
+
+  it("keeps an account PC going offline during selection on the account refresh path", async () => {
+    mocks.account = { ...mocks.account, status: "authorized", session,
+      bootstrap: { ...bootstrap, models: { ...bootstrap.models, api_access_enabled: false } },
+      hosts: [{ id: "pc-online", name: "Work PC", hostname: "work", version: "1", online: true, enabled: true }],
+      connectHost: vi.fn(async () => { throw new GatewayError(409, "host_offline") }),
+    }
+    render(<App />)
+    fireEvent.click(screen.getByRole("button", { name: "Connect Work PC" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("This PC is offline. Wait for the desktop to reconnect, then refresh and try again.")
+    expect(screen.queryByText(/Show a new QR/)).not.toBeInTheDocument()
   })
 
   it("lists same-account PCs, disables offline PCs and connects only the selected online PC without scanning", async () => {

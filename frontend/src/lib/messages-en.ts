@@ -857,7 +857,7 @@ export const en = {
     "Enable this PC’s phone connection. NOSEC mode also requires sign-in and device authorization.",
   "settings.remote.hubUrl": "Hub URL",
   "settings.remote.hubUrlHint":
-    "The pairlink hub you typed in Settings — never a compiled-in host.",
+    "The official Gateway is set by default. Change this address only for another server.",
   "settings.remote.displayName": "This computer's name",
   "settings.remote.displayNameHint":
     "What a bound phone shows on the host chip. Leave blank and this machine's hostname is used.",

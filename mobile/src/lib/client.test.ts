@@ -97,6 +97,7 @@ describe("bindError", () => {
     const closed = t("err.net.closed", { reason: "offline" })
     const remote = t("err.remote", { detail: "quota" })
     expect(bindError(new Error("host offline"))).toBe(t("scan.hostOffline"))
+    expect(linkError(new Error("host offline"), true)).toBe("This PC is offline. Wait for the desktop to reconnect, then refresh and try again.")
     expect(bindError("ws timeout")).toBe(t("err.net.down", { reason: "ws timeout" }))
     expect(linkError(new Error("ws error"))).toBe(down)
     expect(linkError(new Error("offline"))).toBe(closed)

@@ -2840,3 +2840,20 @@ Standard `/v1/models` and `/v1/chat/completions` use the same Mobile Bearer afte
 approval and API authorization, retaining the Gateway's Key/account model and
 quota enforcement. PC RPC never receives the Mobile credential or phone-private
 provider secrets. See the Gateway API documentation for the authoritative wire.
+
+Android opens only the validated verification URL in the default external
+browser using the official Capacitor 7 AppLauncher; iOS/web retain Browser.
+A launcher result other than `completed: true` fails without another open
+attempt. This login's version-read and browser-launch acknowledgements each
+use a cancellable fifteen-second wait. Cancellation/timeout ends the local
+wait and consumes late native results; it does not revoke a dispatched OS action.
+Native opener failures are classified as `browser_unavailable` without SDK text;
+`gateway_timeout` and opener failures show account retry guidance instead of
+claiming that the server rejected a request.
+
+Control requests and managed model discovery use the original WebView fetch
+preserved by the pinned Capacitor bridge. They omit cookies, reject redirects
+and honor cancellation; a native bridge missing that original transport refuses
+the request instead of substituting its redirecting native proxy. Native model
+streams retain StreamBody's no-redirect and cancellable HTTP reader; managed
+browser streams reject redirects too. Personal provider compatibility is unchanged.

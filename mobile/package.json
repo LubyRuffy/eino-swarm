@@ -19,6 +19,7 @@
   "dependencies": {
     "@capacitor/android": "^7.6.9",
     "@capacitor/app": "^7.1.2",
+    "@capacitor/app-launcher": "7.0.4",
     "@capacitor/browser": "^7.0.5",
     "@capacitor/camera": "^7.0.2",
     "@capacitor/core": "^7.4.3",

@@ -6,6 +6,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Android NOSEC sign-in uses the default external browser through the official Capacitor 7 launcher. Login metadata and browser acknowledgements have cancellable fifteen-second waits, so a missing native reply cannot leave checking active indefinitely. iOS keeps its Browser sheet. (`F-211`, `C-006`)
+
+- Clarified account-mode PC selection and offline recovery without asking for a QR or manual Hub setup; anonymous QR guidance remains available. (`F-210`, `F-211`, `C-006`)
+
+- Fixed managed Gateway control and model discovery to retain WebView redirect rejection and cancellation through Capacitor's HTTP patch; managed browser model streams reject redirects while private provider compatibility remains unchanged. (`F-211`, `F-230`, `C-006`)
+
 - Added Mobile NOSEC account sign-in, review isolation and a default Gateway address. Approved users can select an online same-account PC without a QR, remember and reconnect that PC, and use authorized server models without a PC. Anonymous QR pairing remains available. Server sources, phone providers and PC catalogs retain separate identities; signing out removes managed credentials and tickets while preserving private providers and anonymous pairings. (`F-211`, `F-230`, `C-006`, `C-013`)
 
 - Clarified PC and phone goal banners: paused labels and reasons describe automatic pursuit, and the timer is explicitly the goal's age. A completed manual reply retains the goal's durable pause until explicit resume or completion. (#131)

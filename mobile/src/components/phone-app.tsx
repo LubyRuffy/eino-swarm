@@ -83,6 +83,7 @@ import { useModelCatalog } from "@/lib/use-model-catalog"
 
 export function PhoneApp() {
   const account = usePhoneAccount()
+  const connectionError = (error: unknown) => linkError(error, Boolean(loadSavedLink()?.gatewayOwnerID))
   const [locale, setLocaleTick] = useState(getLocale())
   const [hosts, setHosts] = useState(() => loadSavedLinks())
   const [personalProviders, setProviders] = useState(() => loadProviders())
@@ -242,7 +243,7 @@ export function PhoneApp() {
     }
     next.onDisconnect = (err) => {
       if (linkRef.current !== next || unlinkingRef.current) return
-      setError(linkError(err))
+      setError(connectionError(err))
       void recoverRef.current()
     }
     void next.announceDevice().then((resp) => {
@@ -309,7 +310,7 @@ export function PhoneApp() {
       else await consumeFirstList(next)
     } catch (e) {
       if (gen !== bindGen.current) return
-      setError(linkError(e))
+      setError(connectionError(e))
       recoverAttempt.current += 1
       const delay = Math.min(15_000, 1000 * 2 ** Math.min(recoverAttempt.current - 1, 4))
       window.clearTimeout(retryTimer.current)
@@ -343,7 +344,7 @@ export function PhoneApp() {
       await consumeFirstList(next)
     } catch (e) {
       if (gen !== bindGen.current) return
-      setError(bindError(e))
+      setError(connectionError(e))
       window.clearTimeout(retryTimer.current)
       retryTimer.current = window.setTimeout(() => {
         void recoverRef.current()
@@ -433,12 +434,12 @@ export function PhoneApp() {
     setLocaleTick(getLocale())
   }
 
-  const fail = (e: unknown) => setError(linkError(e))
+  const fail = (e: unknown) => setError(connectionError(e))
 
   const openThread = async (id: string) => {
     const target = linkRef.current
     if (!target?.alive()) {
-      setError(linkError(new LinkFault("offline", "network")))
+      setError(connectionError(new LinkFault("offline", "network")))
       void recover()
       return
     }
@@ -453,7 +454,7 @@ export function PhoneApp() {
   const startConversation = async (text: string, projectId: string, extra?: ComposerExtra) => {
     const target = linkRef.current
     if (!target?.alive()) {
-      setError(linkError(new LinkFault("offline", "network")))
+      setError(connectionError(new LinkFault("offline", "network")))
       void recover()
       throw new Error("offline")
     }

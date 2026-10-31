@@ -9,6 +9,7 @@ import {
 } from "./gateway-account"
 import { saveLink } from "./store"
 import { usePhoneVisibility } from "./phone-visibility"
+import { gatewayFetch } from "./gateway-fetch"
 
 export function useGatewayAccount() {
   const [origin, putOrigin] = useState(getGatewayOrigin)
@@ -69,7 +70,7 @@ export function useGatewayAccount() {
         active.current = controller
         refreshing.current = round
         try {
-          const checked = await readGatewaySession(current, fetch, controller.signal)
+          const checked = await readGatewaySession(current, gatewayFetch, controller.signal)
           if (round !== generation.current || controller.signal.aborted || loadGatewaySession()?.token !== current.token) return
           saveGatewaySession(checked)
           putSession(checked)
@@ -92,7 +93,7 @@ export function useGatewayAccount() {
     const controller = new AbortController()
     active.current = controller
     try {
-      const state = await refreshGatewaySession(current, fetch, controller.signal)
+      const state = await refreshGatewaySession(current, gatewayFetch, controller.signal)
       if (round !== generation.current || controller.signal.aborted) return
       saveGatewaySession(state.session)
       putSession(state.session)
@@ -119,7 +120,7 @@ export function useGatewayAccount() {
     active.current = controller
     nextPoll.current = Date.now() + flow.interval * 1000
     try {
-      const result = await pollGatewayLogin(flow, fetch, controller.signal)
+      const result = await pollGatewayLogin(flow, gatewayFetch, controller.signal)
       if (round !== generation.current || pending.current !== flow || controller.signal.aborted) return
       putStatus(result.status)
       putError(undefined)
@@ -160,7 +161,7 @@ export function useGatewayAccount() {
     const controller = new AbortController()
     active.current = controller
     try {
-      const flow = await startGatewayLogin(getGatewayOrigin(), fetch, controller.signal)
+      const flow = await startGatewayLogin(getGatewayOrigin(), gatewayFetch, controller.signal)
       if (round !== generation.current || controller.signal.aborted) return
       pending.current = flow
       putStatus("authorization_pending")

@@ -22,6 +22,7 @@ import {
 import type { DirectProvider } from "./direct-provider"
 import { defaultTimeoutSeconds } from "./direct-provider"
 import { openBody, type StreamBodyPlugin } from "./stream-body"
+import { gatewayFetch } from "./gateway-fetch"
 
 /** Discover is a button. It must not sit on the provider's five-minute idle clock. */
 const discoverCapMs = 30_000
@@ -30,17 +31,20 @@ export type FetchLike = typeof fetch
 
 export async function discoverModels(
   row: DirectProvider,
-  fetchImpl: FetchLike = fetch,
+  fetchImpl?: FetchLike,
 ): Promise<string[]> {
   const base = httpBaseURL(row.baseURL)
   if (!base) throw new ModelCallError("bad-url", "http")
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort("timeout"), discoverCapMs)
   try {
-    const res = await fetchImpl(modelsURL(base), {
+    const managed = row.sourceKind === "gateway"
+    const transport = fetchImpl ?? (managed ? gatewayFetch : fetch)
+    const res = await transport(modelsURL(base), {
       method: "GET",
       headers: authHeaders(row, false),
       signal: ctrl.signal,
+      ...(managed ? { redirect: "error" as const, credentials: "omit" as const, cache: "no-store" as const } : {}),
     })
     const raw = await res.text()
     if (!res.ok) throw new ModelCallError(redact(errorText(raw, res.status), row.apiKey), "http")
@@ -108,6 +112,7 @@ export async function streamCompletion(input: {
       timeoutMs: idleMs,
       fetchImpl: input.fetchImpl,
       nativeStream: input.nativeStream,
+      rejectRedirects: input.provider.sourceKind === "gateway",
     })
     clearTimeout(idleTimer)
     const iterator = opened.chunks[Symbol.asyncIterator]()

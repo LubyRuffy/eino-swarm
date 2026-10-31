@@ -9,6 +9,12 @@ reconnection. API access is independent: approved users with an enabled API
 grant and Key can use **Server** models in Chat without any PC. An approved
 account without API permission can still connect to its PCs.
 
+Android sign-in opens the validated verification page in the default external
+browser; return to zwai after authorizing. iOS retains its Browser sheet.
+Version-read and browser-launch acknowledgements each stop waiting after fifteen
+seconds or Sign out. A failed launch can be retried explicitly; the app does not
+automatically open another browser or claim to cancel an OS action already sent.
+
 Server model sources are ephemeral, named by Gateway/account identity and never
 stored in personal endpoint settings. Identically named server and phone models
 remain distinct choices. Existing conversations retain the selected source;
@@ -483,6 +489,32 @@ The reached WKWebView exposes menu entries as menu items, not buttons.
 ## iOS TestFlight release
 
 `make release VERSION=x.y.z` includes TestFlight. `make mobile-ios-release VERSION=x.y.z` resumes only that platform. Routine releases retain the last successful TestFlight marketing version and increase the build number; the batch version remains the source/tag identity. Existing candidate receipts freeze both iOS version fields on retry. Apple may still review later builds of the same version. Configure the existing private signing/API client and explicit testing groups through `IOS_RELEASE_CONFIG`; see [docs/RELEASE.md](../docs/RELEASE.md). `make mobile-ios` still only opens Xcode. The authorized export declaration is retained in the app's Info.plist and verified against the signed IPA; unchanged encryption use does not require repeated questions for a new build. Reassess relevant encryption changes. Frozen sources without the field require their exact private source/build confirmation.
+
+### Native account-flow fixture
+
+`e2e/ios-gateway-account.swift` drives the actual Capacitor Browser and return,
+pending/rejected isolation, a phone model call without a PC, and selection of an
+account-owned PC over Pairlink/RPC. It also exercises native control and model
+catalog redirect rejection, the control request's 15-second cancellation, and
+managed model stream redirect rejection and Stop cancellation. The fixture must
+observe zero requests at the redirect target and real HTTP cancellation before
+its delayed response; each stage attaches only the fixture's counters alongside
+the UI evidence. It shares the loopback Go service in
+`e2e/account-fixture` with Android. This is synthetic CAS and model data, not
+production NOSEC acceptance or a real-model probe.
+
+After freezing a candidate, use a fresh private fixture and simulator under the
+existing native admission/cleanup rules. Set `IOS_LAYOUT_PUBLIC` to that
+candidate's packaged `public` directory, `IOS_LAYOUT_PRESERVE_PUBLIC=1`,
+`IOS_LAYOUT_SCENARIO=ios-gateway-account.swift`, `IOS_LAYOUT_QUERY=/`,
+`IOS_LAYOUT_LOCALE=en`, and `IOS_LAYOUT_GATEWAY_ORIGIN` to the fixture's returned
+`http://127.0.0.1:<port>` origin before running `scripts/ios-layout-fixture.py`.
+The helper keeps every packaged web file unchanged and configures only its
+private native wrapper; it never injects a logged-in session or token. Hash the
+packaged web files before and after, preserve the XCTest screenshots/trees and
+fixture counts, then confirm the case's processes and simulator data are cleaned.
+The source tests for this preparation are `scripts/ios-layout-fixture.test.ts`.
+Do not copy a fixture pass to another source, installer or live CAS deployment.
 
 ## Model API errors
 

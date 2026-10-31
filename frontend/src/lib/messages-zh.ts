@@ -817,7 +817,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.remote.enabledHint":
     "打开这台电脑的手机连接。NOSEC 模式还需要登录并授权设备。",
   "settings.remote.hubUrl": "中转地址",
-  "settings.remote.hubUrlHint": "你在设置里填的 pairlink 中转，不是写死的域名。",
+  "settings.remote.hubUrlHint": "默认已配置官方 Gateway，仅在使用其他服务器时修改。",
   "settings.remote.displayName": "这台电脑的名称",
   "settings.remote.displayNameHint":
     "绑定后手机 chip 上显示的名字。空着就用这台机器的主机名。",

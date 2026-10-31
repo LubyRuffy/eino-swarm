@@ -122,6 +122,13 @@ describe("RemoteTab", () => {
     expect(screen.getByLabelText("This computer's name")).toHaveValue("desk-one")
   })
 
+  it("describes account PC selection without making a QR or manual Hub setup a prerequisite", async () => {
+    await act(async () => { render(<RemoteTab settings={{ ...base, remote: { ...base.remote!, auth_mode: "nosec" } }} onChange={vi.fn()} />) })
+    expect(screen.getByText("Sign in with the same account on your phone, then select this PC without scanning. The hub forwards ciphertext; PC conversations stay here.")).toBeVisible()
+    expect(screen.getByText("The official Gateway is set by default. Change this address only for another server.")).toBeVisible()
+    expect(screen.queryByText("Scan the QR from the phone app. The hub only forwards ciphertext; conversations stay on this PC.")).not.toBeInTheDocument()
+  })
+
   it("paints a phone that binds while the pairing QR stays up", async () => {
     vi.useFakeTimers()
     render(<RemoteTab settings={base} onChange={vi.fn()} />)

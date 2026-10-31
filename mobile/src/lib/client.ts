@@ -109,9 +109,9 @@ export function remoteError(detail: string): string {
   return t("err.remote", { detail: text })
 }
 
-export function linkError(err: unknown): string {
+export function linkError(err: unknown, managed = false): string {
   const fault = linkFault(err)
-  if (fault.message === "host offline") return t("scan.hostOffline")
+  if (fault.message === "host offline") return t(managed ? "account.hostOffline" : "scan.hostOffline")
   if (fault.kind === "remote") return remoteError(fault.message)
   if (NET_TIMEOUT.has(fault.message)) {
     return t("err.net.timeout", { reason: fault.message })

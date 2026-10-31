@@ -39,6 +39,7 @@ export async function openBody(input: {
   timeoutMs: number
   fetchImpl?: FetchLike
   nativeStream?: StreamBodyPlugin
+  rejectRedirects?: boolean
 }): Promise<BodySource> {
   if (input.nativeStream) return openNative(input, input.nativeStream)
   if (input.fetchImpl || !Capacitor.isNativePlatform()) return openFetch(input)
@@ -51,6 +52,7 @@ async function openFetch(input: {
   body: string
   signal: AbortSignal
   fetchImpl?: FetchLike
+  rejectRedirects?: boolean
 }): Promise<BodySource> {
   const fetchImpl = input.fetchImpl ?? fetch
   const res = await fetchImpl(input.url, {
@@ -58,6 +60,7 @@ async function openFetch(input: {
     headers: input.headers,
     body: input.body,
     signal: input.signal,
+    ...(input.rejectRedirects ? { redirect: "error" as const, credentials: "omit" as const, cache: "no-store" as const } : {}),
   })
   return { status: res.status, chunks: fetchChunks(res, input.signal) }
 }
