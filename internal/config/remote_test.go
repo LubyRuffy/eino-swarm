@@ -20,8 +20,8 @@ func TestRemoteDefaultsAndTokenStayOffYAML(t *testing.T) {
 	if cfg.Remote.Enabled {
 		t.Fatal("remote must start off")
 	}
-	if cfg.Remote.HubURL != "" {
-		t.Fatal("hub url must be blank until configured")
+	if cfg.Remote.HubURL != "https://ai.fofa.info:2440" {
+		t.Fatal("official gateway must be available without server configuration")
 	}
 	if cfg.Remote.ThreadLimit != DefaultRemoteThreadLimit {
 		t.Fatalf("thread limit %d", cfg.Remote.ThreadLimit)

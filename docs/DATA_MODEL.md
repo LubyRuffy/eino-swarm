@@ -1038,3 +1038,23 @@ Its JSON records recovery phase, `duration_ms`, `scanned_events` and
 Recovery queries reuse `idx_evt_thread_kind_seq` and read the latest valid v1
 checkpoint plus the selected lifecycle and pending-tool evidence once per
 conversation. No new table, migration, archive or event-body compression is added.
+
+### Mobile Gateway account state (`F-211`)
+
+No PC database migration is required. Phone storage keeps the configured Gateway
+origin, one Mobile session (`origin`, opaque credential, user/device IDs and
+expiry) and at most one pending device authorization proof, separate from
+personal providers. Pairlink saved links may carry `gatewayOrigin`,
+`gatewayOwnerID`, `gatewayMobileID` and `gatewayHostID`; automatic reconnect
+validates the exact current account/Mobile identity and reuses the saved ticket,
+without issuing a new binding or undoing revocation. An explicit PC selection
+issues a fresh ticket. Logout/revocation removes managed links while
+preserving anonymous ones. The original private device identity stays local.
+The existing bounded direct-thread store retains the exact `providerId`; Gateway
+source IDs are account-qualified and transient provider projections never enter
+`zwai.phone.providers`. Server conversation history is visible only for the
+current validated bootstrap source ID; sign-out/another account hides it without
+deleting it, and an approved same-account API-disabled session can still read
+its own history. No private provider configuration is synchronized to the
+Gateway. Local credentials retain the existing phone storage security boundary;
+this change does not claim hardware-backed secure storage.

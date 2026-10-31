@@ -53,13 +53,13 @@ export function ModelPicker({
     }
   }, [])
 
-  const groups: { label: string; rows: ModelChoice[] }[] = []
+  const groups: { id: string; label: string; rows: ModelChoice[] }[] = []
   for (const row of models) {
     if (!row.model) continue
     const label = row.provider_label || row.provider_id
-    const group = groups.find((item) => item.label === label)
+    const group = groups.find((item) => item.id === row.provider_id)
     if (group) group.rows.push(row)
-    else groups.push({ label, rows: [row] })
+    else groups.push({ id: row.provider_id, label, rows: [row] })
   }
 
   return createPortal(
@@ -105,7 +105,7 @@ export function ModelPicker({
         {models.length === 0 ? <p className="px-3 py-3 text-sm text-muted-foreground">{t("composer.noModels")}</p> : null}
         <div role="radiogroup" aria-label={t("composer.model")} className="min-h-0 overflow-y-auto overscroll-contain px-2 py-2">
           {groups.map((group) => (
-            <div key={group.label}>
+            <div key={group.id}>
               <h3 className="px-3 py-2 text-xs font-semibold text-muted-foreground">{group.label}</h3>
               {group.rows.map((row) => {
                 const selected = row.provider_id === providerId && row.model === model

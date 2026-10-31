@@ -20,12 +20,13 @@ const (
 	DefaultRemoteWatchEvents  = 80
 	DefaultRemoteWatchOpen    = 24
 	DefaultRemoteKeepAwake    = true
+	DefaultGatewayOrigin      = "https://ai.fofa.info:2440"
 	MaxRemoteDisplayName      = 40
 )
 
-// RemoteConfig is the phone-pairing channel. HubURL is whatever the user
-// typed in Settings — never a compiled-in host. The Host Token is minted on
-// this PC when pairing starts; GET /api/settings cannot echo it.
+// RemoteConfig is the phone-pairing channel. A blank HubURL uses the official
+// gateway; Settings can override it for an independent deployment. Host Tokens
+// stay in private storage and never appear in GET /api/settings.
 type RemoteConfig struct {
 	AuthMode string `yaml:"auth_mode" json:"auth_mode"`
 	Enabled  bool   `yaml:"enabled" json:"enabled"`
@@ -64,6 +65,9 @@ func (c *Config) normalizeRemote() {
 		c.Remote.AuthMode = RemoteAuthLegacy
 	}
 	c.Remote.HubURL = strings.TrimSpace(c.Remote.HubURL)
+	if c.Remote.HubURL == "" {
+		c.Remote.HubURL = DefaultGatewayOrigin
+	}
 	c.Remote.DisplayName = SeedRemoteDisplayName(c.Remote.DisplayName)
 	if c.Remote.ThreadLimit <= 0 {
 		c.Remote.ThreadLimit = DefaultRemoteThreadLimit

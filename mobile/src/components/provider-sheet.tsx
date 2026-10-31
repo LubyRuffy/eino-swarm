@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   blankProvider,
+  isPersonalProvider,
   type DirectProvider,
   saveProviders,
 } from "@/lib/direct-provider"
@@ -40,7 +41,7 @@ export function ProviderSheet({
   }
 
   const save = () => {
-    if (!editing) return
+    if (!editing || !isPersonalProvider(editing)) return
     if (!httpBaseURL(editing.baseURL)) {
       setError(t("chat.badUrl"))
       return
@@ -56,7 +57,7 @@ export function ProviderSheet({
   }
 
   const remove = () => {
-    if (!editing) return
+    if (!editing || !isPersonalProvider(editing)) return
     if (!confirming) {
       setConfirming(true)
       return
@@ -67,7 +68,7 @@ export function ProviderSheet({
   }
 
   const runDiscover = async () => {
-    if (!editing) return
+    if (!editing || !isPersonalProvider(editing)) return
     const current = editing
     setError("")
     setBusy(true)
@@ -259,6 +260,7 @@ export function ProviderSheet({
                   <button
                     type="button"
                     className="flex min-w-0 flex-1 flex-col text-left"
+                    disabled={!isPersonalProvider(row)}
                     onClick={() => {
                       setError("")
                       setConfirming(false)
@@ -274,13 +276,14 @@ export function ProviderSheet({
                       {row.label || row.id}
                     </span>
                     <span className="truncate text-xs text-muted-foreground">
-                      {(row.model || row.baseURL) + " · " + (row.api === "responses" ? t("chat.apiResponses") : t("chat.apiChat"))}
+                      {isPersonalProvider(row) ? (row.model || row.baseURL) + " · " + (row.api === "responses" ? t("chat.apiResponses") : t("chat.apiChat")) : t("account.managed")}
                     </span>
                   </button>
                   <input
                     type="checkbox"
                     aria-label={t("chat.listedName", { name: row.label || row.id })}
                     className="size-4 shrink-0"
+                    disabled={!isPersonalProvider(row)}
                     checked={row.enabled !== false}
                     onChange={(e) => {
                       commit(

@@ -643,10 +643,27 @@ go run ./cmd/zwai web --mock
 and writes a file into the workspace. No network, no key — it is what the
 end-to-end tests run on and the fastest way to see the UI work.
 
-### Scan a phone to this PC
+### Sign in on a phone or scan this PC
 
-1. zwai **Settings → Phone**: turn pairing on, paste the hub URL
-   (`https://…`) and choose **Connection sign-in**. **Independent hub (legacy)**
+Official clients have a default Gateway address. On the phone, choose **Sign in
+with NOSEC**; no server address, API Key or Pairlink configuration is needed.
+Finish the browser confirmation. A pending or rejected account only displays
+its review status. Once approved, **User center → Your computers** lists PCs
+signed in to the same account. Choose an online PC to connect without scanning;
+the phone remembers that selection and reconnects only that PC. A signed-in
+account without API permission can still manage its device connections.
+Authorized server models appear in the phone's **Chat** model picker even when
+no PC is connected. Phone-configured endpoints remain separate sources, and
+PC conversations continue using the PC catalog and execution. Connecting or
+losing a PC does not change a direct conversation's model source. Sign-out
+removes the account's Mobile credential and managed tickets, while retaining
+personal endpoints and independent anonymous pairings. **User center → Other
+server** is available for a self-hosted Gateway.
+
+For anonymous use, retain the QR flow:
+
+1. zwai **Settings → Phone**: turn pairing on, keep the default Gateway
+   address (or enter your independent hub) and choose **Connection sign-in**. **Independent hub (legacy)**
    is the compatible default: this PC mints its hidden Host Token locally;
    it is separate from a Gateway API Key. For a managed Gateway, select
    **NOSEC account** and wait for the saved settings to take effect. Click

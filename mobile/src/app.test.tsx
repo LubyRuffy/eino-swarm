@@ -198,6 +198,23 @@ describe("selecting a PC returns to its inbox", () => {
     vi.mocked(openSaved).mockReset()
   })
 
+  it("returns to the startup PC after selecting another PC and reconnecting through the account page", async () => {
+    for (const [fingerprint, label] of [["pc-a", "PC A"], ["pc-b", "PC B"]]) saveLink({ hubURL: "http://127.0.0.1:9", ticket: "tick", hostPub: "pub", sessionID: "sid", fingerprint, label })
+    saveActiveFingerprint("pc-a")
+    vi.mocked(openSaved).mockImplementation(async () => hostLink({ threads: [] }))
+    render(<App />)
+    await waitFor(() => expect(openSaved).toHaveBeenCalledTimes(1))
+    fireEvent.click(await screen.findByRole("tab", { name: "PC B" }))
+    await waitFor(() => expect(openSaved).toHaveBeenCalledTimes(2))
+    await act(async () => {
+      saveActiveFingerprint("pc-a")
+      window.dispatchEvent(new CustomEvent("zwai.gateway.connect", { detail: "pc-a" }))
+    })
+    await waitFor(() => expect(openSaved).toHaveBeenCalledTimes(3))
+    expect(screen.getByRole("tab", { name: "PC A" })).toHaveAttribute("aria-selected", "true")
+    expect(vi.mocked(openSaved).mock.calls[2][0].fingerprint).toBe("pc-a")
+  })
+
   it("does not auto-open the selected PC's live or last conversation", async () => {
     const ticket = (fingerprint: string, label: string) => ({
       hubURL: "http://127.0.0.1:9", ticket: "tick", hostPub: "pub", sessionID: "sid", fingerprint, label,

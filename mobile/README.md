@@ -1,6 +1,23 @@
 # zwai phone
 
-iOS and Android apps. Scan QR opens a live viewfinder on a `pairlink:v1:…`
+iOS and Android apps. **Sign in with NOSEC** uses the built-in default Gateway
+(`https://ai.fofa.info:2440`). No manual address, Key or Pairlink setup is
+required. Finish device authorization in the system browser. Pending/rejected
+accounts show only review status. Approved accounts list their online PCs in
+**User center**; selecting one connects without a QR and remembers that PC for
+reconnection. API access is independent: approved users with an enabled API
+grant and Key can use **Server** models in Chat without any PC. An approved
+account without API permission can still connect to its PCs.
+
+Server model sources are ephemeral, named by Gateway/account identity and never
+stored in personal endpoint settings. Identically named server and phone models
+remain distinct choices. Existing conversations retain the selected source;
+a missing source never falls back to another provider. PC Agent conversations
+use the PC's catalog and execute on that PC. Sign-out removes only account
+credentials and managed tickets, retaining private providers and anonymous
+pairings. **User center → Other server** changes the default for self-hosting.
+
+Anonymous use stays available. Scan QR opens a live viewfinder on a `pairlink:v1:…`
 QR: a frame, a beam that sweeps up and down, and a short chime when it reads.
 Paste is the same URI, not a second protocol. After bind, a live
 turn (or the last thread this phone opened) opens immediately; otherwise
@@ -333,12 +350,14 @@ falls back to `mobile/package.json` `version`. Override with
 picks the Gradle task (default both). JDK 21 is required (Capacitor
 `compileOptions`); JAVA_HOME 17 is skipped.
 
-Hub URL and pairing live on the PC (Settings → Phone). This app
-only stores the device identity and the redeem ticket on the phone. Camera
+Anonymous pairing reads the Hub URL from the PC QR (Settings → Phone).
+Account mode uses the configurable default Gateway and stores its Mobile
+credential separately from personal endpoints; device identity and Pairlink
+tickets also stay on the phone. Camera
 and cleartext (user-typed hub URLs, including `http` on a LAN) are declared
 in `Info.plist` and `AndroidManifest.xml`. The iOS camera component also
 references the photo library, so those purpose strings are declared too;
-the app itself only asks for the camera. Nothing compiles a hub hostname.
+the app itself only asks for the camera. The official Gateway default can be changed in User center; anonymous QR offers continue to select their own hub.
 
 ## Updates
 

@@ -1,3 +1,4 @@
+import { usePhoneAccount } from "@/components/gateway-account-shell"
 import { useState } from "react"
 import { Camera } from "lucide-react"
 
@@ -23,6 +24,7 @@ export function ScanScreen({
   embedded?: boolean
   onAddModel?: () => void
 }) {
+  const account = usePhoneAccount()
   const [paste, setPaste] = useState("")
   const [localError, setLocalError] = useState<string>()
   const [live, setLive] = useState(false)
@@ -64,6 +66,7 @@ export function ScanScreen({
           ) : null}
         </header>
       )}
+      {!embedded && account.openAccount ? <Button onClick={account.openAccount}>{t("account.login")}</Button> : null}
       <p className="text-sm leading-relaxed text-muted-foreground">{t("scan.hint")}</p>
       <Button type="button" onClick={openScanner} disabled={busy} aria-label={t("scan.camera")}>
         <Camera className="size-4" />

@@ -167,7 +167,9 @@ func TestHostStartWithoutHubURLStaysOffline(t *testing.T) {
 	e := testEngine(t)
 	cfg := e.Config()
 	cfg.Remote.Enabled = true
+	cfg.Remote.HubURL = ""
 	h := New(e, cfg, nil)
+	t.Cleanup(h.Stop)
 	h.Start()
 	st := h.Status()
 	if st.Online || st.Error != "remote needs hub_url" {

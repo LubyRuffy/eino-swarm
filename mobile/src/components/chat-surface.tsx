@@ -1,3 +1,4 @@
+import { usePhoneAccount } from "@/components/gateway-account-shell"
 import type { ReactNode } from "react"
 
 import { DirectChatScreen } from "@/components/direct-chat-screen"
@@ -43,6 +44,7 @@ export function ChatSurface({
   onOpenChange: (open: boolean) => void
   onBindClose: (close: () => void) => void
 }) {
+  const account = usePhoneAccount()
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
       <UpdateNotice />
@@ -56,6 +58,7 @@ export function ChatSurface({
           connected={connected}
           reconnecting={reconnecting}
           providers={providers}
+          gatewaySourceID={account.gatewaySourceID}
           onSelectHost={onSelectHost}
           onAddHost={onAddHost}
           onUnlink={onUnlink}

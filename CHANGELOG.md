@@ -6,6 +6,8 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Added Mobile NOSEC account sign-in, review isolation and a default Gateway address. Approved users can select an online same-account PC without a QR, remember and reconnect that PC, and use authorized server models without a PC. Anonymous QR pairing remains available. Server sources, phone providers and PC catalogs retain separate identities; signing out removes managed credentials and tickets while preserving private providers and anonymous pairings. (`F-211`, `F-230`, `C-006`, `C-013`)
+
 - Clarified PC and phone goal banners: paused labels and reasons describe automatic pursuit, and the timer is explicitly the goal's age. A completed manual reply retains the goal's durable pause until explicit resume or completion. (#131)
 
 - Fixed native startup readiness to reacquire only a fully recorded, incomplete initial AX Role observation within its original deadline. Structured helper read refusals retain the first error and never authorize input from a partial graph. (#135)

@@ -596,8 +596,9 @@ The phone does **not** call them; it talks pairlink to the hub, and the hub
 forwards sealed frames to this process.
 
 `remote` in `GET/PUT /api/settings` is `{enabled, hub_url, auth_mode, display_name, thread_limit,
-summary_chars, open_turns, event_chars, watch_events, keep_awake}`. `hub_url` is whatever you typed — never compiled
-in. `display_name` is this computer's name on a bound phone's host chip; blank
+summary_chars, open_turns, event_chars, watch_events, keep_awake}`. `hub_url`
+uses the official Gateway default when blank and can be overridden in Settings.
+`display_name` is this computer's name on a bound phone's host chip; blank
 seeds the machine hostname. A PUT of `remote` reloads the pairlink host. `keep_awake` (default true)
 holds a system sleep assertion while pairing is on; it is not tied to the hub
 socket. The Host Token is **not** in
@@ -609,7 +610,7 @@ falls back to anonymous registration or manual-token admission.
 ### `GET /api/remote/status`
 
 ```json
-{"enabled": false, "hub_url": "", "has_token": false, "online": false,
+{"enabled": false, "hub_url": "https://ai.fofa.info:2440", "has_token": false, "online": false,
  "keep_awake": true, "awake": false, "fingerprint": "", "error": "",
  "auth_mode": "legacy", "login_available": false}
 ```
@@ -2813,3 +2814,29 @@ Quiet scheduled checks keep these receipts in Trace Full log while hiding cloud
 activity notices from Chat. No local `tool_call` or `tool_result` is fabricated for cloud work. Receipts are
 recorded when the model request ends, including partial/failed requests; only
 provider-reported completion produces a completed status.
+
+## Mobile Gateway account wire (`F-211`, `C-006`)
+
+The phone calls the configured Gateway, not the PC loopback API. These routes
+belong to AIGateway's `/client/api/v1` and use explicit Mobile Bearer credentials;
+a browser cookie or Gateway API Key is not substituted:
+
+| Method | Path under `/client/api/v1` | Purpose |
+|---|---|---|
+| POST | `/auth/mobile/start` | Name, platform, version, `device_pub`, candidate token and S256 challenge; returns public browser URI and private device code |
+| POST | `/auth/mobile/poll` | Device code and verifier; reports pending/rejected/authorized/denied/expired |
+| GET | `/auth/me` | Current account and exact Mobile session |
+| GET | `/bootstrap` | Approved account's source identity, model API URLs, Pairlink URLs and heartbeat interval |
+| POST | `/heartbeat` | Refresh server-observed presence, independently of PC connectivity |
+| GET | `/link-hosts` | Paginated same-account PCs (`data` array plus `meta`) |
+| POST | `/link-hosts/:id/connect` | Selected PC, authenticated public key and labels; returns `data:{binding_id,ticket,host_pub,session_id}` without QR |
+| POST | `/auth/logout` | Revoke this Mobile session |
+
+Start/poll are public device-flow entry points; approved resource routes require
+current account authority. A pending/rejected phone polls only its login flow or
+reads `/auth/me`; it cannot bootstrap, discover models or connect PCs. Existing
+anonymous QR redemption and encrypted Pairlink framing remain independent.
+Standard `/v1/models` and `/v1/chat/completions` use the same Mobile Bearer after
+approval and API authorization, retaining the Gateway's Key/account model and
+quota enforcement. PC RPC never receives the Mobile credential or phone-private
+provider secrets. See the Gateway API documentation for the authoritative wire.

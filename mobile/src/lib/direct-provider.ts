@@ -9,6 +9,8 @@ export const defaultTimeoutSeconds = 300
 
 export type DirectProvider = {
   id: string
+  /** Gateway sources are ephemeral and cannot enter personal settings. */
+  sourceKind?: "gateway" | "phone"
   label: string
   baseURL: string
   apiKey: string
@@ -54,7 +56,7 @@ export function loadProviders(): DirectProvider[] {
 }
 
 export function saveProviders(rows: DirectProvider[]): DirectProvider[] {
-  const clean = rows.map(normalizeProvider).filter((row) => row.baseURL)
+  const clean = rows.filter(isPersonalProvider).map(normalizeProvider).filter((row) => row.baseURL)
   if (clean.length === 0) {
     remove(KEY)
     return []
@@ -88,6 +90,7 @@ export function findProvider(rows: DirectProvider[], id: string): DirectProvider
 function asProvider(value: unknown): DirectProvider | null {
   if (!value || typeof value !== "object") return null
   const row = value as Partial<DirectProvider>
+  if (row.sourceKind === "gateway" || typeof row.id === "string" && row.id.startsWith("gateway:")) return null
   const baseURL = httpBaseURL(typeof row.baseURL === "string" ? row.baseURL : "")
   if (!baseURL || typeof row.id !== "string" || !row.id.trim()) return null
   return normalizeProvider({
@@ -154,4 +157,8 @@ function remove(key: string) {
   } catch {
     // same as write
   }
+}
+
+export function isPersonalProvider(row: DirectProvider): boolean {
+  return row.sourceKind !== "gateway" && !row.id.startsWith("gateway:")
 }

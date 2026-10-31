@@ -134,6 +134,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-006 Phone remote protocol
 
+- Mobile 账号接入（`F-211`）：默认 Gateway 可直接登录并可显式改为其他 HTTPS origin；匿名 QR 仍由 URI 选择 Hub。专用 Mobile device flow 使用本机随机 candidate token 和 PKCE verifier，秘密不进入浏览器 URL／日志，公开确认码仅可打开同 origin 固定 NOSEC start。待审／拒审隔离其他界面并禁止 bootstrap／模型／设备连接请求，批准后才激活 Mobile 会话。资源 bootstrap 返回 403 时先立即清空受管资源并限制到账号恢复界面，只通过 auth/me 复核真实审核状态；复核失败时明确状态待确认，不能伪造待审事实或回退到其他私有服务界面。前台刷新并每 30 秒心跳，服务端以 90 秒租约解释在线；不以登录成功冒充在线，也不延长会话到期。用户显式选择在线同账号 PC，Bearer 调用 Gateway connect API 获得原有 Pairlink ticket/session，无二维码、不批量自动绑定。自动重连复用既有票据并核对当前 origin／owner／Mobile session／Host 身份，不重新签发或复活撤销绑定；只有用户重新选择 PC 才调用 connect 签发新票据。退出、审核撤销和会话过期移除受管票据并关闭相应本地连接，匿名票据独立保留。真实 P2P 对端撤销仍依赖客户端处理，Gateway 只能强制关闭其中转连接。证据：`mobile/src/lib/gateway-account.ts`、`mobile/src/lib/gateway-account.test.ts`、`mobile/src/lib/use-gateway-account.test.tsx`、`mobile/src/components/gateway-account-shell.test.tsx`、`mobile/e2e/gateway-account.spec.ts`。
+
 - 手机过程展示（`F-220`、`F-222`、`F-223`、`F-230`）：主管／子 Agent／直连聊天的纯思考组不增加一级过程聚合或活动末行预览，直接显示各自默认收起的思考控件；含工具的组保留一级聚合，展开只显示条目，每条思考正文仍由自身控件独立管理。单项与多项都须显式打开思考正文。正文保留完整原文，同一身份的实时追加和完成不改变用户的开合选择；不同思考身份不共享状态，外层关闭卸载后重新打开按默认收起。含工具的一级活动摘要可以显示既有末行预览，不能据该摘要把正文判作已展开；纯思考组加入或移除工具时，同一已挂载思考的开合选择保持；回答和工具折叠语义不变。Clients 保留既有任务聚合，其思考条目仍复用默认收起的自身控件。此条只改变手机展示，不改变事件、Pairlink 或 PC 的 `C-022`。证据：`mobile/src/components/thought.tsx`、`mobile/src/components/thread-blocks.tsx`、`mobile/src/components/client-groups.tsx`、`mobile/src/components/thread-blocks-reasoning.test.tsx`、`mobile/e2e/reasoning-fold.spec.ts`；来源：Issue #118、#129。
 
 - 暂停目标的手机 send 保留 capped／blocked／idle 和连续预算，答完不启动目标下一轮；只有显式 `resume_goal` 按 `C-009` 恢复。协议操作名与载荷不变，UI 保留暂停投影和恢复操作。关联功能：`F-220`；证据：`internal/server/goal_pause_integration_test.go`、`internal/remote/rpc.go`；变更类型：Changed / Fixed。
@@ -295,6 +297,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 请求前拒绝：manager middleware 检查前序状态重写后的当前尾部非空工具参数；无效 JSON 通过 `invalid_tool_json` 进入同 turn 有界重试，拒绝本身不发送 HTTP。普通新 user 之前的旧调用和空参数保持既有边界，不宣称消毒全部历史。实际 ADK/HTTP、压缩状态串联、steer 与 worker 恢复证据：`internal/engine/model_retry_http_test.go`。
 
 ## C-013 Phone model picker
+
+- 服务器模型、手机自配服务和 PC 目录不按模型名称合并：手机直连以 provider/source ID 持久选择，Gateway source ID 由服务端按 origin／账号确定；PC 会话在 PC 执行，只读取该 PC 的目录。切换、断开或重新连接 PC 不改手机直连来源。模型选择器按 provider ID 分组，同标签也不合并来源。账号模型凭据只作临时 provider 投影，不得写入自配服务或编辑界面；来源消失时取消其在途调用，保留已收到内容与原选择，禁止自动转到同名私有服务。服务器历史只对当前经验证 bootstrap source ID 可见；退出或其他账号登录时隐藏，原存储不删，同账号恢复后可读，API grant=false 的已批准账号也可读本人历史但不能调用。手机自配历史独立保留。证据：`mobile/src/lib/gateway-models.ts`、`mobile/src/lib/direct-provider.ts`、`mobile/src/lib/direct-provider-account.test.ts`、`mobile/src/components/direct-account-source.test.tsx`、`mobile/src/components/model-picker.tsx`；关联 `F-211`、`F-230`。
 
 - 状态：active；类型：compatibility / lifecycle；作用范围：phone composer；关联功能：`F-230`。
 - 契约内容：手机输入框的模型按钮打开应用内分组列表，列表沿用应用字号并允许长模型名换行；选择后保留服务商和模型的配对关系，关闭后发送使用新选择。返回键先关闭列表，不退出对话或应用。

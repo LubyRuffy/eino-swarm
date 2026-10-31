@@ -4,8 +4,8 @@ const config: CapacitorConfig = {
   appId: "com.lubyruffy.zwai",
   appName: "zwai",
   webDir: "dist",
-  // Hub URL is typed in on the PC, never compiled in. Cleartext is allowed so
-  // a LAN pairlinkd over http still binds; production should still be https.
+  // Account mode uses the configurable default Gateway; anonymous QR offers
+  // carry their Hub URL. Cleartext keeps independent LAN hubs usable.
   android: {
     allowMixedContent: true,
   },

@@ -2,6 +2,7 @@ import { openSaved } from "./client"
 import { mockLink, wantsMock } from "./mock-link"
 import type { RemoteRequest, RemoteResponse } from "./rpc"
 import type { SavedLink } from "./store"
+import { gatewayLinkForReconnect } from "./gateway-account"
 
 /** Everything the app asks of a PC. The product link is a sealed WebSocket
  *  (`DeviceLink`); the walkthrough link is scripted and offline. */
@@ -20,5 +21,5 @@ export type RemoteLink = {
 
 export async function openLink(saved: SavedLink): Promise<RemoteLink> {
   if (wantsMock()) return mockLink()
-  return openSaved(saved)
+  return openSaved(saved.gatewayOwnerID ? gatewayLinkForReconnect(saved) : saved)
 }

@@ -515,7 +515,7 @@ func Default() *Config {
 		},
 		Remote: RemoteConfig{
 			Enabled:      false,
-			HubURL:       "",
+			HubURL:       DefaultGatewayOrigin,
 			ThreadLimit:  DefaultRemoteThreadLimit,
 			SummaryChars: DefaultRemoteSummaryChars,
 			OpenTurns:    DefaultRemoteOpenTurns,

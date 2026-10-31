@@ -6,6 +6,7 @@ test("phone settings shows a pairing QR control", async ({ page }) => {
   const dialog = page.getByRole("dialog")
   await dialog.getByRole("tab", { name: "Phone" }).click()
   await expect(dialog.getByLabel("Hub URL")).toBeVisible()
+  await expect(dialog.getByLabel("Hub URL")).toHaveValue("https://ai.fofa.info:2440")
   await expect(dialog.getByLabel("Host Token")).toHaveCount(0)
   await expect(dialog.getByLabel("Event text on the phone")).toBeVisible()
   await expect(dialog.getByLabel("Events on the phone")).toBeVisible()

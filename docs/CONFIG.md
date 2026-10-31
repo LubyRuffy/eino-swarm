@@ -104,7 +104,7 @@ ui:
     palette: zwai
 remote:
     enabled: false
-    hub_url: ""
+    hub_url: https://ai.fofa.info:2440
     thread_limit: 5
     summary_chars: 280
     open_turns: 6
@@ -479,7 +479,7 @@ in Settings → Phone.
 | key | default | meaning |
 |---|---|---|
 | `enabled` | `false` | register this PC with the hub and accept sealed RPC from bound phones |
-| `hub_url` | `""` | pairlink hub origin (`https://…`). Never compiled in. NOSEC accepts an HTTPS origin with no path/query/fragment or user info; HTTP is allowed only on loopback for local testing |
+| `hub_url` | `https://ai.fofa.info:2440` | Gateway / pairlink hub origin. Blank uses the official default, so normal sign-in requires no server configuration; an explicit self-hosted origin is preserved and remains editable in Settings. NOSEC accepts an HTTPS origin with no path/query/fragment or user info; HTTP is allowed only on loopback for local testing |
 | `auth_mode` | `legacy` | `legacy` keeps independent pairlink registration; `nosec` requires browser sign-in, administrator account approval and explicit device authorization before registration. Editable in Settings → Phone → Connection sign-in |
 | `display_name` | this machine's hostname | name a bound phone paints on its host chip. Blank seeds `os.Hostname()` (or stays empty if that fails). Editable in Settings → Phone. Clipped to 40 runes. Not a compiled label |
 | `thread_limit` | `5` | how many idle recents the phone lists below In progress before More. Live rows (`list.running`) are a separate roster and do not count |

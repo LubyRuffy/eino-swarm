@@ -1,3 +1,4 @@
+import { usePhoneAccount } from "@/components/gateway-account-shell"
 import { Capacitor } from "@capacitor/core"
 import { Menu, MessageSquare, Monitor, SquarePen } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
@@ -45,6 +46,7 @@ export function HostChrome({
   onModels?: () => void
   pcLink?: RemoteLink | null
 }) {
+  const account = usePhoneAccount()
   const [menu, setMenu] = useState(false)
   const [versionCheck, setVersionCheck] = useState(false)
   const [timeoutsOpen, setTimeoutsOpen] = useState(false)
@@ -86,6 +88,7 @@ export function HostChrome({
             role="menu"
             className="absolute left-2 top-12 z-30 w-56 rounded-xl border border-border bg-card p-1 shadow-lg"
           >
+            {account.openAccount ? <MenuRow onClick={() => { setMenu(false); account.openAccount?.() }}>{t("account.title")}</MenuRow> : null}
             <MenuRow
               onClick={() => {
                 setMenu(false)

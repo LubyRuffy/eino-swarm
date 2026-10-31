@@ -1,5 +1,7 @@
+import { accountEn } from "./messages-account"
 import { generationEn } from "./messages-generation"
 export const en = {
+  ...accountEn,
   "startup.failed": "{failed} conversations could not be restored. Check Trace or logs.",
   "startup.restoring": "Restoring unfinished tasks {completed}/{total}",
   ...generationEn,

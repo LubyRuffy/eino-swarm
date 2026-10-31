@@ -38,6 +38,7 @@ export function DirectChatScreen({
   connected,
   reconnecting,
   providers,
+  gatewaySourceID,
   onSelectHost,
   onAddHost,
   onUnlink,
@@ -53,6 +54,7 @@ export function DirectChatScreen({
   connected?: boolean
   reconnecting?: boolean
   providers: DirectProvider[]
+  gatewaySourceID?: string
   onSelectHost: (fingerprint: string) => void
   onAddHost: () => void
   onUnlink: () => void
@@ -62,15 +64,25 @@ export function DirectChatScreen({
   onBindClose?: (close: () => void) => void
   complete?: typeof streamCompletion
 }) {
+  const sourceID = gatewaySourceID ?? providers.find((row) => row.sourceKind === "gateway")?.id ?? ""
+  const visible = (row: DirectThread) => !row.providerId.startsWith("gateway:") || row.providerId === sourceID
   const [threads, setThreads] = useState(loadThreads)
   const [openID, setOpenID] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const [notice, setNotice] = useState("")
-  const [pick, setPick] = useState(() => firstPick(providers, loadThreads()[0]))
+  const [pick, setPick] = useState(() => firstPick(providers, loadThreads().find(visible)))
   const stopRef = useRef<AbortController | null>(null)
   const busyRef = useRef(false)
-  const open = threads.find((row) => row.id === openID) ?? null
+  const activeSource = useRef<{ id: string; key: string } | null>(null)
+  const visibleThreads = threads.filter(visible)
+  const open = visibleThreads.find((row) => row.id === openID) ?? null
   const models = providerChoices(providers)
+  const selectedID = open?.providerId || pick.providerId
+  const selectedUnavailable = Boolean(selectedID) && !findProvider(providers, selectedID)
+  useEffect(() => {
+    const source = activeSource.current
+    if (source && !providers.some((row) => row.id === source.id && row.apiKey === source.key)) stopRef.current?.abort("stop")
+  }, [providers])
 
   useEffect(() => {
     onOpenChange?.(Boolean(openID))
@@ -114,6 +126,7 @@ export function DirectChatScreen({
     setPending(true)
     const ctrl = new AbortController()
     stopRef.current = ctrl
+    activeSource.current = { id: provider.id, key: provider.apiKey }
     let committed = false
     try {
       const files = [...(extra?.images ?? []), ...(extra?.files ?? [])]
@@ -185,7 +198,7 @@ export function DirectChatScreen({
     } catch (err) {
       if (!committed) throw err
     } finally {
-      if (stopRef.current === ctrl) stopRef.current = null
+      if (stopRef.current === ctrl) { stopRef.current = null; activeSource.current = null }
       busyRef.current = false
       setPending(false)
     }
@@ -238,14 +251,14 @@ export function DirectChatScreen({
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-          {threads.length === 0 ? (
+          {visibleThreads.length === 0 ? (
             <div className="px-1">
               <p className="text-sm font-medium">{t("chat.emptyTitle")}</p>
               <p className="pt-1 text-[13px] text-muted-foreground">{t("chat.emptyHint")}</p>
             </div>
           ) : (
             <ul className="flex flex-col gap-2">
-              {threads.map((row) => (
+              {visibleThreads.map((row) => (
                 <li key={row.id}>
                   <button
                     type="button"
@@ -282,7 +295,7 @@ export function DirectChatScreen({
         pending={pending}
         stopLabel={t("thread.stop")}
         onStop={pending ? stop : undefined}
-        hint={notice || undefined}
+        hint={notice || (selectedUnavailable ? t("account.sourceUnavailable") : undefined)}
         models={models}
         reasoningLevels={models.length ? thinking : []}
         providerId={open?.providerId || pick.providerId}

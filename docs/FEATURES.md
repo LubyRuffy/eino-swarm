@@ -20,6 +20,7 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-190` Desktop updates
   - `F-200` Phone
     - `F-210` Pair a phone with a PC
+    - `F-211` Mobile account login and owned devices
     - `F-220` Read and control PC conversations
     - `F-221` Quote PC conversation text
     - `F-222` Inspect sub-agents on the phone
@@ -236,7 +237,11 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：安全绑定手机和 PC；使用者：手机用户；入口：Settings → Phone QR、扫码或粘贴；输入：pairlink URI；输出：加密连接和设备列表；前置条件：hub 和 PC 在线；失败表现：网络、过期或 host offline；关联契约：`C-006`；实现证据：`internal/remote`, `mobile/src/components/scan-screen.tsx`, `mobile/src/lib/link.ts`。
 - PC 的 hub 注册在受控后台生命周期内执行；网络迟缓只影响手机连接，不阻塞本地程序启动。Stop／Reload 可取消注册，旧结果不得重新启用已停止或已替换的 host。证据：`internal/remote/host.go`、`internal/remote/host_start.go`、`internal/remote/host_start_test.go`、`internal/app/startup_remote_test.go`。
 
-- 管理型 Gateway 连接：Settings → Phone 的 Connection sign-in 可选 `legacy`（兼容默认）或 `nosec`。后者在系统浏览器登录，核对公开确认码／PC 指纹并明确授权，待审／拒审／过期／取消／网络失败分别可见；管理员批准账号后仍需浏览器确认设备。授权与 PC WebSocket 上线分开，只有同时满足才可显示配对 QR；明确确认的新设备重连用于删除／撤销后的恢复，不复活旧凭据或认领其他账号设备。Hub 来自设置，Go 持有凭据和轮询 proof，前端只读本地安全状态；配置切换丢弃旧结果。关联 `C-006`；实现：`internal/config/remote_auth.go`、`internal/remote/login.go`、`internal/remote/login_wire.go`、`internal/server/remote.go`、`frontend/src/lib/use-remote-status.ts`、`frontend/src/components/app/settings-remote-login.tsx`；验证：`internal/remote/nosec_login_test.go`、`internal/remote/login_lifecycle_test.go`、`internal/server/remote_login_test.go`、`frontend/src/components/app/settings-remote-login.test.tsx`、`frontend/e2e/remote-nosec.spec.ts`。
+- 管理型 Gateway 连接：Settings → Phone 的 Connection sign-in 可选 `legacy`（兼容默认）或 `nosec`。后者在系统浏览器登录，核对公开确认码／PC 指纹并明确授权，待审／拒审／过期／取消／网络失败分别可见；管理员批准账号后仍需浏览器确认设备。授权与 PC WebSocket 上线分开，只有同时满足才可显示配对 QR；明确确认的新设备重连用于删除／撤销后的恢复，不复活旧凭据或认领其他账号设备。Hub 来自带默认地址的设置，Go 持有凭据和轮询 proof，前端只读本地安全状态；配置切换丢弃旧结果。关联 `C-006`；实现：`internal/config/remote_auth.go`、`internal/remote/login.go`、`internal/remote/login_wire.go`、`internal/server/remote.go`、`frontend/src/lib/use-remote-status.ts`、`frontend/src/components/app/settings-remote-login.tsx`；验证：`internal/remote/nosec_login_test.go`、`internal/remote/login_lifecycle_test.go`、`internal/server/remote_login_test.go`、`frontend/src/components/app/settings-remote-login.test.tsx`、`frontend/e2e/remote-nosec.spec.ts`。
+
+### F-211 Mobile account login and owned devices
+
+- 目的：不手工配置服务器即可登录、发现并连接本人电脑；入口：手机「使用 NOSEC 登录」及菜单「用户中心」；输入：浏览器登录和显式设备授权、用户选择的在线 PC；输出：审核状态、本人 PC 列表、自动获取的连接票据和心跳。待审／拒审只显示审核界面，普通 API 权限不决定设备连接权限。匿名扫码独立保留，账号模式选择 PC 无需扫码；保存并重连选中的 Host ID／公钥，不自动连接所有 PC。失败可刷新／重新登录，离线 PC 禁用连接，退出删除受管票据而保留匿名票据与自配模型。关联 `C-006`、`C-013`、`F-230`；实现证据：`mobile/src/lib/gateway-account.ts`、`mobile/src/lib/use-gateway-account.ts`、`mobile/src/components/gateway-account-shell.tsx`、`mobile/src/components/gateway-account-screen.tsx`、`mobile/e2e/gateway-account.spec.ts`。
 
 ### F-220 Read and control PC conversations
 
@@ -281,6 +286,8 @@ This is the current user-facing capability map. The code and tests named below a
 - 原生手机的下载打开系统保存／导出面板，选择位置后写出原文件；取消不显示成功，保存失败在预览中提示并允许重试。浏览器保留下载链接。证据：`mobile/src/components/file-download.tsx`, `mobile/src/lib/file-save.ts`, `mobile/src/components/file-browser.test.tsx`, `mobile/android/app/src/main/java/com/lubyruffy/zwai/FileSavePlugin.java`, `mobile/ios/App/App/FileSavePlugin.swift`；关联契约：`C-020`。
 
 ### F-230 Direct model chat
+
+- 手机 NOSEC 审核通过并具备 API 权限后，自动发现服务器模型，无 PC 也可调用；服务器模型按 `gateway:<account-source>` 和自配服务的独立 provider ID 区分。同名模型不合并身份，已有对话来源不可自动回退；PC 会话只使用 PC 模型目录。服务器凭据不显示／持久化到自配服务表，退出或换账号移除该来源并取消其在途直连请求。证据：`mobile/src/lib/gateway-models.ts`、`mobile/src/lib/direct-provider-account.test.ts`、`mobile/src/components/direct-account-source.test.tsx`、`mobile/e2e/gateway-account.spec.ts`；关联 `F-211`、`C-013`。
 
 - 新旧 Chat Completions 推理字段兼容沿用 `F-170`／`C-009`；通过直连的同一思考区块显示，字段名称不影响正文。证据：`mobile/src/lib/openai-wire.ts`、`mobile/e2e/direct-chat-reasoning.spec.ts`。
 - 用户与流式回答复用 `F-220` 的手机 Markdown 代码围栏渲染及原文复制，遵守 `C-032`；证据：`mobile/src/components/direct-chat-screen.tsx`, `mobile/e2e/markdown-highlight.spec.ts`。

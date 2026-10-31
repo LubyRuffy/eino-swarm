@@ -21,7 +21,7 @@ export default defineConfig({
     { name: "phone" },
     {
       name: "iphone-layout",
-      testMatch: ["file-download.spec.ts", "reasoning-fold.spec.ts", "quoted-goal.spec.ts", "conversation-open.spec.ts", "engine-startup.spec.ts", "generation-interruption.spec.ts", "pc-timeouts.spec.ts", "model-refresh.spec.ts", "composer-layout.spec.ts", "ask-answer.spec.ts", "ask-restart.spec.ts", "agent-roster.spec.ts", "api-error.spec.ts", "unread-completion.spec.ts", "active-unread.spec.ts", "worker-stop-replay.spec.ts", "markdown-highlight.spec.ts", "markdown-table.spec.ts", "goal-completion.spec.ts", "goal-pause.spec.ts"],
+      testMatch: ["gateway-account.spec.ts", "file-download.spec.ts", "reasoning-fold.spec.ts", "quoted-goal.spec.ts", "conversation-open.spec.ts", "engine-startup.spec.ts", "generation-interruption.spec.ts", "pc-timeouts.spec.ts", "model-refresh.spec.ts", "composer-layout.spec.ts", "ask-answer.spec.ts", "ask-restart.spec.ts", "agent-roster.spec.ts", "api-error.spec.ts", "unread-completion.spec.ts", "active-unread.spec.ts", "worker-stop-replay.spec.ts", "markdown-highlight.spec.ts", "markdown-table.spec.ts", "goal-completion.spec.ts", "goal-pause.spec.ts"],
       use: { ...devices["iPhone 13"], browserName: "webkit", permissions: [] },
     },
   ],

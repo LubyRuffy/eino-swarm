@@ -14,6 +14,10 @@ export type SavedLink = {
   sessionID: string
   fingerprint: string
   label?: string
+  gatewayOrigin?: string
+  gatewayOwnerID?: string
+  gatewayHostID?: string
+  gatewayMobileID?: string
 }
 
 export function loadOrCreateIdentity(): Identity {
@@ -41,6 +45,10 @@ function asLink(v: unknown): SavedLink | null {
     sessionID: row.sessionID,
     fingerprint: row.fingerprint || row.hostPub,
     label: row.label,
+    gatewayOrigin: row.gatewayOrigin,
+    gatewayOwnerID: row.gatewayOwnerID,
+    gatewayHostID: row.gatewayHostID,
+    gatewayMobileID: row.gatewayMobileID,
   }
 }
 
