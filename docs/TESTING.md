@@ -36,6 +36,10 @@ acceptance separately checks zero redirect-target requests and socket cancellati
 `mobile/e2e/gateway-account.spec.ts` uses bounded HTTP fixtures for default-origin
 sign-in/review isolation, no-PC server inference, same-name source selection,
 private-provider retention after logout and API-disabled account PC selection.
+The Chromium safe-area case overrides CSS `env(safe-area-inset-*)` through CDP,
+then checks signed-out and approved account-overlay title/Close bounds, center
+hit testing and actual dismissal. WebKit retains the account-flow regression;
+real iOS layout acceptance separately verifies its native safe-area values.
 Its PC transport uses the existing scripted MockLink; it does not claim actual
 Pairlink, native browser login, production NOSEC or physical-device acceptance.
 Gateway real HTTP/WebSocket/Noise tests cover its matching account-connect wire.

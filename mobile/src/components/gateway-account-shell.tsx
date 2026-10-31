@@ -53,7 +53,7 @@ export function GatewayAccountShell({ children }: { children: ReactNode }) {
   return (
     <PhoneAccountContext.Provider value={{ providers, gatewaySourceID: account.status === "authorized" ? account.bootstrap?.models.source_id ?? "" : "", openAccount: () => setOpen(true), empty: account.status === "authorized" ? <GatewayAccountScreen account={account} providers={providers} modelBusy={modelBusy} modelError={modelError} onConnect={connect} onRefresh={refresh} onOpenChat={openChat} /> : undefined }}>
       {restricted ? screen : <div className="h-full min-h-0" inert={open || undefined} aria-hidden={open || undefined}>{children}</div>}
-      {open && !restricted ? <div role="dialog" aria-modal="true" aria-label={t("account.title")} className="fixed inset-0 z-50 bg-background">{screen}</div> : null}
+      {open && !restricted ? <div role="dialog" aria-modal="true" aria-label={t("account.title")} className="fixed inset-0 z-50 bg-background pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)]">{screen}</div> : null}
     </PhoneAccountContext.Provider>
   )
 }

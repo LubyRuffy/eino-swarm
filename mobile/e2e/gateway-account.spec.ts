@@ -50,6 +50,51 @@ async function noOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 }
 
+test("account overlays keep the title and close control inside the safe area", async ({ page, browserName }, testInfo) => {
+  test.skip(browserName !== "chromium", "Chromium exposes CSS safe-area env overrides through CDP; iOS also has a native layout gate")
+  const insets = { top: 59, right: 16, bottom: 34, left: 10 }
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets })
+  await fixture(page)
+  await page.goto("/")
+  expect(await page.locator("body").evaluate((body) => Number.parseFloat(getComputedStyle(body).paddingTop))).toBe(insets.top)
+
+  const checkOverlay = async (name: string) => {
+    const dialog = page.getByRole("dialog", { name: "用户中心", exact: true })
+    const title = dialog.getByRole("heading", { name: "用户中心", exact: true })
+    const close = dialog.getByRole("button", { name: "关闭", exact: true })
+    await expect(dialog).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath(name + ".png") })
+    for (const element of [title, close]) {
+      const bounds = await element.boundingBox()
+      expect(bounds).not.toBeNull()
+      expect(bounds!.y).toBeGreaterThanOrEqual(insets.top)
+      expect(bounds!.y).toBeLessThan(insets.top + 48)
+      expect(bounds!.x).toBeGreaterThanOrEqual(insets.left)
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual((await page.evaluate(() => innerWidth)) - insets.right)
+    }
+    expect(await close.evaluate((button) => {
+      const bounds = button.getBoundingClientRect()
+      return button.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2))
+    })).toBe(true)
+    await noOverflow(page)
+    await close.click()
+    await expect(dialog).toHaveCount(0)
+  }
+
+  await page.getByRole("button", { name: "使用 NOSEC 登录" }).click()
+  await checkOverlay("signed-out-safe-area")
+  await expect(page.getByRole("button", { name: "扫描二维码" })).toBeVisible()
+
+  await approved(page)
+  await page.goto("/")
+  await expect(page.getByRole("tab", { name: "对话" })).toHaveAttribute("aria-selected", "true")
+  await page.getByRole("button", { name: "菜单" }).click()
+  await page.getByRole("menuitem", { name: "用户中心" }).click()
+  await checkOverlay("approved-safe-area")
+  await expect(page.getByRole("tab", { name: "对话" })).toBeVisible()
+})
+
 test("default NOSEC sign-in requires no server configuration and review hides all other resources", async ({ page }, testInfo) => {
   const calls = await fixture(page)
   await page.goto("/")
