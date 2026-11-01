@@ -280,7 +280,14 @@ final class BindFlowTests: XCTestCase {
   private func preference(_ app: XCUIApplication, label: String) throws -> XCUIElement {
     let choices = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label))
     XCTAssertTrue(choices.firstMatch.waitForExistence(timeout: 8), "Missing preference: \(label)")
-    return try XCTUnwrap(choices.allElementsBoundByIndex.first { $0.elementType != .staticText } ?? choices.allElementsBoundByIndex.first)
+    let controls = choices.allElementsBoundByIndex.filter {
+      $0.elementType != .staticText && !(($0.value as? String) ?? "").isEmpty
+    }
+    guard controls.count == 1 else {
+      XCTFail("Expected one value-bearing preference control: \(label)")
+      throw NSError(domain: "NativeAccountFixture", code: 5)
+    }
+    return controls[0]
   }
 
   private func assertPreference(_ app: XCUIApplication, label: String, option: String) throws {
@@ -298,7 +305,11 @@ final class BindFlowTests: XCTestCase {
       wheel.adjust(toPickerWheelValue: option)
       let done = app.buttons["Done"].firstMatch
       if done.exists && done.isHittable { done.tap() }
-      else if app.toolbars.buttons.lastMatch.exists { app.toolbars.buttons.lastMatch.tap() }
+      else {
+        let dismiss = try XCTUnwrap(app.toolbars.buttons.allElementsBoundByIndex.last)
+        XCTAssertTrue(dismiss.exists && dismiss.isHittable)
+        dismiss.tap()
+      }
     } else {
       let selected = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", option)).firstMatch
       XCTAssertTrue(selected.waitForExistence(timeout: 5))
@@ -315,7 +326,11 @@ final class BindFlowTests: XCTestCase {
     field.typeText(value)
     let done = app.buttons["Done"].firstMatch
     if done.exists && done.isHittable { done.tap() }
-    else if app.toolbars.buttons.lastMatch.exists { app.toolbars.buttons.lastMatch.tap() }
+    else {
+      let dismiss = try XCTUnwrap(app.toolbars.buttons.allElementsBoundByIndex.last)
+      XCTAssertTrue(dismiss.exists && dismiss.isHittable)
+      dismiss.tap()
+    }
   }
 
   private func reveal(_ app: XCUIApplication, _ element: XCUIElement) throws {
@@ -338,9 +353,23 @@ final class BindFlowTests: XCTestCase {
       XCTAssertTrue(app.staticTexts["Waiting for administrator approval"].waitForExistence(timeout: 12))
     }
     record(app, authorize ? "account-native-browser-authorized" : "account-native-browser-pending")
-    let done = app.buttons["Done"].firstMatch
-    XCTAssertTrue(done.waitForExistence(timeout: 5), "The native browser must offer a return to the app")
-    done.tap()
+    let close = app.otherElements["TopBrowserBar"].buttons.matching(identifier: "Close")
+    let done = app.buttons.matching(identifier: "Done")
+    let deadline = ProcessInfo.processInfo.systemUptime + 5
+    repeat {
+      let controls = (close.allElementsBoundByIndex + done.allElementsBoundByIndex).filter { $0.exists && $0.isHittable }
+      if controls.count == 1 {
+        controls[0].tap()
+        return
+      }
+      if controls.count > 1 {
+        XCTFail("The native browser has ambiguous return controls")
+        throw NSError(domain: "NativeAccountFixture", code: 6)
+      }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+    } while ProcessInfo.processInfo.systemUptime < deadline
+    XCTFail("The native browser must offer one visible Close or Done button")
+    throw NSError(domain: "NativeAccountFixture", code: 7)
   }
 
   private func assertReviewOnly(_ app: XCUIApplication) throws {
