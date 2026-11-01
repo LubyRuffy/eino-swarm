@@ -144,6 +144,188 @@ final class BindFlowTests: XCTestCase {
     record(app, "account-selected-pc-encrypted-rpc")
   }
 
+  // Run in its own disposable app container. All model/credential settings are
+  // entered through shipping UI; the private wrapper supplies only loopback CAS.
+  func testNativeIndependentWebRoutesAndPermissionRecovery() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    try control("review=approved&pc=show&api=on&start=normal&catalog=normal&model=tools&web=normal")
+    app.launch()
+    let login = app.buttons["Sign in with NOSEC"].firstMatch
+    XCTAssertTrue(login.waitForExistence(timeout: 15), "This case requires a fresh private app container")
+    login.tap()
+    XCTAssertTrue(app.staticTexts["User center"].waitForExistence(timeout: 5))
+    app.buttons["Sign in with NOSEC"].tap()
+    try browserLogin(app, authorize: true)
+    XCTAssertTrue(app.staticTexts["native-fixture-model"].waitForExistence(timeout: 15))
+
+    try choosePreference(app, label: "Phone chat Web tools", option: "Cloud server")
+    try assertPreference(app, label: "PC conversation Web tools", option: "Follow this PC's settings")
+    try choosePreference(app, label: "PC conversation Web tools", option: "Run on this PC")
+    try assertPreference(app, label: "Phone chat Web tools", option: "Cloud server")
+    try choosePreference(app, label: "PC conversation Web tools", option: "Follow this PC's settings")
+    record(app, "web-independent-direct-and-pc-preferences")
+
+    app.buttons["Chat history"].tap()
+    try chooseModel(app, name: "native-fixture-model")
+    try send(app, "Native server Web proof")
+    XCTAssertTrue(app.staticTexts["Native cloud evidence answer"].waitForExistence(timeout: 20))
+    XCTAssertEqual(try count("gateway_model_calls"), 3)
+    XCTAssertEqual(try count("web_search"), 1)
+    XCTAssertEqual(try count("web_fetch"), 1)
+    record(app, "web-gateway-model-cloud-functions")
+
+    app.buttons["Back"].firstMatch.tap()
+    app.buttons["Menu"].tap()
+    app.menuItems["Models"].tap()
+    if app.buttons["Add a model"].exists && !app.textFields["Name"].exists { app.buttons["Add a model"].tap() }
+    try enterField(app, label: "Name", value: "Native personal")
+    try enterField(app, label: "Base URL", value: fixtureOrigin + "/personal/v1")
+    try enterField(app, label: "API key", value: "native-personal-key", secure: true)
+    try enterField(app, label: "Default model", value: "native-personal-model")
+    let save = app.buttons["Save"].firstMatch
+    try reveal(app, save)
+    save.tap()
+    try chooseModel(app, name: "native-personal-model")
+    try send(app, "Native personal Web proof")
+    XCTAssertTrue(app.staticTexts["Native cloud evidence answer"].waitForExistence(timeout: 20))
+    XCTAssertEqual(try count("personal_model_calls"), 3)
+    XCTAssertEqual(try count("web_search"), 2)
+    XCTAssertEqual(try count("web_fetch"), 2)
+    XCTAssertEqual(try count("personal_mobile_token_leak"), 0)
+    record(app, "web-personal-model-independent-cloud-credential")
+
+    try control("web=denied")
+    try send(app, "Native denied Web proof")
+    let denial = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Cloud Web tool access is unavailable.")).firstMatch
+    XCTAssertTrue(denial.waitForExistence(timeout: 12), "A Web-only 403 must remain visible in the current conversation")
+    XCTAssertEqual(try count("web_denied"), 1)
+    let deniedModelCalls = try count("personal_model_calls")
+    app.buttons["Web settings"].firstMatch.tap()
+    try choosePreference(app, label: "Phone chat Web tools", option: "Off: ordinary model chat")
+    try assertPreference(app, label: "PC conversation Web tools", option: "Follow this PC's settings")
+    app.buttons["Close"].firstMatch.tap()
+    XCTAssertTrue(denial.waitForExistence(timeout: 5), "Closing settings must restore the same denied conversation")
+    try send(app, "Native ordinary recovery proof")
+    XCTAssertTrue(app.staticTexts["Native ordinary answer"].waitForExistence(timeout: 12))
+    XCTAssertEqual(try count("personal_model_calls"), deniedModelCalls + 1)
+    XCTAssertEqual(try count("web_denied"), 1, "Off must not retry the denied cloud tool")
+    record(app, "web-denied-visible-off-recovers-same-conversation")
+
+    app.buttons["Web settings"].firstMatch.tap()
+    try choosePreference(app, label: "Phone chat Web tools", option: "Cloud server")
+    try assertPreference(app, label: "PC conversation Web tools", option: "Follow this PC's settings")
+    app.buttons["Close"].firstMatch.tap()
+    try control("web=stall")
+    try send(app, "Native Web cancellation proof")
+    try waitForCount("web_stall_started", atLeast: 1, timeout: 12)
+    let stop = app.buttons["Stop"].firstMatch
+    XCTAssertTrue(stop.waitForExistence(timeout: 5))
+    XCTAssertTrue(stop.isHittable)
+    stop.tap()
+    try waitForCount("web_cancelled", atLeast: 1, timeout: 8)
+    XCTAssertEqual(try count("web_completed"), 0)
+    XCTAssertEqual(try count("personal_model_calls"), deniedModelCalls + 2, "Stop must prevent another model continuation")
+    try waitForEnabled(app.textViews["Message"])
+    record(app, "web-native-http-stop-cancels-without-continuation")
+
+    try control("web=normal")
+    app.buttons["Web settings"].firstMatch.tap()
+    try assertPreference(app, label: "Phone chat Web tools", option: "Cloud server")
+    try assertPreference(app, label: "PC conversation Web tools", option: "Follow this PC's settings")
+    let connect = app.buttons["Connect Native PC"]
+    try reveal(app, connect)
+    connect.tap()
+    let seed = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Native PC conversation")).firstMatch
+    XCTAssertTrue(seed.waitForExistence(timeout: 20))
+    seed.tap()
+    let pcRoute = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Follow PC (last refreshed)", "Run on this PC")).firstMatch
+    XCTAssertTrue(pcRoute.waitForExistence(timeout: 12), "A signed-in phone must preserve the anonymous PC's local execution setting")
+    try send(app, "Native inherited PC proof")
+    let persisted = try waitForPCWebTurn(timeout: 12)
+    XCTAssertEqual(persisted["pc_thread_web_execution"] as? String, "", "Phone inheritance must not persist a cloud override on the PC")
+    XCTAssertEqual(persisted["pc_turn_web_execution"] as? String, "auto", "The PC owns resolution of its default automatic mode")
+    let pcStatus = try XCTUnwrap(persisted["pc_web_status"] as? [String: Any])
+    XCTAssertEqual(pcStatus["execution"] as? String, "local")
+    XCTAssertGreaterThan(try count("peer_messages"), 0)
+    XCTAssertEqual(try count("personal_mobile_token_leak"), 0)
+    XCTAssertEqual(try count("personal_cookie_leak"), 0)
+    XCTAssertEqual(try count("native_cookie_leak"), 0)
+    XCTAssertEqual(try count("invalid_model_contract"), 0)
+    XCTAssertEqual(try count("invalid_web_contract"), 0)
+    record(app, "web-mobile-cloud-keeps-pc-inherited-local-route")
+  }
+
+  private func waitForPCWebTurn(timeout: TimeInterval) throws -> [String: Any] {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+      let state = try read("/fixture/state")
+      let data = try XCTUnwrap(state["data"] as? [String: Any])
+      if data["pc_turn_web_execution"] is String { return data }
+      Thread.sleep(forTimeInterval: 0.2)
+    } while Date() < deadline
+    XCTFail("The encrypted PC send did not persist a turn execution snapshot")
+    throw NSError(domain: "NativeAccountFixture", code: 4)
+  }
+
+  private func chooseModel(_ app: XCUIApplication, name: String) throws {
+    let model = app.buttons["Model"].firstMatch
+    XCTAssertTrue(model.waitForExistence(timeout: 8))
+    model.tap()
+    let choice = app.otherElements[name].firstMatch
+    XCTAssertTrue(choice.waitForExistence(timeout: 8))
+    choice.tap()
+  }
+
+  private func preference(_ app: XCUIApplication, label: String) throws -> XCUIElement {
+    let choices = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label))
+    XCTAssertTrue(choices.firstMatch.waitForExistence(timeout: 8), "Missing preference: \(label)")
+    return try XCTUnwrap(choices.allElementsBoundByIndex.first { $0.elementType != .staticText } ?? choices.allElementsBoundByIndex.first)
+  }
+
+  private func assertPreference(_ app: XCUIApplication, label: String, option: String) throws {
+    let control = try preference(app, label: label)
+    let observed = (control.value as? String) ?? control.label
+    XCTAssertTrue(observed.contains(option), "\(label) expected \(option), received \(observed)")
+  }
+
+  private func choosePreference(_ app: XCUIApplication, label: String, option: String) throws {
+    let control = try preference(app, label: label)
+    try reveal(app, control)
+    control.tap()
+    let wheel = app.pickerWheels.firstMatch
+    if wheel.waitForExistence(timeout: 1) {
+      wheel.adjust(toPickerWheelValue: option)
+      let done = app.buttons["Done"].firstMatch
+      if done.exists && done.isHittable { done.tap() }
+      else if app.toolbars.buttons.lastMatch.exists { app.toolbars.buttons.lastMatch.tap() }
+    } else {
+      let selected = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", option)).firstMatch
+      XCTAssertTrue(selected.waitForExistence(timeout: 5))
+      selected.tap()
+    }
+    try assertPreference(app, label: label, option: option)
+  }
+
+  private func enterField(_ app: XCUIApplication, label: String, value: String, secure: Bool = false) throws {
+    let field = secure ? app.secureTextFields[label].firstMatch : app.textFields[label].firstMatch
+    XCTAssertTrue(field.waitForExistence(timeout: 8))
+    try reveal(app, field)
+    field.tap()
+    field.typeText(value)
+    let done = app.buttons["Done"].firstMatch
+    if done.exists && done.isHittable { done.tap() }
+    else if app.toolbars.buttons.lastMatch.exists { app.toolbars.buttons.lastMatch.tap() }
+  }
+
+  private func reveal(_ app: XCUIApplication, _ element: XCUIElement) throws {
+    for _ in 0..<4 {
+      if element.isHittable { return }
+      app.swipeUp()
+    }
+    XCTAssertTrue(element.isHittable)
+  }
+
   private func browserLogin(_ app: XCUIApplication, authorize: Bool) throws {
     let signIn = app.buttons["Sign in to test NOSEC"]
     XCTAssertTrue(signIn.waitForExistence(timeout: 15), "The actual Capacitor Browser must display the loopback CAS fixture")

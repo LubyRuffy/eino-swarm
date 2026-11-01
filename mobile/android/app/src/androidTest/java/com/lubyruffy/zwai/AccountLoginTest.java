@@ -38,6 +38,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Test;
+import org.junit.Rule;
+import org.junit.rules.TestWatcher;
+import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 
 /** Native actions against the unchanged packaged web assets and a loopback fixture.
@@ -51,16 +54,36 @@ public class AccountLoginTest {
     private boolean secretOnScreen;
     private BridgeActivity activity;
     private final JSONArray nativeActions = new JSONArray();
+    @Rule public final TestWatcher failureEvidence = new TestWatcher() {
+        @Override protected void failed(Throwable failure, Description description) {
+            if (evidence == null) return;
+            try {
+                write("failure-fixture-state.json", state().toString(2));
+                if (secretOnScreen) write("failure-phase.json", "{\"secret_screen_capture_omitted\":true}");
+                else if (!new File(evidence, "failure.png").exists()) save("failure");
+            } catch (Exception | AssertionError observation) { failure.addSuppressed(observation); }
+        }
+    };
+
+    @Test
+    public void preparePreviousAnonymousAndPersonalData() throws Exception {
+        beginCase("native-upgrade-prepare");
+        launch();
+        waitFor("Sign in with NOSEC");
+        assertFalse("Previous public launch needs no Gateway URL", present("Server address"));
+        click("Connect a model");
+        addPersonalModel();
+        click("Menu");
+        click("Add a PC");
+        bindAnonymous();
+        save("01-public51-personal-and-anonymous-PC");
+        assertEquals("Preparation redeems one real anonymous capability", 1, state().getJSONObject("counts").optInt("anonymous_origin_redeem"));
+        write("fixture-state.json", state().toString(2));
+    }
 
     @Test
     public void accountLoginReviewModelsPCAndAnonymousPairing() throws Exception {
-        origin = InstrumentationRegistry.getArguments().getString("fixture_origin", "");
-        assertTrue("Only the owned loopback fixture is permitted", origin.matches("http://127\\.0\\.0\\.1:[0-9]+"));
-        evidence = new File(instrumentation.getTargetContext().getExternalFilesDir(null), "native-account");
-        assertTrue(evidence.isDirectory() || evidence.mkdirs());
-        Bundle identity = new Bundle();
-        identity.putString("evidence_directory", evidence.getAbsolutePath());
-        instrumentation.sendStatus(2, identity);
+        beginCase("native-account");
         try {
             assertEquals("pending", state().getString("review"));
             URL base = new URL(origin);
@@ -74,19 +97,22 @@ public class AccountLoginTest {
                 assertTrue("The isolated device must complete a loopback WebSocket upgrade", status != null && status.startsWith("HTTP/1.1 101"));
             }
             write("loopback-network-proof.json", "{\"native_http\":true,\"native_websocket_upgrade\":true}");
-            Intent launch = instrumentation.getTargetContext().getPackageManager().getLaunchIntentForPackage(instrumentation.getTargetContext().getPackageName());
-            assertNotNull(launch);
-            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-            Activity reached = instrumentation.startActivitySync(launch);
-            assertTrue(reached instanceof BridgeActivity);
-            activity = (BridgeActivity) reached;
-            nativeActions.put(new JSONObject().put("action", "native_app_launch").put("pid", android.os.Process.myPid())
-                .put("activity", activity.getClass().getName()).put("activity_instance", System.identityHashCode(activity)));
-            waitFor("Sign in with NOSEC");
-            assertFalse("Fresh launch must not require a server URL", present("Server address"));
-            assertFalse("Fresh launch must not require a Key", present("API Key"));
-            save("01-default-no-configuration");
-            click("Sign in with NOSEC");
+            launch();
+            boolean upgraded = "true".equals(InstrumentationRegistry.getArguments().getString("upgrade_prepared"));
+            if (upgraded) {
+                waitContaining("Native PC conversation");
+                assertEquals("Upgrade reconnects the saved ticket without redeeming another QR", 1, state().getJSONObject("counts").optInt("anonymous_origin_redeem"));
+                click("Menu"); click("Models");
+                waitContaining("Native personal");
+                save("01-upgrade-preserved-personal-provider");
+                click("Close"); click("Menu"); click("User center");
+            } else {
+                waitFor("Sign in with NOSEC");
+                assertFalse("Fresh launch must not require a server URL", present("Server address"));
+                assertFalse("Fresh launch must not require a Key", present("API Key"));
+                save("01-default-no-configuration");
+                click("Sign in with NOSEC");
+            }
             waitFor("User center");
             assertFalse("Server setup stays optional", present("Server address"));
             click("Other server");
@@ -194,7 +220,7 @@ public class AccountLoginTest {
             click("User center");
             click("Sign out");
             click("Close");
-            waitFor("Paste and bind");
+            if (!present("Pairing URI")) { click("Menu"); click("Add a PC"); }
             JSONObject offer = get("/fixture/anonymous-offer");
             String uri = offer.getString("uri");
             String anonymous = state().getString("anonymous_origin");
@@ -208,8 +234,8 @@ public class AccountLoginTest {
             save("08-anonymous-real-encrypted-PC");
             JSONObject finalState = state();
             JSONObject counts = finalState.getJSONObject("counts");
-            assertEquals(1, counts.optInt("qr_redeem"));
-            assertEquals(1, counts.optInt("anonymous_origin_redeem"));
+            assertEquals(upgraded ? 2 : 1, counts.optInt("qr_redeem"));
+            assertEquals(upgraded ? 2 : 1, counts.optInt("anonymous_origin_redeem"));
             assertEquals(0, counts.optInt("primary_origin_redeem"));
             assertTrue("Anonymous pairing must also dial its QR origin", counts.optInt("anonymous_origin_ws") > 0);
             assertEquals(0, counts.optInt("anonymous_authorization_leak"));
@@ -240,6 +266,144 @@ public class AccountLoginTest {
         }
     }
 
+    @Test
+    public void independentWebRoutesAndPermissionRecovery() throws Exception {
+        beginCase("native-web-routing");
+        launch();
+        waitContaining("Native PC conversation");
+        control("review=approved&model=tools&web=normal&pc=hide");
+        click("Menu"); click("User center");
+        click("Sign in with NOSEC");
+        waitBrowser("Sign in to test NOSEC"); click("Sign in to test NOSEC");
+        waitBrowser("Authorize test device"); click("Authorize test device");
+        waitFor("Device authorized. Return to zwai."); foreground();
+        waitFor("Phone chat Web tools");
+        assertSelect("Phone chat Web tools", "auto");
+        assertSelect("PC conversation Web tools", "inherit");
+        choose("Phone chat Web tools", "Off: ordinary model chat", "off");
+        assertSelect("PC conversation Web tools", "inherit");
+        choose("PC conversation Web tools", "Run on this PC", "local");
+        assertSelect("Phone chat Web tools", "off");
+        choose("Phone chat Web tools", "Automatic: cloud when signed in", "auto");
+        choose("PC conversation Web tools", "Follow this PC's settings", "inherit");
+        save("01-independent-web-settings");
+        click("Chat history");
+        chooseChatModel("native-fixture-model");
+        int search = count("web_search"), fetch = count("web_fetch");
+        send("Gateway native cloud evidence");
+        waitCount("web_search", search + 1); waitCount("web_fetch", fetch + 1);
+        waitFor("Native cloud evidence answer");
+        save("02-gateway-cloud-search-fetch");
+
+        chooseChatModel("native-personal-model");
+        int personal = count("personal_model_calls");
+        send("Personal native cloud evidence");
+        waitCount("web_search", search + 2); waitCount("web_fetch", fetch + 2);
+        waitCount("personal_model_calls", personal + 3);
+        waitFor("Native cloud evidence answer");
+        waitContaining("Personal endpoint · Native personal");
+        save("03-personal-model-cloud-search-fetch");
+
+        control("web=denied");
+        send("Denied native cloud evidence");
+        waitCount("web_denied", 1);
+        waitContaining("Cloud Web tool access is unavailable");
+        save("04-cloud-permission-denied");
+        int beforeOff = count("web_search");
+        click("Web settings");
+        choose("Phone chat Web tools", "Off: ordinary model chat", "off");
+        assertSelect("PC conversation Web tools", "inherit");
+        click("Close");
+        send("Continue without Web tools");
+        waitFor("Native ordinary answer");
+        assertEquals("Disabling phone tools resumes ordinary chat without another cloud call", beforeOff, count("web_search"));
+        save("05-off-recovers-same-personal-chat");
+
+        click("Web settings");
+        choose("Phone chat Web tools", "Cloud server", "cloud");
+        click("Close");
+        control("web=stall");
+        send("Stop native cloud work");
+        waitCount("web_stall_started", 1);
+        save("06-cloud-tool-running");
+        click("Stop");
+        waitCount("web_cancelled", 1);
+        assertEquals("The stopped Web call cannot complete later", 0, count("web_completed"));
+        save("07-cloud-tool-stopped");
+        control("web=normal&pc=show");
+        click("Web settings");
+        assertSelect("Phone chat Web tools", "cloud");
+        assertSelect("PC conversation Web tools", "inherit");
+        click("Refresh account");
+        click("Connect Native PC");
+        waitContaining("Next turn Web tools: Follow PC (last refreshed) · Run on this PC");
+        click("Open Native PC conversation");
+        send("Native PC follows its own Web tools");
+        long until = SystemClock.uptimeMillis() + 8000;
+        JSONObject snapshot;
+        do { snapshot = state(); if (snapshot.has("pc_turn_web_execution")) break; SystemClock.sleep(100); } while (SystemClock.uptimeMillis() < until);
+        assertEquals("Actual RPC must retain inherited thread execution", "", snapshot.getString("pc_thread_web_execution"));
+        assertEquals("The durable PC turn captures its own auto setting", "auto", snapshot.getString("pc_turn_web_execution"));
+        assertEquals("The anonymous PC keeps local execution despite the phone account", "local", snapshot.getJSONObject("pc_web_status").getString("execution"));
+        assertEquals(0, count("personal_mobile_token_leak"));
+        assertEquals(0, count("invalid_web_contract"));
+        assertEquals(0, count("invalid_model_contract"));
+        save("08-PC-follows-its-own-local-execution");
+        write("fixture-state.json", snapshot.toString(2));
+    }
+
+    private void beginCase(String name) throws Exception {
+        origin = InstrumentationRegistry.getArguments().getString("fixture_origin", "");
+        assertTrue("Only the owned loopback fixture is permitted", origin.matches("http://127\\.0\\.0\\.1:[0-9]+"));
+        evidence = new File(instrumentation.getTargetContext().getExternalFilesDir(null), name);
+        assertTrue(evidence.isDirectory() || evidence.mkdirs());
+        Bundle identity = new Bundle(); identity.putString("evidence_directory", evidence.getAbsolutePath()); instrumentation.sendStatus(2, identity);
+    }
+
+    private void launch() throws Exception {
+        Intent launch = instrumentation.getTargetContext().getPackageManager().getLaunchIntentForPackage(instrumentation.getTargetContext().getPackageName());
+        assertNotNull(launch); launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        Activity reached = instrumentation.startActivitySync(launch); assertTrue(reached instanceof BridgeActivity); activity = (BridgeActivity) reached;
+        nativeActions.put(new JSONObject().put("action", "native_app_launch").put("pid", android.os.Process.myPid()).put("activity", activity.getClass().getName()).put("activity_instance", System.identityHashCode(activity)));
+    }
+
+    private void addPersonalModel() throws Exception {
+        fill("Name", "Native personal"); fill("Base URL", origin + "/personal/v1"); fill("API key", "native-personal-key");
+        click("Discover models"); assertSelect("Default model", "native-personal-model"); click("Save"); waitFor("Menu");
+    }
+
+    private void bindAnonymous() throws Exception {
+        String uri = get("/fixture/anonymous-offer").getString("uri");
+        secretOnScreen = true; fill("Pairing URI", uri); click("Paste and bind"); waitContaining("Native PC conversation"); secretOnScreen = false;
+    }
+
+    private void chooseChatModel(String model) throws Exception { click("Model"); click(model); }
+    private void send(String text) throws Exception { fill("Message", text); click("Send"); }
+    private int count(String name) throws Exception { return state().getJSONObject("counts").optInt(name); }
+
+    private void assertSelect(String label, String expected) throws Exception {
+        waitFor(label);
+        long until = SystemClock.uptimeMillis() + 3000;
+        while (SystemClock.uptimeMillis() < until) { JSONObject entry = domEntry(label); if (entry != null && expected.equals(entry.optString("value"))) return; SystemClock.sleep(50); }
+        assertEquals("The packaged select must retain " + label, expected, domEntry(label).getString("value"));
+    }
+
+    private void choose(String label, String option, String value) throws Exception {
+        click(label);
+        long until = SystemClock.uptimeMillis() + 5000;
+        boolean selected = false;
+        while (!selected && SystemClock.uptimeMillis() < until) {
+            for (AccessibilityNodeInfo node : nodes()) if (visible(node) && named(node, option)) {
+                for (int parent = 0; !node.isClickable() && parent < 4 && node.getParent() != null; parent++) node = node.getParent();
+                selected = node.performAction(AccessibilityNodeInfo.ACTION_CLICK); break;
+            }
+            if (!selected) SystemClock.sleep(100);
+        }
+        assertTrue("Android's native option menu must select " + option, selected);
+        assertSelect(label, value);
+        nativeActions.put(new JSONObject().put("action", "native_select_option").put("field", label).put("value", value));
+    }
+
     private void foreground() throws Exception {
         Intent launch = instrumentation.getTargetContext().getPackageManager().getLaunchIntentForPackage(instrumentation.getTargetContext().getPackageName());
         assertNotNull(launch);
@@ -254,7 +418,7 @@ public class AccountLoginTest {
     }
 
     private void assertRestricted() throws Exception {
-        for (String label : new String[] {"Message", "Your computers", "Server models", "Scan QR", "Menu", "Close", "Other server"}) {
+        for (String label : new String[] {"Message", "Your computers", "Server models", "Scan QR", "Menu", "Close", "Other server", "Phone chat Web tools", "PC conversation Web tools"}) {
             assertFalse("Unreviewed accounts cannot expose " + label, present(label));
         }
     }
@@ -301,6 +465,7 @@ public class AccountLoginTest {
         long deadline = SystemClock.uptimeMillis() + 25000;
         while (SystemClock.uptimeMillis() < deadline) {
             if (appForeground()) {
+                reveal(label);
                 if (domEntry(label) != null) return null;
             } else for (AccessibilityNodeInfo node : nodes()) if (visible(node) && named(node, label)) return node;
             SystemClock.sleep(100);
@@ -313,7 +478,7 @@ public class AccountLoginTest {
         while (SystemClock.uptimeMillis() < deadline) {
             if (appForeground()) {
                 JSONArray entries = dom().getJSONArray("entries");
-                for (int i = 0; i < entries.length(); i++) if (entries.getJSONObject(i).getString("label").contains(text)) return;
+                for (int i = 0; i < entries.length(); i++) if (entries.getJSONObject(i).getBoolean("visible") && entries.getJSONObject(i).getString("label").contains(text)) return;
             } else for (AccessibilityNodeInfo node : nodes()) if (visible(node) && (String.valueOf(node.getText()) + " " + node.getContentDescription()).contains(text)) return;
             SystemClock.sleep(100);
         }
@@ -358,7 +523,7 @@ public class AccountLoginTest {
         long until = SystemClock.uptimeMillis() + 3000;
         while (SystemClock.uptimeMillis() < until) {
             JSONObject current = domEntry(label);
-            if (current != null && text.equals(current.optString("value"))) {
+            if (current != null && (text.equals(current.optString("value")) || current.optBoolean("password_present"))) {
                 boolean[] keyboard = {true};
                 long keyboardDeadline = SystemClock.uptimeMillis() + 3000;
                 do {
@@ -387,7 +552,7 @@ public class AccountLoginTest {
     /** Read-only observations compensate for API33's stale virtual AX subtree.
      * No storage, auth state, browser transition, fetch or DOM mutation occurs here. */
     private JSONObject dom() throws Exception {
-        String script = "JSON.stringify((()=>{const tidy=s=>(s||'').replace(/\\s+/g,' ').trim();return {width:innerWidth,height:innerHeight,entries:[...document.querySelectorAll('button,input,textarea,label,h1,h2,p,span,[role=status],[role=alert]')].flatMap(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e),x=r.x+r.width/2,y=r.y+r.height/2;if(!r.width||!r.height||x<0||y<0||x>=innerWidth||y>=innerHeight||s.visibility==='hidden'||s.display==='none'||e.closest('[inert],[aria-hidden=true]'))return [];return [{label:e.getAttribute('aria-label')||e.labels?.[0]?.innerText||e.placeholder||tidy(e.innerText),editable:e.matches('input,textarea'),enabled:!e.disabled,x:r.x,y:r.y,width:r.width,height:r.height,value:e.matches('input,textarea')?e.value:''}];})};})())";
+        String script = "JSON.stringify((()=>{const tidy=s=>(s||'').replace(/\\s+/g,' ').trim();return {width:innerWidth,height:innerHeight,entries:[...document.querySelectorAll('button,input,textarea,select,label,h1,h2,p,span,[role=status],[role=alert]')].flatMap(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e),x=r.x+r.width/2,y=r.y+r.height/2;if(!r.width||!r.height||s.visibility==='hidden'||s.display==='none'||e.closest('[inert],[aria-hidden=true]'))return [];return [{label:e.getAttribute('aria-label')||e.labels?.[0]?.innerText||e.placeholder||tidy(e.innerText),editable:e.matches('input,textarea'),control:e.matches('input,textarea,select'),enabled:!e.disabled,visible:x>=0&&y>=0&&x<innerWidth&&y<innerHeight,x:r.x,y:r.y,width:r.width,height:r.height,value:e.type==='password'?'':e.matches('input,textarea,select')?e.value:'',password_present:e.type==='password'&&Boolean(e.value)}];})};})())";
         CountDownLatch ready = new CountDownLatch(1); AtomicReference<String> value = new AtomicReference<>();
         instrumentation.runOnMainSync(() -> activity.getBridge().getWebView().evaluateJavascript(script, result -> { value.set(result); ready.countDown(); }));
         assertTrue("Read-only packaged DOM observation must return", ready.await(5, TimeUnit.SECONDS));
@@ -399,9 +564,25 @@ public class AccountLoginTest {
         JSONObject found = null;
         for (int i = 0; i < entries.length(); i++) {
             JSONObject entry = entries.getJSONObject(i);
-            if (label.equals(entry.getString("label")) && (found == null || entry.getBoolean("editable"))) found = entry;
+            if (entry.getBoolean("visible") && label.equals(entry.getString("label")) && (found == null || entry.getBoolean("control"))) found = entry;
         }
         return found;
+    }
+
+    private void reveal(String label) throws Exception {
+        JSONObject viewport = dom(); JSONArray entries = viewport.getJSONArray("entries"); JSONObject target = null;
+        for (int i = 0; i < entries.length(); i++) { JSONObject entry = entries.getJSONObject(i); if (label.equals(entry.getString("label")) && (target == null || entry.getBoolean("control"))) target = entry; }
+        if (target == null || target.getBoolean("visible")) return;
+        int[] location = new int[4];
+        instrumentation.runOnMainSync(() -> { WebView web = activity.getBridge().getWebView(); web.getLocationOnScreen(location); location[2] = web.getWidth(); location[3] = web.getHeight(); });
+        boolean up = target.getDouble("y") > viewport.getDouble("height") / 2;
+        float x = location[0] + location[2] * .75f, start = location[1] + location[3] * (up ? .78f : .3f), end = location[1] + location[3] * (up ? .3f : .78f);
+        long at = SystemClock.uptimeMillis();
+        MotionEvent down = MotionEvent.obtain(at, at, MotionEvent.ACTION_DOWN, x, start, 0); down.setSource(InputDevice.SOURCE_TOUCHSCREEN); assertTrue(ui.injectInputEvent(down, true)); down.recycle();
+        for (int step = 1; step <= 8; step++) { MotionEvent move = MotionEvent.obtain(at, at + step * 30, MotionEvent.ACTION_MOVE, x, start + (end - start) * step / 8, 0); move.setSource(InputDevice.SOURCE_TOUCHSCREEN); assertTrue(ui.injectInputEvent(move, true)); move.recycle(); }
+        MotionEvent finish = MotionEvent.obtain(at, at + 270, MotionEvent.ACTION_UP, x, end, 0); finish.setSource(InputDevice.SOURCE_TOUCHSCREEN); assertTrue(ui.injectInputEvent(finish, true)); finish.recycle();
+        SystemClock.sleep(150);
+        nativeActions.put(new JSONObject().put("action", "native_swipe_to_observed_control").put("label", label).put("up", up));
     }
 
     private void touch(JSONObject entry) throws Exception {

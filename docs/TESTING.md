@@ -7438,3 +7438,26 @@ the server request, and native model streaming refuses redirects and disconnects
 on Stop. These assertions complement the installed-SDK fetch-patch unit tests;
 neither fixture evidence nor a successful local APK build proves production
 NOSEC reachability or a public installer upload.
+
+The Android runner also prepares an anonymous PC pairing and a personal model
+through the previous public app's UI before upgrading it in place. The original
+account case retains its 150-second budget; previous-data preparation and the
+new `independentWebRoutesAndPermissionRecovery` case have separate 120- and
+240-second budgets within the complete 720-second round. The Web case checks
+independent phone/PC preferences, Gateway and personal-model Search/Fetch
+continuations, credential/cookie isolation, a visible 403 followed by ordinary
+chat with Web off, Stop cancellation, and the PC's persisted inherited route.
+Counted loopback HTTP and encrypted RPC prove the execution paths in addition
+to native screenshots. `web_tools_test.go` verifies the fixture's own authority,
+model-round, refusal and cancellation behavior.
+
+On iOS, run both methods in `mobile/e2e/ios-gateway-account.swift` in separate
+fresh app containers. `testNativeIndependentWebRoutesAndPermissionRecovery`
+uses the same counted fixture contract and shipping controls. The existing
+`mobile/scripts/ios-layout-fixture.py` supports `IOS_LAYOUT_PRESERVE_PUBLIC=1`
+and `IOS_LAYOUT_PUBLIC` so the signed IPA's public web resources can remain
+byte-for-byte unchanged while a private native wrapper selects only loopback
+origin and locale before the first page. Record the IPA/source/resource hashes,
+the simulator identity, actual UI actions/results and cleanup. Simulator
+acceptance does not establish physical-device installation or TestFlight
+availability; those remain separate delivery observations.

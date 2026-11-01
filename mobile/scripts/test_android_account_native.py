@@ -10,6 +10,13 @@ spec.loader.exec_module(runner)
 
 
 class NativeLogMetadataTest(unittest.TestCase):
+    def test_native_case_requires_success_and_one_owned_evidence_directory(self):
+        good = "INSTRUMENTATION_STATUS: evidence_directory=/sdcard/Android/data/com.lubyruffy.zwai/files/native-account\nOK (1 test)\n"
+        self.assertEqual(runner.native_result_directory(good), "/sdcard/Android/data/com.lubyruffy.zwai/files/native-account")
+        for bad in ("OK (1 test)", good + good, good + "FAILURES", good.replace("OK (1 test)", "INSTRUMENTATION_ABORTED")):
+            with self.subTest(output=bad), self.assertRaises(AssertionError):
+                runner.native_result_directory(bad)
+
     def test_sdk_options_results_and_exception_payloads_are_not_retained(self):
         raw = b'''Capacitor: To native (Capacitor plugin): callbackId: 12, pluginId: Browser, methodName: open
 Capacitor: callbackId: 13, pluginId: StreamBody, methodName: open, methodData: {"headers":{"Authorization":"Bearer private-token"},"url":"http://127.0.0.1/?ticket=secret","body":"private-payload"}

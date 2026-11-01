@@ -72,6 +72,15 @@ def native_log_metadata(raw):
     return json.dumps(rows, indent=2).encode()
 
 
+def native_result_directory(output):
+    directories = re.findall(r"INSTRUMENTATION_STATUS: evidence_directory=([^\r\n]+)", output)
+    if "OK (1 test)" not in output or any(x in output for x in ("FAILURES", "INSTRUMENTATION_FAILED", "INSTRUMENTATION_ABORTED")):
+        raise AssertionError("Native case failed; original streams and reached screen retained")
+    if len(directories) != 1:
+        raise AssertionError("Native case did not retain its unique evidence directory")
+    return directories[0]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, required=True)
@@ -82,7 +91,7 @@ def main():
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--sdk", type=Path, required=True)
     parser.add_argument("--jdk", type=Path, required=True)
-    parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument("--timeout", type=int, default=720)
     parser.add_argument("--development", action="store_true", help="Record dirty-source development evidence; never release acceptance")
     parser.add_argument("--version", help="Expected release version; required for formal acceptance")
     parser.add_argument("--previous-apk", type=Path, help="Previous public APK for a real signature-compatible upgrade")
@@ -179,6 +188,19 @@ def main():
     def ad(label, command, **options):
         return run(label, [adb, "-P", str(adb_port), "-s", serial, *command], **options)
 
+    def native_case(label, method, budget, *, upgraded=False):
+        began = time.monotonic()
+        command = ["shell", "am", "instrument", "-w", "-r", "-e", "fixture_origin", fixture_state["origin"],
+                   "-e", "class", "com.lubyruffy.zwai.AccountLoginTest#" + method]
+        if upgraded:
+            command += ["-e", "upgrade_prepared", "true"]
+        output = ad(label, [*command, "com.lubyruffy.zwai.test/androidx.test.runner.AndroidJUnitRunner"], timeout=budget, check=False)
+        directories = re.findall(r"INSTRUMENTATION_STATUS: evidence_directory=([^\r\n]+)", output)
+        if len(directories) == 1:
+            ad("pull-" + label, ["pull", directories[0], str(out / (label + "-evidence"))], timeout=20)
+        native_result_directory(output)
+        result.setdefault("native_cases", {})[label] = {"passed": True, "budget_seconds": budget, "elapsed_seconds": time.monotonic() - began}
+
     primary = None
     server = fixture = None
     lease = None
@@ -273,6 +295,12 @@ def main():
         result["owned_device_default_network"] = "none"
         if args.previous_apk:
             ad("install-previous-public", ["install", str(args.previous_apk)], timeout=40)
+            ad("install-previous-instrumentation", ["install", "-t", "-r", str(args.test_apk)], timeout=40)
+            native_case("native-previous-data", "preparePreviousAnonymousAndPersonalData", 120)
+            result["previous_anonymous_and_personal_data_prepared"] = True
+            ad("stop-previous-public", ["shell", "am", "force-stop", "com.lubyruffy.zwai"])
+            if ad("previous-public-pid", ["shell", "pidof", "com.lubyruffy.zwai"], check=False).strip():
+                raise ValueError("The previous public app must exit before package upgrade")
         ad("install-formal", ["install", "-r", str(args.apk)], timeout=40)
         ad("install-instrumentation", ["install", "-t", "-r", str(args.test_apk)], timeout=40)
         package = ad("installed-package", ["shell", "dumpsys", "package", "com.lubyruffy.zwai"])
@@ -288,13 +316,10 @@ def main():
         if installed_digest != hashes["apk"]:
             raise ValueError("Installed APK bytes differ from the supplied candidate")
         result["installed_apk_sha256"] = installed_digest
-        output = ad("native-account", ["shell", "am", "instrument", "-w", "-r", "-e", "fixture_origin", fixture_state["origin"], "-e", "class", "com.lubyruffy.zwai.AccountLoginTest#accountLoginReviewModelsPCAndAnonymousPairing", "com.lubyruffy.zwai.test/androidx.test.runner.AndroidJUnitRunner"], timeout=150, check=False)
-        directories = re.findall(r"INSTRUMENTATION_STATUS: evidence_directory=([^\r\n]+)", output)
-        if len(directories) == 1:
-            ad("pull-native-evidence", ["pull", directories[0], str(out / "native-evidence")], timeout=20)
-        if "OK (1 test)" not in output or any(x in output for x in ("FAILURES", "INSTRUMENTATION_FAILED", "INSTRUMENTATION_ABORTED")):
-            raise AssertionError("Native account case failed; original streams and reached screen retained")
-        if len(directories) != 1: raise AssertionError("Native case did not retain its unique evidence directory")
+        native_case("native-account", "accountLoginReviewModelsPCAndAnonymousPairing", 150, upgraded=bool(args.previous_apk))
+        native_case("native-web-routing", "independentWebRoutesAndPermissionRecovery", 240)
+        result["upgrade_anonymous_and_personal_preservation_verified"] = bool(args.previous_apk)
+        result["native_web_routing_passed"] = True
         result["native_case_passed"] = True
     except BaseException as error:
         primary = error
