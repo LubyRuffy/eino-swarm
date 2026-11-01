@@ -371,7 +371,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   one event every few milliseconds, answers render as markdown as they arrive
   (finished ones are not re-parsed on every token; fenced code is highlighted
   and copyable; `$…$` / `$$…$$` render as formulas; a GFM table stays inside
-  the column), a `chart` fence becomes a
+  the column). A `mermaid` fence renders a diagram in desktop and Web
+  conversations, tool output and Markdown file previews, with source copying
+  and light/dark themes. Incomplete live fences, invalid diagrams and diagrams
+  requiring external image or CSS resources keep readable source. A `chart` fence becomes a
   plot when the JSON is a comparison and does not flicker while later tokens
   arrive, and typing in the composer
   does not rebuild the conversation.

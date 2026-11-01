@@ -61,6 +61,12 @@ co-working app built on it. The library API is unchanged except where noted
   answer payloads or treating every waiting caller as a failed request. Legacy
   receipts without a known scope omit source-specific attempt counts.
 
+- `F-120`, `F-140`, `C-005` (Issue #133): desktop and Web Markdown render
+  `mermaid` fenced diagrams using a bundled, lazy-loaded renderer. Diagrams
+  follow the current theme and retain source copying; incomplete streaming
+  fences and syntax errors preserve readable code. Generated SVG is displayed
+  as an image rather than inserted as active document content.
+
 - A project-local [native testing fast path](docs/NATIVE_TESTING_FAST_PATH.md)
   documents existing commands, exact-input reuse, scenario selection, bounded
   retries and cleanup, with separate preparation/queue/execution timing.

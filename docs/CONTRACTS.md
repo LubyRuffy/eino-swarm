@@ -132,6 +132,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 允许行为：同源 shell 连接；禁止行为：无认证的非 loopback 默认服务；失败语义：跨源请求被拒绝；不变量：默认网络暴露为本机；边界条件：用户显式配置监听地址。
 - 证据：实现 `internal/app`, `internal/server`；测试 `internal/server`；变更规则：同步配置、API 和安全测试；来源：`AGENTS.md`。
 
+- PC Markdown 的 `mermaid` 围栏使用本地打包的 Mermaid 严格模式；生成的 SVG 仅作为图片展示，不作为同源活动 DOM，也不绑定图内点击回调。源码复制不改写围栏正文；未闭合的流式图表和渲染失败均保留源码。图表异步完成不得覆盖更新后的源码或已卸载的视图。此规则不改变独立 SVG 文件只显示源码的预览边界。证据：`frontend/src/components/app/markdown-mermaid.tsx`、`frontend/e2e/mermaid.spec.ts`；来源：Issue #133。
+
 ## C-006 Phone remote protocol
 
 - Mobile 登录仅向严格校验后的同 origin NOSEC verification URL 打开系统浏览器：Android 使用官方 Capacitor 7 AppLauncher 的默认外部浏览器，iOS/web 保留 Browser；Android `completed !== true` 即失败，不自动再次打开、不强制指定浏览器包。登录的原生版本读取与浏览器启动回执各受 15 秒等待上限和已有 AbortSignal 控制；调用前已取消时不启动原生调用，取消／超时清本阶段 timer/listener 并结束本地等待，消费迟到结果而不恢复旧代次或覆盖新登录。结束 JavaScript 等待不等于撤销已交给操作系统的浏览器动作。Native opener 失败归类为 `browser_unavailable`，不展示 SDK 原文；它与 `gateway_timeout` 显示可重试账号提示，不能伪称服务器拒绝。证据：`mobile/src/lib/gateway-account.ts`、`mobile/src/lib/gateway-login-lifecycle.test.tsx`、`mobile/src/lib/gateway-login-launcher.test.ts`、`mobile/src/components/gateway-account-shell.test.tsx`。

@@ -1668,7 +1668,12 @@ listing (`frontend/src/lib/source-highlight.ts`), and each fence has a copy
 control (`frontend/src/lib/copy-text.ts`: `execCommand` first, planting the
 payload on the `copy` event, so WKWebView cannot report Copied with an empty
 pasteboard when the Clipboard API refuses). `$...$` / `$$...$$` and `math` / `latex` / `tex` fences render as
-KaTeX (lazy-loaded, same as a `chart` plot). A fenced `chart` block
+KaTeX (lazy-loaded, same as a `chart` plot). Desktop and Web `mermaid`
+fences use a lazy-loaded, bundled renderer and display generated SVG as an
+image, retaining source copying. Rendering waits for a live fence to close;
+syntax failures retain readable code. Theme changes redraw diagrams, while
+later prose leaves completed diagrams mounted. The phone has its own Markdown
+renderer and does not share this Mermaid path. A fenced `chart` block
 whose body is a comparison (bar, line, area, pie JSON) paints as a plot
 with a Table tab for the same rows. `x` and `y` are field names when those
 keys are on the rows; a caption in those slots, or a row that uses different

@@ -369,6 +369,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "transcript.copied": "已复制",
   "transcript.copyMessage": "复制消息",
   "markdown.copyCode": "复制代码",
+  "markdown.source": "源码",
   "markdown.copyFormula": "复制公式",
   "transcript.editMessage": "编辑消息",
   "transcript.cancelEdit": "取消",
