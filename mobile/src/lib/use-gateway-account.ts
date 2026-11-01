@@ -11,6 +11,7 @@ import { saveLink } from "./store"
 import { usePhoneVisibility } from "./phone-visibility"
 import { gatewayFetch } from "./gateway-fetch"
 import { accountHostLink, completeAccountHostLink, sameGatewaySession, upgradeAnonymousGatewayLinks } from "./gateway-link-upgrade"
+import { sameGatewayAuthority, watchGatewayRefusal } from "./gateway-authority"
 
 export function useGatewayAccount() {
   const [origin, putOrigin] = useState(getGatewayOrigin)
@@ -119,6 +120,31 @@ export function useGatewayAccount() {
       if (round === generation.current && !controller.signal.aborted && sameGatewaySession(current)) await failure(err)
     } finally { if (refreshing.current === round) refreshing.current = null }
   }, [failure])
+
+  useEffect(() => watchGatewayRefusal(({ session: refused, status: code }) => {
+    const current = loadGatewaySession()
+    if (current && !sameGatewayAuthority(refused, current)) return
+    cancel()
+    selecting.current++
+    if (code === 401) {
+      clearResources()
+      putSession(null)
+      putStatus("expired")
+      putError("session_expired")
+    } else {
+      // A Web grant can be denied while the account and PC ownership remain
+      // valid. Re-read account/bootstrap before deciding which resources remain.
+      if (!current) return
+      const restricted = { ...current, user: { ...current.user, approval_status: undefined } }
+      saveGatewaySession(restricted)
+      putSession(restricted)
+      const round = generation.current
+      void refresh().finally(() => {
+        const checked = loadGatewaySession()
+        if (round === generation.current && checked && sameGatewayAuthority(refused, checked) && checked.user.approval_status === undefined) putStatus("access_denied")
+      })
+    }
+  }), [cancel, clearResources, refresh])
 
   const poll = useCallback(async () => {
     const flow = pending.current

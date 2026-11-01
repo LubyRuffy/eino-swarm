@@ -53,6 +53,7 @@ export type RemoteRequest = {
   provider_id?: string
   model?: string
   reasoning?: string
+  web_execution?: "" | "auto" | "local" | "cloud"
   puts?: string[]
   put_id?: string
   name?: string
@@ -114,6 +115,7 @@ export type ThreadView = {
   last_active_at: string
   unread?: boolean
   completed_seq?: number
+  web_execution?: "auto" | "local" | "cloud"
   summary?: string
 }
 
@@ -134,6 +136,7 @@ export type TurnView = {
   id: string
   status: string
   text?: string
+  web_execution?: "auto" | "local" | "cloud"
 }
 
 export type WatchStatus = {
@@ -186,6 +189,7 @@ export type ThreadDetail = {
   provider_id?: string
   model?: string
   reasoning?: string
+  web_execution?: "auto" | "local" | "cloud"
   waiting?: boolean
   wake?: WakeView
   running?: RunningView
@@ -195,6 +199,13 @@ export type ThreadDetail = {
 export type EngineStartup = {
   startup?: "restoring" | "ready"
   restore?: { completed: number; total: number; failed?: number }
+}
+
+export type PcWebExecutionStatus = {
+  preference: "auto" | "local" | "cloud"
+  execution: "local" | "cloud"
+  /** PC-owned account presence; tool grants remain live per invocation. */
+  cloud_account: "signed_in" | "sign_in_required" | "unavailable"
 }
 
 export type RemoteResponse = EngineStartup & {
@@ -223,6 +234,8 @@ export type RemoteResponse = EngineStartup & {
   status?: WatchStatus
   models?: ModelChoice[]
   reasoning_levels?: string[]
+  web_execution_supported?: boolean
+  web_execution_status?: PcWebExecutionStatus
   put?: { id: string; name?: string; ready: boolean; kind?: string }
   groups?: ThreadGroup[]
   followups?: FollowupView[]

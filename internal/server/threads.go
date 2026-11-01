@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/gin-gonic/gin"
@@ -27,6 +28,7 @@ type threadView struct {
 	ProviderID      string `json:"provider_id"`
 	Model           string `json:"model"`
 	ReasoningEffort string `json:"reasoning_effort"`
+	WebExecution    string `json:"web_execution,omitempty"`
 	Goal            string `json:"goal"`
 	GoalComplete    bool   `json:"goal_complete"`
 	GoalBlocked     bool   `json:"goal_blocked"`
@@ -68,6 +70,7 @@ func viewThread(th *store.Thread, running, awaitingAnswer, waiting bool) threadV
 		ProviderID:      th.ProviderID,
 		Model:           th.Model,
 		ReasoningEffort: th.ReasoningEffort,
+		WebExecution:    th.WebExecution,
 		Goal:            th.Goal,
 		GoalComplete:    th.GoalComplete,
 		GoalBlocked:     th.GoalBlocked,
@@ -176,6 +179,7 @@ type patchThreadRequest struct {
 	ProviderID      *string `json:"provider_id"`
 	Model           *string `json:"model"`
 	ReasoningEffort *string `json:"reasoning_effort"`
+	WebExecution    *string `json:"web_execution"`
 	Goal            *string `json:"goal"`
 	// GoalEdit, with goal, changes the objective text without reopening
 	// pursuit. A completed goal is still reopened. Missing or false is a
@@ -203,6 +207,12 @@ func (s *Server) patchThread(c *gin.Context) {
 		badRequest(c, "could not read the request body: %v", err)
 		return
 	}
+	if req.WebExecution != nil {
+		if _, err := config.ParseWebExecution(*req.WebExecution); err != nil {
+			s.fail(c, err)
+			return
+		}
+	}
 	if req.Title != nil {
 		if strings.TrimSpace(*req.Title) == "" {
 			badRequest(c, "a conversation title cannot be empty")
@@ -229,6 +239,12 @@ func (s *Server) patchThread(c *gin.Context) {
 	}
 	if req.ReasoningEffort != nil {
 		if err := s.engine.SetThreadReasoning(th.ID, *req.ReasoningEffort); err != nil {
+			s.fail(c, err)
+			return
+		}
+	}
+	if req.WebExecution != nil {
+		if err := s.engine.SetThreadWebExecution(th.ID, *req.WebExecution); err != nil {
 			s.fail(c, err)
 			return
 		}

@@ -167,9 +167,12 @@ function toolChipSummary(b: CompactBlock): string {
 function packedBody(block: CompactBlock): string {
   const roster = rosterLines(block.text)
   if (roster.length) return roster.join("\n")
-  const preview = jsonPreview(block.text) || jsonPreview(block.args)
+  const preview = jsonPreview(block.text)
   if (preview) return clip(preview, 400)
   const raw = block.text.trim()
+  if (raw && raw !== block.toolName && !looksPacked(raw)) return clip(raw, 400)
+  const argsPreview = jsonPreview(block.args)
+  if (argsPreview) return clip(argsPreview, 400)
   if (!raw || raw === block.toolName || rosterCounts(raw)) return ""
   return clip(raw, 400)
 }

@@ -6,6 +6,18 @@ import { setLocale } from "@/lib/i18n"
 import { renderBlock, ThreadLog } from "./thread-blocks"
 
 describe("thread blocks", () => {
+  it("keeps the completed tool result visible when arguments also have a preview", () => {
+    setLocale("en")
+    render(<ThreadLog blocks={[
+      { id: "search", kind: "tool", toolName: "web_search", text: "actual search result", args: '{"query":"original search query"}' },
+      { id: "answer", kind: "answer", text: "final answer" },
+    ]} />)
+    fireEvent.click(screen.getByTestId("work-fold"))
+    fireEvent.click(screen.getByRole("button", { name: /web_search/ }))
+    expect(screen.getByText("actual search result")).toBeInTheDocument()
+    expect(screen.queryByText("original search query")).not.toBeInTheDocument()
+  })
+
   it("localizes model response decoding independently of tool arguments", () => {
     setLocale("zh")
     render(<ThreadLog blocks={[

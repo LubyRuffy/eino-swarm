@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { logoutGatewaySession, type GatewaySession } from "./gateway-account"
+import { logoutGatewaySession, saveGatewaySession, type GatewaySession } from "./gateway-account"
+import { saveWebExecution } from "./web-execution"
 import { discoverModels, streamCompletion } from "./openai-client"
 import { blankProvider, type DirectProvider } from "./direct-provider"
 
@@ -50,7 +51,7 @@ function patchInstalledSDK(original: typeof fetch, request: (options: unknown) =
   vi.stubGlobal("fetch", runtime.fetch)
 }
 
-beforeEach(() => { native.enabled = true; localStorage.clear() })
+beforeEach(() => { native.enabled = true; localStorage.clear(); saveGatewaySession(session); saveWebExecution("off") })
 afterEach(() => { delete rawWindow.CapacitorWebFetch; vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe.each(["ios", "android"] as const)("Gateway transport through the pinned %s HTTP patch", (platform) => {

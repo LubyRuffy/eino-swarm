@@ -67,6 +67,9 @@ type Thread struct {
 	// ReasoningEffort is this conversation's thinking level ("", low, medium,
 	// high). Empty means the model's own default. It applies from the next turn.
 	ReasoningEffort string `gorm:"size:16" json:"reasoning_effort"`
+	// WebExecution overrides the PC Web tool location from the next turn.
+	// Empty inherits the PC setting; otherwise auto, local, or cloud.
+	WebExecution string `gorm:"size:16" json:"web_execution,omitempty"`
 	// Goal is a standing objective the human set with /goal. Empty means none.
 	// It is injected into later turns until they change or clear it.
 	Goal string `json:"goal"`
@@ -173,6 +176,9 @@ type Turn struct {
 	// ReasoningEffort records the thinking level this turn actually ran with,
 	// so a trace shows what produced the answer, not what is configured now.
 	ReasoningEffort string `gorm:"size:16" json:"reasoning_effort,omitempty"`
+	// WebExecution is the preference captured when this turn started, so a
+	// later conversation/config edit cannot change its restart behavior.
+	WebExecution string `gorm:"size:16" json:"web_execution,omitempty"`
 	// GoalContinue is true when the engine started this turn to keep pursuing
 	// an open standing objective. The transcript records goal_continued, not
 	// a human user_message.

@@ -34,7 +34,7 @@ func (s *Store) ListCompletedTurnPreviews(threadID string, limit int) ([]Turn, e
 		return []Turn{}, nil
 	}
 	var out []Turn
-	err := s.db.Select("id", "status", "user_text", "final").Where("thread_id = ? AND (status IS NULL OR status <> ?)", threadID, TurnRunning).
+	err := s.db.Select("id", "status", "user_text", "final", "web_execution").Where("thread_id = ? AND (status IS NULL OR status <> ?)", threadID, TurnRunning).
 		Order("seq desc").Limit(limit).Find(&out).Error
 	if err != nil {
 		return nil, fmt.Errorf("store: list completed turn previews: %w", err)

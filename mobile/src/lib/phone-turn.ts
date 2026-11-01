@@ -6,6 +6,7 @@ import { OpAnswer, OpFollowupSteer, OpPreempt, OpSend, type RemoteRequest } from
 import type { PhoneView } from "./session"
 import { markRunning } from "./session"
 import { sendComposed } from "./turn-send"
+import { pcWebSelection } from "./pc-web-execution"
 
 type TurnDeps = {
   link: () => RemoteLink | null
@@ -109,7 +110,7 @@ export async function sendPhoneTurn(
   }
   deps.setPending(true)
   try {
-    const r = await sendComposed((req) => target.rpc(req), { op, thread_id: threadId, text }, extra)
+    const r = await sendComposed((req) => target.rpc(req), { op, thread_id: threadId, text, ...await pcWebSelection(target) }, extra)
     if (!r.ok) {
       deps.setError(remoteError(r.error || r.code || ""))
       throw new Error("refused")

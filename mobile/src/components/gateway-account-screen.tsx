@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import type { DirectProvider } from "@/lib/direct-provider"
 import { t } from "@/lib/i18n"
 import { GatewayError } from "@/lib/gateway-account"
+import { WebExecutionSettings } from "@/components/web-execution-settings"
 
 export function GatewayAccountScreen({ account, providers, modelBusy, modelError, onClose, onConnect, onRefresh, onOpenChat }: {
   account: GatewayAccountController
@@ -49,6 +50,7 @@ export function GatewayAccountScreen({ account, providers, modelBusy, modelError
           <Button disabled={account.busy} onClick={() => void account.login()}>{t("account.login")}</Button>
           {onClose ? <Button variant="ghost" onClick={onClose}>{t("account.anonymous")}</Button> : null}
         </> : null}
+        {!waiting ? <WebExecutionSettings /> : null}
         {authorized ? <>
           <section className="flex flex-col gap-2">
             <h2 className="text-sm font-semibold">{t("account.models")}</h2>

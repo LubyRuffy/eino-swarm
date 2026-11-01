@@ -40,7 +40,11 @@ type historyContext struct {
 // conversationTools is shared by new, restored and parked turns. Keeping the
 // host reader here also gives delegated workers the same original sources.
 func (e *Engine) conversationTools(ctx context.Context, th *store.Thread) (*tools.Set, error) {
-	set, err := tools.Build(ctx, e.cfg, e.WorkspaceDir(th.ID))
+	return e.conversationToolsForExecution(ctx, th, e.turnWebExecution(th, nil))
+}
+
+func (e *Engine) conversationToolsForExecution(ctx context.Context, th *store.Thread, execution string) (*tools.Set, error) {
+	set, err := tools.BuildForWebExecution(ctx, e.cfg, e.WorkspaceDir(th.ID), execution)
 	if err != nil {
 		return nil, err
 	}

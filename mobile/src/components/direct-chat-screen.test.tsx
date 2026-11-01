@@ -39,6 +39,20 @@ function harness(complete: typeof streamCompletion = async (input) => {
 }
 
 describe("DirectChatScreen", () => {
+  it.each([
+    ["gateway_login_required", "Sign in to the Gateway to use cloud Web tools, or switch Web tools off for ordinary model chat."],
+    ["gateway_access_denied", "Account access could not be confirmed. Refresh or sign in again."],
+    ["cloud_tools_model_unsupported", "This model does not support function tools. Switch Web tools off or choose a model that supports tools, then retry."],
+  ])("explains %s with a recoverable Web setting action", async (code, message) => {
+    setLocale("en")
+    harness(async () => { throw new ModelCallError(code, "http") })
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "start" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    expect(await screen.findByText(message)).toBeVisible()
+    expect(screen.queryByText(code)).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Message")).toBeEnabled()
+  })
+
   it("aborts a streaming reply from the composer and retains received text without an error", async () => {
     setLocale("en")
     let signal: AbortSignal | undefined

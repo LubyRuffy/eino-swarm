@@ -9,6 +9,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	"github.com/LubyRuffy/eino-swarm/internal/tools"
 )
 
 // Handle runs one slim RPC against the local engine. Pairlink only
@@ -36,6 +37,9 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req R
 		resp := okBase(req.ID, path, sessionID)
 		state, progress := eng.StartupStatus()
 		resp.Startup, resp.Restore = state, &progress
+		resp.WebExecutionSupported = true
+		webStatus := tools.DescribeWebExecution(eng.Config())
+		resp.WebExecutionStatus = &webStatus
 		return resp
 	case OpList, OpMore:
 		return handleList(eng, cfg, req, path, sessionID)

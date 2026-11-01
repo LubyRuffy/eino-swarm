@@ -311,6 +311,7 @@ type ToolsConfig struct {
 	Enabled             []string    `yaml:"enabled" json:"enabled"`
 	Proxy               ProxyConfig `yaml:"proxy" json:"proxy"`
 	WebSearchMaxResults int         `yaml:"web_search_max_results" json:"web_search_max_results"`
+	WebExecution        string      `yaml:"web_execution" json:"web_execution"`
 	// ResultMaxChars caps the text one workspace tool call hands the model.
 	// Zero or negative is repaired to DefaultToolResultMaxChars.
 	ResultMaxChars int `yaml:"result_max_chars" json:"result_max_chars"`
@@ -484,6 +485,7 @@ func Default() *Config {
 			ScheduleMaxActive:          DefaultScheduleMaxActive,
 		},
 		Tools: ToolsConfig{
+			WebExecution:        WebExecutionAuto,
 			Disabled:            []string{},
 			Enabled:             []string{},
 			WebSearchMaxResults: DefaultWebSearchResults,
@@ -583,6 +585,9 @@ func Load(dataDir string) (*Config, error) {
 		return nil, err
 	}
 	if err := cfg.validateProviders(); err != nil {
+		return nil, err
+	}
+	if err := cfg.validateWebExecution(); err != nil {
 		return nil, err
 	}
 	cfg.normalize()
@@ -862,6 +867,9 @@ func (c *Config) save() error {
 		return err
 	}
 	if err := c.validateProviders(); err != nil {
+		return err
+	}
+	if err := c.validateWebExecution(); err != nil {
 		return err
 	}
 	if strings.TrimSpace(c.dataDir) == "" {

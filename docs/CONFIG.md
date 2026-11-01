@@ -72,6 +72,7 @@ swarm:
 tools:
     disabled: []
     enabled: []
+    web_execution: auto
     proxy:
         http: ""
         https: ""
@@ -384,17 +385,50 @@ system prompt, so the model does not plan around a tool it cannot call.
 | key | default | meaning |
 |---|---|---|
 | `web_search_max_results` | `8` | results per search. More context per call, more tokens. |
+| `web_execution` | `auto` | `auto` uses the current NOSEC account for Web Search/Fetch after authorization and this device while anonymous; `local` keeps both tools local; `cloud` requires a signed-in server account. Editable as **Tools → Web tools run on**. New turns capture the choice; cloud failures never fall back to local execution. |
 | `result_max_chars` | `40000` | most characters one workspace tool call (read, ls, tree, glob, grep, exec, web tools, …) puts in the model's context. A longer text result keeps its first two thirds and last third around a notice that names how many characters were omitted and asks the agent to narrow the path or pattern, filter the output, or read a range. A result stays in the conversation and is resent on every later call of the turn, so this is a per-call cost. `exec` without its own `max_output_kb` gets a per-stream capture budget of half this cap. The result cap then measures the complete JSON encoding, shortening stream text at Unicode boundaries while keeping both ends and setting `truncated`; it never cuts the JSON document. An explicit `max_output_kb` still limits capture, but does not bypass the final context cap. If metadata alone exceeds the cap, the result's `full_command` copy can also be shortened; the call arguments retain the actual command. Status, error and path metadata remain intact and form a soft minimum for an extremely small cap. Zero or negative is repaired to the default. Editable as **Tools → Tool result limit**. |
-| `proxy.http` / `proxy.https` | empty | outbound proxy for the network tools (`web_search`, `web_fetch`). |
+| `proxy.http` / `proxy.https` | empty | outbound proxy for locally executed network tools (`web_search`, `web_fetch`). Cloud execution uses the Gateway's own network configuration. |
 | `proxy.no_proxy` | empty | comma-separated hosts that bypass the proxy. |
 
-`web_fetch` starts with HTTP. A 401/403 carrying DataDome response signals
+Locally executed `web_fetch` starts with HTTP. A 401/403 carrying DataDome response signals
 triggers one attempt through its existing browser renderer without requiring
 `render: true`; it uses the configured tool proxy and needs an available
 Chromium browser. A plain authorization failure does not trigger that fallback.
 If rendering fails or still returns a challenge, the tool returns a failure
 result rather than challenge text as successful page content. This behavior
 does not guarantee access to a protected site.
+
+Cloud execution uses only the authorized account's Gateway origin and the
+Go-owned private Host credential, through the dedicated Desktop Search/Fetch
+routes. Host credentials do not become general model API credentials or enter
+the renderer. The Gateway rechecks the Host, owner and exact bound default Key
+for approval, API access, expiry and tool policy. A missing/retired authorization
+returns a sign-in-again tool error; an administrator's denial remains a failure.
+`render: true` requests the Gateway browser path with its supported one-millisecond
+wait action. Search snippets are returned as the existing `summary` result field;
+Fetch returns Markdown through the ordinary tool-result limit and Trace.
+
+PC conversations may persist `web_execution` independently of this global
+setting. Empty inherits the PC setting; `auto`, `local` and `cloud` override it
+from the next turn. Each turn captures its choice for restart/parked-worker
+restoration. Only the execution preference is captured: each cloud invocation
+rechecks the live server origin/auth mode and current private account receipt.
+The phone stores independent direct-model and PC-conversation preferences, scoped
+by Gateway origin/account. Direct-model `auto` uses cloud functions with an
+approved, enabled, unexpired account session and ordinary chat otherwise;
+`cloud` requires that session before model dispatch, and `off` omits these
+functions. Standard function calling is required from the selected model.
+PC-conversation `inherit` always clears the conversation override and follows
+the PC global setting, whether or not the phone is signed in; `local`/`cloud`
+are explicit overrides. Cloud on the PC requires its own NOSEC receipt. The
+phone's two choices do not change each other, personal endpoints or PC global
+settings. Previous shared `local` reads as phone `off` and PC `local`; previous
+`cloud` remains explicit for both until each preference is changed.
+
+PC `meta`/`catalog` reports only its default route and local receipt state.
+This offline snapshot is a next-turn summary, not proof of a current server
+grant or the active turn's captured setting. Tool errors never change models,
+remove functions and retry, or silently execute locally.
 
 Tool paths resolve against the conversation's workspace, but the workspace is not
 a boundary: an absolute path or a `..` reaches outside it and `exec` runs as you.

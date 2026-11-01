@@ -1,5 +1,6 @@
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import { SelectItem } from "@/components/ui/select"
 import type { Settings, ToolDescriptor } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
@@ -7,6 +8,7 @@ import { useT } from "@/lib/use-t"
 import {
   Field,
   SettingsPage,
+  SettingsChoice,
   SettingsSection,
   settingsHintClass,
   settingsLabelClass,
@@ -58,6 +60,23 @@ export function ToolsTab({
       title={tr("settings.tools.title")}
       description={tr("settings.tools.desc")}
     >
+      <SettingsSection title={tr("settings.tools.execution")}>
+        <SettingsChoice
+          query={query}
+          label={tr("settings.tools.executionLocation")}
+          hint={tr("settings.tools.executionHint")}
+          search={["web_search", "web_fetch", "execution", "cloud", "local"]}
+          value={settings.tools.web_execution ?? "auto"}
+          onValueChange={(value) => onChange({
+            ...settings,
+            tools: { ...settings.tools, web_execution: value === "local" || value === "cloud" ? value : "auto" },
+          })}
+        >
+          <SelectItem value="auto">{tr("settings.tools.executionAuto")}</SelectItem>
+          <SelectItem value="local">{tr("settings.tools.executionLocal")}</SelectItem>
+          <SelectItem value="cloud">{tr("settings.tools.executionCloud")}</SelectItem>
+        </SettingsChoice>
+      </SettingsSection>
       {groups.map((group) => (
         <SettingsSection key={group} title={group.charAt(0).toUpperCase() + group.slice(1)}>
           {catalog

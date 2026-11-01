@@ -42,6 +42,62 @@ use the PC's catalog and execute on that PC. Sign-out removes only account
 credentials and managed tickets, retaining private providers and anonymous
 pairings. **User center → Other server** changes the default for self-hosting.
 
+**User center → Web tools** has two independent preferences, saved separately
+for each Gateway/account:
+
+- **Phone model calls**: Automatic, Cloud server, or Off. Automatic attaches cloud
+  Search/Fetch when the signed-in account is approved, enabled and unexpired;
+  otherwise it keeps ordinary model chat. Explicit Cloud server requires that
+  session before sending any model request. Off sends ordinary chat without
+  these functions. This applies to server models and personal endpoints alike;
+  the selected model must support standard function calling.
+- **PC conversations**: Follow PC, This PC, or Server cloud. Follow PC always
+  clears the conversation override and uses that PC's global setting. Phone
+  sign-in does not change it. Explicit choices affect only the target PC
+  conversation; Cloud uses the PC's own NOSEC authorization.
+
+Changing one preference does not change the other. Earlier shared Local choices
+read as phone Off plus PC This PC, while earlier Cloud choices remain explicit
+for both. The summary describes the next turn. PC route/account information is
+an offline metadata snapshot; a signed-in receipt does not prove live server
+API/tool permission. Errors remain visible without switching models, removing
+functions and retrying, or executing tools locally.
+
+Phone-direct Chat and Responses calls use ordinary client functions named
+`web_search` and `web_fetch`. The complete model function round is validated
+before calling `/v1/web/search` or `/v1/web/fetch` with the Mobile credential;
+that credential is never used for a personal model provider. Responses resumes
+with its response ID when available, otherwise with function-call history.
+`render: true` requests the existing browser-action path, including an explicit
+minimal wait, so the server must actually render the page. Tool progress and
+bounded result previews appear in the existing expandable tool cards. Stop,
+sign-out, account replacement and changing the execution location cancel an
+active cloud call. Calls are bounded to eight model rounds, sixteen tool calls,
+four calls per round, 64 KiB arguments, 128 KiB per result and 512 KiB combined
+results for one turn.
+
+Responses terminal output must contain every streamed function call with its
+complete, consistent identity and arguments. Terminal frames seal execution.
+Repeated response/call receipts fail before another cloud request; reusing a
+call ID without a response identity is rejected as ambiguous within that turn.
+
+PC execution requires a connected desktop client. Requests carry only the
+execution preference, never the Mobile credential. The PC persists the
+conversation preference; changes apply from its next turn, while a resumed
+turn keeps its original execution position. Older PCs that cannot acknowledge
+this capability refuse an explicit preference and retain the draft; inheritance
+remains compatible. The phone has no independent local Web-tool executor.
+
+Gateway model/tool 401 responses invalidate only the matching current account
+session. A 403 pauses new account API calls and marks approval unverified while
+keeping the current conversation mounted. A successful approved recheck resumes
+access; confirmed pending/rejected or a failed recheck isolates account access.
+The denial alone does not mean pending review. Gateway 401/403 headers release
+the unread response body immediately. A personal model provider's 401 does not
+sign out the Gateway account. Responses from an older session cannot clear a
+newly signed-in session. Stop/logout also cancels native stream preparation,
+including pending listener registration before the request opens.
+
 Anonymous use stays available. Scan QR opens a live viewfinder on a `pairlink:v1:…`
 QR: a frame, a beam that sweeps up and down, and a short chime when it reads.
 Paste is the same URI, not a second protocol. After bind, a live

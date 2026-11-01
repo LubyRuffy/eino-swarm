@@ -9,6 +9,7 @@ import { gatewayUpgradePending } from "./gateway-link-upgrade"
  *  (`DeviceLink`); the walkthrough link is scripted and offline. */
 export type RemoteLink = {
   path: string
+  webExecutionSupported?: boolean
   alive(): boolean
   rpc(
     req: Omit<RemoteRequest, "v" | "id"> & { id?: string },

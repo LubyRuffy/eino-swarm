@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { t } from "./i18n"
 import type { RemoteLink } from "./link"
-import { OpCatalog, OpRefreshCatalog, type ModelChoice } from "./rpc"
+import { OpCatalog, OpRefreshCatalog, type ModelChoice, type PcWebExecutionStatus } from "./rpc"
 
 // Discovery owns a 15s host budget; allow the response to cross the relay
 // without letting this optional operation drop an active conversation.
@@ -10,6 +10,7 @@ const refreshTimeoutMs = 30_000
 export function useModelCatalog(link: RemoteLink | null) {
   const [models, setModels] = useState<ModelChoice[]>([])
   const [levels, setLevels] = useState<string[]>([])
+  const [webExecutionStatus, setWebExecutionStatus] = useState<PcWebExecutionStatus>()
   const [catalogBusy, setCatalogBusy] = useState(false)
   const [refreshBusy, setRefreshBusy] = useState(false)
   const [refreshError, setRefreshError] = useState("")
@@ -23,6 +24,7 @@ export function useModelCatalog(link: RemoteLink | null) {
     inFlight.current = null
     setModels([])
     setLevels([])
+    setWebExecutionStatus(undefined)
     setRefreshError("")
     setRefreshBusy(false)
     setCatalogBusy(Boolean(link?.alive()))
@@ -32,6 +34,7 @@ export function useModelCatalog(link: RemoteLink | null) {
         if (!current() || !r.ok) return
         setModels(r.models ?? [])
         setLevels(r.reasoning_levels ?? [])
+        setWebExecutionStatus(validWebStatus(r.web_execution_status))
       }).catch(() => undefined).finally(() => {
         if (current()) setCatalogBusy(false)
       })
@@ -49,6 +52,7 @@ export function useModelCatalog(link: RemoteLink | null) {
     setCatalogBusy(false)
     setRefreshBusy(true)
     setRefreshError("")
+    setWebExecutionStatus(undefined)
     try {
       const r = await target.rpc({ op: OpRefreshCatalog }, {
         dropOnTimeout: false, timeoutMs: refreshTimeoutMs,
@@ -60,6 +64,7 @@ export function useModelCatalog(link: RemoteLink | null) {
       }
       setModels(r.models ?? [])
       setLevels(r.reasoning_levels ?? [])
+      setWebExecutionStatus(validWebStatus(r.web_execution_status))
     } catch {
       if (current()) setRefreshError(t("composer.refreshFailed"))
     } finally {
@@ -68,5 +73,11 @@ export function useModelCatalog(link: RemoteLink | null) {
     }
   }, [])
 
-  return { models, levels, catalogBusy, refreshBusy, refreshError, refreshModels }
+  return { models, levels, catalogBusy, refreshBusy, refreshError, refreshModels, webExecutionStatus }
+}
+
+function validWebStatus(status: PcWebExecutionStatus | undefined): PcWebExecutionStatus | undefined {
+  return status && ["auto", "local", "cloud"].includes(status.preference)
+    && ["local", "cloud"].includes(status.execution)
+    && ["signed_in", "sign_in_required", "unavailable"].includes(status.cloud_account) ? status : undefined
 }

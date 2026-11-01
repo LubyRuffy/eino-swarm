@@ -11,6 +11,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/slash"
+	"github.com/LubyRuffy/eino-swarm/internal/tools"
 )
 
 // maxCatalogFrame is the catalog reply budget. withHost adds the PC name
@@ -22,6 +23,9 @@ func handleCatalog(eng *engine.Engine, req Request, path, sessionID string) Resp
 	resp := okBase(req.ID, path, sessionID)
 	resp.Models = modelViews(eng)
 	resp.ReasoningLevels = config.ReasoningEfforts()
+	resp.WebExecutionSupported = true
+	webStatus := tools.DescribeWebExecution(eng.Config())
+	resp.WebExecutionStatus = &webStatus
 	raw, err := json.Marshal(resp)
 	if err != nil {
 		return fail(req.ID, path, sessionID, "", fmtErr(err))
@@ -175,6 +179,11 @@ func startedView(eng *engine.Engine, cfg config.RemoteConfig, req Request, threa
 }
 
 func validateSelection(eng *engine.Engine, req Request) error {
+	if req.WebExecution != nil {
+		if _, err := config.ParseWebExecution(*req.WebExecution); err != nil {
+			return err
+		}
+	}
 	if strings.TrimSpace(req.ProviderID) != "" || strings.TrimSpace(req.Model) != "" {
 		if eng == nil || eng.Providers() == nil {
 			return fmt.Errorf("provider: unknown provider %q", req.ProviderID)
@@ -198,6 +207,11 @@ func checkReasoning(effort string) error {
 }
 
 func applySelection(eng *engine.Engine, threadID string, req Request) error {
+	if req.WebExecution != nil {
+		if err := eng.SetThreadWebExecution(threadID, *req.WebExecution); err != nil {
+			return err
+		}
+	}
 	if strings.TrimSpace(req.ProviderID) != "" || strings.TrimSpace(req.Model) != "" {
 		if err := eng.SetThreadProvider(threadID, req.ProviderID, req.Model); err != nil {
 			return err
