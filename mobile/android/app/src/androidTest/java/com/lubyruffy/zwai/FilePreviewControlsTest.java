@@ -96,6 +96,14 @@ public class FilePreviewControlsTest {
                 waitState(s -> s.getJSONObject("text").optDouble("font") == expected);
             }
             assertFalse(button(dom(), "Increase text size").getBoolean("enabled"));
+            JSONObject largestText = dom().getJSONObject("text");
+            for (String part : new String[] {"body", "heading", "code", "table"}) {
+                double font = largestText.getDouble(part + "_font");
+                double line = largestText.getDouble(part + "_line_height");
+                assertTrue("Rendered " + part + " font must be observable", font > 0);
+                assertTrue("Enlarged " + part + " lines must not overlap: " + line + " < " + font,
+                    line >= font);
+            }
             JSONObject beforeScroll = dom();
             swipe(beforeScroll.getJSONObject("text"), false);
             waitState(s -> s.getJSONObject("text").getDouble("scroll_top") > 0);
@@ -293,11 +301,11 @@ public class FilePreviewControlsTest {
     private JSONObject dom() throws Exception {
         String script = "JSON.stringify((()=>{const tidy=s=>(s||'').replace(/\\s+/g,' ').trim();"
             + "const rect=e=>{const r=e?.getBoundingClientRect();return r?{x:r.x,y:r.y,viewport_width:r.width,viewport_height:r.height,scroll_width:e.scrollWidth,client_width:e.clientWidth,scroll_left:e.scrollLeft,scroll_top:e.scrollTop,scroll_height:e.scrollHeight,client_height:e.clientHeight}:{};};"
-            + "const font=e=>e?parseFloat(getComputedStyle(e).fontSize):0;const text=document.querySelector('[data-testid=phone-text-content]'),iv=document.querySelector('[data-testid=phone-image-viewport]'),img=iv?.querySelector('img');"
+            + "const font=e=>e?parseFloat(getComputedStyle(e).fontSize):0,line=e=>e?parseFloat(getComputedStyle(e).lineHeight):0;const text=document.querySelector('[data-testid=phone-text-content]'),body=text?.querySelector('.md-body'),iv=document.querySelector('[data-testid=phone-image-viewport]'),img=iv?.querySelector('img');"
             + "const image={...rect(iv),width:img?.getBoundingClientRect().width||0,height:img?.getBoundingClientRect().height||0,natural_width:img?.naturalWidth||0,natural_height:img?.naturalHeight||0,src:img?.src||'',decoded:!!img?.complete&&img.naturalWidth>0};"
             + "const readable=e=>{let out='';const walker=document.createTreeWalker(e,NodeFilter.SHOW_TEXT);for(let node;node=walker.nextNode();)if(!node.parentElement.closest('[aria-hidden=true]'))out+=node.textContent;return tidy(out);};"
             + "const button=b=>{const r=b.getBoundingClientRect(),s=getComputedStyle(b),cx=r.x+r.width/2,cy=r.y+r.height/2;return{label:b.getAttribute('aria-label')||readable(b),enabled:!b.disabled,pressed:b.getAttribute('aria-pressed')==='true',hit:r.width>0&&r.height>0&&s.visibility==='visible'&&Number(s.opacity)>0&&cx>0&&cy>0&&cx<innerWidth&&cy<innerHeight&&b.contains(document.elementFromPoint(cx,cy)),x:r.x,y:r.y,width:r.width,height:r.height};};"
-            + "return{url:location.href,viewport:{width:innerWidth,height:innerHeight},document_width:document.documentElement.scrollWidth,text:{...rect(text),font:font(text),heading_font:font(text?.querySelector('h1')),code_font:font(text?.querySelector('pre code')),table_font:font(text?.querySelector('table')),content:text?.textContent||''},image,buttons:[...document.querySelectorAll('button,a')].map(button)};})())";
+            + "return{url:location.href,viewport:{width:innerWidth,height:innerHeight},document_width:document.documentElement.scrollWidth,text:{...rect(text),font:font(text),body_font:font(body),body_line_height:line(body),heading_font:font(text?.querySelector('h1')),heading_line_height:line(text?.querySelector('h1')),code_font:font(text?.querySelector('pre code')),code_line_height:line(text?.querySelector('pre code')),table_font:font(text?.querySelector('table')),table_line_height:line(text?.querySelector('table')),content:text?.textContent||''},image,buttons:[...document.querySelectorAll('button,a')].map(button)};})())";
         CountDownLatch ready = new CountDownLatch(1); AtomicReference<String> value = new AtomicReference<>();
         instrumentation.runOnMainSync(() -> activity.getBridge().getWebView().evaluateJavascript(script,
             result -> { value.set(result); ready.countDown(); }));

@@ -41,6 +41,15 @@ test("document text, headings, tables and code enlarge together while controls r
   for (let n = 0; n < 6; n++) await larger.click()
   await expect(content).toHaveCSS("font-size", "28px")
   await expect(larger).toBeDisabled()
+  // Enlarged glyphs need their own line space; fixed small-text leading clips
+  // table rows and makes multiline code overlap on the phone.
+  for (const sample of samples) {
+    const metrics = await sample.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { font: Number.parseFloat(style.fontSize), line: Number.parseFloat(style.lineHeight) }
+    })
+    expect(metrics.line).toBeGreaterThanOrEqual(metrics.font)
+  }
   // Scroll the actual text scrollport, which may wrap the rendered document.
   await content.evaluate((element) => {
     let scrollport: Element | null = element

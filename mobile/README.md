@@ -238,7 +238,8 @@ Image previews offer zoom in/out, a percentage, actual size (100%) and fit to
 window. They initially fit without enlarging small images; manual zoom spans
 10%–400%, with both axes scrollable. Loading or undecodable images disable
 zoom. Markdown, source and plain-text previews offer smaller/larger text
-(12–28 px, initially 14 px) and reset; headings, tables and code scale together.
+(12–28 px, initially 14 px) and reset; headings, tables and code scale together,
+including their line spacing.
 Preview tables scroll horizontally; vertical swipes continue through the document.
 Controls and Download remain outside the scrolling content. Reopening a file
 resets its view; preview adjustments preserve the original download bytes.

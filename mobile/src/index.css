@@ -116,10 +116,14 @@
      code, without changing conversation typography or the downloaded bytes. */
   .file-text-content .md-body {
     font-size: inherit;
+    line-height: 1.428571;
   }
   /* Tables scroll sideways; tiny vertical overflow must not trap a document swipe. */
   .file-text-content .md-table {
     overflow-y: hidden;
+  }
+  .file-text-content .md-body :is(h1, h2, h3) {
+    line-height: 1.375;
   }
   .file-text-content .md-body h1 {
     font-size: 1.428571em;
@@ -132,6 +136,7 @@
   }
   .file-text-content .md-body :is(pre, code, table) {
     font-size: 0.857143em;
+    line-height: 1.333333;
   }
   .file-text-content .md-body :is(pre, table) code {
     font-size: inherit;

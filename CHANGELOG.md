@@ -6,6 +6,9 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Scale phone preview line spacing with headings, tables and code so enlarged
+  text keeps readable line boxes. (#139)
+
 - Fixed enlarged phone preview tables trapping vertical document swipes in a
   small internal scroll range; horizontal table scrolling remains available. (#139)
 
