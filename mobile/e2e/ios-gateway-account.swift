@@ -144,6 +144,45 @@ final class BindFlowTests: XCTestCase {
     record(app, "account-selected-pc-encrypted-rpc")
   }
 
+  // A complete first callback followed by a short callback used to trap inside
+  // StreamBody's Foundation Data indexing. The loopback fixture also splits
+  // Chinese/emoji bytes across callbacks; JS-only streams cannot accept this.
+  func testNativeAccountCloudStreamSurvivesSplitUTF8AndSecondSend() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    try control("review=approved&pc=hide&api=on&start=normal&catalog=normal&model=chunked&web=normal")
+    app.launch()
+    let login = app.buttons["Sign in with NOSEC"].firstMatch
+    XCTAssertTrue(login.waitForExistence(timeout: 15), "This case requires a fresh private app container")
+    login.tap()
+    XCTAssertTrue(app.staticTexts["User center"].waitForExistence(timeout: 5))
+    app.buttons["Sign in with NOSEC"].tap()
+    try browserLogin(app, authorize: true)
+    XCTAssertTrue(app.staticTexts["native-fixture-model"].waitForExistence(timeout: 15))
+    app.buttons["Chat history"].tap()
+    XCTAssertTrue(app.textViews["Message"].waitForExistence(timeout: 15))
+
+    let answer = "Native streamed 中文🙂 complete"
+    for call in 1...2 {
+      try send(app, "Native split stream probe \(call)")
+      try waitForCount("model_chunked_completed", atLeast: call, timeout: 10)
+      let replies = app.staticTexts.matching(NSPredicate(format: "label == %@", answer))
+      let visible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+        replies.count == call && replies.allElementsBoundByIndex.allSatisfy { $0.exists }
+      }, object: app)
+      XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 10), .completed, "Every native callback must preserve the complete Chinese and emoji answer")
+      try waitForEnabled(app.textViews["Message"])
+      XCTAssertEqual(app.state, .runningForeground, "A completed native stream must leave the app available for another send")
+      XCTAssertEqual(try count("gateway_model_calls"), call)
+      XCTAssertEqual(try count("model_successes"), call)
+      XCTAssertEqual(try count("model_chunk_flushes"), call * 12)
+      XCTAssertEqual(try count("model_chunk_failed"), 0)
+      XCTAssertEqual(try count("model_chunk_cancelled"), 0)
+      XCTAssertEqual(try count("connect"), 0, "The phone model call must not require a paired PC")
+      record(app, "account-native-split-utf8-answer-\(call)")
+    }
+  }
+
   // Run in its own disposable app container. All model/credential settings are
   // entered through shipping UI; the private wrapper supplies only loopback CAS.
   func testNativeIndependentWebRoutesAndPermissionRecovery() throws {

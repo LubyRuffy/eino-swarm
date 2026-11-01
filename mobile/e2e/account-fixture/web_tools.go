@@ -70,6 +70,10 @@ func (f *fixture) model(w http.ResponseWriter, r *http.Request, source string) {
 	if f.modelMode == "stall" && !f.waitCancellation(w, r, "model") {
 		return
 	}
+	if f.modelMode == "chunked" {
+		f.chunkedModel(w, r)
+		return
+	}
 	if f.modelMode == "tools" {
 		if len(input.Tools) == 0 {
 			f.modelText(w, "Native ordinary answer")

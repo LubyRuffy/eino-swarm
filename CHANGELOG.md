@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed an iOS crash while receiving streamed model replies, including after
+  NOSEC sign-in. UTF-8 chunk boundaries now respect a consumed `Data` buffer's
+  actual indices, preserving split Chinese and emoji bytes across callbacks.
+
 - Scale phone preview line spacing with headings, tables and code so enlarged
   text keeps readable line boxes. (#139)
 

@@ -88,6 +88,20 @@ private-provider discovery/stream behavior remains unchanged. Native StreamBody
 keeps its existing no-redirect, timeout and cancel implementations; native fixture
 acceptance separately checks zero redirect-target requests and socket cancellation.
 
+`mobile/scripts/ios-stream-body.test.ts` compiles and executes the production
+Swift StreamBody plugin on macOS as part of `cd mobile && npm test`. It covers
+consumed buffers with nonzero indices, successive short chunks and split UTF-8
+characters, including real loopback HTTP and URLSession delegate callbacks;
+source-pattern checks alone cannot catch a native bounds trap.
+The packaged iOS account fixture's
+`testNativeAccountCloudStreamSurvivesSplitUTF8AndSecondSend` signs in through the
+loopback NOSEC flow and receives deliberately flushed short, Chinese and emoji
+fragments twice in the same conversation. Run it through the disposable
+`ios-layout-fixture.py` project with `IOS_LAYOUT_SCENARIO=ios-gateway-account.swift`,
+`IOS_LAYOUT_PRESERVE_PUBLIC=1`, packaged `IOS_LAYOUT_PUBLIC` and a loopback
+`IOS_LAYOUT_GATEWAY_ORIGIN`; select that method with `-only-testing`.
+Retain the complete reply, fixture counters, XCTest attachments and cleanup.
+
 `mobile/e2e/gateway-account.spec.ts` uses bounded HTTP fixtures for default-origin
 sign-in/review isolation, no-PC server inference, same-name source selection,
 private-provider retention after logout and API-disabled account PC selection.
@@ -7482,8 +7496,9 @@ composer; this does not assert a new automatic-follow behavior.
 `web_tools_test.go` verifies the fixture's own authority,
 model-round, refusal and cancellation behavior.
 
-On iOS, run both methods in `mobile/e2e/ios-gateway-account.swift` in separate
-fresh app containers. `testNativeIndependentWebRoutesAndPermissionRecovery`
+On iOS, run the account-flow, split-stream and Web-routing methods in
+`mobile/e2e/ios-gateway-account.swift` in separate fresh app containers.
+`testNativeIndependentWebRoutesAndPermissionRecovery`
 uses the same counted fixture contract and shipping controls. The existing
 `mobile/scripts/ios-layout-fixture.py` supports `IOS_LAYOUT_PRESERVE_PUBLIC=1`
 and `IOS_LAYOUT_PUBLIC` so the signed IPA's public web resources can remain

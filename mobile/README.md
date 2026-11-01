@@ -331,7 +331,9 @@ A nonempty legacy field wins; empty or null legacy values fall back to the new
 field. No additional setting is needed. Discover uses the platform HTTP stack so
 the webview origin is not the caller. The completion is read as it arrives
 (`StreamBody` on the device) because that stack returns a POST body in one
-piece. An image is vision; a text file is sent as text. A responses front
+piece. On iOS the reader retains incomplete UTF-8 bytes between callbacks,
+including after consuming earlier chunks, so Chinese and emoji split across
+network packets arrive unchanged. An image is vision; a text file is sent as text. A responses front
 that rejects the image part is asked once more as chat completions. A
 rejected reasoning summary is omitted and the responses call is tried
 again. The key stays on

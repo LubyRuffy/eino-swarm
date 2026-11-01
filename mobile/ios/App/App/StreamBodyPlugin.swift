@@ -218,14 +218,18 @@ func takeUTF8(_ pending: inout Data, end: Bool) -> String {
 func completeUTF8End(_ data: Data) -> Int {
     let n = data.count
     if n == 0 { return 0 }
-    var i = n - 1
+    // removeFirst preserves Data's indices across callbacks. Inspect its real
+    // bounds, but return a byte count for prefix/removeFirst above.
+    let start = data.startIndex
+    let end = data.endIndex
+    var i = end - 1
     var cont = 0
-    while i >= 0 && data[i] & 0b1100_0000 == 0b1000_0000 {
+    while i >= start && data[i] & 0b1100_0000 == 0b1000_0000 {
         cont += 1
         i -= 1
         if cont > 3 { return n }
     }
-    if i < 0 { return 0 }
+    if i < start { return 0 }
     let lead = data[i]
     let need: Int
     if lead & 0b1000_0000 == 0 {
@@ -239,6 +243,6 @@ func completeUTF8End(_ data: Data) -> Int {
     } else {
         return n
     }
-    if n - i < need { return i }
+    if end - i < need { return i - start }
     return n
 }
