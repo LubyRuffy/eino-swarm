@@ -43,6 +43,106 @@ def closed(number):
         return listener.connect_ex(("127.0.0.1", number)) != 0
 
 
+def wait_owned_cleanup(processes, ports, deadline):
+    """Unknown group probes never establish absence or extend the cleanup deadline."""
+    observations = []
+    while True:
+        all_ports_closed = all(closed(number) for number in ports)
+        groups_gone = True
+        for child in processes:
+            try:
+                os.killpg(child.pid, 0)
+                groups_gone = False
+            except ProcessLookupError:
+                pass
+            except OSError as error:
+                groups_gone = False
+                observations.append({"pid": child.pid, "errno": error.errno,
+                                     "error": type(error).__name__, "monotonic": time.monotonic()})
+        if (all_ports_closed and groups_gone) or time.monotonic() >= deadline:
+            return all_ports_closed, groups_gone, observations
+        time.sleep(min(.1, max(0, deadline - time.monotonic())))
+
+
+def owned_cleanup_verified(cleanup):
+    return (cleanup["owned_runtime_removed"] and cleanup["ports_closed"]
+            and cleanup["owned_process_groups_gone"] and cleanup["artifact_bytes_unchanged"]
+            and all(child["returncode"] is not None for child in cleanup["owned_processes"]))
+
+
+def finish_owned_case(*, processes, streams, commands, artifacts, hashes, ports,
+                      runtime, out, result, lease, primary, development, dirty, started):
+    """Finish this runner's actual owned cleanup without replacing its first failure."""
+    errors, stopped = [], []
+    cleanup = {"owned_processes": stopped, "ports_closed": False,
+               "owned_process_groups_gone": False, "group_probe_errors": [],
+               "artifact_bytes_unchanged": False, "owned_runtime_removed": False}
+    result["formal_acceptance"] = False
+    result["lease_exit_completed"] = False
+
+    def remember(phase, error, pid=None):
+        nonlocal primary
+        row = {"phase": phase, "type": type(error).__name__}
+        if isinstance(error, OSError): row["errno"] = error.errno
+        if pid is not None: row["pid"] = pid
+        errors.append(row)
+        if primary is None: primary = error
+
+    try:
+        try: private_json(out / "commands.json", commands)
+        except BaseException as error: remember("commands_receipt", error)
+        for child in reversed(processes):
+            try:
+                if child.poll() is None:
+                    with contextlib.suppress(ProcessLookupError): os.killpg(child.pid, signal.SIGTERM)
+                    try: child.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        with contextlib.suppress(ProcessLookupError): os.killpg(child.pid, signal.SIGKILL)
+                        child.wait(timeout=5)
+            except BaseException as error:
+                remember("stop_child", error, child.pid)
+            finally:
+                stopped.append({"pid": child.pid, "returncode": child.returncode})
+        for stream in streams:
+            try: stream.close()
+            except BaseException as error: remember("close_stream", error)
+        try:
+            cleanup["artifact_bytes_unchanged"] = hashes == {name: sha(path) for name, path in artifacts.items()}
+        except BaseException as error: remember("artifact_identity", error)
+        try: private_json(out / "owned-process-exits.json", stopped)
+        except BaseException as error: remember("process_exit_receipt", error)
+        all_ports_closed, groups_gone, group_probe_errors = wait_owned_cleanup(
+            processes, ports, time.monotonic() + 5)
+        cleanup.update(ports_closed=all_ports_closed, owned_process_groups_gone=groups_gone,
+                       group_probe_errors=group_probe_errors)
+        if all_ports_closed and groups_gone and all(row["returncode"] is not None for row in stopped) and not errors:
+            shutil.rmtree(runtime)
+    except BaseException as error:
+        remember("cleanup", error)
+    finally:
+        if lease is not None:
+            try:
+                lease.__exit__(None, None, None)
+                result["lease_exit_completed"] = True
+            except BaseException as error:
+                remember("lease_exit", error)
+    cleanup["owned_runtime_removed"] = not runtime.exists()
+    cleanup["cleanup_errors"] = errors
+    try: private_json(out / "cleanup.json", cleanup)
+    except BaseException as error: remember("cleanup_receipt", error)
+    result["cleanup_complete"] = owned_cleanup_verified(cleanup) and not errors
+    result["cleanup_errors"] = errors
+    if primary is not None:
+        result.setdefault("failure", {"type": type(primary).__name__, "message": str(primary)})
+    result["formal_acceptance"] = bool(
+        primary is None and result.get("native_case_passed") and result["cleanup_complete"]
+        and result["lease_exit_completed"] and not development and not dirty)
+    result["elapsed_seconds"] = time.monotonic() - started
+    try: private_json(out / "result.json", result)
+    except BaseException as error: remember("result_receipt", error)
+    return primary
+
+
 def emulator_port():
     for number in range(5600, 5682, 2):
         if closed(number) and closed(number + 1):
@@ -344,43 +444,12 @@ def main():
             except BaseException as diagnostic_error:
                 result["native_diagnostic_error"] = type(diagnostic_error).__name__
     finally:
-        stopped = []
-        for child in reversed(processes):
-            if child.poll() is None:
-                with contextlib.suppress(ProcessLookupError): os.killpg(child.pid, signal.SIGTERM)
-                try: child.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    with contextlib.suppress(ProcessLookupError): os.killpg(child.pid, signal.SIGKILL)
-                    child.wait(timeout=5)
-            stopped.append({"pid": child.pid, "returncode": child.returncode})
-        for stream in streams: stream.close()
-        untouched = hashes == {name: sha(path) for name, path in (("apk", args.apk), ("test_apk", args.test_apk), ("fixture", args.fixture))}
-        cleanup_deadline = time.monotonic() + 5
-        while True:
-            all_ports_closed = all(closed(number) for number in (adb_port, emu_port, emu_port + 1, *fixture_ports))
-            groups_gone = True
-            for child in processes:
-                try: os.killpg(child.pid, 0); groups_gone = False
-                except ProcessLookupError: pass
-            if all_ports_closed and groups_gone or time.monotonic() >= cleanup_deadline:
-                break
-            time.sleep(.1)
-        cleanup = {"owned_processes": stopped, "ports_closed": all_ports_closed, "owned_process_groups_gone": groups_gone, "artifact_bytes_unchanged": untouched}
-        if all_ports_closed and groups_gone and all(row["returncode"] is not None for row in stopped):
-            shutil.rmtree(runtime)
-        cleanup["owned_runtime_removed"] = not runtime.exists()
-        private_json(out / "commands.json", commands)
-        private_json(out / "cleanup.json", cleanup)
-        result["cleanup_complete"] = cleanup["owned_runtime_removed"] and all_ports_closed and untouched
-        result["formal_acceptance"] = bool(result.get("native_case_passed") and result["cleanup_complete"] and not args.development and not dirty)
-        result["elapsed_seconds"] = time.monotonic() - started
-        private_json(out / "result.json", result)
-        if lease_entered:
-            try:
-                lease.__exit__(None, None, None)
-            except BaseException:
-                if primary is None:
-                    raise
+        primary = finish_owned_case(
+            processes=processes, streams=streams, commands=commands,
+            artifacts={"apk": args.apk, "test_apk": args.test_apk, "fixture": args.fixture},
+            hashes=hashes, ports=(adb_port, emu_port, emu_port + 1, *fixture_ports),
+            runtime=runtime, out=out, result=result, lease=lease if lease_entered else None,
+            primary=primary, development=args.development, dirty=dirty, started=started)
     if primary is not None: raise primary
     if not result["cleanup_complete"]: raise RuntimeError("Owned cleanup was incomplete")
     print(json.dumps({"native_case_passed": True, "formal_acceptance": result["formal_acceptance"], "evidence": str(out)}))

@@ -7445,6 +7445,13 @@ returned or parsed for diagnostics. Run the log-filter regression with
 `python3 -m unittest discover -s mobile/scripts -p test_android_account_native.py`.
 `mobile/scripts/android-account-native.test.ts` runs the same real Python suite
 through the regular Mobile Vitest entry, including a nonzero-discovery check.
+Cleanup retains owned-child exits before process-group probes. Unknown probe
+errors keep cleanup unaccepted within the original five-second deadline; even
+already-absent private data cannot replace joined children, closed ports and
+confirmed absent groups.
+A child-stop failure still attempts the remaining owned children and retains the
+first scenario error; formal acceptance also requires a successfully released
+host lease. Cleanup errors and the final result remain separate receipts.
 
 The case proves pending/rejected isolation with zero business requests, then
 approved account bootstrap, server inference and owned-PC connection. Counted
@@ -7464,7 +7471,11 @@ independent phone/PC preferences, Gateway and personal-model Search/Fetch
 continuations, credential/cookie isolation, a visible 403 followed by ordinary
 chat with Web off, Stop cancellation, and the PC's persisted inherited route.
 Counted loopback HTTP and encrypted RPC prove the execution paths in addition
-to native screenshots. `web_tools_test.go` verifies the fixture's own authority,
+to native screenshots. Gateway-stage receipts require zero personal-provider
+calls and exactly one Search/Fetch. Direct-chat screenshots retain their initial
+fold position and prove that real native scrolling exposes the answer above the
+composer; this does not assert a new automatic-follow behavior.
+`web_tools_test.go` verifies the fixture's own authority,
 model-round, refusal and cancellation behavior.
 
 On iOS, run both methods in `mobile/e2e/ios-gateway-account.swift` in separate

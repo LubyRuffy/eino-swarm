@@ -99,6 +99,7 @@ public class AccountLoginTest {
             write("loopback-network-proof.json", "{\"native_http\":true,\"native_websocket_upgrade\":true}");
             launch();
             boolean upgraded = "true".equals(InstrumentationRegistry.getArguments().getString("upgrade_prepared"));
+            write("upgrade-qr-counter-baseline.json", new JSONObject().put("upgraded", upgraded).put("qr_redeem", count("qr_redeem")).toString(2));
             if (upgraded) {
                 waitContaining("Native PC conversation");
                 assertEquals("Upgrade reconnects the saved ticket without redeeming another QR", 1, state().getJSONObject("counts").optInt("anonymous_origin_redeem"));
@@ -212,8 +213,9 @@ public class AccountLoginTest {
             waitContaining("Native PC conversation");
             save("07-real-encrypted-PC");
             JSONObject connected = state().getJSONObject("counts");
+            write("managed-connect-counters.json", connected.toString(2));
             assertEquals("Only the selected PC is connected", 1, connected.optInt("connect"));
-            assertEquals("Managed connection must not redeem a QR", 0, connected.optInt("qr_redeem"));
+            assertEquals("Managed connection must not redeem a QR", upgraded ? 1 : 0, connected.optInt("qr_redeem"));
             assertTrue("The real Hub must have forwarded encrypted RPC frames", connected.optInt("peer_messages") > 0);
             if (present("Back")) click("Back");
             click("Menu");
@@ -289,10 +291,26 @@ public class AccountLoginTest {
         save("01-independent-web-settings");
         click("Chat history");
         chooseChatModel("native-fixture-model");
+        int gatewayCalls = count("gateway_model_calls");
+        int gatewayPersonalBefore = count("personal_model_calls");
+        assertEquals("No personal inference precedes the Gateway stage", 0, gatewayPersonalBefore);
         int search = count("web_search"), fetch = count("web_fetch");
         send("Gateway native cloud evidence");
         waitCount("web_search", search + 1); waitCount("web_fetch", fetch + 1);
         waitFor("Native cloud evidence answer");
+        waitCount("gateway_model_calls", gatewayCalls + 3);
+        assertEquals("The gateway model must execute its own three-request Web loop", gatewayCalls + 3, count("gateway_model_calls"));
+        assertEquals("Gateway stage must not call the personal provider", gatewayPersonalBefore, count("personal_model_calls"));
+        assertEquals("Gateway stage performs exactly one search", search + 1, count("web_search"));
+        assertEquals("Gateway stage performs exactly one fetch", fetch + 1, count("web_fetch"));
+        write("gateway-route-counters.json", new JSONObject().put("before_personal_model_calls", gatewayPersonalBefore)
+            .put("after_personal_model_calls", count("personal_model_calls"))
+            .put("before_search", search).put("after_search", count("web_search"))
+            .put("before_fetch", fetch).put("after_fetch", count("web_fetch"))
+            .put("before_gateway_model_calls", gatewayCalls)
+            .put("after_gateway_model_calls", count("gateway_model_calls"))
+            .put("selected_model", dom().getString("composer_model"))
+            .put("source", dom().getString("model_source")).toString(2));
         save("02-gateway-cloud-search-fetch");
 
         chooseChatModel("native-personal-model");
@@ -317,6 +335,7 @@ public class AccountLoginTest {
         send("Continue without Web tools");
         waitFor("Native ordinary answer");
         assertEquals("Disabling phone tools resumes ordinary chat without another cloud call", beforeOff, count("web_search"));
+        witnessTranscriptTail("Native ordinary answer", "off-answer-visibility");
         save("05-off-recovers-same-personal-chat");
 
         click("Web settings");
@@ -329,6 +348,11 @@ public class AccountLoginTest {
         click("Stop");
         waitCount("web_cancelled", 1);
         assertEquals("The stopped Web call cannot complete later", 0, count("web_completed"));
+        witnessTranscriptTail("Stop native cloud work", "stopped-request-visibility");
+        assertFalse("A cancelled Web call cannot leave any Stop control active", present("Stop"));
+        write("stopped-ui-and-server-state.json", new JSONObject().put("stop_control_present", present("Stop"))
+            .put("message_enabled", domEntry("Message").getBoolean("enabled"))
+            .put("web_cancelled", count("web_cancelled")).put("web_completed", count("web_completed")).toString(2));
         save("07-cloud-tool-stopped");
         control("web=normal&pc=show");
         click("Web settings");
@@ -374,10 +398,118 @@ public class AccountLoginTest {
 
     private void bindAnonymous() throws Exception {
         String uri = get("/fixture/anonymous-offer").getString("uri");
-        secretOnScreen = true; fill("Pairing URI", uri); click("Paste and bind"); waitContaining("Native PC conversation"); secretOnScreen = false;
+        secretOnScreen = true; fill("Pairing URI", uri); click("Paste and bind"); click("Native PC"); waitContaining("Native PC conversation"); secretOnScreen = false;
     }
 
-    private void chooseChatModel(String model) throws Exception { click("Model"); click(model); }
+    private void chooseChatModel(String model) throws Exception {
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        assertTrue("Only the actual foreground app may receive a model selection", appForeground());
+        if (!dom().getBoolean("model_dialog_open")) touch(stableModelControl("Model", false, deadline));
+        JSONObject radio = stableModelControl(model, true, deadline);
+        assertTrue("Model input targets the current unique dialog radio", appForeground());
+        touch(radio);
+        while (SystemClock.uptimeMillis() < deadline) {
+            JSONObject observed = dom();
+            if (!observed.getBoolean("model_dialog_open") && model.equals(observed.getString("composer_model"))) {
+                nativeActions.put(new JSONObject().put("action", "native_model_radio_readback")
+                    .put("model", model).put("radio", radio)
+                    .put("composer_model", observed.getString("composer_model"))
+                    .put("source", observed.getString("model_source")));
+                return;
+            }
+            SystemClock.sleep(50);
+        }
+        throw new AssertionError("The actual composer did not retain the selected model: " + model);
+    }
+
+    private JSONObject stableModelControl(String label, boolean radio, long deadline) throws Exception {
+        JSONObject previous = null;
+        int stable = 0;
+        while (SystemClock.uptimeMillis() < deadline) {
+            JSONArray entries = dom().getJSONArray("entries"); JSONObject found = null;
+            for (int i = 0; i < entries.length(); i++) {
+                JSONObject candidate = entries.getJSONObject(i);
+                if (!label.equals(candidate.getString("label")) || !candidate.getBoolean("visible") || !candidate.getBoolean("enabled")
+                    || !candidate.getBoolean("hit") || candidate.getBoolean("in_model_dialog") != radio
+                    || !(radio ? "radio" : "button").equals(candidate.getString("role"))) continue;
+                assertNull("The actual model control must be unique", found); found = candidate;
+            }
+            if (found != null && previous != null
+                && Math.abs(found.getDouble("x") - previous.getDouble("x")) < .5
+                && Math.abs(found.getDouble("y") - previous.getDouble("y")) < .5
+                && Math.abs(found.getDouble("width") - previous.getDouble("width")) < .5
+                && Math.abs(found.getDouble("height") - previous.getDouble("height")) < .5) stable++;
+            else stable = 0;
+            if (found != null && stable >= 2) return found;
+            previous = found; SystemClock.sleep(50);
+        }
+        throw new AssertionError("A current hittable model control was not stable: " + label);
+    }
+    private void witnessTranscriptTail(String label, String evidenceName) throws Exception {
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        int stable = 0, swipes = 0, earlierTranscriptSwipes = 0;
+        for (int i = 0; i < nativeActions.length(); i++) if ("native_transcript_swipe".equals(nativeActions.getJSONObject(i).optString("action"))) earlierTranscriptSwipes++;
+        JSONObject initial = dom(), initialTranscript = initial.getJSONObject("transcript_geometry");
+        JSONArray initialTargets = new JSONArray(); boolean initialClear = false;
+        for (int i = 0; i < initial.getJSONArray("entries").length(); i++) {
+            JSONObject entry = initial.getJSONArray("entries").getJSONObject(i);
+            if (label.equals(entry.getString("label")) && entry.getBoolean("in_transcript")) { initialTargets.put(entry); initialClear |= entry.getBoolean("unobscured"); }
+        }
+        boolean initiallyCoveredWithoutActorScroll = "Native ordinary answer".equals(label) && earlierTranscriptSwipes == 0 && !initialClear;
+        write(evidenceName + "-before-native-scroll.json", new JSONObject().put("label", label)
+            .put("targets", initialTargets).put("transcript", initialTranscript)
+            .put("composer_top", initial.getDouble("composer_top")).put("earlier_native_transcript_swipes", earlierTranscriptSwipes)
+            .put("initially_covered_without_actor_transcript_scroll", initiallyCoveredWithoutActorScroll).toString(2));
+        save(evidenceName + "-before-native-scroll");
+        while (SystemClock.uptimeMillis() < deadline) {
+            JSONObject observed = dom(), transcript = observed.getJSONObject("transcript_geometry");
+            JSONObject target = null;
+            JSONArray entries = observed.getJSONArray("entries");
+            for (int i = 0; i < entries.length(); i++) {
+                JSONObject entry = entries.getJSONObject(i);
+                if (label.equals(entry.getString("label")) && entry.getBoolean("in_transcript") && entry.getBoolean("unobscured")) target = entry;
+            }
+            boolean tail = transcript.getDouble("scroll_top") + transcript.getDouble("client_height") >= transcript.getDouble("scroll_height") - 2;
+            if (target != null && tail && swipes > 0) {
+                if (++stable >= 3) {
+                    write(evidenceName + ".json", new JSONObject().put("label", label).put("target", target)
+                        .put("transcript", transcript).put("composer_top", observed.getDouble("composer_top"))
+                        .put("tail_reached_by_native_scroll", true).put("native_swipes", swipes)
+                        .put("initial_scroll_top", initialTranscript.getDouble("scroll_top")).toString(2));
+                    save(evidenceName + "-after-native-scroll");
+                    nativeActions.put(new JSONObject().put("action", "observed_default_transcript_position")
+                        .put("initially_covered_without_actor_scroll", initiallyCoveredWithoutActorScroll)
+                        .put("no_new_auto_follow_contract_asserted", true));
+                    return;
+                }
+                SystemClock.sleep(50);
+            } else {
+                stable = 0;
+                nativeTranscriptSwipe(transcript);
+                swipes++;
+            }
+        }
+        throw new AssertionError("Native transcript cannot expose an unobscured tail item: " + label);
+    }
+
+    private void nativeTranscriptSwipe(JSONObject transcript) throws Exception {
+        assertTrue("Only the actual foreground app can receive transcript scrolling", appForeground());
+        JSONObject viewport = dom(); int[] geometry = new int[4];
+        instrumentation.runOnMainSync(() -> { WebView web = activity.getBridge().getWebView(); web.getLocationOnScreen(geometry); geometry[2] = web.getWidth(); geometry[3] = web.getHeight(); });
+        double cssX = transcript.getDouble("x") + transcript.getDouble("width") * .65;
+        double cssStart = transcript.getDouble("bottom") - 20, cssEnd = transcript.getDouble("y") + 40;
+        assertTrue("Transcript swipe stays above the composer and inside its own scroll area", cssStart > cssEnd && cssStart < viewport.getDouble("composer_top"));
+        float x = (float) (geometry[0] + cssX * geometry[2] / viewport.getDouble("width"));
+        float start = (float) (geometry[1] + cssStart * geometry[3] / viewport.getDouble("height"));
+        float end = (float) (geometry[1] + cssEnd * geometry[3] / viewport.getDouble("height"));
+        long at = SystemClock.uptimeMillis();
+        MotionEvent down = MotionEvent.obtain(at, at, MotionEvent.ACTION_DOWN, x, start, 0); down.setSource(InputDevice.SOURCE_TOUCHSCREEN); assertTrue(ui.injectInputEvent(down, true)); down.recycle();
+        for (int step = 1; step <= 8; step++) { MotionEvent move = MotionEvent.obtain(at, at + step * 30, MotionEvent.ACTION_MOVE, x, start + (end - start) * step / 8, 0); move.setSource(InputDevice.SOURCE_TOUCHSCREEN); assertTrue(ui.injectInputEvent(move, true)); move.recycle(); }
+        MotionEvent finish = MotionEvent.obtain(at, at + 270, MotionEvent.ACTION_UP, x, end, 0); finish.setSource(InputDevice.SOURCE_TOUCHSCREEN); assertTrue(ui.injectInputEvent(finish, true)); finish.recycle();
+        nativeActions.put(new JSONObject().put("action", "native_transcript_swipe").put("start_y", cssStart).put("end_y", cssEnd));
+        SystemClock.sleep(150);
+    }
+
     private void send(String text) throws Exception { fill("Message", text); click("Send"); }
     private int count(String name) throws Exception { return state().getJSONObject("counts").optInt(name); }
 
@@ -552,7 +684,7 @@ public class AccountLoginTest {
     /** Read-only observations compensate for API33's stale virtual AX subtree.
      * No storage, auth state, browser transition, fetch or DOM mutation occurs here. */
     private JSONObject dom() throws Exception {
-        String script = "JSON.stringify((()=>{const tidy=s=>(s||'').replace(/\\s+/g,' ').trim();return {width:innerWidth,height:innerHeight,entries:[...document.querySelectorAll('button,input,textarea,select,label,h1,h2,p,span,[role=status],[role=alert]')].flatMap(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e),x=r.x+r.width/2,y=r.y+r.height/2;if(!r.width||!r.height||s.visibility==='hidden'||s.display==='none'||e.closest('[inert],[aria-hidden=true]'))return [];return [{label:e.getAttribute('aria-label')||e.labels?.[0]?.innerText||e.placeholder||tidy(e.innerText),editable:e.matches('input,textarea'),control:e.matches('input,textarea,select'),enabled:!e.disabled,visible:x>=0&&y>=0&&x<innerWidth&&y<innerHeight,x:r.x,y:r.y,width:r.width,height:r.height,value:e.type==='password'?'':e.matches('input,textarea,select')?e.value:'',password_present:e.type==='password'&&Boolean(e.value)}];})};})())";
+        String script = "JSON.stringify((()=>{const tidy=s=>(s||'').replace(/\\s+/g,' ').trim();const transcript=document.querySelector('[data-testid=transcript]'),t=transcript?.getBoundingClientRect(),composer=document.querySelector('textarea[aria-label=Message]')?.closest('form'),composerTop=composer?.getBoundingClientRect().top??innerHeight;return {width:innerWidth,height:innerHeight,composer_top:composerTop,transcript_geometry:t?{x:t.x,y:t.y,width:t.width,height:t.height,bottom:Math.min(t.bottom,composerTop),scroll_top:transcript.scrollTop,scroll_height:transcript.scrollHeight,client_height:transcript.clientHeight}:null,model_dialog_open:!!document.querySelector('[role=dialog][aria-label=Model]'),composer_model:tidy(document.querySelector('button[aria-label=Model]')?.textContent),model_source:tidy(document.querySelector('[data-testid=direct-model-source]')?.textContent),entries:[...document.querySelectorAll('button,input,textarea,select,label,h1,h2,p,span,[role=status],[role=alert]')].flatMap(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e),x=r.x+r.width/2,y=r.y+r.height/2;if(!r.width||!r.height||s.visibility==='hidden'||s.display==='none'||e.closest('[inert],[aria-hidden=true]'))return [];return [{label:e.getAttribute('aria-label')||e.labels?.[0]?.innerText||e.placeholder||tidy(e.innerText),role:e.getAttribute('role')||e.tagName.toLowerCase(),in_model_dialog:e.closest('[role=dialog]')?.getAttribute('aria-label')==='Model',hit:e.contains(document.elementFromPoint(x,y)),in_transcript:!!e.closest('[data-testid=transcript]'),unobscured:e.contains(document.elementFromPoint(x,y))&&(!e.closest('[data-testid=transcript]')||(t&&r.top>=t.top&&r.bottom<=Math.min(t.bottom,composerTop))),editable:e.matches('input,textarea'),control:e.matches('input,textarea,select'),enabled:!e.disabled,visible:x>=0&&y>=0&&x<innerWidth&&y<innerHeight,x:r.x,y:r.y,width:r.width,height:r.height,value:e.type==='password'?'':e.matches('input,textarea,select')?e.value:'',password_present:e.type==='password'&&Boolean(e.value)}];})};})())";
         CountDownLatch ready = new CountDownLatch(1); AtomicReference<String> value = new AtomicReference<>();
         instrumentation.runOnMainSync(() -> activity.getBridge().getWebView().evaluateJavascript(script, result -> { value.set(result); ready.countDown(); }));
         assertTrue("Read-only packaged DOM observation must return", ready.await(5, TimeUnit.SECONDS));

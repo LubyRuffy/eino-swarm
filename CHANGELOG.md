@@ -6,6 +6,11 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Hardened packaged-phone acceptance to select the actual model dialog radio,
+  preserve upgraded anonymous QR counter baselines and verify Gateway execution.
+  Native iOS input dismissal follows the observed keyboard controls; Android
+  cleanup retains probe failures and requires every owned process to exit.
+
 - Signed-in accounts use server Web Search and Web Fetch by default. Desktop
   **Settings → Tools → Web tools run on** selects Automatic, This device, or
   Server cloud; anonymous Automatic execution remains local. Account cloud

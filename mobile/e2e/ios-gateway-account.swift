@@ -239,8 +239,13 @@ final class BindFlowTests: XCTestCase {
     let seed = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Native PC conversation")).firstMatch
     XCTAssertTrue(seed.waitForExistence(timeout: 20))
     seed.tap()
-    let pcRoute = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Follow PC (last refreshed)", "Run on this PC")).firstMatch
-    XCTAssertTrue(pcRoute.waitForExistence(timeout: 12), "A signed-in phone must preserve the anonymous PC's local execution setting")
+    let pcRoute = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Follow PC (last refreshed)"))
+    let pcExecution = app.staticTexts.matching(NSPredicate(format: "label == %@", "Run on this PC"))
+    let routeVisible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+      guard pcRoute.count == 1 && pcExecution.count == 1 else { return false }
+      return pcRoute.element(boundBy: 0).isHittable && pcExecution.element(boundBy: 0).isHittable
+    }, object: app)
+    XCTAssertEqual(XCTWaiter.wait(for: [routeVisible], timeout: 12), .completed, "A signed-in phone must preserve the anonymous PC's local execution setting")
     try send(app, "Native inherited PC proof")
     let persisted = try waitForPCWebTurn(timeout: 12)
     XCTAssertEqual(persisted["pc_thread_web_execution"] as? String, "", "Phone inheritance must not persist a cloud override on the PC")
@@ -303,13 +308,7 @@ final class BindFlowTests: XCTestCase {
     let wheel = app.pickerWheels.firstMatch
     if wheel.waitForExistence(timeout: 1) {
       wheel.adjust(toPickerWheelValue: option)
-      let done = app.buttons["Done"].firstMatch
-      if done.exists && done.isHittable { done.tap() }
-      else {
-        let dismiss = try XCTUnwrap(app.toolbars.buttons.allElementsBoundByIndex.last)
-        XCTAssertTrue(dismiss.exists && dismiss.isHittable)
-        dismiss.tap()
-      }
+      try dismissKeyboard(app)
     } else {
       let selected = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", option)).firstMatch
       XCTAssertTrue(selected.waitForExistence(timeout: 5))
@@ -324,13 +323,56 @@ final class BindFlowTests: XCTestCase {
     try reveal(app, field)
     field.tap()
     field.typeText(value)
-    let done = app.buttons["Done"].firstMatch
-    if done.exists && done.isHittable { done.tap() }
-    else {
-      let dismiss = try XCTUnwrap(app.toolbars.buttons.allElementsBoundByIndex.last)
-      XCTAssertTrue(dismiss.exists && dismiss.isHittable)
-      dismiss.tap()
+    try dismissKeyboard(app)
+  }
+
+
+  private func dismissKeyboard(_ app: XCUIApplication) throws {
+    let introductions = app.otherElements.matching(identifier: "UIContinuousPathIntroductionView")
+    if introductions.firstMatch.exists {
+      guard introductions.count == 1 else {
+        XCTFail("The keyboard introduction must be unique")
+        throw NSError(domain: "NativeAccountFixture", code: 8)
+      }
+      let introduction = introductions.element(boundBy: 0)
+      let buttons = introduction.buttons.matching(NSPredicate(format: "label == %@", "Continue"))
+      guard buttons.count == 1 else {
+        XCTFail("The observed keyboard introduction must have one Continue button")
+        throw NSError(domain: "NativeAccountFixture", code: 8)
+      }
+      let proceed = buttons.element(boundBy: 0)
+      let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in proceed.exists && proceed.isHittable }, object: app)
+      guard XCTWaiter.wait(for: [ready], timeout: 5) == .completed else {
+        XCTFail("The keyboard introduction's Continue button is not hittable")
+        throw NSError(domain: "NativeAccountFixture", code: 8)
+      }
+      proceed.tap()
+      XCTAssertTrue(introduction.waitForNonExistence(timeout: 5))
     }
+    let keyboard = app.keyboards.firstMatch
+    let wheel = app.pickerWheels.firstMatch
+    let buttons = app.toolbars.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "Done", "selected"))
+    let deadline = ProcessInfo.processInfo.systemUptime + 5
+    repeat {
+      let controls = buttons.allElementsBoundByIndex.filter { $0.exists && $0.isHittable }
+      if controls.count == 1 {
+        controls[0].tap()
+        let hidden = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !keyboard.exists && !wheel.exists }, object: app)
+        guard XCTWaiter.wait(for: [hidden], timeout: 5) == .completed else {
+          XCTFail("The observed keyboard dismiss action did not close the input view")
+          throw NSError(domain: "NativeAccountFixture", code: 9)
+        }
+        return
+      }
+      if controls.count > 1 {
+        XCTFail("The keyboard has ambiguous dismiss controls")
+        throw NSError(domain: "NativeAccountFixture", code: 9)
+      }
+      if !keyboard.exists && !wheel.exists { return }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+    } while ProcessInfo.processInfo.systemUptime < deadline
+    XCTFail("The keyboard must have one visible Done or selected dismiss button")
+    throw NSError(domain: "NativeAccountFixture", code: 9)
   }
 
   private func reveal(_ app: XCUIApplication, _ element: XCUIElement) throws {
