@@ -1268,6 +1268,10 @@ HOST regressions exercise the actual runner main, real flock, real headless
 children and sockets, cancellation/partial input/ACK and preparation cleanup.
 The preparation fixture publishes complete readiness JSON by atomically renaming
 a temporary file from the same directory.
+The typed-hook shape test alone injects an inventory of its registered real
+children and a failing ambient inventory; hook validation cannot depend on an
+unrelated host PID. Actor, detached-child and unknown-inventory cleanup tests
+retain their real process-discovery and fail-closed boundaries.
 OS leaves are replaced only for headless tests. Run:
 
 ```bash

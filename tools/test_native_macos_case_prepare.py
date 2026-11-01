@@ -1,4 +1,5 @@
 """Preparation and power takeover share the original runner's case ownership."""
+import errno
 import fcntl
 import importlib.util
 import json
@@ -174,11 +175,24 @@ class PreparationTests(unittest.TestCase):
                                 (runner.CasePreparation(lambda: None, lambda *args: None), 0),
                                 (runner.CasePreparation(None, lambda *args: None), 2),
                                 (runner.CasePreparation(lambda: None, None), 2)):
-            with self.subTest(value=type(value).__name__):
-                code, _, receipt = self.main(lambda *args: value)
+            with self.subTest(value=type(value).__name__), \
+                    mock.patch.object(runner.subprocess, "check_output",
+                                      side_effect=OSError(errno.EIO, "unrelated host inventory is unreadable")) as ambient:
+                def prepare(_lock, _receipt, _environment, processes, scope, _deadline):
+                    # Hook shape is independent of the physical host's process
+                    # table. This fixture spawns only registered direct children;
+                    # keep their real launch, termination and wait behavior.
+                    def registered_inventory(*_args, **_kwargs):
+                        return "\n".join(
+                            f"{child.pid} {os.getpid()} {child.pid} {os.getuid()} S fixture-child-{child.pid}"
+                            for child in processes if child.poll() is None)
+                    scope.inventory = registered_inventory
+                    return value
+                code, _, receipt = self.main(prepare)
                 self.assertEqual(code, expected)
                 self.assertEqual(receipt["launched"], expected == 0)
                 self.assert_clean(receipt)
+                ambient.assert_not_called()
 
     def test_handoff_refusal_cleans_the_real_scenario_app_and_bridge(self):
         for variant in ("malformed", "partial", "wrong-owner", "cancel", "valid"):

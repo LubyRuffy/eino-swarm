@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Isolated the native preparation hook-shape fixture from unrelated host PIDs,
+  retaining real child launch/cleanup assertions and the production runner's
+  fail-closed inventory behavior.
+
 - Signed-in accounts use server Web Search and Web Fetch by default. Desktop
   **Settings → Tools → Web tools run on** selects Automatic, This device, or
   Server cloud; anonymous Automatic execution remains local. Account cloud
