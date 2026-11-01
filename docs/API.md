@@ -370,6 +370,7 @@ provider carries `has_api_key` and `ready` instead.
             "schedule_min_interval_seconds": 30, "schedule_tick_ms": 1000,
             "schedule_max_active": 32, "policy_reasoning_effort": ""},
   "tools": {"disabled": [], "enabled": [], "web_search_max_results": 8,
+            "web_execution": "auto",
             "result_max_chars": 40000,
             "proxy": {"http": "", "https": "", "no_proxy": ""}},
   "memory": {"enabled": true, "auto_review": true, "char_limit": 2200,
@@ -919,9 +920,82 @@ this operation a 30-second wait without disconnecting the link on timeout,
 retains its previous list on error, and ignores responses from an old link or
 refresh generation. An older host's `unknown_op` becomes an update-PC message
 inside the model picker. Refresh never silently replaces an explicit selection.
-`tune` `{thread_id, provider_id, model, reasoning}` sets that conversation.
+`tune` `{thread_id, provider_id, model, reasoning, web_execution}` sets that conversation.
 Omitting `reasoning` leaves the level; `""` is the model's default. An
 unknown level is refused.
+
+`web_execution` is optional on `start`, `send`, `steer`, and `tune`. Missing or
+null preserves the conversation preference; `""` clears it to inherit the PC
+global setting, while `auto`, `local`, or `cloud` persists an explicit choice.
+Unknown values are refused before applying the selection. New choices apply
+from the next turn, including queued sends. The active turn retains its captured
+mode across restoration even when the conversation/global setting changes.
+`meta` and `catalog` advertise `web_execution_supported: true`; old PCs omit it.
+Thread rows/details return optional `web_execution`; turn previews return the
+captured value. No phone account token is carried over Pairlink to the PC.
+
+Both metadata responses also return this optional snapshot:
+
+```json
+{"web_execution_status":{"preference":"auto","execution":"cloud","cloud_account":"signed_in"}}
+```
+
+`preference` is the PC global `auto`, `local`, or `cloud` setting. `execution`
+is its default selected route, `local` or `cloud`, before a conversation override.
+`cloud_account` is `signed_in`, `sign_in_required`, or `unavailable`: it describes
+only the PC's private receipt matching the configured origin, with unavailable
+covering unreadable credentials or invalid origin configuration. The snapshot
+performs no network request, includes no token, account/host ID or Gateway
+address, and never promises live Key/tool grants. A cloud route may therefore
+still fail server authorization. Missing status on older PCs means unknown.
+The settings summary applies to the next turn, not the active turn's snapshot.
+
+The phone's PC preference is separately persisted as `inherit`, `local`, or
+`cloud`. Inherit always sends `web_execution:""` on a supporting PC, regardless
+of phone sign-in; an older PC receives no override. A phone refuses explicit
+local/cloud when the PC lacks this capability instead of pretending it applied.
+
+The local HTTP API exposes the same conversation preference in thread views
+and accepts `PATCH /api/threads/:id {"web_execution":"local"}`. Global
+`PUT /api/settings` accepts `tools.web_execution`; omitting it or sending null
+when updating other tool settings preserves the user's explicit choice.
+
+Desktop `web_search` and `web_fetch` retain ordinary client-function schemas.
+Cloud executors call the account's dedicated Gateway
+`POST /client/desktop/v1/web/search` and `/client/desktop/v1/web/fetch`, with the
+private Host token only in the Authorization header. Search sends `query` and
+the configured `max_results`; Fetch requests Markdown and maps `render: true`
+to `actions:[{"type":"wait","milliseconds":1}]`. Redirects are rejected,
+responses are capped at 16 MiB, and model-facing results retain the Tools cap.
+HTTP 401 requests a new server sign-in, including old unbound authorizations;
+other denials retain their safe server error category. None triggers local fallback.
+
+Phone direct Chat/Responses declares ordinary `web_search`/`web_fetch` functions
+and executes complete tool rounds through the account's standalone
+`POST /v1/web/search` and `/v1/web/fetch`. It does not send an unsupported
+`web_fetch` built-in selector. The account's Mobile Bearer stays on those
+Gateway requests; model sources and execution preference stay independent.
+The direct-phone preference is `auto`, `cloud`, or `off`, separate from the PC
+preference. Automatic mounts these functions only with an approved, enabled,
+unexpired account session; otherwise it sends ordinary chat. Explicit cloud
+without such a session fails before model dispatch. Off omits these functions.
+The selected model must support standard function calling; failure does not
+trigger a switch of model, retry without tools, or local tool execution.
+The client bounds eight model rounds, sixteen total calls, four calls per round,
+64 KiB arguments, 128 KiB per result and 512 KiB total tool output. Responses
+continuations use `previous_response_id` when supplied, otherwise replay the
+function-call/output items. Stop, sign-out, account or preference changes cancel
+owned cloud work; failed cloud calls remain visible rather than using local tools.
+Gateway model/tool 401 responses clear only the identical current account
+session. A 403 pauses new account data-plane calls with local approval unverified
+while keeping the active conversation mounted; an approved recheck restores
+access, while confirmed pending/rejected or failed verification isolates it.
+The refusal itself does not assign pending approval. Both refusal statuses
+release an unread response body as soon as headers arrive. Personal-provider
+401 responses do not clear the Gateway session. Late errors from a replaced
+origin/user/device/token cannot invalidate its replacement. Native stream
+preparation, listener registration and open remain cancellable before headers.
+
 `put` uploads one chunk: `{put_id, name, mime, part, parts, data}`. `data`
 is base64 of at most 36KiB, so the JSON frame stays under 64KiB. The whole
 file is at most 256MiB, the same cap as a desktop upload. `put_id` matches

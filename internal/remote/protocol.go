@@ -6,6 +6,7 @@ import (
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
+	"github.com/LubyRuffy/eino-swarm/internal/tools"
 )
 
 const (
@@ -88,6 +89,9 @@ type Request struct {
 	// Reasoning is a pointer so the phone can select the empty default.
 	// A missing field leaves the conversation's level alone.
 	Reasoning *string `json:"reasoning,omitempty"`
+	// WebExecution changes only this conversation's next-turn preference.
+	// Missing preserves it; an explicit empty string inherits the PC setting.
+	WebExecution *string `json:"web_execution,omitempty"`
 	// Puts are finished upload ids from OpPut, consumed by start/send/steer.
 	Puts []string `json:"puts,omitempty"`
 	// Put fields stream one file or image across frames. Pairlink's plaintext
@@ -116,42 +120,44 @@ type Request struct {
 // Response is what the PC replies. Path and SessionID are pairlink
 // metadata so zwai trace can join the remote hop.
 type Response struct {
-	Startup         string                  `json:"startup,omitempty"`
-	Restore         *engine.RestoreProgress `json:"restore,omitempty"`
-	V               int                     `json:"v"`
-	ID              string                  `json:"id"`
-	OK              bool                    `json:"ok"`
-	Error           string                  `json:"error,omitempty"`
-	Code            string                  `json:"code,omitempty"`
-	Path            string                  `json:"path,omitempty"`
-	SessionID       string                  `json:"session_id,omitempty"`
-	Host            string                  `json:"host,omitempty"`
-	Projects        []ProjectView           `json:"projects,omitempty"`
-	Threads         []ThreadView            `json:"threads,omitempty"`
-	Running         []RunningView           `json:"running,omitempty"`
-	Attention       []ThreadView            `json:"attention,omitempty"`
-	AttentionMore   bool                    `json:"attention_more,omitempty"`
-	AttentionCursor string                  `json:"attention_cursor,omitempty"`
-	More            bool                    `json:"more,omitempty"`
-	Next            string                  `json:"next,omitempty"`
-	Detail          *ThreadDetail           `json:"detail,omitempty"`
-	Op              string                  `json:"op,omitempty"`
-	ThreadID        string                  `json:"thread_id,omitempty"`
-	Seq             int64                   `json:"seq,omitempty"`
-	Event           *EventView              `json:"event,omitempty"`
-	Events          []EventView             `json:"events,omitempty"`
-	Status          *WatchStatus            `json:"status,omitempty"`
-	Models          []ModelView             `json:"models,omitempty"`
-	ReasoningLevels []string                `json:"reasoning_levels,omitempty"`
-	Put             *PutView                `json:"put,omitempty"`
-	Groups          []ThreadGroup           `json:"groups,omitempty"`
-	Followups       *[]FollowupView         `json:"followups,omitempty"`
-	Clients         *ClientCatalog          `json:"clients,omitempty"`
-	ClientView      *ClientView             `json:"client_view,omitempty"`
-	Files           []FileView              `json:"files,omitempty"`
-	FileChunk       *FileChunkView          `json:"file_chunk,omitempty"`
+	Startup               string                  `json:"startup,omitempty"`
+	Restore               *engine.RestoreProgress `json:"restore,omitempty"`
+	V                     int                     `json:"v"`
+	ID                    string                  `json:"id"`
+	OK                    bool                    `json:"ok"`
+	Error                 string                  `json:"error,omitempty"`
+	Code                  string                  `json:"code,omitempty"`
+	Path                  string                  `json:"path,omitempty"`
+	SessionID             string                  `json:"session_id,omitempty"`
+	Host                  string                  `json:"host,omitempty"`
+	Projects              []ProjectView           `json:"projects,omitempty"`
+	Threads               []ThreadView            `json:"threads,omitempty"`
+	Running               []RunningView           `json:"running,omitempty"`
+	Attention             []ThreadView            `json:"attention,omitempty"`
+	AttentionMore         bool                    `json:"attention_more,omitempty"`
+	AttentionCursor       string                  `json:"attention_cursor,omitempty"`
+	More                  bool                    `json:"more,omitempty"`
+	Next                  string                  `json:"next,omitempty"`
+	Detail                *ThreadDetail           `json:"detail,omitempty"`
+	Op                    string                  `json:"op,omitempty"`
+	ThreadID              string                  `json:"thread_id,omitempty"`
+	Seq                   int64                   `json:"seq,omitempty"`
+	Event                 *EventView              `json:"event,omitempty"`
+	Events                []EventView             `json:"events,omitempty"`
+	Status                *WatchStatus            `json:"status,omitempty"`
+	Models                []ModelView             `json:"models,omitempty"`
+	ReasoningLevels       []string                `json:"reasoning_levels,omitempty"`
+	WebExecutionSupported bool                    `json:"web_execution_supported,omitempty"`
+	Put                   *PutView                `json:"put,omitempty"`
+	Groups                []ThreadGroup           `json:"groups,omitempty"`
+	Followups             *[]FollowupView         `json:"followups,omitempty"`
+	Clients               *ClientCatalog          `json:"clients,omitempty"`
+	ClientView            *ClientView             `json:"client_view,omitempty"`
+	Files                 []FileView              `json:"files,omitempty"`
+	FileChunk             *FileChunkView          `json:"file_chunk,omitempty"`
 
-	TimeoutSettings *config.TimeoutSettings `json:"timeout_settings,omitempty"`
+	TimeoutSettings    *config.TimeoutSettings   `json:"timeout_settings,omitempty"`
+	WebExecutionStatus *tools.WebExecutionStatus `json:"web_execution_status,omitempty"`
 }
 
 // FileView is one PC workspace entry, including upload provenance.
@@ -302,6 +308,7 @@ type ThreadView struct {
 	ID           string    `json:"id"`
 	Title        string    `json:"title"`
 	ProjectID    string    `json:"project_id,omitempty"`
+	WebExecution string    `json:"web_execution,omitempty"`
 	Running      bool      `json:"running"`
 	Waiting      bool      `json:"waiting,omitempty"`
 	LastActiveAt time.Time `json:"last_active_at"`
@@ -350,6 +357,7 @@ type ThreadDetail struct {
 	ProviderID      string       `json:"provider_id,omitempty"`
 	Model           string       `json:"model,omitempty"`
 	Reasoning       string       `json:"reasoning,omitempty"`
+	WebExecution    string       `json:"web_execution,omitempty"`
 	Waiting         bool         `json:"waiting,omitempty"`
 	Wake            *WakeView    `json:"wake,omitempty"`
 	Running         *RunningView `json:"running,omitempty"`
@@ -357,7 +365,8 @@ type ThreadDetail struct {
 }
 
 type TurnView struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
-	Text   string `json:"text,omitempty"`
+	ID           string `json:"id"`
+	Status       string `json:"status"`
+	Text         string `json:"text,omitempty"`
+	WebExecution string `json:"web_execution,omitempty"`
 }

@@ -231,6 +231,7 @@ in this database: notes and skills are files, so a person can read and fix them
 | `provider_id` | text | which configured provider this conversation uses |
 | `model` | text | the name this conversation sends; empty follows the provider's default so a Settings change applies until someone picks in the composer |
 | `reasoning_effort` | text | this conversation's thinking level (``, `low`, `medium`, `high`); empty means the model's own default. Switchable in the composer, applied from the next turn |
+| `web_execution` | text | optional conversation Web-tool location: empty inherits PC global Tools; `auto`, `local`, `cloud` apply from the next turn. Phone changes never edit the PC global setting |
 | `goal` | text | standing objective from `/goal`. Empty means none. Injected into later turns until changed or cleared |
 | `goal_complete` | bool | true after successful `complete_goal`. Completion fields and the `goal_complete` event commit atomically. A scheduled tool call whose own manager-created thread wake remains active returns `goal_schedule_conflict` without changing either. The text and completion state stay stored while PC/phone hide the completed goal strip; auto-continue stops and history remains. `reopen_goal`, `goal_resume: true`, or the `resume_goal` RPC clears completion, resets `goal_auto_turns`, and pursuit continues |
 | `goal_blocked` | bool | true after `block_goal`, or after a pursuing turn has a non-recoverable failure outside the isolated scheduled-check boundary. Ordinary scheduled model/evidence failures do not set this field. Auto-continue stops until an explicit human resume; ordinary sends answer only that message and retain the pause |
@@ -428,6 +429,7 @@ The `id` is the handle the whole troubleshooting story hangs off: the UI shows i
 | `error` | why it failed, when it did |
 | `provider_id`, `model` | what actually ran, not what is configured now — settings change |
 | `reasoning_effort` | the thinking level this turn ran with, so a trace shows what produced the answer |
+| `web_execution` | captured Web-tool preference at turn start; restoration and parked workers use it before later conversation/global settings. Old rows remain empty and use the current inherited policy |
 | `goal_continue` | true when the runtime started this turn to keep pursuing an open `/goal`. The timeline records `goal_continued`, not `user_message` |
 | `schedule_run_id` | set when this turn is a scheduled fire; empty for every other origin. Trace joins the run through it |
 | `quiet` | true when a scheduled turn had nothing to report. The row stays for `zwai trace`; the transcript hides the bubbles |
@@ -1041,7 +1043,9 @@ conversation. No new table, migration, archive or event-body compression is adde
 
 ### Mobile Gateway account state (`F-211`)
 
-No PC database migration is required. Phone storage keeps the configured Gateway
+Account sign-in itself requires no new PC table. Web execution adds nullable
+`web_execution` columns to existing `threads` and `turns` through the ordinary
+SQLite migration; old rows retain empty inherited policy. Phone storage keeps the configured Gateway
 origin, one Mobile session (`origin`, opaque credential, user/device IDs and
 expiry) and at most one pending device authorization proof, separate from
 personal providers. Pairlink saved links may carry `gatewayOrigin`,
@@ -1058,3 +1062,20 @@ deleting it, and an approved same-account API-disabled session can still read
 its own history. No private provider configuration is synchronized to the
 Gateway. Local credentials retain the existing phone storage security boundary;
 this change does not claim hardware-backed secure storage.
+
+The phone stores two Web execution preferences under normalized Gateway
+origin/user scope, with a separate anonymous scope. Direct-model preferences
+are `auto`, `off`, or `cloud` in `zwai.phone.directWebExecution:`; PC-conversation
+preferences are `inherit`, `local`, or `cloud` in `zwai.phone.pcWebExecution:`.
+Each key appends the same scope and contains no credential. The original
+`zwai.phone.webExecution:` key remains a read-only migration source until a
+new scoped value exists: shared `local` reads as direct `off` and PC `local`,
+shared `cloud` remains explicit in both, and shared `auto` reads as direct
+`auto` plus PC `inherit`. Saving either new preference never changes the other
+or personal provider rows. PC inheritance sends an empty conversation override.
+
+RPC `web_execution_status` is an ephemeral offline projection of PC global
+preference/default route and its local receipt state; it is neither persisted
+account authority nor proof of live server grants. Direct tool transcripts keep
+bounded previews rather than complete fetched pages; model continuation retains
+its bounded working tool output in memory.

@@ -385,7 +385,8 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 	if err != nil {
 		return nil, err
 	}
-	toolset, err := e.conversationTools(context.Background(), th)
+	webExecution := e.turnWebExecution(th, nil)
+	toolset, err := e.conversationToolsForExecution(context.Background(), th, webExecution)
 	if err != nil {
 		return nil, err
 	}
@@ -410,6 +411,7 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 		ProviderID:       prov.ID,
 		Model:            prov.Model,
 		ReasoningEffort:  effort,
+		WebExecution:     webExecution,
 		GoalContinue:     in.ContinueGoal,
 		ScheduleContinue: in.ContinueSchedule,
 		ScheduleRunID:    in.ScheduleRunID,

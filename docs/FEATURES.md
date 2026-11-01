@@ -89,9 +89,11 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
+- 联网工具执行位置：`web_search`／`web_fetch` 保持普通函数名、参数、开关、结果截断和工具 Trace；默认 `auto` 在当前 NOSEC 账号授权后走该服务器云端，匿名走本机。设置可显式选本机或云端；云端拒绝／失败不重跑本地。Host 凭据仅在 Go 后端调用专用云工具路由，不进入 renderer、模型或普通推理 API；旧授权缺少服务端精确 Key 绑定时要求重新登录。关联 `C-006`、`C-009`；证据：`internal/tools/cloud_web.go`、`internal/tools/cloud_web_test.go`、`internal/tools/cloud_web_response_test.go`、`internal/engine/web_execution_test.go`。
+
 - 桌面/Web 的 `memory add/replace/remove` 工具行复用 edit 的默认折叠、增删行数和红绿差异视图，展开只显示本次条目变更。新成功回执保存完整 before/after，旧记录缺快照时明确标注请求片段预览；失败保留错误和请求，重复添加显示未变化。关联 `C-025`；证据：`internal/memory/tool_result_test.go`、`frontend/src/lib/memory-diff.ts`、`frontend/src/components/app/tool-row.test.tsx`、`frontend/e2e/memory-diff.spec.ts`。
 
-- `web_fetch` 默认先 HTTP；识别带 DataDome 信号的 401/403 后，沿已有浏览器渲染路径尝试一次并保留工具代理。普通授权错误不升级，渲染失败或仍为挑战页返回失败；不保证真实站点可访问。入口与验证：`internal/tools/tools.go`、`internal/tools/webfetch_upgrade_test.go`；配置见 `docs/CONFIG.md`。
+- 本地执行的 `web_fetch` 默认先 HTTP；识别带 DataDome 信号的 401/403 后，沿已有浏览器渲染路径尝试一次并保留工具代理。普通授权错误不升级，渲染失败或仍为挑战页返回失败；不保证真实站点可访问。入口与验证：`internal/tools/tools.go`、`internal/tools/webfetch_upgrade_test.go`；配置见 `docs/CONFIG.md`。
 
 - 桌面/Web 的 `skill_manage patch` 工具行默认折叠，显示新增／删除行数；展开后按差异展示原始修改前后文本，支持纯删除和再次收起。实时与历史重放使用该次调用参数，失败仍保留原错误及尝试的修改。证据：`frontend/src/lib/edit-diff.ts`、`frontend/src/lib/tool-view.ts`、`frontend/src/components/app/tool-row.test.tsx`、`frontend/e2e/skill-patch.spec.ts`。
 
@@ -206,6 +208,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-170 Settings and providers
 
+- Settings → Tools 提供联网工具运行位置 `auto`／`local`／`cloud`，默认自动；旧客户端保存其他工具字段且省略／null 该字段时保留显式选择。PC 会话可独立覆盖而不改全局，设置和会话变更从下一回合生效；turn 快照使重启／parked 恢复保持本回合选择。手机默认继承不受手机登录影响，PC 云工具使用自己的 NOSEC 授权。Pairlink 元数据仅提供 PC 默认路由与本机回执的离线快照，不宣称实时 grant，不暴露凭据、账号标识或服务器地址。关联 `C-006`、`C-009`；证据：`internal/config/web_execution.go`、`internal/server/settings_web_execution_test.go`、`internal/remote/web_execution_test.go`、`internal/remote/web_execution_status_test.go`、`internal/tools/cloud_web_status.go`、`internal/store/web_execution_test.go`、`frontend/src/components/app/settings-tools.tsx`、`frontend/e2e/web-execution.spec.ts`。
+
 - Chat Completions 推理字段兼容：PC 模型调用与手机直连均接收旧 `reasoning_content` 和新版 vLLM `reasoning`，覆盖 JSON message 与 SSE delta；非空旧字段优先，旧字段空或 null 时回退到新字段，不重复拼接。无需字段名配置；PC 思考沿现有流、历史与 Trace 展示，手机直连保留思考及本地历史。关联契约：`C-009`；入口：Settings → Models、手机 Models／Chat；实现证据：`internal/provider/provider.go`、`go.mod`、`mobile/src/lib/openai-wire.ts`；验证：`internal/provider/reasoning_fields_test.go`、`frontend/e2e/reasoning-fields.spec.ts`。
 - 已配对手机在 PC 收件箱 **Menu → PC timeouts／电脑超时** 读取并编辑该 PC 的 worker、各提供商首字节和流空闲时限，加载失败、保存失败和旧主机均在面板内提示并可重试。仅提交改动字段，不接收密钥或端点，不覆盖无关设置；首字节与流空闲预算独立。新 worker 默认一小时，已有正值保持，保存不延长运行中的 deadline、不重置 watchdog 次数或恢复暂停任务。使用者：已配对手机用户；前置条件：PC 在线且支持相应 RPC；关联契约：`C-006`、`C-009`、`C-019`、`C-030`；入口说明：`mobile/README.md`、`docs/CONFIG.md`；实现／验证：`internal/config/timeouts.go`、`internal/config/timeout_contract_test.go`、`internal/remote/timeouts.go`、`internal/remote/timeouts_test.go`、`internal/remote/timeout_adapter_test.go`、`mobile/src/components/pc-timeout-sheet.tsx`、`mobile/src/lib/use-pc-timeouts.ts`、`mobile/e2e/pc-timeouts.spec.ts`。
 - 桌面 Settings 自动保存和刷新模型目录保留手机并发修改的超时；只有实际编辑的超时才提交替换，重开设置读取最新值。关联契约：`C-009`；实现／测试：`frontend/src/lib/settings-persist.ts`、`frontend/src/store/app.ts`、`frontend/src/lib/settings-persist-delta.test.ts`、`frontend/e2e/settings-timeout-concurrency.spec.ts`、`internal/server/timeout_settings_test.go`。
@@ -241,6 +245,8 @@ This is the current user-facing capability map. The code and tests named below a
 - 管理型 Gateway 连接：Settings → Phone 的 Connection sign-in 可选 `legacy`（兼容默认）或 `nosec`。后者在系统浏览器登录，核对公开确认码／PC 指纹并明确授权，待审／拒审／过期／取消／网络失败分别可见；管理员批准账号后仍需浏览器确认设备。授权与 PC WebSocket 上线分开，只有同时满足才可显示配对 QR；明确确认的新设备重连用于删除／撤销后的恢复，不复活旧凭据或认领其他账号设备。Hub 来自带默认地址的设置，Go 持有凭据和轮询 proof，前端只读本地安全状态；配置切换丢弃旧结果。关联 `C-006`；实现：`internal/config/remote_auth.go`、`internal/remote/login.go`、`internal/remote/login_wire.go`、`internal/server/remote.go`、`frontend/src/lib/use-remote-status.ts`、`frontend/src/components/app/settings-remote-login.tsx`；验证：`internal/remote/nosec_login_test.go`、`internal/remote/login_lifecycle_test.go`、`internal/server/remote_login_test.go`、`frontend/src/components/app/settings-remote-login.test.tsx`、`frontend/e2e/remote-nosec.spec.ts`。
 
 ### F-211 Mobile account login and owned devices
+
+- 用户中心分别配置手机直连联网工具 `auto`／`cloud`／`off` 和 PC 会话 `inherit`／`local`／`cloud`，按 Gateway origin 与账号隔离，互不覆盖。手机直连自动模式仅在已批准、启用且未过期会话下声明云端 Search／Fetch，否则普通聊天；显式云端缺会话时在模型请求前报错，关闭时普通聊天。服务器或个人模型都必须支持标准 function calling；不静默换模型、去掉工具重试或本地降级。PC 默认继承其全局配置，手机登录不覆盖；显式偏好只写目标会话，从下一回合生效，PC 云工具用自身授权，不转发手机 Token。旧共享 `local` 读取为手机 `off` 与 PC `local`，旧 `cloud` 保留明确选择。设置摘要是下一回合策略，PC 状态是本机回执快照而非实时权限承诺。Gateway 401 仅清理同一当前会话；403 暂停新数据面但保持当前对话挂载，复核 approved 后恢复，pending／rejected 或复核失败才隔离，不假定待审；拒绝 headers 即释放未读 body，native stream 准备阶段也可取消；个人模型 401 不登出 Gateway；注销、换账号、改偏好和 Stop 取消自有请求。关联 `C-006`、`C-013`；证据：`mobile/src/lib/web-execution.ts`、`mobile/src/lib/web-execution.test.ts`、`mobile/src/lib/cloud-web-tools.ts`、`mobile/src/lib/openai-tool-wire.ts`、`mobile/src/lib/openai-client-web-tools.test.ts`、`mobile/src/lib/pc-web-execution.test.ts`、`mobile/src/lib/gateway-authority-account.test.tsx`、`mobile/src/lib/openai-client-authority.test.ts`、`mobile/src/lib/stream-body-cancel.test.ts`、`internal/remote/web_execution_test.go`、`internal/remote/web_execution_status_test.go`。
 
 - 已匿名扫码的 PC 在手机与桌面同账号登录后自动接管：刷新按完整 Hub base endpoint、完整公钥和严格 owner ID 匹配，只更新已有匿名记录，保留顺序、名称、最后会话及当前选择；只重连已选 PC，先关旧连接，不批量连接账号 PC。其他 Hub／账号、缺公钥／owner 的旧服务和歧义身份不自动合并。服务端签发失败保留原记录；签发成功但本地保存失败时暂停旧票据并保留新票据供刷新重试；保存成功后传输失败正常重连受管票据。退出删除接管后的受管票据，不恢复已退休匿名票据。证据：`mobile/src/lib/gateway-link-upgrade.ts`、`mobile/src/lib/gateway-link-upgrade.test.ts`、`mobile/src/lib/use-phone-link-lifecycle.ts`、`mobile/src/app.test.tsx`、`mobile/e2e/gateway-account.spec.ts`；关联 `C-006`。
 

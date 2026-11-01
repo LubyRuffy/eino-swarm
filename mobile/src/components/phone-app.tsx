@@ -1,4 +1,5 @@
 import { usePhoneAccount } from "@/components/gateway-account-shell"
+import { PcWebExecutionStatus } from "@/components/pc-web-execution-status"
 import { useEffect, useRef, useState } from "react"
 import { EngineStartupBanner } from "@/components/engine-startup"
 import { useEngineStartup } from "@/lib/use-engine-startup"
@@ -56,6 +57,7 @@ import {
 } from "@/lib/rpc"
 import { androidBackLayer, installAndroidBack } from "@/lib/android-back"
 import { loadProviders, type DirectProvider } from "@/lib/direct-provider"
+import { pcWebSelection } from "@/lib/pc-web-execution"
 import { phoneShell } from "@/lib/phone-shell"
 import { pickResumeThread, detailFromListing, rosterFingerprint } from "@/lib/resume"
 import {
@@ -118,7 +120,7 @@ export function PhoneApp() {
   const [clientTools, setClientTools] = useState<ClientTool[]>([])
   const [loadingGroup, setLoadingGroup] = useState("")
   const [loadingMore, setLoadingMore] = useState(false)
-  const { models, levels, catalogBusy, refreshModels, refreshBusy, refreshError } = useModelCatalog(link)
+  const { models, levels, catalogBusy, refreshModels, refreshBusy, refreshError, webExecutionStatus } = useModelCatalog(link)
   const startup = useEngineStartup(link)
   const restoring = startup?.startup === "restoring"
   const [composerPending, setComposerPending] = useState(false)
@@ -398,6 +400,7 @@ export function PhoneApp() {
           op: OpStart,
           text,
           project_id: projectId || undefined,
+          ...await pcWebSelection(target),
         },
         extra,
       )
@@ -447,6 +450,7 @@ export function PhoneApp() {
         provider_id: next.providerId,
         model: next.model,
         reasoning: next.reasoning,
+        ...await pcWebSelection(target),
       })
       if (!r.ok) {
         setError(remoteError(r.error || r.code || ""))
@@ -741,12 +745,14 @@ export function PhoneApp() {
       onRetry={() => void recover(true)}
     />
   </>)
+  const pcWebStatus = hosts.length ? <PcWebExecutionStatus connected={Boolean(link?.alive())} status={webExecutionStatus} onSettings={account.openAccount} /> : null
 
   if (composing && surface !== "chat") {
     return (
       <div className="flex h-full min-w-0 flex-col overflow-hidden">
         <UpdateNotice />
         {link ? banner : null}
+        {pcWebStatus}
         <div className="screen-push flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {/* Keyed on the locale only: switching PC re-picks the project,
               and remounting would also throw away the typed message. */}
@@ -786,6 +792,7 @@ export function PhoneApp() {
       <div className="flex h-full min-w-0 flex-col overflow-hidden">
         <UpdateNotice />
         {banner}
+        {pcWebStatus}
         <div className="screen-push flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <ThreadScreen
             key={locale + detail.id}
@@ -871,6 +878,7 @@ export function PhoneApp() {
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
       <UpdateNotice />
       {link ? banner : null}
+      {pcWebStatus}
       <div className="min-h-0 flex-1">
         <HomeScreen
           pcLink={link}

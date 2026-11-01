@@ -198,7 +198,7 @@ type putSettingsRequest struct {
 		} `json:"providers"`
 	} `json:"models"`
 	Swarm       *putSwarmSettings         `json:"swarm"`
-	Tools       *config.ToolsConfig       `json:"tools"`
+	Tools       *putToolsSettings         `json:"tools"`
 	Memory      *config.MemoryConfig      `json:"memory"`
 	Personality *config.PersonalityConfig `json:"personality"`
 	Log         *config.LogConfig         `json:"log"`
@@ -231,7 +231,11 @@ func (s *Server) putSettings(c *gin.Context) {
 			}
 		}
 		if req.Tools != nil {
-			next.Tools = *req.Tools
+			next.Tools = req.Tools.ToolsConfig
+			next.Tools.WebExecution = cfg.Tools.WebExecution
+			if req.Tools.WebExecution != nil {
+				next.Tools.WebExecution = *req.Tools.WebExecution
+			}
 		}
 		if req.Memory != nil {
 			next.Memory = *req.Memory

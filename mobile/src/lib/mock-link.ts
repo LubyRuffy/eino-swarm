@@ -778,7 +778,7 @@ export class MockLink {
       case OpMeta: {
         const search = new URLSearchParams(location.search)
         const [completed, total] = (search.get("restore") ?? "0,0").split(",").map(Number)
-        return this.ok({ id, startup: search.get("startup") === "restoring" ? "restoring" : "ready", restore: { completed, total } })
+        return this.ok({ id, startup: search.get("startup") === "restoring" ? "restoring" : "ready", restore: { completed, total }, web_execution_supported: true, web_execution_status: { preference: "auto", execution: "local", cloud_account: "sign_in_required" } })
       }
       case OpHello:
         return this.ok({ id })
@@ -838,7 +838,7 @@ export class MockLink {
         if (scenario === "legacy") return this.ok({ id, ok: false, code: "unknown_op" })
         if (scenario === "slow") await new Promise((resolve) => setTimeout(resolve, 1200))
         if (this.host.takeCatalogFailure()) return this.ok({ id, ok: false, code: "refresh_failed" })
-        return this.ok({ id, models: scenario === "empty" ? [] : [{ provider_id: "walkthrough", provider_label: "Walkthrough", model: "scripted-next", default: true }], reasoning_levels: ["low", "medium", "high"] })
+        return this.ok({ id, models: scenario === "empty" ? [] : [{ provider_id: "walkthrough", provider_label: "Walkthrough", model: "scripted-next", default: true }], reasoning_levels: ["low", "medium", "high"], web_execution_status: { preference: "auto", execution: "local", cloud_account: "sign_in_required" } })
       }
       case OpGetTimeouts:
       case OpSetTimeouts: {
@@ -852,6 +852,8 @@ export class MockLink {
       case OpCatalog:
         return this.ok({
           id,
+          web_execution_supported: true,
+          web_execution_status: { preference: "auto", execution: "local", cloud_account: "sign_in_required" },
           models: [
             {
               provider_id: "walkthrough",

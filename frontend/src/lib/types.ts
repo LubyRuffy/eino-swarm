@@ -539,6 +539,8 @@ export interface Settings {
     enabled: string[]
     proxy: { http: string; https: string; no_proxy: string }
     web_search_max_results: number
+    /** Automatic routes through the signed-in server account when available. */
+    web_execution?: "auto" | "local" | "cloud"
     /** Characters one workspace tool result may put in the model's context. */
     result_max_chars?: number
   }

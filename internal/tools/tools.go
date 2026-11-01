@@ -133,6 +133,22 @@ type Set struct {
 // refuse to run against a missing one, which would otherwise surface as a
 // confusing per-tool-call error instead of a startup failure.
 func Build(ctx context.Context, cfg *config.Config, workspaceDir string) (*Set, error) {
+	return buildTools(ctx, cfg, workspaceDir, "")
+}
+
+// BuildForWebExecution pins only a turn's Web execution preference. Account
+// authority still comes from the live configuration and private receipt.
+func BuildForWebExecution(ctx context.Context, cfg *config.Config, workspaceDir, execution string) (*Set, error) {
+	mode, err := config.ParseWebExecution(execution)
+	if err != nil {
+		return nil, err
+	}
+	return buildTools(ctx, cfg, workspaceDir, mode)
+}
+
+func buildTools(ctx context.Context, cfg *config.Config, workspaceDir, execution string) (*Set, error) {
+	liveConfig := cfg
+	cfg = cfg.Snapshot()
 	if err := os.MkdirAll(workspaceDir, 0o700); err != nil {
 		return nil, fmt.Errorf("tools: create workspace %s: %w", workspaceDir, err)
 	}
@@ -162,13 +178,21 @@ func Build(ctx context.Context, cfg *config.Config, workspaceDir string) (*Set, 
 			return wrapExecSleepBias(wrapExecWorkDir(budgeted, workspaceDir))
 		},
 		websearch.ToolName: func() (tool.BaseTool, error) {
-			return websearch.New(ctx, websearch.Config{
+			local, err := websearch.New(ctx, websearch.Config{
 				ProxyConfig: proxy,
 				MaxResults:  cfg.Tools.WebSearchMaxResults,
 			})
+			if err != nil {
+				return nil, err
+			}
+			return &accountWebTool{cfg: liveConfig, local: local, name: websearch.ToolName, execution: execution}, nil
 		},
 		webfetch.ToolName: func() (tool.BaseTool, error) {
-			return webfetch.New(webfetch.Config{ProxyConfig: proxy})
+			local, err := webfetch.New(webfetch.Config{ProxyConfig: proxy})
+			if err != nil {
+				return nil, err
+			}
+			return &accountWebTool{cfg: liveConfig, local: local, name: webfetch.ToolName, execution: execution}, nil
 		},
 		pythonrunner.ToolName: func() (tool.BaseTool, error) {
 			return pythonrunner.New(pythonrunner.Config{})

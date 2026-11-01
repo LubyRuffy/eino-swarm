@@ -26,6 +26,8 @@ import { streamCompletion } from "@/lib/openai-client"
 import { ModelCallError, redact } from "@/lib/openai-wire"
 import type { SavedLink } from "@/lib/store"
 import { timeAgo } from "@/lib/when"
+import { useWebExecution } from "@/lib/use-web-execution"
+import { DirectRoutingStatus } from "@/components/direct-routing-status"
 
 const thinking = ["low", "medium", "high"]
 
@@ -44,6 +46,7 @@ export function DirectChatScreen({
   onUnlink,
   onToggleLocale,
   onModels,
+  onWebSettings,
   onOpenChange,
   onBindClose,
   complete = streamCompletion,
@@ -60,11 +63,13 @@ export function DirectChatScreen({
   onUnlink: () => void
   onToggleLocale?: () => void
   onModels: () => void
+  onWebSettings?: () => void
   onOpenChange?: (open: boolean) => void
   onBindClose?: (close: () => void) => void
   complete?: typeof streamCompletion
 }) {
   const sourceID = gatewaySourceID ?? providers.find((row) => row.sourceKind === "gateway")?.id ?? ""
+  const webExecution = useWebExecution()
   const visible = (row: DirectThread) => !row.providerId.startsWith("gateway:") || row.providerId === sourceID
   const [threads, setThreads] = useState(loadThreads)
   const [openID, setOpenID] = useState<string | null>(null)
@@ -190,6 +195,13 @@ export function DirectChatScreen({
             latest.reasoning = piece.reasoning
             patch({ ...latest })
           },
+          onTool: (event) => {
+            const before = latest.tools ?? []
+            latest.tools = before.some((tool) => tool.id === event.id)
+              ? before.map((tool) => tool.id === event.id ? event : tool)
+              : [...before, event]
+            patch({ ...latest })
+          },
         })
       } catch (err) {
         if (err instanceof ModelCallError && err.kind === "abort") return
@@ -241,6 +253,7 @@ export function DirectChatScreen({
           onToggleLocale={onToggleLocale}
         />
       )}
+      <DirectRoutingStatus provider={findProvider(providers, selectedID)} mode={webExecution.mode} cloudSignedIn={webExecution.cloudSignedIn} onSettings={onWebSettings} />
       {open ? (
         <div data-testid="transcript" className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
           <div className="flex flex-col gap-1.5">
@@ -361,6 +374,13 @@ function assistantBlocks(message: DirectMessage, live: boolean): CompactBlock[] 
       streaming: live && !message.error,
     })
   }
+  const toolBlocks: CompactBlock[] = (message.tools ?? []).map((tool) => ({
+    id: `${message.id}:tool:${tool.id}`, kind: "tool", callId: tool.callId ?? tool.id, toolName: tool.name,
+    args: tool.args, text: tool.text + (tool.truncated ? "\n…" : ""), pending: live && tool.status === "running",
+    failed: tool.status === "failed" || !live && tool.status === "running",
+    cancelled: tool.status === "cancelled",
+  }))
+  blocks.splice(thought || thinking ? 1 : 0, 0, ...toolBlocks)
   return blocks
 }
 
@@ -397,6 +417,13 @@ function explain(err: unknown, secret: string): string {
   if (err instanceof ModelCallError) {
     if (err.kind === "timeout") return t("chat.timedOut")
     if (err.kind === "abort") return ""
+    if (err.message === "gateway_login_required") return t("account.webLoginRequired")
+    if (err.message === "gateway_access_denied") return t("account.accessDenied")
+    if (err.message === "cloud_tools_model_unsupported") return t("account.webModelUnsupported")
+    if (err.message === "cloud_tools_login") return t("account.expired")
+    if (err.message === "cloud_tools_denied") return t("account.webDenied")
+    if (err.message.startsWith("cloud_tools_") && err.message.endsWith("limit")) return t("account.webLimit")
+    if (err.message.startsWith("cloud_tools_")) return t("account.webFailed")
     const message = redact(err.message, secret)
     if (message === "network" || message === "parse") return t("chat.quiet")
     if (!message || message === "bad-url") {

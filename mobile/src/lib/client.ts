@@ -105,6 +105,7 @@ export function bindError(err: unknown): string {
 
 export function remoteError(detail: string): string {
   const text = detail.trim()
+  if (text === "web_execution_unsupported") return t("account.webPCUpgrade")
   if (!text) return t("err.rpc")
   return t("err.remote", { detail: text })
 }

@@ -668,6 +668,40 @@ removes the account's Mobile credential and managed tickets, while retaining
 personal endpoints and independent anonymous pairings. **User center → Other
 server** is available for a self-hosted Gateway.
 
+Signed-in accounts use the server's **Web Search** and **Web Fetch** by default.
+On Desktop, **Settings → Tools → Web tools run on** selects **Automatic**,
+**This device**, or **Server cloud**. Automatic uses the account after NOSEC
+authorization and stays local while anonymous; a cloud failure remains visible.
+The server checks current review, API and tool permissions on every request.
+Older Desktop authorizations may require signing in again to enable these tools.
+New execution choices apply from the next turn.
+
+The phone separates two Web-tool choices in **User center**. Both are saved by
+Gateway/account and apply from the next turn:
+
+| Conversation | Choices and default |
+|---|---|
+| Phone calls a server model or personal endpoint directly | **Automatic**, **Cloud server**, or **Off**. Automatic adds cloud Search/Fetch with an approved, enabled, unexpired account session; otherwise it sends ordinary model chat. Cloud server requires that session before sending a model request. Off sends ordinary chat without these functions. |
+| Phone uses a PC conversation | **Follow PC**, **This PC**, or **Server cloud**. Follow PC always inherits that PC's Tools setting, regardless of phone sign-in. Explicit choices override only the target conversation. Cloud uses the PC's own NOSEC authorization. |
+
+Model sources remain separate from tool execution. A custom Chat/Responses model
+must support standard function calling to use cloud Web tools. Model/tool errors
+remain visible: the app does not switch models, strip tools and retry, or fall
+back to local execution. Changing one Web-tool choice does not change the other
+or the PC global setting; the Mobile credential is never sent to the PC. Earlier
+shared Local preferences become phone Off plus PC This PC; explicit Cloud choices
+remain Cloud in each scope.
+
+The PC summary reports its default route and local sign-in receipt as a snapshot
+for the next turn. Signed in does not prove current server API/tool permission;
+the Gateway checks those permissions for each call. Gateway 401 responses clear
+only the matching account session. A 403 pauses new account API calls while
+checking approval again and keeps the current conversation mounted; approved
+accounts resume, while confirmed pending/rejected or failed verification isolates
+account access. It does not itself mean waiting for approval. Refusal headers
+release the unread body immediately. A personal model endpoint's 401 does not
+sign out the Gateway account.
+
 For anonymous use, retain the QR flow:
 
 1. zwai **Settings → Phone**: turn pairing on, keep the default Gateway

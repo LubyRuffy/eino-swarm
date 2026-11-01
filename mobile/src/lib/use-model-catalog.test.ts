@@ -19,6 +19,51 @@ function link(rpc = vi.fn(async () => ok(old))): RemoteLink {
 }
 
 describe("model catalog ownership", () => {
+  it("projects PC Web execution from catalog and clears unknown or failed refresh status", async () => {
+    const status = { preference: "auto", execution: "cloud", cloud_account: "signed_in" } as const
+    const rpc = vi.fn().mockResolvedValueOnce({ ...ok(old), web_execution_status: status })
+      .mockResolvedValueOnce({ v: 1, id: "r", ok: false, error: "failed" })
+      .mockResolvedValueOnce({ ...ok(fresh), web_execution_status: status })
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(ok(fresh))
+    const target = link(rpc)
+    const { result } = renderHook(() => useModelCatalog(target))
+    await waitFor(() => expect(result.current.webExecutionStatus).toEqual(status))
+    await act(() => result.current.refreshModels())
+    expect(result.current.webExecutionStatus).toBeUndefined()
+    await act(() => result.current.refreshModels())
+    expect(result.current.webExecutionStatus).toEqual(status)
+    await act(() => result.current.refreshModels())
+    expect(result.current.webExecutionStatus).toBeUndefined()
+    await act(() => result.current.refreshModels())
+    expect(result.current.webExecutionStatus).toBeUndefined()
+  })
+
+  it("clears PC Web execution on link replacement and ignores the previous PC's late status", async () => {
+    const stale = deferred(), next = deferred()
+    const status = { preference: "local", execution: "local", cloud_account: "sign_in_required" } as const
+    const first = link(vi.fn().mockResolvedValueOnce({ ...ok(old), web_execution_status: status }).mockReturnValueOnce(stale.promise))
+    const second = link(vi.fn().mockReturnValueOnce(next.promise))
+    const { result, rerender } = renderHook(({ target }) => useModelCatalog(target), { initialProps: { target: first } })
+    await waitFor(() => expect(result.current.webExecutionStatus).toEqual(status))
+    let job!: Promise<void>
+    act(() => { job = result.current.refreshModels() })
+    rerender({ target: second })
+    expect(result.current.webExecutionStatus).toBeUndefined()
+    await act(async () => { stale.resolve({ ...ok(old), web_execution_status: status }); await job })
+    expect(result.current.webExecutionStatus).toBeUndefined()
+    await act(async () => { next.resolve(ok(fresh)); await next.promise })
+    expect(result.current.webExecutionStatus).toBeUndefined()
+  })
+
+  it("keeps an unrecognized PC Web status unknown instead of assuming a cloud grant", async () => {
+    const target = link(vi.fn().mockResolvedValue({ ...ok(old), web_execution_status: { preference: "auto", execution: "cloud", cloud_account: "authorized" } }))
+    const { result } = renderHook(() => useModelCatalog(target))
+    await waitFor(() => expect(result.current.catalogBusy).toBe(false))
+    expect(result.current.models).toEqual(old)
+    expect(result.current.webExecutionStatus).toBeUndefined()
+  })
+
   it("boots cached then explicitly replaces names with a nondropping bounded refresh", async () => {
     const rpc = vi.fn(async (r) => ok(r.op === OpCatalog ? old : fresh))
     const target = link(rpc)

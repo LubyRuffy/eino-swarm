@@ -6,6 +6,32 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Signed-in accounts use server Web Search and Web Fetch by default. Desktop
+  **Settings → Tools → Web tools run on** selects Automatic, This device, or
+  Server cloud; anonymous Automatic execution remains local. Account cloud
+  calls retain the ordinary function schemas, cancellation, result caps and
+  Trace, and denied/failed cloud requests never execute locally as a fallback.
+  Existing Desktop authorizations without the server's fixed API-Key binding
+  require a fresh NOSEC sign-in. (`F-130`, `F-170`, `C-006`, `C-009`)
+- Separated phone-direct Web tools (Automatic, Cloud server, Off) from PC
+  conversation execution (Follow PC, This PC, Server cloud), independently saved
+  by Gateway/account. Follow PC inherits its global policy even when the phone
+  signs in; explicit cloud uses the PC's own authorization. Existing shared Local
+  choices migrate to phone Off plus PC This PC; Cloud choices remain explicit.
+  PC metadata reports a credential-free default-route/local-receipt snapshot for
+  the next turn, rather than claiming live server grants. (`F-211`, `F-230`,
+  `C-006`, `C-013`)
+- Phone-direct Chat/Responses can use cloud Web functions with tool-capable
+  server or personal models. Automatic without an approved, unexpired session
+  keeps ordinary chat; explicit Cloud refuses before model dispatch without one.
+  Errors never change models, remove tools and retry, or fall back locally.
+  Gateway 401 invalidates only the matching session; 403 triggers account
+  revalidation while retaining the mounted conversation and pausing new API calls.
+  Confirmed approval restores access; pending/rejected or failed verification
+  isolates it. Refusal headers release unread bodies immediately, and native
+  stream preparation is cancellable. Personal-provider 401 does not sign out
+  the Gateway account. (`F-211`, `C-006`, `C-013`)
+
 - Added an opt-in, source-paired worker-result context-reference experiment with actual Registry/ADK/provider calls and reversible-input checks. Its 30-session comparison did not clear the declared efficiency and semantic-quality gates; product behavior is unchanged. (#137)
 
 - Added an opt-in, task-derived Super-agent monitoring decision trial with frozen inputs, private execution evidence and independent review. Its 52-round measurement did not clear the adoption gate; product behavior is unchanged. (#137)

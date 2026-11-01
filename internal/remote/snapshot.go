@@ -116,6 +116,7 @@ func threadView(eng *engine.Engine, th store.Thread, cfg config.RemoteConfig) Th
 		ID:           th.ID,
 		Title:        title,
 		ProjectID:    th.ProjectID,
+		WebExecution: th.WebExecution,
 		Running:      st.Running,
 		Waiting:      st.Waiting,
 		LastActiveAt: th.LastActiveAt,
@@ -228,9 +229,10 @@ func openDetail(eng *engine.Engine, threadID string, cfg config.RemoteConfig) (*
 			text = t.UserText
 		}
 		d.Turns = append(d.Turns, TurnView{
-			ID:     t.ID,
-			Status: t.Status,
-			Text:   truncate(oneLine(text), cfg.SummaryChars),
+			ID:           t.ID,
+			Status:       t.Status,
+			Text:         truncate(oneLine(text), cfg.SummaryChars),
+			WebExecution: t.WebExecution,
 		})
 	}
 	return d, nil
@@ -254,6 +256,7 @@ func threadDetail(eng *engine.Engine, th *store.Thread, cfg config.RemoteConfig)
 		ProviderID:      th.ProviderID,
 		Model:           th.Model,
 		Reasoning:       th.ReasoningEffort,
+		WebExecution:    th.WebExecution,
 		Waiting:         st.Waiting,
 		Wake:            wakeView(eng, th.ID, cfg),
 	}

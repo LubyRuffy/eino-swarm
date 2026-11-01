@@ -2173,6 +2173,53 @@ the same commit.
 
 ## Provider cloud tool boundary
 
+Account Web execution is selected separately from provider-hosted tools.
+`tools.web_execution` controls the existing `web_search` and `web_fetch`
+function executors. `internal/tools/cloud_web.go` uses the current private
+NOSEC Host receipt only for the Gateway's two dedicated Desktop Web routes;
+it preserves function schemas and ordinary tool Trace, rejects redirects,
+propagates cancellation and never falls back locally after a cloud failure.
+The server owns current account/Key/tool authorization. Neither renderer nor
+model receives the Host credential or the user's default Gateway Key.
+
+The PC global preference defaults to automatic account/cloud or anonymous/local.
+Each conversation can override it. New turns capture the selected preference
+in their durable row and use that snapshot for worker/parked/restart toolsets;
+later execution-setting changes apply from the next turn. The account authority
+and Gateway origin remain live per invocation, so signing in or changing servers
+does not leave a running turn using a detached old account snapshot.
+
+The phone stores two independent origin/account preferences. Direct-model Web
+execution uses `auto`, `cloud`, or `off`: automatic attaches standard functions
+only with an approved, enabled, unexpired session; otherwise it sends ordinary
+chat. Explicit cloud refuses before model dispatch without that session. Off
+omits these functions. A tool-capable Chat/Responses model is required; complete
+function rounds invoke that account's standalone Search/Fetch endpoints and
+continue under bounded round, call and byte budgets. A tool/model error never
+switches the selected source, strips functions and retries, or runs locally.
+
+The separate PC preference uses `inherit`, `local`, or `cloud`. Inherit always
+sends an empty conversation override, so phone sign-in cannot override PC global
+Tools policy. Explicit cloud requires the PC's own NOSEC receipt; Mobile
+credentials never cross Pairlink. Legacy shared local preferences read as
+direct off and PC local; legacy cloud remains explicit in both scopes. Saving
+either new preference does not modify the other.
+
+`meta` and `catalog` include the PC global preference, its selected default
+execution and a local account-receipt state. This network-free snapshot contains
+no credentials, account identifiers or Gateway origin and does not assert current
+server grants. The settings summary describes the next turn, not an active
+turn's captured execution. A Gateway 401 invalidates only the identical current
+origin/user/device/token session. A 403 suspends new data-plane work and marks
+local approval unverified while retaining the mounted conversation. Verified
+approval resumes access; a confirmed pending/rejected state or failed
+verification isolates account resources. It does not invent pending approval.
+Gateway 401/403 headers release the unread body before further processing.
+Personal-provider 401 responses do not revoke a Gateway session, and late
+refusals cannot clear a replacement session. Native model-stream cancellation
+also owns listener/open preparation, so logout or Stop cannot strand a stream
+whose native listeners are not yet ready.
+
 `internal/config/provider_tools.go` validates `api_mode` and `builtin_tools`.
 The existing OpenAI chat adapter remains the default. An explicit Responses
 provider uses `internal/provider/responses.go`, which converts Eino messages,
@@ -2188,5 +2235,6 @@ Each recorded model request carries its cloud receipts into
 provider/model/request identity and persist as `builtin_tool` events, distinct
 from locally executed `tool_call` and `tool_result`. The PC SSE reducer labels
 them as cloud activity, and Trace / `zwai trace <turn>` retain the full receipt.
-No new database table or engine-owned cloud executor is introduced. See `C-030`
+This provider adapter adds no database table or engine-owned execution of the
+provider's cloud calls. See `C-030`
 in [current contracts](docs/CONTRACTS.md).

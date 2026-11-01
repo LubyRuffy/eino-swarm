@@ -15,6 +15,7 @@ export function useEngineStartup(link: RemoteLink | null): EngineStartup | undef
         const r = await link.rpc({ op: OpMeta }, { dropOnTimeout: false, timeoutMs: 5000 })
         if (stopped) return
         if (r.code === "unknown_op") { unsupported = true; return }
+        if (r.ok) link.webExecutionSupported = r.web_execution_supported === true
         if (r.ok && (r.startup === "restoring" || r.startup === "ready")) {
           setSnapshot({ link, value: { startup: r.startup, restore: r.restore } })
         }

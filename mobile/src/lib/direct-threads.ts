@@ -1,4 +1,5 @@
 import { mintID } from "./direct-provider"
+import type { CloudToolEvent } from "./cloud-web-tools"
 
 const KEY = "zwai.phone.directThreads"
 
@@ -24,6 +25,7 @@ export type DirectMessage = {
   reasoning?: string
   attachments?: StoredAttachment[]
   error?: string
+  tools?: CloudToolEvent[]
 }
 
 export type DirectThread = {
@@ -133,12 +135,34 @@ function asMessage(value: unknown): DirectMessage | null {
     text: typeof row.text === "string" ? row.text : "",
     reasoning: typeof row.reasoning === "string" ? row.reasoning : undefined,
     error: typeof row.error === "string" ? row.error : undefined,
+    tools: Array.isArray(row.tools) ? row.tools.slice(0, 16).flatMap((tool) => {
+      const parsed = asToolEvent(tool)
+      return parsed ? [parsed] : []
+    }) : undefined,
     attachments: Array.isArray(row.attachments)
       ? row.attachments.flatMap((item) => {
           const chip = asAttachment(item)
           return chip ? [chip] : []
         })
       : undefined,
+  }
+}
+
+function asToolEvent(value: unknown): CloudToolEvent | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const tool = value as Partial<CloudToolEvent>
+  if (typeof tool.id !== "string" || tool.id.length > 512 ||
+      typeof tool.name !== "string" || !["web_search", "web_fetch"].includes(tool.name) ||
+      !["running", "completed", "failed", "cancelled"].includes(tool.status ?? "") ||
+      typeof tool.args !== "string" || tool.args.length > 4096 ||
+      typeof tool.text !== "string" || tool.text.length > 4096) return null
+  return {
+    id: tool.id,
+    callId: typeof tool.callId === "string" && tool.callId.length <= 256 ? tool.callId : undefined,
+    responseId: typeof tool.responseId === "string" && tool.responseId.length <= 256 ? tool.responseId : undefined,
+    name: tool.name,
+    status: tool.status === "running" ? "cancelled" : tool.status as CloudToolEvent["status"],
+    args: tool.args, text: tool.text, truncated: tool.truncated === true,
   }
 }
 

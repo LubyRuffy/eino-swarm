@@ -5,7 +5,7 @@ import { expect, it, vi } from "vitest"
 import { Composer } from "./composer"
 import { sendPhoneTurn } from "@/lib/phone-turn"
 import type { RemoteLink } from "@/lib/link"
-import { OpPut, OpSend, OpSteer, type RemoteRequest, type RemoteResponse } from "@/lib/rpc"
+import { OpMeta, OpPut, OpSend, OpSteer, type RemoteRequest, type RemoteResponse } from "@/lib/rpc"
 import { emptyView } from "@/lib/session"
 
 function readableFile(bytes: Uint8Array, name: string, type: string) {
@@ -29,6 +29,7 @@ for (const op of [OpSend, OpSteer]) {
     const uploaded: number[][] = []
     const submitted: string[] = []
     const rpc = vi.fn(async (req: Omit<RemoteRequest, "v" | "id">): Promise<RemoteResponse> => {
+      if (req.op === OpMeta) return { v: 1, id: "metadata", ok: true, web_execution_supported: true }
       if (req.op === OpPut) {
         uploaded.push(Array.from(atob(req.data ?? ""), (ch) => ch.charCodeAt(0)))
         return { v: 1, id: "put-receipt", ok: true, put: { id: req.put_id ?? "", ready: true } }

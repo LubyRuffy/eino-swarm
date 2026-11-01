@@ -27,6 +27,8 @@ const StreamBody = registerPlugin<StreamBodyPlugin>("StreamBody")
 export type BodySource = {
   status: number
   chunks: AsyncIterable<string>
+  /** Releases even a response whose iterator has never been entered. */
+  cancel(): Promise<void>
 }
 
 type FetchLike = typeof fetch
@@ -62,16 +64,22 @@ async function openFetch(input: {
     signal: input.signal,
     ...(input.rejectRedirects ? { redirect: "error" as const, credentials: "omit" as const, cache: "no-store" as const } : {}),
   })
-  return { status: res.status, chunks: fetchChunks(res, input.signal) }
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+  return {
+    status: res.status,
+    chunks: fetchChunks(res, input.signal, (active) => { reader = active }),
+    async cancel() { await (reader ? reader.cancel() : res.body?.cancel())?.catch(() => undefined) },
+  }
 }
 
-async function* fetchChunks(res: Response, signal: AbortSignal): AsyncGenerator<string> {
+async function* fetchChunks(res: Response, signal: AbortSignal, activeReader: (reader?: ReadableStreamDefaultReader<Uint8Array>) => void): AsyncGenerator<string> {
   const reader = res.body?.getReader()
   if (!reader) {
     const text = await res.text()
     if (text) yield text
     return
   }
+  activeReader(reader)
   // A hand-built body is not tied to the fetch signal. Without cancel, the
   // generator stays parked on read() and closing it never finishes.
   const onAbort = () => {
@@ -91,6 +99,7 @@ async function* fetchChunks(res: Response, signal: AbortSignal): AsyncGenerator<
   } finally {
     signal.removeEventListener("abort", onAbort)
     reader.releaseLock()
+    activeReader(undefined)
   }
 }
 
@@ -166,6 +175,7 @@ async function openNative(
   },
   plugin: StreamBodyPlugin,
 ): Promise<BodySource> {
+  if (input.signal.aborted) throw aborted(input.signal)
   const id = streamID()
   const box = new Mailbox()
   let settled = false
@@ -187,39 +197,58 @@ async function openNative(
     }
     box.end(err)
   }
-  const statusHandle = await plugin.addListener("status", (ev) => {
-    if (ev.id !== id || typeof ev.status !== "number") return
-    settle(ev.status)
-  })
-  const chunkHandle = await plugin.addListener("chunk", (ev) => {
-    if (ev.id !== id || !ev.text) return
-    box.push(ev.text)
-  })
+  let statusHandle: { remove(): Promise<void> } | undefined
+  let chunkHandle: { remove(): Promise<void> } | undefined
   let cleaned = false
   const cleanup = async () => {
     if (cleaned) return
     cleaned = true
     input.signal.removeEventListener("abort", onAbort)
-    await statusHandle.remove().catch(() => undefined)
-    await chunkHandle.remove().catch(() => undefined)
+    await statusHandle?.remove().catch(() => undefined)
+    await chunkHandle?.remove().catch(() => undefined)
   }
   const onAbort = () => {
     fail(aborted(input.signal))
-    void plugin.cancel({ id }).catch(() => undefined)
+    void cancel()
   }
-  input.signal.addEventListener("abort", onAbort)
   const timeoutMs = Math.min(Math.max(1, Math.round(input.timeoutMs)), 2_147_483_647)
-  const pending = plugin
-    .open({
-      id,
-      url: input.url,
-      method: "POST",
-      headers: input.headers,
-      body: input.body,
-      timeoutMs,
+  let transportStarted = false
+  let transportFinished = false
+  let pending: Promise<void> = Promise.resolve()
+  let cancellation: Promise<void> | undefined
+  // Assign the shared Promise before entering plugin callbacks. open/cancel can
+  // synchronously abort or re-enter cancellation, including before open returns.
+  const cancel = (): Promise<void> => cancellation ??= Promise.resolve().then(async () => {
+    const running = transportStarted && !transportFinished
+    box.end(new ModelCallError("abort", "abort"))
+    await cleanup()
+    if (running) await plugin.cancel({ id }).catch(() => undefined)
+    await pending.catch(() => undefined)
+  })
+  const iterator: AsyncIterator<string> = {
+    next: () => box.next(),
+    async return() {
+      await cancel()
+      return { done: true, value: undefined }
+    },
+  }
+  try {
+    statusHandle = await plugin.addListener("status", (ev) => {
+      if (ev.id !== id || typeof ev.status !== "number") return
+      settle(ev.status)
     })
-    .then(
+    if (input.signal.aborted) throw aborted(input.signal)
+    chunkHandle = await plugin.addListener("chunk", (ev) => {
+      if (ev.id !== id || !ev.text) return
+      box.push(ev.text)
+    })
+    if (input.signal.aborted) throw aborted(input.signal)
+    input.signal.addEventListener("abort", onAbort)
+    if (input.signal.aborted) throw aborted(input.signal)
+    transportStarted = true
+    pending = plugin.open({ id, url: input.url, method: "POST", headers: input.headers, body: input.body, timeoutMs }).then(
       (res) => {
+        transportFinished = true
         if (typeof res.status === "number") settle(res.status)
         if (res.aborted || input.signal.aborted) fail(aborted(input.signal))
         else {
@@ -227,27 +256,17 @@ async function openNative(
           box.end()
         }
       },
-      (err: unknown) => fail(nativeFailure(err, input.signal)),
+      (err: unknown) => { transportFinished = true; fail(nativeFailure(err, input.signal)) },
     )
-  const iterator: AsyncIterator<string> = {
-    next: () => box.next(),
-    async return() {
-      if (!box.isEnded) void plugin.cancel({ id }).catch(() => undefined)
-      await cleanup()
-      await pending.catch(() => undefined)
-      return { done: true, value: undefined }
-    },
-  }
-  try {
     const status = await statusP
     if (input.signal.aborted) throw aborted(input.signal)
     return {
       status,
       chunks: { [Symbol.asyncIterator]: () => iterator },
+      cancel,
     }
   } catch (err) {
-    await cleanup()
-    await pending.catch(() => undefined)
+    await cancel()
     throw err instanceof ModelCallError ? err : nativeFailure(err, input.signal)
   }
 }

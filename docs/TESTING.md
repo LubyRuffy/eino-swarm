@@ -4,6 +4,56 @@ For the shortest repeatable native workflow, start with
 [原生测试最短路径](NATIVE_TESTING_FAST_PATH.md). It selects the existing commands
 and affected scenarios; the detailed requirements and evidence below remain authoritative.
 
+## Account Web execution (`F-130`, `F-170`, `F-211`, `C-006`, `C-009`)
+
+`internal/tools/cloud_web*_test.go` drives actual HTTP fixtures to distinguish
+anonymous/local, signed-in automatic/cloud and explicit local selection. It
+asserts the original tool schemas, Search summary projection, render/browser
+selection, configured result cap, current private receipt, zero local requests
+after cloud denial, no redirect-target requests or token leakage, bounded
+response reads, and cancellation before headers and during body reads.
+`internal/server/settings_web_execution_test.go` preserves explicit local/cloud
+choices across older Settings saves and proves conversation choices do not
+change PC global settings. `internal/remote/web_execution_test.go` verifies
+RPC capability advertisement, optional-field preservation and readback.
+`internal/remote/web_execution_status_test.go` exercises actual RPC metadata and
+catalog JSON through anonymous, signed-in, explicit local/cloud, changed-origin
+and corrupt-receipt states. It checks live local configuration readback, private
+data exclusion and that a phone-supplied token cannot establish PC authority.
+Status is an offline receipt snapshot, not a successful server grant probe.
+
+`internal/engine/web_execution_test.go` runs Registry → ADK → real model HTTP →
+selected Web executor → durable tool Trace. Its orphaned-turn regression keeps
+the original local execution snapshot after the conversation changes to cloud.
+Real model-HTTP barriers also hold an active turn across anonymous-to-account
+sign-in and a Gateway-origin change; the next tool call must read current
+authority, never send the old server a credential, and never fall back locally
+from an explicitly cloud turn.
+`internal/store/web_execution_test.go` reopens a pre-column SQLite schema,
+keeps legacy inherited policy and persists new conversation/turn snapshots.
+`frontend/e2e/web-execution.spec.ts` changes the actual Tools setting, closes
+and reloads the app, verifies API readback and captures the reached control.
+
+Phone tests cover the independent account-scoped direct `auto/cloud/off` and
+PC `inherit/local/cloud` preferences, their legacy migration, model-source
+independence, complete Chat/Responses tool rounds, continuation, byte/call bounds
+and authority/preference cancellation. Automatic without an eligible session
+keeps ordinary chat, explicit cloud fails before a model call, and PC inheritance
+sends an empty override even after phone sign-in. Explicit overrides on old PCs
+must fail rather than appear effective. `gateway-authority-account.test.tsx`
+and `openai-client-authority.test.ts` distinguish a matching Gateway 401, a 403
+revalidation, a stale-session refusal and a personal model's unrelated 401.
+They keep the current conversation mounted while 403 revalidation suspends new
+calls, restore approved access and isolate confirmed pending/rejected or failed
+verification. Refusal headers release unread bodies. `stream-body-cancel.test.ts`
+covers cancellation during native listener/open preparation as well as active
+reads, without claiming real-device transport acceptance. Tool/model failures
+do not switch sources or retry
+without tools. Settings summaries describe the next turn and treat local PC
+receipt status as distinct from live server grants. Browser
+fixtures do not establish native iOS/Android transport or Mac WebView acceptance;
+record those separately when running the packaged clients.
+
 ## Mobile account login and model sources (`F-211`, `C-006`, `C-013`)
 
 Mobile unit tests cover device-flow secrets/PKCE, URL and response validation,

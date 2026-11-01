@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { MockHost, MockLink, mockTickMs, resetMockHost, wantsMock } from "./mock-link"
 import {
   OpEvent,
+  OpCatalog,
+  OpMeta,
+  OpRefreshCatalog,
   OpFollowupSteer,
   OpList,
   OpLog,
@@ -26,6 +29,16 @@ function host() {
 }
 
 describe("the walkthrough host", () => {
+  it("reports PC-owned local Web execution for metadata and both catalog reads", async () => {
+    const link = new MockLink(host())
+    try {
+      for (const op of [OpMeta, OpCatalog, OpRefreshCatalog]) {
+        const result = await link.rpc({ op })
+        expect(result.web_execution_status).toEqual({ preference: "auto", execution: "local", cloud_account: "sign_in_required" })
+      }
+    } finally { link.close() }
+  })
+
   it("starts the selected waiting message after Stop without consuming its sibling", async () => {
     const prior = location.href
     history.replaceState(null, "", "/?mock=1&tick=400&queue=1")

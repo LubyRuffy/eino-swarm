@@ -835,10 +835,16 @@ export const en = {
   "settings.swarm.policyThinkingHigh": "High",
 
   "settings.tools.title": "Tools",
+  "settings.tools.execution": "Web tool execution",
+  "settings.tools.executionLocation": "Web tools run on",
+  "settings.tools.executionHint": "Cloud after server sign-in; this device while signed out. Applies to web_search and web_fetch from the next turn.",
+  "settings.tools.executionAuto": "Automatic",
+  "settings.tools.executionLocal": "This device",
+  "settings.tools.executionCloud": "Server cloud",
   "settings.tools.desc":
     "What agents may call. A tool added in a later release keeps its own default.",
   "settings.tools.proxy": "Proxy",
-  "settings.tools.proxyDesc": "For tools that reach the network.",
+  "settings.tools.proxyDesc": "For Web tools running on this device. Server cloud uses its own network settings.",
   "settings.tools.http": "HTTP",
   "settings.tools.https": "HTTPS",
   "settings.tools.noProxy": "Skip the proxy for",
