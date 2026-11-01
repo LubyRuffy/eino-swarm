@@ -4347,6 +4347,16 @@ decision checks, owned private processes and a frozen execution plan. Decision
 quality does not establish actual scheduler notification behavior. Product
 adoption requires measured improvement and the corresponding runtime checks.
 
+The [worker-result context-reference experiment](../evals/superagent/CONTEXT_REFERENCES.md)
+uses actual Registry/ADK/provider calls over fixed historical worker receipts.
+Its baseline forwards native full wait results; the candidate references only
+exact duplicate successful bodies whose first full copy remains in the same
+outgoing request. Both arms use the same minimal experimental catalog. Private
+source mapping, hidden semantic checks, complete model usage and task-level
+pairing remain separate from production engine/notification acceptance.
+`go test -race ./tools/workercontext_eval` and the `test_worker_context*.py`
+tests are offline integrity checks; opt-in execution calls a real model.
+
 The layers above prove the code is correct; they cannot say whether a prompt,
 delegation or harness change makes a real model finish tasks better, faster or
 cheaper. `make eval` answers that, and only that. It calls a real model, so it

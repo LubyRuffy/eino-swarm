@@ -6,6 +6,8 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Added an opt-in, source-paired worker-result context-reference experiment with actual Registry/ADK/provider calls and reversible-input checks. Its 30-session comparison did not clear the declared efficiency and semantic-quality gates; product behavior is unchanged. (#137)
+
 - Added an opt-in, task-derived Super-agent monitoring decision trial with frozen inputs, private execution evidence and independent review. Its 52-round measurement did not clear the adoption gate; product behavior is unchanged. (#137)
 
 - Existing anonymous phone-to-PC pairings automatically move to the same NOSEC account when the complete Hub endpoint, full host key and owner match. The saved PC, current selection and thread remain; the old transport closes before the selected PC reconnects with its managed ticket. Shared issuance prevents refresh/Connect races, a failed local save retries the returned credential, and unrelated Hubs/accounts stay independent. Sign-out does not restore retired anonymous tickets. (`F-211`, `C-006`)

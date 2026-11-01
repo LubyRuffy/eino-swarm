@@ -1,0 +1,860 @@
+{
+  "schema_version": 1,
+  "decision": "retain current product behavior; reference prototype rejected by predeclared screen",
+  "component_source": "92423fb88c2751cf5ceec6dbdb0e297f34552850",
+  "helper_sha256": "d1348f1b75ee1dc58eb150bd4dc4b42761ef0df2563e9eff55a8bc635f64b97c",
+  "manifest_sha256": "3ce3a515cfffa7968cd426ea878d46c347c1b505587a9bf4f92c6590bfb50c50",
+  "configured_model": "glm-5.3-flash",
+  "measurement": "Fixed historical worker receipts consumed by real Registry/ADK manager calls under an identical minimal experimental tool catalog; not production execution.",
+  "historical_sources": 4,
+  "heldout_sources": 3,
+  "historical_receipts": 30,
+  "source_generation_missing": 25,
+  "constructed_regression_cases": 1,
+  "sessions": 30,
+  "human_rounds": 60,
+  "repetitions_per_arm": 3,
+  "summary": {
+    "a": {
+      "sessions": 15,
+      "reported_total_tokens": 714451,
+      "heldout_tokens": 231455,
+      "semantic_passed": 8,
+      "critical_error_sessions": 7,
+      "heldout_semantic_passed": 5,
+      "discovery_semantic_passed": 0,
+      "regression_semantic_passed": 3,
+      "median_session_seconds": 22.710158749949187,
+      "median_round_seconds": 11.904983979499999
+    },
+    "b": {
+      "sessions": 15,
+      "reported_total_tokens": 644142,
+      "heldout_tokens": 221969,
+      "semantic_passed": 9,
+      "critical_error_sessions": 6,
+      "heldout_semantic_passed": 6,
+      "discovery_semantic_passed": 0,
+      "regression_semantic_passed": 3,
+      "median_session_seconds": 24.520910582970828,
+      "median_round_seconds": 12.296548999999999
+    }
+  },
+  "heldout_effect": {
+    "reduction": 0.0409842085934633,
+    "interval_95": [
+      0.03177341601190886,
+      0.06005677449878766
+    ],
+    "unit": "source, repetitions averaged first",
+    "sources": 3,
+    "qualification": "Conditional on selected fixed historical result sources; not a population estimate."
+  },
+  "screen_passed": false,
+  "adoption_threshold_reduction": 0.2,
+  "semantic_scope": "Independent arm/usage/timing-masked review. Complete-session passes require both rounds and all important supported facts/constraints. critical_review_issues preserves sealed reviewer diagnostic counts; repeated-round counting differs by source, so these are not independent event counts. Cross-arm comparisons use sessions with at least one critical error.",
+  "by_source": {
+    "source-06": {
+      "split": "heldout",
+      "a": {
+        "sessions": 3,
+        "mean_tokens": 22545.333333333332
+      },
+      "b": {
+        "sessions": 3,
+        "mean_tokens": 21191.333333333332
+      }
+    },
+    "source-07": {
+      "split": "heldout",
+      "a": {
+        "sessions": 3,
+        "mean_tokens": 33812.333333333336
+      },
+      "b": {
+        "sessions": 3,
+        "mean_tokens": 32738
+      }
+    },
+    "source-05": {
+      "split": "heldout",
+      "a": {
+        "sessions": 3,
+        "mean_tokens": 20794
+      },
+      "b": {
+        "sessions": 3,
+        "mean_tokens": 20060.333333333332
+      }
+    },
+    "source-03": {
+      "split": "discovery",
+      "a": {
+        "sessions": 3,
+        "mean_tokens": 148586.33333333334
+      },
+      "b": {
+        "sessions": 3,
+        "mean_tokens": 127170
+      }
+    },
+    "constructed-previous-counterexample": {
+      "split": "regression",
+      "a": {
+        "sessions": 3,
+        "mean_tokens": 12412.333333333334
+      },
+      "b": {
+        "sessions": 3,
+        "mean_tokens": 13554.333333333334
+      }
+    }
+  },
+  "integrity": {
+    "status": "verified_integrity_only",
+    "frozen_hashes_verified": 33,
+    "proof_counts": {
+      "messages": 600,
+      "references": 69,
+      "changed_tool_messages": 15,
+      "recovered_result_chars": 202698,
+      "sessions": 30,
+      "human_rounds": 60,
+      "model_requests": 120,
+      "provider_call_receipts": 120,
+      "native_wait_receipts": 60,
+      "rounds_with_actual_full_worker_coverage": 60,
+      "cleanup_receipts": 30
+    },
+    "matching_live_helpers": 0,
+    "cleanup_scope": "Exit and private-config deletion are instrument receipts; current helper absence independently observed. No independent per-config-directory identity proof is claimed."
+  },
+  "limitations": [
+    "Historical worker execution and HTTP-engine auxiliary model calls are outside this measurement.",
+    "The three-source bootstrap interval is conditional on selected result sources, not a population estimate.",
+    "Reported total_tokens is not monetary billing; cache zeros do not prove upstream explicit zero.",
+    "No production engine/full-catalog, durable DB replay, scheduled quiet/unread/notification, native UI or deployment acceptance."
+  ],
+  "rows": [
+    {
+      "case": "source-06",
+      "source_alias": "source-06",
+      "split": "heldout",
+      "repeat": 1,
+      "arm": "a",
+      "reported_total_tokens": 23823,
+      "model_calls": 4,
+      "session_seconds": 26.25631745904684,
+      "round_seconds": [
+        17.789855584,
+        7.839044333
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 56929,
+        "forwarded_chars": 56929,
+        "duplicate_chars_removed": 0,
+        "reference_count": 0
+      }
+    },
+    {
+      "case": "source-06",
+      "source_alias": "source-06",
+      "split": "heldout",
+      "repeat": 1,
+      "arm": "b",
+      "reported_total_tokens": 18045,
+      "model_calls": 4,
+      "session_seconds": 23.104575333883986,
+      "round_seconds": [
+        10.774097792,
+        12.308493834
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 38039,
+        "forwarded_chars": 35132,
+        "duplicate_chars_removed": 3032,
+        "reference_count": 1
+      }
+    },
+    {
+      "case": "source-06",
+      "source_alias": "source-06",
+      "split": "heldout",
+      "repeat": 2,
+      "arm": "b",
+      "reported_total_tokens": 23431,
+      "model_calls": 4,
+      "session_seconds": 29.22376766707748,
+      "round_seconds": [
+        17.192483375,
+        12.011213292
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 59542,
+        "forwarded_chars": 56635,
+        "duplicate_chars_removed": 3032,
+        "reference_count": 1
+      }
+    },
+    {
+      "case": "source-06",
+      "source_alias": "source-06",
+      "split": "heldout",
+      "repeat": 2,
+      "arm": "a",
+      "reported_total_tokens": 21569,
+      "model_calls": 4,
+      "session_seconds": 22.442058625165373,
+      "round_seconds": [
+        13.203635,
+        9.220525833
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 53218,
+        "forwarded_chars": 53218,
+        "duplicate_chars_removed": 0,
+        "reference_count": 0
+      }
+    },
+    {
+      "case": "source-06",
+      "source_alias": "source-06",
+      "split": "heldout",
+      "repeat": 3,
+      "arm": "a",
+      "reported_total_tokens": 22244,
+      "model_calls": 4,
+      "session_seconds": 22.710158749949187,
+      "round_seconds": [
+        14.040830667,
+        8.652687292
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 59736,
+        "forwarded_chars": 59736,
+        "duplicate_chars_removed": 0,
+        "reference_count": 0
+      }
+    },
+    {
+      "case": "source-06",
+      "source_alias": "source-06",
+      "split": "heldout",
+      "repeat": 3,
+      "arm": "b",
+      "reported_total_tokens": 22098,
+      "model_calls": 4,
+      "session_seconds": 24.520910582970828,
+      "round_seconds": [
+        14.5391575,
+        9.965267958
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 56809,
+        "forwarded_chars": 53902,
+        "duplicate_chars_removed": 3032,
+        "reference_count": 1
+      }
+    },
+    {
+      "case": "source-07",
+      "source_alias": "source-07",
+      "split": "heldout",
+      "repeat": 1,
+      "arm": "b",
+      "reported_total_tokens": 29354,
+      "model_calls": 4,
+      "session_seconds": 29.809390750015154,
+      "round_seconds": [
+        17.504861208,
+        12.284604166
+      ],
+      "semantic_passed": false,
+      "critical_review_issues": 2,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 70108,
+        "forwarded_chars": 67168,
+        "duplicate_chars_removed": 3444,
+        "reference_count": 3
+      }
+    },
+    {
+      "case": "source-07",
+      "source_alias": "source-07",
+      "split": "heldout",
+      "repeat": 1,
+      "arm": "a",
+      "reported_total_tokens": 28664,
+      "model_calls": 4,
+      "session_seconds": 24.192671624943614,
+      "round_seconds": [
+        16.097769125,
+        8.075500292
+      ],
+      "semantic_passed": false,
+      "critical_review_issues": 2,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 63856,
+        "forwarded_chars": 63856,
+        "duplicate_chars_removed": 0,
+        "reference_count": 0
+      }
+    },
+    {
+      "case": "source-07",
+      "source_alias": "source-07",
+      "split": "heldout",
+      "repeat": 2,
+      "arm": "a",
+      "reported_total_tokens": 37413,
+      "model_calls": 4,
+      "session_seconds": 35.717657583067194,
+      "round_seconds": [
+        26.701957666,
+        8.992403166999999
+      ],
+      "semantic_passed": false,
+      "critical_review_issues": 2,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 102339,
+        "forwarded_chars": 102339,
+        "duplicate_chars_removed": 0,
+        "reference_count": 0
+      }
+    },
+    {
+      "case": "source-07",
+      "source_alias": "source-07",
+      "split": "heldout",
+      "repeat": 2,
+      "arm": "b",
+      "reported_total_tokens": 34779,
+      "model_calls": 4,
+      "session_seconds": 34.44403116614558,
+      "round_seconds": [
+        24.190310167,
+        10.233151792
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 91294,
+        "forwarded_chars": 88354,
+        "duplicate_chars_removed": 3444,
+        "reference_count": 3
+      }
+    },
+    {
+      "case": "source-07",
+      "source_alias": "source-07",
+      "split": "heldout",
+      "repeat": 3,
+      "arm": "b",
+      "reported_total_tokens": 34081,
+      "model_calls": 4,
+      "session_seconds": 36.749895666958764,
+      "round_seconds": [
+        22.23682475,
+        14.494010709
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 94679,
+        "forwarded_chars": 91739,
+        "duplicate_chars_removed": 3444,
+        "reference_count": 3
+      }
+    },
+    {
+      "case": "source-07",
+      "source_alias": "source-07",
+      "split": "heldout",
+      "repeat": 3,
+      "arm": "a",
+      "reported_total_tokens": 35360,
+      "model_calls": 4,
+      "session_seconds": 33.848280667094514,
+      "round_seconds": [
+        22.542335042,
+        11.282087584
+      ],
+      "semantic_passed": false,
+      "critical_review_issues": 2,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 87911,
+        "forwarded_chars": 87911,
+        "duplicate_chars_removed": 0,
+        "reference_count": 0
+      }
+    },
+    {
+      "case": "source-05",
+      "source_alias": "source-05",
+      "split": "heldout",
+      "repeat": 1,
+      "arm": "a",
+      "reported_total_tokens": 22171,
+      "model_calls": 4,
+      "session_seconds": 21.154874374857172,
+      "round_seconds": [
+        15.550366625,
+        5.584689666
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 69267,
+        "forwarded_chars": 69267,
+        "duplicate_chars_removed": 0,
+        "reference_count": 0
+      }
+    },
+    {
+      "case": "source-05",
+      "source_alias": "source-05",
+      "split": "heldout",
+      "repeat": 1,
+      "arm": "b",
+      "reported_total_tokens": 19351,
+      "model_calls": 4,
+      "session_seconds": 19.03247325005941,
+      "round_seconds": [
+        11.673800083,
+        7.33953425
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 51785,
+        "forwarded_chars": 50771,
+        "duplicate_chars_removed": 1143,
+        "reference_count": 1
+      }
+    },
+    {
+      "case": "source-05",
+      "source_alias": "source-05",
+      "split": "heldout",
+      "repeat": 2,
+      "arm": "b",
+      "reported_total_tokens": 19918,
+      "model_calls": 4,
+      "session_seconds": 21.258826499804854,
+      "round_seconds": [
+        12.649600208,
+        8.591226084
+      ],
+      "semantic_passed": false,
+      "critical_review_issues": 1,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 53192,
+        "forwarded_chars": 52178,
+        "duplicate_chars_removed": 1143,
+        "reference_count": 1
+      }
+    },
+    {
+      "case": "source-05",
+      "source_alias": "source-05",
+      "split": "heldout",
+      "repeat": 2,
+      "arm": "a",
+      "reported_total_tokens": 19633,
+      "model_calls": 4,
+      "session_seconds": 18.902181332930923,
+      "round_seconds": [
+        12.527880375,
+        6.355804208
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 47944,
+        "forwarded_chars": 47944,
+        "duplicate_chars_removed": 0,
+        "reference_count": 0
+      }
+    },
+    {
+      "case": "source-05",
+      "source_alias": "source-05",
+      "split": "heldout",
+      "repeat": 3,
+      "arm": "a",
+      "reported_total_tokens": 20578,
+      "model_calls": 4,
+      "session_seconds": 20.270463916938752,
+      "round_seconds": [
+        13.824389542,
+        6.426070584
+      ],
+      "semantic_passed": false,
+      "critical_review_issues": 4,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 52583,
+        "forwarded_chars": 52583,
+        "duplicate_chars_removed": 0,
+        "reference_count": 0
+      }
+    },
+    {
+      "case": "source-05",
+      "source_alias": "source-05",
+      "split": "heldout",
+      "repeat": 3,
+      "arm": "b",
+      "reported_total_tokens": 20912,
+      "model_calls": 4,
+      "session_seconds": 23.35701166698709,
+      "round_seconds": [
+        12.932460209,
+        10.404140167
+      ],
+      "semantic_passed": false,
+      "critical_review_issues": 1,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 47739,
+        "forwarded_chars": 46725,
+        "duplicate_chars_removed": 1143,
+        "reference_count": 1
+      }
+    },
+    {
+      "case": "source-03",
+      "source_alias": "source-03",
+      "split": "discovery",
+      "repeat": 1,
+      "arm": "a",
+      "reported_total_tokens": 143096,
+      "model_calls": 4,
+      "session_seconds": 38.673013457795605,
+      "round_seconds": [
+        22.320417333,
+        16.319060875
+      ],
+      "semantic_passed": false,
+      "critical_review_issues": 7,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 339599,
+        "forwarded_chars": 339599,
+        "duplicate_chars_removed": 0,
+        "reference_count": 0
+      }
+    },
+    {
+      "case": "source-03",
+      "source_alias": "source-03",
+      "split": "discovery",
+      "repeat": 1,
+      "arm": "b",
+      "reported_total_tokens": 122777,
+      "model_calls": 4,
+      "session_seconds": 44.239567999960855,
+      "round_seconds": [
+        27.394994375,
+        16.819059375
+      ],
+      "semantic_passed": false,
+      "critical_review_issues": 2,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 357792,
+        "forwarded_chars": 299536,
+        "duplicate_chars_removed": 58713,
+        "reference_count": 17
+      }
+    },
+    {
+      "case": "source-03",
+      "source_alias": "source-03",
+      "split": "discovery",
+      "repeat": 2,
+      "arm": "b",
+      "reported_total_tokens": 131183,
+      "model_calls": 4,
+      "session_seconds": 59.84869449981488,
+      "round_seconds": [
+        40.291147666,
+        19.526496792
+      ],
+      "semantic_passed": false,
+      "critical_review_issues": 3,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 376353,
+        "forwarded_chars": 318097,
+        "duplicate_chars_removed": 58713,
+        "reference_count": 17
+      }
+    },
+    {
+      "case": "source-03",
+      "source_alias": "source-03",
+      "split": "discovery",
+      "repeat": 2,
+      "arm": "a",
+      "reported_total_tokens": 150762,
+      "model_calls": 4,
+      "session_seconds": 45.737135583069175,
+      "round_seconds": [
+        31.38414475,
+        14.315486041
+      ],
+      "semantic_passed": false,
+      "critical_review_issues": 3,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 369743,
+        "forwarded_chars": 369743,
+        "duplicate_chars_removed": 0,
+        "reference_count": 0
+      }
+    },
+    {
+      "case": "source-03",
+      "source_alias": "source-03",
+      "split": "discovery",
+      "repeat": 3,
+      "arm": "a",
+      "reported_total_tokens": 151901,
+      "model_calls": 4,
+      "session_seconds": 47.942142124986276,
+      "round_seconds": [
+        33.758556584,
+        14.152817375
+      ],
+      "semantic_passed": false,
+      "critical_review_issues": 4,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 372208,
+        "forwarded_chars": 372208,
+        "duplicate_chars_removed": 0,
+        "reference_count": 0
+      }
+    },
+    {
+      "case": "source-03",
+      "source_alias": "source-03",
+      "split": "discovery",
+      "repeat": 3,
+      "arm": "b",
+      "reported_total_tokens": 127550,
+      "model_calls": 4,
+      "session_seconds": 60.19634262495674,
+      "round_seconds": [
+        40.511862542,
+        19.654356625
+      ],
+      "semantic_passed": false,
+      "critical_review_issues": 4,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 367812,
+        "forwarded_chars": 309556,
+        "duplicate_chars_removed": 58713,
+        "reference_count": 17
+      }
+    },
+    {
+      "case": "regression-stall",
+      "source_alias": "constructed-previous-counterexample",
+      "split": "regression",
+      "repeat": 1,
+      "arm": "b",
+      "reported_total_tokens": 12179,
+      "model_calls": 4,
+      "session_seconds": 9.404547624988481,
+      "round_seconds": [
+        6.87478,
+        2.505594083
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 38940,
+        "forwarded_chars": 37628,
+        "duplicate_chars_removed": 1234,
+        "reference_count": 1
+      }
+    },
+    {
+      "case": "regression-stall",
+      "source_alias": "constructed-previous-counterexample",
+      "split": "regression",
+      "repeat": 1,
+      "arm": "a",
+      "reported_total_tokens": 11448,
+      "model_calls": 4,
+      "session_seconds": 6.78120941715315,
+      "round_seconds": [
+        4.820113583,
+        1.94369225
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 31792,
+        "forwarded_chars": 31792,
+        "duplicate_chars_removed": 0,
+        "reference_count": 0
+      }
+    },
+    {
+      "case": "regression-stall",
+      "source_alias": "constructed-previous-counterexample",
+      "split": "regression",
+      "repeat": 2,
+      "arm": "a",
+      "reported_total_tokens": 11820,
+      "model_calls": 4,
+      "session_seconds": 8.366094375029206,
+      "round_seconds": [
+        5.946198833,
+        2.405360417
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 34747,
+        "forwarded_chars": 34747,
+        "duplicate_chars_removed": 0,
+        "reference_count": 0
+      }
+    },
+    {
+      "case": "regression-stall",
+      "source_alias": "constructed-previous-counterexample",
+      "split": "regression",
+      "repeat": 2,
+      "arm": "b",
+      "reported_total_tokens": 13536,
+      "model_calls": 4,
+      "session_seconds": 11.236195124918595,
+      "round_seconds": [
+        8.479063417,
+        2.741781125
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 46381,
+        "forwarded_chars": 45069,
+        "duplicate_chars_removed": 1234,
+        "reference_count": 1
+      }
+    },
+    {
+      "case": "regression-stall",
+      "source_alias": "constructed-previous-counterexample",
+      "split": "regression",
+      "repeat": 3,
+      "arm": "b",
+      "reported_total_tokens": 14948,
+      "model_calls": 4,
+      "session_seconds": 12.843796417117119,
+      "round_seconds": [
+        10.564693125,
+        2.262096208
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 53267,
+        "forwarded_chars": 51955,
+        "duplicate_chars_removed": 1234,
+        "reference_count": 1
+      }
+    },
+    {
+      "case": "regression-stall",
+      "source_alias": "constructed-previous-counterexample",
+      "split": "regression",
+      "repeat": 3,
+      "arm": "a",
+      "reported_total_tokens": 13969,
+      "model_calls": 4,
+      "session_seconds": 10.035929000005126,
+      "round_seconds": [
+        8.111775375,
+        1.906573791
+      ],
+      "semantic_passed": true,
+      "critical_review_issues": 0,
+      "cost_complete": true,
+      "input_projection": {
+        "requests": 4,
+        "original_chars": 46952,
+        "forwarded_chars": 46952,
+        "duplicate_chars_removed": 0,
+        "reference_count": 0
+      }
+    }
+  ]
+}

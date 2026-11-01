@@ -7,6 +7,12 @@ The [completed 52-round trial](RESULTS.md) did not establish an improvement:
 the candidate consumed more tokens and missed one critical notification
 decision. The product implementation remains unchanged.
 
+The [worker-result context-reference experiment](CONTEXT_REFERENCES.md) follows
+up on an observed repeated-result pattern with actual Registry/ADK calls and
+source-level held-out comparisons. Its 4.10% held-out token saving fell below
+the 20% gate, and the candidate retained critical semantic errors. It also
+did not qualify for product adoption.
+
 The [referenced article](https://zhuanlan.zhihu.com/p/2099987320443237060)
 was not directly retrievable during this investigation. Its
 [official companion repository](https://github.com/deepseek-ai/dsh-superagent-prototype/tree/6337fc823ce20251c8de8085948165c81aaa701e)
