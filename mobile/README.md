@@ -239,6 +239,7 @@ window. They initially fit without enlarging small images; manual zoom spans
 10%–400%, with both axes scrollable. Loading or undecodable images disable
 zoom. Markdown, source and plain-text previews offer smaller/larger text
 (12–28 px, initially 14 px) and reset; headings, tables and code scale together.
+Preview tables scroll horizontally; vertical swipes continue through the document.
 Controls and Download remain outside the scrolling content. Reopening a file
 resets its view; preview adjustments preserve the original download bytes.
 Full Settings, PTY and Trace stay on the PC; paired phones also expose PC timeout controls.

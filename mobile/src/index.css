@@ -117,6 +117,10 @@
   .file-text-content .md-body {
     font-size: inherit;
   }
+  /* Tables scroll sideways; tiny vertical overflow must not trap a document swipe. */
+  .file-text-content .md-table {
+    overflow-y: hidden;
+  }
   .file-text-content .md-body h1 {
     font-size: 1.428571em;
   }
