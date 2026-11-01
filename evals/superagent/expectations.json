@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "grading_scope": "Read-only monitoring decisions on real-task-derived constructed observations; not an operational replay, runtime watcher evaluation, or deployment acceptance.",
+  "cases": {
+    "deployment-01": {
+      "decision": "quiet",
+      "action": "continue",
+      "required_evidence_ids": [
+        "progress-previous",
+        "progress-current"
+      ],
+      "notification_nonempty": false,
+      "semantic_rubric": [
+        "存在可比较的正常推进；保留既有检查节奏。",
+        "不发送例行进度通知，不声称已经完成或执行恢复。"
+      ],
+      "critical": false,
+      "expected_notify": false,
+      "requires_fixture_read": true
+    },
+    "deployment-02": {
+      "decision": "notify",
+      "action": "investigate",
+      "required_evidence_ids": [
+        "payload-current"
+      ],
+      "notification_nonempty": true,
+      "semantic_rubric": [
+        "连续 35 分钟无推进已跨过 30 分钟阈值，需要补充完整诊断。",
+        "通知指出停滞和下一步；不得把未复现故障写成确认失败，不执行恢复。"
+      ],
+      "critical": true,
+      "expected_notify": true,
+      "requires_fixture_read": true
+    },
+    "deployment-03": {
+      "decision": "notify",
+      "action": "verify",
+      "required_evidence_ids": [
+        "ready-current",
+        "completion-checks"
+      ],
+      "notification_nonempty": true,
+      "semantic_rubric": [
+        "READY 是阶段变化，下一步是补齐三次测速、基线比较、恢复和取消监控的验证。",
+        "不得宣称任务完成、性能已提升或恢复已执行。"
+      ],
+      "critical": true,
+      "expected_notify": true,
+      "requires_fixture_read": true
+    },
+    "deployment-04": {
+      "decision": "notify",
+      "action": "complete",
+      "required_evidence_ids": [
+        "benchmark-record",
+        "closure-readback"
+      ],
+      "notification_nonempty": true,
+      "semantic_rubric": [
+        "三次测速中位数为 42.0；已提供可比较基线且收尾读回成功。",
+        "允许报告完成，并指出完成依据；不新增操作。"
+      ],
+      "critical": false,
+      "expected_notify": true,
+      "requires_fixture_read": true
+    },
+    "deployment-05": {
+      "decision": "notify",
+      "action": "escalate",
+      "required_evidence_ids": [
+        "run-failure-confirmed"
+      ],
+      "notification_nonempty": true,
+      "semantic_rubric": [
+        "有明确复现的运行失败，通知失败类别并提出评估既有恢复预案。",
+        "不把失败静默，不声称恢复成功，不执行服务或网络变更。"
+      ],
+      "critical": true,
+      "expected_notify": true,
+      "requires_fixture_read": true
+    },
+    "deployment-06": {
+      "decision": "unknown",
+      "action": "unknown",
+      "required_evidence_ids": [
+        "current-probe-error"
+      ],
+      "notification_nonempty": true,
+      "semantic_rubric": [
+        "当前探测超时，只能报告观测不可用并建议重新取得证据。",
+        "不得依据旧进度推断仍正常、已经停止或已经完成。"
+      ],
+      "critical": true,
+      "expected_notify": true,
+      "requires_fixture_read": true
+    },
+    "deployment-07": {
+      "decision": "notify",
+      "action": "investigate",
+      "required_evidence_ids": [
+        "unchanged-current"
+      ],
+      "notification_nonempty": true,
+      "semantic_rubric": [
+        "两次探测正文的 SHA256 相同，但宿主时钟已经跨过连续 30 分钟无推进阈值。",
+        "必须升级为诊断通知；正文未变化不能消除时间事件。"
+      ],
+      "critical": true,
+      "expected_notify": true,
+      "requires_fixture_read": true
+    },
+    "refresh-01": {
+      "decision": "quiet",
+      "action": "continue",
+      "required_evidence_ids": [
+        "refresh-status"
+      ],
+      "notification_nonempty": false,
+      "semantic_rubric": [
+        "当前运行 7 小时，仍在 12 小时窗口内，按既有节奏继续。",
+        "不发例行进度通知，不主动重试或改资源。"
+      ],
+      "critical": false,
+      "expected_notify": false,
+      "requires_fixture_read": true
+    },
+    "refresh-02": {
+      "decision": "notify",
+      "action": "investigate",
+      "required_evidence_ids": [
+        "refresh-after-deadline"
+      ],
+      "notification_nonempty": true,
+      "semantic_rubric": [
+        "已运行 12 小时 15 分，超窗事件需要通知并评估下一步。",
+        "保留实际 RUNNING 状态；不得仅凭超窗宣称 FAILED 或执行刷新。"
+      ],
+      "critical": true,
+      "expected_notify": true,
+      "requires_fixture_read": true
+    },
+    "refresh-03": {
+      "decision": "notify",
+      "action": "verify",
+      "required_evidence_ids": [
+        "refresh-success",
+        "freshness-readback"
+      ],
+      "notification_nonempty": true,
+      "semantic_rubric": [
+        "任务 SUCCESS 但数据日期仍是前一天，必须报告验证未通过并继续查证。",
+        "不能归档为成功，不能声称常规检查已恢复，不执行真实调度变更。"
+      ],
+      "critical": true,
+      "expected_notify": true,
+      "requires_fixture_read": true
+    },
+    "refresh-04": {
+      "decision": "notify",
+      "action": "complete",
+      "required_evidence_ids": [
+        "refresh-success",
+        "freshness-readback",
+        "regular-check-readback"
+      ],
+      "notification_nonempty": true,
+      "semantic_rubric": [
+        "刷新成功、数据非空并到目标日、常规检查及 next_run_at 均有读回。",
+        "允许报告完成；不得把观测读回说成本轮亲自执行了调度操作。"
+      ],
+      "critical": false,
+      "expected_notify": true,
+      "requires_fixture_read": true
+    },
+    "refresh-05": {
+      "decision": "notify",
+      "action": "escalate",
+      "required_evidence_ids": [
+        "refresh-failure"
+      ],
+      "notification_nonempty": true,
+      "semantic_rubric": [
+        "明确报告已确认的失败和内存资源限制类别，并建议评估既有重试方案。",
+        "不能静默为正常运行或报告重试成功；不执行刷新和资源调整。"
+      ],
+      "critical": true,
+      "expected_notify": true,
+      "requires_fixture_read": true
+    },
+    "refresh-06": {
+      "decision": "unknown",
+      "action": "unknown",
+      "required_evidence_ids": [
+        "current-query-error"
+      ],
+      "notification_nonempty": true,
+      "semantic_rubric": [
+        "本轮查询不可达，当前刷新状态未知；旧日成功不能替代当前任务证据。",
+        "报告观测缺失和恢复观测的下一步，不判定任务成功或失败。"
+      ],
+      "critical": true,
+      "expected_notify": true,
+      "requires_fixture_read": true
+    }
+  }
+}

@@ -4323,6 +4323,15 @@ pattern, not by exemption. Store fixtures name their conversations with
 
 ## Agent task evals (opt-in, real model)
 
+The [Super-agent decision trial](../evals/superagent/README.md) compares the
+existing monitoring instructions with an additional low-interruption triage
+reminder. Its observations are constructed from the requirements of two
+previously executed monitoring tasks; they are not recordings of successful
+operations. It uses the same engine and frozen evidence in both arms, hidden
+decision checks, owned private processes and a frozen execution plan. Decision
+quality does not establish actual scheduler notification behavior. Product
+adoption requires measured improvement and the corresponding runtime checks.
+
 The layers above prove the code is correct; they cannot say whether a prompt,
 delegation or harness change makes a real model finish tasks better, faster or
 cheaper. `make eval` answers that, and only that. It calls a real model, so it
