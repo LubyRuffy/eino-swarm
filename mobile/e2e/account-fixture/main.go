@@ -56,6 +56,8 @@ type fixture struct {
 	review                            string
 	api, showPC                       bool
 	startMode, catalogMode, modelMode string
+	webMode                           string
+	pcThreadID                        string
 	flow                              *flow
 	counts                            map[string]int
 	bindings                          pstore.Store
@@ -101,6 +103,7 @@ func (f *fixture) observe(w http.ResponseWriter) {
 	}
 	value := map[string]any{"origin": f.origin, "anonymous_origin": f.anonymous, "review": f.review, "api_enabled": f.api, "pc_visible": f.showPC, "host_name": "Native PC", "host_id": "native-pc", "counts": f.counts}
 	f.observeBindings(value)
+	f.observeWebRouting(value)
 	if f.flow != nil {
 		value["verification_uri"] = f.origin + clientPrefix + "/auth/sso/nosec/start?mobile_code=" + f.flow.PublicCode
 		value["device_confirm_url"] = f.origin + "/mobile-login?code=" + f.flow.PublicCode
@@ -185,7 +188,7 @@ func (f *fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/fixture/state" || path == "/fixture/control" {
 		if path == "/fixture/control" {
-			for key, target := range map[string]*string{"start": &f.startMode, "catalog": &f.catalogMode, "model": &f.modelMode} {
+			for key, target := range map[string]*string{"start": &f.startMode, "catalog": &f.catalogMode, "model": &f.modelMode, "web": &f.webMode} {
 				if mode := r.URL.Query().Get(key); mode != "" {
 					*target = mode
 				}
@@ -293,6 +296,10 @@ func (f *fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if f.browser(w, r) {
 		return
 	}
+	if strings.HasPrefix(path, "/personal/v1/") {
+		f.personalModel(w, r)
+		return
+	}
 	if !strings.HasPrefix(path, clientPrefix+"/") && !strings.HasPrefix(path, "/v1/") {
 		f.counts["non_api_probe"]++
 		http.NotFound(w, r)
@@ -387,47 +394,13 @@ func (f *fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "API disabled", 403)
 			return
 		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
-		if err != nil {
-			http.Error(w, "invalid model body", 400)
+		f.model(w, r, "gateway")
+	case "/v1/web/search", "/v1/web/fetch":
+		if !f.api {
+			http.Error(w, "API disabled", 403)
 			return
 		}
-		var invocation struct {
-			Model    string            `json:"model"`
-			Stream   bool              `json:"stream"`
-			Messages []json.RawMessage `json:"messages"`
-		}
-		if json.Unmarshal(body, &invocation) != nil || invocation.Model != "native-fixture-model" || !invocation.Stream || len(invocation.Messages) == 0 {
-			f.counts["invalid_model_contract"]++
-			http.Error(w, "invalid fixture model invocation", 400)
-			return
-		}
-		f.counts["model_calls"]++
-		if f.modelMode == "redirect" {
-			f.counts["model_redirect_sent"]++
-			http.Redirect(w, r, f.anonymous+"/fixture/forbidden-target", http.StatusTemporaryRedirect)
-			return
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		if f.modelMode == "stall" {
-			f.counts["model_stall_started"]++
-			w.WriteHeader(http.StatusOK)
-			if flush, ok := w.(http.Flusher); ok {
-				flush.Flush()
-			}
-			f.mu.Unlock()
-			select {
-			case <-r.Context().Done():
-				f.mu.Lock()
-				f.counts["model_cancelled"]++
-				return
-			case <-time.After(30 * time.Second):
-				f.mu.Lock()
-				f.counts["model_completed"]++
-			}
-		}
-		f.counts["model_successes"]++
-		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"Native account answer\"}}]}\n\ndata: [DONE]\n\n")
+		f.webTool(w, r)
 	default:
 		http.NotFound(w, r)
 	}
@@ -560,9 +533,11 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	eng := engine.New(cfg, db, provider.NewMock(cfg), logger)
 	f.engine = eng
-	if _, err := eng.CreateThread("Native PC conversation", "", ""); err != nil {
+	thread, err := eng.CreateThread("Native PC conversation", "", "")
+	if err != nil {
 		panic(err)
 	}
+	f.pcThreadID = thread.ID
 	f.host = remote.New(eng, cfg, logger)
 	f.host.Start()
 	identity, err := cfg.RemoteIdentity()
