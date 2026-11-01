@@ -1,0 +1,1227 @@
+{
+  "schema_version": 1,
+  "decision": "retain current product behavior; candidate did not pass adoption gate",
+  "scope": "13 constructed observation states from two previously executed monitoring task families; 2 repetitions per arm, not literal operational replay.",
+  "model": "glm-5.3-flash",
+  "engine_source_commit": "17e555f12ab5f5bb8a72f2e132e14cd4314011b5",
+  "binary_sha256": "e0c619d554d18cdbf23ef5d8109b99b780e0d2ebb2bddaec02fa9009873e7547",
+  "runner_sha256": "0165fa4cb45168e148e9015bb287920bd317d47fe43311568ebd73b4b95bbf86",
+  "fixture_sha256": {
+    "cases.json": "ed72f21720ea3541e1d5d6ae8d71fe89dc1f3648171157ee66cc3b8398c84f01",
+    "expectations.json": "2fdc03938763bca8ccfa74c2eb7fc195bfd52bab6ef7d878ab87e466d1edfef6"
+  },
+  "manifest_sha256": "d080d9ea9c633cd1d51975b8b8aaedfe7f914126b2450c2b56a8815741d3231f",
+  "statistical_policy_sha256": "c9d48fd0244bc72eef5ed63e1f9fef5f3aa5847c5eaf94c2f32e181438a8bed4",
+  "conditions": {
+    "mock": false,
+    "boot_timeout": 240,
+    "review_wait": 240.0,
+    "max_completion_tokens": 0
+  },
+  "rounds": 52,
+  "cost_summary": {
+    "a": {
+      "graded": 26,
+      "harness_errors": 0,
+      "automatic_passed": 23,
+      "excess_notifications": 0,
+      "missed_notifications": 2,
+      "critical_failures": 1,
+      "reviews_cut_off": 0,
+      "cost_incomplete": 0,
+      "total_tokens": 951872,
+      "median_tokens": 32261.0,
+      "median_seconds": 8.5605,
+      "by_caller": {
+        "manager": {
+          "calls": 84,
+          "prompt_tokens": 744037,
+          "completion_tokens": 64319,
+          "total_tokens": 808356,
+          "cached_tokens": 519680,
+          "duration_ms": 281198
+        },
+        "title-namer": {
+          "calls": 26,
+          "prompt_tokens": 2986,
+          "completion_tokens": 4155,
+          "total_tokens": 7141,
+          "cached_tokens": 0,
+          "duration_ms": 28268
+        },
+        "schedule-answer-policy": {
+          "calls": 37,
+          "prompt_tokens": 34337,
+          "completion_tokens": 3177,
+          "total_tokens": 37514,
+          "cached_tokens": 0,
+          "duration_ms": 17712
+        },
+        "memory-reviewer": {
+          "calls": 26,
+          "prompt_tokens": 86358,
+          "completion_tokens": 2418,
+          "total_tokens": 88776,
+          "cached_tokens": 16000,
+          "duration_ms": 14724
+        },
+        "session-memory": {
+          "calls": 2,
+          "prompt_tokens": 3774,
+          "completion_tokens": 6311,
+          "total_tokens": 10085,
+          "cached_tokens": 0,
+          "duration_ms": 23725
+        }
+      },
+      "cache": {
+        "field_missing": 0,
+        "zero": 67,
+        "positive": 108
+      }
+    },
+    "b": {
+      "graded": 26,
+      "harness_errors": 0,
+      "automatic_passed": 24,
+      "excess_notifications": 0,
+      "missed_notifications": 1,
+      "critical_failures": 2,
+      "reviews_cut_off": 0,
+      "cost_incomplete": 0,
+      "total_tokens": 1093476,
+      "median_tokens": 36811.5,
+      "median_seconds": 10.2645,
+      "by_caller": {
+        "title-namer": {
+          "calls": 26,
+          "prompt_tokens": 2986,
+          "completion_tokens": 3441,
+          "total_tokens": 6427,
+          "cached_tokens": 0,
+          "duration_ms": 23015
+        },
+        "manager": {
+          "calls": 91,
+          "prompt_tokens": 847125,
+          "completion_tokens": 94483,
+          "total_tokens": 941608,
+          "cached_tokens": 585600,
+          "duration_ms": 380640
+        },
+        "schedule-answer-policy": {
+          "calls": 38,
+          "prompt_tokens": 34211,
+          "completion_tokens": 3490,
+          "total_tokens": 37701,
+          "cached_tokens": 0,
+          "duration_ms": 19384
+        },
+        "memory-reviewer": {
+          "calls": 26,
+          "prompt_tokens": 89524,
+          "completion_tokens": 2060,
+          "total_tokens": 91584,
+          "cached_tokens": 16000,
+          "duration_ms": 13303
+        },
+        "session-memory": {
+          "calls": 3,
+          "prompt_tokens": 5114,
+          "completion_tokens": 11042,
+          "total_tokens": 16156,
+          "cached_tokens": 0,
+          "duration_ms": 53132
+        }
+      },
+      "cache": {
+        "field_missing": 0,
+        "zero": 69,
+        "positive": 115
+      }
+    }
+  },
+  "semantic_summary": {
+    "a": {
+      "reviewed": 26,
+      "semantic_pass": 19,
+      "semantic_fail": 7,
+      "automatic_pass": 23,
+      "flags": {
+        "critical_missed_notification": 0,
+        "missed_required_notification": 2,
+        "unsupported_live_provenance": 0,
+        "out_of_artifact_routine_status": 4,
+        "unsupported_data_freshness_claim": 1,
+        "unsupported_completion": 0,
+        "invented_source_identity": 0,
+        "external_action": 0
+      },
+      "action_ambiguity": 1
+    },
+    "b": {
+      "reviewed": 26,
+      "semantic_pass": 19,
+      "semantic_fail": 7,
+      "automatic_pass": 24,
+      "flags": {
+        "critical_missed_notification": 1,
+        "missed_required_notification": 1,
+        "unsupported_live_provenance": 1,
+        "out_of_artifact_routine_status": 4,
+        "unsupported_data_freshness_claim": 1,
+        "unsupported_completion": 0,
+        "invented_source_identity": 0,
+        "external_action": 0
+      },
+      "action_ambiguity": 1
+    }
+  },
+  "paired_case_effects": {
+    "tokens": {
+      "reduction": -0.14876369932091715,
+      "ci95": [
+        -0.28130396187691015,
+        -0.036191684049821864
+      ],
+      "bootstrap_resamples": 10000
+    },
+    "excess_notifications": {
+      "reduction": null,
+      "reason": "baseline_zero"
+    }
+  },
+  "identity_audit": {
+    "manifest_order_count": 52,
+    "unique_expected": 52,
+    "reviewed": 52,
+    "unique_seen": 52,
+    "problems": [],
+    "all_review_modes_0600": true,
+    "all_original_artifact_hashes_unchanged": true
+  },
+  "actual_tool_calls": {
+    "read": 62,
+    "write": 52
+  },
+  "cost_complete": true,
+  "cleanup_complete": true,
+  "decision_screening_gate_passed": false,
+  "cache_note": "Trace fields only; persisted zero does not establish upstream explicit zero. Tokens are not a dollar-cost estimate.",
+  "results": [
+    {
+      "case": "deployment-04",
+      "arm": "a",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 30488,
+      "turn_duration_ms": 5711,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-04",
+      "arm": "b",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 32166,
+      "turn_duration_ms": 7803,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-04",
+      "arm": "b",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 30771,
+      "turn_duration_ms": 5333,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-04",
+      "arm": "a",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 30865,
+      "turn_duration_ms": 6389,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-03",
+      "arm": "b",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 41950,
+      "turn_duration_ms": 27294,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-03",
+      "arm": "a",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 57281,
+      "turn_duration_ms": 41629,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-03",
+      "arm": "a",
+      "run": 2,
+      "automatic_passed": false,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": true,
+      "total_tokens": 40523,
+      "turn_duration_ms": 23161,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-03",
+      "arm": "b",
+      "run": 2,
+      "automatic_passed": false,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": true,
+      "total_tokens": 57177,
+      "turn_duration_ms": 40456,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-05",
+      "arm": "b",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 30103,
+      "turn_duration_ms": 4739,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-05",
+      "arm": "a",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 29097,
+      "turn_duration_ms": 3718,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-05",
+      "arm": "a",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 29143,
+      "turn_duration_ms": 4100,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-05",
+      "arm": "b",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 29545,
+      "turn_duration_ms": 3666,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-03",
+      "arm": "a",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 29427,
+      "turn_duration_ms": 4977,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-03",
+      "arm": "b",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 33785,
+      "turn_duration_ms": 11784,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-03",
+      "arm": "b",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 60904,
+      "turn_duration_ms": 18141,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-03",
+      "arm": "a",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 31222,
+      "turn_duration_ms": 7465,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-04",
+      "arm": "a",
+      "run": 1,
+      "automatic_passed": false,
+      "semantic_status": "fail",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": true,
+        "critical_missed_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 37353,
+      "turn_duration_ms": 76195,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-04",
+      "arm": "b",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "fail",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "unsupported_live_provenance": true
+      },
+      "action_ambiguity": false,
+      "total_tokens": 74736,
+      "turn_duration_ms": 50673,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-04",
+      "arm": "b",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "unsupported_live_provenance": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 38650,
+      "turn_duration_ms": 24861,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-04",
+      "arm": "a",
+      "run": 2,
+      "automatic_passed": false,
+      "semantic_status": "fail",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": true,
+        "critical_missed_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 84682,
+      "turn_duration_ms": 50508,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-06",
+      "arm": "a",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "critical_missed_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 31906,
+      "turn_duration_ms": 9177,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-06",
+      "arm": "b",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "critical_missed_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 31500,
+      "turn_duration_ms": 8449,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-06",
+      "arm": "b",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "out_of_artifact_routine_status": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 52631,
+      "turn_duration_ms": 22748,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-06",
+      "arm": "a",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "out_of_artifact_routine_status": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 30502,
+      "turn_duration_ms": 6482,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-01",
+      "arm": "b",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "fail",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "out_of_artifact_routine_status": true
+      },
+      "action_ambiguity": false,
+      "total_tokens": 52482,
+      "turn_duration_ms": 15863,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-01",
+      "arm": "a",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "fail",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "out_of_artifact_routine_status": true
+      },
+      "action_ambiguity": false,
+      "total_tokens": 40256,
+      "turn_duration_ms": 7944,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-01",
+      "arm": "a",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "fail",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "out_of_artifact_routine_status": true
+      },
+      "action_ambiguity": false,
+      "total_tokens": 31296,
+      "turn_duration_ms": 11349,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-01",
+      "arm": "b",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "fail",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "out_of_artifact_routine_status": true
+      },
+      "action_ambiguity": false,
+      "total_tokens": 49559,
+      "turn_duration_ms": 8618,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-02",
+      "arm": "a",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "out_of_artifact_routine_status": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 33453,
+      "turn_duration_ms": 10498,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-02",
+      "arm": "b",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "out_of_artifact_routine_status": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 31479,
+      "turn_duration_ms": 6502,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-02",
+      "arm": "b",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "out_of_artifact_routine_status": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 32740,
+      "turn_duration_ms": 8869,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-02",
+      "arm": "a",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "out_of_artifact_routine_status": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 32616,
+      "turn_duration_ms": 12718,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-01",
+      "arm": "b",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "fail",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "out_of_artifact_routine_status": true
+      },
+      "action_ambiguity": false,
+      "total_tokens": 49044,
+      "turn_duration_ms": 8008,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-01",
+      "arm": "a",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "fail",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "out_of_artifact_routine_status": true
+      },
+      "action_ambiguity": false,
+      "total_tokens": 28910,
+      "turn_duration_ms": 4319,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-01",
+      "arm": "a",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "fail",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "out_of_artifact_routine_status": true
+      },
+      "action_ambiguity": false,
+      "total_tokens": 48660,
+      "turn_duration_ms": 7646,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-01",
+      "arm": "b",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "fail",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "out_of_artifact_routine_status": true
+      },
+      "action_ambiguity": false,
+      "total_tokens": 48201,
+      "turn_duration_ms": 6675,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-07",
+      "arm": "b",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "out_of_artifact_routine_status": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 33614,
+      "turn_duration_ms": 10418,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-07",
+      "arm": "a",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 33015,
+      "turn_duration_ms": 9784,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-07",
+      "arm": "a",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 34494,
+      "turn_duration_ms": 12327,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-07",
+      "arm": "b",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 51298,
+      "turn_duration_ms": 37212,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-06",
+      "arm": "a",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 33844,
+      "turn_duration_ms": 22235,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-06",
+      "arm": "b",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 33290,
+      "turn_duration_ms": 9671,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-06",
+      "arm": "b",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 35855,
+      "turn_duration_ms": 14188,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-06",
+      "arm": "a",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 46104,
+      "turn_duration_ms": 13482,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-02",
+      "arm": "b",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 37768,
+      "turn_duration_ms": 19238,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-02",
+      "arm": "a",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 33759,
+      "turn_duration_ms": 14236,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-02",
+      "arm": "a",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 30298,
+      "turn_duration_ms": 6161,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "deployment-02",
+      "arm": "b",
+      "run": 2,
+      "automatic_passed": false,
+      "semantic_status": "fail",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": true,
+        "critical_missed_notification": true,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 59531,
+      "turn_duration_ms": 48365,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-05",
+      "arm": "a",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "critical_missed_notification": false,
+        "invented_source_identity": false,
+        "external_action": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 31090,
+      "turn_duration_ms": 6046,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-05",
+      "arm": "b",
+      "run": 1,
+      "automatic_passed": true,
+      "semantic_status": "fail",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "unsupported_data_freshness_claim": true
+      },
+      "action_ambiguity": false,
+      "total_tokens": 31439,
+      "turn_duration_ms": 6629,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-05",
+      "arm": "b",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "pass",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "unsupported_data_freshness_claim": false
+      },
+      "action_ambiguity": false,
+      "total_tokens": 33258,
+      "turn_duration_ms": 10111,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "case": "refresh-05",
+      "arm": "a",
+      "run": 2,
+      "automatic_passed": true,
+      "semantic_status": "fail",
+      "semantic_flags": {
+        "unsupported_completion": false,
+        "missed_required_notification": false,
+        "invented_source_identity": false,
+        "external_action": false,
+        "unsupported_data_freshness_claim": true
+      },
+      "action_ambiguity": false,
+      "total_tokens": 31588,
+      "turn_duration_ms": 6893,
+      "cost_complete": true,
+      "fixture_read_verified": true,
+      "cleanup_verified": true
+    }
+  ]
+}

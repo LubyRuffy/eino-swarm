@@ -6,6 +6,8 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Added an opt-in, task-derived Super-agent monitoring decision trial with frozen inputs, private execution evidence and independent review. Its 52-round measurement did not clear the adoption gate; product behavior is unchanged. (#137)
+
 - Kept Mobile User center overlays inside the device safe area so the title and Close control remain below the iOS status bar. Review-only pages retain their existing layout. (`F-211`)
 
 - Android NOSEC sign-in uses the default external browser through the official Capacitor 7 launcher. Login metadata and browser acknowledgements have cancellable fifteen-second waits, so a missing native reply cannot leave checking active indefinitely. iOS keeps its Browser sheet. (`F-211`, `C-006`)
