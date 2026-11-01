@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { TextFilePreview } from "@/components/text-file-preview"
+import { ImageFilePreview } from "@/components/image-file-preview"
 import { FileDownload } from "@/components/file-download"
 import { ChevronDown, ChevronLeft, ChevronRight, FileText, Folder, Loader2, RefreshCw } from "lucide-react"
 
@@ -125,15 +126,15 @@ export function FileBrowser({ link, threadId, onClose }: {
         )}
       </header>
       {selected ? (
-        <section data-testid="phone-file-preview" className="flex min-h-0 flex-1 flex-col overflow-auto p-4">
-          <p className="mb-3 break-all text-xs text-muted-foreground">{selected.path}</p>
+        <section data-testid="phone-file-preview" className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
+          <p className="mb-3 max-h-16 shrink-0 overflow-auto break-all text-xs text-muted-foreground">{selected.path}</p>
           {fileLoading ? <p className="flex items-center gap-2 text-sm"><Loader2 className="size-4 animate-spin" />{t("files.loading")}</p> : null}
           {fileError ? <p role="alert" className="text-sm text-destructive">{fileError}</p> : null}
-          {file?.kind === "text" ? <TextFilePreview path={selected.path} text={file.text} /> : null}
-          {file?.kind === "image" ? <img src={file.url} alt={selected.name} className="max-h-full max-w-full self-center object-contain" /> : null}
+          {file?.kind === "text" ? <TextFilePreview key={file.url} path={selected.path} text={file.text} /> : null}
+          {file?.kind === "image" ? <ImageFilePreview key={file.url} src={file.url} name={selected.name} /> : null}
           {file?.kind === "pdf" ? <iframe src={file.url} title={selected.name} sandbox="allow-scripts" className="min-h-0 w-full flex-1 border-0" /> : null}
           {file?.kind === "download" ? <p className="text-sm text-muted-foreground">{t("files.unavailable")}</p> : null}
-          {file ? <FileDownload key={file.url} name={selected.name} url={file.url} bytes={file.bytes} mime={file.mime} /> : null}
+          {file ? <div className="shrink-0"><FileDownload key={file.url} name={selected.name} url={file.url} bytes={file.bytes} mime={file.mime} /></div> : null}
         </section>
       ) : (
         <section className="flex min-h-0 flex-1 flex-col">

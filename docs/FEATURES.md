@@ -288,6 +288,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 手机文本产出物按后缀选择 Markdown 文档或现有源码语言高亮；未知文本与超过 256 Ki 字符的文本完整显示为纯文本。HTML/SVG、MDX 组件不执行，原文件下载保持不变。证据：`mobile/src/components/text-file-preview.tsx`, `mobile/src/components/text-file-preview.test.tsx`, `mobile/src/components/file-browser.test.tsx`。
 
+- 手机预览工具：图片提供放大／缩小、比例、100% 原始大小及适应窗口，默认按比例适配且不放大小图；手动缩放 10%—400%，超大图初始适配可低于 10%，内容可横纵滚动，加载或解码失败禁用操作。Markdown、源码和纯文本提供 12—28 px 字号调整及重置，默认 14 px，标题／表格／代码同步缩放。工具栏及下载保留在内容滚动区外，重新打开恢复默认，下载保留原字节。关联契约：`C-020`；证据：`mobile/src/components/image-file-preview.tsx`, `mobile/src/components/image-file-preview.test.tsx`, `mobile/src/components/text-file-preview.test.tsx`, `mobile/e2e/file-preview-controls.spec.ts`。
+
 - 原生手机的下载打开系统保存／导出面板，选择位置后写出原文件；取消不显示成功，保存失败在预览中提示并允许重试。浏览器保留下载链接。证据：`mobile/src/components/file-download.tsx`, `mobile/src/lib/file-save.ts`, `mobile/src/components/file-browser.test.tsx`, `mobile/android/app/src/main/java/com/lubyruffy/zwai/FileSavePlugin.java`, `mobile/ios/App/App/FileSavePlugin.swift`；关联契约：`C-020`。
 
 ### F-230 Direct model chat

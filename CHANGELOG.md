@@ -41,6 +41,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-224`, `C-020`: Phone file previews offer image zoom in/out, 100% and fit
+  controls, plus text-size adjustment/reset for Markdown, source and plain text.
+  Controls stay visible while content scrolls; downloads retain original bytes.
+
 - `F-210` / `C-006`: Settings → Phone supports explicit NOSEC sign-in for a
   managed Gateway alongside compatible legacy hubs. The desktop opens the
   system browser, shows the public confirmation code/fingerprint and review

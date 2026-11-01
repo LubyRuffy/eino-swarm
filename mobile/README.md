@@ -178,6 +178,13 @@ files show a download action. In the Android/iOS app, **Download** opens the
 system save/export picker: choose a location to save the original bytes. A
 cancelled picker does not report success; a failed save keeps the preview and
 lets you retry. In a browser, Download remains a browser download.
+Image previews offer zoom in/out, a percentage, actual size (100%) and fit to
+window. They initially fit without enlarging small images; manual zoom spans
+10%–400%, with both axes scrollable. Loading or undecodable images disable
+zoom. Markdown, source and plain-text previews offer smaller/larger text
+(12–28 px, initially 14 px) and reset; headings, tables and code scale together.
+Controls and Download remain outside the scrolling content. Reopening a file
+resets its view; preview adjustments preserve the original download bytes.
 Full Settings, PTY and Trace stay on the PC; paired phones also expose PC timeout controls.
 
 While a PC turn runs, the empty composer shows a square Stop button. Typing a message or adding an attachment or quote switches it to Follow-up; Steer stays available for that draft. The header Stop remains available while drafting. A parked wait has no live turn to stop. In direct model chat, the square Stop cancels the stream, keeps the text received so far, and restores Send.

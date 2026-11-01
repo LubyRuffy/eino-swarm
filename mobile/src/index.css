@@ -112,6 +112,26 @@
   .md-body > :first-child {
     @apply mt-0;
   }
+  /* Preview text controls scale the document, including headings, tables and
+     code, without changing conversation typography or the downloaded bytes. */
+  .file-text-content .md-body {
+    font-size: inherit;
+  }
+  .file-text-content .md-body h1 {
+    font-size: 1.428571em;
+  }
+  .file-text-content .md-body h2 {
+    font-size: 1.285714em;
+  }
+  .file-text-content .md-body h3 {
+    font-size: 1.142857em;
+  }
+  .file-text-content .md-body :is(pre, code, table) {
+    font-size: 0.857143em;
+  }
+  .file-text-content .md-body :is(pre, table) code {
+    font-size: inherit;
+  }
   .md-body :is(h1, h2, h3, h4, h5, h6) {
     @apply mb-2 mt-4 font-semibold leading-snug;
   }

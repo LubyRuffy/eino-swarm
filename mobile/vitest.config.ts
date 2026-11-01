@@ -14,6 +14,7 @@ export default defineConfig({
     __ZWAI_WEB_VERSION__: JSON.stringify(shellVersion()),
   },
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: { "@": path.resolve(__dirname, "./src") },
   },
   test: {

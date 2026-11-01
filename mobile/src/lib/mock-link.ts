@@ -1,3 +1,4 @@
+import { OUTPUT_FILES } from "./mock-files"
 import { restartAskHistory } from "./mock-ask-restart"
 import { generationHistory } from "./mock-generation"
 import { backoffHistory } from "./mock-backoff"
@@ -61,10 +62,6 @@ import { stopReplayEnd, stopReplayStart } from "./mock-stop-replay"
 
 const MOCK_FLAG = "mock"
 const MOCK_HOST = "Walkthrough PC"
-const OUTPUT_FILES: Record<string, { text: string; mime: string }> = {
-  "outputs/report.md": { text: "# Verified output\n\n> A finding\n\n- First result\n", mime: "text/markdown" },
-  "outputs/sample.go": { text: 'package main\n\nconst value = "hello"\n', mime: "text/plain" },
-}
 /** Playwright drives the script; a human wants to watch it arrive. */
 const DEFAULT_TICK_MS = 420
 
@@ -819,13 +816,13 @@ export class MockLink {
         if (!thread()) return this.missing(id)
         return this.ok({ id, files: [
           { path: "outputs", name: "outputs", size: 0, dir: true, modified: "", uploaded: false },
-          ...Object.entries(OUTPUT_FILES).map(([path, file]) => ({ path, name: path.split("/").at(-1)!, size: new TextEncoder().encode(file.text).length, dir: false, modified: "", uploaded: false })),
+          ...Object.entries(OUTPUT_FILES).map(([path, file]) => ({ path, name: path.split("/").at(-1)!, size: file.bytes.length, dir: false, modified: "", uploaded: false })),
         ], more: false })
       case OpFileChunk: {
         if (!thread()) return this.missing(id)
         const file = OUTPUT_FILES[req.file_path ?? ""]
         if (!file) return this.missing(id)
-        const bytes = new TextEncoder().encode(file.text)
+        const bytes = file.bytes
         const offset = req.before ?? 0
         const data = Array.from(bytes.slice(offset)).map((byte) => String.fromCharCode(byte)).join("")
         return this.ok({ id, file_chunk: {
