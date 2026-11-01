@@ -486,6 +486,22 @@ Pairlink encrypted RPC and PC-side model execution remain unchanged.
 
 The PC stays the system of record. A phone never hits gin `/api`. Anonymous
 binding uses a QR; an approved account can select an owned PC without a QR.
+`gateway-link-upgrade.ts` also reconciles already saved anonymous PCs after
+account refresh: exact owner ID, full host public key and canonical complete
+Hub base path must match. It shares issuance with explicit selection, replaces
+the still-current saved credential with one atomic write, and preserves PC
+order, active selection and per-PC thread. Only the selected PC reconnects.
+API failure retains the old record; after a successful server rotation, a
+failed local write retains the returned credential in bounded memory while
+pausing retired-ticket use. Refresh retries that write without another rotation;
+transport failure retains the persisted managed credential. Logout/changed
+account/forgotten or re-scanned records fence late results. QR redemption cannot
+overlap account issuance for the same complete Hub/public key. A Gateway lacking
+owner/full-key fields does not trigger automatic migration. Signing out removes
+migrated managed tickets and never resurrects their anonymous predecessors.
+`use-phone-link-lifecycle.ts` closes the old transport before opening replacement
+authority, including same-fingerprint ticket/session changes, and fences late
+opens and completion handlers by generation, including after component unmount.
 The current phone client uses the hub WebSocket relay. Pairlink can also
 support UDP with compatible peers. The hub sees
 fingerprints and ciphertext length, not projects or events. The desktop host

@@ -10,6 +10,7 @@ import {
   OpLog,
   OpMore,
   OpOpen,
+  OpSend,
   OpStart,
   OpUnwatch,
   OpWatch,
@@ -25,6 +26,9 @@ vi.mock("@/lib/client", async (importOriginal) => {
 })
 
 import { App } from "./app"
+import { PhoneApp } from "./components/phone-app"
+import { saveGatewaySession } from "./lib/gateway-account"
+import { upgradeAnonymousGatewayLinks } from "./lib/gateway-link-upgrade"
 
 function seedLink() {
   saveLink({
@@ -196,6 +200,175 @@ describe("selecting a PC returns to its inbox", () => {
   afterEach(() => {
     cleanup()
     vi.mocked(openSaved).mockReset()
+  })
+
+  it("replaces same-PC anonymous authority by closing the old connection before opening the account ticket", async () => {
+    seedLink()
+    const order: string[] = []
+    const first = hostLink({ threads: [] })
+    first.close = () => { order.push("old-close") }
+    vi.mocked(openSaved).mockImplementation(async (saved) => {
+      order.push("open-" + saved.ticket)
+      return saved.ticket === "tick" ? first : hostLink({ threads: [] })
+    })
+    render(<PhoneApp />)
+    await waitFor(() => expect(openSaved).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      saveGatewaySession({ origin: "http://127.0.0.1:9", token: "agm_" + "b".repeat(64), user: { id: "u1", username: "user", approval_status: "approved" }, device: { id: "m1", expires_at: "2099-01-01T00:00:00Z" } })
+      saveLink({ hubURL: "http://127.0.0.1:9", ticket: "managed", hostPub: "pub", sessionID: "managed-session", fingerprint: "fp", gatewayOrigin: "http://127.0.0.1:9", gatewayOwnerID: "u1", gatewayHostID: "pc1", gatewayMobileID: "m1" })
+      window.dispatchEvent(new Event("zwai.gateway.account"))
+    })
+    await waitFor(() => expect(openSaved).toHaveBeenCalledTimes(2))
+    expect(order).toEqual(["open-tick", "old-close", "open-managed"])
+  })
+
+  it("closes a candidate which finishes opening after PhoneApp unmount", async () => {
+    seedLink()
+    let finish!: (link: DeviceLink) => void
+    vi.mocked(openSaved).mockReturnValue(new Promise((resolve) => { finish = resolve }))
+    const { unmount } = render(<PhoneApp />)
+    const late = hostLink({ threads: [] })
+    late.close = vi.fn()
+    unmount()
+    await act(async () => { finish(late) })
+    expect(late.close).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps one opening candidate through same-authority account announcements", async () => {
+    seedLink()
+    let finish!: (link: DeviceLink) => void
+    vi.mocked(openSaved).mockReturnValue(new Promise((resolve) => { finish = resolve }))
+    render(<PhoneApp />)
+    await act(async () => {
+      for (let n = 0; n < 3; n++) window.dispatchEvent(new Event("zwai.gateway.account"))
+      window.dispatchEvent(new CustomEvent("zwai.gateway.connect", { detail: "fp" }))
+    })
+    expect(openSaved).toHaveBeenCalledTimes(1)
+    const candidate = hostLink({ threads: [] })
+    candidate.close = vi.fn()
+    await act(async () => { finish(candidate) })
+    expect(candidate.close).not.toHaveBeenCalled()
+  })
+
+  it("cannot let an old recovery finish clear the replacement generation's opening operation", async () => {
+    seedLink()
+    const first = hostLink({ threads: [] })
+    let alive = true
+    first.alive = () => alive
+    let oldFinish!: (link: DeviceLink) => void
+    let newFinish!: (link: DeviceLink) => void
+    vi.mocked(openSaved).mockResolvedValueOnce(first)
+      .mockImplementationOnce(() => new Promise((resolve) => { oldFinish = resolve }))
+      .mockImplementationOnce(() => new Promise((resolve) => { newFinish = resolve }))
+    render(<PhoneApp />)
+    await waitFor(() => expect(openSaved).toHaveBeenCalledTimes(1))
+    await act(async () => { alive = false; first.onDisconnect?.(new Error("offline")) })
+    expect(openSaved).toHaveBeenCalledTimes(2)
+    await act(async () => {
+      saveLink({ hubURL: "http://127.0.0.1:9", ticket: "new", hostPub: "pub", sessionID: "new", fingerprint: "fp" })
+      window.dispatchEvent(new Event("zwai.gateway.account"))
+    })
+    expect(openSaved).toHaveBeenCalledTimes(3)
+    const late = hostLink({ threads: [] })
+    late.close = vi.fn()
+    await act(async () => { oldFinish(late); window.dispatchEvent(new Event("zwai.gateway.account")) })
+    expect(late.close).toHaveBeenCalledTimes(1)
+    expect(openSaved).toHaveBeenCalledTimes(3)
+    const replacement = hostLink({ threads: [] })
+    replacement.close = vi.fn()
+    await act(async () => { newFinish(replacement) })
+    expect(replacement.close).not.toHaveBeenCalled()
+    expect(openSaved).toHaveBeenCalledTimes(3)
+  })
+
+  it("restores the current thread after account takeover without sending the user's turn twice", async () => {
+    seedLink()
+    const send = vi.fn(async () => ({ v: 1, id: "s", ok: true }))
+    const reopen = vi.fn(async () => ({ v: 1, id: "o", ok: true, detail: { id: "th-1", title: "th-1" } }))
+    const first = hostLink({ send })
+    const next = hostLink({ send, open: reopen })
+    vi.mocked(openSaved).mockResolvedValueOnce(first).mockResolvedValueOnce(next)
+    render(<PhoneApp />)
+    fireEvent.click(await screen.findByRole("button", { name: t("home.open", { title: "th-1" }) }))
+    fireEvent.change(await screen.findByLabelText(t("thread.message")), { target: { value: "Continue my work" } })
+    fireEvent.click(screen.getByRole("button", { name: t("thread.send") }))
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      saveGatewaySession({ origin: "http://127.0.0.1:9", token: "agm_" + "b".repeat(64), user: { id: "u1", username: "user", approval_status: "approved" }, device: { id: "m1", expires_at: "2099-01-01T00:00:00Z" } })
+      saveLink({ hubURL: "http://127.0.0.1:9", ticket: "managed", hostPub: "pub", sessionID: "new", fingerprint: "fp", gatewayOrigin: "http://127.0.0.1:9", gatewayOwnerID: "u1", gatewayHostID: "pc1", gatewayMobileID: "m1" })
+      window.dispatchEvent(new Event("zwai.gateway.account"))
+    })
+    await waitFor(() => expect(reopen).toHaveBeenCalledTimes(1))
+    expect(screen.getByRole("heading", { name: "th-1" })).toBeInTheDocument()
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send.mock.calls[0]).toEqual([expect.objectContaining({ op: OpSend, thread_id: "th-1", text: "Continue my work" })])
+  })
+
+  it("retries when the installed link drops during its first inbox request", async () => {
+    seedLink()
+    let rejectList!: (error: Error) => void
+    const first = hostLink({ list: () => new Promise((_resolve, reject) => { rejectList = reject }) })
+    let alive = true
+    first.alive = () => alive
+    vi.mocked(openSaved).mockResolvedValueOnce(first).mockResolvedValueOnce(hostLink({ threads: [] }))
+    render(<PhoneApp />)
+    await waitFor(() => expect(rejectList).toBeTypeOf("function"))
+    await act(async () => {
+      alive = false
+      first.onDisconnect?.(new Error("offline"))
+      rejectList(new Error("offline"))
+    })
+    await waitFor(() => expect(openSaved).toHaveBeenCalledTimes(2), { timeout: 2200 })
+  })
+
+  it("retries when a replacement link drops while restoring the existing thread watch", async () => {
+    seedLink()
+    let rejectWatch!: (error: Error) => void
+    let alive = true
+    const replacement = hostLink({ watch: () => new Promise((_resolve, reject) => { rejectWatch = reject }) })
+    replacement.alive = () => alive
+    vi.mocked(openSaved).mockResolvedValueOnce(hostLink()).mockResolvedValueOnce(replacement).mockResolvedValueOnce(hostLink())
+    render(<PhoneApp />)
+    fireEvent.click(await screen.findByRole("button", { name: t("home.open", { title: "th-1" }) }))
+    await screen.findByLabelText(t("thread.message"))
+    await act(async () => {
+      saveLink({ hubURL: "http://127.0.0.1:9", ticket: "new", hostPub: "pub", sessionID: "new", fingerprint: "fp" })
+      window.dispatchEvent(new Event("zwai.gateway.account"))
+    })
+    await waitFor(() => expect(rejectWatch).toBeTypeOf("function"))
+    await act(async () => {
+      alive = false
+      replacement.onDisconnect?.(new Error("offline"))
+      rejectWatch(new Error("offline"))
+    })
+    await waitFor(() => expect(openSaved).toHaveBeenCalledTimes(3), { timeout: 2200 })
+  })
+
+  it("pauses the retired anonymous socket after a local save failure and reconnects only after saving the new ticket", async () => {
+    const origin = "http://127.0.0.1:9"
+    const hostPub = "D".repeat(42) + "A"
+    const session = { origin, token: "agm_" + "b".repeat(64), user: { id: "u1", username: "user", approval_status: "approved" }, device: { id: "m1", expires_at: "2099-01-01T00:00:00Z" } }
+    const host = { id: "pc1", name: "PC", hostname: "pc", version: "1", enabled: true, online: true, owner_user_id: "u1", host_pub: hostPub }
+    saveLink({ hubURL: origin, hostPub, ticket: "tick", sessionID: "old", fingerprint: "fp" })
+    const first = hostLink({ threads: [] })
+    first.close = vi.fn()
+    vi.mocked(openSaved).mockResolvedValueOnce(first).mockResolvedValueOnce(hostLink({ threads: [] }))
+    render(<PhoneApp />)
+    await waitFor(() => expect(openSaved).toHaveBeenCalledTimes(1))
+    await act(async () => { saveGatewaySession(session) })
+    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ data: { binding_id: "b1", host_pub: hostPub, ticket: "c".repeat(64), session_id: "d".repeat(32) } })))
+    const write = localStorage.setItem.bind(localStorage)
+    const storage = vi.spyOn(localStorage, "setItem").mockImplementation((key, value) => { if (key === "zwai.remote.links") throw new Error("quota"); write(key, value) })
+    try {
+      await act(async () => { await expect(upgradeAnonymousGatewayLinks(session, [host], () => true)).rejects.toThrow("quota") })
+      expect(first.close).toHaveBeenCalledTimes(1)
+      expect(openSaved).toHaveBeenCalledTimes(1)
+      storage.mockRestore()
+      await act(async () => { await upgradeAnonymousGatewayLinks(session, [host], () => true) })
+      await waitFor(() => expect(openSaved).toHaveBeenCalledTimes(2))
+      expect(vi.mocked(openSaved).mock.calls[1][0].ticket).toBe("c".repeat(64))
+      expect(fetcher).toHaveBeenCalledTimes(1)
+    } finally { storage.mockRestore(); fetcher.mockRestore() }
   })
 
   it("returns to the startup PC after selecting another PC and reconnecting through the account page", async () => {
@@ -719,6 +892,7 @@ function hostLink(opts?: {
   watch?: () => Promise<RemoteResponse>
   log?: (req: Partial<RemoteRequest>) => Promise<RemoteResponse>
   start?: (req: Partial<RemoteRequest>) => Promise<RemoteResponse>
+  send?: (req: Partial<RemoteRequest>) => Promise<RemoteResponse>
   more?: (req: Partial<RemoteRequest>) => Promise<RemoteResponse>
   clients?: (req: Partial<RemoteRequest>) => Promise<RemoteResponse>
 }): DeviceLink {
@@ -734,6 +908,7 @@ function hostLink(opts?: {
     rpc: async (req: Partial<RemoteRequest>): Promise<RemoteResponse> => {
       if (req.op === OpHello) return { v: 1, id: "h", ok: true }
       if (req.op === OpStart && opts?.start) return opts.start(req)
+      if (req.op === OpSend && opts?.send) return opts.send(req)
       if (req.op === OpList) {
         if (opts?.list) return opts.list()
         return { v: 1, id: "l", ok: true, threads, running, projects: opts?.projects ?? [] }

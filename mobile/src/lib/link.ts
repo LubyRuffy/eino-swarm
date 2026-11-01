@@ -3,6 +3,7 @@ import { mockLink, wantsMock } from "./mock-link"
 import type { RemoteRequest, RemoteResponse } from "./rpc"
 import type { SavedLink } from "./store"
 import { gatewayLinkForReconnect } from "./gateway-account"
+import { gatewayUpgradePending } from "./gateway-link-upgrade"
 
 /** Everything the app asks of a PC. The product link is a sealed WebSocket
  *  (`DeviceLink`); the walkthrough link is scripted and offline. */
@@ -21,5 +22,6 @@ export type RemoteLink = {
 
 export async function openLink(saved: SavedLink): Promise<RemoteLink> {
   if (wantsMock()) return mockLink()
+  if (gatewayUpgradePending(saved)) throw new Error("pc_upgrade_pending")
   return openSaved(saved.gatewayOwnerID ? gatewayLinkForReconnect(saved) : saved)
 }

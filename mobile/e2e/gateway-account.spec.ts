@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
+import { startAccountFixture } from "./account-fixture/browser-fixture"
 
 const origin = "https://ai.fofa.info:2440"
 const token = "agm_" + "a".repeat(64)
@@ -177,6 +178,130 @@ test("device-only account can select an online PC without QR or API permission",
   const links = await page.evaluate(() => JSON.parse(localStorage.getItem("zwai.remote.links") || "[]"))
   expect(links.filter((link: { gatewayHostID?: string }) => Boolean(link.gatewayHostID))).toHaveLength(1)
   expect(links.find((link: { gatewayHostID?: string }) => Boolean(link.gatewayHostID))).toMatchObject({ gatewayHostID: "pc-online", gatewayOwnerID: "owner", gatewayOrigin: origin })
+})
+
+test("same-account login merges a saved anonymous PC and preserves the selected independent Hub", async ({ page }, testInfo) => {
+  await approved(page)
+  const hostPub = "D".repeat(42) + "A"
+  await page.addInitScript(({ origin, hostPub }) => {
+    localStorage.setItem("zwai.remote.links", JSON.stringify([
+      { hubURL: origin + "/", hostPub, fingerprint: "saved-pc", ticket: "anonymous", sessionID: "a".repeat(32), label: "原电脑" },
+      { hubURL: "https://independent.invalid", hostPub, fingerprint: "other-hub", ticket: "other", sessionID: "b".repeat(32), label: "独立电脑" },
+    ]))
+    localStorage.setItem("zwai.remote.active", "other-hub")
+    localStorage.setItem("zwai.remote.lastThread.saved-pc", "last-thread")
+  }, { origin, hostPub })
+  // Exercise real storage/UI with synthetic control responses; never open an
+  // external Pairlink socket from this browser regression.
+  await page.routeWebSocket("wss://**", (socket) => socket.close())
+  const calls = await fixture(page, { hosts: [{ id: "pc-online", name: "办公电脑", hostname: "work", version: "1", online: true, enabled: true, owner_user_id: user.id, host_pub: hostPub }] })
+  await page.goto("/")
+  await expect.poll(() => calls.filter((call) => call.path.endsWith("/connect")).length).toBe(1)
+  await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("zwai.remote.links") || "[]")[0].gatewayOwnerID)).toBe(user.id)
+  const state = await page.evaluate(() => ({ links: JSON.parse(localStorage.getItem("zwai.remote.links") || "[]"), active: localStorage.getItem("zwai.remote.active"), last: localStorage.getItem("zwai.remote.lastThread.saved-pc") }))
+  expect(state).toMatchObject({ active: "other-hub", last: "last-thread", links: [
+    { fingerprint: "saved-pc", gatewayOwnerID: user.id, gatewayHostID: "pc-online", label: "原电脑", ticket: "b".repeat(64) },
+    { fingerprint: "other-hub", ticket: "other" },
+  ] })
+  expect(state.links).toHaveLength(2)
+  await page.getByRole("button", { name: "菜单" }).click()
+  await page.getByRole("menuitem", { name: "用户中心" }).click()
+  await page.getByRole("button", { name: "刷新账号" }).click()
+  expect(calls.filter((call) => call.path.endsWith("/connect"))).toHaveLength(1)
+  expect(calls.some((call) => call.path.includes("pairings"))).toBe(false)
+  await page.screenshot({ path: testInfo.outputPath("anonymous-account-merged.png") })
+  await page.getByRole("button", { name: "退出登录" }).click()
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("zwai.remote.links") || "[]").map((link: { fingerprint: string }) => link.fingerprint))).toEqual(["other-hub"])
+})
+
+test("real anonymous QR becomes one account connection and the replacement ticket reaches PC RPC", async ({ page }, testInfo) => {
+  test.setTimeout(150_000)
+  const real = await startAccountFixture(testInfo)
+  const state = async () => (await (await page.request.get(real.origin + "/fixture/state")).json()).data as {
+    counts: Record<string, number>; active_bindings: number; retired_bindings: number; host_online: boolean; mobile_online: boolean
+  }
+  const sockets: { closed: boolean; received: number }[] = []
+  page.on("websocket", (socket) => {
+    if (!socket.url().startsWith(real.origin.replace("http:", "ws:") + "/pairlink/")) return
+    const observed = { closed: false, received: 0 }
+    sockets.push(observed)
+    socket.on("close", () => { observed.closed = true })
+    socket.on("framereceived", () => { observed.received++ })
+  })
+  try {
+    await page.request.get(real.origin + "/fixture/control?review=approved&pc=hide&api=off")
+    const offer = (await (await page.request.get(real.origin + "/fixture/anonymous-offer?origin=primary")).json()).data.uri as string
+    await page.addInitScript((gateway) => { localStorage.setItem("zwai.phone.gateway.origin", gateway) }, real.origin)
+    await page.goto("/")
+    await page.getByLabel("配对 URI").fill(offer)
+    await page.getByRole("button", { name: "粘贴并绑定", exact: true }).click()
+    await expect(page.getByRole("button", { name: /Native PC conversation/ })).toBeVisible()
+    const anonymous = await page.evaluate(() => JSON.parse(localStorage.getItem("zwai.remote.links") || "[]"))
+    expect(anonymous).toHaveLength(1)
+    expect(anonymous[0].gatewayOwnerID).toBeUndefined()
+    expect((await state()).active_bindings).toBe(1)
+    expect((await state()).counts.connect || 0).toBe(0)
+    expect(sockets.filter((socket) => !socket.closed)).toHaveLength(1)
+    await page.screenshot({ path: testInfo.outputPath("real-anonymous-PC-RPC.png"), animations: "disabled" })
+
+    await page.getByRole("button", { name: "菜单", exact: true }).click()
+    await page.getByRole("menuitem", { name: "用户中心", exact: true }).click()
+    const popup = page.waitForEvent("popup")
+    await page.getByRole("button", { name: "使用 NOSEC 登录", exact: true }).click()
+    const browser = await popup
+    await browser.getByRole("button", { name: "Sign in to test NOSEC", exact: true }).click()
+    await browser.getByRole("button", { name: "Authorize test device", exact: true }).click()
+    await expect(browser.getByRole("heading", { name: "Device authorized. Return to zwai.", exact: true })).toBeVisible()
+    await browser.close()
+    await expect(page.getByText("API 权限当前不可用，请联系管理员。", { exact: true })).toBeVisible({ timeout: 15_000 })
+    expect((await state()).counts.connect || 0).toBe(0)
+    await expect.poll(() => sockets.filter((socket) => !socket.closed).length).toBe(1)
+
+    // The phone logs in first; a later Desktop login becomes visible on refresh.
+    // A new durable PC thread proves the replacement transport did a fresh RPC.
+    const proofTitle = "Account upgrade RPC proof"
+    await page.request.get(real.origin + "/fixture/control?pc=show&new_thread=" + encodeURIComponent(proofTitle))
+    await page.getByRole("button", { name: "刷新账号", exact: true }).click()
+    await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("zwai.remote.links") || "[]")[0]?.gatewayOwnerID)).toBe("native-owner")
+    const managed = await page.evaluate(() => ({ links: JSON.parse(localStorage.getItem("zwai.remote.links") || "[]"), active: localStorage.getItem("zwai.remote.active") }))
+    expect(managed.links).toHaveLength(1)
+    expect(managed.active).toBe(anonymous[0].fingerprint)
+    expect(managed.links[0]).toMatchObject({ fingerprint: anonymous[0].fingerprint, hostPub: anonymous[0].hostPub, gatewayHostID: "native-pc", gatewayOwnerID: "native-owner" })
+    expect(managed.links[0].ticket).not.toBe(anonymous[0].ticket)
+    expect(managed.links[0].sessionID).not.toBe(anonymous[0].sessionID)
+    await page.getByRole("button", { name: "关闭", exact: true }).click()
+    await expect(page.getByRole("button", { name: new RegExp(proofTitle) })).toBeVisible()
+    await page.getByRole("button", { name: new RegExp(proofTitle) }).click()
+    await expect(page.getByRole("heading", { name: proofTitle, exact: true })).toBeVisible()
+    // Checking temporarily unmounts PhoneApp; approving it may reopen the
+    // anonymous transport before the PC logs in. Historical dials are valid;
+    // every one must close before the managed route remains the sole live one.
+    expect(sockets.length).toBeGreaterThanOrEqual(2)
+    await expect.poll(() => sockets.slice(0, -1).every((socket) => socket.closed)).toBe(true)
+    expect(sockets.filter((socket) => !socket.closed)).toHaveLength(1)
+    expect(sockets.at(-1)!.received).toBeGreaterThan(0)
+    const upgraded = await state()
+    expect(upgraded).toMatchObject({ active_bindings: 1, retired_bindings: 1, host_online: true, mobile_online: true })
+    expect(upgraded.counts.connect).toBe(1)
+    expect(upgraded.counts.qr_redeem).toBe(1)
+    expect(upgraded.counts.anonymous_authorization_leak || 0).toBe(0)
+    await page.screenshot({ path: testInfo.outputPath("real-account-replacement-PC-RPC.png"), animations: "disabled" })
+
+    await page.getByRole("button", { name: "返回", exact: true }).click()
+    await page.getByRole("button", { name: "菜单", exact: true }).click()
+    await page.getByRole("menuitem", { name: "用户中心", exact: true }).click()
+    await page.getByRole("button", { name: "刷新账号", exact: true }).click()
+    expect((await state()).counts.connect).toBe(1)
+    await page.getByRole("button", { name: "退出登录", exact: true }).click()
+    await expect.poll(async () => (await state()).mobile_online).toBe(false)
+    // Local sign-out closes the socket before the asynchronous server logout
+    // finishes. Its receipt is incremented only after ticket retirement.
+    await expect.poll(async () => (await state()).counts.logout || 0).toBe(1)
+    expect(await state()).toMatchObject({ active_bindings: 0, retired_bindings: 2, host_online: true })
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("zwai.remote.links") || "[]"))).toEqual([])
+    await page.screenshot({ path: testInfo.outputPath("real-account-logout-disconnect.png"), animations: "disabled" })
+    await testInfo.attach("real-account-upgrade-state", { body: JSON.stringify(await state()), contentType: "application/json" })
+  } finally { await real.cleanup() }
 })
 
 

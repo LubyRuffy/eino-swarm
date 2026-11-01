@@ -1,5 +1,6 @@
 import { b64urlToBytes, bytesToB64url } from "./bytes"
 import { fromPrivate, generateIdentity, type Identity } from "./crypto"
+import { sameLinkAuthority } from "./link-authority"
 
 const ID_KEY = "zwai.remote.identity"
 const LINK_KEY = "zwai.remote.link"
@@ -127,6 +128,17 @@ export function saveLink(link: SavedLink) {
     localStorage.setItem(LAST_KEY + "." + next.fingerprint, legacyLast)
   }
   writeLinks(rest)
+}
+
+/** Upgrade one still-current record without selecting/reordering other PCs. */
+export function replaceSavedLink(expected: SavedLink, replacement: SavedLink): boolean {
+  const links = loadSavedLinks()
+  const index = links.findIndex((row) => sameLinkAuthority(row, expected))
+  if (index < 0 || replacement.fingerprint !== expected.fingerprint) return false
+  links[index] = { ...replacement, label: links[index].label || replacement.label }
+  // One atomic storage write; active PC and per-PC last thread remain untouched.
+  localStorage.setItem(LINKS_KEY, JSON.stringify(links))
+  return true
 }
 
 /** Cache the name this PC sent on hello/list. Does not steal the active chip. */

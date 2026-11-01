@@ -14,7 +14,12 @@ that managed credentials cannot enter personal-provider storage, identical model
 names retain distinct provider IDs, a missing account source cancels its active
 stream, and a stored server thread cannot fall back to a private same-named
 model. App tests cover the startup-PC → other-PC → account-selected startup-PC
-path and Android Back closing account overlays.
+path and Android Back closing account overlays. Anonymous-upgrade tests match
+the complete Hub endpoint, public key and owner; preserve inactive PCs, labels,
+selection and last thread; serialize refresh/Connect/QR issuance; and retain a
+rotated ticket across local storage failure. App regressions assert close before
+replacement, late-result isolation, first-list/watch disconnect recovery and
+one `OpSend` across restoration of the same conversation.
 
 `gateway-login-lifecycle.test.tsx` keeps the production native metadata/opener
 promises unsettled: cancellation must end the local task, a fifteen-second wait
@@ -40,9 +45,19 @@ The Chromium safe-area case overrides CSS `env(safe-area-inset-*)` through CDP,
 then checks signed-out and approved account-overlay title/Close bounds, center
 hit testing and actual dismissal. WebKit retains the account-flow regression;
 real iOS layout acceptance separately verifies its native safe-area values.
-Its PC transport uses the existing scripted MockLink; it does not claim actual
-Pairlink, native browser login, production NOSEC or physical-device acceptance.
-Gateway real HTTP/WebSocket/Noise tests cover its matching account-connect wire.
+Those source-selection cases use the existing scripted MockLink. The separate
+`real anonymous QR becomes one account connection and the replacement ticket
+reaches PC RPC` case uses `mobile/e2e/account-fixture`: a real relay, Noise and
+PC/Eino RPC behind a synthetic local CAS. It binds an anonymous QR on the same
+Hub, logs in before the PC is visible, then refreshes discovery and verifies one
+saved record, one live binding, new ticket/session identity, retired sockets
+and a newly created PC conversation read over the replacement transport.
+Repeated refresh must not rotate again; logout removes the managed connection
+and leaves the PC online. The fixture's
+`TestFixtureAnonymousUpgradeUsesSameIdentityAndRetiresOnlyThatPhone` also checks
+another phone's binding survives. Gateway tests independently exercise the real
+account/ownership mutation and selective HTTP/WebSocket revocation. These local
+tests do not prove production NOSEC, native browser or physical-device behavior.
 Run the normal complete mobile unit/E2E suites and production build; isolate E2E
 ports and output directories. Native iOS/Android acceptance and publication
 remain separate required delivery stages.

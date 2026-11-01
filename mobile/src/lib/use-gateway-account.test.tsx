@@ -4,6 +4,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { saveGatewaySession, type GatewaySession } from "./gateway-account"
 import { useGatewayAccount } from "./use-gateway-account"
 import { loadSavedLinks, saveLink } from "./store"
+import { bytesToB64url } from "./bytes"
+import { fingerprint } from "./crypto"
 
 vi.mock("@capacitor/browser", () => ({ Browser: { open: vi.fn(async () => undefined) } }))
 vi.mock("@capacitor/core", () => ({ Capacitor: { getPlatform: () => "ios", isNativePlatform: () => false }, registerPlugin: () => ({}) }))
@@ -22,6 +24,54 @@ const bootstrap = {
 
 beforeEach(() => { localStorage.clear(); vi.useFakeTimers(); vi.clearAllMocks(); native.resumed = undefined })
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+
+it("upgrades an existing anonymous PC after both devices join the same account", async () => {
+  const pub = new Uint8Array(32).fill(7)
+  const hostPub = bytesToB64url(pub)
+  saveLink({ hubURL: origin + "/", hostPub, fingerprint: fingerprint(pub), ticket: "old", sessionID: "old", label: "My PC" })
+  saveGatewaySession(session)
+  const connect = vi.fn()
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    if (url.endsWith("/auth/me")) return response({ user: session.user, device: session.device })
+    if (url.endsWith("/bootstrap")) return response(bootstrap)
+    if (url.endsWith("/connect")) { connect(); return response({ binding_id: "binding", ticket: "a".repeat(64), host_pub: hostPub, session_id: "b".repeat(32) }) }
+    if (url.includes("/link-hosts")) return response([{ id: "pc-1", name: "Desktop", hostname: "pc", enabled: true, online: true, owner_user_id: "u1", host_pub: hostPub }])
+    return response({ ok: true })
+  }))
+  const { result, unmount } = renderHook(useGatewayAccount)
+  await act(async () => { await Promise.resolve(); await Promise.resolve() })
+  expect(result.current.status).toBe("authorized")
+  expect(connect).toHaveBeenCalledTimes(1)
+  expect(loadSavedLinks()).toEqual([expect.objectContaining({ gatewayOwnerID: "u1", gatewayHostID: "pc-1", ticket: "a".repeat(64), label: "My PC" })])
+  await act(async () => { await result.current.refresh() })
+  expect(connect).toHaveBeenCalledTimes(1)
+  unmount()
+})
+
+it("upgrades on a later foreground refresh when the desktop signs in after the phone", async () => {
+  const pub = new Uint8Array(32).fill(8)
+  const hostPub = bytesToB64url(pub)
+  saveLink({ hubURL: origin, hostPub, fingerprint: fingerprint(pub), ticket: "old", sessionID: "old" })
+  saveGatewaySession(session)
+  let online = false
+  const connect = vi.fn()
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    if (url.endsWith("/auth/me")) return response({ user: session.user, device: session.device })
+    if (url.endsWith("/bootstrap")) return response(bootstrap)
+    if (url.endsWith("/connect")) { connect(); return response({ binding_id: "b1", ticket: "a".repeat(64), host_pub: hostPub, session_id: "b".repeat(32) }) }
+    if (url.includes("/link-hosts")) return response(online ? [{ id: "pc-1", enabled: true, online: true, owner_user_id: "u1", host_pub: hostPub }] : [])
+    return response({ ok: true })
+  }))
+  const { result, unmount } = renderHook(useGatewayAccount)
+  await act(async () => { await Promise.resolve(); await Promise.resolve() })
+  expect(result.current.status).toBe("authorized")
+  expect(connect).not.toHaveBeenCalled()
+  online = true
+  await act(async () => { native.resumed?.({ isActive: true }); await Promise.resolve(); await Promise.resolve() })
+  expect(connect).toHaveBeenCalledTimes(1)
+  expect(loadSavedLinks()[0].gatewayHostID).toBe("pc-1")
+  unmount()
+})
 
 it("waits for review without PC/model requests, then activates the approved account without creating a binding", async () => {
   let polled = 0

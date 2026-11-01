@@ -111,6 +111,7 @@ export function remoteError(detail: string): string {
 
 export function linkError(err: unknown, managed = false): string {
   const fault = linkFault(err)
+  if (fault.message === "pc_upgrade_pending" || fault.message === "pc_pairing_busy") return t("account.upgradeFailed")
   if (fault.message === "host offline") return t(managed ? "account.hostOffline" : "scan.hostOffline")
   if (fault.kind === "remote") return remoteError(fault.message)
   if (NET_TIMEOUT.has(fault.message)) {

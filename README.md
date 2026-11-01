@@ -655,6 +655,11 @@ its review status. Once approved, **User center → Your computers** lists PCs
 signed in to the same account. Choose an online PC to connect without scanning;
 the phone remembers that selection and reconnects only that PC. A signed-in
 account without API permission can still manage its device connections.
+An existing anonymous pairing moves to account management when both devices
+sign in to the same account, matching the complete Hub address and full PC
+public key. It keeps one saved PC and reconnects only the currently selected
+PC; other Hubs/accounts remain independent. Signing out removes the migrated
+managed ticket rather than restoring its retired anonymous credential.
 Authorized server models appear in the phone's **Chat** model picker even when
 no PC is connected. Phone-configured endpoints remain separate sources, and
 PC conversations continue using the PC catalog and execution. Connecting or

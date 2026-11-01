@@ -22,7 +22,7 @@ export type GatewayStatus = "signed_out" | "checking" | "authorization_pending" 
 export type GatewayUser = { id: string; username: string; approval_status?: string; enabled?: boolean }
 export type GatewayDevice = { id: string; expires_at: string; name?: string; platform?: string }
 export type GatewaySession = { origin: string; token: string; user: GatewayUser; device: GatewayDevice }
-export type GatewayHost = { id: string; name: string; hostname: string; version: string; online: boolean; enabled: boolean; owner_user_id?: string }
+export type GatewayHost = { id: string; name: string; hostname: string; version: string; online: boolean; enabled: boolean; owner_user_id?: string; host_pub?: string }
 export type GatewayBootstrap = {
   user: GatewayUser
   device: GatewayDevice
@@ -265,7 +265,7 @@ export async function issueGatewayHostLink(session: GatewaySession, hostID: stri
   return { hubURL: session.origin, ticket: data.ticket, hostPub: data.host_pub, sessionID: data.session_id, fingerprint: fingerprint(hostPub), gatewayOrigin: session.origin, gatewayOwnerID: session.user.id, gatewayHostID: hostID, gatewayMobileID: session.device.id }
 }
 
-function requireCurrentGatewaySession(session: GatewaySession) {
+export function requireCurrentGatewaySession(session: GatewaySession) {
   const current = loadGatewaySession()
   if (!current || current.token !== session.token || current.origin !== session.origin || current.user.id !== session.user.id || current.device.id !== session.device.id || Date.parse(current.device.expires_at) <= Date.now()) throw new GatewayError(401, "session_expired")
   if (current.user.approval_status !== "approved") throw new GatewayError(403, "access_denied")

@@ -1,5 +1,5 @@
 import { usePhoneAccount } from "@/components/gateway-account-shell"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { EngineStartupBanner } from "@/components/engine-startup"
 import { useEngineStartup } from "@/lib/use-engine-startup"
 import { runPhoneAction } from "@/lib/phone-action"
@@ -22,7 +22,10 @@ import {
   linkError,
   remoteError,
 } from "@/lib/client"
-import { openLink, type RemoteLink } from "@/lib/link"
+import { type RemoteLink } from "@/lib/link"
+import { sameLinkAuthority } from "@/lib/link-authority"
+import { beginAnonymousPairing, gatewayUpgradePending } from "@/lib/gateway-link-upgrade"
+import { usePhoneLinkLifecycle } from "@/lib/use-phone-link-lifecycle"
 import { getLocale, t, toggleLocale } from "@/lib/i18n"
 import { emptyInbox, inboxThreads, reduceInbox, type InboxGroupState, type InboxWindow } from "@/lib/inbox-window"
 import type {
@@ -72,6 +75,7 @@ import {
   saveActiveFingerprint,
   saveHostLabel,
   saveLink,
+  type SavedLink,
 } from "@/lib/store"
 import { mergeCompletion, readInbox, useCompletionRead } from "@/lib/completion-read"
 import { useInboxRefresh } from "@/lib/inbox-refresh"
@@ -131,7 +135,7 @@ export function PhoneApp() {
   const resumedRef = useRef(false)
   const olderBusy = useRef(false)
   const loadGen = useRef(0)
-  const recoveringRef = useRef(false)
+  const authorityRef = useRef<SavedLink | null>(null)
   const unlinkingRef = useRef(false)
   const bindGen = useRef(0)
   const activeFpRef = useRef(activeFp)
@@ -140,11 +144,9 @@ export function PhoneApp() {
   const surfaceRef = useRef(surface)
   const directOpenRef = useRef(false)
   const directCloseRef = useRef<() => void>(() => undefined)
-  const recoverAttempt = useRef(0)
   const retryTimer = useRef(0)
   const rosterFp = useRef("")
   const recoverRef = useRef<(force?: boolean) => Promise<void>>(async () => undefined)
-  linkRef.current = link
   viewRef.current = view
   addingRef.current = adding
   composingRef.current = composing
@@ -237,6 +239,7 @@ export function PhoneApp() {
 
   const attachPush = (next: RemoteLink) => {
     next.onPush = (resp) => {
+      if (linkRef.current !== next) return
       if (resp.path) next.path = resp.path
       completionRead.observe(next, resp)
       commitView(applyPush(viewRef.current, resp))
@@ -280,87 +283,12 @@ export function PhoneApp() {
     if (await openThreadOn(target, id)) resumedRef.current = true
   }
 
-  const recover = async (force = false) => {
-    if (unlinkingRef.current || recoveringRef.current) return
-    if (!force && linkRef.current?.alive()) return
-    const saved = loadSavedLink()
-    if (!saved) return
-    const gen = bindGen.current
-    recoveringRef.current = true
-    setReconnecting(true)
-    try {
-      let next = linkRef.current
-      if (force || !next?.alive()) {
-        next = await openLink(saved)
-        if (gen !== bindGen.current) {
-          next.close()
-          return
-        }
-        attachPush(next)
-        const prev = linkRef.current
-        linkRef.current = next
-        setLink(next)
-        if (prev && prev !== next) prev.close()
-      }
-      if (gen !== bindGen.current) return
-      recoverAttempt.current = 0
-      setError(undefined)
-      const id = viewRef.current.threadId
-      if (id) await openThreadOn(next, id)
-      else await consumeFirstList(next)
-    } catch (e) {
-      if (gen !== bindGen.current) return
-      setError(connectionError(e))
-      recoverAttempt.current += 1
-      const delay = Math.min(15_000, 1000 * 2 ** Math.min(recoverAttempt.current - 1, 4))
-      window.clearTimeout(retryTimer.current)
-      retryTimer.current = window.setTimeout(() => {
-        void recoverRef.current()
-      }, delay)
-    } finally {
-      recoveringRef.current = false
-      setReconnecting(false)
-    }
-  }
-  recoverRef.current = recover
-
-  const boot = useCallback(async () => {
-    const saved = loadSavedLink()
-    if (!saved || unlinkingRef.current) {
-      setBusy(false)
-      return
-    }
-    const gen = bindGen.current
-    setBusy(true)
-    try {
-      const next = await openLink(saved)
-      if (gen !== bindGen.current) {
-        next.close()
-        return
-      }
-      attachPush(next)
-      linkRef.current = next
-      setLink(next)
-      await consumeFirstList(next)
-    } catch (e) {
-      if (gen !== bindGen.current) return
-      setError(connectionError(e))
-      window.clearTimeout(retryTimer.current)
-      retryTimer.current = window.setTimeout(() => {
-        void recoverRef.current()
-      }, 1000)
-    } finally {
-      if (gen === bindGen.current) setBusy(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void boot()
-    return () => {
-      window.clearTimeout(retryTimer.current)
-      linkRef.current?.close()
-    }
-  }, [boot])
+  const { boot, recover, close: closeLink } = usePhoneLinkLifecycle({
+    link: linkRef, authority: authorityRef, generation: bindGen, unlinking: unlinkingRef, retryTimer, recoverRef,
+    install: setLink, attach: attachPush, firstList: consumeFirstList,
+    restore: async (next) => { const id = viewRef.current.threadId; if (id) await openThreadOn(next, id); else await consumeFirstList(next) },
+    busy: setBusy, reconnecting: setReconnecting, error: setError, message: connectionError,
+  })
 
   usePhoneVisibility(() => {
     if (!loadSavedLink() || linkRef.current?.alive()) return
@@ -386,7 +314,9 @@ export function PhoneApp() {
     else setError(undefined)
     let next: DeviceLink | undefined
     let attached = false
+    let releasePairing: (() => void) | undefined
     try {
+      releasePairing = beginAnonymousPairing(uri)
       const bound = await bindFromURI(uri)
       next = linkFromBind(bound)
       await next.connect(bound.saved.hubURL, bound.saved.ticket)
@@ -415,6 +345,7 @@ export function PhoneApp() {
       }
       attachPush(next)
       attached = true
+      authorityRef.current = bound.saved
       linkRef.current = next
       setLink(next)
       await consumeFirstList(next)
@@ -425,6 +356,7 @@ export function PhoneApp() {
       if (isAdd) setAddError(msg)
       else setError(msg)
     } finally {
+      releasePairing?.()
       setBindBusy(false)
     }
   }
@@ -699,24 +631,26 @@ export function PhoneApp() {
     setBusy(false)
   }
 
-  const selectHost = (fp: string) => {
-    setSurface("hosts")
-    if (fp === activeFpRef.current && linkRef.current?.alive()) return
+  const selectHost = (fp: string, preserveView = false) => {
+    if (!preserveView) setSurface("hosts")
+    const saved = loadSavedLinks().find((row) => row.fingerprint === fp)
+    const paused = saved && gatewayUpgradePending(saved)
+    if (!paused && fp === activeFpRef.current && sameLinkAuthority(saved, authorityRef.current) && (!linkRef.current || linkRef.current.alive())) return
     bindGen.current += 1
     window.clearTimeout(retryTimer.current)
-    linkRef.current?.close()
-    linkRef.current = null
-    setLink(null)
+    closeLink()
+    if (paused) { setBusy(false); setReconnecting(false); return }
     resumedRef.current = true
     loadGen.current += 1
     resetRoster()
     setError(undefined)
     setReconnecting(false)
-    commitView(emptyView())
+    if (!preserveView) commitView(emptyView())
     saveActiveFingerprint(fp)
     setActiveFp(fp)
     setBusy(true)
-    void boot()
+    if (preserveView) void recover(true)
+    else void boot()
   }
 
   useEffect(() => {
@@ -726,8 +660,11 @@ export function PhoneApp() {
       setHosts(next)
       if (!next.some((h) => h.fingerprint === activeFpRef.current)) {
         window.clearTimeout(retryTimer.current); bindGen.current += 1
-        linkRef.current?.close(); linkRef.current = null; setLink(null)
+        closeLink()
         resetRoster(); commitView(emptyView()); setActiveFp(""); setBusy(false)
+      } else {
+        const saved = next.find((row) => row.fingerprint === activeFpRef.current)
+        if (saved && (gatewayUpgradePending(saved) || !sameLinkAuthority(saved, authorityRef.current))) selectHost(saved.fingerprint, true)
       }
     }
     const chat = () => setSurface("chat")

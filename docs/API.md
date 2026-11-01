@@ -2828,7 +2828,7 @@ a browser cookie or Gateway API Key is not substituted:
 | GET | `/auth/me` | Current account and exact Mobile session |
 | GET | `/bootstrap` | Approved account's source identity, model API URLs, Pairlink URLs and heartbeat interval |
 | POST | `/heartbeat` | Refresh server-observed presence, independently of PC connectivity |
-| GET | `/link-hosts` | Paginated same-account PCs (`data` array plus `meta`) |
+| GET | `/link-hosts` | Paginated same-account PCs (`data` array plus `meta`); owned entries expose `owner_user_id` and full `host_pub` for exact pairing reconciliation |
 | POST | `/link-hosts/:id/connect` | Selected PC, authenticated public key and labels; returns `data:{binding_id,ticket,host_pub,session_id}` without QR |
 | POST | `/auth/logout` | Revoke this Mobile session |
 
@@ -2840,6 +2840,15 @@ Standard `/v1/models` and `/v1/chat/completions` use the same Mobile Bearer afte
 approval and API authorization, retaining the Gateway's Key/account model and
 quota enforcement. PC RPC never receives the Mobile credential or phone-private
 provider secrets. See the Gateway API documentation for the authoritative wire.
+
+Automatic reconciliation calls the existing Connect route only for already
+saved anonymous PCs whose full `host_pub`, complete Hub base endpoint and
+`owner_user_id` match the approved Mobile account. Missing fields, ambiguous
+identities, another Hub/base path or owner do not trigger migration; there is no
+fingerprint/name fallback or new adoption endpoint. The server rotates to a
+managed binding and retires legacy tickets. The phone saves the returned ticket
+before reconnecting the selected PC, retaining that new credential for a bounded
+local-save retry on failure. Ordinary transport reconnection does not call Connect.
 
 Android opens only the validated verification URL in the default external
 browser using the official Capacitor 7 AppLauncher; iOS/web retain Browser.

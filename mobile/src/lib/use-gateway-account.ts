@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { App } from "@capacitor/app"
 import {
-  clearGatewayPending, clearGatewaySession, dropGatewayLinks, issueGatewayHostLink, GatewayError,
+  clearGatewayPending, clearGatewaySession, dropGatewayLinks, GatewayError,
   getGatewayOrigin, loadGatewayPending, loadGatewaySession,
   logoutGatewaySession, pollGatewayLogin, readGatewaySession, refreshGatewaySession, saveGatewaySession,
   setGatewayOrigin, startGatewayLogin, normalizeGatewayOrigin,
@@ -10,6 +10,7 @@ import {
 import { saveLink } from "./store"
 import { usePhoneVisibility } from "./phone-visibility"
 import { gatewayFetch } from "./gateway-fetch"
+import { accountHostLink, completeAccountHostLink, sameGatewaySession, upgradeAnonymousGatewayLinks } from "./gateway-link-upgrade"
 
 export function useGatewayAccount() {
   const [origin, putOrigin] = useState(getGatewayOrigin)
@@ -94,7 +95,8 @@ export function useGatewayAccount() {
     active.current = controller
     try {
       const state = await refreshGatewaySession(current, gatewayFetch, controller.signal)
-      if (round !== generation.current || controller.signal.aborted) return
+      const stored = loadGatewaySession()
+      if (round !== generation.current || controller.signal.aborted || !sameGatewaySession(current) || stored?.user.approval_status !== current.user.approval_status) return
       saveGatewaySession(state.session)
       putSession(state.session)
       putStatus(state.status)
@@ -104,9 +106,17 @@ export function useGatewayAccount() {
       if (state.status !== "authorized") {
         selecting.current++
         dropGatewayLinks()
+      } else {
+        try {
+          await upgradeAnonymousGatewayLinks(state.session, state.hosts, () => round === generation.current && !controller.signal.aborted)
+        } catch (err) {
+          if (round !== generation.current || controller.signal.aborted || !sameGatewaySession(current)) return
+          if (err instanceof GatewayError && [401, 403].includes(err.status)) await failure(err)
+          else putError("pc_upgrade_failed")
+        }
       }
     } catch (err) {
-      if (round === generation.current && !controller.signal.aborted) await failure(err)
+      if (round === generation.current && !controller.signal.aborted && sameGatewaySession(current)) await failure(err)
     } finally { if (refreshing.current === round) refreshing.current = null }
   }, [failure])
 
@@ -207,15 +217,17 @@ export function useGatewayAccount() {
     const selection = ++selecting.current
     const selected = hosts.find((host) => host.id === id)
     if (!selected?.enabled || !selected.online) throw new GatewayError(409, "pc_unavailable")
-    const saved = await issueGatewayHostLink(current, id).catch(async (err: unknown) => {
-      if (round === generation.current && selection === selecting.current && err instanceof GatewayError && (err.status === 401 || err.status === 403)) await failure(err)
+    const saved = await accountHostLink(current, selected).catch(async (err: unknown) => {
+      if (round === generation.current && selection === selecting.current && sameGatewaySession(current) && err instanceof GatewayError && (err.status === 401 || err.status === 403)) await failure(err)
       throw err
     })
-    if (round !== generation.current || selection !== selecting.current) {
+    if (round !== generation.current || selection !== selecting.current || !sameGatewaySession(current)) {
+      completeAccountHostLink(current, id, saved)
       throw new GatewayError(401, "session_expired")
     }
     const named = { ...saved, label: selected.name || selected.hostname }
-    saveLink(named)
+    try { saveLink(named) } catch (error) { window.dispatchEvent(new Event("zwai.gateway.account")); throw error }
+    completeAccountHostLink(current, id, saved)
     return named
   }, [failure, hosts, status])
 

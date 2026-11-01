@@ -9,6 +9,25 @@ reconnection. API access is independent: approved users with an enabled API
 grant and Key can use **Server** models in Chat without any PC. An approved
 account without API permission can still connect to its PCs.
 
+If this phone already paired anonymously, signing both devices into the same
+account moves that saved PC to account management automatically on account
+refresh (also when the desktop comes online later). This requires the same
+complete Hub address and full PC public key in the owner's device list. It
+keeps one saved PC, its label, last thread and current selection; only the
+selected PC reconnects, closing the previous transport first. Other Hubs and
+other accounts are not merged. Older Gateways without the owner/public-key
+fields retain manual PC selection.
+
+If the account Connect request fails, the anonymous record stays available for
+retry. Once the server rotates its ticket, the old ticket is retired: a local
+save failure pauses that connection and retains the new credential in memory
+until a later account refresh saves it, without rotating again. Transport
+failure after saving uses the managed ticket for ordinary reconnection. Do not
+close/reload the app while a save error is unresolved; otherwise explicitly
+select the PC again after fixing local storage. QR re-pairing and account
+rotation for the same PC cannot run together. Signing out removes a migrated
+PC's managed ticket; it does not restore its retired anonymous ticket.
+
 Android sign-in opens the validated verification page in the default external
 browser; return to zwai after authorizing. iOS retains its Browser sheet.
 Version-read and browser-launch acknowledgements each stop waiting after fifteen

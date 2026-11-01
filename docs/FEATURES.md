@@ -242,6 +242,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-211 Mobile account login and owned devices
 
+- 已匿名扫码的 PC 在手机与桌面同账号登录后自动接管：刷新按完整 Hub base endpoint、完整公钥和严格 owner ID 匹配，只更新已有匿名记录，保留顺序、名称、最后会话及当前选择；只重连已选 PC，先关旧连接，不批量连接账号 PC。其他 Hub／账号、缺公钥／owner 的旧服务和歧义身份不自动合并。服务端签发失败保留原记录；签发成功但本地保存失败时暂停旧票据并保留新票据供刷新重试；保存成功后传输失败正常重连受管票据。退出删除接管后的受管票据，不恢复已退休匿名票据。证据：`mobile/src/lib/gateway-link-upgrade.ts`、`mobile/src/lib/gateway-link-upgrade.test.ts`、`mobile/src/lib/use-phone-link-lifecycle.ts`、`mobile/src/app.test.tsx`、`mobile/e2e/gateway-account.spec.ts`；关联 `C-006`。
+
 - 用户中心弹层的标题与关闭按钮保留设备顶部和左右安全区；独立审核页沿用页面安全区，底部内边距不重复增加。布局与实际关闭回归见 `mobile/e2e/gateway-account.spec.ts`，iOS 还需原生布局验收。
 
 - 目的：不手工配置服务器即可登录、发现并连接本人电脑；入口：手机「使用 NOSEC 登录」及菜单「用户中心」；输入：浏览器登录和显式设备授权、用户选择的在线 PC；输出：审核状态、本人 PC 列表、自动获取的连接票据和心跳。待审／拒审只显示审核界面，普通 API 权限不决定设备连接权限。匿名扫码独立保留，账号模式选择 PC 无需扫码；保存并重连选中的 Host ID／公钥，不自动连接所有 PC。失败可刷新／重新登录，离线 PC 禁用连接，退出删除受管票据而保留匿名票据与自配模型。关联 `C-006`、`C-013`、`F-230`；实现证据：`mobile/src/lib/gateway-account.ts`、`mobile/src/lib/use-gateway-account.ts`、`mobile/src/components/gateway-account-shell.tsx`、`mobile/src/components/gateway-account-screen.tsx`、`mobile/e2e/gateway-account.spec.ts`。

@@ -58,11 +58,12 @@ type fixture struct {
 	startMode, catalogMode, modelMode string
 	flow                              *flow
 	counts                            map[string]int
-	bindings                          *pstore.Memory
+	bindings                          pstore.Store
 	hub                               http.Handler
 	relay                             *relay.Hub
 	host                              *remote.Host
 	hostPub                           []byte
+	engine                            *engine.Engine
 }
 
 func secret(size int) string {
@@ -99,6 +100,7 @@ func (f *fixture) observe(w http.ResponseWriter) {
 		f.counts["peer_messages"] = len(f.relay.SniffedPayloads())
 	}
 	value := map[string]any{"origin": f.origin, "anonymous_origin": f.anonymous, "review": f.review, "api_enabled": f.api, "pc_visible": f.showPC, "host_name": "Native PC", "host_id": "native-pc", "counts": f.counts}
+	f.observeBindings(value)
 	if f.flow != nil {
 		value["verification_uri"] = f.origin + clientPrefix + "/auth/sso/nosec/start?mobile_code=" + f.flow.PublicCode
 		value["device_confirm_url"] = f.origin + "/mobile-login?code=" + f.flow.PublicCode
@@ -162,6 +164,9 @@ func (f *fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		parsed.HubURL = f.anonymous
+		if r.URL.Query().Get("origin") == "primary" {
+			parsed.HubURL = f.origin
+		}
 		uri, err := protocol.Encode(parsed)
 		if err != nil {
 			http.Error(w, "fixture offer invalid", 503)
@@ -197,6 +202,16 @@ func (f *fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			if api := r.URL.Query().Get("api"); api != "" {
 				f.api = api == "on"
+			}
+			if title := r.URL.Query().Get("new_thread"); title != "" {
+				if f.engine == nil || len(title) > 80 {
+					http.Error(w, "fixture thread unavailable", 400)
+					return
+				}
+				if _, err := f.engine.CreateThread(title, "", ""); err != nil {
+					http.Error(w, "fixture thread unavailable", 503)
+					return
+				}
 			}
 		}
 		f.observe(w)
@@ -296,6 +311,10 @@ func (f *fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if path == clientPrefix+"/auth/logout" {
+		if err := f.retirePhoneBindings(r.Context(), f.flow.DevicePub); err != nil {
+			http.Error(w, "fixture revocation unavailable", 503)
+			return
+		}
 		f.counts["logout"]++
 		f.flow.Authorized = false
 		data(w, map[string]bool{"ok": true})
@@ -316,7 +335,7 @@ func (f *fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case clientPrefix + "/link-hosts":
 		hosts := []map[string]any{}
 		if f.showPC {
-			hosts = append(hosts, map[string]any{"id": "native-pc", "name": "Native PC", "hostname": "native-pc", "version": "native-fixture", "enabled": true, "online": f.host.Status().Online})
+			hosts = append(hosts, map[string]any{"id": "native-pc", "name": "Native PC", "hostname": "native-pc", "version": "native-fixture", "enabled": true, "online": f.host.Status().Online, "owner_user_id": "native-owner", "host_pub": linkcrypto.PublicBase64(f.hostPub)})
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": hosts, "meta": map[string]int{"total": len(hosts)}})
@@ -341,6 +360,10 @@ func (f *fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rand.Read(rawTicket)
 		ticket, id := hex.EncodeToString(rawTicket), secret(16)
 		sid, _ := base64.RawURLEncoding.DecodeString(secret(protocol.SessionIDSize))
+		if err := f.retirePhoneBindings(r.Context(), input.DevicePub); err != nil {
+			http.Error(w, "fixture rotation unavailable", 503)
+			return
+		}
 		if err := f.bindings.PutBinding(r.Context(), pstore.Binding{ID: id, HostPub: f.hostPub, DevicePub: pub, TicketHash: pstore.HashSecret(ticket), SessionID: sid, Created: time.Now()}); err != nil {
 			http.Error(w, "binding unavailable", 503)
 			return
@@ -515,7 +538,7 @@ func main() {
 		panic(err)
 	}
 	defer anonymous.Close()
-	f := &fixture{origin: "http://" + listener.Addr().String(), anonymous: "http://" + anonymous.Addr().String(), review: "pending", api: true, counts: map[string]int{}, bindings: pstore.NewMemory()}
+	f := &fixture{origin: "http://" + listener.Addr().String(), anonymous: "http://" + anonymous.Addr().String(), review: "pending", api: true, counts: map[string]int{}, bindings: newFixtureBindings()}
 	hub := relay.New(f.bindings)
 	f.relay = hub
 	f.hub = hub.Handler()
@@ -536,6 +559,7 @@ func main() {
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	eng := engine.New(cfg, db, provider.NewMock(cfg), logger)
+	f.engine = eng
 	if _, err := eng.CreateThread("Native PC conversation", "", ""); err != nil {
 		panic(err)
 	}
