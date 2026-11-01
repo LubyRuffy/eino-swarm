@@ -6661,6 +6661,22 @@ line alone does not accept a hung or cancelled parent command.
 
 ## Phone output rendering (Issue #63)
 
+`mobile/src/components/image-file-preview.test.tsx` checks fitted/manual image
+sizes, loading and decode failures, zoom limits, resize and reopening.
+Text-preview and file-browser unit tests cover text-size limits/reset, complete
+large text and unchanged native save bytes after zoom. The Chromium and iPhone
+WebKit cases in `mobile/e2e/file-preview-controls.spec.ts` measure real paragraph,
+heading, table and code sizes, keep controls reachable after long-content
+scrolling, decode a 1200×800 PNG, scroll both image axes and compare downloaded
+source/image bytes. Browser results do not establish packaged native acceptance.
+For packaged controls, iOS uses
+`BindFlowTests/testPhoneOutputPreviewControls` in `mobile/e2e/ios-wait-layout.swift`
+with the preserved fresh bundle in the existing private layout fixture. Android
+uses `FilePreviewControlsTest#nativeFilePreviewControlsResizeTextAndImages` on an
+isolated emulator; native taps/swipes drive the page and read-only DOM samples
+record real font sizes, image dimensions and scroll positions. Retain screenshots,
+AX trees, exact web/app/test-package identity and owned-device cleanup receipts.
+
 `mobile/src/components/file-browser.test.tsx` exercises the real read/preview path; `text-file-preview.test.tsx` checks suffix selection, unknown/large/empty text, exact source preservation and inert HTML/SVG/MDX. `mobile/e2e/walkthrough.spec.ts` checks Markdown structure and syntax colors in light/dark; the packaged `mobile/e2e/ios-wait-layout.swift` `testPhoneOutputPreview` reaches both documents through Outputs. Reuse `scripts/ios-layout-fixture.py` and select only that XCTest. Android uses a disposable offline package and isolated emulator, inspecting the same reached screens; a browser pass or native launch alone does not accept the changed flow.
 
 ### Phone file saving (Issue #122)

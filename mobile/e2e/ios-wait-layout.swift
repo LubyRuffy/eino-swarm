@@ -540,6 +540,90 @@ final class BindFlowTests: XCTestCase {
     rows[0].tap()
   }
 
+  func testPhoneOutputPreviewControls() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launch()
+    defer { app.terminate() }
+    func press(_ name: String) {
+      // WebKit exposes aria-pressed as a native Switch, including when false.
+      let query = name == "Fit to window" ? app.switches.matching(identifier: name) : app.buttons.matching(identifier: name)
+      XCTAssertTrue(query.firstMatch.waitForExistence(timeout: 8))
+      XCTAssertEqual(query.count, 1, "Preview controls must identify one native action")
+      let button = query.element(boundBy: 0)
+      XCTAssertTrue(button.isEnabled && button.isHittable, name)
+      XCTAssertGreaterThanOrEqual(button.frame.minX, app.frame.minX)
+      XCTAssertLessThanOrEqual(button.frame.maxX, app.frame.maxX)
+      button.tap()
+    }
+    func observe(_ name: String, _ predicate: @escaping () -> Bool) {
+      let end = ProcessInfo.processInfo.systemUptime + 5
+      while !predicate() && ProcessInfo.processInfo.systemUptime < end {
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+      }
+      recordAgentPage(app, name: name)
+      XCTAssertTrue(predicate(), name)
+    }
+    do {
+      press("Back")
+      let thread = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sweep the unused exports'"))
+      XCTAssertTrue(thread.firstMatch.waitForExistence(timeout: 8))
+      XCTAssertEqual(thread.count, 1)
+      XCTAssertTrue(thread.element(boundBy: 0).isHittable)
+      thread.element(boundBy: 0).tap()
+      press("Outputs")
+      press("outputs")
+      press("inspection.md")
+      let heading = app.staticTexts["Inspection document"]
+      XCTAssertTrue(heading.waitForExistence(timeout: 8))
+      XCTAssertTrue(heading.isHittable)
+      let initialHeadingHeight = heading.frame.height
+      XCTAssertGreaterThan(initialHeadingHeight, 0)
+      XCTAssertFalse(app.buttons["Reset text size"].isEnabled)
+      recordAgentPage(app, name: "preview-controls-markdown-default")
+      press("Increase text size")
+      press("Increase text size")
+      observe("preview-controls-markdown-larger") { heading.frame.height > initialHeadingHeight + 2 }
+      let enlargedHeight = heading.frame.height
+      press("Decrease text size")
+      observe("preview-controls-markdown-smaller") { heading.frame.height < enlargedHeight }
+      press("Reset text size")
+      observe("preview-controls-markdown-reset") { abs(heading.frame.height - initialHeadingHeight) < 1 }
+      press("Increase text size")
+      press("Back to list")
+      press("inspection.md")
+      observe("preview-controls-markdown-reopened-default") {
+        heading.isHittable && abs(heading.frame.height - initialHeadingHeight) < 1 && !app.buttons["Reset text size"].isEnabled
+      }
+      press("Back to list")
+      press("sample.go")
+      let source = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'hello'")).firstMatch
+      XCTAssertTrue(source.waitForExistence(timeout: 8))
+      let initialSourceHeight = source.frame.height
+      press("Increase text size")
+      observe("preview-controls-source-larger") { source.frame.height > initialSourceHeight }
+      press("Back to list")
+      press("landscape.png")
+      let image = app.images["landscape.png"]
+      XCTAssertTrue(image.waitForExistence(timeout: 8))
+      observe("preview-controls-image-fit") { image.isHittable && app.buttons["Zoom in"].isEnabled }
+      let initialImageWidth = image.frame.width
+      XCTAssertGreaterThan(initialImageWidth, 0)
+      press("Actual size (100%)")
+      observe("preview-controls-image-actual-size") { image.frame.width > initialImageWidth * 2 }
+      let actualImageWidth = image.frame.width
+      press("Zoom in")
+      observe("preview-controls-image-larger") { image.frame.width > actualImageWidth }
+      let enlargedImageWidth = image.frame.width
+      press("Zoom out")
+      observe("preview-controls-image-smaller") { image.frame.width < enlargedImageWidth }
+      press("Fit to window")
+      observe("preview-controls-image-refitted") { abs(image.frame.width - initialImageWidth) < 1 }
+      press("Back to list")
+      XCTAssertTrue(app.buttons["landscape.png"].waitForExistence(timeout: 5))
+    }
+  }
+
   func testPhoneOutputPreview() throws {
     continueAfterFailure = false
     let app = XCUIApplication()

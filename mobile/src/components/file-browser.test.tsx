@@ -51,12 +51,14 @@ describe("phone file browser", () => {
     const file = { ...entry, path: "outputs/summary.md", name: "summary.md", size: bytes.length }
     render(<FileBrowser link={link(false, [file], text, "text/markdown")} threadId="t1" onClose={vi.fn()} />)
     fireEvent.click(await screen.findByRole("button", { name: file.name }))
+    fireEvent.click(await screen.findByRole("button", { name: t("files.textLarger") }))
+    expect(screen.getByTestId("phone-text-content")).toHaveStyle({ fontSize: "16px" })
     fireEvent.click(await screen.findByText("Download"))
     await waitFor(() => expect(nativeSave.saveFile).toHaveBeenCalledWith({
       name: file.name, mime: "text/markdown", size: bytes.length,
       data: btoa(String.fromCharCode(...bytes)),
     }))
-    expect(await screen.findByRole("status")).toHaveTextContent(t("files.saved"))
+    expect(await screen.findByText(t("files.saved"))).toHaveAttribute("role", "status")
   })
 
   it("makes a native save refusal visible and keeps the preview available for retry", async () => {
@@ -69,7 +71,7 @@ describe("phone file browser", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(t("files.saveFailed"))
     expect(screen.getByRole("heading", { name: "Report" })).toBeInTheDocument()
     fireEvent.click(screen.getByText("Download"))
-    expect(await screen.findByRole("status")).toHaveTextContent(t("files.saved"))
+    expect(await screen.findByText(t("files.saved"))).toHaveAttribute("role", "status")
   })
 
   it.each([new Uint8Array(), new Uint8Array([0, 255, 128, 13, 10])])(
@@ -99,10 +101,10 @@ describe("phone file browser", () => {
     expect(nativeSave.saveFile).toHaveBeenCalledOnce()
     expect(screen.getByRole("button", { name: t("files.saving") })).toBeDisabled()
     await act(async () => { settle({ saved: false }) })
-    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+    expect(screen.queryByText(t("files.saved"))).not.toBeInTheDocument()
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Download" }))
-    expect(await screen.findByRole("status")).toHaveTextContent(t("files.saved"))
+    expect(await screen.findByText(t("files.saved"))).toHaveAttribute("role", "status")
     expect(nativeSave.saveFile).toHaveBeenCalledTimes(2)
   })
 
@@ -117,6 +119,17 @@ describe("phone file browser", () => {
     expect(document.querySelector("script")).toBeNull()
     expect(document.querySelector('a[href^="javascript:"]')).toBeNull()
     expect(screen.getByRole("link", { name: "Download" })).toHaveAttribute("download", file.name)
+  })
+
+  it("resets text size when returning to a file instead of carrying over another reading session", async () => {
+    const file = { ...entry, path: "notes.md", name: "notes.md" }
+    render(<FileBrowser link={link(false, [file], "# Notes", "text/markdown")} threadId="t1" onClose={vi.fn()} />)
+    fireEvent.click(await screen.findByRole("button", { name: file.name }))
+    fireEvent.click(await screen.findByRole("button", { name: t("files.textLarger") }))
+    expect(screen.getByTestId("phone-text-content")).toHaveStyle({ fontSize: "16px" })
+    fireEvent.click(screen.getByRole("button", { name: t("files.backList") }))
+    fireEvent.click(await screen.findByRole("button", { name: file.name }))
+    await waitFor(() => expect(screen.getByTestId("phone-text-content")).toHaveStyle({ fontSize: "14px" }))
   })
 
   it.each([
