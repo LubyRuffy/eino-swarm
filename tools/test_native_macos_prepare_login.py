@@ -411,7 +411,7 @@ class LoginCaseTests(unittest.TestCase):
         code, row = self.run_case(self.callback(operations))
         thread.join(timeout=3)
         self.assertEqual(self.sender_errors, [])
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 0, row)
         self.assertTrue(row["launched"])
         self.assertEqual(operations.inputs, ["syntheticsecret"])
         self.assertEqual(len(operations.frames), 2)
