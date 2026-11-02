@@ -4,7 +4,7 @@ import json
 import hashlib
 import io
 from contextlib import redirect_stdout
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from pathlib import Path
 import tempfile
 import unittest
@@ -78,6 +78,54 @@ class NativeCancellationCallerWiring(unittest.TestCase):
             with patch.object(scenario.smoke.runner, "main", side_effect=run), patch.object(scenario.smoke, "case_preflight") as preflight:
                 self.assertEqual(scenario.main(["--case", "--app", "candidate.app", "--evidence", "private-evidence", "--ax", str(ax), "--controls", str(controls), "--control-sha256", digest]), 0)
                 preflight.assert_called_once_with(ax.resolve(), "receipt", "evidence", 100)
+
+    def test_reopen_observes_the_new_process_through_the_real_initial_guard(self):
+        for previous_input in (False, True):
+            with self.subTest(previous_input=previous_input), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                paths = {name: root / name for name in ("app", "data", "workspace", "evidence")}
+                for path in paths.values():
+                    path.mkdir()
+                context = dict(paths, app_pid=11, case_id="private-case", origin="http://127.0.0.1:12345",
+                               readiness_stage="scenario", native_input_attempted=previous_input, native_call_count=7)
+                retired = dict(context)
+                prior = paths["evidence"] / "smoke-native-call-0007.json"
+                prior.write_bytes(b"original completed input evidence")
+                deadline = scenario.smoke.Deadline(2, clock=Mock(return_value=10))
+                original_end = deadline.ends
+                child = Mock(spec=scenario.subprocess.Popen)
+                child.pid = 12
+                observations = []
+                row = dict(pid=12, ready=True, title="zwai", frontmost=True, has_web_area=True,
+                           textareas=1, rect=[10, 20, 800, 600], case_verified=True,
+                           origin=context["origin"], screen_capture_allowed=True,
+                           web_urls=[context["origin"] + "/?shell=desktop&pid=12"],
+                           window_count=1, window_id=17, window_owner_pid=12,
+                           windows=[dict(id=17, owner_pid=12)], send_count=1)
+                def native_snapshot(current, shared_deadline):
+                    observations.append(dict(pid=current["app_pid"], stage=current["readiness_stage"],
+                                             input_attempted=current["native_input_attempted"]))
+                    self.assertIs(shared_deadline, deadline)
+                    return row
+                with patch.object(scenario.notice, "control"), \
+                        patch.object(scenario.smoke.runner, "process_argv", return_value=None), \
+                        patch.object(scenario.subprocess, "Popen", return_value=child), \
+                        patch.object(scenario, "wait_fixture_engine", return_value={"pid": 23}), \
+                        patch.object(scenario.smoke, "assert_process", return_value=paths["app"] / "Contents/MacOS/zwai"), \
+                        patch.object(scenario.smoke, "native_snapshot", side_effect=native_snapshot) as observe:
+                    self.assertEqual(scenario.reopen(context, deadline, {"pid": 22}, "reopened"), {"pid": 23})
+                    observe.assert_called_once_with(context, deadline)
+                    # A real guard for the retired process still refuses; its
+                    # previous input is never made eligible for an initial retry.
+                    with self.assertRaises(ValueError):
+                        scenario.smoke.initial_window_snapshot(retired, deadline)
+                self.assertEqual(observations, [dict(pid=12, stage="window", input_attempted=False)])
+                self.assertEqual(context["readiness_stage"], "scenario")
+                self.assertEqual(context["native_call_count"], 7)
+                self.assertEqual(deadline.ends, original_end)
+                self.assertEqual(prior.read_bytes(), b"original completed input evidence")
+                receipt = json.loads((paths["evidence"] / "reopened.json").read_text())
+                self.assertEqual(receipt["previous_readiness"], dict(pid=11, stage="scenario", native_input_attempted=previous_input))
 
     def test_original_scenario_error_survives_failed_receipt_storage(self):
         with tempfile.TemporaryDirectory() as directory:
