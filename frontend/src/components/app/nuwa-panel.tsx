@@ -263,9 +263,9 @@ function WorkerRow({ worker, onOpen }: { worker: NuwaWorker; onOpen: () => void 
     <button
       type="button"
       onClick={onOpen}
-      aria-label={`${t("nuwa.worker")}: ${worker.role}`}
       className="mb-1 flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
+      <span className="sr-only">{t("nuwa.worker")}: </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs">{worker.role}</span>
         <span

@@ -76,8 +76,26 @@ describe("Nuwa shared work", () => {
   it("opens the actual worker without inferring its model from its role", async () => {
     const select = vi.fn()
     render(<NuwaPanel project={project} threadId="a" onSelectAgent={select} />)
-    const worker = await screen.findByRole("button", { name: "Open agent: researcher" })
+    const worker = await screen.findByRole("button", { name: /Open agent.*researcher/ })
+    expect(worker).toHaveAccessibleName(/chosen-model/)
+    expect(worker).toHaveAccessibleName(/high/)
+    expect(worker).toHaveAccessibleName(/Running/)
     expect(within(worker).getByText("Parent agent: a / coordinator-1")).toBeInTheDocument()
+    fireEvent.click(worker)
+    expect(select).toHaveBeenCalledWith("researcher-1")
+  })
+
+  it("announces an unrecorded model and the worker status without inferring a model from its role", async () => {
+    vi.mocked(nuwaAPI.snapshot).mockResolvedValue({
+      ...snapshot,
+      workers: snapshot.workers.map((worker) => ({ ...worker, role: "unconfigured-model-role", model_binding: undefined, status: "blocked" })),
+    })
+    const select = vi.fn()
+    render(<NuwaPanel project={project} threadId="a" onSelectAgent={select} />)
+    const worker = await screen.findByRole("button", { name: /Open agent.*unconfigured-model-role/ })
+    expect(worker).toHaveAccessibleName(/Model not recorded/)
+    expect(worker).toHaveAccessibleName(/Blocked/)
+    expect(worker).not.toHaveAccessibleName(/chosen-model|high/)
     fireEvent.click(worker)
     expect(select).toHaveBeenCalledWith("researcher-1")
   })

@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed Nuwa worker buttons hiding the recorded model and status from
+  accessibility clients. Their names now include the actual role, recorded or
+  unknown model, reasoning setting and state while preserving worker navigation.
+
 - Added opt-in Nuwa project collaboration: task-derived planning and recursive
   delegation, catalog-based worker model selection, versioned shared
   tasks/facts/artifacts and a live project dependency view. Worker configuration,

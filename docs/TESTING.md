@@ -42,6 +42,14 @@ Concurrent suites need their own port, data, output and built frontend; do not
 rebuild a served dist. This browser fixture is not native macOS acceptance or a
 real-model capability measurement.
 
+Nuwa `native-case-06` retained its original timeout after its turn, three nodes,
+artifact and model binding were correct: WKWebView exposed only the worker's
+overriding action label, hiding its visible model/status from AX. Worker-opening
+tests now assert the actual accessible name, including the recorded or unknown
+model and status; finding model text in the DOM alone is insufficient. Preserve
+that native failure separately. Unit/browser passes do not accept a subsequent
+native rerun, which still needs the guest's real AX and pixel evidence.
+
 The [generic paired protocol](../evals/nuwa/README.md) freezes source/binary/task
 identities, model choices, limits and seeded interleaved repetitions. It rejects
 fixture/budget mismatch, duplicate pair identity and unverified external-score
