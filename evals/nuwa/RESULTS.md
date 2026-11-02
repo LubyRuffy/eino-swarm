@@ -177,7 +177,8 @@ reasoning, 900-second task deadline, 16,384-token per-request cap and 60-second
 review allowance. Only mode and the DS executor preference differed. The
 official evaluator's boolean was kept independently of manager completion.
 All 27 attempts obtained known official grades and clean harness/cleanup
-results, without repeated model attempts or grading corrections.
+results, without repeated task executions or grading corrections. Internal
+model retries remain included in the request and token observations.
 
 | Arm | Official success / assigned | Normally completed success | Official scenario success | Complete reported tokens |
 |---|---:|---:|---:|---:|
@@ -270,6 +271,139 @@ instructions before inference.
 | `assigned-execution-pilot-run-v1/benchmark-result.json` | `04600880a451b514f64052519efdd8fb44dd8e86d4f8848376a36c24d5b6d415` |
 | `assigned-execution-pilot-role-audit.json` | `3043110f85a5583123f8d3211dc72079b59c7f4f797cca6ee5b6e7959132521d` |
 | `assigned-execution-pilot-independent.json` | `2ae4fd3d06452e040feaa1691f7cbce7cea5f341671936f47c218f38b2a9ba3f` |
+
+## Interrupted AppWorld assigned cohort v2
+
+A separate frozen comparison selected the next three unused dev scenarios in
+the same ID-only order, including all three variations. All arms received the
+same clarified completion/pagination onboarding. Here the retained
+`nuwa-ds-preferred` arm ID denotes a required project-instruction assignment:
+remote application execution belongs to DS workers, while the GLM manager may
+inspect static local inputs. Roles, scopes and worker count remain model
+decisions. This policy differs from the earlier soft executor preference;
+the observations are not pooled with the preceding cohort or assignment pilot.
+
+The launcher accepted eight rows, preserved the ninth result and then stopped
+under its frozen incomplete-observation rule. **Nine task executions occurred;
+18 assignments were not executed**, with no continuation or replacement tasks.
+
+| Arm | Official success / known grades | Executed / assigned | Not executed |
+|---|---:|---:|---:|
+| `default-glm` | 1/3 | 3/9 | 6 |
+| `nuwa-auto` | 2/3 | 3/9 | 6 |
+| `nuwa-ds-preferred` | 2/3 | 3/9 | 6 |
+
+The fixed assigned denominator remains nine per arm; unexecuted assignments
+are unknown, not official failures. Row 9 retained official success and a
+`done` manager, but its gateway had **26 starts and 25 ends**. Its nominal
+60-second review window took 61.6 seconds; review remained unsettled and the
+engine warned that a memory review was still running at shutdown. The launcher
+stopped on incomplete model-request observations. This is an accounting stop,
+not a rewritten business-task failure. Gateway receipts alone do not identify
+the unmatched request's agent role.
+
+Complete cohort cost is unavailable: 18 assignments never started, row 2's
+review wait expired without a settled review, and row 9 was cut off. Known
+token subtotals are not complete totals. This partial observation cannot
+establish the frozen full-cohort joint objective. Independent role assessment of the three attempted
+DS-assigned cases found actual DS workers in each, with **two policy passes and
+one unknown**.
+The unknown case included a manager-side remote-query attempt without a
+validated response. It is not counted as compliant; role verdicts were formed
+before joining the official outcomes.
+
+A separate controlled fixture kept the frozen Go/SDK/proxy chain and delayed
+only the fake reviewer's final usage/DONE by 13 seconds after its first chunk.
+With a 0.1-second review allowance, it reproduced cutoff and 4 starts/3 ends,
+leaving complete cost unknown. With 30 seconds, it obtained a terminal
+`memory_review` event, reviewer usage 5 and 4/4 paired requests (synthetic total
+20). The terminal review reported `proposal_missing`; settled accounting does
+not mean successful memory learning. No real model was called, and these
+fixed synthetic counters establish no capability or efficiency result.
+Independent cleanup confirmed the fixture's six containers, four networks and
+host process absent.
+
+A subsequent v3 protocol was frozen for a fresh full comparison, changing only
+the common review allowance from **60 to 300 seconds** among experimental
+controls. Task selection, business prompts, assignment policy, models, grading
+and other budgets are unchanged. This is a separate cohort, not a continuation
+or selective retry of v2. Its results are reported separately below; the
+controlled fixture does not guarantee that 300 seconds will cover real reviews.
+
+| Private evidence within `20261102-01a199cc/public-appworld` | SHA-256 |
+|---|---|
+| `assigned-dev-protocol-frozen-v2.json` | `0909099c907a412a3aab882b04e23173c354b81d44d0c2c2b1d12efe115a32ad` |
+| `assigned-dev-report-v2-partial/report.json` | `fb87a8f5ea37a457883bbe44e0e8daa5987cfbd0ea24c82bfa549b18f3eb39ff` |
+| `assigned-v2-partial-role-audit.json` | `b0086a937ecebf15367f40798945cb9958fc5e3785d4c5fd7609889f4d23a9a0` |
+| `aux-review-budget-fixture.report.json` | `75251dcf2a721dcd27fdfd44c0c01c047b605d0bc94f6d060d7217442cfd3d9b` |
+| `aux-review-budget-fixture/independent-cleanup-v2.json` | `9c14defb3c1d1b0a6cc7b029aa9562f6508cd9e74dacee42c5a76a2e7c9bf146` |
+| `assigned-dev-protocol-frozen-v3-review300.json` | `7f0dd0d726d19b964e972f546c54519cd3a3c5618eecb255f8198ba96cb71db1` |
+
+## Complete AppWorld assigned cohort v3
+
+The fresh v3 schedule executed all 27 assignments: nine dev tasks per arm,
+covering all variations of three fixed scenarios. The same frozen public
+fixtures, onboarding, model selections, assignment policy and official grading
+from v2 were retained, with a common 300-second review allowance. All attempts
+obtained known official grades and complete provider-reported usage, including
+failed attempts and auxiliary calls. There were no infrastructure, evidence or
+cleanup errors, replacement tasks or repeated task executions. The interrupted
+v2 rows were not resumed, regraded or pooled into this comparison.
+
+| Arm | Official and completed success / assigned | Official scenario success | Complete reported tokens | Actual DS worker requests |
+|---|---:|---:|---:|---:|
+| `default-glm` | 4/9 | 1/3 | 4,232,714 | 0 |
+| `nuwa-auto` | 4/9 | 1/3 | 5,665,544 | 0 |
+| `nuwa-ds-preferred` (required assignment) | 7/9 | 1/3 | 7,599,624 | 258 |
+
+The assigned arm observed three more successful tasks than baseline, but did
+not meet the joint objective. Across its three same-task pairs where both arms
+completed successfully, the median paired task-time difference was **+15.260087
+seconds**, with **+15,186 ms** in the persisted engine duration on that same
+pair set. Its full nine-attempt token total was **3,366,910 higher** than
+baseline. The successful pair IDs were `6bdbc26_1`, `6bdbc26_3` and `4fab96f_3`.
+These pairs establish neither faster completion nor fewer reported tokens.
+
+The autonomous arm tied baseline success. Its three successful pairs were
+`6bdbc26_1`, `6bdbc26_2` and `6bdbc26_3`; median differences were -0.008587
+seconds and -339 ms. The task-time difference is below the frozen polling
+resolution threshold and cannot establish a speed advantage. Its token total
+was 1,432,830 higher than baseline. Neither candidate met the frozen joint
+success/speed/token rule; its conditions were not changed after observation.
+
+The gateway recorded 268 GLM requests for baseline, 315 for autonomous Nuwa, and
+114 GLM plus 258 DS requests for assigned Nuwa. Baseline and autonomous Nuwa
+made no worker requests. These are observed choices despite the available
+collaboration tools, not evidence of a missing tool surface. Model bindings and
+instruction compliance are separate: actual DS use does not prove that every
+application execution was delegated as requested.
+
+A separate role audit found **eight policy passes, one failure and no unknowns**
+across the nine assigned cases. In the failed case, the manager performed two
+remote application executions with validated responses, contrary to the frozen
+division of work. All 258 worker requests used the expected DS binding; all 14
+worker generations retained their model configuration and had their actual
+finished result collected before manager completion. Role verdicts preceded the
+join with official outcomes, and no performance row was excluded for a role
+failure. One initial metadata-inspection error exposed pre-grade Trace content;
+the audit records that incident and does not claim complete content blinding.
+It did not inspect official grader outcomes before classifying roles. Prompt
+instructions alone therefore did not guarantee the requested routing policy.
+
+Independent run-identity inventories made 162 container/network queries across
+all 27 attempts and found no surviving owned resources. All 13 frozen source
+hashes matched. This is a descriptive result for nine tasks from three selected
+dev scenarios, not a full AppWorld benchmark, a significance claim, billing
+comparison or CyberGym result. Provider tokenizers differ. The accepted native
+macOS v0.1.57 installer remains unchanged.
+
+| Private evidence within `20261102-01a199cc/public-appworld` | SHA-256 |
+|---|---|
+| `assigned-dev-protocol-frozen-v3-review300.json` | `7f0dd0d726d19b964e972f546c54519cd3a3c5618eecb255f8198ba96cb71db1` |
+| `assigned-dev-report-v3-review300/report.json` | `560ac7595d7be14b4ba43e1dd48e8660641b94329671db42d13f344fbb172e62` |
+| `assigned-dev-report-v3-review300/independent-resources-and-source.json` | `af9cca304f533b142a1239997e2cee3108f9dd4250acf487395d4e7400209bcf` |
+| `assigned-v3-independent-statistics.json` | `68224c2ca2d61f1fa07461fea7cb5ceab857424b3179b72717f9157414568396` |
+| `assigned-v3-role-audit-v2.json` | `a9ec179ea2293aac2aeed845555b47dfc6f13d67523ccc8c7a50aae9f0cb430a` |
 
 ## Evidence identity for the original generic cohort
 

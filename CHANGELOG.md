@@ -6,6 +6,11 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Recorded a separate 27-attempt AppWorld dev comparison with complete usage:
+  assigned Nuwa succeeded on 7/9 tasks versus baseline 4/9, with more tokens and
+  slower successful pairs. Preserved the preceding accounting interruption and
+  actual model/role observations; the joint performance objective remains unmet.
+
 - Recorded separate explicit-low generic and public AppWorld dev observations.
   Neither demonstrated the joint success/speed/token objective; the AppWorld
   preference produced no DS requests. Official failures, incomplete costs and

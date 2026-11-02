@@ -8,6 +8,15 @@ The [retained observations](RESULTS.md) record separate generic and AppWorld dev
 cohorts, their grading, actual model routing and measurement limits. Results
 from different protocols are not pooled.
 
+The separate required-assignment AppWorld dev comparison completed all 27
+attempts with complete usage. It observed 4/9 successes for baseline, 4/9 for
+autonomous Nuwa and 7/9 for assigned Nuwa. The assigned arm made actual DS
+worker requests, but used more reported tokens and was slower on its three
+successful paired tasks; the joint objective was not established. Its preceding
+accounting interruption, full replication and role-compliance limits remain
+separate in the retained observations. These are measurements, not routing
+guarantees or product defaults.
+
 `tools/agent_eval.py` accepts `--project-mode default|nuwa`, `--planner-ref` and
 `--executor-ref`. These CLI choices use the existing provider ChoiceID, with a
 tab between provider ID and model name. Model names may contain slashes; never
