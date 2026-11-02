@@ -623,6 +623,11 @@ co-working app built on it. The library API is unchanged except where noted
   cancellation or a consumed one-shot refuses without partially changing the
   destination, state or run history.
 
+- `F-120` (Issue #143): returning to the live edge clears an earlier turn-navigation target.
+  Later messages, history pages and queued navigation frames no longer pull
+  the transcript back to that older turn after **Jump to latest**, scrolling
+  to the bottom or sending a new message.
+
 - `F-130`: update `eino-tools` to the source containing `3664a9a`. Default
   `web_fetch` tries its existing browser renderer once after a DataDome-signalled
   HTTP 401/403, preserving the configured proxy and returning an error if

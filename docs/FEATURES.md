@@ -72,6 +72,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-120 Conversations and projects
 
+- PC 轮次导航：回到底部恢复实时跟随时，撤销旧轮次定位；后续消息、历史分页或已排队的定位帧不得再次拉回旧轮次。点击「跳到最新」、手动滚到底部和发送新消息共用该行为。尚在查看旧轮次时，分页后继续保持所选轮次位置。实现／验证：`frontend/src/lib/use-turn-jump.ts`、`frontend/src/lib/use-turn-jump.test.tsx`、`frontend/src/components/app/transcript-jump-latest.test.tsx`、`frontend/e2e/transcript-jump-latest.spec.ts`。
 - Mermaid 图：桌面与 Web 的对话、工具输出和 Markdown 文件预览识别 `mermaid` 代码围栏，按需加载随应用打包的渲染器，跟随明暗主题并保留原文复制。未闭合的流式围栏、无效语法及依赖外部图片／CSS 资源的图保留可读代码；图表作为 SVG 图片显示。手机独立渲染器不在本次能力范围。关联契约：`C-005`；证据：`frontend/src/components/app/markdown.tsx`、`frontend/src/components/app/markdown-mermaid.tsx`、`frontend/e2e/mermaid.spec.ts`。
 - Markdown 表格：桌面、Web 与手机按内容自动分配列宽，各列保留随字体变化的最小可读宽度，避免短标签被长说明挤成逐字竖排；长内容可换行，过多列仅在表格内横向滚动，保留 Markdown 列对齐。文件预览复用相同规则。证据：`frontend/src/index.css`、`mobile/src/index.css`、`frontend/e2e/file-preview.spec.ts`、`mobile/e2e/markdown-table.spec.ts`。
 - 目的：创建、组织、搜索和继续对话；使用者：PC 用户；入口：侧边栏、项目、`/api/threads`；输入：项目和消息；输出：可恢复的对话；前置条件：本机数据库可写；失败表现：错误提示或不存在的对话；关联契约：`C-001`, `C-003`, `C-008`, `C-026`；实现证据：`internal/engine`, `internal/store`, `frontend/src/store/app.ts`。

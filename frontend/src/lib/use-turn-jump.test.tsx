@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import { useRef } from "react"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { useTurnJump } from "./use-turn-jump"
 
@@ -9,15 +9,18 @@ function Harness({
   loadUntilTurn,
   startId,
   target = "tn_early",
+  pinned = false,
 }: {
   ids: string[]
   loadUntilTurn: (id: string, clientHeight?: number) => Promise<boolean>
   startId?: string
   target?: string
+  pinned?: boolean
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
   const jumpTo = useTurnJump({
     scrollerRef,
+    pinned,
     growthKey: ids.join(","),
     unpin: () => undefined,
     loadUntilTurn,
@@ -61,6 +64,50 @@ function watchScrollTop(el: HTMLElement) {
 }
 
 describe("useTurnJump", () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it("does not restore an old target after following resumes and then stops again", () => {
+    const loadUntilTurn = vi.fn(async () => false)
+    const view = render(<Harness ids={["tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />)
+    const calls = watchScrollTop(screen.getByTestId("scroller"))
+    fireEvent.click(screen.getByRole("button", { name: "jump" }))
+    view.rerender(<Harness ids={["tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} pinned />)
+    calls.length = 0
+    view.rerender(<Harness ids={["tn_older", "tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />)
+    expect(calls).toEqual([])
+    // A fresh navigation after leaving the tail still works.
+    fireEvent.click(screen.getByRole("button", { name: "jump" }))
+    expect(calls).toHaveLength(1)
+  })
+
+  it("ignores late paging and mounting after following resumes", async () => {
+    let finish!: (found: boolean) => void
+    const loadUntilTurn = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve }))
+    const view = render(<Harness ids={["tn_late"]} loadUntilTurn={loadUntilTurn} />)
+    const calls = watchScrollTop(screen.getByTestId("scroller"))
+    fireEvent.click(screen.getByRole("button", { name: "jump" }))
+    view.rerender(<Harness ids={["tn_late"]} loadUntilTurn={loadUntilTurn} pinned />)
+    await act(async () => { finish(true) })
+    view.rerender(<Harness ids={["tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} pinned />)
+    expect(calls).toEqual([])
+  })
+
+  it("invalidates an already queued navigation frame when following resumes", () => {
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => frames.push(callback))
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {})
+    const loadUntilTurn = vi.fn(async () => false)
+    const view = render(<Harness ids={["tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />)
+    const calls = watchScrollTop(screen.getByTestId("scroller"))
+    fireEvent.click(screen.getByRole("button", { name: "jump" }))
+    view.rerender(<Harness ids={["tn_older", "tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />)
+    expect(frames).toHaveLength(1)
+    calls.length = 0
+    view.rerender(<Harness ids={["tn_older", "tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} pinned />)
+    act(() => frames.forEach((frame) => frame(0)))
+    expect(calls).toEqual([])
+  })
+
   it("scrolls a mounted row without paging", () => {
     const loadUntilTurn = vi.fn(async () => false)
     render(<Harness ids={["tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />)
