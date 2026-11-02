@@ -75,7 +75,7 @@ def render_model_config(models: dict, cap: int = 0) -> str:
     return "\n".join(lines) + "\n"
 
 
-def project_prompt(task: dict, models: dict | None) -> str:
+def project_prompt(task: dict, models: dict | None, extra: str = "") -> str:
     prompt = task.get("project_prompt", "")
     if models and models.get("executor"):
         identity = json.dumps({key: models["executor"][key] for key in ("provider_id", "model")}, ensure_ascii=False)
@@ -84,6 +84,8 @@ def project_prompt(task: dict, models: dict | None) -> str:
                    "Do not construct, decode or escape a tool ref from a model name. "
                    "You may choose the roles, division of work, worker count and other available models from evidence. "
                    "Do not delegate only to satisfy a quota. Report actual limitations.")
+    if extra.strip():
+        prompt += "\n\n" + extra.strip()
     return prompt.strip()
 
 

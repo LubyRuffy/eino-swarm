@@ -55,6 +55,17 @@ The three example arms separate current behavior, the Nuwa framework change,
 and an offered mixed-model configuration. All arms share the base tool
 configuration, configured model directory, per-task deadline, output cap and
 review allowance. Nuwa adds its mode-specific collaboration and model tools.
+
+Each arm may provide an optional `project_instruction` string, empty by default.
+It is appended as the last part of that arm's user project instruction, after
+the task's project prompt and any executor preference. Use it to describe the
+collaboration and resource constraints to evaluate; roles, task division and
+model selection remain model decisions rather than runtime routing rules.
+The complete arm text is frozen in the protocol and contributes to its hash.
+It does not modify the common task or fixture fingerprints, so differing arm
+instructions do not invalidate otherwise matching pairs. Inspect actual tool
+calls and model identities to assess whether the instruction was followed.
+
 Each execution owns a fresh engine, private data and workspace. Initial fixture
 hashes, task hashes, budget and pair identity are saved. Scheduling uses a seeded
 random task-block order and rotates arm order across repeats. It runs serially

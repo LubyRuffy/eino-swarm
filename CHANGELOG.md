@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Added optional per-arm project instructions to paired evaluations. The full
+  instruction is frozen in the protocol while common task and fixture identities
+  remain comparable; actual model routing is still measured from execution.
+
 - Fixed Nuwa worker buttons hiding the recorded model and status from
   accessibility clients. Their names now include the actual role, recorded or
   unknown model, reasoning setting and state while preserving worker navigation.

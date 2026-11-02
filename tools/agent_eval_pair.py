@@ -147,6 +147,8 @@ def load_spec(path: Path) -> dict:
     for arm in arms:
         if arm.get("project_mode") not in ("default", "nuwa"):
             raise ValueError("each arm needs project_mode default or nuwa")
+        if not isinstance(arm.get("project_instruction", ""), str):
+            raise ValueError("project_instruction must be a string")
         for key in ("planner", "executor_preference"):
             choice = arm.get(key)
             if choice is not None and (not isinstance(choice, dict) or not choice.get("provider_id") or not choice.get("model")):
@@ -238,7 +240,8 @@ def main(argv: list[str]) -> int:
         arm, model_setup = arm_by_id[item["arm"]], models[item["arm"]]
         run_args = types.SimpleNamespace(zwai=str(candidate), mock=args.mock, boot_timeout=args.boot_timeout,
                                         review_wait=review_wait, max_completion_tokens=cap,
-                                        project_mode=arm["project_mode"], models=model_setup, run_identity=item)
+                                        project_mode=arm["project_mode"], models=model_setup, run_identity=item,
+                                        project_instruction=arm.get("project_instruction", ""))
         provider = model_setup["providers"][0] if model_setup else None
         print(f"[{index + 1}/{len(schedule)}] {item['task']} replicate {item['replicate']} {item['arm']}", flush=True)
         result = runner.run_once(task_by_id[item["task"]], item["replicate"], run_args, provider, out / "arms" / item["arm"])

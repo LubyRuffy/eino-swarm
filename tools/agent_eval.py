@@ -373,7 +373,7 @@ def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict 
             workspace.mkdir(parents=True, exist_ok=True)
             project = http_json(engine.base, "POST", "/api/projects", {
                 "name": task["id"] + " eval", "workdir": str(workspace),
-                "system_prompt": protocol.project_prompt(task, models),
+                "system_prompt": protocol.project_prompt(task, models, getattr(args, "project_instruction", "")),
                 "nuwa_enabled": args.project_mode == "nuwa",
             })["project"]
             if args.project_mode == "nuwa" and project.get("nuwa_enabled") is not True:

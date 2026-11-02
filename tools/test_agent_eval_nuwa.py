@@ -117,6 +117,22 @@ class ModelProtocolTest(unittest.TestCase):
         self.assertIn("may choose", prompt)
         self.assertNotIn("researcher", prompt)
 
+    def test_arm_instruction_is_last_and_leaves_common_task_unchanged(self):
+        models = protocol.prepare_models(CONFIG, "default", executor_ref="default\tother")
+        task = grade.load_task(agent_eval.TASKS_DIR / "direct-lookup")
+        task["project_prompt"] = "Evaluate the supplied evidence."
+        original, fingerprint = copy.deepcopy(task), protocol.task_fingerprint(task)
+        base = protocol.project_prompt(task, models)
+        instructions = ("Use independent evidence checks.", "Keep a compact audit trail.")
+        for instruction in instructions:
+            self.assertEqual(protocol.project_prompt(task, models, instruction), base + "\n\n" + instruction)
+        self.assertEqual(protocol.project_prompt(task, models, " \n "), base)
+        self.assertEqual(protocol.project_prompt(task, None, instructions[0]),
+                         task["project_prompt"] + "\n\n" + instructions[0])
+        self.assertEqual(protocol.project_prompt({}, None, instructions[1]), instructions[1])
+        self.assertEqual(task, original)
+        self.assertEqual(protocol.task_fingerprint(task), fingerprint)
+
 
 class UsageFactsTest(unittest.TestCase):
     def test_dynamic_role_names_are_not_confused_with_auxiliary_agents(self):
@@ -212,6 +228,47 @@ class ProjectRunTest(unittest.TestCase):
             self.assertEqual(calls[2], ("PATCH", "/api/threads/th", {"provider_id": "default", "model": "other"}))
             self.assertEqual(calls[3][1], "/api/threads/th/turns")
             self.assertTrue(result["fixture_sha256"])
+
+    def test_arm_instructions_reach_project_api_without_changing_task_identity(self):
+        task = grade.load_task(agent_eval.TASKS_DIR / "direct-lookup")
+        task["project_prompt"] = "Evaluate the supplied evidence."
+        original = copy.deepcopy(task)
+        models = protocol.prepare_models(CONFIG, "default", executor_ref="default\tother")
+        calls, results = [], []
+
+        class Engine:
+            def __init__(self, zwai, data_dir, mock, boot_timeout):
+                self.base, self.log_path = "http://owned.invalid", data_dir / "engine.log"
+            def start(self):
+                pass
+            def stop(self):
+                pass
+
+        def http(base, method, path, body=None, **kwargs):
+            if path == "/api/projects":
+                calls.append(copy.deepcopy(body))
+                return {"project": {"id": "pj", "nuwa_enabled": True}}
+            return {"thread": {"id": "th", "model": "model-one", "provider_id": "default"}}
+
+        traces = [{"turn": {"status": "done", "duration_ms": 3}, "events": [], "llm_calls": []}]
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(agent_eval, "Engine", Engine), patch.object(agent_eval, "http_json", http), \
+                patch.object(agent_eval, "drive_conversation", return_value={"state": "done"}), \
+                patch.object(agent_eval, "wait_for_review", return_value=traces), \
+                patch.object(grade, "run_checks", return_value=[]):
+            for index, instruction in enumerate((None, "Use independent evidence checks.", "Keep a compact audit trail.")):
+                args = types.SimpleNamespace(zwai="zwai", mock=False, boot_timeout=1, review_wait=0,
+                                             project_mode="nuwa", models=models, max_completion_tokens=0)
+                if instruction is not None:
+                    args.project_instruction = instruction
+                results.append(agent_eval.run_once(task, index + 1, args, models["providers"][0], Path(tmp)))
+        self.assertTrue(all(not row["harness_error"] for row in results), results)
+        base = protocol.project_prompt(task, models)
+        self.assertEqual([row["system_prompt"] for row in calls],
+                         [base, base + "\n\nUse independent evidence checks.", base + "\n\nKeep a compact audit trail."])
+        self.assertEqual(len({row["task_sha256"] for row in results}), 1)
+        self.assertEqual(len({row["fixture_sha256"] for row in results}), 1)
+        self.assertEqual(task, original)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import json
 import tempfile
 from collections import defaultdict
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import agent_eval_pair as pair
@@ -21,6 +22,68 @@ def result(arm, pair_id="pair-1", passed=True, seconds=5, tokens=100, fixture="s
 
 
 class ScheduleTest(unittest.TestCase):
+    def test_project_instruction_rejects_nonstring_values(self):
+        base = {"version": 1, "runs": 1, "arms": [{"id": "a", "project_mode": "default"}, {"id": "b", "project_mode": "nuwa"}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "protocol.json"
+            for value in (None, False, 0, [], {}):
+                spec = copy.deepcopy(base)
+                spec["arms"][1]["project_instruction"] = value
+                path.write_text(json.dumps(spec))
+                with self.subTest(value=value), self.assertRaisesRegex(ValueError, "project_instruction.*string"):
+                    pair.load_spec(path)
+            for value in ("", "Use independent evidence checks."):
+                spec = copy.deepcopy(base)
+                spec["arms"][1]["project_instruction"] = value
+                path.write_text(json.dumps(spec))
+                self.assertEqual(pair.load_spec(path), spec)
+            path.write_text(json.dumps(base))
+            self.assertEqual(pair.load_spec(path), base)
+
+    def test_paired_runs_keep_arm_instruction_separate_from_common_task(self):
+        spec = {"version": 1, "runs": 1, "tasks": ["task"], "arms": [
+            {"id": "a", "project_mode": "default", "project_instruction": "Use independent evidence checks."},
+            {"id": "b", "project_mode": "nuwa", "project_instruction": "Keep a compact audit trail."},
+            {"id": "c", "project_mode": "nuwa"}]}
+        observed = {}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            binary = root / "candidate"
+            binary.write_bytes(b"offline candidate fixture")
+            path = root / "protocol.json"
+            path.write_text(json.dumps(spec))
+            task = {"id": "task", "dir": root / "task", "prompt": "Evaluate the supplied evidence.",
+                    "project_prompt": "Use the provided sources.", "timeout_s": 20}
+            task["dir"].mkdir()
+            (task["dir"] / "input.txt").write_text("Source material.\n")
+            original = copy.deepcopy(task)
+
+            def run_once(current, replicate, args, provider, out):
+                arm = args.run_identity["arm"]
+                observed[arm] = getattr(args, "project_instruction", None)
+                self.assertEqual(current, original)
+                row = result(arm, args.run_identity["pair_id"])
+                row["task_sha256"] = pair.protocol.task_fingerprint(current)
+                return row
+
+            with patch.object(pair.runner, "load_tasks", return_value=[task]), \
+                    patch.object(pair.runner, "run_once", side_effect=run_once), \
+                    patch.object(pair.runner, "unwind_on_termination"):
+                self.assertEqual(pair.main(["--protocol", str(path), "--zwai", str(binary),
+                                            "--out", str(root / "evidence"), "--mock"]), 0)
+            frozen = json.loads(next((root / "evidence").glob("*/protocol.json")).read_text())
+            report = json.loads(next((root / "evidence").glob("*/report.json")).read_text())
+            self.assertEqual(frozen["protocol"], spec)
+            unhashed = {k: v for k, v in frozen.items() if k not in ("protocol_sha256", "schedule")}
+            self.assertEqual(frozen["protocol_sha256"], pair.protocol.digest(unhashed))
+            changed = copy.deepcopy(unhashed)
+            changed["protocol"]["arms"][0]["project_instruction"] += " Confirm uncertainty."
+            self.assertNotEqual(frozen["protocol_sha256"], pair.protocol.digest(changed))
+            self.assertTrue(all(row["valid_pairs"] == 1 for row in report["summary"]["comparisons"].values()))
+            self.assertEqual(task, original)
+        self.assertEqual(observed, {"a": spec["arms"][0]["project_instruction"],
+                                    "b": spec["arms"][1]["project_instruction"], "c": ""})
+
     def test_unrecognized_budget_or_external_score_claim_is_refused(self):
         base = {"version": 1, "runs": 1, "arms": [{"id": "a", "project_mode": "default"}, {"id": "b", "project_mode": "nuwa"}]}
         with tempfile.TemporaryDirectory() as tmp:
