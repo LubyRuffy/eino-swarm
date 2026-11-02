@@ -66,6 +66,17 @@ It does not modify the common task or fixture fingerprints, so differing arm
 instructions do not invalidate otherwise matching pairs. Inspect actual tool
 calls and model identities to assess whether the instruction was followed.
 
+An arm may also freeze `reasoning_effort` as `low`, `medium`, `high` or `""`
+(the model default). Omitting it leaves the thread default untouched and sends
+no reasoning override. An explicit value is PATCHed onto the created thread
+and must be acknowledged before a turn starts. Each result records the actual
+thread API value as `reasoning_effort`; missing API metadata is `null`, not an
+assumed default. The arm value changes the protocol hash, not the common task
+or fixture identity. This selects the existing thread setting; upstream support
+and its effect on model behavior require separate evidence. Freeze other inputs
+when comparing reasoning levels so their effect is distinguishable from project
+instruction changes.
+
 Each execution owns a fresh engine, private data and workspace. Initial fixture
 hashes, task hashes, budget and pair identity are saved. Scheduling uses a seeded
 random task-block order and rotates arm order across repeats. It runs serially

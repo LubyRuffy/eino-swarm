@@ -1,9 +1,11 @@
 """Offline contracts for project-mode evals, model choices and fair pairing."""
 
 import copy
+import http.server
 import json
 import sys
 import tempfile
+import threading
 import types
 import unittest
 from pathlib import Path
@@ -269,6 +271,119 @@ class ProjectRunTest(unittest.TestCase):
         self.assertEqual(len({row["task_sha256"] for row in results}), 1)
         self.assertEqual(len({row["fixture_sha256"] for row in results}), 1)
         self.assertEqual(task, original)
+
+
+class ReasoningRunTest(unittest.TestCase):
+    def run_over_http(self, requested, *, models_enabled=True, acknowledgement="correct"):
+        calls = []
+        thread = {"id": "owned-thread", "provider_id": "default", "model": "model-one", "reasoning_effort": ""}
+
+        class API(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def request(self):
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                calls.append((self.command, self.path, body))
+                if self.path == "/api/projects":
+                    reply = {"project": {"id": "owned-project", "nuwa_enabled": True}}
+                elif self.path == "/api/threads/owned-thread" and self.command == "PATCH":
+                    thread.update(body)
+                    if acknowledgement == "wrong":
+                        thread["reasoning_effort"] = "high"
+                    elif acknowledgement == "missing":
+                        thread.pop("reasoning_effort", None)
+                    reply = {"thread": thread}
+                else:
+                    reply = {"thread": thread}
+                encoded = json.dumps(reply).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(encoded)))
+                self.end_headers()
+                self.wfile.write(encoded)
+
+            do_POST = request
+            do_PATCH = request
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), API)
+        serving = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01))
+        serving.start()
+
+        class Engine:
+            def __init__(self, zwai, data_dir, mock, boot_timeout):
+                self.base = "http://127.0.0.1:" + str(server.server_port)
+                self.log_path = data_dir / "engine.log"
+            def start(self):
+                pass
+            def stop(self):
+                pass
+
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                task = grade.load_task(agent_eval.TASKS_DIR / "direct-lookup")
+                models = protocol.prepare_models(CONFIG, "default") if models_enabled else None
+                args = types.SimpleNamespace(zwai="zwai", mock=not models_enabled, boot_timeout=1, review_wait=0,
+                                             project_mode="nuwa", models=models, max_completion_tokens=0)
+                if requested is not None:
+                    args.reasoning_effort = requested
+                traces = [{"turn": {"status": "done", "duration_ms": 3}, "events": [], "llm_calls": []}]
+                with patch.object(agent_eval, "Engine", Engine), \
+                        patch.object(agent_eval, "drive_conversation", return_value={"state": "done"}), \
+                        patch.object(agent_eval, "wait_for_review", return_value=traces), \
+                        patch.object(grade, "run_checks", return_value=[]):
+                    provider = models["providers"][0] if models else None
+                    result = agent_eval.run_once(task, 1, args, provider, Path(tmp))
+                saved = json.loads((Path(tmp) / "runs" / task["id"] / "run-1" / "result.json").read_text())
+                self.assertEqual(saved, result)
+        finally:
+            server.shutdown()
+            server.server_close()
+            serving.join(timeout=1)
+        self.assertFalse(serving.is_alive())
+        return result, calls
+
+    def test_supported_reasoning_choices_reach_http_patch_and_result_before_turn(self):
+        identities = []
+        for requested in ("", "low", "medium", "high"):
+            with self.subTest(requested=requested):
+                result, calls = self.run_over_http(requested)
+                self.assertFalse(result["harness_error"], result["harness_error"])
+                self.assertEqual(calls[1][0:2], ("POST", "/api/threads"))
+                self.assertEqual(calls[2], ("PATCH", "/api/threads/owned-thread",
+                                           {"provider_id": "default", "model": "model-one", "reasoning_effort": requested}))
+                self.assertEqual(calls[3][0:2], ("POST", "/api/threads/owned-thread/turns"))
+                self.assertEqual(result.get("reasoning_effort"), requested)
+                identities.append((result["task_sha256"], result["fixture_sha256"]))
+        self.assertEqual(len(set(identities)), 1)
+        result, calls = self.run_over_http("low", models_enabled=False)
+        self.assertFalse(result["harness_error"], result["harness_error"])
+        self.assertEqual(calls[2], ("PATCH", "/api/threads/owned-thread", {"reasoning_effort": "low"}))
+        self.assertEqual(result.get("reasoning_effort"), "low")
+
+    def test_omitted_reasoning_sends_no_override_and_records_actual_api_default(self):
+        for enabled in (True, False):
+            with self.subTest(models_enabled=enabled):
+                result, calls = self.run_over_http(None, models_enabled=enabled)
+                self.assertFalse(result["harness_error"], result["harness_error"])
+                self.assertTrue(all("reasoning_effort" not in body for _, _, body in calls))
+                self.assertEqual(sum(method == "PATCH" for method, _, _ in calls), int(enabled))
+                self.assertEqual(result.get("reasoning_effort"), "")
+        result, _ = self.run_over_http(None, acknowledgement="missing")
+        self.assertFalse(result["harness_error"], result["harness_error"])
+        self.assertIsNone(result["reasoning_effort"])
+
+    def test_unconfirmed_reasoning_prevents_turn_submission(self):
+        for acknowledgement, requested in (("wrong", "low"), ("missing", "")):
+            with self.subTest(acknowledgement=acknowledgement):
+                result, calls = self.run_over_http(requested, acknowledgement=acknowledgement)
+                self.assertIn("reasoning", result["harness_error"])
+                self.assertFalse(result["passed"])
+                self.assertFalse(any(path.endswith("/turns") for _, path, _ in calls))
+                if acknowledgement == "wrong":
+                    self.assertEqual(result.get("reasoning_effort"), "high")
+                elif acknowledgement == "missing":
+                    self.assertIsNone(result["reasoning_effort"])
 
 
 if __name__ == "__main__":

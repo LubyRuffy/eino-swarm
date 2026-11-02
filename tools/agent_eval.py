@@ -385,11 +385,15 @@ def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict 
         thread_id = thread["id"]
         if not hasattr(args, "project_mode"):
             workspace = data_dir / "workspaces" / thread_id
-        if models:
-            selected = {k: models["planner"][k] for k in ("provider_id", "model")}
-            actual = http_json(engine.base, "PATCH", f"/api/threads/{thread_id}", selected)["thread"]
-            if any(actual.get(k) != v for k, v in selected.items()):
-                raise EvalError("thread API did not acknowledge the selected planner")
+        selected = {k: models["planner"][k] for k in ("provider_id", "model")} if models else {}
+        effort = getattr(args, "reasoning_effort", None)
+        if effort is not None:
+            selected["reasoning_effort"] = effort
+        if selected:
+            thread = http_json(engine.base, "PATCH", f"/api/threads/{thread_id}", selected)["thread"]
+        record["reasoning_effort"] = thread.get("reasoning_effort")
+        if any(thread.get(k) != v for k, v in selected.items()):
+            raise EvalError("thread API did not acknowledge the selected planner or reasoning effort")
         workspace.mkdir(parents=True, exist_ok=True)
         prepare_workspace(task, workspace)
         baseline_hashes = grade.hash_tree(workspace)

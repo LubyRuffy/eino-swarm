@@ -22,6 +22,24 @@ def result(arm, pair_id="pair-1", passed=True, seconds=5, tokens=100, fixture="s
 
 
 class ScheduleTest(unittest.TestCase):
+    def test_reasoning_effort_accepts_only_existing_thread_api_values(self):
+        base = {"version": 1, "runs": 1, "arms": [{"id": "a", "project_mode": "default"}, {"id": "b", "project_mode": "nuwa"}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "protocol.json"
+            for value in (None, False, 0, [], {}, "default", "off", "LOW", " low "):
+                spec = copy.deepcopy(base)
+                spec["arms"][1]["reasoning_effort"] = value
+                path.write_text(json.dumps(spec))
+                with self.subTest(value=value), self.assertRaisesRegex(ValueError, "reasoning_effort"):
+                    pair.load_spec(path)
+            for value in ("", "low", "medium", "high"):
+                spec = copy.deepcopy(base)
+                spec["arms"][1]["reasoning_effort"] = value
+                path.write_text(json.dumps(spec))
+                self.assertEqual(pair.load_spec(path), spec)
+            path.write_text(json.dumps(base))
+            self.assertEqual(pair.load_spec(path), base)
+
     def test_project_instruction_rejects_nonstring_values(self):
         base = {"version": 1, "runs": 1, "arms": [{"id": "a", "project_mode": "default"}, {"id": "b", "project_mode": "nuwa"}]}
         with tempfile.TemporaryDirectory() as tmp:
@@ -42,10 +60,10 @@ class ScheduleTest(unittest.TestCase):
 
     def test_paired_runs_keep_arm_instruction_separate_from_common_task(self):
         spec = {"version": 1, "runs": 1, "tasks": ["task"], "arms": [
-            {"id": "a", "project_mode": "default", "project_instruction": "Use independent evidence checks."},
-            {"id": "b", "project_mode": "nuwa", "project_instruction": "Keep a compact audit trail."},
+            {"id": "a", "project_mode": "default", "project_instruction": "Use independent evidence checks.", "reasoning_effort": "low"},
+            {"id": "b", "project_mode": "nuwa", "project_instruction": "Keep a compact audit trail.", "reasoning_effort": "high"},
             {"id": "c", "project_mode": "nuwa"}]}
-        observed = {}
+        observed, reasoning = {}, {}
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             binary = root / "candidate"
@@ -61,6 +79,7 @@ class ScheduleTest(unittest.TestCase):
             def run_once(current, replicate, args, provider, out):
                 arm = args.run_identity["arm"]
                 observed[arm] = getattr(args, "project_instruction", None)
+                reasoning[arm] = getattr(args, "reasoning_effort", None)
                 self.assertEqual(current, original)
                 row = result(arm, args.run_identity["pair_id"])
                 row["task_sha256"] = pair.protocol.task_fingerprint(current)
@@ -79,10 +98,14 @@ class ScheduleTest(unittest.TestCase):
             changed = copy.deepcopy(unhashed)
             changed["protocol"]["arms"][0]["project_instruction"] += " Confirm uncertainty."
             self.assertNotEqual(frozen["protocol_sha256"], pair.protocol.digest(changed))
+            changed = copy.deepcopy(unhashed)
+            changed["protocol"]["arms"][0]["reasoning_effort"] = "medium"
+            self.assertNotEqual(frozen["protocol_sha256"], pair.protocol.digest(changed))
             self.assertTrue(all(row["valid_pairs"] == 1 for row in report["summary"]["comparisons"].values()))
             self.assertEqual(task, original)
         self.assertEqual(observed, {"a": spec["arms"][0]["project_instruction"],
                                     "b": spec["arms"][1]["project_instruction"], "c": ""})
+        self.assertEqual(reasoning, {"a": "low", "b": "high", "c": None})
 
     def test_unrecognized_budget_or_external_score_claim_is_refused(self):
         base = {"version": 1, "runs": 1, "arms": [{"id": "a", "project_mode": "default"}, {"id": "b", "project_mode": "nuwa"}]}

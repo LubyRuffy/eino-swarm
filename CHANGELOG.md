@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Added optional frozen per-arm reasoning levels to paired evaluations. The
+  runner confirms the existing thread API selection before starting work and
+  records its actual value; protocols without a selection send no override.
+
 - Added optional per-arm project instructions to paired evaluations. The full
   instruction is frozen in the protocol while common task and fixture identities
   remain comparable; actual model routing is still measured from execution.
