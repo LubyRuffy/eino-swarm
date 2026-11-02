@@ -4,8 +4,9 @@ These opt-in evaluations measure task outcomes. They do not presume that more
 workers, Nuwa mode or mixed models are better. They are separate from offline
 tests and do not establish CyberGym performance.
 
-The [2026-11-02 generic observation](RESULTS.md) records one completed cohort,
-its raw and corrected grading, actual model routing and measurement limits.
+The [retained observations](RESULTS.md) record separate generic and AppWorld dev
+cohorts, their grading, actual model routing and measurement limits. Results
+from different protocols are not pooled.
 
 `tools/agent_eval.py` accepts `--project-mode default|nuwa`, `--planner-ref` and
 `--executor-ref`. These CLI choices use the existing provider ChoiceID, with a
@@ -139,6 +140,22 @@ digests, the selected final artifact, raw evaluator output and its verdict.
 Generic file checks or a model saying it succeeded cannot stand in for an
 official benchmark verdict. Provision/reset external environments separately;
 do not give the agent a directory containing hidden evaluators or patched code.
+
+The separate AppWorld dev observation used the official SDK with a private
+controller, an execution-only bridge and a model-only measurement gateway. The
+agent received public task context and API documentation; evaluator/data files
+and original provider credentials remained outside its container. Its wrapper
+used the existing runner and `exec` client boundary, without a product MCP client
+or domain-specific engine roles. This private experimental wrapper is not a new
+`--benchmark` option of the generic runner. SDK/interface onboarding, actual
+model assignment and task success must each be checked separately. A configured
+executor preference is not an executed heterogeneous team.
+
+AppWorld's official development restrictions permit dev error analysis and
+require test splits to be used only for final aggregate evaluation. The retained
+cohort used three fixed-seed dev scenarios and all three variations of each;
+it is not a full benchmark or leaderboard result. See its
+[upstream restrictions](https://github.com/StonyBrookNLP/appworld/blob/v0.1.3.post1/README.md#no_entry_sign-agent-development-restrictions).
 
 For the public [sunblaze-ucb/CyberGym](https://github.com/sunblaze-ucb/cybergym),
 freeze the upstream revision, task ID and difficulty, vulnerable source and
