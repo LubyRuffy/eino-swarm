@@ -148,6 +148,8 @@ def wait_fixture_engine(context, deadline, retired_pid):
 
 def reopen(context, deadline, lease, name):
     old_pid = context["app_pid"]
+    previous_readiness = dict(pid=old_pid, stage=context.get("readiness_stage"),
+                              native_input_attempted=bool(context.get("native_input_attempted")))
     notice.control(context, deadline, "close")
     handle = next((process for process in context.get("reopened_processes", []) if process.pid == old_pid), None)
     wait_for(context, deadline, lambda: handle.poll() is not None if handle else smoke.runner.process_argv(old_pid) is None, "private native desktop exit")
@@ -166,8 +168,13 @@ def reopen(context, deadline, lease, name):
     context.setdefault("reopened_processes", []).append(process)
     context["app_pid"] = process.pid
     current = wait_fixture_engine(context, deadline, lease["pid"])
+    smoke.assert_process(context, process.pid, "desktop")
+    # Initial observation belongs to this new, identity-checked process. The
+    # retired PID's inputs remain recorded; they never become eligible to retry.
+    context["readiness_stage"], context["native_input_attempted"] = "window", False
     smoke.wait_window(context, deadline, initial=True)
-    save(context["evidence"] / (name + ".json"), dict(old_desktop_pid=old_pid, old_engine_pid=lease["pid"], new_desktop_pid=process.pid, lease=current, setup="normal private desktop close; SIGTERM only identity-validated case engine; same-data native reopen"))
+    context["readiness_stage"] = "scenario"
+    save(context["evidence"] / (name + ".json"), dict(old_desktop_pid=old_pid, old_engine_pid=lease["pid"], new_desktop_pid=process.pid, lease=current, previous_readiness=previous_readiness, setup="normal private desktop close; SIGTERM only identity-validated case engine; same-data native reopen"))
     return current
 
 
