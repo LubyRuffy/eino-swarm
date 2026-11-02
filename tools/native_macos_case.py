@@ -69,8 +69,17 @@ def case_lock():
         yield stream
 
 
+@contextmanager
+def private_binary(path):
+    with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "wb") as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        yield stream
+
+
 def save_json(path, row):
-    path.write_text(json.dumps(row, indent=2) + "\n", encoding="utf-8")
+    encoded = json.dumps(row, indent=2) + "\n"
+    with private_binary(path) as stream:
+        stream.write(encoded.encode("utf-8"))
 
 
 def save_lock(stream, row):
@@ -481,10 +490,10 @@ def run_case(app, evidence, timeout, command, *, budget=60, prepare=None, prefli
                                 or not callable(preparation.before_launch) or not callable(preparation.handoff)):
                             raise ValueError("case preparation must return CasePreparation or None")
                 work_remaining(started, receipt, "app launch")
-                with (evidence / "app.stdout.log").open("wb") as out, \
-                        (evidence / "app.stderr.log").open("wb") as err, \
-                        (evidence / "scenario.stdout.log").open("wb") as scenario_out, \
-                        (evidence / "scenario.stderr.log").open("wb") as scenario_err:
+                with private_binary(evidence / "app.stdout.log") as out, \
+                        private_binary(evidence / "app.stderr.log") as err, \
+                        private_binary(evidence / "scenario.stdout.log") as scenario_out, \
+                        private_binary(evidence / "scenario.stderr.log") as scenario_err:
                     phase = "launch"
                     with measure_phase(receipt, "launch"):
                         if preparation is not None:
@@ -552,7 +561,8 @@ def run_case(app, evidence, timeout, command, *, budget=60, prepare=None, prefli
                             if not remaining and before_faults and after_faults and direct_complete:
                                 engine_log = data / "engine.log"
                                 if engine_log.is_file() and not engine_log.is_symlink():
-                                    shutil.copyfile(engine_log, evidence / "engine.log")
+                                    with engine_log.open("rb") as source, private_binary(evidence / "engine.log") as destination:
+                                        shutil.copyfileobj(source, destination)
                                 remove_case_tree(root)
                                 receipt["data_removed"] = True
                                 receipt["cleanup_complete"] = True

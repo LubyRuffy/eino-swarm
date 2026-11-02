@@ -24,6 +24,51 @@ runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
 
 
+class NativeReceiptPrivacyTests(unittest.TestCase):
+    def test_receipt_create_and_overwrite_are_private_without_changing_child_umask(self):
+        script = r'''
+import importlib.util, json, os, subprocess, sys
+from pathlib import Path
+root = Path(sys.argv[2])
+spec = importlib.util.spec_from_file_location("native_case_receipt_fixture", sys.argv[1])
+runner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runner)
+os.umask(0o022)
+def child(name):
+    subprocess.run([sys.executable, "-c", "import os,sys; fd=os.open(sys.argv[1], os.O_WRONLY|os.O_CREAT, 0o666); os.close(fd)", str(root / name)], check=True)
+child("before-normal-child")
+created = root / "created.json"
+runner.save_json(created, {"source": "original", "nested": {"sequence": 3}})
+created_mode = created.stat().st_mode & 0o777
+existing = root / "existing.json"
+existing.write_text("previous contents")
+existing.chmod(0o644)
+runner.save_json(existing, {"source": "replacement", "unicode": "中文"})
+child("after-normal-child")
+print(json.dumps({"created_mode": created_mode, "existing_mode": existing.stat().st_mode & 0o777,
+                 "child_modes": [(root / name).stat().st_mode & 0o777 for name in ("before-normal-child", "after-normal-child")],
+                 "created": created.read_text(), "existing": existing.read_text()}))
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run([sys.executable, "-c", script, str(SCRIPT), directory], check=True, capture_output=True, text=True)
+        row = json.loads(result.stdout)
+        self.assertEqual(row["created_mode"], 0o600, row)
+        self.assertEqual(row["existing_mode"], 0o600, row)
+        self.assertEqual(row["child_modes"], [0o644, 0o644], row)
+        self.assertEqual(row["created"], json.dumps({"source": "original", "nested": {"sequence": 3}}, indent=2) + "\n")
+        self.assertEqual(row["existing"], json.dumps({"source": "replacement", "unicode": "中文"}, indent=2) + "\n")
+
+    def test_receipt_serialization_and_filesystem_failures_keep_their_original_semantics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "retained.json"
+            path.write_text("retain previous bytes")
+            with self.assertRaises(TypeError):
+                runner.save_json(path, {"unsupported": object()})
+            self.assertEqual(path.read_text(), "retain previous bytes")
+            with self.assertRaises(FileNotFoundError):
+                runner.save_json(Path(directory) / "missing-parent" / "receipt.json", {})
+
+
 class NativeCaseTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="native-case-fixture-")
@@ -58,6 +103,38 @@ class NativeCaseTests(unittest.TestCase):
         if "case_root" in receipt:
             self.addCleanup(lambda path=receipt["case_root"]: shutil.rmtree(path, ignore_errors=True))
         return code, evidence, receipt
+
+    def test_outer_streams_and_engine_copy_are_private_without_changing_scenario_umask(self):
+        baseline = self.root / "normal-baseline"
+        subprocess.run([sys.executable, "-c", "import os,sys; os.close(os.open(sys.argv[1], os.O_WRONLY|os.O_CREAT, 0o666))", str(baseline)], check=True)
+        self.executable.write_text("#!" + sys.executable + "\nimport os,sys,time\nfrom pathlib import Path\n"
+                                   "print('native app output',flush=True)\nprint('native app diagnostic',file=sys.stderr,flush=True)\n"
+                                   "Path(os.environ['ZWAI_HOME'],'started').write_text('ready')\ntime.sleep(120)\n")
+        scenario = """import os,sys,time
+from pathlib import Path
+root=Path(os.environ['ZWAI_HOME'])
+limit=time.monotonic()+5
+while not (root/'started').exists() and time.monotonic()<limit:
+ time.sleep(.01)
+assert (root/'started').exists()
+(root/'engine.log').write_text('retained engine log')
+normal=Path(os.environ['ZWAI_NATIVE_EVIDENCE'])/'normal-scenario-output'
+os.close(os.open(normal, os.O_WRONLY|os.O_CREAT, 0o666))
+print('native scenario output',flush=True)
+print('native scenario diagnostic',file=sys.stderr,flush=True)
+"""
+        code, evidence, receipt = self.run_case(scenario)
+        self.assertEqual(code, 0)
+        self.assertTrue(receipt["cleanup_complete"])
+        self.assertTrue(receipt["data_removed"])
+        self.assertEqual(receipt["remaining_owned_pids"], [])
+        for name, contents in (("app.stdout.log", "native app output"), ("app.stderr.log", "native app diagnostic"),
+                               ("scenario.stdout.log", "native scenario output"), ("scenario.stderr.log", "native scenario diagnostic"),
+                               ("engine.log", "retained engine log")):
+            path = evidence / name
+            self.assertIn(contents, path.read_text())
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600, name)
+        self.assertEqual((evidence / "normal-scenario-output").stat().st_mode & 0o777, baseline.stat().st_mode & 0o777)
 
     def test_cycle_budget_measures_each_phase_and_includes_receipt_write(self):
         clock = [100.0]
@@ -577,6 +654,23 @@ time.sleep(.2)
         self.assertTrue(receipt["cleanup_complete"])
         self.assertTrue(receipt["data_removed"])
         launch.assert_not_called()
+
+    def test_engine_evidence_copy_failure_keeps_cleanup_refusal_latched(self):
+        original = runner.shutil.copyfileobj
+        def fail_engine_copy(source, destination, *args, **kwargs):
+            if Path(source.name).name == "engine.log":
+                raise OSError("engine evidence write refused")
+            return original(source, destination, *args, **kwargs)
+        script = "import os; from pathlib import Path; Path(os.environ['ZWAI_HOME'],'engine.log').write_text('engine trace')"
+        with mock.patch.object(runner.shutil, "copyfileobj", side_effect=fail_engine_copy):
+            code, evidence, receipt = self.run_case(script)
+        self.assertEqual(code, 3)
+        self.assertFalse(receipt["cleanup_complete"])
+        self.assertFalse(receipt["data_removed"])
+        self.assertIn("engine evidence write refused", receipt["cleanup_error"])
+        self.assertTrue(Path(receipt["case_root"]).exists())
+        self.assertFalse(json.loads(self.lock.read_text())["cleanup_complete"])
+        self.assertEqual((evidence / "engine.log").stat().st_mode & 0o777, 0o600)
 
     def test_engine_log_persists_after_data_removal_and_io_failure_latches_lock(self):
         scenario = "import os; from pathlib import Path; Path(os.environ['ZWAI_HOME'],'engine.log').write_text('engine trace')"
