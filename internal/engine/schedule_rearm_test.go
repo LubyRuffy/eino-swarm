@@ -275,14 +275,16 @@ func TestWakeAndRecadenceInOneTurnRecordOneChip(t *testing.T) {
 	}
 }
 
-// A cancel in the same turn is a real change. The next arm has to show.
-func TestArmAfterCancelInTheSameTurnStillRecordsAChip(t *testing.T) {
+// A manager cancel in the same turn is a real change. Unlike a human Cancel
+// wait action, it permits another arm, whose new chip must remain visible.
+func TestArmAfterManagerCancelInTheSameTurnStillRecordsAChip(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	turn := mustStoredTurn(t, e, th.ID, store.Turn{})
 	sch := mustCreateWake(t, e, th.ID)
-	if err := e.CancelSchedule(sch.ID); err != nil {
-		t.Fatal(err)
+	cancelled, err := e.cancelScheduleJSON(th.ID, turn.ID, `{"id":"`+sch.ID+`"}`)
+	if err != nil || !strings.Contains(cancelled, `"ok":true`) {
+		t.Fatalf("manager cancel: %s %v", cancelled, err)
 	}
 	before := countThreadKind(t, e, th.ID, KindSchedule)
 	wake, err := ScheduleWakeTool(func(args string) (string, error) {

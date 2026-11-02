@@ -961,6 +961,31 @@ worker before closing SQLite.
    Decisions in `thread_wake_decisions` are cached against the source event seq,
    event identity and effective-text fingerprint, outside
    compressed replay. Only a later explicit human `allow` releases `deny`.
+   Human Cancel wait actions through HTTP DELETE or phone `cancel_wait` also
+   supply authority directly: cancellation of a thread wake and its
+   `schedule_cancelled` event (`role:human`, `text` is the schedule ID) commit
+   together. That structured action denies further manager waits on the actual
+   wake target, even when its origin is another conversation. It needs no
+   classifier decision or fabricated human quote. Ordinary “continue” input
+   leaves it in force; only later explicit human allowance releases it.
+   Model cancellation and standalone cancellation do not create this denial.
+   A consumed one-shot or an earlier manager cancellation is not a human
+   action: the first human DELETE still atomically cancels that row and records
+   the denial, preserving the running check and its real result. Duplicate
+   DELETE matches a prior local human receipt on the same target and exact ID;
+   it cannot add a new denial after later permission. Deleting terminal history
+   does not start a goal turn. Cancellation rechecks the selected target inside
+   its transaction; destination editing rechecks actual active/paused status
+   before freezing old run kinds or changing fields.
+   `models/scheduling/ScheduleAuthorization.tla` models these authority and
+   mutation interleavings independently of the lifecycle and stream models.
+   Its finite human-input semantics and transactional steps are assumptions;
+   the real HTTP/Registry/ADK and storage regressions in `docs/TESTING.md` bridge
+   the protocol to implementation.
+   The orthogonal `models/scheduling/WakeConsentTimeline.tla` checks two
+   schedule IDs through two explicit allowances and two first cancellations,
+   independently of classifier completion order. It compares both authority
+   and the latest original source; it does not duplicate the row lifecycle model.
    Classification is lazy: ordinary work makes no policy model call until it
    attempts to arm a thread wake. Each verification has a total 30-second
    deadline, including cancellable waiting for the conversation's classification
@@ -975,7 +1000,9 @@ worker before closing SQLite.
    a wait. `thread_wake_prohibited` and `thread_wake_policy_pending` refusals
    leave the wait row unchanged, emit no `schedule` event, and retain the human
    source event seq, text and exact quote in a classified denial's tool-result
-   Trace. A pending refusal retains its known source seq. Reports without
+   Trace. A human-cancellation denial instead retains `source_kind` as
+   `schedule_cancelled`, the source seq and schedule ID, with an empty quote.
+   A pending refusal retains its known source seq. Reports without
    `next_in_s`, including `keep:false` cancellation, remain available; a
    refused recadence does not partially cancel the wait.
    New scheduled turns persist their claimed-run binding before the runtime

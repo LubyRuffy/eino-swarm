@@ -114,6 +114,25 @@ class Config(unittest.TestCase):
         self.assertIn("  MaxSeq = 5\n", cfg)
         self.assertNotIn("MaxTurns", cfg)
 
+    def test_scheduling_config_freezes_all_authority_guards(self):
+        cases = {case.name: case for case in mc.CASES}
+        cfg = mc.render_config(cases["schedule-claimed-cancel-ignored"])
+        self.assertIn("  ClaimedCancelIgnored = TRUE\n", cfg)
+        self.assertIn("  CancelDoesNotRevoke = FALSE\n", cfg)
+        self.assertIn("  RetargetIgnoresStatus = FALSE\n", cfg)
+        self.assertIn("  MaxAttempts = 2\n", cfg)
+        self.assertNotIn("MaxSeq", cfg)
+        self.assertTrue(cfg.endswith("INVARIANTS TypeOK ClaimedCancellationStopsReport\n"))
+
+    def test_consent_timeline_config_is_independent_of_schedule_lifecycle(self):
+        cases = {case.name: case for case in mc.CASES}
+        cfg = mc.render_config(cases["consent-duplicate-delete-policy"])
+        self.assertIn("  DuplicateDeleteAppendsDeny = TRUE\n", cfg)
+        self.assertIn("  HumanCancelDoesNotWithdraw = FALSE\n", cfg)
+        self.assertIn("  MaxHumanEvents = 5\n", cfg)
+        self.assertNotIn("MaxAttempts", cfg)
+        self.assertTrue(cfg.endswith("INVARIANTS TypeOK LaterAllowanceSurvivesDuplicate\n"))
+
 
 PASS_OUT = """Model checking completed. No error has been found.
 852 states generated, 504 distinct states found, 0 states left on queue.
@@ -135,6 +154,13 @@ class Judging(unittest.TestCase):
         broken = mc.parse_output(PARSE_ERROR_OUT)
         self.assertEqual(broken.error, "Error: TLC threw an unexpected exception.")
         self.assertEqual(mc.parse_output("").error, "TLC did not finish")
+
+    def test_completed_state_count_does_not_report_a_progress_suffix(self):
+        output = ("Progress(9): 585,489 states generated, 150,365 distinct states found, 82,601 states left on queue.\n"
+                  "Model checking completed. No error has been found.\n"
+                  "10114342 states generated, 1893136 distinct states found, 0 states left on queue.\n")
+        self.assertEqual(mc.parse_output(output), mc.Outcome(True, None, 1893136, None))
+        self.assertEqual(mc.parse_output(output.split("Model checking")[0]).distinct, 150365)
 
     def test_judge_requires_the_exact_expected_outcome(self):
         current = mc.Case("c", "s")
@@ -204,8 +230,95 @@ def available_jar() -> Path | None:
     return None
 
 
+class RunningCase(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.case = mc.Case("case", "test receipt")
+
+    def test_independent_checks_do_not_share_java_standard_module_scratch_files(self):
+        seen = set()
+
+        def run(command, **kwargs):
+            roots = [arg.split("=", 1)[1] for arg in command if arg.startswith("-Djava.io.tmpdir=")]
+            self.assertEqual(len(roots), 1, "each JVM needs its own standard-module extraction directory")
+            scratch = Path(roots[0])
+            self.assertTrue(scratch.is_absolute())
+            self.assertTrue(scratch.is_dir())
+            self.assertEqual(scratch.parent, kwargs["cwd"].resolve())
+            self.assertNotIn(scratch, seen)
+            seen.add(scratch)
+            return mock.Mock(returncode=0, stdout=PASS_OUT, stderr="")
+
+        with mock.patch.object(mc.subprocess, "run", side_effect=run):
+            for name in ("first-check", "second-check"):
+                outcome, _ = mc.run_case(mc.Case(name, "independent JVM"), Path("jar"), self.tmp)
+                self.assertTrue(outcome.passed)
+        self.assertEqual(len(seen), 2)
+
+    def test_complete_streams_are_private_and_saved_before_interpretation(self):
+        def run(*args, **kwargs):
+            self.assertNotIn("umask", kwargs)
+            self.assertNotIn("env", kwargs)
+            (kwargs["cwd"] / "states").mkdir()
+            return mock.Mock(returncode=0, stdout=PASS_OUT, stderr="complete stderr\n")
+
+        parse = mc.parse_output
+        def verify_saved(text):
+            self.assertEqual((self.tmp / "case" / "tlc.out").read_text(), text)
+            return parse(text)
+
+        with mock.patch.object(mc.subprocess, "run", side_effect=run), \
+                mock.patch.object(mc, "parse_output", side_effect=verify_saved):
+            outcome, log = mc.run_case(self.case, Path("jar"), self.tmp)
+        self.assertTrue(outcome.passed)
+        self.assertEqual(log.read_text(), PASS_OUT + "complete stderr\n")
+        self.assertFalse((log.parent / "states").exists())
+        for path in (log, log.parent / "case.cfg"):
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_timeout_retains_both_original_streams_without_accepting_partial_output(self):
+        failure = mc.subprocess.TimeoutExpired("java", 2, output=PASS_OUT.encode(), stderr=b"original stderr\xff\n")
+        with mock.patch.object(mc.subprocess, "run", side_effect=failure):
+            outcome, log = mc.run_case(self.case, Path("jar"), self.tmp, timeout=2)
+        self.assertFalse(outcome.passed)
+        self.assertIn("timed out after 2s", outcome.error)
+        self.assertTrue(log.read_text().startswith(PASS_OUT + "original stderr\ufffd\n"))
+        self.assertEqual(log.stat().st_mode & 0o777, 0o600)
+        self.assertIsNotNone(mc.judge(self.case, outcome))
+
+    def test_nonzero_process_exit_cannot_be_accepted_from_completion_prose(self):
+        with mock.patch.object(mc.subprocess, "run", return_value=mock.Mock(returncode=66, stdout=PASS_OUT, stderr="fatal JVM error")):
+            outcome, log = mc.run_case(self.case, Path("jar"), self.tmp)
+        self.assertFalse(outcome.passed)
+        self.assertIn("status 66", outcome.error)
+        self.assertIn("fatal JVM error", log.read_text())
+
+    def test_captured_stream_shapes(self):
+        self.assertEqual(mc.captured_text(None), "")
+        self.assertEqual(mc.captured_text("text"), "text")
+        self.assertEqual(mc.captured_text(b"bytes"), "bytes")
+
+
 @unittest.skipUnless(available_jar(), "tla2tools.jar and java are not installed; run make model-check")
 class WithTLC(unittest.TestCase):
+    def test_parallel_checks_extract_standard_modules_into_their_own_directories(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        jar = available_jar()
+        out = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, out)
+        cases = [mc.Case("parallel-lifecycle", "private standard modules", model="lifecycle"),
+                 mc.Case("parallel-stream", "private standard modules", model="stream")]
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            outcomes = list(executor.map(lambda case: mc.run_case(case, jar, out), cases))
+        for outcome, log in outcomes:
+            self.assertTrue(outcome.passed, log.read_text()[-2000:])
+            # SANY removes its extracted files on JVM exit; the completed
+            # parser's durable path proves which private copy it consumed.
+            scratch = (log.parent / "java-tmp").resolve()
+            self.assertIn("Parsing file " + str(scratch / "Naturals.tla"), log.read_text())
+
     # Each model's current design and its historical reproductions; the full
     # table runs through `make model-check`.
     def test_current_design_passes_and_history_is_found_again(self):
@@ -214,7 +327,11 @@ class WithTLC(unittest.TestCase):
         self.addCleanup(shutil.rmtree, out)
         by_name = {c.name: c for c in mc.CASES}
         for name in ("current", "pre-d77e8d4", "pre-f341e05", "stream-current",
-                     "stream-v0.1.45-lost-marker", "stream-v0.1.45-seq-reuse"):
+                     "stream-v0.1.45-lost-marker", "stream-v0.1.45-seq-reuse",
+                     "schedule-current", "schedule-pre-cancel-authority",
+                     "schedule-claimed-cancel-ignored", "schedule-manager-cancel-masks-human",
+                     "schedule-retarget-after-terminal", "schedule-reach-cancel-storage-refusal",
+                     "consent-current", "consent-pre-cancel-authority"):
             outcome, log = mc.run_case(by_name[name], jar, out)
             self.assertIsNone(mc.judge(by_name[name], outcome), log.read_text()[-2000:])
             self.assertTrue((out / name / "case.cfg").is_file())

@@ -233,12 +233,9 @@ func scheduleEventID(text string) string {
 	return strings.TrimSpace(body.ID)
 }
 
-// CancelSchedule marks a row cancelled and records a chip on the origin
-// conversation, or on the wake target if origin was never set. Cancelling
-// a thread wake while that conversation is idle continues a standing
-// /goal: continueGoal only ran at turn-end, and the wait-turn had already
-// finished.
-func (e *Engine) CancelSchedule(id string) error {
+// cancelSchedule is the manager's cancellation, which ends one wait without
+// changing the human's permission for later waits.
+func (e *Engine) cancelSchedule(id string) error {
 	row, err := e.store.CancelSchedule(id)
 	if err != nil {
 		return err

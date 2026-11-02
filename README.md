@@ -151,6 +151,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   releases the prohibition. Reporting findings without rescheduling and
   cancelling a wait still work. A source awaiting policy classification also
   prevents arming until it can be checked.
+  Manually cancelling a conversation wait also withdraws that permission,
+  including a consumed one-shot or a wait the manager already cancelled.
+  An ordinary continuation keeps the restriction; repeating the old cancellation
+  preserves any later explicit permission and does not restart terminal history.
   When progress is gated on time or a condition not worth polling now, it is
   told to wake and end the turn when your conversation policy allows it.
   A parallel `exec` that sleeps and then checks progress is fine; that
@@ -191,8 +195,11 @@ uploads, downloads and the live event stream have exactly one implementation.
   shows a banner with the next check and the wait's title or prompt, **Run now**, and **Cancel wait** (not
   an icon-only dismiss — that sat under the goal banner's X). Run now and
   Cancel wait also sit on the armed-wait notice, which shows the same
-  instruction. Cancel of a thread wake
-  while idle continues a standing `/goal`; Run now fires the check without
+  instruction. Cancelling a thread wake also prevents the manager from arming
+  another wait in that conversation until you explicitly allow waiting again;
+  sending “continue” resumes work and keeps that restriction. Cancelling an
+  active or paused wait while idle continues a standing `/goal`; Run now fires
+  the check without
   waiting for the timer (the wait banner hides while that turn is working,
   and an early cron check consumes the pending slot). The next-check time
   comes from the live schedule row, not the first arm snapshot — a refresh
@@ -1279,6 +1286,7 @@ Run it on tasks and machines where that is acceptable. There is no approval flow
 ```bash
 make test        # go test -race -cover ./... + front-end unit tests
 make e2e         # Playwright, on the offline provider
+make model-check # TLC: lifecycle, event stream, scheduling authorization and consent timeline
 make frontend    # rebuild frontend/dist if the TypeScript sources changed
 make build       # ./bin/zwai
 ```

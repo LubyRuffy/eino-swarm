@@ -40,8 +40,9 @@ type ThreadWakeDecision struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// WakePolicyInput is original human text with unread-steer edits applied.
-// Decision and Quote are cached output, never authority supplied by a caller.
+// WakePolicyInput is original human text with unread-steer edits applied, or a
+// human schedule cancellation whose Text is the cancelled ID. Decision and
+// Quote are derived output, never authority supplied by a caller.
 type WakePolicyInput struct {
 	Seq      int64  `json:"seq"`
 	Text     string `json:"text"`
@@ -53,6 +54,7 @@ type WakePolicyInput struct {
 type ThreadWakePolicy struct {
 	Denied     bool   `json:"denied"`
 	SourceSeq  int64  `json:"source_seq,omitempty"`
+	SourceKind string `json:"source_kind,omitempty"`
 	SourceText string `json:"source_text,omitempty"`
 	Quote      string `json:"quote,omitempty"`
 	PendingSeq int64  `json:"pending_seq,omitempty"`
@@ -81,8 +83,8 @@ func wakeInputDigest(input WakePolicyInput) string {
 // model messages. A generated scheduled prompt cannot become a human decision.
 func effectiveWakeInputs(tx *gorm.DB, threadID string) ([]WakePolicyInput, map[int64]uint, error) {
 	var events []Event
-	if err := tx.Where("thread_id = ? AND kind IN ? AND COALESCE(source_thread_id, '') = '' AND COALESCE(source_turn_id, '') = '' AND COALESCE(role, '') = ''", threadID,
-		[]string{"user_message", "steer", "steer_revised", "steer_retracted"}).Order("seq ASC").Find(&events).Error; err != nil {
+	if err := tx.Where("thread_id = ? AND COALESCE(source_thread_id, '') = '' AND COALESCE(source_turn_id, '') = '' AND ((kind IN ? AND COALESCE(role, '') = '') OR (kind = ? AND role = ?))", threadID,
+		[]string{"user_message", "steer", "steer_revised", "steer_retracted"}, "schedule_cancelled", "human").Order("seq ASC").Find(&events).Error; err != nil {
 		return nil, nil, err
 	}
 	inputs := make([]WakePolicyInput, 0)
@@ -95,6 +97,11 @@ func effectiveWakeInputs(tx *gorm.DB, threadID string) ([]WakePolicyInput, map[i
 			positions[ev.Seq] = len(inputs)
 			ids[ev.Seq] = ev.ID
 			inputs = append(inputs, WakePolicyInput{Seq: ev.Seq, Text: ev.Text, Kind: ev.Kind})
+		case "schedule_cancelled":
+			// A real human UI action has fixed semantics. It is not prose for a
+			// classifier (or a later manager) to reinterpret as permission.
+			ids[ev.Seq] = ev.ID
+			inputs = append(inputs, WakePolicyInput{Seq: ev.Seq, Text: ev.Text, Kind: ev.Kind, Decision: WakeDecisionDeny})
 		case "steer_revised":
 			var revision struct {
 				Seq  int64   `json:"seq"`
@@ -150,6 +157,11 @@ func readThreadWakePolicy(tx *gorm.DB, threadID string) (ThreadWakePolicy, []Wak
 		bySeq[decision.EventSeq] = decision
 	}
 	for i, input := range inputs {
+		if input.Kind == "schedule_cancelled" {
+			policy.Denied = true
+			policy.SourceSeq, policy.SourceKind, policy.SourceText, policy.Quote = input.Seq, input.Kind, input.Text, ""
+			continue
+		}
 		decision, ok := bySeq[input.Seq]
 		valid := ok && decision.EventID == ids[input.Seq] && decision.InputDigest == wakeInputDigest(input)
 		if valid {
@@ -171,7 +183,7 @@ func readThreadWakePolicy(tx *gorm.DB, threadID string) (ThreadWakePolicy, []Wak
 		inputs[i].Decision, inputs[i].Quote = decision.Decision, decision.Quote
 		if decision.Decision != WakeDecisionUnchanged {
 			policy.Denied = decision.Decision == WakeDecisionDeny
-			policy.SourceSeq, policy.SourceText, policy.Quote = input.Seq, input.Text, decision.Quote
+			policy.SourceSeq, policy.SourceKind, policy.SourceText, policy.Quote = input.Seq, input.Kind, input.Text, decision.Quote
 		}
 	}
 	return policy, inputs, nil
@@ -198,6 +210,9 @@ func (s *Store) ReadThreadWakePolicy(threadID string) (ThreadWakePolicy, []WakeP
 // SaveWakeDecision accepts a classifier result only while its exact original
 // human input is current. Reclassifying identical text cannot release a denial.
 func (s *Store) SaveWakeDecision(threadID string, input WakePolicyInput, decision, quote string) error {
+	if input.Kind == "schedule_cancelled" {
+		return ErrWakeDecisionConflict
+	}
 	switch decision {
 	case WakeDecisionDeny, WakeDecisionAllow:
 		if strings.TrimSpace(quote) == "" || !strings.Contains(input.Text, quote) {

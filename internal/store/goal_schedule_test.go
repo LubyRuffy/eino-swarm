@@ -151,7 +151,11 @@ func TestGoalContinuationKeepsIndependentAndNewObjectivesCompatible(t *testing.T
 			case "retarget-thread":
 				err = s.UpdateSchedule(row.ID, map[string]any{"thread_id": "another-thread"})
 			case "retarget-standalone":
-				err = s.UpdateSchedule(row.ID, map[string]any{"kind": ScheduleStandalone, "thread_id": ""})
+				// A recurring fire can be running while its future destination is
+				// edited. A consumed one-shot cannot be retargeted after done.
+				if err = s.UpdateSchedule(row.ID, map[string]any{"status": ScheduleActive}); err == nil {
+					err = s.UpdateSchedule(row.ID, map[string]any{"kind": ScheduleStandalone, "thread_id": ""})
+				}
 			case "no-start-time":
 				scope.GoalStartedAt = nil
 				err = s.UpdateThread(scope.ThreadID, map[string]any{"goal_started_at": nil})

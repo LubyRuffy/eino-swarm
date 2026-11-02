@@ -75,7 +75,7 @@ func goalScheduleFailure(err error) string {
 
 func (e *Engine) cancelScheduleForTurn(scope *store.GoalTurnScope, id string) error {
 	if scope == nil || strings.TrimSpace(scope.Goal) == "" {
-		return e.CancelSchedule(id)
+		return e.cancelSchedule(id)
 	}
 	row, err := e.store.CancelScheduleForTurn(scope, id)
 	if err != nil {

@@ -94,6 +94,11 @@ func TestCompletionOnlyOwnsTheCurrentTurnsManagerThreadWakes(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "retargeted-original":
+				// Destination edits happen while a recurring wake is still
+				// editable; this case isolates which arm owns goal completion.
+				if err := s.UpdateSchedule(old.ID, map[string]any{"status": ScheduleActive}); err != nil {
+					t.Fatal(err)
+				}
 				if err := s.UpdateSchedule(old.ID, map[string]any{"kind": ScheduleStandalone, "thread_id": ""}); err != nil {
 					t.Fatal(err)
 				}

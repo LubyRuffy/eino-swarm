@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
@@ -188,6 +189,10 @@ func TestPatchAndDeleteSchedule(t *testing.T) {
 	got := h.json(http.MethodGet, "/api/schedules/"+id, nil, http.StatusOK)
 	if got["schedule"].(map[string]any)["status"] != "cancelled" {
 		t.Fatalf("cancelled=%v", got)
+	}
+	policy, _, err := h.app.Store.ReadThreadWakePolicy(threadID)
+	if err != nil || !policy.Denied || policy.SourceText != id || policy.SourceKind != engine.KindScheduleCancelled {
+		t.Fatalf("HTTP deletion lost the human waiting restriction: %+v %v", policy, err)
 	}
 }
 

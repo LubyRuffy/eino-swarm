@@ -453,19 +453,36 @@ func (s *Store) ListSchedules() ([]Schedule, error) {
 // Already-cancelled (or done) rows return (nil, nil) so the engine does
 // not write a second cancelled event. Missing ids are ErrNotFound.
 func (s *Store) CancelSchedule(id string) (*Schedule, error) {
+	return s.cancelSchedule(id, "", "", false)
+}
+
+// CancelScheduleAtDestination refuses a cancellation when a concurrent edit
+// moved the wait away from the destination admitted by its caller.
+func (s *Store) CancelScheduleAtDestination(id, kind, threadID string) (*Schedule, error) {
+	return s.cancelSchedule(id, kind, threadID, true)
+}
+
+func (s *Store) cancelSchedule(id, kind, threadID string, checkDestination bool) (*Schedule, error) {
 	now := time.Now().UTC()
-	res := s.db.Model(&Schedule{}).
-		Where("id = ? AND status IN ?", id, []string{ScheduleActive, SchedulePaused}).
-		Updates(map[string]any{
-			"status":     ScheduleCancelled,
-			"updated_at": now,
-		})
+	query := s.db.Model(&Schedule{}).
+		Where("id = ? AND status IN ?", id, []string{ScheduleActive, SchedulePaused})
+	if checkDestination {
+		query = query.Where("kind = ? AND COALESCE(thread_id, '') = ?", kind, threadID)
+	}
+	res := query.Updates(map[string]any{
+		"status":     ScheduleCancelled,
+		"updated_at": now,
+	})
 	if res.Error != nil {
 		return nil, fmt.Errorf("store: cancel schedule: %w", res.Error)
 	}
 	if res.RowsAffected == 0 {
-		if _, err := s.GetSchedule(id); err != nil {
+		row, err := s.GetSchedule(id)
+		if err != nil {
 			return nil, err
+		}
+		if checkDestination && (row.Kind != kind || row.ThreadID != threadID) {
+			return nil, fmt.Errorf("store: wait destination changed before cancellation")
 		}
 		return nil, nil
 	}
@@ -617,6 +634,9 @@ func (s *Store) PatchScheduleFields(id string, fields map[string]any, cap int) (
 			return fmt.Errorf("store: schedule is not pauseable")
 		}
 		if _, moves := fields["kind"]; moves {
+			if before.Status != ScheduleActive && before.Status != SchedulePaused {
+				return fmt.Errorf("store: schedule destination can only change while the wait is active or paused")
+			}
 			if err := tx.Model(&ScheduleRun{}).
 				Where("schedule_id = ? AND (kind = '' OR kind IS NULL)", id).
 				UpdateColumn("kind", before.Kind).Error; err != nil {
