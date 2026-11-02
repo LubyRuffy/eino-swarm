@@ -30,6 +30,12 @@ worker resolves that worker's default. Same-role steering, resume and recovery
 retain the concrete binding; an explicit conflict refuses before queuing a
 message or changing a generation. Roles remain globally unique in the Registry.
 
+Agents can inspect existing project-scoped model-call observations through
+`query_history`: discover its schema, then query `llm_calls` for recorded
+provider/model, agent, tokens and durations. This is historical evidence, not a
+price or capability rating. An unfinished request has no final usage yet;
+stored numeric zeros cannot distinguish unreported usage from an explicit zero.
+
 `fork_context` copies the spawning agent's conversation as historical evidence,
 excluding System messages. A child's context therefore comes from its parent.
 Closing a subtree records the affected generations and retains

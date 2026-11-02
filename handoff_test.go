@@ -413,9 +413,13 @@ func TestRestartReplaySealsUnknownToolsBeforeLaterMessages(t *testing.T) {
 		schema.UserMessage(handoffInstruction),
 		schema.AssistantMessage("unfinished handoff", nil),
 	})
-	if len(msgs) != 4 || msgs[0].Role != schema.Assistant || msgs[1].Role != schema.Tool ||
-		msgs[1].ToolCallID != "unknown-write" || msgs[1].Content != HandoffUnknownToolResult ||
-		msgs[2].Content != "unfinished handoff" || msgs[3].Role != schema.User {
+	// A cropped call cannot make its real receipt disappear. Keep it as
+	// runtime historical data while sealing the independent unknown call.
+	if len(msgs) != 5 || msgs[0].Role != schema.User ||
+		!strings.Contains(msgs[0].Content, "older trimmed result") || msgs[0].Extra["zwai_message_source"] != "runtime" ||
+		msgs[1].Role != schema.Assistant || msgs[2].Role != schema.Tool ||
+		msgs[2].ToolCallID != "unknown-write" || msgs[2].Content != HandoffUnknownToolResult ||
+		msgs[3].Content != "unfinished handoff" || msgs[4].Role != schema.User {
 		t.Fatalf("restart replay has invalid tool pairing: %+v", msgs)
 	}
 	known := restoredWorkerMessages("original", []*schema.Message{

@@ -6,6 +6,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed worker observations and tool receipts after a structured restart
+  checkpoint reaching the model twice. Recovery retains independent summaries,
+  unknown-operation warnings, unread messages and legacy seed-only histories;
+  distinct same-text events remain separate. Receipts with a cropped original
+  call remain historical data without fabricating an execution or breaking
+  other tool/result pairs. Tool output cannot impersonate the host handoff cue.
+
 - Recorded a separate 27-attempt AppWorld dev comparison with complete usage:
   assigned Nuwa succeeded on 7/9 tasks versus baseline 4/9, with more tokens and
   slower successful pairs. Preserved the preceding accounting interruption and

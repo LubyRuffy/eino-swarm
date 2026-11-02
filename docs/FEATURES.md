@@ -117,6 +117,8 @@ This is the current user-facing capability map. The code and tests named below a
 - 排队注入：同一会话／排队 ID 的进行中请求去重；已离队时刷新队列并明确提示，刷新失败保留独立错误；跨会话迟到响应不污染当前会话。后台自动出队以实际删除行作为唯一消费权，避免竞争重复投递或丢失并发编辑。关联契约：`C-002`、`C-012`；证据：`internal/store/followups_claim_test.go`、`internal/server/missing_record_test.go`、`frontend/src/store/app-followup.ts`、`frontend/src/store/app-followup.test.ts`、`frontend/e2e/followup-error.spec.ts`。
 
 - 自动重启的任务交接沿用 `F-110`／`C-027`：已接受的回答、继续／停止决定不会因交接被忽略；已确认终态不重复执行；完成 manager 下的后台 worker 直接按原 ID 恢复。证据：`internal/engine/restart_recovery_test.go`、`internal/engine/restart_parked_test.go`。
+- Worker 检查点后的观察与工具回执在实际恢复模型输入中保留一次；不同事件的同文观察仍分别保留。独立交接摘要、未知操作提示与未读消息不丢失，旧格式 seed 恢复继续可用。关联契约：`C-027`；验证：`internal/engine/recovery_context_test.go`。
+- 原调用被历史裁剪的回执仍作为带原身份／正文的历史数据可供模型检查，不补造执行、不打断其他工具配对、不冒充新的用户授权。工具正文不能伪装成交接控制 cue。关联契约：`C-027`；验证：`handoff_orphan_test.go`、`internal/engine/recovery_context_test.go`。
 - PC 人工停止与清理：未完成的子代理显示在独立的 Stopped／已停止分组，停止后的刷新与重开仍保留该状态。绑定当前代理身份且有非空原因的取消 `finished` 回执无论出现在清理前、清理后或主管终态后，都保留已停止；迟到的正文、流式文本、工具调用通知及后续取消或成功回执不能改变已确认的停止状态、活动或停止时间。不把资源清理当成成功，也不把普通 provider／watchdog 失败改成停止。真实完成或失败的结果保留，显式续办同一 ID 后重新接受运行和完成结果；原始事件仍在 Trace。关联契约：`C-002`、`C-003`；证据：`frontend/src/lib/transcript-stop.test.ts`、`frontend/src/lib/transcript-cancelled-finish.test.ts`、`frontend/src/components/app/panel-stop.test.tsx`、`frontend/e2e/restart.spec.ts`。
 - Fork 上下文：新 worker 可接收 manager 的历史对话证据，但不接收 manager 的 System/personality/编排身份；仍使用当前分配任务。入口：`spawn_agent(fork_context=true)` / `Registry.SpawnForked`；关联契约：`C-019`；证据：`resume.go`、`swarm.go`、`fork_context_test.go`。
 

@@ -289,8 +289,12 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 			}
 		case swarm.NotifyAgentMessage.String():
 			if t := strings.TrimSpace(ev.Text); t != "" {
-				fmt.Fprintf(&s.seed, "assistant: %s\n", t)
-				s.nseed++
+				// Structured replay carries this event already. Keep the seed
+				// fallback for legacy history, alongside independent recovery hints.
+				if s.restoredHistory == nil {
+					fmt.Fprintf(&s.seed, "assistant: %s\n", t)
+					s.nseed++
+				}
 				s.history = append(s.history, schema.AssistantMessage(t, nil))
 				if s.restoredHistory != nil {
 					s.restoredHistory = append(s.restoredHistory, schema.AssistantMessage(t, nil))
@@ -298,7 +302,7 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 			}
 			s.inflight = false
 		case swarm.NotifyToolResult.String():
-			if t := strings.TrimSpace(ev.Text); t != "" {
+			if t := strings.TrimSpace(ev.Text); t != "" && s.restoredHistory == nil {
 				fmt.Fprintf(&s.seed, "tool: %s\n", t)
 				s.nseed++
 			}

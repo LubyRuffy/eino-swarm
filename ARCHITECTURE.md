@@ -2196,6 +2196,13 @@ timeout leaves ownership unchanged and returns a retryable failure.
 
 The versioned `engine_restart_checkpoint` event is durable recovery data on
 the same turn's Trace. It is not rendered as a chat message or a new worker.
+Worker observations after a structured checkpoint replay through that history
+once, rather than also entering its flattened seed. Separate handoff summaries,
+unknown-operation warnings and unread inbox messages remain available. Legacy
+workers without structured history retain the seed fallback.
+Tool receipts whose original call is absent remain runtime-tagged historical
+data with their original identity and body. Their insertion waits until pending
+tool results are paired or sealed; it never invents the missing tool call.
 `restart_preparing`, `restart_ready` and `restart_resumed` describe the user
 visible phases. Recovery retains worker identities, finished results and
 human question/iteration-cap pauses. Unknown external effects must be

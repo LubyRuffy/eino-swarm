@@ -422,6 +422,12 @@ legacy running work still needs collection, while a positive generation retains
 its exact collection/close state. A later resume starts a new generation.
 Recovery keeps the same ID and seals open tool calls with an
 `outcome_unknown` receipt: verify effects before deciding whether to repeat.
+If history cropping removed a tool result's original call, recovery retains its
+call ID, existing name and complete body as a runtime-tagged historical-data
+message. It does not create an assistant tool call or an unpaired Tool message.
+These data messages wait until other open calls receive their real results or
+reach the existing unknown-result seal. An orphan-only history still includes
+the current task. Tool output matching the host handoff cue remains data.
 `ManagerHistory()` and `ManagerInbox()` expose copies for the host's matching
 checkpoint. The host owns durable storage, manager cancellation, human pause
 restoration and process replacement; see `handoff_test.go` and

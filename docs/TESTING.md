@@ -2816,6 +2816,21 @@ failure details and their recovery-settings links. Run them with
 
 ## Automatic restart handoff (F-110 / C-027)
 
+`internal/engine/recovery_context_test.go` crosses durable parked-worker
+`Engine.Restore`, Registry/ADK and a local HTTP model adapter. It checks that a
+structured checkpoint's later observation and tool receipt reach the first
+worker request once, while two distinct same-text events remain two. Independent
+summary, unread inbox, unknown-effect warning, tool-call identity, model binding,
+generation and uncollected state remain intact; legacy seed-only recovery is a
+separate control. The original bug produced two copies of each unique tail item
+and four of the two same-text events. A cropped-call case also requires its
+orphan receipt exactly once as historical data, with no fabricated call or
+unpaired Tool message. `handoff_orphan_test.go` checks lossless body/identity
+projection, runtime provenance, current-task fallback, same-text distinct
+receipts, valid pending tool groups and control-cue text inside tool output.
+This is recovery correctness evidence,
+not an explanation of the AppWorld cohort, which had no restart checkpoint.
+
 Issue #101 regressions must use the real manager Registry middleware: directly
 calling `AskUserTool` does not run the handoff unknown-result conversion.
 `internal/server/restart_ask_http_test.go` drives a loopback provider, HTTP

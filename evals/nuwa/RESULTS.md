@@ -390,6 +390,26 @@ the audit records that incident and does not claim complete content blinding.
 It did not inspect official grader outcomes before classifying roles. Prompt
 instructions alone therefore did not guarantee the requested routing policy.
 
+Subsequent metadata-only cost attribution retained all 955 requests and their
+original grades. The assigned arm added 6,458,645 worker tokens while manager
+tokens decreased by 2,983,330 and all auxiliary tokens decreased by 108,405.
+Memory review itself decreased by 164,392, so it was not the source of the
+cohort's higher total. Prompt tokens accounted for 3,329,330 of the 3,366,910
+increase (98.88%); that comprises 3,142,144 more provider-reported cached prompt
+tokens and 187,186 more uncached prompt tokens. Completion increased by 37,580.
+Cached tokens are a subset of prompt tokens, not an additional total or a
+verified monetary discount.
+
+All nine spawns omitted `fork_context`, so these workers did not inherit the
+manager conversation through that option. Their nine initial generations and
+five normal resumes showed growing per-generation message counts and prompt
+usage. There were zero restart-checkpoint events. These observations do not
+prove abnormal repeated context, and the separately reproduced checkpoint-tail
+recovery bug cannot explain this cohort. Attribution joins each gateway's own
+start/end request ID, then uniquely matches its usage vector to a same-case
+Trace call with timing corroboration; those two sources have no shared request
+ID. No performance sample was excluded or regraded.
+
 Independent run-identity inventories made 162 container/network queries across
 all 27 attempts and found no surviving owned resources. All 13 frozen source
 hashes matched. This is a descriptive result for nine tasks from three selected
@@ -404,6 +424,8 @@ macOS v0.1.57 installer remains unchanged.
 | `assigned-dev-report-v3-review300/independent-resources-and-source.json` | `af9cca304f533b142a1239997e2cee3108f9dd4250acf487395d4e7400209bcf` |
 | `assigned-v3-independent-statistics.json` | `68224c2ca2d61f1fa07461fea7cb5ceab857424b3179b72717f9157414568396` |
 | `assigned-v3-role-audit-v2.json` | `a9ec179ea2293aac2aeed845555b47dfc6f13d67523ccc8c7a50aae9f0cb430a` |
+| `assigned-v3-cost-attribution.json` | `e344bdba69e1bd578178b22dae58344d06373ff807c27a3762142516582f422f` |
+| `assigned-v3-cost-attribution-independent.json` | `5ed3dfbbb2da3f2468429d822b3352a478499d8be061c33ae2b56951dc0e739b` |
 
 ## Evidence identity for the original generic cohort
 
