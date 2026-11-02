@@ -92,6 +92,55 @@ completion and cleanup receipts confirm the tool acknowledgements, owned
 engine exit, closed port and removed runtime. They do not establish native UI
 acceptance.
 
+## Separate assignment and reasoning diagnostics
+
+Two later, one-repeat `spec-edges` pilots investigated the failure to act. They
+are development diagnostics, outside the original 27 executions; their scores
+are not pooled with that cohort or treated as held-out superiority evidence.
+Both used the same identified product binary and unchanged task/fixture/grader,
+600-second task deadline, 16,384-token output cap and 60-second review allowance.
+Project instructions requested incremental progress. The two Nuwa arms also
+assigned implementation and execution-based validation to the named executor,
+leaving worker roles, count and scopes to the manager.
+
+With default reasoning, all three arms exhausted the output cap before writing
+an implementation or starting a worker. The mixed manager explicitly referred
+to its assignment and planned delegation, but continued reasoning until the
+cap. This is evidence of instruction delivery, not a failed model-ref lookup.
+
+The second pilot changed only the explicit reasoning selection to `low` in
+every arm, using the existing thread API. All local selections were acknowledged;
+this does not independently prove an upstream serving implementation's internal
+reasoning policy. Every turn finished without an output-limit error, but none
+passed the complete task.
+
+| Arm | Default-reasoning seconds / tokens | Explicit-low seconds / tokens | Low worker calls |
+|---|---:|---:|---:|
+| `default-glm` | 94.46 / 80,630 | 20.12 / 168,968 | 0 |
+| `nuwa-glm-assigned` | 82.39 / 88,352 | 74.33 / 642,310 | 32 GLM |
+| `nuwa-mixed-assigned` | 88.43 / 88,317 | 118.57 / 450,115 | 18 DS |
+
+All reported totals have settled reviews and no observed review cutoff. They
+include auxiliary calls and failed attempts. Default reasoning has no successful
+task-time comparison, and the low Nuwa arms used more time and tokens than the
+low default arm. Provider load, caches, time separation and one repeat prevent
+a causal or general efficiency claim across the two pilots.
+
+In the low mixed arm, three DS workers implemented the modules in the required
+sequence, copied the exact catalog ref, retained `low` model bindings and had
+their generation results collected through actual `wait_agents` calls. The
+manager also executed validation commands itself, violating this pilot's frozen
+assignment. Actual DS calls therefore do not establish complete policy compliance.
+All low arms failed the money rule's 5,000-digit boundary because of Python's
+integer/string conversion limit; the default arm additionally failed a headers
+rule. The grading and failures remain unchanged. Conversation completion is
+not task success, and these pilots establish no speed/token/success advantage.
+
+The private evidence set contains `assigned-model-pilot-v1` and
+`assigned-model-pilot-low-v2`. The latter additionally retains per-arm owned
+engine exit, closed listener, stopped presence reader and removed runtime
+observations. The first pilot did not capture those independent cleanup receipts.
+
 ## Evidence identity
 
 The private evidence set is `20261102-01a199cc`. Identifiers below allow a
