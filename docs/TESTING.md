@@ -58,6 +58,12 @@ observations; unknown usage cannot establish token savings. Fast failures do
 not become successful speedups. Mock comparisons are explicitly marked
 synthetic and do not export real token/time improvements.
 
+Task evals retain provisional pre-cleanup evidence and a separate cleanup
+receipt. A failed stop cannot erase the original request or grader error or
+allow the batch to start another case. The real `run_once` HTTP regressions in
+`test_agent_eval_limits.py` cover both failures together, evidence-write errors
+and interrupted control flow; successful cleanup still removes credential data.
+
 Task fingerprints exclude only generated `__pycache__/*.pyc`; the ordinary
 fixture/workspace hashing remains unchanged. `test_agent_eval_nuwa.py` verifies
 that caches do not invalidate a task while other files still do. Its real

@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed task evaluations losing the original request or grader error when
+  engine cleanup also failed. Separate provisional and cleanup receipts retain
+  both causes; incomplete cleanup or finalization evidence stops the batch.
+
 - Added optional frozen per-arm reasoning levels to paired evaluations. The
   runner confirms the existing thread API selection before starting work and
   records its actual value; protocols without a selection send no override.

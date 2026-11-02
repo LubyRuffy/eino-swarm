@@ -100,6 +100,16 @@ from different tokenizers are provider-reported quantities, not equal compute or
 money; no cost estimate is invented. Post-turn review and other auxiliary calls
 remain attributed. Full redacted Trace is saved privately for inspection.
 
+Before stopping its owned engine, the runner writes `pre-cleanup.json` as a
+provisional snapshot, not a completed result. `cleanup.json` records the cleanup
+outcome separately from `result.json`. If a request or grading failure is
+followed by a stop failure, the original `harness_error` remains intact and
+`cleanup_error` records the later failure. Stop and early evidence failures
+retain the private runtime; cleanup or finalization-evidence failure aborts the
+batch without automatically repeating completed model work. If a late receipt
+write fails after confirmed runtime removal, that directory cannot be retained;
+the successfully written provisional snapshot and logs remain available.
+
 `agent_eval_proxy.py` is a separate model-only measurement gateway. Its offline
 HTTP tests check unchanged stream bytes, usage presence and credential/prompt
 redaction. The ordinary runner does not automatically place live model traffic

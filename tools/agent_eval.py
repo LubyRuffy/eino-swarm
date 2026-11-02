@@ -6,8 +6,9 @@ child. The harness copies one provider from the user's config into that
 directory, seeds the task's fixture and skills, sends one human message over
 loopback HTTP, waits for the conversation to settle, then grades the
 workspace, the final answer and the turn traces. The temporary directory
-holds an API key, so it is removed after every run; evidence written under
---out is redacted first.
+holds an API key, so it is removed after confirmed engine cleanup and initial
+evidence capture. A failed stop retains the runtime; cleanup or finalization
+evidence failures abort the batch. Evidence under --out is redacted first.
 
 This is not part of `go test`, `make test` or `make check`: those never
 reach a network or a real model. See docs/TESTING.md.
@@ -347,7 +348,7 @@ def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict 
     evidence = out_dir / "runs" / task["id"] / f"run-{run_idx}"
     evidence.mkdir(parents=True, exist_ok=True, mode=0o700)
     data_dir = Path(tempfile.mkdtemp(prefix="zwai-eval-"))
-    record: dict[str, Any] = {"task": task["id"], "run": run_idx, "harness_error": ""}
+    record: dict[str, Any] = {"task": task["id"], "run": run_idx, "harness_error": "", "cleanup_error": ""}
     record.update({"project_mode": getattr(args, "project_mode", "default"),
                    "task_sha256": protocol.task_fingerprint(task), "budget": protocol.budget(args, task),
                    "run_identity": getattr(args, "run_identity", {})})
@@ -362,6 +363,36 @@ def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict 
         mark[0] = now
 
     record["phase_s"] = phases
+    cleanup_error: BaseException | None = None
+    control: BaseException | None = None
+    evidence_errors: list[str] = []
+
+    def describe(error: BaseException) -> str:
+        return grade.redact(f"{type(error).__name__}: {error}", secrets)
+
+    def evidence_failure(name: str, error: BaseException) -> None:
+        nonlocal control
+        detail = name + ": " + describe(error)
+        evidence_errors.append(detail)
+        record["evidence_errors"] = evidence_errors
+        record["passed"] = False
+        if not record["harness_error"]:
+            record["harness_error"] = detail
+        if not isinstance(error, Exception) and control is None:
+            control = error
+
+    def capture_evidence(name: str, action: Callable[[], Any], *, required: bool = False) -> None:
+        try:
+            action()
+        except BaseException as error:
+            evidence_failure(name, error)
+            if required:
+                raise
+
+    def write_evidence(name: str, value: Any) -> None:
+        capture_evidence(name, lambda: protocol.private_write(
+            evidence / name, grade.redact(json.dumps(value, indent=2, ensure_ascii=False), secrets)))
+
     try:
         seed_data_dir(data_dir, task, provider, getattr(args, "max_completion_tokens", 0), models)
         engine.start()
@@ -398,7 +429,8 @@ def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict 
         prepare_workspace(task, workspace)
         baseline_hashes = grade.hash_tree(workspace)
         record["fixture_sha256"] = protocol.digest(baseline_hashes)
-        protocol.private_write(evidence / "initial-files.json", json.dumps(baseline_hashes, sort_keys=True))
+        capture_evidence("initial-files.json", lambda: protocol.private_write(
+            evidence / "initial-files.json", json.dumps(baseline_hashes, sort_keys=True)), required=True)
         task_started = time.monotonic()
         http_json(engine.base, "POST", f"/api/threads/{thread_id}/turns", {"text": task["prompt"]})
         outcome = drive_conversation(engine.base, thread_id, task)
@@ -419,24 +451,73 @@ def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict 
             "routing": usage.routes([c for t in traces for c in t.get("llm_calls", [])],
                                     models["planner"] if models else None, models.get("executor") if models else None),
         })
-        protocol.private_write(evidence / "answer.md", grade.redact(answer, secrets))
-        protocol.private_write(evidence / "traces.json", grade.redact(json.dumps(traces, indent=2, ensure_ascii=False), secrets))
-        copy_workspace(workspace, evidence / "workspace")
-    except Exception as exc:  # keep the first failure as evidence; no retry here
-        record["harness_error"] = grade.redact(f"{type(exc).__name__}: {exc}", secrets)
+        capture_evidence("answer.md", lambda: protocol.private_write(
+            evidence / "answer.md", grade.redact(answer, secrets)), required=True)
+        capture_evidence("traces.json", lambda: protocol.private_write(
+            evidence / "traces.json", grade.redact(json.dumps(traces, indent=2, ensure_ascii=False), secrets)), required=True)
+        capture_evidence("workspace", lambda: copy_workspace(workspace, evidence / "workspace"), required=True)
+    except BaseException as exc:  # keep the first failure even when cleanup also fails
+        if not isinstance(exc, Exception):
+            control = exc
+        if not record["harness_error"]:
+            record["harness_error"] = describe(exc)
         record["passed"] = False
     finally:
+        # This is explicitly provisional: result.json is only written after
+        # cleanup has completed or failed. Receipt I/O must never skip stop.
+        write_evidence("pre-cleanup.json", {"stage": "pre_cleanup", "record": record})
         mark[0] = time.monotonic()
-        engine.stop()
+        try:
+            engine.stop()
+        except BaseException as error:
+            cleanup_error = error
+            record["cleanup_error"] = describe(error)
+            record["passed"] = False
+            if not record["harness_error"]:
+                record["harness_error"] = record["cleanup_error"]
+            if not isinstance(error, Exception) and control is None:
+                control = error
         phase("stop")
         record["wall_s"] = round(time.monotonic() - started, 1)
-        if engine.log_path.exists():
-            log = engine.log_path.read_text(errors="replace")
-            protocol.private_write(evidence / "engine.log", grade.redact(log, secrets))
-            # Its memory-reviewer tokens are then a lower bound, not the cost.
-            record["review_cut_off"] = grade.review_cut_off(log)
-        shutil.rmtree(data_dir, ignore_errors=True)
-    protocol.private_write(evidence / "result.json", grade.redact(json.dumps(record, indent=2, ensure_ascii=False), secrets))
+        try:
+            if engine.log_path.exists():
+                log = engine.log_path.read_text(errors="replace")
+                protocol.private_write(evidence / "engine.log", grade.redact(log, secrets))
+                # Its memory-reviewer tokens are then a lower bound, not the cost.
+                record["review_cut_off"] = grade.review_cut_off(log)
+        except BaseException as error:
+            evidence_failure("engine.log", error)
+        if cleanup_error is None and not evidence_errors:
+            try:
+                shutil.rmtree(data_dir)
+            except BaseException as error:
+                cleanup_error = error
+                record["cleanup_error"] = describe(error)
+                record["passed"] = False
+                if not record["harness_error"]:
+                    record["harness_error"] = record["cleanup_error"]
+                if not isinstance(error, Exception) and control is None:
+                    control = error
+        retained = data_dir.exists()
+        write_evidence("cleanup.json", {"complete": cleanup_error is None and not retained,
+                                       "error": record["cleanup_error"], "runtime_retained": retained,
+                                       "data_dir": str(data_dir)})
+        write_evidence("result.json", record)
+    if control is not None:
+        add_note = getattr(control, "add_note", None)
+        if callable(add_note):
+            for detail in ([record["cleanup_error"]] if cleanup_error else []) + evidence_errors:
+                add_note(detail)
+        raise control
+    if cleanup_error is not None or evidence_errors:
+        # Do not echo an unredacted provider exception through a traceback.
+        # The first failure stays in harness_error; secondary failures are notes.
+        fatal = EvalError(record["harness_error"])
+        add_note = getattr(fatal, "add_note", None)
+        if callable(add_note):
+            for detail in ([record["cleanup_error"]] if cleanup_error else []) + evidence_errors:
+                add_note(detail)
+        raise fatal from None
     return record
 
 
