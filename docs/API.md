@@ -1036,6 +1036,7 @@ A non-empty `workdir` is a literal absolute path: leading/trailing whitespace is
                "system_prompt": "…", "workdir": "/Users/me/work/report",
                "resolved_workdir": "/Users/me/work/report",
                "memory_enabled": true,
+               "nuwa_enabled": false, "nuwa_revision": 0,
                "memory_dir": "/Users/me/.zwai-swarm/projects/pj_ab12…/memory",
                "skills": [{"name": "weekly-rollup", "description": "…", "updated_at": "…"}],
                "sort_rank": 0, "created_at": "…", "updated_at": "…"}]}
@@ -1058,7 +1059,7 @@ positive rank and pins relative order.
 ### `POST /api/projects` → `201`
 
 Body `{"name": "…", "system_prompt": "optional", "workdir": "optional",
-"memory_enabled": true}`. A name is required (`400`). `workdir` must be an
+"memory_enabled": true, "nuwa_enabled": false}`. A name is required (`400`). `workdir` must be an
 absolute path to an existing directory — anything else is `400` with
 `code: "workdir"`, which the project dialog shows against that field. Left
 empty, the project gets `projects/<id>/workspace` under the data directory.
@@ -1067,8 +1068,42 @@ memory off.
 
 ### `GET /api/projects/:id` · `PATCH /api/projects/:id`
 
-`PATCH` accepts `name`, `system_prompt`, `workdir` and `memory_enabled`; an
+`PATCH` accepts `name`, `system_prompt`, `workdir`, `memory_enabled` and `nuwa_enabled`; an
 omitted field is left alone. Both respond `{"project": {…}}`.
+
+Nuwa defaults off when omitted on create. Changing it applies to subsequent
+turns; running/parked workers retain their original mode and concrete model
+binding. Disabling does not delete shared records. Actual mode changes atomically
+advance `nuwa_revision`, retaining the view before a pending first result;
+identical settings and unrelated edits do not. See [Nuwa](NUWA.md).
+
+### `GET /api/projects/:id/nuwa`
+
+Returns `{"project_id":"pj_…","revision":4,"nodes":[…],"workers":[…]}`.
+Nodes are project-scoped task/fact/artifact records with version, dependencies,
+source-version stamps, evidence references and original/correction provenance.
+`missing_dependencies`, `stale_dependencies` and `unavailable_evidence` retain
+unavailable or changed inputs. Worker rows contain actual `agent_id`, `role`,
+`status`, source `thread_id`/`turn_id`, `generation`, optional `parent_id` and
+`model_binding`. They are reconstructed from durable lifecycle receipts rather
+than node prose. Missing projects return `404`; snapshot database failures
+return `500` with an error rather than an assumed complete snapshot. Existing
+records can be read after the mode is off.
+
+### `GET /api/projects/:id/nuwa/events`
+
+Project-level `text/event-stream`, separate from conversation SSE. The named
+`nuwa_updated` event carries `{"project_id":"pj_…","revision":4}` and uses the
+revision as its SSE id. An initial current revision is sent on connect, then
+committed revision changes invalidate the snapshot; heartbeat events retain the
+connection. Clients refetch GET rather than applying event payloads as node
+patches. Reconnect reads current state, not a chat-sequence replay. Revisions may
+skip intermediate updates and must never be used as conversation `seq` values.
+
+Shared mutation is through actual agent `record_work` calls, not a public
+project-node write endpoint. `list_models`, `read_work` and `record_work` tool
+schemas and their trust/CAS boundaries are described in [Nuwa](NUWA.md) and
+`C-037`.
 
 ### `DELETE /api/projects/:id` → `204`
 

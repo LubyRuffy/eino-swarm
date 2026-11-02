@@ -150,6 +150,9 @@ func (e *Engine) resumeTurn(restoreCtx context.Context, turn *store.Turn, snapsh
 	if err != nil {
 		return err
 	}
+	if turn.NuwaEnabled && turn.ProjectID != th.ProjectID {
+		return fmt.Errorf("cannot resume Nuwa turn after its project owner changed")
+	}
 	if turn.ScheduleContinue && strings.TrimSpace(th.Goal) != "" {
 		if err := e.bindScheduledTurn(turn); err != nil {
 			return err
@@ -170,7 +173,7 @@ func (e *Engine) resumeTurn(restoreCtx context.Context, turn *store.Turn, snapsh
 	if err != nil {
 		return err
 	}
-	if th.PlanMode {
+	if th.PlanMode || turn.NuwaReadOnly {
 		toolset = tools.ExploreOnly(toolset)
 	}
 
@@ -194,7 +197,7 @@ func (e *Engine) resumeTurn(restoreCtx context.Context, turn *store.Turn, snapsh
 	if err := restoreCtx.Err(); err != nil {
 		return err
 	}
-	reg := e.newTurnRegistry(builder, toolset, pc)
+	reg := e.newTurnRegistry(builder, toolset, pc, turn)
 	unread := e.unreadSteerMessages(turn, snapshot)
 	messages = dropSteerMessages(messages, unread)
 

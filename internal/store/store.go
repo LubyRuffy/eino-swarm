@@ -79,7 +79,7 @@ func Open(path string) (*Store, error) {
 	if err := s.dropThreadOwnership(); err != nil {
 		return nil, err
 	}
-	if err := db.AutoMigrate(&Project{}, &Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}, &Schedule{}, &ScheduleRun{}, &RemoteDevice{}, &ThreadWakeDecision{}, &ComposerDraft{}, &ComposerDraftBlob{}, &PendingScheduleAnswer{}); err != nil {
+	if err := db.AutoMigrate(&Project{}, &Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}, &Schedule{}, &ScheduleRun{}, &RemoteDevice{}, &ThreadWakeDecision{}, &ComposerDraft{}, &ComposerDraftBlob{}, &PendingScheduleAnswer{}, &NuwaNode{}, &NuwaRevision{}); err != nil {
 		return nil, fmt.Errorf("store: migrate: %w", err)
 	}
 	if err := s.ensureThreadOwnership(); err != nil {
@@ -152,8 +152,13 @@ func (s *Store) CreateThread(t *Thread) error {
 
 // GetThread loads one conversation.
 func (s *Store) GetThread(id string) (*Thread, error) {
+	return s.GetThreadContext(context.Background(), id)
+}
+
+// GetThreadContext loads one conversation with cancellable connection acquisition.
+func (s *Store) GetThreadContext(ctx context.Context, id string) (*Thread, error) {
 	var t Thread
-	err := s.db.First(&t, "id = ?", id).Error
+	err := s.db.WithContext(ctx).First(&t, "id = ?", id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
 	}
@@ -254,6 +259,9 @@ func (s *Store) DeleteThread(id string) error {
 		return err
 	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := deleteNuwaThread(tx, id); err != nil {
+			return err
+		}
 		if err := cancelWakesForThread(tx, id); err != nil {
 			return err
 		}
@@ -448,8 +456,13 @@ func (s *Store) UpdateTurn(id string, fields map[string]any) error {
 
 // GetTurn loads one turn.
 func (s *Store) GetTurn(id string) (*Turn, error) {
+	return s.GetTurnContext(context.Background(), id)
+}
+
+// GetTurnContext loads one turn with cancellable connection acquisition.
+func (s *Store) GetTurnContext(ctx context.Context, id string) (*Turn, error) {
 	var t Turn
-	err := s.db.First(&t, "id = ?", id).Error
+	err := s.db.WithContext(ctx).First(&t, "id = ?", id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
 	}

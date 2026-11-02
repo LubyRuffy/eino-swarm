@@ -19,12 +19,13 @@ const builtinTools = process.env.ZWAI_E2E_BUILTIN_TOOLS === "1"
 const workerOwnership = process.env.ZWAI_E2E_SCHEDULE_WORKER_OWNERSHIP === "1"
 const generationInterruption = process.env.ZWAI_E2E_GENERATION_INTERRUPTION === "1"
 const projectHistory = process.env.ZWAI_E2E_PROJECT_HISTORY === "1"
-const loopbackModel = reasoningFields || workerCompletion || scheduleAnswer || modelAPIError || workerRoster || goalSchedule || goalPause || humanWakePolicy || memoryReview || builtinTools || workerOwnership || generationInterruption || projectHistory
+const nuwa = process.env.ZWAI_E2E_NUWA === "1"
+const loopbackModel = reasoningFields || workerCompletion || scheduleAnswer || modelAPIError || workerRoster || goalSchedule || goalPause || humanWakePolicy || memoryReview || builtinTools || workerOwnership || generationInterruption || projectHistory || nuwa
 
 export default defineConfig({
   testDir: "./e2e",
   globalSetup: "./e2e/engine-presence.ts",
-  testMatch: reasoningFields ? "reasoning-fields.spec.ts" : workerCompletion ? "worker-completion.spec.ts" : scheduleAnswer ? "schedule-answer.spec.ts" : generationInterruption ? "generation-interruption.spec.ts" : workerOwnership ? "schedule-worker-ownership.spec.ts" : builtinTools ? "builtin-tools.spec.ts" : memoryReview ? "memory-review.spec.ts" : modelAPIError ? ["api-error.spec.ts", "route-recovery.spec.ts"] : workerRoster ? "worker-roster-history.spec.ts" : goalPause ? "goal-pause.spec.ts" : goalSchedule ? "goal-schedule.spec.ts" : humanWakePolicy ? "human-wake-policy.spec.ts" : projectHistory ? "project-history.spec.ts" : undefined,
+  testMatch: nuwa ? "nuwa.spec.ts" : reasoningFields ? "reasoning-fields.spec.ts" : workerCompletion ? "worker-completion.spec.ts" : scheduleAnswer ? "schedule-answer.spec.ts" : generationInterruption ? "generation-interruption.spec.ts" : workerOwnership ? "schedule-worker-ownership.spec.ts" : builtinTools ? "builtin-tools.spec.ts" : memoryReview ? "memory-review.spec.ts" : modelAPIError ? ["api-error.spec.ts", "route-recovery.spec.ts"] : workerRoster ? "worker-roster-history.spec.ts" : goalPause ? "goal-pause.spec.ts" : goalSchedule ? "goal-schedule.spec.ts" : humanWakePolicy ? "human-wake-policy.spec.ts" : projectHistory ? "project-history.spec.ts" : undefined,
   timeout: 90_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,

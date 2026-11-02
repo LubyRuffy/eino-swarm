@@ -125,7 +125,8 @@ func (e *Engine) resumeParkedThreadContext(ctx context.Context, th *store.Thread
 	}
 	e.interruptOrphanedGenerations(th.ID, true, snapshot)
 	attachHostNotify(reg, newAccumulator(e, th.ID, turn.ID, e.cfg.SwarmSnapshot().DeltaCoalesce()))
-	workerTools := append(append([]tool.BaseTool(nil), reg.SubAgentTools...), reg.SendTool())
+	config := reg.WorkerConfiguration()
+	workerTools := append(append([]tool.BaseTool(nil), config.SubAgentTools...), reg.SendTool())
 	for _, w := range finished {
 		if err := reg.PlantFinished(w); err != nil {
 			rt.reapParked()
@@ -134,7 +135,11 @@ func (e *Engine) resumeParkedThreadContext(ctx context.Context, th *store.Thread
 	}
 	for _, w := range running {
 		ownerContext := withHistoryReadOwner(ctx, th.ID, turn.ID)
-		if _, err := reg.Restore(ownerContext, w, reg.ModelBuilder, workerTools...); err != nil {
+		restoredTools := workerTools
+		if w.ConfigTag != "" {
+			restoredTools = nil
+		}
+		if _, err := reg.Restore(ownerContext, w, nil, restoredTools...); err != nil {
 			rt.reapParked()
 			return 0, err
 		}
@@ -171,5 +176,5 @@ func (e *Engine) parkedRegistry(th *store.Thread, turn *store.Turn) (*swarm.Regi
 	if err != nil {
 		return nil, err
 	}
-	return e.newTurnRegistry(builder, set, pc), nil
+	return e.newTurnRegistry(builder, set, pc, turn), nil
 }

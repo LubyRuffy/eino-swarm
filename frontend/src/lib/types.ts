@@ -107,6 +107,10 @@ export interface Project {
   /** Where the agents actually work, so the UI never derives a path itself. */
   resolved_workdir: string
   memory_enabled: boolean
+  /** Opt-in project collaboration; absent on older hosts means standard mode. */
+  nuwa_enabled?: boolean
+  /** Recorded shared work remains readable after collaboration is switched off. */
+  nuwa_revision?: number
   memory_dir: string
   /** Names and one-line descriptions, for the sidebar listing. Bodies stay
    *  behind `GET /skills/:name`, the same way the prompt does not inline them. */

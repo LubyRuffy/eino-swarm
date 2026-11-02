@@ -49,6 +49,32 @@ function renderDialog(props: Partial<Parameters<typeof ProjectDialog>[0]> = {}) 
 }
 
 describe("Project dialog", () => {
+  it("opts a project into Nuwa collaboration while keeping its instruction", async () => {
+    const { onSave } = renderDialog()
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Shared work" } })
+    fireEvent.change(screen.getByLabelText("Instruction"), { target: { value: "Explore and verify the goal" } })
+    fireEvent.click(screen.getByRole("switch", { name: "Nuwa collaboration" }))
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      nuwa_enabled: true, system_prompt: "Explore and verify the goal",
+    })))
+  })
+
+  it("keeps standard collaboration as the default for an existing project", async () => {
+    const { onSave } = renderDialog({ project })
+    expect(screen.getByRole("switch", { name: "Nuwa collaboration" })).not.toBeChecked()
+    expect(screen.getByText(/Applies from the next turn; current work continues/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ nuwa_enabled: false })))
+  })
+
+  it("preserves an enabled project's collaboration independently of memory", async () => {
+    const { onSave } = renderDialog({ project: { ...project, nuwa_enabled: true }, memoryAvailable: false })
+    expect(screen.getByRole("switch", { name: "Nuwa collaboration" })).toBeChecked()
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ nuwa_enabled: true })))
+  })
+
   it("lets a directory selection fill the project without saving it", async () => {
     const { onSave } = renderDialog()
     fireEvent.click(screen.getByRole("button", { name: "Choose directory" }))

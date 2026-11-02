@@ -66,6 +66,9 @@ func (a *accumulator) event(n swarm.Notification, kind string) store.Event {
 		ThreadID: a.threadID, TurnID: a.turnID,
 		Kind: kind, AgentID: n.AgentID, Role: n.Role,
 		Text: n.Text, ToolCallID: n.ToolCallID, MessageID: n.MessageID,
+		ModelBinding: n.ModelBinding,
+		ParentID:     n.ParentID, WorkerGeneration: n.WorkerGeneration,
+		ConfigTag: n.ConfigTag, DelegationEnabled: n.DelegationEnabled,
 	}
 	if n.Err != nil {
 		ev.Err = n.Err.Error()

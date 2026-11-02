@@ -71,6 +71,14 @@ MODELS = {
             ("TypeOK", "ConvergedView", "SeqIdentity"),
             (("MaxSeq", 5), ("Cap", 1)),
         ),
+        Model(
+            "nuwa", ROOT / "models" / "nuwa" / "NuwaCollaboration.tla",
+            ("RebindOnRestore", "CancelParentOnly", "WriteAfterStop",
+             "CrossProjectEvidence", "PublishBeforeCommit"),
+            ("TypeOK", "BindingStable", "StopOwnsDescendants", "NoLateFact",
+             "ProjectScoped", "VisibleIsCommitted"),
+            (("MaxWrites", 2),),
+        ),
     )
 }
 
@@ -108,6 +116,20 @@ def _stream(name: str, source: str, switches: tuple[str, ...] = (), violates: st
 
 
 CASES: tuple[Case, ...] = (
+    _case("nuwa-current", "Nuwa current protocol", model="nuwa"),
+    _case("nuwa-rebind-on-restore", "pre-fix WorkerCheckpoint omitted the selected model",
+          ("RebindOnRestore",), "BindingStable", model="nuwa"),
+    _case("nuwa-parent-only-stop", "seeded descendant escapes Registry cancellation",
+          ("CancelParentOnly",), "StopOwnsDescendants", model="nuwa"),
+    _case("nuwa-late-result", "seeded callback writes after acknowledged Stop",
+          ("WriteAfterStop",), "NoLateFact", model="nuwa"),
+    _case("nuwa-cross-project", "seeded model-supplied evidence changes project ownership",
+          ("CrossProjectEvidence",), "ProjectScoped", model="nuwa"),
+    _case("nuwa-uncommitted-revision", "seeded revision publication before the write commits",
+          ("PublishBeforeCommit",), "VisibleIsCommitted", model="nuwa"),
+    _case("nuwa-reach-restore", "witness", witness="NeverRestored", model="nuwa"),
+    _case("nuwa-reach-result", "witness", witness="NeverSharedResult", model="nuwa"),
+    _case("nuwa-reach-delegation", "witness", witness="NeverDelegated", model="nuwa"),
     _case("current", "current design: every switch off"),
     # Historical: the shipped code before these commits had the behaviour.
     _case("pre-d77e8d4", "historical, before d77e8d4: the restart deadline bounded the replacement "

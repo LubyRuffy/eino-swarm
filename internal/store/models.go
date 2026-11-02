@@ -7,6 +7,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"time"
+
+	swarm "github.com/LubyRuffy/eino-swarm"
 )
 
 // Turn status values.
@@ -32,6 +34,10 @@ type Project struct {
 	Workdir string `gorm:"size:1000" json:"workdir"`
 	// MemoryEnabled lets one project opt out of memory while the rest keep it.
 	MemoryEnabled bool `json:"memory_enabled"`
+	// NuwaEnabled enables prompt-driven collaboration for subsequent turns.
+	NuwaEnabled bool `json:"nuwa_enabled"`
+	// NuwaRevision identifies the latest committed shared-work snapshot.
+	NuwaRevision int64 `json:"nuwa_revision"`
 	// SortRank is the sidebar's manual order. Zero means "never dragged":
 	// those rows interleave by UpdatedAt with ranked rows, so an idle
 	// unranked project cannot sit above one that was just used.
@@ -164,6 +170,8 @@ type ImageRef struct {
 // Turn is one user request and everything the swarm did to answer it. The ID
 // is the handle a user pastes into `zwai trace` to replay the whole thing.
 type Turn struct {
+	// ProjectID freezes the workspace/evidence owner used by tagged workers.
+	ProjectID  string `gorm:"size:64" json:"project_id,omitempty"`
 	ID         string `gorm:"primaryKey;size:64" json:"id"`
 	ThreadID   string `gorm:"index;index:idx_turn_thread_seq,priority:1;size:64" json:"thread_id"`
 	Seq        int64  `gorm:"index:idx_turn_thread_seq,priority:2" json:"seq"`
@@ -179,6 +187,11 @@ type Turn struct {
 	// WebExecution is the preference captured when this turn started, so a
 	// later conversation/config edit cannot change its restart behavior.
 	WebExecution string `gorm:"size:16" json:"web_execution,omitempty"`
+	// NuwaEnabled freezes the project's collaboration mode for this turn and
+	// its recovered workers; editing the project affects subsequent turns.
+	NuwaEnabled bool `json:"nuwa_enabled"`
+	// NuwaReadOnly preserves planning's read-only tool surface after recovery.
+	NuwaReadOnly bool `json:"nuwa_read_only"`
 	// GoalContinue is true when the engine started this turn to keep pursuing
 	// an open standing objective. The transcript records goal_continued, not
 	// a human user_message.
@@ -203,23 +216,28 @@ type Turn struct {
 type Event struct {
 	// Completion is persisted so quiet/rewind cannot revive pre-upgrade
 	// history. SuppressCompletion is a runtime decision, never wire data.
-	Completion         bool       `gorm:"not null;default:false" json:"-"`
-	SuppressCompletion bool       `gorm:"-" json:"-"`
-	SourceThreadID     string     `gorm:"size:64" json:"source_thread_id,omitempty"`
-	SourceTurnID       string     `gorm:"size:64" json:"source_turn_id,omitempty"`
-	ID                 uint       `gorm:"primaryKey" json:"-"`
-	ThreadID           string     `gorm:"index:idx_evt_thread_seq;index:idx_evt_thread_kind_seq,priority:1;index:idx_evt_thread_turn_seq,priority:1;index:idx_evt_thread_turn_kind_seq,priority:1;size:64" json:"thread_id"`
-	TurnID             string     `gorm:"index;index:idx_evt_thread_turn_seq,priority:2;index:idx_evt_thread_turn_kind_seq,priority:2;size:64" json:"turn_id"`
-	Seq                int64      `gorm:"index:idx_evt_thread_seq;index:idx_evt_thread_kind_seq,priority:3;index:idx_evt_thread_turn_seq,priority:3;index:idx_evt_thread_turn_kind_seq,priority:4" json:"seq"`
-	Kind               string     `gorm:"index:idx_evt_thread_kind_seq,priority:2;index:idx_evt_thread_turn_kind_seq,priority:3;size:32" json:"kind"`
-	AgentID            string     `gorm:"size:64" json:"agent_id"`
-	Role               string     `gorm:"size:64" json:"role,omitempty"`
-	Text               string     `json:"text"`
-	ToolCallID         string     `gorm:"size:128" json:"tool_call_id,omitempty"`
-	MessageID          string     `gorm:"size:64" json:"message_id,omitempty"`
-	Err                string     `json:"err,omitempty"`
-	Images             []ImageRef `gorm:"serializer:json" json:"images,omitempty"`
-	CreatedAt          time.Time  `json:"created_at"`
+	Completion         bool                `gorm:"not null;default:false" json:"-"`
+	SuppressCompletion bool                `gorm:"-" json:"-"`
+	SourceThreadID     string              `gorm:"size:64" json:"source_thread_id,omitempty"`
+	SourceTurnID       string              `gorm:"size:64" json:"source_turn_id,omitempty"`
+	ID                 uint                `gorm:"primaryKey" json:"-"`
+	ThreadID           string              `gorm:"index:idx_evt_thread_seq;index:idx_evt_thread_kind_seq,priority:1;index:idx_evt_thread_turn_seq,priority:1;index:idx_evt_thread_turn_kind_seq,priority:1;size:64" json:"thread_id"`
+	TurnID             string              `gorm:"index;index:idx_evt_thread_turn_seq,priority:2;index:idx_evt_thread_turn_kind_seq,priority:2;size:64" json:"turn_id"`
+	Seq                int64               `gorm:"index:idx_evt_thread_seq;index:idx_evt_thread_kind_seq,priority:3;index:idx_evt_thread_turn_seq,priority:3;index:idx_evt_thread_turn_kind_seq,priority:4" json:"seq"`
+	Kind               string              `gorm:"index:idx_evt_thread_kind_seq,priority:2;index:idx_evt_thread_turn_kind_seq,priority:3;size:32" json:"kind"`
+	AgentID            string              `gorm:"size:64" json:"agent_id"`
+	Role               string              `gorm:"size:64" json:"role,omitempty"`
+	ModelBinding       *swarm.ModelBinding `gorm:"serializer:json" json:"model_binding,omitempty"`
+	ParentID           string              `gorm:"size:64" json:"parent_id,omitempty"`
+	WorkerGeneration   int                 `json:"generation,omitempty"`
+	ConfigTag          string              `json:"config_tag,omitempty"`
+	DelegationEnabled  *bool               `json:"delegation_enabled,omitempty"`
+	Text               string              `json:"text"`
+	ToolCallID         string              `gorm:"size:128" json:"tool_call_id,omitempty"`
+	MessageID          string              `gorm:"size:64" json:"message_id,omitempty"`
+	Err                string              `json:"err,omitempty"`
+	Images             []ImageRef          `gorm:"serializer:json" json:"images,omitempty"`
+	CreatedAt          time.Time           `json:"created_at"`
 }
 
 // LLMCall records one model request. It carries sizes, token counts and

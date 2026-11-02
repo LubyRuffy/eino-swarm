@@ -7,6 +7,15 @@ back — while you watch every agent, every tool call and every file it produced
 One Go binary. The native window and the browser run the **same** HTTP server, so
 uploads, downloads and the live event stream have exactly one implementation.
 
+Projects can opt into **Nuwa collaboration**: describe the objective in
+Instruction and let agents choose useful roles, delegate further and select
+configured models. The **Collaboration** panel shows shared tasks, reported
+facts, result files, dependency paths and actual worker/model state across the
+project. Mode changes apply to subsequent turns; current workers keep their
+configuration. Connections and tools still need to be configured. See
+[Nuwa](docs/NUWA.md) for evidence, correction and recovery boundaries. No domain
+workflow or real-model efficiency improvement is implied by enabling it.
+
 ```
 ┌───────────────┬─────────────────────────────────┬──────────────────┐
 │ Conversations │  Transcript                     │ Agents / Files   │

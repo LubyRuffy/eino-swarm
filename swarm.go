@@ -56,26 +56,31 @@ const DefaultAgentTimeout = time.Hour
 
 // Handle is the public handle to one running sub-agent.
 type Handle struct {
-	ID    string
-	Role  string
-	done  chan struct{}
-	mu    sync.Mutex
-	inbox []string
+	ID       string
+	Role     string
+	ParentID string
+	done     chan struct{}
+	mu       sync.Mutex
+	inbox    []string
 	// leftover steering that never hit a model call; wait_agents surfaces it
-	undelivered     []string
-	history         []adk.Message // cloned each model call; resume_agent's seed
-	resumedFrom     string
-	gen             int // bumps on resume so Result/Done cannot see the previous life
-	collected       bool
-	closeRequested  bool
-	cancel          context.CancelFunc
-	result          string
-	err             error
-	spawned         time.Time
-	finished        time.Time
-	activity        string // latest streamed reasoning/answer tail (for progress)
-	timeoutFailures int    // consecutive watchdog stops, retained across resume
-	handoff         workerHandoff
+	undelivered       []string
+	history           []adk.Message // cloned each model call; resume_agent's seed
+	resumedFrom       string
+	gen               int // bumps on resume so Result/Done cannot see the previous life
+	collected         bool
+	closeRequested    bool
+	cancel            context.CancelFunc
+	result            string
+	err               error
+	spawned           time.Time
+	finished          time.Time
+	activity          string // latest streamed reasoning/answer tail (for progress)
+	timeoutFailures   int    // consecutive watchdog stops, retained across resume
+	configTag         string
+	delegationEnabled *bool
+	workerConfig      *WorkerConfig
+	modelBinding      *ModelBinding
+	handoff           workerHandoff
 }
 
 // Activity returns the agent's most recent streamed text tail (thinking or
@@ -158,6 +163,10 @@ func (h *Handle) drainInbox() []string {
 // ToolsNode runs each tool call in its own goroutine when the host model
 // issues multiple calls in one message.
 type Registry struct {
+	// ResolveWorkerConfig is initialized once; tagged recovery never falls back.
+	ResolveWorkerConfig func(context.Context, string) (WorkerConfig, error)
+	workerConfig        *WorkerConfig
+	delegationUsed      bool
 	mu                  sync.Mutex
 	agents              map[string]*Handle
 	pending             map[string]*Handle // current generations awaiting wait/close
@@ -215,6 +224,15 @@ type Registry struct {
 	// instance to reuse a single client/endpoint across the swarm.
 	ModelBuilder ModelBuilder
 
+	// EnableDelegation gives workers scoped tools on this same Registry.
+	EnableDelegation bool
+
+	// SelectWorkerModel enables opt-in model_ref selection. Resolve and build
+	// before admission; an empty reference selects the host default.
+	SelectWorkerModel func(context.Context, string) (ModelBinding, ModelBuilder, error)
+	// RestoreWorkerModel builds a pinned binding without resolving its Ref again.
+	RestoreWorkerModel func(context.Context, ModelBinding) (ModelBuilder, error)
+
 	// SubAgentTools are registered on every spawned sub-agent in addition to
 	// the swarm's send_message tool (e.g. web_search/web_fetch for workers).
 	SubAgentTools []tool.BaseTool
@@ -265,7 +283,7 @@ type Registry struct {
 	// internal hooks: invoked by Spawn on registration and by the agent
 	// goroutine on completion; Run wires these into Notifications.
 	spawnHook  func(role, agentID, instruction string)
-	finishHook func(role, agentID, result string, err error)
+	finishHook func(role, agentID, result string, err error, identity AgentIdentity)
 }
 
 // NewRegistry creates an empty registry.
@@ -454,6 +472,7 @@ func (m *historyRecorder) WrapInvokableToolCall(ctx context.Context,
 		parent := ctx
 		ctx, id := m.reg.bindEpoch(ctx)
 		defer m.reg.dropEpoch(id)
+		ctx = withToolCaller(ctx, AgentIdentity{AgentID: DefaultManagerID, Role: DefaultManagerID})
 		ctx = m.reg.bindToolOutput(ctx, DefaultManagerID, "manager", tc)
 		out, refused := m.spawnFeedback.take(tc.CallID)
 		var err error
@@ -464,21 +483,6 @@ func (m *historyRecorder) WrapInvokableToolCall(ctx context.Context,
 		m.reg.appendHistoryToolResult(tc, m.reg.checkpointManagerToolResult(ctx, tc.CallID, out), err)
 		return out, err
 	}, nil
-}
-
-func (r *Registry) bindToolOutput(ctx context.Context, agentID, role string, tc *adk.ToolContext) context.Context {
-	if r == nil || r.ToolOutputBinder == nil || tc == nil {
-		return ctx
-	}
-	return r.ToolOutputBinder(ctx, func(text string) {
-		r.emit(Notification{
-			Kind:       NotifyToolDelta,
-			AgentID:    agentID,
-			Role:       role,
-			Text:       text,
-			ToolCallID: tc.CallID,
-		})
-	}, tc.Name, tc.CallID)
 }
 
 func (m *historyRecorder) WrapStreamableToolCall(ctx context.Context,
@@ -492,6 +496,7 @@ func (m *historyRecorder) WrapStreamableToolCall(ctx context.Context,
 		parent := ctx
 		ctx, id := m.reg.bindEpoch(ctx)
 		defer m.reg.dropEpoch(id)
+		ctx = withToolCaller(ctx, AgentIdentity{AgentID: DefaultManagerID, Role: DefaultManagerID})
 		sr, err := endpoint(ctx, argumentsInJSON, opts...)
 		if err != nil {
 			out, err := m.reg.preemptToolResult(parent, ctx, "", err)
@@ -544,69 +549,6 @@ func (r *Registry) appendHistoryToolResult(tc *adk.ToolContext, content string, 
 // SteerManager messages are delivered at turn boundaries.
 func (r *Registry) ManagerMiddleware() adk.ChatModelAgentMiddleware {
 	return &historyRecorder{reg: r}
-}
-
-// Spawn starts a sub-agent in the background and returns its handle
-// immediately. The agent's context derives from ctx: if the Spawn caller is
-// extraTools are appended to the sub-agent's toolset on top of
-// Registry.SubAgentTools and the mesh send_message tool. The worker does not
-// die with ctx: a /goal session yield cancels the manager without killing
-// in-flight sub-agents. Handle.Cancel, Cleanup, Close, and AgentTimeout still
-// stop them.
-func (r *Registry) Spawn(ctx context.Context, role, task string,
-	modelOpt ModelBuilder, extraTools ...tool.BaseTool) (*Handle, error) {
-	return r.spawnAgent(ctx, role, task, modelOpt, "", false, extraTools...)
-}
-
-// spawnAdmitted is the manager-tool path. Past MaxConcurrent it returns
-// atCapacityError and starts nothing. Registry.Spawn keeps queueing so a
-// programmatic host can still park work behind the gate.
-func (r *Registry) spawnAdmitted(ctx context.Context, role, task string,
-	modelOpt ModelBuilder, extraTools ...tool.BaseTool) (*Handle, error) {
-	return r.spawnAgent(ctx, role, task, modelOpt, "", true, extraTools...)
-}
-
-func (r *Registry) spawnForkedAdmitted(ctx context.Context, role, task string,
-	modelOpt ModelBuilder, msgs []adk.Message, extraTools ...tool.BaseTool) (*Handle, error) {
-	seed := forkContext(msgs)
-	return r.spawnAgent(ctx, role, task, modelOpt, seed, true, extraTools...)
-}
-
-// spawnAgent is Spawn with an inbox seed applied before the worker goroutine
-// starts. fork_context uses it so the first model call cannot beat the
-// context it is supposed to inherit. admit refuses instead of queueing when
-// the live roster is already at MaxConcurrent; the check and the insert share
-// the registry lock so parallel tool calls cannot all slip through.
-func (r *Registry) spawnAgent(ctx context.Context, role, task string,
-	modelOpt ModelBuilder, seed string, admit bool, extraTools ...tool.BaseTool) (*Handle, error) {
-
-	r.mu.Lock()
-	if r.handingOff {
-		r.mu.Unlock()
-		return nil, ErrHandoff
-	}
-	if r.closed {
-		r.mu.Unlock()
-		return nil, fmt.Errorf("swarm: registry closed")
-	}
-	if admit && r.liveCountLocked() >= r.capLocked() {
-		n := r.capLocked()
-		r.mu.Unlock()
-		return nil, &atCapacityError{n: n}
-	}
-	r.seq++
-	id := fmt.Sprintf("%s-%d", role, r.seq)
-	h := &Handle{ID: id, Role: role, done: make(chan struct{}), spawned: time.Now(), gen: 1}
-	h.handoff.task, h.handoff.instruction = task, r.workerInstruction(task)
-	r.agents[id] = h
-	r.notePendingLocked(h)
-	hook := r.spawnHook
-	r.mu.Unlock()
-	if hook != nil {
-		hook(role, id, r.workerInstruction(task))
-	}
-	r.startWorker(ctx, h, task, r.workerInstruction(task), modelOpt, seed, extraTools)
-	return h, nil
 }
 
 // finishAgent records leftover steering and archives the conversation so a
@@ -788,6 +730,11 @@ func (r *Registry) Cleanup() int {
 		select {
 		case <-h.Done():
 		default:
+			if r.delegationUsed || r.EnableDelegation {
+				h.mu.Lock()
+				h.closeRequested = true
+				h.mu.Unlock()
+			}
 			running = append(running, h)
 		}
 	}
@@ -937,9 +884,12 @@ func WithManagerHandler(hs ...adk.ChatModelAgentMiddleware) ManagerOption {
 // Injector delivers steering messages at each turn boundary.
 type Injector struct {
 	adk.BaseChatModelAgentMiddleware
-	handle  *Handle
-	histCap int
-	reg     *Registry
+	handle     *Handle
+	generation int
+	config     WorkerConfig
+	configured bool
+	histCap    int
+	reg        *Registry
 }
 
 // BeforeModelRewriteState drains queued steering messages into the
@@ -976,6 +926,12 @@ func (in *Injector) WrapInvokableToolCall(ctx context.Context,
 				in.handle.finishTool(tc.Name, tc.CallID, handoffToolResult, nil)
 				return handoffToolResult, nil
 			}
+			config := in.config
+			if !in.configured {
+				config = in.reg.WorkerConfiguration()
+			}
+			ctx = withWorkerConfig(ctx, config)
+			ctx = withToolCaller(ctx, AgentIdentity{AgentID: in.handle.ID, Role: in.handle.Role, Generation: in.generation, ParentID: in.handle.ParentID})
 			ctx = in.reg.bindToolOutput(ctx, in.handle.ID, in.handle.Role, tc)
 		}
 		out, err := endpoint(ctx, argumentsInJSON, opts...)

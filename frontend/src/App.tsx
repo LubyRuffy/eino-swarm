@@ -834,6 +834,7 @@ function AppPanel({
   const reviewNow = useApp((s) => s.reviewNow)
   const projects = useProjects((s) => s.projects)
   const memory = useProjects((s) => s.memory)
+  const selectedProjectId = useProjects((s) => s.selectedId)
   const memoryLoading = useProjects((s) => s.memoryLoading)
   const loadMemory = useProjects((s) => s.loadMemory)
   const saveMemory = useProjects((s) => s.saveMemory)
@@ -897,6 +898,7 @@ function AppPanel({
       turns={turns}
       meta={meta}
       threadId={activeId}
+      nuwaProject={conversationProject ?? (!activeId ? projectOf(projects, selectedProjectId) : undefined)}
       memory={
         memoryTarget
           ? {

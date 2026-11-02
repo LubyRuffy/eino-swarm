@@ -74,6 +74,10 @@ def call(agent, tokens, chars=0, cached=0):
 
 
 class ProviderConfigTest(unittest.TestCase):
+    def test_nuwa_keeps_every_catalog_choice_instead_of_only_the_default(self):
+        p = grade.extract_provider(CONFIG, "default")
+        self.assertEqual(p["catalog"], ["model-one", "other"])
+
     def test_reads_only_the_selected_provider(self):
         p = grade.extract_provider(CONFIG, "default")
         self.assertEqual(p["base_url"], "https://one.example/v1")
@@ -172,6 +176,15 @@ class RedactionTest(unittest.TestCase):
 
 
 class TraceMetricsTest(unittest.TestCase):
+    def test_missing_usage_is_unknown_and_actual_models_stay_separate(self):
+        calls = [{"agent_id": "manager", "provider_id": "p", "model": "planner", "total_tokens": 0},
+                 {"agent_id": "w-1", "provider_id": "p", "model": "executor", "total_tokens": 23}]
+        facts = grade.extract_metrics([trace([], calls)])["usage_facts"]
+        self.assertIsNone(facts["total_tokens"])
+        self.assertEqual(facts["known_total_tokens"], 23)
+        self.assertEqual(len(facts["by_model"]), 2)
+        self.assertEqual(facts["calls"][0]["total_tokens"]["state"], "unknown")
+
     def sample(self):
         events = [
             ev("user_message"),

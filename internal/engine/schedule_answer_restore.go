@@ -160,10 +160,15 @@ func (rt *runtime) restorePendingScheduleWorkers(ctx context.Context, reg *swarm
 			return err
 		}
 	}
-	workerTools := append([]tool.BaseTool(nil), reg.SubAgentTools...)
+	config := reg.WorkerConfiguration()
+	workerTools := append([]tool.BaseTool(nil), config.SubAgentTools...)
 	workerTools = append(workerTools, reg.SendTool())
 	for _, worker := range running {
-		if _, err := reg.Restore(ctx, worker, reg.ModelBuilder, workerTools...); err != nil {
+		restoredTools := workerTools
+		if worker.ConfigTag != "" {
+			restoredTools = nil
+		}
+		if _, err := reg.Restore(ctx, worker, nil, restoredTools...); err != nil {
 			return err
 		}
 	}

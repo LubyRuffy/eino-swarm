@@ -125,6 +125,8 @@ func New(opts Options) (*Server, error) {
 		api.POST("/projects", s.createProject)
 		api.PUT("/projects/reorder", s.reorderProjects)
 		api.GET("/projects/:id", s.getProject)
+		api.GET("/projects/:id/nuwa", s.getNuwa)
+		api.GET("/projects/:id/nuwa/events", s.streamNuwa)
 		api.PATCH("/projects/:id", s.patchProject)
 		api.DELETE("/projects/:id", s.deleteProject)
 		api.GET("/projects/:id/memory", s.getMemory)

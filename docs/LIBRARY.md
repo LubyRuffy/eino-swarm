@@ -25,6 +25,45 @@ over one concurrency-safe registry:
 Give sub-agents `SendTool()` as well and any agent can message any other (a mesh
 rather than a star).
 
+### Optional model selection and recursive delegation
+
+The ordinary library default remains unchanged. A host can install a
+`WorkerConfig` through `ConfigureWorkers`; a detached copy is available from
+`WorkerConfiguration`. This atomically changes the execution surface for new
+manager-dispatched workers while existing/archived workers retain their own
+configuration. Public Registry fields remain initialization-only settings for
+consumers that have not started work.
+
+`WorkerConfig.SelectWorkerModel(ctx, ref)` returns a credential-free
+`ModelBinding`, per-agent `ModelBuilder` and error. When configured, the actual
+`spawn_agent` schema includes optional `model_ref`. Selection errors refuse
+before side effects. Same-role reuse preserves the old binding, and an explicit
+different binding refuses before steering/resuming. `RestoreWorkerModel`
+reconstructs concrete provider/model/reasoning identity, not a changed default
+or label. Missing restoration support fails rather than silently switching.
+The host owns ref syntax: consumers copy the opaque token from its catalog
+without decoding or constructing it. zwai's tool token is separate from its
+UI/CLI ChoiceID; a saved `ModelBinding.Ref` remains source provenance.
+
+`EnableDelegation` gives workers the lifecycle tools under their captured
+configuration. Worker callers carry trusted ID/parent/generation; they may only
+control descendants. Roles and capacity remain global to the Registry. A child
+with `fork_context` receives its spawning worker's non-System history. Closing
+a subtree returns `closed_agents` with exact generations and genuine
+`cancelled`/`already_finished` results. Pending descendants keep ancestry and
+collection state across archive pruning, manager turns and cold replay.
+
+For durable configuration, set a host-owned `WorkerConfig.Tag` and implement
+`Registry.ResolveWorkerConfig(ctx, tag)`. Checkpoints, `RestoredWorker` and
+`FinishedWorker` retain `ConfigTag`, `DelegationEnabled`, `ParentID` and
+`ModelBinding`. A resolver must reconstruct that original surface; mismatched
+tags/mode or resolution errors refuse before claim/resume. Go tool instances and
+secrets are not serialized. The zwai app binds the tag to a durable turn and
+validates its conversation/project owner; see [Nuwa](NUWA.md).
+The app's shared-work idempotency returns a frozen same-call/same-argument receipt
+only after current ownership and input validation; it does not bypass
+cancellation, deleted owners/targets or artifact-file validity.
+
 HITL tools (`ask_user`, `propose_plan`, `complete_goal`, `block_goal`,
 `reopen_goal`,
 `schedule_wake`, `schedule_task`, `cancel_schedule`, `report_schedule`) are

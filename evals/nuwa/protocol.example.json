@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "benchmark": "generic-task-eval",
+  "task_root": "evals/tasks",
+  "tasks": ["nuwa-source-reconcile", "multi-module-bugfix", "spec-edges"],
+  "runs": 3,
+  "seed": 1729,
+  "budget": {"max_completion_tokens": 16384, "review_wait_s": 30},
+  "arms": [
+    {"id": "default-glm", "project_mode": "default", "planner": {"provider_id": "default", "model": "glm-5.3-flash"}},
+    {"id": "nuwa-glm", "project_mode": "nuwa", "planner": {"provider_id": "default", "model": "glm-5.3-flash"}},
+    {"id": "nuwa-mixed", "project_mode": "nuwa", "planner": {"provider_id": "default", "model": "glm-5.3-flash"},
+     "executor_preference": {"provider_id": "default", "model": "dsv41-flash-1017"}}
+  ]
+}

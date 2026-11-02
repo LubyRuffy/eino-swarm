@@ -1,6 +1,9 @@
 ---------------------------- MODULE EventStream ----------------------------
 (***************************************************************************)
 (* C-003 for one conversation and one live reader: the engine stores rows  *)
+(* Project collaboration uses a separate committed revision namespace;    *)
+(* its SSE invalidates transactional snapshots rather than applying chat   *)
+(* seqs. NuwaCollaboration checks VisibleIsCommitted for that namespace.   *)
 (* with sequence numbers and broadcasts them; the reader's SSE connection  *)
 (* forwards each new row once, catches up from the database when its       *)
 (* subscription lagged or when it reconnects with Last-Event-ID, and the   *)

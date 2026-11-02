@@ -15,11 +15,7 @@ import (
 // workerInstruction is what a sub-agent gets as its system prompt. The task
 // is always there; WorkerPreamble rides in front when the host set one.
 func (r *Registry) workerInstruction(task string) string {
-	p := strings.TrimSpace(r.WorkerPreamble)
-	if p == "" {
-		return task
-	}
-	return p + "\n\n" + task
+	return workerInstructionWithConfig(r.WorkerConfiguration(), task)
 }
 
 // Host-owned durable identities sometimes need to reach worker tools. Keep
@@ -27,10 +23,11 @@ func (r *Registry) workerInstruction(task string) string {
 // also carry its model/role/accounting state and shorter execution lifetime.
 func (r *Registry) workerContext(parent context.Context) context.Context {
 	detached := context.Background()
-	if r.WorkerContextValues != nil {
-		detached = context.WithoutCancel(r.WorkerContextValues(parent, detached))
+	config := r.workerConfigurationForContext(parent)
+	if config.WorkerContextValues != nil {
+		detached = context.WithoutCancel(config.WorkerContextValues(parent, detached))
 	}
-	return detached
+	return withWorkerConfig(detached, config)
 }
 
 // startWorker runs h's goroutine. Spawn and resume both land here so a
@@ -38,6 +35,8 @@ func (r *Registry) workerContext(parent context.Context) context.Context {
 func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction string,
 	modelOpt ModelBuilder, seed string, extraTools []tool.BaseTool) {
 	role, id := h.Role, h.ID
+	config := r.workerConfigurationForContext(ctx)
+	ctx = withWorkerConfig(ctx, config)
 
 	timeout := r.agentTimeout()
 
@@ -48,6 +47,10 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 	runCtx, cancel := context.WithCancel(r.workerContext(ctx))
 	watchCtx, watchCancel := context.WithTimeout(runCtx, timeout)
 	h.mu.Lock()
+	h.workerConfig = &config
+	h.configTag = config.Tag
+	enabled := config.EnableDelegation
+	h.delegationEnabled = &enabled
 	h.cancel = cancel
 	h.handoff.task, h.handoff.instruction = task, instruction
 	initial := restoredWorkerMessages(task, workerReplayHistory(h.handoff.restoreHistory, instruction))
@@ -62,8 +65,9 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 		// fork_context used to lose the race against the first model call.
 		h.pushInbox(seed)
 	}
-	extraTools = r.bindSendCaller(extraTools, id, role)
+	extraTools = r.workerTools(config, r.bindSendCaller(extraTools, id, role))
 
+	identity := AgentIdentity{AgentID: id, Role: role, ParentID: h.ParentID, Generation: h.generation()}
 	go func() {
 		defer close(done)
 		defer r.finishAgent(h)
@@ -76,7 +80,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 				res, e := h.result, h.err
 				h.mu.Unlock()
 				if !errors.Is(e, ErrHandoff) {
-					fh(role, id, res, e)
+					fh(role, id, res, e, identity)
 				}
 			}
 		}()
@@ -85,8 +89,8 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 		defer cancel()
 		defer watchCancel()
 
-		acc := &streamAcc{reg: r, agentID: id, role: role, handle: h, rawEvents: true}
-		inj := &Injector{handle: h, histCap: r.historyCap(), reg: r}
+		acc := &streamAcc{reg: r, agentID: id, role: role, handle: h, rawEvents: true, workerGeneration: h.generation(), parentID: h.ParentID}
+		inj := &Injector{handle: h, histCap: r.historyCap(), reg: r, generation: h.generation(), config: config, configured: true}
 		agent, err := adk.NewChatModelAgent(watchCtx, &adk.ChatModelAgentConfig{
 			Name:        id,
 			Description: "spawned sub-agent " + role,
@@ -136,7 +140,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 			if r.OnEvent != nil {
 				r.OnEvent(role, id, ev)
 			}
-			r.emitComplete(role, id, ev)
+			r.emitComplete(role, id, ev, identity)
 			if o != nil && o.MessageOutput != nil && !o.MessageOutput.IsStreaming &&
 				o.MessageOutput.Message != nil && o.MessageOutput.Message.Role == schema.Assistant &&
 				len(o.MessageOutput.Message.ToolCalls) == 0 {

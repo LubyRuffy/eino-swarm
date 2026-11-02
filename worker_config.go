@@ -1,0 +1,96 @@
+package swarm
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/cloudwego/eino/components/tool"
+)
+
+// WorkerConfig is an immutable execution surface for subsequently created
+// workers. Existing workers and their descendants retain their own snapshot.
+// Concurrency, handoff and Stop remain shared Registry state.
+type WorkerConfig struct {
+	Tag                 string
+	ModelBuilder        ModelBuilder
+	SelectWorkerModel   func(context.Context, string) (ModelBinding, ModelBuilder, error)
+	RestoreWorkerModel  func(context.Context, ModelBinding) (ModelBuilder, error)
+	EnableDelegation    bool
+	SubAgentTools       []tool.BaseTool
+	WorkerPreamble      string
+	ToolOutputBinder    func(context.Context, func(string), string, string) context.Context
+	WorkerContextValues func(context.Context, context.Context) context.Context
+}
+
+func cloneWorkerConfig(config WorkerConfig) WorkerConfig {
+	config.SubAgentTools = append([]tool.BaseTool(nil), config.SubAgentTools...)
+	return config
+}
+
+// WorkerConfiguration returns a detached current configuration. Direct public
+// Registry fields remain supported for initialization only; a running host uses
+// ConfigureWorkers instead of rewriting them concurrently with worker tools.
+func (r *Registry) WorkerConfiguration() WorkerConfig {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.workerConfig != nil {
+		return cloneWorkerConfig(*r.workerConfig)
+	}
+	return cloneWorkerConfig(WorkerConfig{ModelBuilder: r.ModelBuilder, SelectWorkerModel: r.SelectWorkerModel, RestoreWorkerModel: r.RestoreWorkerModel, EnableDelegation: r.EnableDelegation, SubAgentTools: r.SubAgentTools, WorkerPreamble: r.WorkerPreamble, ToolOutputBinder: r.ToolOutputBinder, WorkerContextValues: r.WorkerContextValues})
+}
+
+// ConfigureWorkers atomically replaces the surface for new manager-dispatched
+// workers without changing already-running or archived worker generations.
+func (r *Registry) ConfigureWorkers(config WorkerConfig) {
+	config = cloneWorkerConfig(config)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.workerConfig = &config
+	r.delegationUsed = r.delegationUsed || config.EnableDelegation
+}
+
+type workerConfigKey struct{}
+
+func withWorkerConfig(ctx context.Context, config WorkerConfig) context.Context {
+	return context.WithValue(ctx, workerConfigKey{}, &config)
+}
+
+func (r *Registry) workerConfigurationForContext(ctx context.Context) WorkerConfig {
+	if config, ok := ctx.Value(workerConfigKey{}).(*WorkerConfig); ok {
+		return *config
+	}
+	return r.WorkerConfiguration()
+}
+
+func workerInstructionWithConfig(config WorkerConfig, task string) string {
+	preamble := strings.TrimSpace(config.WorkerPreamble)
+	if preamble == "" {
+		return task
+	}
+	return preamble + "\n\n" + task
+}
+
+func (r *Registry) restoreWorkerConfiguration(ctx context.Context, tag string, enabled *bool) (WorkerConfig, error) {
+	config := r.workerConfigurationForContext(ctx)
+	if tag != "" {
+		if r.ResolveWorkerConfig == nil {
+			return WorkerConfig{}, fmt.Errorf("worker configuration %q has no resolver", tag)
+		}
+		var err error
+		config, err = r.ResolveWorkerConfig(ctx, tag)
+		if err != nil {
+			return WorkerConfig{}, fmt.Errorf("restore worker configuration: %w", err)
+		}
+		if config.Tag != "" && config.Tag != tag {
+			return WorkerConfig{}, fmt.Errorf("worker configuration resolver returned a different tag")
+		}
+		config.Tag = tag
+		if enabled != nil && config.EnableDelegation != *enabled {
+			return WorkerConfig{}, fmt.Errorf("worker configuration resolver changed delegation mode")
+		}
+	} else if enabled != nil {
+		config.EnableDelegation = *enabled
+	}
+	return cloneWorkerConfig(config), nil
+}

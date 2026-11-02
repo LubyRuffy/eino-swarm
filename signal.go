@@ -125,11 +125,16 @@ const DefaultManagerID = "manager"
 // accumulators and reset on NotifyTurn. Tool deltas key on ToolCallID and
 // reset when that call's NotifyToolResult arrives.
 type Notification struct {
-	Kind    NotifyKind
-	AgentID string // emitting agent (DefaultManagerID for the top level)
-	Role    string
-	Text    string // accumulated text / tool summary / result
-	Err     error  // failure cause; interrupted generation causes are classified by the host
+	ConfigTag         string        `json:"config_tag,omitempty"`
+	DelegationEnabled *bool         `json:"delegation_enabled,omitempty"`
+	ParentID          string        `json:"parent_id,omitempty"`
+	WorkerGeneration  int           `json:"generation,omitempty"`
+	ModelBinding      *ModelBinding `json:"model_binding,omitempty"`
+	Kind              NotifyKind
+	AgentID           string // emitting agent (DefaultManagerID for the top level)
+	Role              string
+	Text              string // accumulated text / tool summary / result
+	Err               error  // failure cause; interrupted generation causes are classified by the host
 
 	// ToolCallID pairs NotifyToolCall with its NotifyToolResult. Agents issue
 	// several calls in one turn, so matching by position or name is wrong;
@@ -197,11 +202,22 @@ func (r *Registry) setSink(fn Callback) Callback {
 }
 
 func (r *Registry) emitSpawned(role, agentID, instruction string) {
-	r.emit(Notification{Kind: NotifySpawned, AgentID: agentID, Role: role, Text: instruction})
+	identity := r.workerIdentity(agentID)
+	r.mu.Lock()
+	h := r.agents[agentID]
+	r.mu.Unlock()
+	tag := ""
+	var enabled *bool
+	if h != nil {
+		h.mu.Lock()
+		tag, enabled = h.configTag, h.delegationEnabled
+		h.mu.Unlock()
+	}
+	r.emit(Notification{Kind: NotifySpawned, ConfigTag: tag, DelegationEnabled: enabled, AgentID: agentID, Role: role, Text: instruction, ModelBinding: r.workerModelBinding(agentID), ParentID: identity.ParentID, WorkerGeneration: identity.Generation})
 }
 
-func (r *Registry) emitFinished(role, agentID, result string, err error) {
-	r.emit(Notification{Kind: NotifyFinished, AgentID: agentID, Role: role, Text: result, Err: err})
+func (r *Registry) emitFinished(role, agentID, result string, err error, identity AgentIdentity) {
+	r.emit(Notification{Kind: NotifyFinished, AgentID: agentID, Role: role, Text: result, Err: err, ParentID: identity.ParentID, WorkerGeneration: identity.Generation})
 }
 
 func (r *Registry) sink() Callback {
@@ -212,6 +228,7 @@ func (r *Registry) sink() Callback {
 
 // emit delivers one notification to the current sink (no-op when headless).
 func (r *Registry) emit(n Notification) {
+
 	if n.Kind == NotifyToolResult {
 		n.Text = r.checkpointToolResult(n.AgentID, n.ToolCallID, n.Text)
 	}
@@ -241,7 +258,14 @@ func clipToolResult(s string, n int) string {
 // emitComplete maps one NON-streaming agent event to notifications. Streamed
 // assistant messages are handled by streamAcc (the single stream reader);
 // this path covers tool results and models that do not stream.
-func (r *Registry) emitComplete(role, agentID string, ev *adk.AgentEvent) {
+func (r *Registry) emitComplete(role, agentID string, ev *adk.AgentEvent, identities ...AgentIdentity) {
+	emit := func(n Notification) {
+		if len(identities) > 0 {
+			n.ParentID = identities[0].ParentID
+			n.WorkerGeneration = identities[0].Generation
+		}
+		r.emit(n)
+	}
 	if ev == nil || ev.Err != nil {
 		return
 	}
@@ -256,14 +280,14 @@ func (r *Registry) emitComplete(role, agentID string, ev *adk.AgentEvent) {
 	switch msg.Role {
 	case schema.Assistant:
 		if c := strings.TrimSpace(msg.Content); c != "" && len(msg.ToolCalls) == 0 {
-			r.emit(Notification{Kind: NotifyAgentMessage, AgentID: agentID, Role: role, Text: c})
+			emit(Notification{Kind: NotifyAgentMessage, AgentID: agentID, Role: role, Text: c})
 		}
 		for _, tc := range mergeStreamedToolCalls(msg.ToolCalls) {
-			r.emit(Notification{Kind: NotifyToolCall, AgentID: agentID, Role: role,
+			emit(Notification{Kind: NotifyToolCall, AgentID: agentID, Role: role,
 				Text: tc.Function.Name + "(" + tc.Function.Arguments + ")", ToolCallID: tc.ID})
 		}
 	case schema.Tool:
-		r.emit(Notification{Kind: NotifyToolResult, AgentID: agentID, Role: role,
+		emit(Notification{Kind: NotifyToolResult, AgentID: agentID, Role: role,
 			Text: clipToolResult(msg.Content, toolResultNotifyLimit), ToolCallID: msg.ToolCallID})
 	}
 }
@@ -344,10 +368,12 @@ func itoa(i int) string {
 // at every turn boundary. Both the manager loop and each worker goroutine own
 // one instance per agent for the whole run.
 type streamAcc struct {
-	reg     *Registry
-	agentID string
-	role    string
-	handle  *Handle // optional: keeps a worker's activity tail fresh
+	parentID         string
+	workerGeneration int
+	reg              *Registry
+	agentID          string
+	role             string
+	handle           *Handle // optional: keeps a worker's activity tail fresh
 
 	// rawEvents also forwards synthetic per-chunk events to Registry.OnEvent,
 	// which is the raw (non-UI) hook workers have always exposed.
@@ -587,6 +613,7 @@ func (s *streamAcc) answerText() string {
 }
 
 func (s *streamAcc) emit(n Notification) {
+	n.ParentID, n.WorkerGeneration = s.parentID, s.workerGeneration
 	n.AgentID = s.agentID
 	n.Role = s.role
 	s.mu.Lock()

@@ -16,31 +16,39 @@ import (
 // process died. Restore starts it under the same id so wait_agents and the
 // roster keep working.
 type RestoredWorker struct {
-	Generation      int  `json:"generation,omitempty"`
-	Collected       bool `json:"collected,omitempty"`
-	CloseRequested  bool `json:"close_requested,omitempty"`
-	ID              string
-	Role            string
-	Instruction     string // stored system prompt; empty means workerInstruction(Task)
-	Task            string
-	Seed            string            // conversation so far, injected before the first model call
-	TimeoutFailures int               // consecutive watchdog stops before the process died
-	History         []*schema.Message // structured replay, preferred over a flattened Seed
-	Inbox           []string          // messages not yet delivered before the process stopped
+	ConfigTag         string        `json:"config_tag,omitempty"`
+	DelegationEnabled *bool         `json:"delegation_enabled,omitempty"`
+	ParentID          string        `json:"parent_id,omitempty"`
+	ModelBinding      *ModelBinding `json:"model_binding,omitempty"`
+	Generation        int           `json:"generation,omitempty"`
+	Collected         bool          `json:"collected,omitempty"`
+	CloseRequested    bool          `json:"close_requested,omitempty"`
+	ID                string
+	Role              string
+	Instruction       string // stored system prompt; empty means workerInstruction(Task)
+	Task              string
+	Seed              string            // conversation so far, injected before the first model call
+	TimeoutFailures   int               // consecutive watchdog stops before the process died
+	History           []*schema.Message // structured replay, preferred over a flattened Seed
+	Inbox             []string          // messages not yet delivered before the process stopped
 }
 
 // FinishedWorker is a sub-agent that already completed in the previous
 // process. PlantFinished puts it back so wait_agents does not report unknown.
 type FinishedWorker struct {
-	Generation      int  `json:"generation,omitempty"`
-	Collected       bool `json:"collected,omitempty"`
-	CloseRequested  bool `json:"close_requested,omitempty"`
-	ID              string
-	Role            string
-	Result          string
-	Err             error
-	History         []adk.Message
-	TimeoutFailures int
+	ConfigTag         string        `json:"config_tag,omitempty"`
+	DelegationEnabled *bool         `json:"delegation_enabled,omitempty"`
+	ParentID          string        `json:"parent_id,omitempty"`
+	ModelBinding      *ModelBinding `json:"model_binding,omitempty"`
+	Generation        int           `json:"generation,omitempty"`
+	Collected         bool          `json:"collected,omitempty"`
+	CloseRequested    bool          `json:"close_requested,omitempty"`
+	ID                string
+	Role              string
+	Result            string
+	Err               error
+	History           []adk.Message
+	TimeoutFailures   int
 }
 
 // Restore starts a worker under a known agent_id. Unlike Spawn it does not
@@ -59,19 +67,38 @@ func (r *Registry) Restore(ctx context.Context, w RestoredWorker, modelOpt Model
 	if task == "" {
 		return nil, fmt.Errorf("restore: task is required")
 	}
+	if err := r.validateRestoredParent(id, w.ParentID); err != nil {
+		return nil, err
+	}
+	config, err := r.restoreWorkerConfiguration(ctx, w.ConfigTag, w.DelegationEnabled)
+	if err != nil {
+		return nil, err
+	}
+	ctx = withWorkerConfig(ctx, config)
+	if w.ConfigTag != "" && len(extraTools) == 0 {
+		extraTools = append(append([]tool.BaseTool(nil), config.SubAgentTools...), r.SendTool())
+	}
 	instruction := strings.TrimSpace(w.Instruction)
 	if instruction == "" {
-		instruction = r.workerInstruction(task)
+		instruction = workerInstructionWithConfig(config, task)
 	}
 	if modelOpt == nil {
-		modelOpt = r.ModelBuilder
+		modelOpt = config.ModelBuilder
 	}
-	h, err := r.claimForRestore(id, role, w.TimeoutFailures)
+	modelOpt, err = r.restoreWorkerModel(ctx, w.ModelBinding, modelOpt)
+	if err != nil {
+		return nil, err
+	}
+	h, err := r.claimForRestore(id, role, w.TimeoutFailures, w.ParentID)
 	if err != nil {
 		return nil, err
 	}
 	r.restoreCollection(h, w.Generation, w.Collected, w.CloseRequested)
 	h.mu.Lock()
+	h.configTag = config.Tag
+	enabled := config.EnableDelegation
+	h.delegationEnabled = &enabled
+	h.modelBinding = cloneModelBinding(w.ModelBinding)
 	h.handoff.task, h.handoff.instruction = task, instruction
 	h.handoff.restoreHistory = cloneMessages(w.History)
 	h.inbox = append(h.inbox, w.Inbox...)
@@ -86,7 +113,7 @@ func (r *Registry) Restore(ctx context.Context, w RestoredWorker, modelOpt Model
 	return h, nil
 }
 
-func (r *Registry) claimForRestore(id, role string, failures int) (*Handle, error) {
+func (r *Registry) claimForRestore(id, role string, failures int, parentID string) (*Handle, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.handingOff {
@@ -95,10 +122,16 @@ func (r *Registry) claimForRestore(id, role string, failures int) (*Handle, erro
 	if r.closed {
 		return nil, fmt.Errorf("restore: registry closed")
 	}
+	if err := r.validateParentRelationLocked(id, parentID); err != nil {
+		return nil, err
+	}
 	if p := r.past[id]; p != nil && p.TimeoutFailures > failures {
 		failures = p.TimeoutFailures
 	}
 	if cur, ok := r.agents[id]; ok {
+		if cur.ParentID != parentID {
+			return nil, fmt.Errorf("restore: worker parent identity cannot change")
+		}
 		if _, _, finished := cur.Result(); !finished {
 			return nil, fmt.Errorf("restore: agent %q is still running; use send_message", id)
 		}
@@ -122,7 +155,7 @@ func (r *Registry) claimForRestore(id, role string, failures int) (*Handle, erro
 		return nil, err
 	}
 	h := &Handle{
-		ID: id, Role: role, done: make(chan struct{}),
+		ID: id, Role: role, ParentID: parentID, done: make(chan struct{}),
 		spawned: time.Now(), resumedFrom: id, gen: 1, timeoutFailures: failures,
 	}
 	r.agents[id] = h
@@ -142,11 +175,15 @@ func (r *Registry) PlantFinished(w FinishedWorker) error {
 	if role == "" {
 		role = id
 	}
+	if err := r.validateRestoredParent(id, w.ParentID); err != nil {
+		return err
+	}
 	h := &Handle{
-		ID: id, Role: role, done: make(chan struct{}),
+		configTag: w.ConfigTag, delegationEnabled: w.DelegationEnabled, ID: id, Role: role, ParentID: w.ParentID, done: make(chan struct{}),
 		spawned: time.Now(), finished: time.Now(),
 		result: w.Result, err: w.Err, history: cloneMessages(w.History), timeoutFailures: w.TimeoutFailures,
 		gen: w.Generation, collected: w.Collected, closeRequested: w.CloseRequested,
+		modelBinding: cloneModelBinding(w.ModelBinding),
 	}
 	if h.gen <= 0 {
 		h.gen = 1
@@ -158,6 +195,10 @@ func (r *Registry) PlantFinished(w FinishedWorker) error {
 	if r.closed {
 		r.mu.Unlock()
 		return fmt.Errorf("restore: registry closed")
+	}
+	if err := r.validateParentRelationLocked(id, w.ParentID); err != nil {
+		r.mu.Unlock()
+		return err
 	}
 	if cur, ok := r.agents[id]; ok {
 		r.mu.Unlock()
@@ -201,11 +242,14 @@ func (r *Registry) applyRunWorkers(ctx context.Context, cfg RunConfig) error {
 	if len(cfg.RestoreWorkers) == 0 {
 		return nil
 	}
-	tools := make([]tool.BaseTool, 0, len(r.SubAgentTools)+1)
-	tools = append(tools, r.SubAgentTools...)
-	tools = append(tools, r.SendTool())
+	config := r.WorkerConfiguration()
+	tools := append(append([]tool.BaseTool(nil), config.SubAgentTools...), r.SendTool())
 	for _, w := range cfg.RestoreWorkers {
-		if _, err := r.Restore(ctx, w, r.ModelBuilder, tools...); err != nil {
+		workerTools := tools
+		if w.ConfigTag != "" {
+			workerTools = nil
+		}
+		if _, err := r.Restore(ctx, w, nil, workerTools...); err != nil {
 			return err
 		}
 	}

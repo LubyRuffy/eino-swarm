@@ -14,14 +14,25 @@ type workerCollectionCall struct {
 	role             string
 	startsGeneration bool
 }
-type workerCollectionCallKey struct{ turn, call string }
+type workerCollectionCallKey struct {
+	turn, call, actor string
+	generation        int
+}
 type workerCollectionCalls map[workerCollectionCallKey]workerCollectionCall
 
+func collectionCallKey(ev store.Event) workerCollectionCallKey {
+	actor, generation := ev.AgentID, ev.WorkerGeneration
+	if isManagerAgent(actor) {
+		actor, generation = swarm.DefaultManagerID, 0
+	}
+	return workerCollectionCallKey{ev.TurnID, ev.ToolCallID, actor, generation}
+}
+
 func (calls workerCollectionCalls) note(ev store.Event) {
-	if !isManagerAgent(ev.AgentID) || ev.Kind != swarm.NotifyToolCall.String() || ev.ToolCallID == "" {
+	if (!isManagerAgent(ev.AgentID) && ev.WorkerGeneration <= 0) || ev.Kind != swarm.NotifyToolCall.String() || ev.ToolCallID == "" {
 		return
 	}
-	key := workerCollectionCallKey{ev.TurnID, ev.ToolCallID}
+	key := collectionCallKey(ev)
 	delete(calls, key)
 	name, args := splitToolCallText(ev.Text)
 	switch name {
@@ -63,10 +74,10 @@ func (calls workerCollectionCalls) startsGeneration(ev store.Event) bool {
 // another worker's result and a delayed result for an older generation cannot.
 func (calls workerCollectionCalls) apply(ev store.Event, slots map[string]*workerSlot) {
 	calls.note(ev)
-	if !isManagerAgent(ev.AgentID) || ev.Kind != swarm.NotifyToolResult.String() {
+	if (!isManagerAgent(ev.AgentID) && ev.WorkerGeneration <= 0) || ev.Kind != swarm.NotifyToolResult.String() {
 		return
 	}
-	key := workerCollectionCallKey{ev.TurnID, ev.ToolCallID}
+	key := collectionCallKey(ev)
 	call, ok := calls[key]
 	if !ok {
 		return
@@ -75,13 +86,29 @@ func (calls workerCollectionCalls) apply(ev store.Event, slots map[string]*worke
 	if ev.Err != "" {
 		return
 	}
+	canControl := func(id string) bool {
+		if isManagerAgent(ev.AgentID) {
+			return true
+		}
+		caller := slots[ev.AgentID]
+		if caller == nil || caller.generation != ev.WorkerGeneration {
+			return false
+		}
+		return replayDescendant(slots, id, ev.AgentID)
+	}
 	var receipt struct {
 		AgentID         string `json:"agent_id"`
 		Generation      int    `json:"generation"`
 		Error           string `json:"error"`
 		Cancelled       bool   `json:"cancelled"`
 		AlreadyFinished bool   `json:"already_finished"`
-		Agents          []struct {
+		ClosedAgents    []struct {
+			AgentID         string `json:"agent_id"`
+			Generation      int    `json:"generation"`
+			Cancelled       bool   `json:"cancelled"`
+			AlreadyFinished bool   `json:"already_finished"`
+		} `json:"closed_agents"`
+		Agents []struct {
 			AgentID    string `json:"agent_id"`
 			Generation int    `json:"generation"`
 			Status     string `json:"status"`
@@ -93,14 +120,14 @@ func (calls workerCollectionCalls) apply(ev store.Event, slots map[string]*worke
 	if call.name == "wait_agents" {
 		for _, item := range receipt.Agents {
 			s := slots[item.AgentID]
-			if s != nil && call.ids[item.AgentID] && item.Generation > 0 && s.generation == item.Generation && (item.Status == "done" || item.Status == "failed") {
+			if s != nil && canControl(item.AgentID) && call.ids[item.AgentID] && item.Generation > 0 && s.generation == item.Generation && (item.Status == "done" || item.Status == "failed") {
 				s.collected = true
 			}
 		}
 		return
 	}
 	s := slots[receipt.AgentID]
-	if s == nil || !s.spawned || receipt.Generation <= 0 || strings.TrimSpace(receipt.AgentID) == "" {
+	if s == nil || !canControl(receipt.AgentID) || !s.spawned || receipt.Generation <= 0 || strings.TrimSpace(receipt.AgentID) == "" {
 		return
 	}
 	if call.name == "spawn_agent" || call.name == "resume_agent" {
@@ -125,5 +152,38 @@ func (calls workerCollectionCalls) apply(ev store.Event, slots map[string]*worke
 		if receipt.AlreadyFinished {
 			s.collected = true
 		}
+		if call.name == "close_agent" {
+			for _, item := range receipt.ClosedAgents {
+				child := slots[item.AgentID]
+				if child == nil || !canControl(item.AgentID) || item.Generation <= 0 || child.generation != item.Generation || item.Cancelled == item.AlreadyFinished {
+					continue
+				}
+				if item.AgentID != receipt.AgentID && !replayDescendant(slots, item.AgentID, receipt.AgentID) {
+					continue
+				}
+				if item.Cancelled {
+					child.closeRequested = true
+				}
+				if item.AlreadyFinished {
+					child.collected = true
+				}
+			}
+		}
 	}
+}
+
+func replayDescendant(slots map[string]*workerSlot, id, ancestor string) bool {
+	seen := map[string]bool{}
+	for id != "" && !seen[id] {
+		seen[id] = true
+		slot := slots[id]
+		if slot == nil {
+			return false
+		}
+		id = slot.parentID
+		if id == ancestor {
+			return true
+		}
+	}
+	return false
 }

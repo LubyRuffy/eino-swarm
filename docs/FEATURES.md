@@ -10,6 +10,7 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-125` Unread completion attention
     - `F-130` Agent runs, tools, and live control
     - `F-135` Independent task coordination
+    - `F-136` Nuwa project collaboration
     - `F-140` Files and attachments
     - `F-145` Durable composer drafts
     - `F-150` Goals and scheduled waits
@@ -147,6 +148,11 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 目的：让不同 PC 对话的管理 Agent 发现活跃任务、协商共享资源的处理顺序；使用者：PC 用户和配对手机用户；入口：manager 工具 `list_tasks`、`send_task_message`、`read_task_messages`，对话内的协作消息通知；输入：真实 conversation ID、消息和可选收件游标；输出：活跃任务的工作目录/请求/状态、持久化发送回执、来源可追溯的消息和明确回复；前置条件：同一 host 的未归档对话；失败表现：未知/归档目标、非法参数或数据库错误返回工具错误，不伪造送达；关联契约：`C-021`、`C-012`；实现证据：`internal/engine/task_coordination.go`、`internal/engine/task_coordination_flow_test.go`、`internal/store/event_kind.go`、`frontend/e2e/task-coordination.spec.ts`、`mobile/src/lib/task-message.test.ts`。
 - 这是通信协商能力。发现结果不是资源锁，发送成功不是接收方已同意；双方明确回复后才可依赖分工或执行顺序。消息不会代替用户授权、自动启动空闲对话、解除暂停或打断另一个任务。
+
+### F-136 Nuwa project collaboration
+
+- 目的：由模型基于目标与事实选择计划、分工和已接入模型，并让项目内共享任务、事实报告、成果及依赖可检查；使用者：PC 用户；入口：项目创建／编辑的 Nuwa collaboration、Instruction、右侧 Collaboration、`list_models`／`read_work`／`record_work` 及项目 Nuwa GET／SSE；输入：项目提示词、已配置资源、实际事件证据及已有成果文件；输出：动态 worker 树、实际模型绑定、有版本和来源的共享记录与依赖图；前置条件：项目启用模式，资源已接入；失败表现：不可用模型、跨子树控制、无效引用、过期版本及存储失败明确拒绝；关联契约：`C-037`、`C-019`、`C-027`、`C-012`；实现证据：`internal/engine/nuwa_models.go`、`internal/engine/nuwa_tools.go`、`internal/store/nuwa.go`、`internal/server/nuwa.go`、`delegation.go`、`worker_config.go`、`model_binding.go`、`frontend/src/components/app/nuwa-panel.tsx`；验证：`internal/engine/nuwa_engine_http_test.go`、`internal/store/nuwa_test.go`、`internal/server/nuwa_stream_test.go`、`delegation_http_test.go`、`model_binding_http_test.go`、`frontend/e2e/nuwa.spec.ts`。
+- 模式变更从后续 turn 生效；既有 worker 保留原配置／模型和执行身份。fact／artifact 是 reported，引用存在不证明推导成立；来源纠正／删除需明确重查。项目 revision 仅使视图失效重读，不进入聊天 seq。停用保留已存内容，规划模式不挂共享写工具。见 [Nuwa](NUWA.md)；不预置领域流程，不宣称 CyberGym、原生或真实模型效率已验收。
 
 ### F-140 Files and attachments
 

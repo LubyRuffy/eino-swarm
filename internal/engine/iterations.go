@@ -128,14 +128,21 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	// backing array, and appending complete_goal / block_goal in place
 	// would hand them to every sub-agent.
 	managerTools := append([]tool.BaseTool(nil), pc.managerTools(toolset)...)
-	if th != nil && th.PlanMode {
+	if turn.NuwaEnabled {
+		instruction = JoinPromptSections(instruction, nuwaInstruction)
+		managerTools = append(managerTools, e.nuwaModelTool(turn))
+		if pc != nil && pc.project != nil {
+			managerTools = append(managerTools, e.nuwaWorkTools(pc.project.ID, toolset.WorkspaceDir, turn, turn.NuwaReadOnly || (th != nil && th.PlanMode))...)
+		}
+	}
+	if turn.NuwaReadOnly || (th != nil && th.PlanMode) {
 		managerTools = dropPlanMutatingManagerTools(managerTools)
 		tid := rt.threadID
 		managerTools = append(managerTools, ProposePlanTool(func(markdown string) (string, error) {
 			return e.proposePlanJSON(tid, markdown)
 		}))
 	}
-	if pursuingGoal(th) && (th == nil || !th.PlanMode) {
+	if pursuingGoal(th) && !turn.NuwaReadOnly && (th == nil || !th.PlanMode) {
 		tid := rt.threadID
 		managerTools = append(managerTools,
 			CompleteGoalTool(func(summary string) (string, error) {

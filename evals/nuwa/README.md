@@ -1,0 +1,115 @@
+# Nuwa project evaluation
+
+These opt-in evaluations measure task outcomes. They do not presume that more
+workers, Nuwa mode or mixed models are better. They are separate from offline
+tests and do not establish CyberGym performance.
+
+`tools/agent_eval.py` accepts `--project-mode default|nuwa`, `--planner-ref` and
+`--executor-ref`. These CLI choices use the existing provider ChoiceID, with a
+tab between provider ID and model name. Model names may contain slashes; never
+split a ChoiceID on `/`. Structured protocol files avoid shell tab quoting.
+The agent tool's `model_ref` is a separate opaque token returned by `list_models`.
+The project preference names provider/model and tells the model to call that
+tool and copy its exact returned ref. Do not synthesize, escape or decode a tool
+ref from the CLI ChoiceID, label or model-name string.
+
+For supported configurations, the harness copies every enabled, configured
+provider, its actual `api_mode` (including Responses) and saved model
+catalog/context metadata into a new private engine configuration. It never
+edits the source config. The snapshot is identified as configured data; it is
+not proof that each upstream service currently answers. The planner selection
+is acknowledged by the actual thread API. An executor preference is placed in
+the project's prompt. No role name or code rule forces routing: the manager may
+decline delegation or choose another model. Per-call Trace identities show what
+actually happened, and `routing.executor_preference_realized` records the result.
+
+The lightweight config reader accepts the engine's serialized provider shape;
+it is not a general YAML parser. Nonempty structured `builtin_tools` cannot
+currently be copied accurately and cause the evaluation configuration to be
+rejected before a run, rather than silently dropping provider tools. Empty
+`builtin_tools` and ordinary providers remain supported. This harness therefore
+does not claim to preserve every possible provider configuration.
+
+## Freeze and run a paired protocol
+
+Build the candidate first, then copy `protocol.example.json` to private evidence
+storage and choose tasks, models and repetition count before observing results.
+Model names in this example are evaluation inputs, not product defaults.
+
+```bash
+python3 tools/agent_eval_pair.py --protocol /absolute/private/protocol.json \
+  --zwai /absolute/candidate/zwai --out /absolute/private/eval --dry-run
+python3 tools/agent_eval_pair.py --protocol /absolute/private/protocol.json \
+  --zwai /absolute/candidate/zwai --out /absolute/private/eval
+```
+
+`--dry-run` starts no engine and makes no model inference requests. It freezes
+the protocol, binary hash, task hashes, model choices and interleaved schedule.
+The actual run freezes its own receipt. Do not run paid evaluations merely to
+validate this harness; use its offline tests or `--mock` for that purpose.
+
+The three example arms separate current behavior, the Nuwa framework change,
+and an offered mixed-model configuration. All arms have the same tools,
+configured model directory, per-task deadline, output cap and review allowance.
+Each execution owns a fresh engine, private data and workspace. Initial fixture
+hashes, task hashes, budget and pair identity are saved. Scheduling uses a seeded
+random task-block order and rotates arm order across repeats. It runs serially
+to avoid one arm competing with another for local resources. Provider load and
+remote caches remain external variables; no remote-cache reset is claimed.
+
+Success is primary. Reports preserve failed attempts and infrastructure errors;
+there are no automatic retries or selective removal of failures. Time deltas
+use only pairs in which both arms passed, alongside every arm's success count.
+Token deltas include all valid graded pairs, including failures. A missing
+usage measurement, unsettled post-turn review or review interrupted at shutdown
+makes token comparison unavailable. A negative delta means a
+lower observed value, not a universal advantage or a significance claim.
+
+Evidence includes actual model identities and usage observations. Older Trace
+rows lose the distinction between absent usage and explicit zero; their zeros
+are marked unknown. Raw provider usage or explicit presence metadata preserves
+absent/zero/positive states. Known positives are retained as a lower bound, never
+used to assert complete token savings when another call is unknown. Token counts
+from different tokenizers are provider-reported quantities, not equal compute or
+money; no cost estimate is invented. Post-turn review and other auxiliary calls
+remain attributed. Full redacted Trace is saved privately for inspection.
+
+`agent_eval_proxy.py` is a separate model-only measurement gateway. Its offline
+HTTP tests check unchanged stream bytes, usage presence and credential/prompt
+redaction. The ordinary runner does not automatically place live model traffic
+through it. A gateway unit test is not an observation of production billing.
+Mock reports explicitly identify their responses and usage as scripted and
+cannot support model capability or token-saving claims.
+
+## External benchmark adapter boundary
+
+`--task-root` selects a separate task directory using the existing task format:
+prompt/project-prompt files, a deterministic initial fixture or generator, and
+trusted post-run `command` checks. This is the extension point for an external
+benchmark. A wrapper must retain official task ID/revision, environment/image
+digests, the selected final artifact, raw evaluator output and its verdict.
+Generic file checks or a model saying it succeeded cannot stand in for an
+official benchmark verdict. Provision/reset external environments separately;
+do not give the agent a directory containing hidden evaluators or patched code.
+
+For the public [sunblaze-ucb/CyberGym](https://github.com/sunblaze-ucb/cybergym),
+freeze the upstream revision, task ID and difficulty, vulnerable source and
+vulnerable/fixed image digests. Generate the official agent-facing task and use
+the official evaluator on exactly one final selected submission. Report the
+final-submission metric, as required by its [FAQ](https://github.com/sunblaze-ucb/cybergym/blob/main/FAQ.md).
+Keep the submission service private and the fixed image/evaluator inaccessible
+to the agent. Docker architecture/emulation, egress policy and environment reset
+must be identical across paired arms. The official README offers a ten-task
+subset and uses `arvo:10400` at `level1` in its smoke example. A container launch
+or arbitrary-byte submission checks plumbing only; it is not a successful task.
+
+CyberGym execution for this work was stopped by platform safety review. No
+official task reproduction, hold-out grading, paid model benchmark or CyberGym
+score was produced. Source/data downloads, image availability, an architecture
+smoke and a headless preparation build are environment evidence only. They do
+not establish task success. Preserve those receipts; do not retry this blocked
+execution through another route. Continue independent generic engineering and
+document fixtures through the ordinary protocol above.
+The unaccepted specialized adapter and its dedicated runner hookups were
+removed from this checkout and retained privately with hashes for review. The
+CyberGym comparison remains an unmet requirement, not a reduced generic target.

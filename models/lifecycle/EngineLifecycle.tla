@@ -1,6 +1,10 @@
 --------------------------- MODULE EngineLifecycle ---------------------------
 (***************************************************************************)
 (* One data directory, one conversation and one launching shell.           *)
+(* Nuwa descendants share that conversation's Registry ownership: running  *)
+(* and parked below include the whole descendant set, never one manager.  *)
+(* NuwaCollaboration separately checks descendant Stop, frozen model       *)
+(* bindings and late shared-result writes before their implementation.     *)
 (*                                                                         *)
 (* The old engine is serving when the shell starts. If it is the shell's   *)
 (* own build the shell attaches to it; otherwise it runs the C-027 handoff: *)

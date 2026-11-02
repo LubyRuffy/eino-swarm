@@ -35,21 +35,25 @@ type WorkerToolCheckpoint struct {
 // summary. History and Inbox retain the worker's actual input, not a rewritten
 // task reconstructed from its summary.
 type WorkerCheckpoint struct {
-	Generation      int                    `json:"generation,omitempty"`
-	Collected       bool                   `json:"collected,omitempty"`
-	CloseRequested  bool                   `json:"close_requested,omitempty"`
-	ID              string                 `json:"id"`
-	Role            string                 `json:"role"`
-	Task            string                 `json:"task"`
-	Instruction     string                 `json:"instruction"`
-	History         []*schema.Message      `json:"history,omitempty"`
-	Inbox           []string               `json:"inbox,omitempty"`
-	TimeoutFailures int                    `json:"timeout_failures"`
-	Finished        bool                   `json:"finished"`
-	Result          string                 `json:"result,omitempty"`
-	Err             string                 `json:"err,omitempty"`
-	Summary         string                 `json:"summary,omitempty"`
-	InFlight        []WorkerToolCheckpoint `json:"in_flight,omitempty"`
+	ConfigTag         string                 `json:"config_tag,omitempty"`
+	DelegationEnabled *bool                  `json:"delegation_enabled,omitempty"`
+	ParentID          string                 `json:"parent_id,omitempty"`
+	ModelBinding      *ModelBinding          `json:"model_binding,omitempty"`
+	Generation        int                    `json:"generation,omitempty"`
+	Collected         bool                   `json:"collected,omitempty"`
+	CloseRequested    bool                   `json:"close_requested,omitempty"`
+	ID                string                 `json:"id"`
+	Role              string                 `json:"role"`
+	Task              string                 `json:"task"`
+	Instruction       string                 `json:"instruction"`
+	History           []*schema.Message      `json:"history,omitempty"`
+	Inbox             []string               `json:"inbox,omitempty"`
+	TimeoutFailures   int                    `json:"timeout_failures"`
+	Finished          bool                   `json:"finished"`
+	Result            string                 `json:"result,omitempty"`
+	Err               string                 `json:"err,omitempty"`
+	Summary           string                 `json:"summary,omitempty"`
+	InFlight          []WorkerToolCheckpoint `json:"in_flight,omitempty"`
 }
 
 type workerHandoff struct {
@@ -181,12 +185,16 @@ func (h *Handle) stopForHandoff() {
 }
 
 func (h *Handle) checkpointLocked() WorkerCheckpoint {
-	w := WorkerCheckpoint{ID: h.ID, Role: h.Role, Task: h.handoff.task,
+	w := WorkerCheckpoint{ConfigTag: h.configTag, DelegationEnabled: h.delegationEnabled, ID: h.ID, Role: h.Role, ParentID: h.ParentID, Task: h.handoff.task, ModelBinding: cloneModelBinding(h.modelBinding),
 		Generation: h.gen, Collected: h.collected, CloseRequested: h.closeRequested,
 		Instruction: h.handoff.instruction, History: cloneMessages(h.history),
 		Inbox:           append(append([]string(nil), h.undelivered...), h.inbox...),
 		TimeoutFailures: h.timeoutFailures, Summary: h.handoff.summary,
 		Finished: !h.finished.IsZero() && !errors.Is(h.err, ErrHandoff)}
+	if w.DelegationEnabled != nil {
+		enabled := *w.DelegationEnabled
+		w.DelegationEnabled = &enabled
+	}
 	for _, msg := range w.History {
 		if _, unknown := h.handoff.inFlight[msg.ToolCallID]; msg.Role == schema.Tool && h.handoff.requested && unknown {
 			msg.Content = HandoffUnknownToolResult
@@ -206,6 +214,11 @@ func (h *Handle) checkpointLocked() WorkerCheckpoint {
 }
 
 func cloneWorkerCheckpoint(w WorkerCheckpoint) WorkerCheckpoint {
+	if w.DelegationEnabled != nil {
+		enabled := *w.DelegationEnabled
+		w.DelegationEnabled = &enabled
+	}
+	w.ModelBinding = cloneModelBinding(w.ModelBinding)
 	w.History = cloneMessages(w.History)
 	w.Inbox = append([]string(nil), w.Inbox...)
 	w.InFlight = append([]WorkerToolCheckpoint(nil), w.InFlight...)

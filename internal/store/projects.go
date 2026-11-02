@@ -53,6 +53,12 @@ func (s *Store) UpdateProject(id string, fields map[string]any) error {
 	if len(fields) == 0 {
 		return nil
 	}
+	if enabled, supplied := fields["nuwa_enabled"]; supplied {
+		// Retain the view when mode changes before the first worker/result.
+		// Compare and increment in this statement so concurrent shared writes
+		// retain their revisions, and unchanged ordinary edits stay at zero.
+		fields["nuwa_revision"] = gorm.Expr("CASE WHEN COALESCE(nuwa_enabled, 0) <> ? THEN COALESCE(nuwa_revision, 0) + 1 ELSE COALESCE(nuwa_revision, 0) END", enabled)
+	}
 	fields["updated_at"] = time.Now().UTC()
 	res := s.db.Model(&Project{}).Where("id = ?", id).Updates(fields)
 	if res.Error != nil {
@@ -75,6 +81,9 @@ func (s *Store) DeleteProject(id string) error {
 	}
 	var threadIDs []string
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := deleteNuwaProject(tx, id); err != nil {
+			return err
+		}
 		// Derive owned drafts from the same snapshot that deletes their owners.
 		// A pre-transaction list can miss a newly created thread's private bytes.
 		if err := tx.Model(&Thread{}).Where("project_id = ?", id).Pluck("id", &threadIDs).Error; err != nil {

@@ -41,7 +41,7 @@ func TestRetainedWorkerBillsItsNextHTTPRequestToTheCurrentTurn(t *testing.T) {
 			_, release := ownManagerTestFixture(context.Background(), rt, first.ID, reg)
 			defer release()
 			phase := &accountingPhaseTool{entered: make(chan struct{}), release: make(chan struct{})}
-			h, err := reg.Spawn(context.Background(), "inspector", "Inspect the current evidence.", reg.ModelBuilder, phase)
+			h, err := reg.Spawn(context.Background(), "inspector", "Inspect the current evidence.", reg.WorkerConfiguration().ModelBuilder, phase)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -55,7 +55,7 @@ func TestRetainedWorkerBillsItsNextHTTPRequestToTheCurrentTurn(t *testing.T) {
 				}
 				// Production refreshes this factory, while h keeps the model it
 				// was given before the first request and the parked boundary.
-				reg.ModelBuilder = accountingBuilder(t, e, second)
+				replaceAccountingFactory(reg, accountingBuilder(t, e, second))
 				_, releaseNext := ownManagerTestFixture(context.Background(), rt, second.ID, reg)
 				defer releaseNext()
 				attachHostNotify(reg, newAccumulator(e, th.ID, second.ID, 0))
@@ -123,7 +123,7 @@ func TestWorkerHTTPRequestKeepsItsStartingTurnAcrossASuccessor(t *testing.T) {
 			rt := e.runtimeFor(th.ID)
 			_, release := ownManagerTestFixture(context.Background(), rt, first.ID, reg)
 			defer release()
-			h, err := reg.Spawn(context.Background(), "inspector", "Inspect the current evidence.", reg.ModelBuilder)
+			h, err := reg.Spawn(context.Background(), "inspector", "Inspect the current evidence.", reg.WorkerConfiguration().ModelBuilder)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -133,7 +133,7 @@ func TestWorkerHTTPRequestKeepsItsStartingTurnAcrossASuccessor(t *testing.T) {
 			if rt.takeParkedRegistry() != reg {
 				t.Fatal("next turn lost the retained Registry")
 			}
-			reg.ModelBuilder = accountingBuilder(t, e, second)
+			replaceAccountingFactory(reg, accountingBuilder(t, e, second))
 			_, releaseNext := ownManagerTestFixture(context.Background(), rt, second.ID, reg)
 			defer releaseNext()
 			if outcome == "cancel" {
@@ -173,7 +173,7 @@ func TestRetainedWorkerBackoffTracksItsOwnerBeforeTheNextHTTPRequest(t *testing.
 	rt := e.runtimeFor(th.ID)
 	_, release := ownManagerTestFixture(context.Background(), rt, first.ID, reg)
 	defer release()
-	worker := reg.ModelBuilder("inspector", "inspector-1")
+	worker := reg.WorkerConfiguration().ModelBuilder("inspector", "inspector-1")
 	if _, err := worker.Generate(context.Background(), []*schema.Message{schema.UserMessage("Inspect the evidence.")}); err == nil {
 		t.Fatal("fixture HTTP failure did not reach the caller")
 	}
@@ -195,7 +195,7 @@ func TestRetainedWorkerBackoffTracksItsOwnerBeforeTheNextHTTPRequest(t *testing.
 	if rt.takeParkedRegistry() != reg {
 		t.Fatal("next turn lost the retained Registry")
 	}
-	reg.ModelBuilder = accountingBuilder(t, e, second)
+	replaceAccountingFactory(reg, accountingBuilder(t, e, second))
 	_, releaseNext := ownManagerTestFixture(ctx, rt, second.ID, reg)
 	defer releaseNext()
 	queuedCtx, cancelQueued := context.WithCancel(ctx)
@@ -258,8 +258,8 @@ func TestWorkerAccountingLeavesManagerAndAuxiliaryCallsOnTheirOriginalTurn(t *te
 	rt := e.runtimeFor(th.ID)
 	_, release := ownManagerTestFixture(context.Background(), rt, first.ID, reg)
 	defer release()
-	worker := reg.ModelBuilder("inspector", "inspector-1")
-	manager := reg.ModelBuilder(swarm.DefaultManagerID, swarm.DefaultManagerID)
+	worker := reg.WorkerConfiguration().ModelBuilder("inspector", "inspector-1")
+	manager := reg.WorkerConfiguration().ModelBuilder(swarm.DefaultManagerID, swarm.DefaultManagerID)
 	staticBuilder, err := e.pool.AuxiliaryModelBuilder(context.Background(), "", "", config.ReasoningLow, e.callRecorder(th.ID, first.ID))
 	if err != nil {
 		t.Fatal(err)
@@ -271,7 +271,7 @@ func TestWorkerAccountingLeavesManagerAndAuxiliaryCallsOnTheirOriginalTurn(t *te
 	if rt.takeParkedRegistry() != reg {
 		t.Fatal("next turn lost the retained Registry")
 	}
-	reg.ModelBuilder = accountingBuilder(t, e, second)
+	replaceAccountingFactory(reg, accountingBuilder(t, e, second))
 	_, releaseNext := ownManagerTestFixture(context.Background(), rt, second.ID, reg)
 	defer releaseNext()
 	for _, cm := range []model.BaseChatModel{worker, manager, session, reviewer} {
@@ -317,10 +317,18 @@ func accountingBuilder(t *testing.T, e *Engine, turn *store.Turn) swarm.ModelBui
 func accountingRegistry(t *testing.T, e *Engine, turn *store.Turn) *swarm.Registry {
 	t.Helper()
 	reg := swarm.NewRegistry()
-	reg.ModelBuilder = accountingBuilder(t, e, turn)
+	reg.ConfigureWorkers(swarm.WorkerConfig{ModelBuilder: accountingBuilder(t, e, turn)})
 	attachHostNotify(reg, newAccumulator(e, turn.ThreadID, turn.ID, 0))
 	t.Cleanup(reg.Close)
 	return reg
+}
+
+// Match production reconfiguration: change only the new-worker surface while
+// already-running models keep their immutable execution configuration.
+func replaceAccountingFactory(reg *swarm.Registry, builder swarm.ModelBuilder) {
+	current := reg.WorkerConfiguration()
+	current.ModelBuilder = builder
+	reg.ConfigureWorkers(current)
 }
 
 func awaitAccounting(t *testing.T, ch <-chan struct{}) {

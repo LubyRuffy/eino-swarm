@@ -26,6 +26,8 @@ const (
 type agentPast struct {
 	ID              string
 	Role            string
+	workerConfig    *WorkerConfig
+	ParentID        string
 	History         []adk.Message
 	TimeoutFailures int
 	checkpoint      WorkerCheckpoint
@@ -78,7 +80,7 @@ func (h *Handle) ensureResultLocked() {
 func (h *Handle) snapshotPast() agentPast {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return agentPast{ID: h.ID, Role: h.Role, History: cloneMessages(h.history), TimeoutFailures: h.timeoutFailures, checkpoint: h.checkpointLocked()}
+	return agentPast{ID: h.ID, Role: h.Role, ParentID: h.ParentID, workerConfig: h.workerConfig, History: cloneMessages(h.history), TimeoutFailures: h.timeoutFailures, checkpoint: h.checkpointLocked()}
 }
 
 func (r *Registry) remember(h *Handle) {
@@ -95,6 +97,10 @@ func (r *Registry) remember(h *Handle) {
 		r.pastIDs = append(r.pastIDs, p.ID)
 	}
 	r.past[p.ID] = &p
+	if r.delegationUsed || r.EnableDelegation {
+		r.trimArchiveLocked()
+		return
+	}
 	limit := r.archiveCap()
 	for len(r.pastIDs) > limit {
 		old := r.pastIDs[0]
@@ -232,21 +238,40 @@ func (r *Registry) resumeHandle(ctx context.Context, fromID, task string,
 	if err != nil {
 		return nil, err
 	}
+	if past.workerConfig != nil && (past.workerConfig.Tag != "" || past.workerConfig.EnableDelegation || past.checkpoint.ModelBinding != nil) {
+		ctx = withWorkerConfig(ctx, *past.workerConfig)
+	}
+	config, err := r.restoreWorkerConfiguration(ctx, past.checkpoint.ConfigTag, past.checkpoint.DelegationEnabled)
+	if err != nil {
+		return nil, err
+	}
+	ctx = withWorkerConfig(ctx, config)
+	if admit {
+		modelOpt = config.ModelBuilder
+	}
+	if admit || (config.Tag != "" && len(extraTools) == 0) {
+		extraTools = append(append([]tool.BaseTool(nil), config.SubAgentTools...), r.SendTool())
+	}
+	modelOpt, err = r.restoreWorkerModel(ctx, past.checkpoint.ModelBinding, modelOpt)
+	if err != nil {
+		return nil, err
+	}
 	h, err := r.claimForResume(past, admit)
 	if err != nil {
 		return nil, err
 	}
 	h.mu.Lock()
-	h.handoff.task, h.handoff.instruction = task, r.workerInstruction(task)
+	instruction := workerInstructionWithConfig(r.workerConfigurationForContext(ctx), task)
+	h.handoff.task, h.handoff.instruction = task, instruction
 	h.mu.Unlock()
 	r.mu.Lock()
 	hook := r.spawnHook
 	r.mu.Unlock()
 	if hook != nil {
-		hook(h.Role, h.ID, r.workerInstruction(task))
+		hook(h.Role, h.ID, instruction)
 	}
 	seed := formatContext("conversation so far", past.History)
-	r.startWorker(ctx, h, task, r.workerInstruction(task), modelOpt, seed, extraTools)
+	r.startWorker(ctx, h, task, instruction, modelOpt, seed, extraTools)
 	return h, nil
 }
 
@@ -300,8 +325,9 @@ func (r *Registry) claimForResume(past *agentPast, admit bool) (*Handle, error) 
 		return nil, err
 	}
 	fresh := &Handle{
-		ID: past.ID, Role: past.Role, done: make(chan struct{}),
+		ID: past.ID, Role: past.Role, ParentID: past.ParentID, done: make(chan struct{}),
 		spawned: time.Now(), resumedFrom: past.ID, gen: past.checkpoint.Generation + 1, timeoutFailures: past.TimeoutFailures,
+		modelBinding: cloneModelBinding(past.checkpoint.ModelBinding), configTag: past.checkpoint.ConfigTag, delegationEnabled: past.checkpoint.DelegationEnabled,
 	}
 	r.agents[past.ID] = fresh
 	r.notePendingLocked(fresh)
@@ -342,10 +368,12 @@ func (r *Registry) resume(ctx context.Context, args string) (string, error) {
 	if a.Task == "" {
 		return ctlRefuse("resume_agent: task is required")
 	}
-	tools := make([]tool.BaseTool, 0, len(r.SubAgentTools)+1)
-	tools = append(tools, r.SubAgentTools...)
-	tools = append(tools, r.SendTool())
-	h, err := r.resumeAdmitted(ctx, a.AgentID, a.Task, r.ModelBuilder, tools...)
+	if err := r.requireWorkerTargets(ctx, []string{a.AgentID}); err != nil {
+		return ctlRefuse(err.Error())
+	}
+	config := r.workerConfigurationForContext(ctx)
+	tools := append(append([]tool.BaseTool(nil), config.SubAgentTools...), r.SendTool())
+	h, err := r.resumeAdmitted(ctx, a.AgentID, a.Task, config.ModelBuilder, tools...)
 	if err != nil {
 		var exhausted *WorkerTimeoutLimitError
 		if errors.As(err, &exhausted) {
@@ -422,7 +450,7 @@ func clonePast(p *agentPast) *agentPast {
 	if p == nil {
 		return nil
 	}
-	return &agentPast{ID: p.ID, Role: p.Role, History: cloneMessages(p.History), TimeoutFailures: p.TimeoutFailures, checkpoint: cloneWorkerCheckpoint(p.checkpoint)}
+	return &agentPast{ID: p.ID, Role: p.Role, ParentID: p.ParentID, workerConfig: p.workerConfig, History: cloneMessages(p.History), TimeoutFailures: p.TimeoutFailures, checkpoint: cloneWorkerCheckpoint(p.checkpoint)}
 }
 
 func trimHistory(msgs []adk.Message, limit int) []adk.Message {

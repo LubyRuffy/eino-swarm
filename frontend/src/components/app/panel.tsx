@@ -8,6 +8,7 @@ import { FilesTab } from "@/components/app/files-tab"
 import { MemoryPanel, type MemoryPanelProps } from "@/components/app/memory-panel"
 import { ResizeHandle } from "@/components/app/resize-handle"
 import { TraceTab } from "@/components/app/trace-tab"
+import { NuwaPanel } from "@/components/app/nuwa-panel"
 import { AgentTranscript } from "@/components/app/agent-transcript"
 import { StatusDot } from "@/components/app/transcript"
 import { MarqueeText } from "@/components/app/marquee"
@@ -23,7 +24,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTranscriptFollow } from "@/lib/follow-scroll"
 import { MANAGER_ID, type AgentState, type TranscriptState } from "@/lib/transcript"
-import type { FileEntry, Meta, Turn, UsageSnapshot } from "@/lib/types"
+import type { FileEntry, Meta, Project, Turn, UsageSnapshot } from "@/lib/types"
 import { agentRosterLabel } from "@/lib/agent-label"
 import {
   defaultAgentRosterSort,
@@ -37,7 +38,7 @@ import { cn } from "@/lib/utils"
 import { useTraceFocus } from "@/store/trace-focus"
 import { useApp } from "@/store/app"
 
-export type PanelTab = "agents" | "files" | "trace" | "memory"
+export type PanelTab = "agents" | "files" | "trace" | "memory" | "nuwa"
 
 /** The right-hand panel: who is working, what they produced, and what
  *  happened — the three questions the transcript alone cannot answer. */
@@ -58,6 +59,7 @@ export function RightPanel({
   onRefreshFiles,
   onReveal,
   usage,
+  nuwaProject,
 }: {
   tab: PanelTab
   onTabChange: (tab: PanelTab) => void
@@ -77,6 +79,7 @@ export function RightPanel({
   onRefreshFiles: () => void
   onReveal: (path?: string) => void
   usage?: UsageSnapshot | null
+  nuwaProject?: Project
 }) {
   const t = useT()
   const traceFocus = useTraceFocus()
@@ -91,6 +94,7 @@ export function RightPanel({
     if (traceFocus.turnId) changeTab.current("trace")
   }, [traceFocus.request, traceFocus.turnId])
   const [width, setWidth] = useState(352)
+  const showNuwa = Boolean(nuwaProject && (nuwaProject.nuwa_enabled || (nuwaProject.nuwa_revision ?? 0) > 0))
   const [rosterSort, setRosterSort] = useState<AgentRosterSort>(defaultAgentRosterSort)
   return (
     <aside
@@ -108,15 +112,16 @@ export function RightPanel({
       />
       <ConversationSchedules key={threadId ?? ""} threadId={threadId} />
       <Tabs
-        value={tab}
+        value={tab === "nuwa" && !showNuwa ? "agents" : tab}
         onValueChange={(v) => {
           if (v === "trace") useTraceFocus.getState().clear()
           onTabChange(v as PanelTab)
         }}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-          <TabsList>
+        <div className="thin-scrollbar flex items-center gap-2 overflow-x-auto border-b border-border px-3 py-2">
+          <TabsList className="shrink-0">
+            {showNuwa ? <TabsTrigger value="nuwa" className={chromeTypeClass}>{t("nuwa.tab")}</TabsTrigger> : null}
             <TabsTrigger value="agents" className={chromeTypeClass}>
               {t("panel.agents")}
               {countRunning(transcript) > 0 ? (
@@ -145,6 +150,7 @@ export function RightPanel({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {showNuwa && nuwaProject ? <TabsContent value="nuwa" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card"><NuwaPanel project={nuwaProject} threadId={threadId} onSelectAgent={(id) => { onSelectAgent(id); onTabChange("agents") }} /></TabsContent> : null}
           <TabsContent
             value="agents"
             className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card"

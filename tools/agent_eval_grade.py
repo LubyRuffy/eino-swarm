@@ -17,17 +17,12 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+import agent_eval_usage
+
 MANAGER_ID = "manager"
 # Host-side model calls outside the manager/worker loop, keyed by the
 # agent_id the engine records on llm_calls.
-AUX_AGENTS = (
-    "title-namer",
-    "memory-reviewer",
-    "schedule-answer-policy",
-    "thread-wake-policy",
-    "session-memory",
-    "compact-summarizer",
-)
+AUX_AGENTS = agent_eval_usage.AUX_AGENT_IDS
 DELEGATION = ("none", "optional", "parallel")
 CHECK_TYPES = (
     "file_exists",
@@ -43,10 +38,12 @@ CHECK_TYPES = (
     "any_of",
 )
 _PROVIDER_SCALARS = (
+    "label",
+    "enabled",
     "base_url",
     "api_key",
     "model",
-    "api",
+    "api_mode",
     "timeout_seconds",
     "first_byte_timeout_seconds",
     "context_window",
@@ -66,6 +63,12 @@ def load_task(task_dir: Path) -> dict:
     prompt = prompt_file.read_text().strip() if prompt_file.exists() else str(spec.get("prompt", "")).strip()
     if not prompt:
         raise TaskError(f"{task_dir.name}: empty prompt")
+    project_prompt = str(spec.get("project_prompt", ""))
+    if spec.get("project_prompt_file"):
+        project_file = task_dir / spec["project_prompt_file"]
+        if not project_file.resolve().is_relative_to(task_dir.resolve()):
+            raise TaskError(f"{task_dir.name}: project prompt escapes the task directory")
+        project_prompt = project_file.read_text().strip()
     if spec.get("id", task_dir.name) != task_dir.name:
         raise TaskError(f"{task_dir.name}: id must match its directory")
     checks = spec.get("checks") or []
@@ -85,6 +88,7 @@ def load_task(task_dir: Path) -> dict:
         "id": task_dir.name,
         "dir": task_dir,
         "prompt": prompt,
+        "project_prompt": project_prompt,
         "checks": checks,
         "expect_delegation": delegation,
         "skills": spec.get("skills", []),
@@ -135,12 +139,17 @@ def _validate_check(task_id: str, check: dict) -> None:
 # ------------------------------------------------------------- provider
 
 
-def extract_provider(config_text: str, provider_id: str) -> dict:
-    """Reads one provider from the engine's own config.yaml serialization.
+def require_copyable_provider(provider: dict) -> None:
+    if provider.get("builtin_tools"):
+        raise TaskError(f"eval config cannot accurately copy nonempty builtin_tools for provider {provider.get('id', '?')!r}")
 
-    Only scalar fields and the model_context map are read. This is not a YAML
-    parser: the input is the file the engine writes, and anything that does
-    not match that shape fails instead of guessing.
+
+def extract_providers(config_text: str) -> list[dict]:
+    """Reads providers from the engine's own config.yaml serialization.
+
+    Scalar fields, catalog and model_context are read; nonempty builtin_tools
+    are refused because their structured options cannot be copied accurately.
+    This is not a general YAML parser: the input is the file the engine writes.
     """
     lines = config_text.splitlines()
     in_providers = False
@@ -163,7 +172,7 @@ def extract_provider(config_text: str, provider_id: str) -> dict:
         if indent <= providers_indent and not text.startswith("- "):
             break
         if text.startswith("- ") and indent <= providers_indent + 4 and ":" in text:
-            item = {"model_context": {}}
+            item = {"model_context": {}, "catalog": []}
             found.append(item)
             item_indent = indent + 2
             sub_key = ""
@@ -171,10 +180,16 @@ def extract_provider(config_text: str, provider_id: str) -> dict:
             indent = item_indent
         if item is None:
             continue
-        if sub_key and indent > sub_indent:
-            if sub_key == "model_context" and ":" in text:
+        if sub_key and (indent > sub_indent or
+                        (sub_key == "builtin_tools" and indent == sub_indent and text.startswith("- "))):
+            if sub_key == "builtin_tools":
+                item["builtin_tools"] = True
+                require_copyable_provider(item)
+            elif sub_key == "model_context" and ":" in text:
                 k, v = text.split(":", 1)
                 item["model_context"][_scalar(k)] = _int_or_str(_scalar(v))
+            elif sub_key == "catalog" and text.startswith("- "):
+                item["catalog"].append(_scalar(text[2:]))
             continue
         sub_key = ""
         if indent != item_indent or ":" not in text:
@@ -185,9 +200,17 @@ def extract_provider(config_text: str, provider_id: str) -> dict:
         if value == "":
             sub_key, sub_indent = key, indent
             continue
+        if key == "builtin_tools":
+            item[key] = [] if re.fullmatch(r"\[\s*\]|null|~", value) else True
+            require_copyable_provider(item)
+            continue
         if key == "id" or key in _PROVIDER_SCALARS:
             item[key] = _scalar(value)
-    for p in found:
+    return found
+
+
+def extract_provider(config_text: str, provider_id: str) -> dict:
+    for p in extract_providers(config_text):
         if p.get("id") == provider_id:
             if not p.get("base_url") or not p.get("model"):
                 raise TaskError(f"provider {provider_id!r} has no base_url or model")
@@ -213,6 +236,7 @@ def _int_or_str(value: str) -> Any:
 def render_eval_config(provider: dict, provider_id: str, max_completion_tokens: int = 0) -> str:
     """A minimal config.yaml with one provider. The engine fills defaults,
     including the output cap unless max_completion_tokens sets one."""
+    require_copyable_provider(provider)
     q = json.dumps
     out = [
         "models:",
@@ -223,8 +247,8 @@ def render_eval_config(provider: dict, provider_id: str, max_completion_tokens: 
         f"          api_key: {q(provider.get('api_key', ''))}",
         f"          model: {q(provider['model'])}",
     ]
-    if provider.get("api"):
-        out.append(f"          api: {q(provider['api'])}")
+    if provider.get("api_mode"):
+        out.append(f"          api_mode: {q(provider['api_mode'])}")
     for key in ("timeout_seconds", "first_byte_timeout_seconds", "context_window"):
         if str(provider.get(key, "")).isdigit():
             out.append(f"          {key}: {int(provider[key])}")
@@ -265,7 +289,17 @@ def git_describe(repo: Path) -> dict:
                                   timeout=10).stdout.strip()
         except (OSError, subprocess.TimeoutExpired):
             return ""
-    return {"head": run("rev-parse", "HEAD"), "dirty": bool(run("status", "--porcelain"))}
+    dirty = bool(run("status", "--porcelain"))
+    untracked = {}
+    for name in run("ls-files", "--others", "--exclude-standard").splitlines():
+        path = repo / name
+        if path.is_file() and not path.is_symlink():
+            untracked[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    raw_diff = subprocess.run(["git", "-C", str(repo), "diff", "--binary", "HEAD"],
+                              capture_output=True, timeout=10).stdout
+    identity = json.dumps({"diff_sha256": hashlib.sha256(raw_diff).hexdigest(), "untracked": untracked}, sort_keys=True)
+    return {"head": run("rev-parse", "HEAD"), "dirty": dirty,
+            "dirty_sha256": hashlib.sha256(identity.encode()).hexdigest() if dirty else None}
 
 
 # -------------------------------------------------------------- traces
@@ -393,6 +427,7 @@ def extract_metrics(traces: list[dict]) -> dict:
     turns = [(t or {}).get("turn") or {} for t in traces]
     return {
         "turns": len(turns),
+        "usage_facts": agent_eval_usage.extract(calls),
         "turn_statuses": [t.get("status", "") for t in turns],
         "duration_ms": sum(int(t.get("duration_ms") or 0) for t in turns),
         "calls": by_cat,
@@ -715,10 +750,14 @@ def render_markdown(meta: dict, summary: dict, results: list[dict]) -> str:
         f"- provider: {json.dumps(meta.get('provider'), ensure_ascii=False)}",
         f"- source: {json.dumps(meta.get('source'))}",
         f"- runs per task: {meta.get('runs_per_task')}",
+        *([f"- project mode: {meta['project_mode']}"] if "project_mode" in meta else []),
         *([f"- output cap per request: {meta['max_completion_tokens']}"] if "max_completion_tokens" in meta else []),
         f"- passed: {summary['passed']}/{summary['runs']} (harness errors: {summary['harness_errors']})",
         f"- memory reviews cut off at shutdown: {summary.get('reviews_cut_off', 0)} "
         "(their memory-reviewer tokens are a lower bound)",
+        "",
+        "Legacy token/cache columns below are recorded lower bounds when any provider usage is unknown. "
+        "Use the per-model usage evidence and paired report for token comparisons; missing data is not zero.",
         "",
         "## Tasks",
         "",
@@ -774,5 +813,20 @@ def render_markdown(meta: dict, summary: dict, results: list[dict]) -> str:
         lines.append(f"- {r['task']} run {r['run']}: outcome {state}; " + ("; ".join(failed) or "all checks passed"))
     if not any_fail:
         lines.append("- none")
+    facts = [r.get("metrics", {}).get("usage_facts") for r in results if not r.get("harness_error")]
+    facts = [f for f in facts if f is not None]
+    if facts:
+        complete = all(f.get("total_tokens") is not None for f in facts) and all(
+            r.get("review_settled") is True and not r.get("review_cut_off")
+            for r in results if not r.get("harness_error"))
+        lines += ["", "## Usage evidence by run and model", "",
+                  "Complete provider-reported total: " + (str(sum(f["total_tokens"] for f in facts)) if complete else "unknown"),
+                  "", "| task | run | provider | model | calls | complete tokens | known tokens | total-token states |",
+                  "|---|---|---|---|---|---|---|---|"]
+        for result in results:
+            for model in result.get("metrics", {}).get("usage_facts", {}).get("by_model", []):
+                lines.append(f"| {result['task']} | {result['run']} | {model['provider_id']} | {model['model']} | "
+                             f"{model['calls']} | {model['total_tokens']} | {model['known_total_tokens']} | "
+                             f"{json.dumps(model['total_tokens_states'])} |")
     lines.append("")
     return "\n".join(lines)

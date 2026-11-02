@@ -125,10 +125,11 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 
 	managerModel := cfg.Model
 	if managerModel == nil {
-		if r.ModelBuilder == nil {
+		builder := r.WorkerConfiguration().ModelBuilder
+		if builder == nil {
 			return RunResult{}, fmt.Errorf("swarm: ModelBuilder is required")
 		}
-		managerModel = r.ModelBuilder(DefaultManagerID, DefaultManagerID)
+		managerModel = builder(DefaultManagerID, DefaultManagerID)
 	}
 
 	// The sink is how worker goroutines reach the UI; install it before the
@@ -165,10 +166,10 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 	// worker appears in the UI the moment the manager asks for it.
 	baseSpawn, baseFinish := r.setHooks(
 		func(role, agentID, instruction string) {
-			r.emit(Notification{Kind: NotifySpawned, AgentID: agentID, Role: role, Text: instruction})
+			r.emitSpawned(role, agentID, instruction)
 		},
-		func(role, agentID, result string, err error) {
-			r.emit(Notification{Kind: NotifyFinished, AgentID: agentID, Role: role, Text: result, Err: err})
+		func(role, agentID, result string, err error, identity AgentIdentity) {
+			r.emitFinished(role, agentID, result, err, identity)
 		},
 	)
 	defer r.setHooks(baseSpawn, baseFinish)
@@ -231,8 +232,8 @@ func (r *Registry) resetHistory() {
 // setHooks swaps the spawn/finish hooks atomically and returns the previous
 // pair, so exec can restore them with a single deferred call.
 func (r *Registry) setHooks(spawn func(role, agentID, instruction string),
-	finish func(role, agentID, result string, err error),
-) (func(role, agentID, instruction string), func(role, agentID, result string, err error)) {
+	finish func(role, agentID, result string, err error, identity AgentIdentity),
+) (func(role, agentID, instruction string), func(role, agentID, result string, err error, identity AgentIdentity)) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	ps, pf := r.spawnHook, r.finishHook

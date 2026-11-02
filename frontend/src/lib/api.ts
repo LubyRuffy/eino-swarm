@@ -46,6 +46,7 @@ export interface ProjectPatch {
   system_prompt?: string
   workdir?: string
   memory_enabled?: boolean
+  nuwa_enabled?: boolean
 }
 
 /** Errors from the API carry the server's message, because it is written for

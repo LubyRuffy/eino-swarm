@@ -141,6 +141,10 @@ func appendWorkerRoster(msgs []adk.Message, running []swarm.RestoredWorker, fini
 }
 
 type workerSlot struct {
+	modelBinding                   *swarm.ModelBinding
+	parentID                       string
+	configTag                      string
+	delegationEnabled              *bool
 	role, instruction, result, err string
 	running, spawned, inflight     bool
 	seed                           strings.Builder
@@ -176,8 +180,8 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 		// follows it. Retain that pairing without replaying old state.
 		for _, ev := range events[:index+1] {
 			calls.note(ev)
-			if isManagerAgent(ev.AgentID) && ev.Kind == swarm.NotifyToolResult.String() {
-				delete(calls, workerCollectionCallKey{ev.TurnID, ev.ToolCallID})
+			if ev.Kind == swarm.NotifyToolResult.String() {
+				delete(calls, collectionCallKey(ev))
 			}
 		}
 		for key, call := range calls {
@@ -186,10 +190,13 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 		}
 		for _, w := range checkpoint.Workers {
 			s := note(w.ID)
+			s.modelBinding = w.ModelBinding
+			s.parentID = w.ParentID
+			s.configTag, s.delegationEnabled = w.ConfigTag, w.DelegationEnabled
 			s.role, s.instruction, s.spawned, s.running = w.Role, w.Instruction, true, !w.Finished
 			s.result, s.err, s.timeoutFailures = w.Result, w.Err, w.TimeoutFailures
 			s.generation, s.collected, s.closeRequested = w.Generation, w.Collected, w.CloseRequested
-			if checkpoint.HumanStopped {
+			if checkpoint.HumanStopped && !w.Finished {
 				s.running = false
 				s.err = "interrupted"
 			}
@@ -237,8 +244,21 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 			continue
 		}
 		s := note(ev.AgentID)
+		// New receipts carry the invocation's generation. A late old finish or
+		// tool result remains historical evidence but cannot replace current work.
+		if ev.Kind != swarm.NotifySpawned.String() && ev.WorkerGeneration > 0 && s.generation > 0 && ev.WorkerGeneration != s.generation {
+			continue
+		}
 		switch ev.Kind {
 		case swarm.NotifySpawned.String():
+			s.configTag, s.delegationEnabled = ev.ConfigTag, ev.DelegationEnabled
+			s.parentID = ev.ParentID
+			if ev.WorkerGeneration > 0 {
+				s.generation = ev.WorkerGeneration
+			}
+			if ev.ModelBinding != nil {
+				s.modelBinding = ev.ModelBinding
+			}
 			s.spawned = true
 			s.running = true
 			s.role = strings.TrimSpace(ev.Role)
@@ -248,7 +268,7 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 			s.instruction = ev.Text
 			s.result, s.err = "", ""
 			s.inflight = false
-			if s.generation > 0 && calls.startsGeneration(ev) {
+			if ev.WorkerGeneration == 0 && s.generation > 0 && calls.startsGeneration(ev) {
 				s.generation++
 			}
 			s.collected, s.closeRequested = false, false
@@ -293,6 +313,7 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 				s.restoredHistory = append(s.restoredHistory, schema.AssistantMessage("", []schema.ToolCall{{ID: ev.ToolCallID, Type: "function", Function: schema.FunctionCall{Name: name, Arguments: args}}}))
 			}
 		}
+		calls.apply(ev, byID)
 	}
 	for _, id := range order {
 		s := byID[id]
@@ -305,6 +326,9 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 		}
 		if s.running {
 			w := swarm.RestoredWorker{
+				ModelBinding: s.modelBinding,
+				ParentID:     s.parentID,
+				ConfigTag:    s.configTag, DelegationEnabled: s.delegationEnabled,
 				Generation: s.generation, Collected: s.collected, CloseRequested: s.closeRequested,
 				ID: id, Role: s.role, Instruction: s.instruction, Task: resumeCue, TimeoutFailures: s.timeoutFailures,
 				History: s.restoredHistory, Inbox: s.inbox,
@@ -326,6 +350,9 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 			ferr = errors.New(s.err)
 		}
 		finished = append(finished, swarm.FinishedWorker{
+			ModelBinding: s.modelBinding,
+			ParentID:     s.parentID,
+			ConfigTag:    s.configTag, DelegationEnabled: s.delegationEnabled,
 			Generation: s.generation, Collected: s.collected, CloseRequested: s.closeRequested,
 			ID: id, Role: s.role, Result: s.result, Err: ferr, History: s.history, TimeoutFailures: s.timeoutFailures,
 		})

@@ -31,7 +31,7 @@ type projectMemory struct {
 }
 
 // CreateProject opens a new project and prepares the directories it needs.
-func (e *Engine) CreateProject(name, systemPrompt, workdir string, memoryEnabled bool) (*store.Project, error) {
+func (e *Engine) CreateProject(name, systemPrompt, workdir string, memoryEnabled bool, nuwaEnabled ...bool) (*store.Project, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, fmt.Errorf("engine: a project needs a name")
@@ -45,6 +45,9 @@ func (e *Engine) CreateProject(name, systemPrompt, workdir string, memoryEnabled
 		SystemPrompt:  strings.TrimSpace(systemPrompt),
 		Workdir:       workdir,
 		MemoryEnabled: memoryEnabled,
+	}
+	if len(nuwaEnabled) > 0 {
+		p.NuwaEnabled = nuwaEnabled[0]
 	}
 	if err := e.store.CreateProject(p); err != nil {
 		return nil, err
@@ -61,7 +64,7 @@ func (e *Engine) CreateProject(name, systemPrompt, workdir string, memoryEnabled
 // UpdateProject applies the fields the caller set. Each is a pointer so
 // clearing the working directory (back to the managed one) is a different
 // request from leaving it alone.
-func (e *Engine) UpdateProject(id string, name, systemPrompt, workdir *string, memoryEnabled *bool) (*store.Project, error) {
+func (e *Engine) UpdateProject(id string, name, systemPrompt, workdir *string, memoryEnabled *bool, nuwaEnabled ...*bool) (*store.Project, error) {
 	if _, err := e.store.GetProject(id); err != nil {
 		return nil, err
 	}
@@ -85,6 +88,9 @@ func (e *Engine) UpdateProject(id string, name, systemPrompt, workdir *string, m
 	}
 	if memoryEnabled != nil {
 		fields["memory_enabled"] = *memoryEnabled
+	}
+	if len(nuwaEnabled) > 0 && nuwaEnabled[0] != nil {
+		fields["nuwa_enabled"] = *nuwaEnabled[0]
 	}
 	if err := e.store.UpdateProject(id, fields); err != nil {
 		return nil, err

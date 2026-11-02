@@ -32,6 +32,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 import agent_eval_grade as grade
+import agent_eval_protocol as protocol
+import agent_eval_usage as usage
 
 REPO = Path(__file__).resolve().parent.parent
 TASKS_DIR = REPO / "evals" / "tasks"
@@ -125,7 +127,7 @@ class Engine:
         argv = [str(self.zwai), "engine", "--data-dir", str(self.data_dir), "--addr", "127.0.0.1:0"]
         if self.mock:
             argv.append("--mock")
-        log = open(self.log_path, "wb")
+        log = os.fdopen(os.open(self.log_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "wb")
         self.proc = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT, env=self.child_env(),
                                      cwd=str(self.data_dir), start_new_session=True)
         log.close()
@@ -180,12 +182,14 @@ def load_tasks(selected: list[str], root: Path = TASKS_DIR) -> list[dict]:
     return tasks
 
 
-def seed_data_dir(data_dir: Path, task: dict, provider: dict | None, max_completion_tokens: int = 0) -> None:
-    if provider is not None:
+def seed_data_dir(data_dir: Path, task: dict, provider: dict | None, max_completion_tokens: int = 0,
+                  models: dict | None = None) -> None:
+    if provider is not None or models is not None:
         cfg = data_dir / "config.yaml"
         fd = os.open(cfg, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "w") as fh:
-            fh.write(grade.render_eval_config(provider, EVAL_PROVIDER_ID, max_completion_tokens))
+            fh.write(protocol.render_model_config(models, max_completion_tokens) if models else
+                     grade.render_eval_config(provider, EVAL_PROVIDER_ID, max_completion_tokens))
     for skill in task.get("skills", []):
         dest = data_dir / "library" / "skills" / skill["name"] / "SKILL.md"
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -333,14 +337,20 @@ def copy_workspace(src: Path, dest: Path, limit_bytes: int = 5 << 20) -> None:
         out = dest / rel
         out.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, out)
+        out.chmod(0o600)
 
 
 def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict | None, out_dir: Path) -> dict:
-    secrets = [provider["api_key"]] if provider and provider.get("api_key") else []
+    models = getattr(args, "models", None)
+    sources = models["providers"] if models else ([provider] if provider else [])
+    secrets = [p["api_key"] for p in sources if p.get("api_key")]
     evidence = out_dir / "runs" / task["id"] / f"run-{run_idx}"
-    evidence.mkdir(parents=True, exist_ok=True)
+    evidence.mkdir(parents=True, exist_ok=True, mode=0o700)
     data_dir = Path(tempfile.mkdtemp(prefix="zwai-eval-"))
     record: dict[str, Any] = {"task": task["id"], "run": run_idx, "harness_error": ""}
+    record.update({"project_mode": getattr(args, "project_mode", "default"),
+                   "task_sha256": protocol.task_fingerprint(task), "budget": protocol.budget(args, task),
+                   "run_identity": getattr(args, "run_identity", {})})
     engine = Engine(Path(args.zwai).resolve(), data_dir, args.mock, args.boot_timeout)
     started = time.monotonic()
     phases: dict[str, float] = {}
@@ -353,20 +363,45 @@ def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict 
 
     record["phase_s"] = phases
     try:
-        seed_data_dir(data_dir, task, provider, getattr(args, "max_completion_tokens", 0))
+        seed_data_dir(data_dir, task, provider, getattr(args, "max_completion_tokens", 0), models)
         engine.start()
         phase("boot")
         # Untitled, as a human creates one, so automatic naming is measured too.
-        thread = http_json(engine.base, "POST", "/api/threads", {})["thread"]
+        thread_body = {}
+        workspace = data_dir / "eval-workspace"
+        if hasattr(args, "project_mode"):
+            workspace.mkdir(parents=True, exist_ok=True)
+            project = http_json(engine.base, "POST", "/api/projects", {
+                "name": task["id"] + " eval", "workdir": str(workspace),
+                "system_prompt": protocol.project_prompt(task, models),
+                "nuwa_enabled": args.project_mode == "nuwa",
+            })["project"]
+            if args.project_mode == "nuwa" and project.get("nuwa_enabled") is not True:
+                raise EvalError("project API did not acknowledge nuwa_enabled")
+            thread_body["project_id"] = project["id"]
+        if models:
+            thread_body["provider_id"] = models["planner"]["provider_id"]
+        thread = http_json(engine.base, "POST", "/api/threads", thread_body)["thread"]
         thread_id = thread["id"]
-        workspace = data_dir / "workspaces" / thread_id
+        if not hasattr(args, "project_mode"):
+            workspace = data_dir / "workspaces" / thread_id
+        if models:
+            selected = {k: models["planner"][k] for k in ("provider_id", "model")}
+            actual = http_json(engine.base, "PATCH", f"/api/threads/{thread_id}", selected)["thread"]
+            if any(actual.get(k) != v for k, v in selected.items()):
+                raise EvalError("thread API did not acknowledge the selected planner")
         workspace.mkdir(parents=True, exist_ok=True)
         prepare_workspace(task, workspace)
         baseline_hashes = grade.hash_tree(workspace)
+        record["fixture_sha256"] = protocol.digest(baseline_hashes)
+        protocol.private_write(evidence / "initial-files.json", json.dumps(baseline_hashes, sort_keys=True))
+        task_started = time.monotonic()
         http_json(engine.base, "POST", f"/api/threads/{thread_id}/turns", {"text": task["prompt"]})
         outcome = drive_conversation(engine.base, thread_id, task)
+        record["task_s"] = round(time.monotonic() - task_started, 6)
         phase("conversation")
         traces = wait_for_review(engine.base, thread_id, args.review_wait)
+        record["review_settled"] = grade.review_settled(traces)
         phase("review")
         outcome = settled_outcome(outcome, traces)
         answer = grade.final_answer(traces)
@@ -377,9 +412,11 @@ def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict 
             "passed": outcome["state"] in ("done",) and all(c["ok"] for c in checks),
             "metrics": grade.extract_metrics(traces),
             "expect_delegation": task.get("expect_delegation", "optional"),
+            "routing": usage.routes([c for t in traces for c in t.get("llm_calls", [])],
+                                    models["planner"] if models else None, models.get("executor") if models else None),
         })
-        (evidence / "answer.md").write_text(grade.redact(answer, secrets))
-        (evidence / "traces.json").write_text(grade.redact(json.dumps(traces, indent=2, ensure_ascii=False), secrets))
+        protocol.private_write(evidence / "answer.md", grade.redact(answer, secrets))
+        protocol.private_write(evidence / "traces.json", grade.redact(json.dumps(traces, indent=2, ensure_ascii=False), secrets))
         copy_workspace(workspace, evidence / "workspace")
     except Exception as exc:  # keep the first failure as evidence; no retry here
         record["harness_error"] = grade.redact(f"{type(exc).__name__}: {exc}", secrets)
@@ -391,11 +428,11 @@ def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict 
         record["wall_s"] = round(time.monotonic() - started, 1)
         if engine.log_path.exists():
             log = engine.log_path.read_text(errors="replace")
-            (evidence / "engine.log").write_text(grade.redact(log, secrets))
+            protocol.private_write(evidence / "engine.log", grade.redact(log, secrets))
             # Its memory-reviewer tokens are then a lower bound, not the cost.
             record["review_cut_off"] = grade.review_cut_off(log)
         shutil.rmtree(data_dir, ignore_errors=True)
-    (evidence / "result.json").write_text(grade.redact(json.dumps(record, indent=2, ensure_ascii=False), secrets))
+    protocol.private_write(evidence / "result.json", grade.redact(json.dumps(record, indent=2, ensure_ascii=False), secrets))
     return record
 
 
@@ -404,6 +441,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--provider", help="provider id in --config; required unless --mock")
     p.add_argument("--config", default=str(DEFAULT_CONFIG), help="config.yaml to read the provider from (read-only)")
     p.add_argument("--model", default="", help="another model on the same provider (default: its configured model)")
+    p.add_argument("--project-mode", choices=("default", "nuwa"), default="default", help="project execution mode")
+    p.add_argument("--planner-ref", default="", help="exact provider<TAB>model choice; takes priority over --model")
+    p.add_argument("--executor-ref", default="", help="catalog choice preferred in the project prompt, never forced by role")
     p.add_argument("--runs", type=int, default=2, help="runs per task")
     p.add_argument("--max-completion-tokens", type=int, default=0,
                    help="output cap per model request (default: the engine's default, not the source config's)")
@@ -438,8 +478,12 @@ def main(argv: list[str]) -> int:
     args = parse_args(argv)
     unwind_on_termination()
     provider = None
+    args.models = None
     if not args.mock:
-        provider = grade.select_model(grade.extract_provider(Path(args.config).read_text(), args.provider), args.model)
+        config_text = Path(args.config).read_text()
+        args.models = protocol.prepare_models(config_text, args.provider, args.model,
+                                               planner_ref=args.planner_ref, executor_ref=args.executor_ref)
+        provider = next(p for p in args.models["providers"] if p["id"] == args.models["planner"]["provider_id"])
     tasks = load_tasks([t for t in args.tasks.split(",") if t], Path(args.task_root))
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     out_dir = Path(args.out) / stamp
@@ -460,11 +504,13 @@ def main(argv: list[str]) -> int:
         "max_completion_tokens": args.max_completion_tokens or "engine default",
         "zwai": args.zwai,
         "source": grade.git_describe(REPO),
+        "project_mode": args.project_mode,
+        "models": protocol.model_summary(args.models) if args.models else {"mock": True},
     }
     summary = grade.summarize(results)
     report = {"meta": meta, "summary": summary, "results": results}
-    (out_dir / "report.json").write_text(grade.redact(json.dumps(report, indent=2, ensure_ascii=False), secrets))
-    (out_dir / "report.md").write_text(grade.redact(grade.render_markdown(meta, summary, results), secrets))
+    protocol.private_write(out_dir / "report.json", grade.redact(json.dumps(report, indent=2, ensure_ascii=False), secrets))
+    protocol.private_write(out_dir / "report.md", grade.redact(grade.render_markdown(meta, summary, results), secrets))
     print(f"report: {out_dir / 'report.md'}")
     return 0 if all(not r.get("harness_error") for r in results) else 2
 

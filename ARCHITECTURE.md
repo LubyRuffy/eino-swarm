@@ -1892,6 +1892,25 @@ Live status text (heartbeat, pending tools, wait roll-up, sub-agent activity) is
 rendered by `MarqueeText`: a sweep while the work is in progress, a scroll if
 the line overflows, truncation once it is idle.
 
+## Nuwa project collaboration
+
+Nuwa is an opt-in project mode captured on each turn, not a separate domain
+agent or workflow engine. `nuwa_models.go` exposes the existing provider catalog
+and resolves exact model refs; the swarm keeps concrete bindings and trusted
+parent/generation identities. Recursive worker tools share Registry admission,
+collection, Stop and handoff. `WorkerConfig` snapshots prevent a later manager
+turn from changing existing workers; a host tag references the durable original
+turn so recovery can rebuild its collaboration/planning/Web tool surface.
+
+`nuwa_tools.go` mounts project-scoped reads and, outside planning, trusted shared
+writes. Store transactions commit node CAS, project revision, provenance audit
+and tool-call idempotency together. Dependency version stamps make corrections
+and unavailable references explicit; reported nodes do not prove semantic truth
+or execute a DAG. `nuwa_snapshot.go` combines these records with workers projected
+from actual lifecycle receipts. GET and a separate project-revision SSE stream
+drive the Collaboration panel; they do not add another chat event sequence.
+See [Nuwa](docs/NUWA.md), `F-136` and `C-037`.
+
 ## Independent conversation coordination
 
 The host manager mounts `list_tasks`, `send_task_message` and `read_task_messages`

@@ -1,0 +1,1 @@
+This project reconciles engineering records from supplied files. Base conclusions on current evidence and retain links to the source records. Treat draft prose as a claim to check. Do not turn missing evidence into success. Choose the organization and approach appropriate to each request.

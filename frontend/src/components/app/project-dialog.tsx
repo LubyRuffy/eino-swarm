@@ -42,6 +42,7 @@ export function ProjectDialog({
   const [prompt, setPrompt] = useState("")
   const [workdir, setWorkdir] = useState("")
   const [memory, setMemory] = useState(true)
+  const [nuwa, setNuwa] = useState(false)
   const [saving, setSaving] = useState(false)
   const [choosingWorkdir, setChoosingWorkdir] = useState(false)
   const [workdirError, setWorkdirError] = useState<string>()
@@ -52,6 +53,7 @@ export function ProjectDialog({
     setPrompt(project?.system_prompt ?? "")
     setWorkdir(project?.workdir ?? "")
     setMemory(project ? project.memory_enabled : memoryAvailable)
+    setNuwa(project?.nuwa_enabled ?? false)
     setWorkdirError(undefined)
     useToasts.getState().dismiss("project:save")
   }, [open, project, memoryAvailable])
@@ -66,6 +68,7 @@ export function ProjectDialog({
         system_prompt: prompt,
         workdir,
         memory_enabled: memory,
+        nuwa_enabled: nuwa,
       })
       onOpenChange(false)
     } catch (e) {
@@ -85,7 +88,7 @@ export function ProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{project ? t("project.edit") : t("project.new")}</DialogTitle>
           <DialogDescription>
@@ -131,6 +134,16 @@ export function ProjectDialog({
               active={open}
               onBusyChange={setChoosingWorkdir}
             />
+          </div>
+
+          <div className="flex items-start justify-between gap-4 rounded-md border border-border p-3">
+            <div className="min-w-0">
+              <Label htmlFor="project-nuwa">{t("project.nuwa")}</Label>
+              <p id="project-nuwa-hint" className="mt-1 text-xs text-muted-foreground">
+                {t("project.nuwaHint")}
+              </p>
+            </div>
+            <Switch id="project-nuwa" aria-describedby="project-nuwa-hint" checked={nuwa} disabled={saving} onCheckedChange={setNuwa} />
           </div>
 
           <div className="flex items-start justify-between gap-4 rounded-md border border-border p-3">

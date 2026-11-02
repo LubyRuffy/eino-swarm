@@ -21,6 +21,8 @@ type projectView struct {
 	// the managed path without knowing how it is derived.
 	ResolvedWorkdir string `json:"resolved_workdir"`
 	MemoryEnabled   bool   `json:"memory_enabled"`
+	NuwaEnabled     bool   `json:"nuwa_enabled"`
+	NuwaRevision    int64  `json:"nuwa_revision"`
 	MemoryDir       string `json:"memory_dir"`
 	// Skills is the index the sidebar lists under the project: names and
 	// one-line descriptions, not the bodies. An unreadable store is an empty
@@ -40,6 +42,8 @@ func (s *Server) viewProject(p *store.Project) projectView {
 		Workdir:         p.Workdir,
 		ResolvedWorkdir: s.engine.ProjectWorkdir(p),
 		MemoryEnabled:   p.MemoryEnabled,
+		NuwaEnabled:     p.NuwaEnabled,
+		NuwaRevision:    p.NuwaRevision,
 		MemoryDir:       s.engine.ProjectMemory(p.ID).Dir(),
 		Skills:          s.projectSkills(p.ID),
 		SortRank:        p.SortRank,
@@ -76,6 +80,7 @@ type createProjectRequest struct {
 	// MemoryEnabled is a pointer so a client that does not mention memory
 	// gets the configured default rather than silently opting out.
 	MemoryEnabled *bool `json:"memory_enabled"`
+	NuwaEnabled   bool  `json:"nuwa_enabled"`
 }
 
 func (s *Server) createProject(c *gin.Context) {
@@ -88,7 +93,7 @@ func (s *Server) createProject(c *gin.Context) {
 	if req.MemoryEnabled != nil {
 		enabled = *req.MemoryEnabled
 	}
-	p, err := s.engine.CreateProject(req.Name, req.SystemPrompt, req.Workdir, enabled)
+	p, err := s.engine.CreateProject(req.Name, req.SystemPrompt, req.Workdir, enabled, req.NuwaEnabled)
 	if err != nil {
 		s.fail(c, err)
 		return
@@ -109,6 +114,7 @@ type patchProjectRequest struct {
 	SystemPrompt  *string `json:"system_prompt"`
 	Workdir       *string `json:"workdir"`
 	MemoryEnabled *bool   `json:"memory_enabled"`
+	NuwaEnabled   *bool   `json:"nuwa_enabled"`
 }
 
 func (s *Server) patchProject(c *gin.Context) {
@@ -120,7 +126,7 @@ func (s *Server) patchProject(c *gin.Context) {
 		badRequest(c, "could not read the request body: %v", err)
 		return
 	}
-	p, err := s.engine.UpdateProject(c.Param("id"), req.Name, req.SystemPrompt, req.Workdir, req.MemoryEnabled)
+	p, err := s.engine.UpdateProject(c.Param("id"), req.Name, req.SystemPrompt, req.Workdir, req.MemoryEnabled, req.NuwaEnabled)
 	if err != nil {
 		s.fail(c, err)
 		return

@@ -227,11 +227,27 @@ func (rt *runtime) close() {
 
 // newTurnRegistry is the one place a conversation's swarm is wired, so a
 // resumed turn cannot forget WorkerPreamble the way a copy-pasted block would.
-func (e *Engine) newTurnRegistry(builder swarm.ModelBuilder, toolset *tools.Set, pc *projectContext) *swarm.Registry {
+func (e *Engine) newTurnRegistry(builder swarm.ModelBuilder, toolset *tools.Set, pc *projectContext, turns ...*store.Turn) *swarm.Registry {
 	reg := swarm.NewRegistry()
 	reg.ModelBuilder = builder
 	e.bindSwarmLimits(reg)
 	e.wireWorkerSurface(reg, toolset, pc)
+	if len(turns) > 0 {
+		e.wireNuwaRegistry(reg, toolset, pc, turns[0])
+		config := reg.WorkerConfiguration()
+		config.Tag = turns[0].ID
+		ownerTurn := turns[0]
+		config.WorkerContextValues = func(parent, detached context.Context) context.Context {
+			detached = historyWorkerContextValues(parent, detached)
+			owner, _ := detached.Value(historyReadOwnerKey{}).(historyReadOwner)
+			owner.ThreadID, owner.TurnID = ownerTurn.ThreadID, ownerTurn.ID
+			return context.WithValue(detached, historyReadOwnerKey{}, owner)
+		}
+		reg.ConfigureWorkers(config)
+		reg.ResolveWorkerConfig = func(ctx context.Context, tag string) (swarm.WorkerConfig, error) {
+			return e.workerConfigurationForTag(ctx, ownerTurn.ThreadID, tag)
+		}
+	}
 	return reg
 }
 
@@ -406,6 +422,7 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 	}
 
 	turn := &store.Turn{
+		ProjectID:        th.ProjectID,
 		ThreadID:         threadID,
 		UserText:         text,
 		ProviderID:       prov.ID,
@@ -416,6 +433,8 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 		ScheduleContinue: in.ContinueSchedule,
 		ScheduleRunID:    in.ScheduleRunID,
 	}
+	turn.NuwaEnabled = pc != nil && pc.project != nil && pc.project.NuwaEnabled
+	turn.NuwaReadOnly = turn.NuwaEnabled && th.PlanMode
 	if err := e.store.CreateTurn(turn); err != nil {
 		return nil, err
 	}
@@ -462,11 +481,13 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 		if prepareErr != nil {
 			return nil, prepareErr
 		}
-		return e.newTurnRegistry(builder, toolset, pc), nil
+		return e.newTurnRegistry(builder, toolset, pc, turn), nil
 	}, func(reg *swarm.Registry) {
-		reg.ModelBuilder = builder
 		e.bindSwarmLimits(reg)
-		e.wireWorkerSurface(reg, toolset, pc)
+		// Build an unshared surface, then publish it atomically. Existing
+		// workers retain their own immutable configuration and host tag.
+		candidate := e.newTurnRegistry(builder, toolset, pc, turn)
+		reg.ConfigureWorkers(candidate.WorkerConfiguration())
 	})
 	if err != nil {
 		cancel()
@@ -839,12 +860,17 @@ func (e *Engine) record(ev store.Event) {
 			return
 		}
 	}
-	if err := e.store.AppendEvent(&ev); err != nil {
+	persistErr := e.store.AppendEvent(&ev)
+	if persistErr != nil {
+		err := persistErr
 		e.logPersistFailure("could not persist an event", err, "thread", ev.ThreadID, "kind", ev.Kind)
 		if errors.Is(err, store.ErrNotFound) {
 			e.recordMu.Unlock()
 			return
 		}
+	}
+	if persistErr == nil {
+		e.invalidateNuwaWorkers(ev)
 	}
 	// Store the manager answer before the event is visible. A client that
 	// reacts to agent_message by reading replay (or a crash right after the

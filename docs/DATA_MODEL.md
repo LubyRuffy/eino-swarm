@@ -217,8 +217,40 @@ in this database: notes and skills are files, so a person can read and fix them
 | `system_prompt` | text | added to the manager's prompt for every conversation in the project |
 | `workdir` | text | the directory the user chose; empty means zwai manages one |
 | `memory_enabled` | bool | whether this project remembers anything. `memory.enabled` in the config can override it off, never on |
+| `nuwa_enabled` | bool | opt-in collaboration mode for subsequent turns; existing projects default off |
+| `nuwa_revision` | int64 | committed mode/shared-node/worker-view invalidation revision, independent of conversation seq |
 | `sort_rank` | int | sidebar drag order. `0` means never dragged: those rows interleave by `updated_at` with ranked rows |
 | `created_at`, `updated_at` | time | gorm-managed. `updated_at` is also bumped when a conversation in the project is used, so the default project list is last used, not created |
+
+## `nuwa_nodes` / `nuwa_revisions` — project collaboration (`C-037`)
+
+`nuwa_nodes` stores task/fact/artifact records. It is separate from memory files
+and the conversation transcript. Each `nw_…` node contains project ID, kind,
+title/summary/detail, status, `depends_on`, `dependency_versions`, event evidence
+references and optional workspace-relative `artifact_path`. Original
+`thread_id`, `turn_id`, `agent_id`, `generation` and creation time remain fixed;
+`updated_by`, `updated_thread_id`, `updated_turn_id`, `updated_generation`,
+`version` and update time identify the actual correction.
+
+A write transaction validates owner, cancellation, same-project evidence and
+acyclic dependencies, checks the expected node version, increments the project
+revision and saves a complete version payload in `nuwa_revisions`. Its unique
+project/revision index defines ordering. A trusted tool-call `request_key` and
+canonical argument `request_hash` deduplicate re-delivery: the same call returns
+its exact saved payload; conflicting arguments refuse. A later correction is
+never overwritten by that replay. Empty-node revision rows represent worker
+view invalidation, not a fabricated fact. Actual mode changes advance the
+project counter atomically without a node audit row; revisions need not be
+contiguous in this table. The host's current owner/input checks still apply to
+receipt replay, including cancellation, deletion and artifact availability.
+
+Snapshots annotate missing dependencies, changed/superseded/retracted source
+versions and unavailable events without inventing new stored conclusions.
+Omitted dependencies preserve their prior version stamps; explicit reviewed
+`depends_on` refreshes them. Thread/project deletion removes owned nodes and
+their audit history, retaining surviving nodes' unavailable references.
+Event evidence validates identity, not truth; artifact paths do not freeze file
+bytes. See `internal/store/nuwa.go` and [Nuwa](NUWA.md).
 
 ## `threads` — one conversation
 
@@ -422,6 +454,7 @@ The `id` is the handle the whole troubleshooting story hangs off: the UI shows i
 |---|---|
 | `id` | `tn_` + hex |
 | `thread_id` | |
+| `project_id` | project/workspace owner captured for tagged worker restoration; moving the thread cannot silently change it |
 | `seq` | per-conversation turn number |
 | `status` | `running`, `done`, `error`, `cancelled` |
 | `user_text` | what was asked. On `goal_continue` / `schedule_continue` this is the protocol prompt the model saw, not a human send |
@@ -430,6 +463,8 @@ The `id` is the handle the whole troubleshooting story hangs off: the UI shows i
 | `provider_id`, `model` | what actually ran, not what is configured now — settings change |
 | `reasoning_effort` | the thinking level this turn ran with, so a trace shows what produced the answer |
 | `web_execution` | captured Web-tool preference at turn start; restoration and parked workers use it before later conversation/global settings. Old rows remain empty and use the current inherited policy |
+| `nuwa_enabled` | collaboration mode captured at turn start; later project edits do not change this turn or its workers |
+| `nuwa_read_only` | planning's read-only Nuwa surface retained through recovery |
 | `goal_continue` | true when the runtime started this turn to keep pursuing an open `/goal`. The timeline records `goal_continued`, not `user_message` |
 | `schedule_run_id` | set when this turn is a scheduled fire; empty for every other origin. Trace joins the run through it |
 | `quiet` | true when a scheduled turn had nothing to report. The row stays for `zwai trace`; the transcript hides the bubbles |
@@ -1005,6 +1040,17 @@ checkpoint／restore 结构的 `Generation`、`Collected`、`CloseRequested`。
 checkpoint／roster 按 legacy 已结束兼容，不追加追溯收取义务；旧 running 仍待
 收取，新 `generation>0` 保留精确状态。冷回放只从同 manager 配对工具回执恢复，
 不能凭旧 ID 或正文推断收取；人工 Continue 暂停仍由同一 checkpoint 保存。
+
+Nuwa workers additionally preserve `parent_id`, `config_tag`,
+`delegation_enabled` and `model_binding` in running and finished checkpoints.
+The binding stores concrete provider/model/reasoning and an optional source ref,
+never credentials. The host configuration tag identifies the original turn;
+restoration validates conversation/project ownership and rebuilds its saved
+mode/tool surface. Missing/invalid tagged configuration or concrete binding
+refuses before a new generation is claimed. Legacy absent tags/bindings retain
+the explicit old compatibility path. Tool implementations and private credentials
+are not serialized. Subtree close receipts include exact affected generations
+for cold replay; late finish events cannot settle a newer invocation.
 
 The latest valid checkpoint supplies recovery state; confirmed lifecycle
 events remain authoritative for subsequent completed work. Summaries are

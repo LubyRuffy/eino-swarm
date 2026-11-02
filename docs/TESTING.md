@@ -1,5 +1,63 @@
 # Testing
 
+## Nuwa project collaboration (`F-136`, `C-037`)
+
+The mode is captured per turn. Test changes across a parked Registry and cold
+recovery, not only project JSON. Existing workers must retain their original
+configuration tag, delegation mode, model binding and trusted owner; bad tags,
+model selection conflicts and old generations must refuse before side effects.
+`worker_config_test.go`, `model_binding_http_test.go` and
+`delegation_http_test.go` cover the library/actual HTTP model boundaries.
+`internal/engine/nuwa_collection_replay_test.go` covers descendant collection,
+subtree close receipts and late finish replay. The lifecycle model remains a
+protocol check, not proof that all Go operations are atomic.
+
+`internal/store/nuwa_test.go` exercises CAS races, full correction provenance,
+atomic rollback, duplicate real-call receipts, owner deletion/cancellation,
+evidence scope, cycles and stale dependency versions.
+`internal/engine/nuwa_engine_http_test.go` drives `record_work`/`read_work` through
+the real manager adapter. `nuwa_validation_test.go` covers forged callers,
+actual artifact paths, read-only planning and bounded complete JSON.
+`internal/server/nuwa_stream_test.go` uses actual GET/SSE readers across project
+conversations. A revision is a snapshot invalidation, never a transcript seq.
+
+```bash
+go test -race -timeout 25m . -run 'Test(SelectedHTTPWorkerModel|WorkerCanDelegate|ParkedHTTPWorker|Delegation|Tagged|WorkerConfiguration)'
+go test -race -timeout 25m ./internal/store ./internal/engine ./internal/server -run TestNuwa
+python3 -m unittest tools.test_agent_eval tools.test_agent_eval_limits tools.test_agent_eval_compare tools.test_agent_eval_prereview tools.test_agent_eval_nuwa tools.test_agent_eval_pair tools.test_agent_eval_proxy
+```
+
+Frontend coverage includes project create/edit, mode-off historical visibility,
+project/conversation scope, prerequisite paths, source/worker/result navigation,
+detail/expand views and stale/project-response races. The dedicated browser
+case uses a keyless loopback model fixture and actual app routes:
+
+```bash
+cd frontend
+ZWAI_E2E_NUWA=1 ZWAI_E2E_PORT=18867 ZWAI_E2E_DATA_DIR=/absolute/private/new-nuwa-case npx playwright test --output=/absolute/private/new-nuwa-results
+```
+
+Use a fresh owned data directory: the Playwright launcher removes that directory.
+Concurrent suites need their own port, data, output and built frontend; do not
+rebuild a served dist. This browser fixture is not native macOS acceptance or a
+real-model capability measurement.
+
+The [generic paired protocol](../evals/nuwa/README.md) freezes source/binary/task
+identities, model choices, limits and seeded interleaved repetitions. It rejects
+fixture/budget mismatch, duplicate pair identity and unverified external-score
+labels. Actual routing, no delegation, failed attempts and missing usage remain
+observations; unknown usage cannot establish token savings. Fast failures do
+not become successful speedups. Mock comparisons are explicitly marked
+synthetic and do not export real token/time improvements.
+
+The ordinary development `--mock` smoke completed default and Nuwa project API
+lifecycles without harness errors and with owned engines gone. Both scripted
+direct-lookup task checks were 0/1: the fixed offline script is not a solver for
+that task. This is API/cleanup evidence only. CyberGym execution was stopped by
+platform safety review; source/data/image preparation and an architecture smoke
+are not official task results. No CyberGym score, native acceptance or measured
+real-model efficiency improvement is established by those receipts.
+
 For the shortest repeatable native workflow, start with
 [原生测试最短路径](NATIVE_TESTING_FAST_PATH.md). It selects the existing commands
 and affected scenarios; the detailed requirements and evidence below remain authoritative.

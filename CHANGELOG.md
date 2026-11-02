@@ -6,6 +6,15 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Added opt-in Nuwa project collaboration: task-derived planning and recursive
+  delegation, catalog-based worker model selection, versioned shared
+  tasks/facts/artifacts and a live project dependency view. Worker configuration,
+  model identity and parent/generation ownership survive continuation and
+  recovery; mode edits affect subsequent turns. Reported evidence remains a
+  claim to inspect. Added a frozen, interleaved generic evaluation protocol;
+  offline/mock checks do not establish real-model efficiency, native acceptance
+  or CyberGym results. (`F-136`, `C-037`)
+
 - Fixed an iOS crash while receiving streamed model replies, including after
   NOSEC sign-in. UTF-8 chunk boundaries now respect a consumed `Data` buffer's
   actual indices, preserving split Chinese and emoji bytes across callbacks.
