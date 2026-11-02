@@ -75,6 +75,27 @@ platform safety review; source/data/image preparation and an architecture smoke
 are not official task results. No CyberGym score, native acceptance or measured
 real-model efficiency improvement is established by those receipts.
 
+## Returning to the live edge (`F-120`)
+
+`frontend/src/components/app/transcript-jump-latest.test.tsx` exercises the real
+transcript hooks after rail navigation: Jump to latest, scrolling to the bottom
+and a new human message each supersede the old target across later blocks and
+history-loading changes. `frontend/src/lib/use-turn-jump.test.tsx` also checks
+late page completion/mounting, a queued frame and leaving the live edge again,
+while retaining the existing prepend-restoration cases.
+`frontend/e2e/transcript-jump-latest.spec.ts` drives the actual rail and bottom
+button with two separately gated SSE blocks, checking bottom distance, button
+visibility and the active tick after the later delivery. The old implementation
+was observed to return to the first turn on that second delivery.
+
+Native WKWebView acceptance repeats that rail/button sequence inside an isolated
+`ci-macOS` case, with a keyless loopback model gating independent tool/message
+blocks before and after the button press. Retain the later event identities,
+passive AX snapshots and fresh window screenshots through case cleanup. Review
+the screenshots to establish that the later tail stays visible: an AX text
+inventory includes offscreen content, and a snapshot with an expected-text
+argument may scroll that text into view, invalidating this observation.
+
 For the shortest repeatable native workflow, start with
 [原生测试最短路径](NATIVE_TESTING_FAST_PATH.md). It selects the existing commands
 and affected scenarios; the detailed requirements and evidence below remain authoritative.

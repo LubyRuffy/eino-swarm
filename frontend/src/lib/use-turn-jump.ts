@@ -14,6 +14,7 @@ export function useTurnJump({
   scrollerRef,
   growthKey,
   threadId,
+  pinned,
   unpin,
   loadUntilTurn,
   startId,
@@ -21,6 +22,8 @@ export function useTurnJump({
   scrollerRef: RefObject<HTMLElement | null>
   growthKey: string
   threadId?: string
+  /** Following the live edge supersedes any earlier rail navigation. */
+  pinned: boolean
   unpin: () => void
   loadUntilTurn: (turnId: string, clientHeight?: number) => Promise<boolean>
   /** Earliest human turn. That jump opens the top of the log instead of
@@ -42,6 +45,13 @@ export function useTurnJump({
   useLayoutEffect(() => {
     pending.current = null
   }, [threadId])
+
+  useLayoutEffect(() => {
+    // Keep the target across prepends only while reading that turn. Once
+    // following resumes, late pages, frames and new blocks must not reclaim
+    // the viewport for the old click.
+    if (pinned) pending.current = null
+  }, [pinned])
 
   useLayoutEffect(() => {
     const root = scrollerRef.current

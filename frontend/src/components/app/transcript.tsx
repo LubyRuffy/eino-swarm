@@ -164,6 +164,7 @@ export function Transcript({
   // slamming the clicked row to the top of the pane.
   const jumpTo = useTurnJump({
     scrollerRef,
+    pinned,
     growthKey: `${blockCount}:${historyLoading}`,
     threadId,
     unpin,
