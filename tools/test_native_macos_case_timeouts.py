@@ -153,14 +153,42 @@ class NativeCaseTimeoutTests(unittest.TestCase):
         self.assertTrue(all(process.returncode is not None for process in self.processes))
         self.assertTrue(all(process.poll() is not None for process in self.processes))
 
-    def actor(self, ignore_term=False):
+    def test_actor_pid_is_published_only_after_its_complete_contents_are_ready(self):
+        # Pause the actual writer exactly after open creates its output and
+        # before write_text writes the PID. Existence alone used to admit an
+        # empty marker under load; an atomic rename must keep it unpublished.
+        self.evidence.mkdir()
+        marker = self.evidence / "actor-started"
+        observed = []
+        original_open = Path.open
+        def at_open(path, *args, **kwargs):
+            stream = original_open(path, *args, **kwargs)
+            mode = args[0] if args else kwargs.get("mode", "r")
+            if path.parent == self.evidence and path.name in ("actor-started", "actor-started.pending") and "w" in mode:
+                observed.append(dict(published=marker.exists(), contents=marker.read_text() if marker.exists() else None))
+            return stream
+        class ActorReady(Exception):
+            pass
+        with mock.patch.dict(os.environ, ZWAI_NATIVE_EVIDENCE=str(self.evidence)), \
+                mock.patch.object(Path, "open", at_open), \
+                mock.patch.object(time, "sleep", side_effect=ActorReady):
+            with self.assertRaises(ActorReady):
+                exec(compile(self.actor(), "actual-timeout-fixture-actor", "exec"), {})
+        self.assertEqual(observed, [dict(published=False, contents=None)])
+        self.assertEqual(marker.read_text(), str(os.getpid()))
+        self.assertFalse(marker.with_name("actor-started.pending").exists())
+
+    def actor(self, ignore_term=False, wait_for_app=False):
         return ("import os,signal,subprocess,sys,time\nfrom pathlib import Path\n"
                 + ("signal.signal(signal.SIGTERM,signal.SIG_IGN)\n" if ignore_term else "")
                 + "e=Path(os.environ['ZWAI_NATIVE_EVIDENCE'])\n"
-                "(e/'actor-started').write_text(str(os.getpid()))\n"
+                + ("while not (e/'app-started').exists(): time.sleep(.005)\n" if wait_for_app else "")
+                + "pending=e/'actor-started.pending'\n"
+                "pending.write_text(str(os.getpid()))\npending.replace(e/'actor-started')\n"
                 "time.sleep(.35)\n(e/'late-business-action').write_text('continued')\n"
                 "p=subprocess.Popen([sys.executable,'-c','import time;time.sleep(120)'])\n"
-                "(e/'late-child').write_text(str(p.pid))\ntime.sleep(120)\n")
+                "pending=e/'late-child.pending'\npending.write_text(str(p.pid))\n"
+                "pending.replace(e/'late-child')\ntime.sleep(120)\n")
 
     def test_wait_inventory_timeout_keeps_original_bytes_before_cleanup_and_reaps_held_children(self):
         error = subprocess.TimeoutExpired(PS, 5, output=b"\x00\xffpartial", stderr=None)
@@ -342,8 +370,7 @@ class NativeCaseTimeoutTests(unittest.TestCase):
             return runner.CasePreparation(lambda: None, both_ready)
         with self.inventory_failure(subprocess.TimeoutExpired(PS, 5)), \
                 mock.patch.object(runner, "recover_renderer_faults", side_effect=record_waits):
-            script = self.actor(ignore_term=True).replace("(e/'actor-started').write_text",
-                "\nwhile not (e/'app-started').exists(): time.sleep(.005)\n(e/'actor-started').write_text")
+            script = self.actor(ignore_term=True, wait_for_app=True)
             # Prove readiness may cross the old fixture-only 3s gate without
             # granting either child another TERM or KILL grace.
             script = "import time\ntime.sleep(3.1)\n" + script

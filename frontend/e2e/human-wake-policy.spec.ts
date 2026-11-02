@@ -5,18 +5,21 @@ import { composer, freshConversation, reloadOpenConversation } from "./session"
 
 const deniedText = "Keep working in this conversation. Do not suspend it or arm another timed wake."
 const allowedText = "You may now suspend this conversation and arm its next timed wake."
+const continueText = "Continue the current work."
 const waitingClaim = "I have armed the next check and will wait for it."
 const refusedWait = "The next check was not armed; the current waiting prohibition remains in effect."
 type Event = { seq: number; kind: string; text: string; tool_call_id?: string }
 type Trace = { turn: { id: string; status: string }; events: Event[] }
 type Message = { role: string; content?: string; tool_calls?: { function: { name: string } }[] }
 type HumanSource = { seq: number; kind: string; text: string }
+type ManagerWakeSource = { humanText?: string; source_seq?: number; source_kind?: string; schedule_id?: string }
 
 // This fixture supplies decisions from known human packets. The manager always
 // attempts to wait, then reports the actual tool result rather than inventing success.
 async function startWakePolicyFixture() {
   const errors: string[] = []
   const sources: HumanSource[] = []
+  const managerWakeSources: ManagerWakeSource[] = []
   let nextCall = 0
   const reply = (response: ServerResponse, stream: boolean, text: string, call?: { name: string; args: object }) => {
     const message = call
@@ -48,9 +51,9 @@ async function startWakePolicyFixture() {
         if (input.messages[0]?.content?.includes("## Thread wake authorization classification")) {
           const source = JSON.parse(input.messages[1]?.content ?? "") as HumanSource
           if (input.messages.length !== 2 || source.seq <= 0 || !["user_message", "steer"].includes(source.kind)) throw new Error("Classification must contain one original human source")
-          if (![deniedText, allowedText].includes(source.text)) throw new Error("Classification received generated or unexpected text")
+          if (![deniedText, allowedText, continueText].includes(source.text)) throw new Error("Classification received generated or unexpected text")
           sources.push(source)
-          reply(response, Boolean(input.stream), JSON.stringify({ decision: source.text === allowedText ? "allow" : "deny", quote: source.text }))
+          reply(response, Boolean(input.stream), JSON.stringify({ decision: source.text === continueText ? "unchanged" : source.text === allowedText ? "allow" : "deny", quote: source.text === continueText ? "" : source.text }))
           return
         }
         if (!input.tools?.some((value) => value.function.name === "schedule_wake")) {
@@ -58,6 +61,12 @@ async function startWakePolicyFixture() {
           return
         }
         const user = input.messages.findLastIndex((message) => message.role === "user")
+        const wakeSystem = input.messages.find((message) => message.role === "system" && message.content?.startsWith("## Thread wake authorization\n"))
+        const sourceLine = wakeSystem?.content?.split("\n").at(-1)
+        const source = sourceLine?.startsWith("{") ? JSON.parse(sourceLine) as Omit<ManagerWakeSource, "humanText"> : {}
+        // Retain only the cancellation identity received by the actual manager
+        // HTTP request, never its full system prompt or conversation history.
+        managerWakeSources.push({ humanText: input.messages[user]?.content, source_seq: source.source_seq, source_kind: source.source_kind, schedule_id: source.schedule_id })
         const scheduled = input.messages[user]?.content?.startsWith("This turn is a scheduled check.")
         const name = scheduled ? "report_schedule" : "schedule_wake"
         const called = input.messages.slice(user + 1).some((message) => message.tool_calls?.some((call) => call.function.name === name))
@@ -81,7 +90,7 @@ async function startWakePolicyFixture() {
   const address = endpoint.address()
   if (!address || typeof address === "string") throw new Error("Fixture did not listen")
   return {
-    url: `http://127.0.0.1:${address.port}`, errors, sources,
+    url: `http://127.0.0.1:${address.port}`, errors, sources, managerWakeSources,
     close: () => new Promise<void>((resolve, reject) => {
       endpoint.close((error) => error ? reject(error) : resolve())
       endpoint.closeAllConnections()
@@ -119,7 +128,7 @@ function receipt(trace: Trace, name: string) {
   expect(calls).toHaveLength(1)
   const results = trace.events.filter((event) => event.kind === "tool_result" && event.tool_call_id === calls[0].tool_call_id)
   expect(results).toHaveLength(1)
-  return JSON.parse(results[0].text) as { ok: boolean; code?: string; source_seq?: number; source_quote?: string }
+  return JSON.parse(results[0].text) as { ok: boolean; code?: string; source_seq?: number; source_quote?: string; source_kind?: string; source_text?: string }
 }
 
 async function expectNoWait(page: Page) {
@@ -216,6 +225,63 @@ test("a prohibited scheduled recadence leaves the consumed one-shot without a ne
     await writeFile(info.outputPath("human-recadence-evidence.json"), JSON.stringify({ denied, checked, schedule, consumed, sources: fixture.sources }, null, 2), { mode: 0o600 })
   } finally {
     try { if (scheduleID) await request.delete(`/api/schedules/${scheduleID}`, { timeout: 5000 }) }
+    finally { await fixture.close() }
+  }
+})
+
+test("cancelling a wait then continuing work cannot recreate it without explicit human permission", async ({ page, request }, info) => {
+  test.skip(process.env.ZWAI_E2E_HUMAN_WAKE_POLICY !== "1", "requires the keyless wake policy fixture")
+  const fixture = await startWakePolicyFixture()
+  const scheduleIDs = new Set<string>()
+  try {
+    await configureFixture(request, fixture.url)
+    await freshConversation(page)
+    const threadID = (await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute("data-id"))!
+    const armed = await sendHuman(page, request, threadID, allowedText)
+    expect(receipt(armed, "schedule_wake").ok).toBe(true)
+    const { schedules: initial } = await (await request.get(`/api/threads/${threadID}/schedules`)).json()
+    expect(initial).toHaveLength(1)
+    const cancelledID = initial[0].id as string
+    scheduleIDs.add(cancelledID)
+    await expect(page.getByTestId("schedule-banner")).toBeVisible()
+    const deleted = page.waitForResponse((response) => response.request().method() === "DELETE" && new URL(response.url()).pathname === `/api/schedules/${cancelledID}`)
+    await page.getByTestId("schedule-banner").getByRole("button", { name: "Cancel wait" }).click()
+    expect((await deleted).status()).toBe(204)
+    await expectNoWait(page)
+
+    const continued = await sendHuman(page, request, threadID, continueText)
+    const refused = receipt(continued, "schedule_wake")
+    expect(refused).toMatchObject({ ok: false, code: "thread_wake_prohibited", source_kind: "schedule_cancelled", source_text: cancelledID })
+    expect(refused.source_seq).toBeGreaterThan(0)
+    expect(continued.events.some((event) => event.kind === "schedule")).toBe(false)
+    await expect(page.getByTestId("transcript")).toContainText(refusedWait)
+    await expectNoWait(page)
+    const { schedules: afterContinue } = await (await request.get("/api/schedules")).json()
+    expect(afterContinue.filter((row: { thread_id: string }) => row.thread_id === threadID)).toEqual([expect.objectContaining({ id: cancelledID, status: "cancelled" })])
+    const observed = fixture.managerWakeSources.filter((source) => source.humanText === continueText)
+    expect(observed.length).toBeGreaterThan(0)
+    for (const source of observed) expect(source).toMatchObject({ source_seq: refused.source_seq, source_kind: "schedule_cancelled", schedule_id: cancelledID })
+
+    await reloadOpenConversation(page)
+    await expectNoWait(page)
+    const { schedules: afterReload } = await (await request.get(`/api/threads/${threadID}/schedules`)).json()
+    expect(afterReload).toEqual([])
+    await page.screenshot({ path: info.outputPath("cancelled-wait-continue-no-recreation.png"), animations: "disabled" })
+
+    const allowed = await sendHuman(page, request, threadID, allowedText)
+    expect(receipt(allowed, "schedule_wake").ok).toBe(true)
+    const { schedules: rearmed } = await (await request.get(`/api/threads/${threadID}/schedules`)).json()
+    expect(rearmed).toHaveLength(1)
+    scheduleIDs.add(rearmed[0].id)
+    expect(rearmed[0]).toMatchObject({ status: "active", thread_id: threadID })
+    expect(rearmed[0].id).not.toBe(cancelledID)
+    await expect(page.getByTestId("schedule-banner")).toBeVisible()
+    await expect(page.getByTestId("status-badge")).toContainText("Waiting")
+    expect(fixture.sources.map((source) => source.text)).toEqual([allowedText, continueText, allowedText])
+    expect(fixture.errors).toEqual([])
+    await writeFile(info.outputPath("cancelled-wait-continue-evidence.json"), JSON.stringify({ armed, continued, allowed, cancelledID, sources: fixture.sources, managerWakeSources: observed }, null, 2), { mode: 0o600 })
+  } finally {
+    try { for (const id of scheduleIDs) await request.delete(`/api/schedules/${id}`, { timeout: 5000 }) }
     finally { await fixture.close() }
   }
 })

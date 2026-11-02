@@ -4,9 +4,13 @@
     python3 tools/model_check.py [--fetch] [--jar PATH] [--out DIR] [CASE ...]
 
 Each model under models/ states one protocol: models/lifecycle/EngineLifecycle.tla
-(C-027 handoff, Stop, parked workers, C-001 idle exit and shell presence) and
+(C-027 handoff, Stop, parked workers, C-001 idle exit and shell presence),
 models/stream/EventStream.tla (C-003 stored order, slow readers, catch-up,
-rewind and restart). Every case sets its model's switch constants and states
+rewind and restart), and models/scheduling/ScheduleAuthorization.tla (C-009 /
+C-012 human cancellation, durable waiting authority and manager mutations).
+models/scheduling/WakeConsentTimeline.tla checks multiple original human
+decisions, asynchronous classification and exact-ID cancellation deduplication.
+Every case sets its model's switch constants and states
 the expected outcome: the current design must pass every safety invariant;
 each historical or seeded behaviour must break the named invariant (checked
 alone with TypeOK, so the reported invariant does not depend on which
@@ -79,6 +83,25 @@ MODELS = {
              "ProjectScoped", "VisibleIsCommitted"),
             (("MaxWrites", 2),),
         ),
+        Model(
+            "scheduling", ROOT / "models" / "scheduling" / "ScheduleAuthorization.tla",
+            ("CancelDoesNotRevoke", "ClaimedCancelIgnored", "ManagerCancelledMasksHuman",
+             "ContinueGrantsPermission", "LateAllowOverridesCancel", "CommitSkipsPolicyRecheck",
+             "RestartForgetsPolicy", "CompactForgetsPolicy", "CancelReceiptNotAtomic",
+             "CancelDestinationUnchecked", "RetargetIgnoresStatus", "RepeatedDeleteRevokes"),
+            ("TypeOK", "EveryArmAuthorized", "CancellationIsDurable", "CancellationIsAtomic",
+             "TerminalDestinationStable", "CancellationKeepsSelectedTarget",
+             "ClaimedCancellationStopsReport", "DuplicateDeleteKeepsLaterAllowance"),
+            (("MaxAttempts", 2),),
+        ),
+        Model(
+            "consent", ROOT / "models" / "scheduling" / "WakeConsentTimeline.tla",
+            ("ClassificationCompletionOverridesSequence", "CancelDeduplicatesByThread",
+             "DuplicateDeleteAppendsDeny", "PendingInputDoesNotBlock", "HumanCancelDoesNotWithdraw"),
+            ("TypeOK", "EveryArmAuthorized", "SettledPolicyMatchesLatestIntent", "ExactIDReceiptUniqueness",
+             "LaterAllowanceSurvivesDuplicate"),
+            (("MaxHumanEvents", 5),),
+        ),
     )
 }
 
@@ -113,6 +136,16 @@ def _case(name: str, source: str, switches: tuple[str, ...] = (), violates: str 
 def _stream(name: str, source: str, switches: tuple[str, ...] = (), violates: str | None = None,
             witness: str | None = None) -> Case:
     return _case(name, source, switches, violates, witness, "stream")
+
+
+def _scheduling(name: str, source: str, switches: tuple[str, ...] = (), violates: str | None = None,
+                witness: str | None = None) -> Case:
+    return _case(name, source, switches, violates, witness, "scheduling")
+
+
+def _consent(name: str, source: str, switches: tuple[str, ...] = (), violates: str | None = None,
+             witness: str | None = None) -> Case:
+    return _case(name, source, switches, violates, witness, "consent")
 
 
 CASES: tuple[Case, ...] = (
@@ -191,6 +224,79 @@ CASES: tuple[Case, ...] = (
             "subscriber flags it lagged", ("DropWhenSlow",), "ConvergedView"),
     _stream("stream-reach-catch-up-across-rewind", "witness", witness="NeverCatchUpAcrossRewind"),
     _stream("stream-reach-record-after-restart", "witness", witness="NeverRecordAfterRestart"),
+    # C-009 / C-012: human cancellation and manager arming authority.
+    _scheduling("schedule-current", "required scheduling authorization protocol: every switch off"),
+    _scheduling("schedule-pre-cancel-authority", "historical d0a6d83: human deletion cancelled one row without withdrawing waiting authority",
+                ("CancelDoesNotRevoke",), "EveryArmAuthorized"),
+    _scheduling("schedule-cancel-receipt-required", "guard: every first human cancellation records its authority",
+                ("CancelDoesNotRevoke",), "CancellationIsDurable"),
+    _scheduling("schedule-claimed-cancel-ignored", "guard found by this model: a claimed one-shot is done before its running check ends, but the first human cancellation must still revoke waiting",
+                ("ClaimedCancelIgnored",), "ClaimedCancellationStopsReport"),
+    _scheduling("schedule-manager-cancel-masks-human", "guard found by this model: a manager-cancelled row must not mask the first real human cancellation",
+                ("ManagerCancelledMasksHuman",), "EveryArmAuthorized"),
+    _scheduling("schedule-continue-grants", "guard: ordinary human continuation is unchanged, not permission",
+                ("ContinueGrantsPermission",), "EveryArmAuthorized"),
+    _scheduling("schedule-late-allow", "guard: classification completion cannot reorder original human decisions",
+                ("LateAllowOverridesCancel",), "EveryArmAuthorized"),
+    _scheduling("schedule-stale-policy-read", "guard: create, replacement and report rearm each recheck policy in their write transaction",
+                ("CommitSkipsPolicyRecheck",), "EveryArmAuthorized"),
+    _scheduling("schedule-restart-forgets", "guard: restart reads durable human authority independently of manager replay",
+                ("RestartForgetsPolicy",), "EveryArmAuthorized"),
+    _scheduling("schedule-compact-forgets", "guard: compaction does not replace durable human authority with its summary",
+                ("CompactForgetsPolicy",), "EveryArmAuthorized"),
+    _scheduling("schedule-split-cancellation", "guard: cancellation and the typed human receipt commit atomically",
+                ("CancelReceiptNotAtomic",), "CancellationIsAtomic"),
+    _scheduling("schedule-cancel-moved-target", "guard: the human cancellation's selected destination must still match at mutation",
+                ("CancelDestinationUnchecked",), "CancellationKeepsSelectedTarget"),
+    _scheduling("schedule-retarget-after-terminal", "guard found by this model: PATCH must revalidate editable status in its mutation transaction",
+                ("RetargetIgnoresStatus",), "TerminalDestinationStable"),
+    _scheduling("schedule-repeat-delete-revokes", "guard: repeating an old human DELETE cannot revoke a later explicit allowance",
+                ("RepeatedDeleteRevokes",), "DuplicateDeleteKeepsLaterAllowance"),
+    *(_scheduling(name, "witness", witness=witness) for name, witness in (
+        ("schedule-reach-claimed-cancel", "NeverCancelClaimed"),
+        ("schedule-reach-manager-then-human-cancel", "NeverCancelManagerCancelled"),
+        ("schedule-reach-fresh-after-cancel-allow", "NeverFreshAfterCancellation"),
+        ("schedule-reach-repeat-after-allow", "NeverRepeatAfterAllowance"),
+        ("schedule-reach-denied-arm", "NeverRefuseDeniedArm"),
+        ("schedule-reach-moved-cancel-refusal", "NeverRefuseMovedCancel"),
+        ("schedule-reach-cancel-storage-refusal", "NeverRefuseCancelStorage"),
+        ("schedule-reach-terminal-edit-refusal", "NeverRefuseTerminalEdit"),
+        ("schedule-reach-claimed-edit-refusal", "NeverRefuseClaimedEdit"),
+        ("schedule-reach-restart-compact", "NeverRetainAcrossRestartAndCompact"),
+        ("schedule-reach-human-active-denied", "NeverHumanActiveWhileDenied"),
+        ("schedule-reach-replace", "NeverReplace"),
+        ("schedule-reach-report", "NeverReport"),
+    )),
+    # Orthogonal multi-event authority timeline; row lifecycle stays above.
+    _consent("consent-current", "current source-ordered human consent protocol"),
+    _consent("consent-pre-cancel-authority", "historical d0a6d83: human cancellation did not supply durable waiting authority",
+             ("HumanCancelDoesNotWithdraw",), "EveryArmAuthorized"),
+    _consent("consent-completion-order-arm", "seeded guard removal: classification return order replaces original input order",
+             ("ClassificationCompletionOverridesSequence",), "EveryArmAuthorized"),
+    _consent("consent-completion-order-policy", "seeded guard removal: settled policy must retain the latest original decisive source",
+             ("ClassificationCompletionOverridesSequence",), "SettledPolicyMatchesLatestIntent"),
+    _consent("consent-cancel-dedupe-arm", "seeded guard removal: another schedule ID inherits the conversation's old cancellation receipt",
+             ("CancelDeduplicatesByThread",), "EveryArmAuthorized"),
+    _consent("consent-cancel-dedupe-policy", "seeded guard removal: a second schedule ID must supply its own decisive human cancellation",
+             ("CancelDeduplicatesByThread",), "SettledPolicyMatchesLatestIntent"),
+    _consent("consent-duplicate-delete-policy", "seeded guard removal: replaying an old DELETE appends a new denial after later permission",
+             ("DuplicateDeleteAppendsDeny",), "LaterAllowanceSurvivesDuplicate"),
+    _consent("consent-duplicate-delete-receipt", "seeded guard removal: the exact old human cancellation must have one receipt",
+             ("DuplicateDeleteAppendsDeny",), "ExactIDReceiptUniqueness"),
+    _consent("consent-pending-arm", "seeded guard removal: unresolved human input cannot admit a manager mutation",
+             ("PendingInputDoesNotBlock",), "EveryArmAuthorized"),
+    *(_consent(name, "witness", witness=witness) for name, witness in (
+        ("consent-reach-full-timeline", "NeverFullHumanTimeline"),
+        ("consent-reach-out-of-order-classification", "NeverOutOfOrderClassification"),
+        ("consent-reach-late-allow-retains-cancel", "NeverLateAllowPreservesCancellation"),
+        ("consent-reach-two-reauthorizations", "NeverTwoRoundsOfReauthorization"),
+        ("consent-reach-second-id-cancel", "NeverSecondIDRevokesLaterAllowance"),
+        ("consent-reach-repeat-after-allow", "NeverDuplicatePreservesLaterAllowance"),
+        ("consent-reach-pending-refusal", "NeverPendingRefusal"),
+        ("consent-reach-storage-refusal", "NeverStorageRefusal"),
+        ("consent-reach-continue-retains-deny", "NeverOrdinaryContinuePreservesDenial"),
+        ("consent-reach-second-allow-survives-late-result", "NeverSecondAllowSurvivesEarlierResult"),
+    )),
 )
 
 
@@ -214,18 +320,20 @@ class Outcome:
 
 
 _VIOLATED = re.compile(r"^Error: Invariant (\w+) is violated\.", re.M)
-_DISTINCT = re.compile(r"(\d+) distinct states found")
+_DISTINCT = re.compile(r"([\d,]+) distinct states found")
 
 
 def parse_output(text: str) -> Outcome:
     violated = _VIOLATED.search(text)
-    distinct = _DISTINCT.search(text)
+    # Progress lines may use grouped numbers and precede the final total.
+    # The completed exploration, not its first progress sample, is evidence.
+    counts = _DISTINCT.findall(text)
     passed = "Model checking completed. No error has been found." in text
     error = None
     if not passed and not violated:
         error = next((ln for ln in text.splitlines() if ln.startswith("Error:")), "TLC did not finish")
     return Outcome(passed, violated.group(1) if violated else None,
-                   int(distinct.group(1)) if distinct else None, error)
+                   int(counts[-1].replace(",", "")) if counts else None, error)
 
 
 def judge(case: Case, outcome: Outcome) -> str | None:
@@ -274,22 +382,50 @@ def find_jar(explicit: str | None, fetch: bool) -> Path:
     return CACHE_JAR
 
 
+def write_private_text(path: Path, text: str) -> None:
+    with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as stream:
+        stream.write(text)
+
+
+def captured_text(value: str | bytes | None) -> str:
+    return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value or ""
+
+
 def run_case(case: Case, jar: Path, out: Path, timeout: int = 600) -> tuple[Outcome, Path]:
     # TLC resolves the config beside the module, so each case gets a copy.
     spec = MODELS[case.model].spec
     workdir = out / case.name
     workdir.mkdir(parents=True)
+    # SANY extracts standard modules into java.io.tmpdir. Concurrent JVMs
+    # must not read another check's partially written Naturals/Sequences files.
+    java_tmp = workdir.resolve() / "java-tmp"
+    java_tmp.mkdir()
     shutil.copy(spec, workdir / spec.name)
-    (workdir / "case.cfg").write_text(render_config(case))
-    proc = subprocess.run(
-        ["java", "-XX:+UseParallelGC", "-cp", str(jar), "tlc2.TLC", "-deadlock", "-workers", "auto",
-         "-metadir", str(workdir / "states"), "-config", "case.cfg", spec.name],
-        cwd=workdir, capture_output=True, text=True, timeout=timeout,
-    )
+    write_private_text(workdir / "case.cfg", render_config(case))
+    failure = None
+    try:
+        proc = subprocess.run(
+            ["java", "-Djava.io.tmpdir=" + str(java_tmp), "-XX:+UseParallelGC", "-cp", str(jar), "tlc2.TLC", "-deadlock", "-workers", "auto",
+             "-metadir", str(workdir / "states"), "-config", "case.cfg", spec.name],
+            cwd=workdir, capture_output=True, text=True, timeout=timeout,
+        )
+        output = proc.stdout + proc.stderr
+        if proc.returncode != 0 and "Model checking completed. No error has been found." in output:
+            failure = f"Error: TLC exited with status {proc.returncode} after reporting completion."
+    except subprocess.TimeoutExpired as exc:
+        # TimeoutExpired may contain bytes even with text=True. Save complete
+        # original streams before reporting failure; a partial proof is not a pass.
+        output = captured_text(exc.stdout) + captured_text(exc.stderr)
+        failure = f"Error: TLC timed out after {timeout}s."
+    if failure:
+        output += "\n" + failure + "\n"
     log = workdir / "tlc.out"
-    log.write_text(proc.stdout + proc.stderr)
+    write_private_text(log, output)
     shutil.rmtree(workdir / "states", ignore_errors=True)
-    return parse_output(proc.stdout + proc.stderr), log
+    outcome = parse_output(output)
+    if failure:
+        outcome = Outcome(False, outcome.violated, outcome.distinct, failure)
+    return outcome, log
 
 
 def main(argv: list[str] | None = None) -> int:

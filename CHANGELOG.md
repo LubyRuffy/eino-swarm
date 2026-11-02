@@ -188,6 +188,26 @@ co-working app built on it. The library API is unchanged except where noted
   reconnect, rewind and engine restart. `make model-check` runs it with the
   lifecycle model; the shipped rewind marker design breaks both of its
   invariants, and each removed ordering guard breaks one.
+- `F-150`, `C-009`, `C-012`: `models/scheduling/ScheduleAuthorization.tla`
+  independently models human cancellation, durable waiting authority and
+  create/replace/report rearming across original human-event order, one-shot
+  claims, destination edits, repeated DELETE, restart and compaction.
+  `make model-check` includes seven safety properties, fault switches and
+  reachability witnesses. It re-finds the original cancellation-authority gap
+  and identifies the claimed-one-shot, manager-cancelled and stale-retarget
+  faults below. Its bounded protocol is paired with real boundary regressions;
+  it does not prove language interpretation or Go/SQLite atomicity.
+- `C-009`, `C-012`: `models/scheduling/WakeConsentTimeline.tla` separately
+  checks two schedule IDs through two human allowances, two first cancellations
+  and ordinary continuation, with classification completing out of order.
+  It checks latest source identity as well as permission, duplicate DELETE
+  idempotency, pending refusal and storage refusal. This is a finite authority
+  timeline model; schedule rows and running checks remain in the separate
+  scheduling model. A historical control re-finds the original missing human
+  withdrawal; other seeded controls test guards rather than claim new bugs.
+  A real store regression covers out-of-order classification, both cancellation
+  IDs, later allowance creating a wait, and denied create/replace/rearm without
+  modifying a pre-existing active wait.
 - `F-110`, `C-001`, `C-027`: `make model-check` runs TLC over
   `models/lifecycle/EngineLifecycle.tla`, a TLA+ model of the restart handoff,
   Stop before restoration, parked-worker checkpoints, idle exit and shell
@@ -607,6 +627,21 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-150`, `C-009`: a scheduled check cannot complete the standing objective while its own manager-created conversation wake remains armed, including a newly armed wake ID after a one-shot fired. The final check may complete after cancelling that wait; the reverse call order and parallel tool calls cannot rearm the same continuation after completion. Conflicts return recoverable `goal_schedule_conflict` results. Human-created waits and independent jobs retain their own lifecycle; existing completed goals are not automatically reopened (Issue #79).
 
 ### Fixed
+
+- `F-150`, `C-009`, `C-012`: manually cancelling a conversation wait now
+  durably prevents the manager from creating another wait when the user sends
+  an ordinary continuation. Only later explicit human permission allows the
+  manager to arm another conversation wait. The cancelled row and human-action receipt commit together; model
+  cancellation and independent jobs retain their own cancellation semantics.
+  The first human deletion also records authority for a consumed one-shot or
+  manager-cancelled row, preventing report rearm or a new ID from bypassing the
+  cancellation. It preserves the running check and its real turn/run result;
+  deleting terminal history does not start a goal turn. Duplicate DELETE uses
+  the original local human receipt and preserves a later explicit allowance.
+- `F-150`, `C-009`: destination edits recheck active/paused status inside
+  their transaction before freezing historical run kinds. A stale PATCH after
+  cancellation or a consumed one-shot refuses without partially changing the
+  destination, state or run history.
 
 - `F-130`: update `eino-tools` to the source containing `3664a9a`. Default
   `web_fetch` tries its existing browser renderer once after a DataDome-signalled
@@ -3919,6 +3954,17 @@ were left out on purpose, so that what shipped is complete rather than broad:
 - **A native directory picker** for a project's working directory. The field
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
+
+## [0.1.56] - 2026-11-02
+
+- Fixed conversation waits returning after a human cancelled them and sent an
+  ordinary continuation. Human cancellation now durably withdraws waiting
+  permission until a later explicit allowance, including consumed one-shots and
+  manager-cancelled waits. Repeated deletion preserves that later allowance;
+  concurrent destination edits refuse after the wait ends. (#142)
+- Added scheduling-authorization and repeated-consent formal models with
+  historical counterexamples, real HTTP/storage regressions and explicit finite
+  proof boundaries.
 
 ## [0.1.12] - 2026-09-24
 

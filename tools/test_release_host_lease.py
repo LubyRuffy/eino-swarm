@@ -244,19 +244,37 @@ class HostValidationLeaseTests(unittest.TestCase):
                 self.fail("owned unittest fixture exited before observation")
             time.sleep(.01)
         self.assertTrue((self.first / "fixture-ready").exists())
-        observed = lease_module.active_validations(self.second, self.module)
-        self.assertIn(observed["status"], ("blocked", "unknown"))
-        self.assertIn(process.pid, {row.get("pid") for row in observed["processes"]}, observed)
-        serialized = json.dumps(observed)
-        self.assertNotIn("argv", serialized)
-        self.assertNotIn("-m unittest", serialized)
-        evidence = self.directory / "real-active-stale-receipt"
-        guarded = self.lease(self.second, evidence, timeout=2, inventory=None)
-        # A released historical owner row cannot accept the current process.
-        guarded.lock_path.write_text(json.dumps({"status": "released", "pid": 999999999}))
-        with self.assertRaises(lease_module.HostLeaseBlocked):
-            with guarded:
-                self.fail("stale lease history admitted a live same-project suite")
+        real_run = subprocess.run
+        def fixture_inventory(args, *a, **kw):
+            # Keep the OS row and every identity/classification adapter real.
+            # Unrelated host processes must not consume this fixture's budget.
+            if args[:2] == ["/bin/ps", "-u"]:
+                args = ["/bin/ps", "-p", str(process.pid), "-o", "pid=,comm="]
+                result = real_run(args, *a, **kw)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual([line.strip().split(None, 1)[0] for line in result.stdout.splitlines()],
+                                 [str(process.pid)], result.stdout)
+                return result
+            return real_run(args, *a, **kw)
+        with mock.patch.object(lease_module.subprocess, "run", side_effect=fixture_inventory):
+            observed = lease_module.active_validations(self.second, self.module)
+            self.assertEqual(observed["status"], "blocked", observed)
+            observed_process, = observed["processes"]
+            self.assertEqual(observed_process["pid"], process.pid, observed)
+            self.assertEqual(observed_process["kind"], "python_suite", observed)
+            self.assertEqual(observed_process["birth"], lease_module.process_identity(process.pid)["birth"], observed)
+            self.assertEqual(Path(observed_process["cwd"]), self.first, observed)
+            self.assertEqual(Path(observed_process["project_root"]), self.first, observed)
+            serialized = json.dumps(observed)
+            self.assertNotIn("argv", serialized)
+            self.assertNotIn("-m unittest", serialized)
+            evidence = self.directory / "real-active-stale-receipt"
+            guarded = self.lease(self.second, evidence, timeout=2, inventory=None)
+            # A released historical owner row cannot accept the current process.
+            guarded.lock_path.write_text(json.dumps({"status": "released", "pid": 999999999}))
+            with self.assertRaises(lease_module.HostLeaseBlocked):
+                with guarded:
+                    self.fail("stale lease history admitted a live same-project suite")
         rows = self.retained(evidence)
         self.assertTrue(any(process.pid == item.get("pid")
                             for row in rows for observation in row.get("observations", [])

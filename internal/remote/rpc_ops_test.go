@@ -168,6 +168,10 @@ func TestRunNowCancelWaitAndResumeGoalMapOntoTheEngine(t *testing.T) {
 	if err != nil || got.Status != store.ScheduleCancelled {
 		t.Fatalf("cancelled row %+v err=%v", got, err)
 	}
+	policy, _, err := e.Store().ReadThreadWakePolicy(th.ID)
+	if err != nil || !policy.Denied || policy.SourceKind != engine.KindScheduleCancelled || policy.SourceText != wake.ID {
+		t.Fatalf("phone cancellation lost the human waiting restriction: %+v %v", policy, err)
+	}
 	if _, err := e.CreateSchedule(engine.ScheduleInput{
 		Kind: store.ScheduleThread, ThreadID: th.ID,
 		Title: "wake", Prompt: "Continue the wait.", DelayS: 3600,

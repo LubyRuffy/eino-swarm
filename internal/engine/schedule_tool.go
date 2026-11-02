@@ -436,7 +436,7 @@ func (e *Engine) cancelScheduleJSON(_, _, args string) (string, error) {
 	if id == "" {
 		return scheduleToolFailure("%s", "id is required"), nil
 	}
-	if err := e.CancelSchedule(id); err != nil {
+	if err := e.cancelSchedule(id); err != nil {
 		return scheduleToolFailure("%s", err.Error()), nil
 	}
 	body, _ := json.Marshal(map[string]any{"ok": true, "id": id})

@@ -4197,7 +4197,10 @@ model comes first:
 
 Accept a new model only after it re-finds a historical or current fault. The
 lifecycle model re-found two shipped handoff faults; the stream model found
-the shipped rewind faults before their fix. Parsers and
+the shipped rewind faults before their fix. The scheduling-authorization model
+re-found the original manual-cancellation gap and exposed three further faults
+that were then reproduced on the real HTTP/engine/store boundaries before
+their fixes. Parsers and
 reducers whose input space is large but whose rule can be stated get a
 property, fuzz or differential test instead (see "Fuzz and property tests").
 To close the gap between a model and the code, replay the code's own
@@ -4267,7 +4270,8 @@ that can fire at any point, so `deadline-kills-child` alone is a violation
 even though publishing before restoration made a slow boot much less likely.
 It has one conversation, one shell and safety only (no liveness), and leaves
 out storage failure (`ErrRestartUnpersistedTurn`), Stop while frozen, phones,
-schedules and asks. `tools/test_model_check.py` keeps the case table honest
+schedules and asks. Scheduling authorization has its own model below; this
+does not extend the lifecycle model's scope. `tools/test_model_check.py` keeps the case table honest
 (every switch and invariant exists in the module, every switch breaks an
 invariant, every witness is checked) and, when Java and the jar are already
 present, runs the current design and both historical cases; it never
@@ -4280,7 +4284,7 @@ downloads.
 channel, the SSE handler's dedupe, lag catch-up and `Last-Event-ID`
 reconnect, an edit-and-resend rewind, and an engine restart that reseeds
 the sequence counter from the database. `make model-check` runs its cases with
-the lifecycle cases; `python3 tools/model_check.py --list` names the model of
+the lifecycle and scheduling cases; `python3 tools/model_check.py --list` names the model of
 each.
 
 Two safety invariants: once everything sent has arrived, the reader shows
@@ -4314,6 +4318,159 @@ disconnect; the reader's own cut bookkeeping is a set, not the desktop's
 `cutFrom` / `cutThrough` range. That range is covered by the history replay
 property below, which found the one fault the model could not: a replayed
 copy of an older stored marker cut again after a newer rewind moved the range.
+
+## Scheduling authorization protocol model (opt-in, `F-150` / `C-009` / `C-012`)
+
+`models/scheduling/ScheduleAuthorization.tla` fills the scheduling scope that
+the lifecycle and event-stream models intentionally leave out. It separates
+selection/authorization reads from mutation commits: human cancellation,
+destination PATCH, and manager create, replace or report rearm. Original human
+event order is independent of classification completion. Pending classification
+refuses arming; ordinary Continue does not grant authority. Restart and
+compaction retain durable authority, and human-created waits remain available
+under a manager-wait denial.
+
+Run `make model-check` for all four models, or
+`python3 tools/model_check.py --fetch schedule-current` for the scheduling
+design alone. `python3 tools/model_check.py --list` lists its cases; pass the
+listed names to replay individual counterexamples. The runner preserves each
+config, complete TLC output and counterexample under `--out`, outside the
+repository. Its output parser uses the final state total, including grouped
+numbers; progress samples are not final exploration counts.
+
+There are seven safety properties in addition to `TypeOK`:
+
+| invariant | required boundary |
+|---|---|
+| `EveryArmAuthorized` | every committed manager arm has permission at its commit |
+| `CancellationIsDurable` | an acknowledged target cancellation has a human receipt |
+| `CancellationIsAtomic` | cancellation cannot expose a row without its authority receipt |
+| `TerminalDestinationStable` | a claimed, done or cancelled row cannot be moved by a stale PATCH |
+| `CancellationKeepsSelectedTarget` | cancellation applies only to the selected destination |
+| `ClaimedCancellationStopsReport` | cancelling a consumed one-shot prevents report rearm |
+| `DuplicateDeleteKeepsLaterAllowance` | repeating the old DELETE preserves a later explicit allowance |
+
+The case table has one current design, thirteen negative cases using twelve
+fault switches, and thirteen reachability witnesses. Each negative checks its
+named invariant independently with `TypeOK`; a different invariant or an
+unexpected pass fails the runner. The mappings below name actual boundaries,
+not proofs that TLC executes Go:
+
+| negative case | counterexample / guard | real regression |
+|---|---|---|
+| `schedule-pre-cancel-authority` | original d0a6d83 deletion changes a row without withdrawing authority | `internal/engine/schedule_human_cancel_test.go`: `TestHumanCancelledWaitCannotReturnOnContinue` |
+| `schedule-cancel-receipt-required` | acknowledging the first human cancellation without its receipt | `internal/store/schedule_cancel_human_test.go`: `TestHumanCancelStoresOneDurableDenial` |
+| `schedule-claimed-cancel-ignored` | one-shot claim already stored done, so DELETE is ignored and report rearms it | `internal/server/schedule_cancel_authority_http_test.go`: `TestHumanCancellationRevokesClaimedAndManagerCancelledWaitsOverHTTP` (`claimed-one-shot-report` and `claimed-one-shot-new-id`) |
+| `schedule-manager-cancel-masks-human` | manager cancelled first, so the first human DELETE is mistaken for a duplicate | same HTTP test (`manager-cancel-before-human`); store `TestTerminalHumanCancellationDoesNotTrustOtherCancellationActors` |
+| `schedule-continue-grants` | ordinary Continue releases a denial | engine `TestHumanCancelledWaitCannotReturnOnContinue`; store `TestHumanCancellationSurvivesRestartAndOrdinaryContinue` |
+| `schedule-late-allow` | late classification overrides a newer human cancellation | `internal/engine/thread_wake_policy_test.go`: `TestWakeClassificationCannotOutrunANewHumanInstruction`; store `TestHumanCancellationSurvivesRestartAndOrdinaryContinue` |
+| `schedule-stale-policy-read` | create/replace/report commit trusts a pre-cancellation read | `internal/store/wake_policy_guard_test.go`: `TestHumanWakePolicyRejectsEveryToolMutationWithoutChangingWait`, `TestPendingHumanInputClosesTheClassificationAndArmingRace`; engine `TestHumanSteeringAtTheWriteBoundaryCannotBeBypassed` |
+| `schedule-restart-forgets` | restart forgets the durable denial | `internal/engine/thread_wake_policy_test.go`: `TestHumanWakeAuthoritySurvivesRealCompactAndEngineRestart`; store `TestHumanCancellationSurvivesRestartAndOrdinaryContinue` |
+| `schedule-compact-forgets` | a compressed summary replaces original authority | same real compaction/restart test; `internal/store/wake_policy_test.go`: `TestWakePolicyPersistsAcrossCompactionRestartAndHumanRelease` |
+| `schedule-split-cancellation` | cancellation row and receipt are separate observable commits | `internal/store/schedule_cancel_human_test.go`: `TestHumanCancelRollsBackWithoutItsReceipt`; engine `TestFailedHumanCancellationDoesNotPublishOrCancelTheWait` |
+| `schedule-cancel-moved-target` | a destination changed after selection | `internal/store/schedule_cancel_destination_test.go`: both changed-target directions; engine `TestHumanCancelRefusesAWaitRetargetedAfterSelection` |
+| `schedule-retarget-after-terminal` | PATCH selected active, but commits after cancellation or a one-shot claim | `internal/engine/schedule_retarget_cancel_race_test.go`: `TestRetargetRefusesAWaitThatEndedAfterSelection`; `internal/store/schedule_retarget_terminal_test.go`: `TestRetargetChecksActualTerminalStateBeforeFreezingHistory` |
+| `schedule-repeat-delete-revokes` | duplicate old DELETE creates a denial newer than explicit permission | `internal/store/schedule_cancel_human_test.go`: `TestRepeatedHumanDeletionKeepsLaterExplicitAllowance` |
+
+The claimed-one-shot, manager-cancelled and terminal-retarget counterexamples
+were reproduced red against the pre-fix implementation. The HTTP regression
+holds a real keyless model request across DELETE, then attempts both
+`report_schedule(next_in_s)` and `schedule_wake` through Registry/ADK. It checks
+the precise human source in the tool result and later model input, with the
+original turn/run result and unread state intact. The retarget regressions
+force a terminal transition after the engine's selection and before the store
+transaction, asserting no destination, status or historical run-kind mutation.
+
+The `schedule-reach-*` witnesses must fail their `Never*` property: consumed
+one-shot cancellation; manager-then-human cancellation; fresh manager creation
+after later allowance; a repeated DELETE after allowance; denied arm refusal;
+moved-target cancellation refusal; terminal-edit refusal; claimed/done-edit
+refusal; storage refusal;
+authority retained across restart and compaction; direct human creation while
+manager waits are denied; replacement; and report rearm. These witnesses keep
+the safety checks from passing because those paths are unreachable.
+
+Scope and assumptions: one conversation, one existing schedule, one fresh ID,
+and at most two manager arm attempts with one successful arm. There is one
+explicit human allowance, one ordinary continuation, one cancellation and its
+duplicate, one destination edit and at most one fire. Both one-shot and periodic
+cadence are represented; `claimed` abstracts a one-shot row stored as done while its run
+is still running. A report requires an actual fired, unfinished check. Human
+input meaning is supplied explicitly: the model does not prove language
+classification or quote interpretation. Event ordering and the local receipt's
+validated identity are trusted inputs. Each modeled commit is one atomic
+locked/transactional action; TLC does not establish Go locking or SQLite
+atomicity. An explicit storage refusal leaves business state, authority and
+acknowledgement unchanged; actual write/read failures and rollback remain the
+store tests' responsibility. Restart/compact model authority retention only,
+not the complete handoff or stream protocol. This finite safety exploration
+does not prove arbitrary conversations/IDs, unbounded histories, scheduling
+liveness, timing, or whole-application correctness.
+
+## Repeated human consent timeline model (opt-in, `C-009` / `C-012`)
+
+`models/scheduling/WakeConsentTimeline.tla` checks a separate, broader human
+timeline without multiplying the schedule-lifecycle state space. Two schedule
+IDs share one fixed destination. At most five original human events can arrive
+in any order: two explicit allowances, each ID's first cancellation, and one
+ordinary continuation. The three prose inputs may complete classification in
+any order. One exact-ID duplicate DELETE and one manager-arm observation,
+including storage refusal, may interleave with them.
+Run `python3 tools/model_check.py --fetch consent-current` for this model's
+current design; `make model-check` includes all its registered cases.
+
+Its independent human-intent oracle does not read the implementation's cached
+decisions. Four safety properties augment `TypeOK`.
+`EveryArmAuthorized` requires permission and no pending prose input
+at the arm. `SettledPolicyMatchesLatestIntent` compares both the permission and
+the original source identity whenever classification is settled: an
+implementation that always denies also fails. `ExactIDReceiptUniqueness`
+requires at most one typed cancellation receipt for each ID.
+`LaterAllowanceSurvivesDuplicate` separately requires
+that a duplicate old DELETE preserve a later settled allowance.
+
+The fault controls distinguish original human order from classifier completion
+order, per-ID receipts from conversation-wide deduplication, an idempotent old
+DELETE from a new denial, and pending classification from permission. Seeded
+controls are guard tests, not evidence of an additional production bug. The
+historical `HumanCancelDoesNotWithdraw` control independently re-finds the
+original d0a6d83 cancellation without human-authority withdrawal, violating
+`EveryArmAuthorized`. The timeline suite has one current design, eight negative
+cases across five switches, and ten reachability witnesses. Its
+`Never*` witnesses require a complete five-event timeline, out-of-order
+classification, a late older allowance that preserves a newer cancellation,
+two reauthorization rounds, a second ID revoking an intervening allowance,
+a duplicate preserving later allowance, pending refusal, storage refusal,
+ordinary Continue preserving denial, and the second allowance remaining
+effective after an older result completes last.
+
+| fault switch | source / required implementation evidence |
+|---|---|
+| `HumanCancelDoesNotWithdraw` | historical cancellation-authority gap; `internal/engine/schedule_human_cancel_test.go`: `TestHumanCancelledWaitCannotReturnOnContinue` |
+| `ClassificationCompletionOverridesSequence` | seeded guard: decisions stay keyed by original human-event seq, not completion order |
+| `CancelDeduplicatesByThread` | seeded guard: the first cancellation of a second ID cannot inherit the first ID's receipt |
+| `DuplicateDeleteAppendsDeny` | seeded guard: an old DELETE stays the original action after later allowance |
+| `PendingInputDoesNotBlock` | seeded guard: unresolved prose blocks manager arming |
+
+`internal/store/wake_policy_timeline_test.go`'s
+`TestWakeConsentTimelineKeepsOriginalOrderAndSeparateCancellationIDs` bridges
+the multi-event protocol to actual storage transactions. It classifies the
+newer allowance before the older one, refuses creation while the older input
+is pending, replays the first ID's DELETE, then permits a real new wait once
+settled. Cancelling the second ID withdraws that authority; ordinary Continue
+does not release it. Actual create, replace and rearm all refuse while the
+previously active wait remains unchanged. Storage refusal is paired with
+`TestHumanCancelRollsBackWithoutItsReceipt` and
+`TestWakePolicyStorageFailuresAreNeverConsent` in the store tests, rather than
+inferred from the abstract no-mutation branch.
+
+The schedule model above covers row mutations and stale reads; this timeline
+model has no rows, cadence, retargeting or running-check lifecycle. It does not
+prove multiple successful manager arms: there is one arm observation of the
+policy after any modeled prefix. Correct classification labels, original
+event identity and atomic storage actions remain assumptions. Quote/digest
+validation, source revision, Go locks, SQLite rollback and liveness still need
+their real implementation tests.
 
 ## Fuzz and property tests
 
@@ -5021,6 +5178,24 @@ transactions: create/replace/recadence leave the entire row unchanged when
 denied or pending; a newly arrived human input closes the classification/write
 race; rewinds, deletion, stale cache rows and storage failures cannot grant
 consent. Human inbox operations and independent jobs retain their boundaries.
+`internal/engine/schedule_human_cancel_test.go` covers a human cancellation
+followed by an ordinary continuation: the real manager tool graph must refuse
+a new wait ID, retain the cancellation source in its policy and allow a later
+explicit human permission. `internal/store/schedule_cancel_human_test.go`
+covers atomic cancellation/authority persistence, idempotency, target ownership
+and policy event ordering; a failed receipt write cannot leave a partially
+cancelled wait. Structured actions do not depend on language classification.
+Its terminal-state cases distinguish the first human action from manager or
+relayed cancellation notices, and repeat the original DELETE after a later
+explicit allowance without revoking that allowance. Terminal history deletion
+must not start a standing-goal turn. The real HTTP/Registry/ADK test in
+`internal/server/schedule_cancel_authority_http_test.go` and the stale-destination
+engine/store regressions are mapped to their formal counterexamples in
+"Scheduling authorization protocol model" above.
+`internal/store/schedule_cancel_destination_test.go` and the engine's
+`TestHumanCancelRefusesAWaitRetargetedAfterSelection` cover concurrent destination
+edits, including an actual inbox edit from an independent job to a thread wake.
+The stale cancellation refuses before changing that newly selected target.
 `internal/provider/mock_wake_policy_test.go` keeps offline policy extraction
 neutral and tool-free rather than routing it to the worker script.
 `frontend/e2e/human-wake-policy.spec.ts` runs the keyless scripted fixture with
@@ -5030,9 +5205,35 @@ root so the engine startup budget does not include the first Vite build.
 It verifies no new armed card/banner/Waiting status despite a false manager
 claim, source-attributed Trace, reload, later human permission producing one
 real wait, and a scheduled report refusing recadence after a one-shot fire.
+It also clicks Cancel wait on an armed banner, sends an ordinary continuation,
+checks that no replacement wait appears through live UI and reload, and then
+permits waiting explicitly before another wait can be armed.
 An existing wait is compared unchanged on rejection; prior arm/fire notices
 remain valid history. The fixture's source text is generic and its decisions
 are scripted; no production endpoint, credential or real model is used.
+The separate native scenario `tools/native_macos_schedule_cancel.py` runs only
+inside the `ci-macOS` case lifecycle. A keyless loopback fixture prepares a
+cross-origin wait through REST so the target has one unambiguous composer X;
+initial wait creation is setup, not a native creation claim. The real native X
+must persist the target's exact human receipt. One native Continue must produce
+an actual `schedule_wake` refusal with that source and no new waiting UI or row.
+The scenario observes absence for five seconds, closes and reopens the same
+private desktop/engine to check persistence, then sends an explicit native
+allowance and verifies one fresh ID with visible Waiting. Headless fixture tests
+check the real HTTP/SSE classifier wire and rejection of forged receipts; they
+are not native acceptance.
+
+Prepare the regular smoke helper and the existing generation controls before
+entering the guest. Record their hashes, the exact source and final package,
+then run this reviewed scenario through `native_macos_case.py` with a 120-second
+scenario timeout and 135-second whole-case budget, passing `--ax`, `--controls`
+and `--control-sha256` to the scenario. This functional case has a separate budget
+from the daily 60-second smoke. Preserve the initial preflight, AX/input streams,
+window pixels, Trace, fixture journal and `native-schedule-cancel.json`; acceptance
+also requires the outer runner's complete process exit and data cleanup receipt.
+The claimed-one-shot and stale-retarget interleavings remain real HTTP/storage
+regressions; this native case does not claim to exercise those interleavings.
+
 `internal/engine/schedule_rearm_test.go` is why that recadence refuses
 cancelled and paused rows, respects `schedule_max_active`, and why
 `schedule_wake` plus `next_in_s` in one turn record one armed chip

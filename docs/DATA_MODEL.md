@@ -675,6 +675,25 @@ are excluded. The engine's read-only policy model caches `deny`, `allow` or
 `compact_summary` and `session_memory`: a source older than
 `compact_through_seq` still governs the next arm after compaction or restart.
 
+An explicit human cancellation is another policy source: the existing
+`schedule_cancelled` event with `role: "human"` on a thread wake's target
+conversation directly supplies `deny`. Its `text` remains the schedule ID.
+The cancellation and this event commit in one transaction; no generated human
+message, quoted instruction, classifier cache row or schema column is needed.
+Model cancellations, standalone cancellations and origin-only notices do not
+supply this authority.
+
+Schedule status alone does not identify a human action: a one-shot is already
+`done` while its claimed run is running, and a manager may have set `cancelled`.
+The first human DELETE still sets that thread wake to `cancelled` and writes
+the receipt, preserving its existing turn/run results. Idempotency queries the
+target's exact schedule ID, `kind=schedule_cancelled`, `role=human`, and empty
+`source_thread_id` / `source_turn_id` (including legacy NULL). Only that local
+human receipt suppresses a duplicate; its later replay cannot add a new denial
+after an explicit allowance. A destination edit rechecks active/paused status
+inside its write transaction before freezing historical run kinds, so a stale
+edit cannot move a row that became done/cancelled after selection.
+
 | column | notes |
 |---|---|
 | `thread_id`, `event_seq` | composite primary key. `event_seq` is the human timeline `events.seq`, **not** the model transcript's `messages.seq` |
@@ -689,6 +708,11 @@ latest explicit `deny` or `allow` decides; `unchanged` leaves it intact. Missing
 stale or invalid classifications are pending and refuse a manager thread-wake
 write until classified. Stale rows are not authority. A later explicit human
 `allow` releases a prohibition; a summary, manager, tool, skill or peer cannot.
+Structured human cancellations participate in that same event order and cannot
+be reclassified. A later ordinary “continue” classified as `unchanged` therefore
+keeps the cancellation in force. Policy diagnostics identify it with
+`source_kind: "schedule_cancelled"`, its source seq and schedule ID as
+`source_text`, leaving `source_quote` empty.
 Source text is read from the effective event, rather than copied into this
 table. Classification runs lazily on a manager's thread-wake attempt, with at
 most 16 uncached inputs per turn and a total 30-second verification deadline

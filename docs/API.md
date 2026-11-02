@@ -2059,7 +2059,7 @@ shortening only the bounded detail text.
 | `schedule_fired` | the runtime started this turn because a wait fired. Not a `user_message`. `text` is the short chip (`Scheduled check.`). Same Working-clock rule as `goal_continued` |
 | `schedule_skipped` | a due tick could not start (busy). Trace-only; the transcript adds no row. The client refreshes the schedule list so the banner shows the advanced `next_run_at` |
 | `schedule_report` | the scheduled check reported. `text` is JSON `{findings,quiet}`. Empty findings / `quiet:true` hide that turn's chat bubbles; the events stay in the log. When this event is omitted after `schedule_fired` and `done` is empty, the client treats the turn the same way. A findings report plus empty `done` keeps the fired chip |
-| `schedule_cancelled` | a wait was cancelled. `text` is the schedule id. The transcript shows a short chip, not the raw id |
+| `schedule_cancelled` | a wait was cancelled. `text` is the schedule id. `role: "human"` on the wake target records an explicit human cancellation and denies further manager waits until later human permission. The transcript shows a short chip, not the raw id |
 | `done` | the turn finished; `text` is the final answer. Empty / whitespace `text` hides chat bubbles only after `schedule_fired` when that turn did not already report findings. An armed `schedule`, `goal_continued`, compact, or other notice plus empty `done` stays visible. Non-empty `text` after a fire is findings and keeps the fired chip |
 | `error` | the turn failed; `err` explains |
 | `ready` | replay is complete (no `seq`, not stored) |
@@ -2555,6 +2555,19 @@ persists independently of compressed replay. Only a later explicit human
 allowance can release it. Manager answers, schedule prompts, summaries, skills
 and peer messages cannot grant permission.
 
+Human cancellation of a thread wake through `DELETE /api/schedules/:id` or
+phone `cancel_wait` directly establishes the same restriction on that wake's
+target conversation. The cancelled row and its `schedule_cancelled` event with
+`role: "human"` commit together. This structured action needs no semantic
+classification. The first human cancellation still records this authority when
+a one-shot is already `done` (including a running claimed check), or the manager
+has already cancelled the row. An earlier local human receipt for that exact
+schedule ID and target makes the DELETE idempotent; repeating it cannot
+override a later explicit allowance. A later ordinary request to continue work
+leaves the restriction intact; explicit human permission to wait can release it. Model
+`cancel_schedule`, `report_schedule(keep:false)` and standalone cancellation do
+not establish this restriction.
+
 The tools return recoverable JSON `ok:false` results with code
 `thread_wake_prohibited` when prohibited, or `thread_wake_policy_pending` when a
 human source has not been classified or its extraction failed. Both the tool
@@ -2564,6 +2577,9 @@ new armed card from assistant prose. A classified denial's `tool_result` has
 `source_seq`, `source_text` and `source_quote`; pending classification has
 `pending_seq` when the source is known. Source sequences are `events.seq`, not
 `messages.seq`. These existing tool results remain in the same turn's Trace.
+A human-cancellation refusal also carries `source_kind: "schedule_cancelled"`;
+its `source_text` is the cancelled schedule ID and `source_quote` is empty.
+It does not fabricate a human message or quote.
 A report without `next_in_s`, including `keep:false` cancellation, remains
 available. Supplying `next_in_s` still refuses the whole call before any
 cancellation. The existing
@@ -2580,7 +2596,8 @@ bounded to 256 runes; the denied tool result retains full `source_text` and
 `source_quote`.
 
 The policy is conversation state, with no new settings or mutation endpoint.
-The schedule inbox's human operations retain their existing behavior.
+Human schedule creation, editing, pause/resume and Run now retain their existing
+boundaries; these direct operations do not clear the manager's restriction.
 
 ### `GET /api/schedules?status=&kind=`
 
@@ -2679,6 +2696,9 @@ as the destination and optional pause/resume edit; a rejected status or active
 cap rolls the whole patch back. A claimed old wake remains Waiting on its
 original conversation until its fire ends. Moving the last wake releases the
 old parked workers or resumes its pursuing goal only after that commit.
+The transaction rechecks that the row is still active or paused before freezing
+run kinds or changing any fields. A concurrent cancellation or one-shot claim
+that made it terminal rejects the entire destination patch.
 Other pending wakes and active turns retain their existing ownership.
 Cancel is `DELETE`, not a status patch. Responds
 `{"schedule": {…}}`.
@@ -2689,12 +2709,28 @@ the request. PATCH it back to `active` after correcting the cause.
 
 ### `DELETE /api/schedules/:id` → `204`
 
-Cancels an active or paused wait. A second delete of an already-cancelled
-row is `204`. Unknown ids are `404`. Cancelling a `kind=thread` wake while
+Cancels an active or paused wait. For a thread wake, the first human DELETE
+also accepts a `done` one-shot or an already manager-cancelled row, marks it
+`cancelled` and records the human restriction. It preserves the existing
+turn/run status, result and unread state; a running check is not interrupted.
+A repeated human delete is `204`. Unknown ids are `404`.
+Cancelling a previously active or paused `kind=thread` wake while
 its conversation is idle starts the next standing-objective turn when one
 is still open (`goal_continued`). A live turn is left alone; auto-continue
 resumes when that turn finishes. A wait with no standing objective stays
-idle. Standalone jobs do not start a turn on the origin conversation.
+idle. Deleting terminal history does not start a new goal turn. Standalone jobs
+do not start a turn on the origin conversation.
+Cancelling a thread wake also records a durable human prohibition on manager
+rearming for its target conversation. Sending “continue” does not allow the
+manager to recreate the wait; a later explicit human allowance does.
+Cancellation and that authority receipt commit atomically, so a failed receipt
+write does not partially cancel the wait. Repeated deletes match the original local human receipt by schedule
+ID and target, and do not create another restriction or receipt, even after
+later explicit permission. A manager cancellation or a notice relayed from
+another conversation does not count as that human receipt. A destination
+changed since selection refuses without cancelling the new target.
+Standalone cancellation and the manager's own cancellation tools do not grant
+this human authority.
 
 ### `POST /api/schedules/:id/run` → `202`
 
