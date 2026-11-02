@@ -15,6 +15,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   offline/mock checks do not establish real-model efficiency, native acceptance
   or CyberGym results. (`F-136`, `C-037`)
 
+- Fixed task evaluation fingerprints changing after Python graders generated
+  bytecode caches. Record reconciliation now accepts either prompt-valid
+  component representation and checks every requested value against trusted
+  source records. A uniformly regraded 27-run generic comparison found no
+  success-rate improvement; timing, routing and incomplete usage limits are
+  recorded in `evals/nuwa/RESULTS.md` without repeating model requests.
+
 - Fixed an iOS crash while receiving streamed model replies, including after
   NOSEC sign-in. UTF-8 chunk boundaries now respect a consumed `Data` buffer's
   actual indices, preserving split Chinese and emoji bytes across callbacks.

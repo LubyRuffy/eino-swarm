@@ -18,6 +18,32 @@ from test_agent_eval import CONFIG
 
 
 class ModelProtocolTest(unittest.TestCase):
+    def test_task_fingerprint_ignores_generated_bytecode_but_guards_other_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "rules.py"
+            source.write_text("rule = 1\n")
+            task = {"dir": root, "prompt": "Apply the supplied rules.", "timeout_s": 600}
+            original = protocol.task_fingerprint(task)
+            cache = root / "hidden" / "__pycache__"
+            cache.mkdir(parents=True)
+            bytecode = cache / "rules.cpython-314.pyc"
+            bytecode.write_bytes(b"generated")
+            self.assertEqual(protocol.task_fingerprint(task), original)
+            bytecode.write_bytes(b"regenerated")
+            self.assertEqual(protocol.task_fingerprint(task), original)
+            self.assertIn("hidden/__pycache__/rules.cpython-314.pyc", grade.hash_tree(root))
+            extra = cache / "source.json"
+            extra.write_text("{}")
+            self.assertNotEqual(protocol.task_fingerprint(task), original)
+            extra.unlink()
+            outside = root / "rules.pyc"
+            outside.write_bytes(b"outside the generated cache directory")
+            self.assertNotEqual(protocol.task_fingerprint(task), original)
+            outside.unlink()
+            source.write_text("rule = 2\n")
+            self.assertNotEqual(protocol.task_fingerprint(task), original)
+
     def test_responses_protocol_survives_private_config_and_evidence_summary(self):
         config = CONFIG.replace("          model: model-one\n",
                                 "          model: model-one\n          api_mode: responses\n")
@@ -127,6 +153,7 @@ class ProjectRunTest(unittest.TestCase):
             workspace = Path(tmp)
             agent_eval.prepare_workspace(task, workspace)
             before = grade.hash_tree(workspace)
+            checks = grade.expand_task_dir(task["checks"], task["dir"])
             selected = {}
             for path in (workspace / "records").glob("*.json"):
                 value = json.loads(path.read_text())
@@ -136,10 +163,16 @@ class ProjectRunTest(unittest.TestCase):
             answer = {"ready": all(x["status"] == "accepted" for x in selected.values()),
                       "total_passed_tests": sum(x["passed_tests"] for x in selected.values()), "components": selected}
             (workspace / "decision.json").write_text(json.dumps(answer))
-            self.assertTrue(all(c["ok"] for c in grade.run_checks(task["checks"], workspace, "", [], before)))
+            self.assertTrue(all(c["ok"] for c in grade.run_checks(checks, workspace, "", [], before)))
+            array_answer = {**answer, "components": [dict(entry, component=name) for name, entry in selected.items()]}
+            (workspace / "decision.json").write_text(json.dumps(array_answer))
+            self.assertTrue(all(c["ok"] for c in grade.run_checks(checks, workspace, "", [], before)))
+            array_answer["components"][0]["status"] = "pending"
+            (workspace / "decision.json").write_text(json.dumps(array_answer))
+            self.assertFalse(all(c["ok"] for c in grade.run_checks(checks, workspace, "", [], before)))
             answer["total_passed_tests"] += 10
             (workspace / "decision.json").write_text(json.dumps(answer))
-            self.assertFalse(all(c["ok"] for c in grade.run_checks(task["checks"], workspace, "", [], before)))
+            self.assertFalse(all(c["ok"] for c in grade.run_checks(checks, workspace, "", [], before)))
 
     def test_nuwa_run_uses_project_api_and_actual_thread_model_before_turn(self):
         calls = []

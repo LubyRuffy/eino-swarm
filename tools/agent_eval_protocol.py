@@ -100,7 +100,11 @@ def file_digest(path: Path) -> str:
 
 
 def task_fingerprint(task: dict) -> str:
-    return digest({"files": grade.hash_tree(task["dir"]), "prompt": task["prompt"],
+    # Generated Python bytecode is not task source. Fixture/workspace hashes
+    # still use the complete hash_tree; all other task files remain guarded.
+    files = {name: sha for name, sha in grade.hash_tree(task["dir"]).items()
+             if not (Path(name).parent.name == "__pycache__" and Path(name).suffix == ".pyc")}
+    return digest({"files": files, "prompt": task["prompt"],
                    "timeout_s": task["timeout_s"], "project_prompt": task.get("project_prompt", "")})
 
 

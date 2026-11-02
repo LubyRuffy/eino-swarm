@@ -4,6 +4,9 @@ These opt-in evaluations measure task outcomes. They do not presume that more
 workers, Nuwa mode or mixed models are better. They are separate from offline
 tests and do not establish CyberGym performance.
 
+The [2026-11-02 generic observation](RESULTS.md) records one completed cohort,
+its raw and corrected grading, actual model routing and measurement limits.
+
 `tools/agent_eval.py` accepts `--project-mode default|nuwa`, `--planner-ref` and
 `--executor-ref`. These CLI choices use the existing provider ChoiceID, with a
 tab between provider ID and model name. Model names may contain slashes; never
@@ -49,8 +52,9 @@ The actual run freezes its own receipt. Do not run paid evaluations merely to
 validate this harness; use its offline tests or `--mock` for that purpose.
 
 The three example arms separate current behavior, the Nuwa framework change,
-and an offered mixed-model configuration. All arms have the same tools,
-configured model directory, per-task deadline, output cap and review allowance.
+and an offered mixed-model configuration. All arms share the base tool
+configuration, configured model directory, per-task deadline, output cap and
+review allowance. Nuwa adds its mode-specific collaboration and model tools.
 Each execution owns a fresh engine, private data and workspace. Initial fixture
 hashes, task hashes, budget and pair identity are saved. Scheduling uses a seeded
 random task-block order and rotates arm order across repeats. It runs serially
@@ -80,6 +84,18 @@ redaction. The ordinary runner does not automatically place live model traffic
 through it. A gateway unit test is not an observation of production billing.
 Mock reports explicitly identify their responses and usage as scripted and
 cannot support model capability or token-saving claims.
+
+Task fingerprints ignore only generated `__pycache__/*.pyc` files. All
+other task sources remain guarded; initial fixture and workspace byte hashes
+continue to include every regular file. This avoids an ordinary Python grader
+import invalidating its own task for the next sample.
+
+The record-reconciliation task accepts a component map or an array with unique
+component names, as its prompt permits. A semantic command derives every
+required revision/status/evidence, total and readiness value from the trusted
+fixture; all four original source-record byte guards remain binding. A grading
+correction applied to past evidence must be uniform across all arms/repeats and
+retain raw scores, identities, timings and usage separately.
 
 ## External benchmark adapter boundary
 

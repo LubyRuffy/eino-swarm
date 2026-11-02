@@ -24,7 +24,7 @@ conversations. A revision is a snapshot invalidation, never a transcript seq.
 ```bash
 go test -race -timeout 25m . -run 'Test(SelectedHTTPWorkerModel|WorkerCanDelegate|ParkedHTTPWorker|Delegation|Tagged|WorkerConfiguration)'
 go test -race -timeout 25m ./internal/store ./internal/engine ./internal/server -run TestNuwa
-python3 -m unittest tools.test_agent_eval tools.test_agent_eval_limits tools.test_agent_eval_compare tools.test_agent_eval_prereview tools.test_agent_eval_nuwa tools.test_agent_eval_pair tools.test_agent_eval_proxy
+python3 -m unittest tools.test_agent_eval tools.test_agent_eval_limits tools.test_agent_eval_compare tools.test_agent_eval_prereview tools.test_agent_eval_nuwa tools.test_agent_eval_pair tools.test_agent_eval_proxy tools.test_agent_eval_reconcile
 ```
 
 Frontend coverage includes project create/edit, mode-off historical visibility,
@@ -49,6 +49,15 @@ labels. Actual routing, no delegation, failed attempts and missing usage remain
 observations; unknown usage cannot establish token savings. Fast failures do
 not become successful speedups. Mock comparisons are explicitly marked
 synthetic and do not export real token/time improvements.
+
+Task fingerprints exclude only generated `__pycache__/*.pyc`; the ordinary
+fixture/workspace hashing remains unchanged. `test_agent_eval_nuwa.py` verifies
+that caches do not invalidate a task while other files still do. Its real
+command-grader regression and `test_agent_eval_reconcile.py` accept a component
+map or unique-component array, reject incorrect current-record semantics and
+retain all four source-record byte guards. The [generic model observation](../evals/nuwa/RESULTS.md)
+keeps raw and uniformly corrected task scores separate; controller recovery did
+not repeat completed model requests.
 
 The ordinary development `--mock` smoke completed default and Nuwa project API
 lifecycles without harness errors and with owned engines gone. Both scripted

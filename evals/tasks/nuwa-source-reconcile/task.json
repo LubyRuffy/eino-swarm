@@ -5,12 +5,7 @@
   "expect_delegation": "optional",
   "timeout_s": 600,
   "checks": [
-    {"name": "release readiness", "type": "json_equals", "path": "decision.json", "pointer": "/ready", "value": true},
-    {"name": "current tests only", "type": "json_equals", "path": "decision.json", "pointer": "/total_passed_tests", "value": 76},
-    {"name": "engine revision", "type": "json_equals", "path": "decision.json", "pointer": "/components/engine/revision", "value": 4},
-    {"name": "renderer revision", "type": "json_equals", "path": "decision.json", "pointer": "/components/renderer/revision", "value": 7},
-    {"name": "phone current revision", "type": "json_equals", "path": "decision.json", "pointer": "/components/phone/revision", "value": 3},
-    {"name": "phone acceptance evidence", "type": "json_equals", "path": "decision.json", "pointer": "/components/phone/evidence", "value": "records/phone-current.json"},
+    {"name": "prompt-consistent current-record semantics", "type": "command", "argv": ["python3", "{task_dir}/check_decision.py", "--fixture", "{task_dir}/fixture"], "timeout_s": 10},
     {"name": "engine evidence unchanged", "type": "file_unchanged", "path": "records/engine.json"},
     {"name": "renderer evidence unchanged", "type": "file_unchanged", "path": "records/renderer.json"},
     {"name": "old phone evidence unchanged", "type": "file_unchanged", "path": "records/phone-old.json"},
