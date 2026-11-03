@@ -112,7 +112,7 @@ func validateNuwaNode(node *NuwaNode) error {
 	return nil
 }
 
-func validateNuwaOwner(tx *gorm.DB, node NuwaNode) error {
+func validateNuwaOwner(tx *gorm.DB, node NuwaNode, checkRecordedProject bool) error {
 	var thread Thread
 	if err := tx.Select("id", "project_id").First(&thread, "id = ?", node.ThreadID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -124,7 +124,7 @@ func validateNuwaOwner(tx *gorm.DB, node NuwaNode) error {
 		return invalidNuwa("source thread belongs to another project")
 	}
 	var turn Turn
-	if err := tx.Select("id", "thread_id", "status").First(&turn, "id = ?", node.TurnID).Error; err != nil {
+	if err := tx.Select("id", "project_id", "thread_id", "status").First(&turn, "id = ?", node.TurnID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return invalidNuwa("source turn does not exist")
 		}
@@ -132,6 +132,9 @@ func validateNuwaOwner(tx *gorm.DB, node NuwaNode) error {
 	}
 	if turn.ThreadID != node.ThreadID || turn.Status == TurnCancelled {
 		return invalidNuwa("source turn has another owner or was cancelled")
+	}
+	if checkRecordedProject && turn.ProjectID != node.ProjectID {
+		return invalidNuwa("source turn belongs to another project")
 	}
 	return nil
 }
@@ -255,7 +258,7 @@ func (s *Store) UpsertNuwaNode(ctx context.Context, node *NuwaNode, expectedVers
 		return invalidNuwa("write receipt requires both key and hash")
 	}
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := validateNuwaOwner(tx, candidate); err != nil {
+		if err := validateNuwaOwner(tx, candidate, false); err != nil {
 			return err
 		}
 		if receipt.Key != "" {
@@ -363,9 +366,24 @@ func (s *Store) BumpNuwaRevision(ctx context.Context, projectID string) error {
 // NuwaSnapshot reads the project revision and its nodes from one read snapshot.
 // Deleted prerequisite and evidence IDs remain explicit and unavailable.
 func (s *Store) NuwaSnapshot(ctx context.Context, projectID string) (int64, []NuwaNode, error) {
+	return s.nuwaSnapshot(ctx, projectID, nil)
+}
+
+// NuwaSnapshotForTurn checks the caller's current project membership in the
+// same snapshot used for the shared records.
+func (s *Store) NuwaSnapshotForTurn(ctx context.Context, projectID, threadID, turnID string) (int64, []NuwaNode, error) {
+	return s.nuwaSnapshot(ctx, projectID, &NuwaNode{ProjectID: projectID, ThreadID: threadID, TurnID: turnID})
+}
+
+func (s *Store) nuwaSnapshot(ctx context.Context, projectID string, owner *NuwaNode) (int64, []NuwaNode, error) {
 	var project Project
 	nodes := []NuwaNode{}
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if owner != nil {
+			if err := validateNuwaOwner(tx, *owner, true); err != nil {
+				return err
+			}
+		}
 		if err := tx.First(&project, "id = ?", projectID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrNotFound

@@ -941,6 +941,8 @@ export const en = {
   "nuwa.loading": "Loading shared work…",
   "nuwa.empty": "Shared work will appear here as agents record tasks, facts, and results.",
   "nuwa.threadEmpty": "No shared work from this conversation yet.",
+  "nuwa.lastTurn": "Latest turn in this conversation",
+  "nuwa.turnTrace": "Open turn Trace",
   "nuwa.retry": "Retry",
   "nuwa.refresh": "Refresh shared work",
   "nuwa.connected": "Live",

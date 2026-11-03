@@ -20,9 +20,21 @@ func (rt *runtime) claimRegistry(ctx context.Context, turn *store.Turn, cancel c
 	if err := context.Cause(ctx); err != nil {
 		return nil, false, err
 	}
+	// Move uses the same runtime lock. Even a fresh or untagged Registry
+	// cannot start from a thread snapshot captured before a completed move.
+	thread, err := rt.engine.store.GetThreadContext(ctx, rt.threadID)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := validateTurnProjectOwner(turn, thread); err != nil {
+		return nil, false, err
+	}
 	reg := rt.parked
 	reused := reg != nil
 	if reused {
+		if err := rt.validateParkedWorkerProjectOwners(ctx, turn); err != nil {
+			return nil, false, err
+		}
 		if err := rt.engine.recordHistoryRegistryInheritance(ctx, rt.threadID, turn.ID, rt.turnID); err != nil {
 			return nil, false, err
 		}

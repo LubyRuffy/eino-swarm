@@ -95,6 +95,7 @@ export function RightPanel({
   }, [traceFocus.request, traceFocus.turnId])
   const [width, setWidth] = useState(352)
   const showNuwa = Boolean(nuwaProject && (nuwaProject.nuwa_enabled || (nuwaProject.nuwa_revision ?? 0) > 0))
+  const latestTurn = transcript.turns.at(-1) ?? turns.at(-1)
   const [rosterSort, setRosterSort] = useState<AgentRosterSort>(defaultAgentRosterSort)
   return (
     <aside
@@ -150,7 +151,23 @@ export function RightPanel({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {showNuwa && nuwaProject ? <TabsContent value="nuwa" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card"><NuwaPanel project={nuwaProject} threadId={threadId} onSelectAgent={(id) => { onSelectAgent(id); onTabChange("agents") }} /></TabsContent> : null}
+          {showNuwa && nuwaProject ? (
+            <TabsContent value="nuwa" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
+              <NuwaPanel
+                project={nuwaProject}
+                threadId={threadId}
+                activity={threadId && latestTurn ? {
+                  id: latestTurn.id,
+                  status: latestTurn.status,
+                  onOpenFiles: () => onTabChange("files"),
+                } : undefined}
+                onSelectAgent={(id) => {
+                  onSelectAgent(id)
+                  onTabChange("agents")
+                }}
+              />
+            </TabsContent>
+          ) : null}
           <TabsContent
             value="agents"
             className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card"

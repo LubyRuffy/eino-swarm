@@ -31,10 +31,13 @@ func (rt *runtime) prepareLeftoverWorkers(ctx context.Context, turn *store.Turn,
 			return nil, err
 		}
 	}
-	if err := rt.engine.validateRestoredWorkerProjectOwners(ctx, turn.ThreadID, snapshot.running); err != nil {
+	finished, err := rt.engine.restorableWorkerArchive(ctx, turn.ThreadID, snapshot.running, snapshot.finished)
+	if err != nil {
 		return nil, err
 	}
-	owners, err := leftoverWorkerOwners(snapshot)
+	owned := *snapshot
+	owned.finished = finished
+	owners, err := leftoverWorkerOwners(&owned)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +50,7 @@ func (rt *runtime) prepareLeftoverWorkers(ctx context.Context, turn *store.Turn,
 			return nil, err
 		}
 	}
-	return &leftoverWorkerPlan{running: snapshot.running, finished: snapshot.finished}, nil
+	return &leftoverWorkerPlan{running: snapshot.running, finished: finished}, nil
 }
 
 // A checkpoint owns exactly the worker state it captured. A later actual spawn

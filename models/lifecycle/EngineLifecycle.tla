@@ -31,6 +31,7 @@ CONSTANTS
     ParkedNotCheckpointed,  \* handoff checkpoints running managers only
     IdleCountsOnlyManagers, \* idle load ignores parked workers, restoration and handoff
     ParkedAdmissionNonAtomic, \* choose/take drops the parked runtime before successor occupancy
+    ParkedOwnerCheckedLate, \* attach retained workers before validating their project
     RestoreOwnerCheckedLate, \* occupy before checking a tagged worker's project
     MaxTurns
 
@@ -110,26 +111,30 @@ StartTurn ==
 
 (* A retained Registry changes manager turns without losing its runtime.  *)
 (* The host holds rt.mu across choosing it, recording its real owner edge, *)
-(* and claiming the successor. The fixed edge write is represented only by *)
-(* success/refusal here: this model does not prove SQLite atomicity.        *)
+(* and claiming the successor. Move uses the same runtime lock, so        *)
+(* ownerMatches represents ownership at the claim boundary. The separate  *)
+(* ProjectMoveAdmission.tla refinement checks interleaved Move, lookup,    *)
+(* and explicit goal resume receipt without multiplying this state space. *)
+(* This model does not prove SQLite atomicity.                             *)
 CanStartParkedSuccessor ==
     /\ launcher = "opened" /\ hold
     /\ eng[target] = "serving" /\ ~stopping[target]
     /\ owner = target /\ work = "parked" /\ ~gate
     /\ checkpoint = "none" /\ turns < MaxTurns
 
-StartParkedSuccessor ==
+StartParkedSuccessor(ownerMatches) ==
     /\ ~ParkedAdmissionNonAtomic /\ CanStartParkedSuccessor
+    /\ ownerMatches \/ ParkedOwnerCheckedLate
     /\ work' = "running" /\ owner' = target
     /\ stopped' = FALSE /\ stopAcked' = FALSE /\ turns' = turns + 1
-    /\ successor' = "admitted"
+    /\ successor' = IF ownerMatches THEN "admitted" ELSE "foreign_claimed"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
                    checkpoint, restorePhase, snapshot, gate>>
 
-(* A failed lineage write leaves the original parked work and owner intact. *)
-RefuseParkedSuccessor ==
+(* A foreign owner or failed lineage write leaves the original work intact. *)
+RefuseParkedSuccessor(ownerMatches) ==
     /\ CanStartParkedSuccessor
-    /\ successor' = "refused"
+    /\ successor' = IF ownerMatches THEN "refused" ELSE "owner_refused"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
                    work, owner, checkpoint, restorePhase, snapshot, stopped,
                    stopAcked, gate, turns>>
@@ -366,7 +371,8 @@ IdleExit(e) ==
 -----------------------------------------------------------------------------
 
 Next ==
-    \/ StartTurn \/ StartParkedSuccessor \/ RefuseParkedSuccessor \/ DetachParkedSuccessor
+    \/ StartTurn \/ DetachParkedSuccessor
+    \/ \E ownerMatches \in BOOLEAN : StartParkedSuccessor(ownerMatches) \/ RefuseParkedSuccessor(ownerMatches)
     \/ BeginFinish \/ EndFinish \/ WorkerDone
     \/ StopLive \/ StopBeforeRestore
     \/ BeginHandoff \/ Freeze \/ Ack \/ OldAlreadyGone \/ HandoffTimesOut
@@ -399,7 +405,7 @@ TypeOK ==
     /\ stopAcked \in BOOLEAN
     /\ gate \in BOOLEAN
     /\ turns \in 0..MaxTurns
-    /\ successor \in {"none", "refused", "admitted", "detached"}
+    /\ successor \in {"none", "refused", "admitted", "detached", "owner_refused", "foreign_claimed"}
 
 (* A manager, a finalization or a parked worker never outlives its process. *)
 WorkHasLiveOwner == work # "none" => Alive(owner)
@@ -417,6 +423,7 @@ StopIsFinal == stopAcked => work = "none"
 RegistryAlwaysAccounted == successor = "detached" => work # "none"
 
 RestoreOwnsProject == restorePhase # "foreign_claimed"
+ParkedSuccessorOwnsProject == successor # "foreign_claimed"
 
 (* A window the shell opened has an engine behind it until the window closes. *)
 WindowHasEngine == launcher = "opened" => Alive(target)
@@ -431,6 +438,7 @@ NeverParkedCheckpoint == ~(checkpoint = "parked")
 NeverRefusedForeignRuntime == restorePhase # "owner_refused"
 NeverParkedSuccessor == ~(successor = "admitted" /\ work = "running" /\ turns > 0)
 NeverRefusedParkedSuccessor == ~(successor = "refused" /\ work = "parked")
+NeverRefusedForeignParkedSuccessor == ~(successor = "owner_refused" /\ work = "parked")
 NeverStopBeforeRestore == ~(stopAcked /\ checkpoint # "none")
 NeverOpenedAfterDeadline == ~(deadline /\ launcher = "opened" /\ eng["new"] = "serving")
 NeverIdleExitAfterClose == ~(launcher = "closed" /\ eng[target] = "exited")

@@ -108,7 +108,13 @@ func (e *Engine) nuwaWorkTools(projectID, workspace string, turn *store.Turn, re
 	read := &nuwaTool{name: "read_work", description: "Read this project's shared task/fact/artifact index. With id, read one complete node and its provenance. Otherwise receive bounded summaries; use offset to page. Reports remain claims; inspect original evidence before relying on them.",
 		params: map[string]*schema.ParameterInfo{
 			"id": {Type: schema.String}, "kind": {Type: schema.String}, "offset": {Type: schema.Integer}, "limit": {Type: schema.Integer},
-		}, run: func(ctx context.Context, args string) (string, error) { return e.readNuwaWork(ctx, projectID, args) }}
+		}, run: func(ctx context.Context, args string) (string, error) {
+			owner, ok := ctx.Value(historyReadOwnerKey{}).(historyReadOwner)
+			if !ok || turn == nil || owner.ThreadID != turn.ThreadID || owner.TurnID != turn.ID {
+				return "", fmt.Errorf("shared read has no matching trusted turn owner")
+			}
+			return e.readNuwaWork(ctx, projectID, args)
+		}}
 	if readOnly {
 		return []tool.BaseTool{read}
 	}
@@ -245,7 +251,14 @@ func (e *Engine) readNuwaWork(ctx context.Context, projectID, args string) (stri
 	if input.Offset < 0 || input.Limit < 0 {
 		return "", fmt.Errorf("offset and limit must be nonnegative")
 	}
-	revision, nodes, err := e.store.NuwaSnapshot(ctx, projectID)
+	var revision int64
+	var nodes []store.NuwaNode
+	var err error
+	if owner, ok := ctx.Value(historyReadOwnerKey{}).(historyReadOwner); ok {
+		revision, nodes, err = e.store.NuwaSnapshotForTurn(ctx, projectID, owner.ThreadID, owner.TurnID)
+	} else {
+		revision, nodes, err = e.store.NuwaSnapshot(ctx, projectID)
+	}
 	if err != nil {
 		return "", err
 	}

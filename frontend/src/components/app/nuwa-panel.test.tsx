@@ -36,6 +36,28 @@ beforeEach(() => {
 })
 
 describe("Nuwa shared work", () => {
+  it("keeps a direct turn visible when the collaboration graph is empty", async () => {
+    vi.mocked(nuwaAPI.snapshot).mockResolvedValue({ ...snapshot, nodes: [], workers: [] })
+    const onOpenFiles = vi.fn()
+    const props = { project, threadId: "a", onSelectAgent: vi.fn() }
+    const activity = { id: "direct-turn", status: "running", onOpenFiles }
+    const { rerender } = render(<NuwaPanel {...props} activity={activity} />)
+    await screen.findByText("Shared work will appear here as agents record tasks, facts, and results.")
+    const section = screen.getByRole("region", { name: "Latest turn in this conversation" })
+    expect(within(section).getByRole("status")).toHaveTextContent("Running")
+    expect(screen.queryByRole("region", { name: "Shared work dependency graph" })).toBeNull()
+
+    rerender(<NuwaPanel {...props} activity={{ ...activity, status: "cancelled" }} />)
+    expect(within(section).getByRole("status")).toHaveTextContent("Stopped")
+    fireEvent.click(within(section).getByRole("button", { name: "Files" }))
+    expect(onOpenFiles).toHaveBeenCalledOnce()
+    fireEvent.click(within(section).getByRole("button", { name: "Open turn Trace" }))
+    await waitFor(() => expect(useTraceFocus.getState().turnId).toBe(activity.id))
+
+    rerender(<NuwaPanel {...props} threadId="b" />)
+    expect(screen.queryByRole("region", { name: "Latest turn in this conversation" })).toBeNull()
+  })
+
   it("shows reported facts separately from completed work and opens source evidence on demand", async () => {
     render(<NuwaPanel project={project} threadId="a" onSelectAgent={vi.fn()} />)
     const graph = await screen.findByRole("region", { name: "Shared work dependency graph" })

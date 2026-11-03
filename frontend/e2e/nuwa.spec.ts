@@ -14,6 +14,41 @@ async function createThread(request: APIRequestContext, project: string, title: 
   return (await response.json()).thread.id as string
 }
 
+async function configureNuwaFixture(request: APIRequestContext, url: string) {
+  const { settings } = await (await request.get("/api/settings")).json()
+  expect(
+    (
+      await request.put("/api/settings", {
+        data: {
+          models: {
+            default: "nuwa-fixture",
+            providers: [
+              {
+                id: "nuwa-fixture",
+                label: "Offline shared-work fixture",
+                base_url: url,
+                model: "nuwa-fixture",
+                api_key: "",
+                context_window: 128000,
+              },
+              {
+                id: "nuwa-worker-endpoint",
+                label: "Independent worker fixture",
+                base_url: url,
+                model: "nuwa-worker",
+                api_key: "",
+                context_window: 128000,
+              },
+            ],
+          },
+          swarm: { ...settings.swarm, auto_title: false, composer_predictions: false },
+          memory: { ...settings.memory, auto_review: false },
+        },
+      })
+    ).ok()
+  ).toBe(true)
+}
+
 test("Nuwa creation shares live evidence paths and preserves them after disabling", async ({
   page,
   request,
@@ -23,38 +58,7 @@ test("Nuwa creation shares live evidence paths and preserves them after disablin
   const projectName = `Shared work ${Date.now()}`
   let firstThread = ""
   try {
-    const { settings } = await (await request.get("/api/settings")).json()
-    expect(
-      (
-        await request.put("/api/settings", {
-          data: {
-            models: {
-              default: "nuwa-fixture",
-              providers: [
-                {
-                  id: "nuwa-fixture",
-                  label: "Offline shared-work fixture",
-                  base_url: fixture.url,
-                  model: "nuwa-fixture",
-                  api_key: "",
-                  context_window: 128000,
-                },
-                {
-                  id: "nuwa-worker-endpoint",
-                  label: "Independent worker fixture",
-                  base_url: fixture.url,
-                  model: "nuwa-worker",
-                  api_key: "",
-                  context_window: 128000,
-                },
-              ],
-            },
-            swarm: { ...settings.swarm, auto_title: false, composer_predictions: false },
-            memory: { ...settings.memory, auto_review: false },
-          },
-        })
-      ).ok()
-    ).toBe(true)
+    await configureNuwaFixture(request, fixture.url)
     await page.goto("/")
     await page.getByRole("button", { name: "New project", exact: true }).click()
     await page.getByLabel("Name", { exact: true }).fill(projectName)
@@ -238,6 +242,51 @@ test("Nuwa creation shares live evidence paths and preserves them after disablin
     fixture.releaseTask()
     if (firstThread)
       await request.post(`/api/threads/${firstThread}/interrupt`).catch(() => undefined)
+    await fixture.close()
+  }
+})
+
+
+test("a direct Nuwa turn stays visible when it records no shared work", async ({ page, request }, info) => {
+  test.skip(process.env.ZWAI_E2E_NUWA !== "1", "requires the real keyless Nuwa model fixture")
+  const fixture = await startNuwaFixture("direct")
+  const projectName = `Direct work ${Date.now()}`
+  let thread = ""
+  try {
+    await configureNuwaFixture(request, fixture.url)
+    await page.goto("/")
+    await page.getByRole("button", { name: "New project", exact: true }).click()
+    await page.getByLabel("Name", { exact: true }).fill(projectName)
+    await page.getByRole("switch", { name: "Nuwa collaboration", exact: true }).click()
+    await page.getByRole("button", { name: "Create project", exact: true }).click()
+    await page.getByRole("button", { name: `New conversation in ${projectName}`, exact: true }).click()
+    thread = (await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute("data-id")) ?? ""
+    expect(thread).not.toBe("")
+    await page.getByRole("tab", { name: "Collaboration", exact: true }).click()
+
+    const started = await request.post(`/api/threads/${thread}/turns`, {
+      data: { text: "Complete the task and save its result." },
+    })
+    expect(started.status()).toBe(202)
+    const { turn } = await started.json()
+    const activity = page.getByRole("region", { name: "Latest turn in this conversation" })
+    await expect(activity.getByRole("status")).toHaveText("Running")
+    await expect(page.getByRole("region", { name: "Shared work dependency graph" })).toHaveCount(0)
+    fixture.releaseTask()
+    await expect(activity.getByRole("status")).toHaveText("Done")
+    await writeFile(info.outputPath("nuwa-direct-turn.png"), await page.screenshot({ animations: "disabled" }), { mode: 0o600 })
+
+    await activity.getByRole("button", { name: "Open turn Trace" }).click()
+    await expect(page.getByRole("tab", { name: "Trace", exact: true })).toHaveAttribute("data-state", "active")
+    await expect(page.getByRole("tabpanel")).toContainText(turn.id)
+    await page.getByRole("tab", { name: "Collaboration", exact: true }).click()
+    await activity.getByRole("button", { name: "Files", exact: true }).click()
+    await expect(page.getByTestId("file-tree")).toContainText("direct-result.txt")
+    expect(fixture.workerModels).toEqual([])
+    expect(fixture.errors).toEqual([])
+  } finally {
+    fixture.releaseTask()
+    if (thread) await request.post(`/api/threads/${thread}/interrupt`).catch(() => undefined)
     await fixture.close()
   }
 })

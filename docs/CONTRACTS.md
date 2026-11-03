@@ -25,7 +25,10 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 生命周期：后代共享 Registry 并发、冻结、Stop 和收取规则；worker 只控制自身后代。parent 在同一身份中不变，关闭子树保留各实际 generation 与 already_finished。过期 generation、已关闭 parent、跨子树目标及恢复环拒绝。role 是全局身份，不因层级制造分身。
 - 模式与工具：变更从后续 turn 生效，当前／停泊 worker 保留 WorkerConfig；checkpoint 保留 ConfigTag、DelegationEnabled、ParentID、ModelBinding 与收取状态。host tag 绑定原 turn，恢复验证 conversation/project，并按已存 Nuwa／planning／Web 模式重建工具表，不执行模型配置或序列化任意 Go 工具／凭据。失效 tag／资源在 claim／resume 前拒绝；旧 untagged／unbound 保留兼容路径。规划不挂 `record_work`。
 - 工具范围。Nuwa 通过 `list_worker_tools` 返回调用者当前可选的 workspace 工具。`spawn_agent.tool_names` 可在新角色选择其中的名称，省略时继承可用范围，空数组移除可选 workspace 工具。生命周期和共享工作工具按当前模式挂载。未知、重复、非法选择或与同角色原范围冲突时，在派工或入队前拒绝。选择随 spawn 事件和 checkpoint 持久化，恢复时所选工具缺失会在 claim 前拒绝。旧记录保留原恢复路径。
-- 项目归属迁移：Store 打开时只把旧进程未写入的 SQL NULL 回填为当时会话的项目，显式空字符串仍表示无项目。历史归属没有记录时，无法识别回填前的迁移。带 tag 的可恢复 worker 与 Nuwa turn 共用归属比较。发现冲突时保留 checkpoint，显式继续目标在新建 turn 前拒绝，修复归属后可继续。
+- 项目归属迁移：Store 打开时只把旧进程未写入的 SQL NULL 回填为当时会话的项目，显式空字符串仍表示无项目。历史归属没有记录时，无法识别回填前的迁移。带 tag 的 worker 在冷恢复和活跃 Registry 接管前都检查原 turn 与当前项目归属。发现冲突时保留原 Registry 或 checkpoint，显式继续目标在新建 turn 前拒绝，用户仍可 Stop 或修复归属后继续。
+- 会话移动和 Registry 接管按同一会话排序。接管前核对 turn 捕获的项目归属，移动先完成时拒绝旧快照。显式继续目标的归属预检、恢复记录和后继 turn 准入也与移动按同一会话排序。
+- 共享读：实际工具读取以可信原 turn 的当前项目归属为准，归属检查与共享节点读取使用同一事务快照。已移动会话的旧 worker 不能新读原项目的共享记录。
+- 冷恢复包含未收取的已完成结果。其原项目不匹配时拒绝加载；已收取或明确丢弃的旧项目结果继续保存在原历史，但不进入目的项目的新 Registry。
 - 共享写：必须来自受信 project/thread/turn/agent/generation 的实际工具调用，参数不能伪造作者。correction 保留原 author 并记录实际更新者。patch 仅改显式字段，省略 evidence/dependencies 保留，空数组清除。CAS、项目 revision 和完整版本审计原子提交；通过当前归属和输入有效性检查后，同 tool-call 身份与参数重送返回冻结回执，不重建节点、覆盖更新版本或增加 revision；幂等不绕过取消、删除归属／目标或成果文件有效性检查，异参复用身份冲突。取消、删除归属及存储失败不发布假回执。
 - 证据与依赖：事件必须存在且同项目，给定 turn 必须匹配；artifact 发布时须工作区内已有普通文件。引用存在不证明语义支持、内容不可变或业务完成，空证据不当作验证。依赖须同项目且无环，记录所依赖版本；纠正／superseded／retracted 后标 stale，普通 patch 不确认新源，须重读并显式更新 depends_on。删除的引用保留 unavailable 提示。
 - `record_work.own_tool_call_ids` 可引用当前 manager turn 或同一 worker 执行中已落库的工具回执。接管通知的轮次变化不改变活跃 worker 的执行范围，证据指向实际记录结果的轮次。恢复后新调用使用新范围，历史回执仍可按显式 `evidence` 引用。同一已提交请求重送返回原回执。最多 16 个 ID，每个须有唯一且有序的调用与结果。缺失、未落库、重复或越界时整笔拒绝。两个证据字段互斥，省略两者保留原引用，空数组清除。

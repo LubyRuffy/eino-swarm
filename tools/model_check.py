@@ -5,6 +5,7 @@
 
 Each model under models/ states one protocol: models/lifecycle/EngineLifecycle.tla
 (C-027 handoff, Stop, parked workers, C-001 idle exit and shell presence),
+models/lifecycle/ProjectMoveAdmission.tla (C-037 live project ownership),
 models/stream/EventStream.tla (C-003 stored order, slow readers, catch-up,
 rewind and restart), and models/scheduling/ScheduleAuthorization.tla (C-009 /
 C-012 human cancellation, durable waiting authority and manager mutations).
@@ -64,10 +65,16 @@ MODELS = {
             "lifecycle", ROOT / "models" / "lifecycle" / "EngineLifecycle.tla",
             ("DeadlineKillsChild", "RestoreBeforeListen", "StopRacesRestore", "PresenceAfterWindow",
              "IdleCommitNonAtomic", "FinishUngated", "ParkedNotCheckpointed", "IdleCountsOnlyManagers",
-             "ParkedAdmissionNonAtomic", "RestoreOwnerCheckedLate"),
+             "ParkedAdmissionNonAtomic", "ParkedOwnerCheckedLate", "RestoreOwnerCheckedLate"),
             ("TypeOK", "WorkHasLiveOwner", "CheckpointHasOwner", "StopIsFinal", "WindowHasEngine",
-             "RegistryAlwaysAccounted", "RestoreOwnsProject"),
+             "RegistryAlwaysAccounted", "RestoreOwnsProject", "ParkedSuccessorOwnsProject"),
             (("MaxTurns", 2),),
+        ),
+        Model(
+            "project-move", ROOT / "models" / "lifecycle" / "ProjectMoveAdmission.tla",
+            ("UnorderedClaim", "UnorderedGoal"),
+            ("TypeOK", "ClaimOwnsProject", "ResumeReceiptOwnsProject", "RefusalKeepsParked"),
+            (),
         ),
         Model(
             "stream", ROOT / "models" / "stream" / "EventStream.tla",
@@ -196,16 +203,31 @@ CASES: tuple[Case, ...] = (
     _case("parked-successor-detached", "seeded split choose/take then occupy: retained workers "
           "temporarily disappear from the runtime before successor admission",
           ("ParkedAdmissionNonAtomic",), "RegistryAlwaysAccounted"),
+    _case("parked-owner-checked-late", "same runtime accepts a successor from another project",
+          ("ParkedOwnerCheckedLate",), "ParkedSuccessorOwnsProject"),
     # Witnesses: the scenarios behind the invariants are reachable.
     _case("reach-restored-window", "witness", witness="NeverRestoredIntoWindow"),
     _case("reach-parked-checkpoint", "witness", witness="NeverParkedCheckpoint"),
     _case("reach-parked-successor", "witness", witness="NeverParkedSuccessor"),
     _case("reach-refused-parked-successor", "witness", witness="NeverRefusedParkedSuccessor"),
+    _case("reach-refused-foreign-parked-successor", "witness", witness="NeverRefusedForeignParkedSuccessor"),
     _case("reach-stop-before-restore", "witness", witness="NeverStopBeforeRestore"),
     _case("reach-opened-after-deadline", "witness", witness="NeverOpenedAfterDeadline"),
     _case("reach-idle-exit-after-close", "witness", witness="NeverIdleExitAfterClose"),
     _case("reach-relaunch-after-idle-commit", "witness", witness="NeverRelaunchAfterIdleCommit"),
     _case("reach-finish-waits-for-handoff", "witness", witness="NeverFinishWaitsForHandoff"),
+    # C-037 refinement: a saved project read is not an owner claim.
+    _case("project-move-current", "serialize Move with claim and explicit goal resume", model="project-move"),
+    _case("project-move-stale-claim", "Move commits after tagged owner lookup, before Registry occupation",
+          ("UnorderedClaim",), "ClaimOwnsProject", model="project-move"),
+    _case("project-move-false-goal-resume", "Move commits after goal preflight, before its durable receipt",
+          ("UnorderedGoal",), "ResumeReceiptOwnsProject", model="project-move"),
+    *(_case(name, "witness", witness=witness, model="project-move") for name, witness in (
+        ("project-move-reach-wake", "NeverWakeClaim"),
+        ("project-move-reach-goal", "NeverGoalClaim"),
+        ("project-move-reach-refusal", "NeverMoveBeforeRefusal"),
+        ("project-move-reach-after-claim", "NeverMoveAfterClaim"),
+    )),
     # C-003 event stream.
     _stream("stream-current", "current design: every switch off"),
     _stream("stream-v0.1.45-lost-marker", "historical, shipped through v0.1.45: the rewind marker was "

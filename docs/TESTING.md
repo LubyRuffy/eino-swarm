@@ -6,6 +6,9 @@ The mode is captured per turn. Test changes across a parked Registry and cold
 recovery, not only project JSON. Existing workers must retain their original
 configuration tag, delegation mode, model binding and trusted owner; bad tags,
 model selection conflicts and old generations must refuse before side effects.
+The Nuwa browser suite also drives a direct turn that records no graph nodes
+through the real model adapter and verifies its live status, exact Trace and
+workspace result file in the Collaboration panel.
 `worker_config_test.go`, `model_binding_http_test.go` and
 `delegation_http_test.go` cover the library/actual HTTP model boundaries.
 `internal/engine/nuwa_collection_replay_test.go` covers descendant collection,
@@ -21,6 +24,11 @@ legacy Nuwa planning and refusal before occupying the runtime after a recorded
 owner change. `internal/engine/goal_worker_project_test.go` exercises repeated
 Continue refusals, followed by recovery and collection of the same worker
 generation after its project is corrected.
+`live_nuwa_project_owner_test.go` and `fresh_project_move_claim_test.go` place
+a real project move at the admission boundary for a retained Registry,
+explicit goal continuation and a fresh turn. They check model requests and
+durable receipts. `ProjectMoveAdmission.tla` checks both orderings and retains
+counterexamples for a stale Registry claim and a false goal-resume receipt.
 
 `internal/store/nuwa_test.go` exercises CAS races, full correction provenance,
 atomic rollback, duplicate real-call receipts, owner deletion/cancellation,

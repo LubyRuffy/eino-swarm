@@ -47,6 +47,31 @@ func (r *Registry) WorkerConfiguration() WorkerConfig {
 	return cloneWorkerConfig(WorkerConfig{ModelBuilder: r.ModelBuilder, SelectWorkerModel: r.SelectWorkerModel, RestoreWorkerModel: r.RestoreWorkerModel, EnableDelegation: r.EnableDelegation, SubAgentTools: r.SubAgentTools, SelectableToolNames: r.SelectableToolNames, WorkerPreamble: r.WorkerPreamble, ToolOutputBinder: r.ToolOutputBinder, WorkerContextValues: r.WorkerContextValues})
 }
 
+// RetainedWorkerConfigTags returns the distinct host tags of addressable
+// workers, including finished workers that can still be collected or resumed.
+func (r *Registry) RetainedWorkerConfigTags() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	tags := map[string]bool{}
+	for _, workers := range []map[string]*Handle{r.agents, r.pending} {
+		for _, worker := range workers {
+			worker.mu.Lock()
+			tags[worker.configTag] = true
+			worker.mu.Unlock()
+		}
+	}
+	for _, worker := range r.past {
+		tags[worker.checkpoint.ConfigTag] = true
+	}
+	delete(tags, "")
+	out := make([]string, 0, len(tags))
+	for tag := range tags {
+		out = append(out, tag)
+	}
+	slices.Sort(out)
+	return out
+}
+
 // ConfigureWorkers atomically replaces the surface for new manager-dispatched
 // workers without changing already-running or archived worker generations.
 func (r *Registry) ConfigureWorkers(config WorkerConfig) {

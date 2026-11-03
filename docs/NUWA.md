@@ -12,6 +12,20 @@ Settings. An instruction can explain how to use them; it cannot connect an
 absent service, grant permission or supply missing data. The workspace remains
 an anchor with the agent's normal access.
 
+Enable the mode, enter your instruction and open a conversation in the project.
+This starter prompt leaves the plan and delegation decisions to the agent.
+
+```text
+Achieve [objective] using [available inputs].
+Respect [constraints]. The result is acceptable when [observable checks pass].
+Decide from the available evidence whether to work directly or delegate.
+For shared findings and results, record their sources and artifact paths.
+```
+
+During the turn, open **Collaboration**. Use **Expand graph** when work has
+been recorded, then select a node and open **Details and evidence** to inspect
+its sources.
+
 ## Planning, models and delegation
 
 The conversation model remains the manager. Nuwa managers and workers receive
@@ -61,6 +75,10 @@ paths remain visible. Select a node for detail, sources and correction identity,
 or expand the dependency graph. Worker rows show durable lifecycle status and
 recorded model bindings. Source links open the source conversation and, when a
 turn is given, its Trace; results use the existing file API.
+
+When the selected scope has no shared records or workers, Collaboration shows
+the open conversation's latest turn status and links to its Trace and Files.
+A turn can complete directly without recording a graph.
 
 | kind | status | meaning |
 |---|---|---|
@@ -141,13 +159,22 @@ are not serialized; current resources must still be available. Bad tags or
 unavailable bindings refuse before claiming/resuming a worker, with no silent
 model fallback. Legacy untagged/unbound records keep their compatibility path.
 
+If a conversation move completes before a new turn claims its Registry, the
+turn must use the destination project. An in-flight admission with an older
+project snapshot refuses and can be retried from the destination.
+
 Startup materializes legacy turn owners using the
 [turn ownership migration](DATA_MODEL.md#turns--one-request-and-everything-done-to-answer-it).
 Tagged workers and Nuwa turns still refuse recovery after a recorded project
 change, including moving a turn's standalone conversation into a project.
-When a runnable worker's saved owner conflicts with current membership, goal
-Continue preserves the checkpoint and returns the conflict before opening a
-new turn. Once ownership matches again, Continue can recover that worker.
+The same check applies before a new manager can adopt a parked worker. A
+worker's shared reads also check its original turn against current project
+membership. When a saved owner conflicts, goal Continue returns the conflict
+before opening a new turn. Existing workers and checkpoints remain available
+for Stop or for recovery after moving the conversation back.
+Cold recovery also keeps an uncollected result with its original project.
+Previously collected or discarded results remain in history and are omitted
+from a fresh Registry in the destination project.
 
 Stop, collection, generation identity and uncertain external effects retain
 their existing contracts. A shared report is not new human authorization.

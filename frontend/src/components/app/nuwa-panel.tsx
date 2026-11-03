@@ -23,10 +23,12 @@ import { NuwaStatus, NuwaStale, nuwaKind } from "./nuwa-status"
 export function NuwaPanel({
   project,
   threadId,
+  activity,
   onSelectAgent,
 }: {
   project: Project
   threadId?: string
+  activity?: { id: string; status: string; onOpenFiles: () => void }
   onSelectAgent: (id: string) => void
 }) {
   const t = useT()
@@ -49,7 +51,7 @@ export function NuwaPanel({
     (worker) => scope !== "thread" || worker.thread_id === threadId
   )
 
-  const openSource = async (source: NuwaEvidence) => {
+  const openSource = async (source: Pick<NuwaEvidence, "thread_id" | "turn_id">) => {
     if (!source.thread_id) return
     if (useApp.getState().activeId !== source.thread_id)
       await useApp.getState().openThread(source.thread_id)
@@ -163,9 +165,29 @@ export function NuwaPanel({
               onExpand={() => setGraphOpen(true)}
             />
           ) : (
-            <p className="py-6 text-center text-xs text-muted-foreground">
-              {t(scope === "thread" ? "nuwa.threadEmpty" : "nuwa.empty")}
-            </p>
+            <>
+              <p className="py-6 text-center text-xs text-muted-foreground">
+                {t(scope === "thread" ? "nuwa.threadEmpty" : "nuwa.empty")}
+              </p>
+              {threadId && activity && !workers.length ? (
+                <section aria-label={t("nuwa.lastTurn")} className="rounded-md border border-border p-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium">{t("nuwa.lastTurn")}</span>
+                    <span role="status">
+                      <NuwaStatus status={activity.status === "error" ? "failed" : activity.status} />
+                    </span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => void openSource({ thread_id: threadId, turn_id: activity.id })}>
+                      {t("nuwa.turnTrace")}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={activity.onOpenFiles}>
+                      {t("panel.files")}
+                    </Button>
+                  </div>
+                </section>
+              ) : null}
+            </>
           )}
           {detail ? (
             <NodeDetail

@@ -12,6 +12,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   limit. Download can be requested while loading and starts when the same
   transfer finishes. (`F-224`, `C-020`)
 
+- Nuwa's Collaboration panel shows the current conversation's latest turn and
+  links to its Trace and files when no shared work or workers are in view. (`F-136`)
+
+- Moving a conversation no longer lets a subsequent turn collect retained
+  workers from its former project or lets those workers read its shared work.
+  Moving the conversation back preserves the original worker generations. (`C-037`)
+
 - Nuwa can select the workspace tools needed for a new worker. The worker
   retains the selection when continued or restored. (`F-136`, `C-037`)
 

@@ -39,18 +39,51 @@ func (e *Engine) workerConfigurationOwner(ctx context.Context, threadID, tag str
 	return turn, thread, nil
 }
 
-// Validate runnable tags before admitting a registry so a refusal leaves all
-// saved workers available for recovery once the owner is corrected.
-func (e *Engine) validateRestoredWorkerProjectOwners(ctx context.Context, threadID string, workers []swarm.RestoredWorker) error {
-	checked := map[string]bool{}
-	for _, worker := range workers {
-		if worker.ConfigTag == "" || checked[worker.ConfigTag] {
-			continue
+// Validate runnable work and uncollected results before installing a fresh
+// Registry. A settled archive from another project stays in durable history.
+func (e *Engine) restorableWorkerArchive(ctx context.Context, threadID string, running []swarm.RestoredWorker, finished []swarm.FinishedWorker) ([]swarm.FinishedWorker, error) {
+	checked := map[string]error{}
+	check := func(tag string) error {
+		if tag == "" {
+			return nil
 		}
-		if _, _, err := e.workerConfigurationOwner(ctx, threadID, worker.ConfigTag); err != nil {
-			return fmt.Errorf("restore worker configuration: %w", err)
+		if err, found := checked[tag]; found {
+			return err
 		}
-		checked[worker.ConfigTag] = true
+		_, _, err := e.workerConfigurationOwner(ctx, threadID, tag)
+		checked[tag] = err
+		return err
+	}
+	for _, worker := range running {
+		if err := check(worker.ConfigTag); err != nil {
+			return nil, fmt.Errorf("restore worker configuration: %w", err)
+		}
+	}
+	archive := make([]swarm.FinishedWorker, 0, len(finished))
+	for _, worker := range finished {
+		if err := check(worker.ConfigTag); err != nil {
+			settled := worker.Collected || worker.CloseRequested || worker.Generation <= 0
+			if settled && errors.Is(err, errTurnProjectOwnerChanged) {
+				continue
+			}
+			return nil, fmt.Errorf("restore worker configuration: %w", err)
+		}
+		archive = append(archive, worker)
+	}
+	return archive, nil
+}
+
+// Caller holds rt.mu so an owner refusal leaves the original parked Registry
+// available for Stop or a later attempt after the conversation is moved back.
+func (rt *runtime) validateParkedWorkerProjectOwners(ctx context.Context, target *store.Turn) error {
+	for _, tag := range rt.parked.RetainedWorkerConfigTags() {
+		source, _, err := rt.engine.workerConfigurationOwner(ctx, rt.threadID, tag)
+		if err != nil {
+			return fmt.Errorf("adopt worker configuration: %w", err)
+		}
+		if target != nil && source.ProjectID != target.ProjectID {
+			return fmt.Errorf("adopt worker configuration: %w", errTurnProjectOwnerChanged)
+		}
 	}
 	return nil
 }

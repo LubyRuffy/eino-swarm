@@ -900,6 +900,8 @@ export const zh: { [K in keyof typeof en]: string } = {
   "nuwa.loading": "正在加载共享工作…",
   "nuwa.empty": "Agent 记录的任务、事实与成果将在这里实时呈现。",
   "nuwa.threadEmpty": "当前会话还没有共享工作。",
+  "nuwa.lastTurn": "当前会话最近一轮",
+  "nuwa.turnTrace": "查看本轮 Trace",
   "nuwa.retry": "重试",
   "nuwa.refresh": "刷新共享工作",
   "nuwa.connected": "实时",

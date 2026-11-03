@@ -106,7 +106,8 @@ func (e *Engine) resumeParkedThreadContext(ctx context.Context, th *store.Thread
 			return 0, nil
 		}
 	}
-	if err := e.validateRestoredWorkerProjectOwners(ctx, th.ID, running); err != nil {
+	finished, err = e.restorableWorkerArchive(ctx, th.ID, running, finished)
+	if err != nil {
 		return 0, err
 	}
 	reg, err := e.parkedRegistry(th, turn)

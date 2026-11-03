@@ -11,7 +11,7 @@ type NodeReceipt = { ok: boolean; node: { id: string; version: number } }
 
 /** Real model HTTP → Registry tool → durable project nodes → snapshot/SSE.
  * This is protocol evidence, not a measurement of autonomous model reasoning. */
-export async function startNuwaFixture() {
+export async function startNuwaFixture(mode?: "direct") {
   const errors: string[] = []
   const workerModels: string[] = []
   let taskNode: { id: string; version: number } | undefined
@@ -77,6 +77,20 @@ export async function startNuwaFixture() {
         }
         if (!input.tools?.some((tool) => tool.function.name === "record_work"))
           throw new Error("record_work absent at real model boundary")
+        if (mode === "direct") {
+          if (input.model !== "nuwa-fixture") throw new Error("Direct turn reached a worker model")
+          const written = input.messages.findLast(
+            (message) => message.role === "tool" && message.tool_call_id === "direct-write"
+          )
+          if (!written) {
+            call(response, input, "direct-write", { file_path: "direct-result.txt", content: "Completed.\n" }, "write")
+            return
+          }
+          if (!written.content?.startsWith("Updated file ")) throw new Error("Direct file was not written")
+          await taskGate
+          reply(response, input, { role: "assistant", content: "Direct turn completed." })
+          return
+        }
         const result = (id: string) => {
           const message = input.messages.findLast(
             (message) => message.role === "tool" && message.tool_call_id === id

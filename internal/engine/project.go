@@ -168,6 +168,11 @@ func (e *Engine) MoveThread(threadID, projectID string) error {
 			return err
 		}
 	}
+	rt := e.runtimeFor(threadID)
+	rt.projectMoveMu.Lock()
+	defer rt.projectMoveMu.Unlock()
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
 	return e.store.SetThreadProject(threadID, projectID)
 }
 

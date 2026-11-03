@@ -26,13 +26,16 @@ type runtime struct {
 	engine   *Engine
 	threadID string
 
-	mu        sync.Mutex
-	reg       *swarm.Registry
-	cancel    context.CancelFunc
-	turnID    string
-	startedAt time.Time
-	running   bool
-	idle      chan struct{} // closed when the current turn finishes
+	// Move and explicit goal resume must agree on ownership across the
+	// preflight, durable resume receipt and successor admission.
+	projectMoveMu sync.Mutex
+	mu            sync.Mutex
+	reg           *swarm.Registry
+	cancel        context.CancelFunc
+	turnID        string
+	startedAt     time.Time
+	running       bool
+	idle          chan struct{} // closed when the current turn finishes
 
 	wakePolicyCheck wakePolicyCheck
 	// Nonempty only during read-only admission, so a new steer can supersede
