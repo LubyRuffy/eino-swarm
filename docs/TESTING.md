@@ -3978,8 +3978,11 @@ and semantic responses are controlled fixtures, without a real model.
 
 Phone output verification (`F-224`, `C-020`): `go test -race ./internal/remote`
 checks bounded listing and content frames, traversal and symlink escape;
-`cd mobile && npm test -- --run src/lib/remote-files.test.ts` checks
-pagination, chunk assembly and safe HTML/SVG classification;
+`cd mobile && npm test -- --run src/lib/remote-files.test.ts src/lib/client.test.ts`
+checks pagination, chunk assembly, preview limits and safe HTML/SVG
+classification. The sealed `DeviceLink` tests cover progress across successive
+inactivity windows, the original reply arriving after a silent window, and
+cancellation discarding a late reply while the shared link stays open.
 `cd mobile && npx playwright test e2e/walkthrough.spec.ts -g 'a phone lists PC outputs'`
 opens the offline PC conversation, checks that Outputs starts at the first
 workspace level, opens one folder on tap and then previews its file.
@@ -7108,11 +7111,18 @@ large text and unchanged native save bytes after zoom. The Chromium and iPhone
 WebKit cases in `mobile/e2e/file-preview-controls.spec.ts` measure real paragraph,
 heading, table and code sizes, keep controls reachable after long-content
 scrolling, decode a 1200×800 PNG, scroll both image axes and compare downloaded
-source/image bytes. Browser results do not establish packaged native acceptance.
-For packaged controls, iOS uses
-`BindFlowTests/testPhoneOutputPreviewControls` in `mobile/e2e/ios-wait-layout.swift`
-with the preserved fresh bundle in the existing private layout fixture. Android
-uses `FilePreviewControlsTest#nativeFilePreviewControlsResizeTextAndImages` on an
+source/image bytes. The large PNG case observes byte progress before decoding,
+queues the download before decoding, then verifies decoded dimensions, MIME
+and the original downloaded bytes for a file larger than 8 MiB. Packaged native acceptance is separate.
+For packaged iOS coverage, `mobile/e2e/ios-wait-layout.swift` uses
+`BindFlowTests/testPhoneOutputPreviewControls` for preview controls and
+`BindFlowTests/testPhoneLargeImageShowsProgressThenDecodes` for the large PNG.
+The latter observes two increasing byte checkpoints, taps Download during
+the read and verifies the system export picker opens when the file completes.
+Cancelling the picker returns to the decoded image with zoom and Download
+available. Both use the preserved fresh bundle in the private layout fixture. For the large PNG, prepare the
+fixture with `IOS_LAYOUT_QUERY='/?mock=1&tick=0&file-preview=large-image&file-preview-delay=8000'`.
+Android uses `FilePreviewControlsTest#nativeFilePreviewControlsResizeTextAndImages` on an
 isolated emulator; native taps/swipes drive the page and read-only DOM samples
 record real font sizes, image dimensions and scroll positions. Retain screenshots,
 AX trees, exact web/app/test-package identity and owned-device cleanup receipts.

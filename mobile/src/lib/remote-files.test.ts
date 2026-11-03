@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 
 import type { RemoteLink } from "./link"
-import { listWorkspaceFiles, previewKind, readWorkspaceFile } from "./remote-files"
+import { listWorkspaceFiles, maxInlinePreviewBytes, maxPhoneFileBytes, previewKind, readWorkspaceFile } from "./remote-files"
 import type { RemoteResponse } from "./rpc"
 
 function link(responses: Partial<RemoteResponse>[]) {
@@ -30,13 +30,26 @@ describe("phone workspace files", () => {
     expect(new TextDecoder().decode(got.bytes)).toBe("abcde")
     expect(remote.rpc).toHaveBeenNthCalledWith(2, {
       op: "file_chunk", thread_id: "t1", file_path: "a.txt", before: 3,
-    })
+    }, undefined)
     const stalled = link([{ file_chunk: { path: "a.txt", name: "a.txt", size: 2, mime: "text/plain",
       offset: 0, next_offset: 0, data: "", more: true } }])
     await expect(readWorkspaceFile(stalled, "t1", "a.txt")).rejects.toThrow(/no progress/)
     const huge = link([{ file_chunk: { path: "a.txt", name: "a.txt", size: 33 * 1024 * 1024,
       mime: "text/plain", offset: 0, next_offset: 0, data: "", more: true } }])
-    await expect(readWorkspaceFile(huge, "t1", "a.txt")).rejects.toThrow(/changed/)
+    await expect(readWorkspaceFile(huge, "t1", "a.txt")).rejects.toMatchObject({ code: "file_too_large" })
+  })
+
+  it.each(["image/png", "image/jpeg", "image/gif", "image/webp"])(
+    "previews %s up to the phone transfer limit", (mime) => {
+      expect(previewKind("image", mime, maxPhoneFileBytes)).toBe("image")
+      expect(previewKind("image", mime, maxPhoneFileBytes + 1)).toBe("download")
+    },
+  )
+
+  it("keeps large documents and SVG outside inline preview", () => {
+    expect(previewKind("notes.md", "text/markdown", maxInlinePreviewBytes + 1)).toBe("download")
+    expect(previewKind("image.svg", "image/svg+xml", maxInlinePreviewBytes + 1)).toBe("download")
+    expect(previewKind("report.pdf", "application/pdf", maxInlinePreviewBytes + 1)).toBe("download")
   })
 
   it("never renders agent HTML or SVG as same-origin markup", () => {

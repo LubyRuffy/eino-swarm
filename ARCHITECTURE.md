@@ -689,7 +689,13 @@ provider ID from the latest configuration, so an unrelated desktop edit cannot
 replay stale values over a phone timeout save. Other section replacement rules
 remain unchanged.
 
-Phone output downloads reuse the bounded `file_chunk` bytes. The web client
+Phone output previews assemble sequential, validated `file_chunk` replies.
+The preview reports cumulative bytes against the reply's file size. Each
+request has a fresh inactivity window. Silence changes the preview to a
+waiting state, while its pending RPC stays registered on the shared link
+until a reply, connection loss or preview cancellation.
+
+Phone output downloads reuse those bytes. The web client
 keeps its download link; the native `FileSave` bridge uses Android SAF or the
 iOS document export picker. Only a completed write/export acknowledges success;
 cancellation and failed writes return separately without changing the PC file.

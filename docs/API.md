@@ -1101,9 +1101,20 @@ file `size`, `offset`, `next_offset`, and `more` in slices no larger than
 36 KiB. An older PC that returns `unknown_op` shows an update-PC message in
 the phone file browser. The PC checks the thread and opens only a regular file beneath its
 workspace root, including symlink resolution; traversal and escaped symlinks
-fail. The phone limits assembled reads to 32 MiB, inline previews to 8 MiB,
-and renders HTML in a sandboxed artifact without same-origin access. CSV/TSV render as tables. DOCX, XLSX, PPTX and EPUB render saved package content without macros, formula execution or external links. SVG stays source text. Full Settings, PTY and Trace stay on the PC; paired phones also expose PC timeout controls. The
-phone composer can still attach a file or an image.
+fail. The phone limits assembled reads to 32 MiB. PNG, JPEG, GIF and WebP can
+be previewed up to that limit. Text, PDF, HTML, CSV/TSV, DOCX, XLSX, PPTX and
+EPUB previews are limited to 8 MiB. HTML renders in a sandboxed artifact
+without same-origin access. CSV/TSV render as tables. DOCX, XLSX, PPTX and
+EPUB render saved package content without macros, formula execution or
+external links. SVG stays source text.
+
+Progress uses validated byte offsets and the total size from `file_chunk`.
+Each subsequent request starts a fresh 15-second window. If it elapses, the
+phone shows a waiting state and continues to accept the original reply.
+Selecting Download while loading queues an export of the same read. Leaving
+the preview cancels the phone's read and any queued download.
+Full Settings, PTY and Trace stay on the PC. Paired phones also expose PC
+timeout controls. The phone composer can still attach a file or an image.
 
 ## Projects
 

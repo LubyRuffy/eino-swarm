@@ -624,6 +624,69 @@ final class BindFlowTests: XCTestCase {
     }
   }
 
+  func testPhoneLargeImageShowsProgressThenDecodes() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launch()
+    defer { app.terminate() }
+
+    let back = app.buttons["Back"].firstMatch
+    XCTAssertTrue(back.waitForExistence(timeout: 15))
+    back.tap()
+    let thread = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sweep the unused exports'")).firstMatch
+    XCTAssertTrue(thread.waitForExistence(timeout: 8))
+    thread.tap()
+    let outputs = app.buttons["Outputs"]
+    XCTAssertTrue(outputs.waitForExistence(timeout: 8))
+    outputs.tap()
+    let folder = app.buttons["outputs"]
+    XCTAssertTrue(folder.waitForExistence(timeout: 8))
+    folder.tap()
+    let name = "large-landscape.png"
+    let file = app.buttons[name]
+    XCTAssertTrue(file.waitForExistence(timeout: 8), "requires file-preview=large-image&file-preview-delay=8000")
+    file.tap()
+
+    let image = app.images[name]
+    let first = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "576.0 KB / 9.0 MB")).firstMatch
+    XCTAssertTrue(first.waitForExistence(timeout: 6), "show bytes received while a sealed-file read is in progress")
+    XCTAssertTrue(first.isHittable)
+    XCTAssertFalse(image.exists)
+    let download = app.buttons["Download"]
+    XCTAssertTrue(download.isHittable && download.isEnabled, "Download must be actionable while bytes are still arriving")
+    recordAgentPage(app, name: "large-image-first-progress")
+    download.tap()
+    let queued = app.staticTexts["The file will download when loading finishes."]
+    XCTAssertTrue(queued.waitForExistence(timeout: 5), "acknowledge the early download before the transfer completes")
+    let next = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "4.5 MB / 9.0 MB")).firstMatch
+    XCTAssertTrue(next.waitForExistence(timeout: 12), "advance the visible progress before all bytes arrive")
+    XCTAssertTrue(next.isHittable)
+    XCTAssertFalse(image.exists)
+    recordAgentPage(app, name: "large-image-advanced-progress")
+
+    let navigation = app.navigationBars["FullDocumentManagerViewControllerNavigationBar"]
+    let save = navigation.buttons["Save"]
+    XCTAssertTrue(save.waitForExistence(timeout: 20) && save.isHittable, "the early tap must open the system export once loading completes")
+    XCTAssertEqual(app.textFields["DOCPicker.filenameTextField"].value as? String, "large-landscape")
+    recordAgentPage(app, name: "large-image-queued-download-native-export")
+    let browse = navigation.buttons["BackButton"]
+    XCTAssertTrue(browse.isHittable)
+    browse.tap()
+    let cancel = navigation.buttons["Cancel"]
+    XCTAssertTrue(cancel.waitForExistence(timeout: 8) && cancel.isHittable)
+    cancel.tap()
+
+    XCTAssertTrue(image.waitForExistence(timeout: 8), "cancel must return to the same decoded image preview")
+    let zoom = app.buttons["Zoom in"]
+    let decoded = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in image.isHittable && zoom.isEnabled }, object: nil)
+    XCTAssertEqual(XCTWaiter.wait(for: [decoded], timeout: 8), .completed, "the native WebView must finish decoding before zoom is enabled")
+    XCTAssertGreaterThan(image.frame.width, 0)
+    XCTAssertFalse(next.exists)
+    XCTAssertFalse(app.staticTexts["File saved."].exists)
+    XCTAssertTrue(download.isEnabled, "the user can still download after cancelling the export")
+    recordAgentPage(app, name: "large-image-decoded")
+  }
+
   func testPhoneOutputPreview() throws {
     continueAfterFailure = false
     let app = XCUIApplication()

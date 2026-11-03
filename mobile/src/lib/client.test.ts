@@ -11,6 +11,7 @@ import {
   TICKET_PROTO,
   type PendingWait,
 } from "./client"
+import { readWorkspaceFile } from "./remote-files"
 import type { RemoteResponse } from "./rpc"
 import { generateIdentity, respond } from "./crypto"
 import { bytesToB64url, bytesToHex } from "./bytes"
@@ -131,7 +132,7 @@ describe("bindError", () => {
 })
 
 describe("deliverResponse", () => {
-  it("routes a matching id to the waiter and unmatched frames to onPush", () => {
+  it("routes a matching id to the waiter and only id-less frames to onPush", () => {
     const pending = new Map<string, PendingWait>()
     const waiter = vi.fn()
     const push = vi.fn()
@@ -307,6 +308,80 @@ describe("DeviceLink drop", () => {
     expect(resp?.ok).toBe(true)
     link.close()
     await expect(link.announceDevice("Phone 1.0 Device")).resolves.toBeUndefined()
+  })
+
+  it("extends a file read through validated progress and accepts the original reply after a silent interval", async () => {
+    const { link, sock, device, host, hostSess, sid } = await livePair({ rpcTimeoutMs: 15 })
+    vi.useFakeTimers()
+    const controller = new AbortController()
+    const onProgress = vi.fn()
+    const onSlow = vi.fn()
+    const onDisconnect = vi.fn()
+    link.onDisconnect = onDisconnect
+    const file = readWorkspaceFile(link, "thread", "photo.png", { signal: controller.signal, onProgress, onSlow })
+    const outcome = file.catch((err: unknown) => err)
+    const reply = async (offset: number) => {
+      const frame = unmarshalFrame(sock.sent.at(-1)!)
+      const request = JSON.parse(new TextDecoder().decode(hostSess.open(frame.payload)))
+      expect(request).toMatchObject({ op: "file_chunk", file_path: "photo.png", before: offset })
+      const result = { v: PROTOCOL_V, id: request.id, ok: true, file_chunk: {
+        path: "photo.png", name: "photo.png", offset, next_offset: offset + 1, size: 3,
+        data: btoa("abc"[offset]), mime: "image/png", more: offset < 2,
+      } }
+      sock.deliver(marshalFrame({ type: TYPE_DATA, dst: device.pub, src: host.pub, sessionID: sid,
+        payload: hostSess.seal(new TextEncoder().encode(JSON.stringify(result))),
+      }))
+      await vi.advanceTimersByTimeAsync(0)
+    }
+
+    try {
+      await vi.advanceTimersByTimeAsync(10)
+      await reply(0)
+      await vi.advanceTimersByTimeAsync(10)
+      await reply(1)
+      expect(onProgress.mock.calls).toEqual([[1, 3], [2, 3]])
+      expect(onSlow).not.toHaveBeenCalled()
+      const sent = sock.sent.length
+      await vi.advanceTimersByTimeAsync(30)
+      expect(onSlow).toHaveBeenCalledOnce()
+      expect(onDisconnect).not.toHaveBeenCalled()
+      expect(sock.sent).toHaveLength(sent)
+      expect(link.alive()).toBe(true)
+
+      await reply(2)
+      expect(await outcome).toEqual({ bytes: new Uint8Array([97, 98, 99]), mime: "image/png" })
+      expect(onProgress).toHaveBeenLastCalledWith(3, 3)
+    } finally {
+      controller.abort()
+      link.close()
+      vi.useRealTimers()
+    }
+  })
+
+  it("cancels a pending file reply without affecting the socket or delivering a late push", async () => {
+    const { link, sock, device, host, hostSess, sid } = await livePair()
+    const controller = new AbortController()
+    const onProgress = vi.fn()
+    const onSlow = vi.fn()
+    const push = vi.fn()
+    link.onPush = push
+    const file = readWorkspaceFile(link, "thread", "photo.png", { signal: controller.signal, onProgress, onSlow })
+    const frame = unmarshalFrame(sock.sent.at(-1)!)
+    const { id } = JSON.parse(new TextDecoder().decode(hostSess.open(frame.payload)))
+    const settled = expect(file).rejects.toMatchObject({ name: "AbortError" })
+    controller.abort()
+    try {
+      await settled
+      sock.deliver(marshalFrame({ type: TYPE_DATA, dst: device.pub, src: host.pub, sessionID: sid,
+        payload: hostSess.seal(new TextEncoder().encode(JSON.stringify({ v: PROTOCOL_V, id, ok: true }))),
+      }))
+      expect(push).not.toHaveBeenCalled()
+      expect(onProgress).not.toHaveBeenCalled()
+      expect(onSlow).not.toHaveBeenCalled()
+      expect(link.alive()).toBe(true)
+    } finally {
+      link.close()
+    }
   })
 
   it("treats a silent rpc timeout as a dropped socket", async () => {

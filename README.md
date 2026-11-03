@@ -846,6 +846,10 @@ For anonymous QR use and connection settings, retain the existing flow:
    images, PDFs, a sandboxed HTML artifact, or the saved content of DOCX,
    XLSX, PPTX and EPUB files. SVG stays source text. The HTML sandbox cannot
    use the app origin, and the download address is not loaded as a page.
+   Phone previews show the received bytes and percentage while reading.
+   Delays show a waiting message. PNG, JPEG, GIF and WebP can be previewed up
+   to 32 MiB. Selecting Download while loading uses the active transfer and
+   starts the download when all bytes arrive.
    Download in the Android/iOS app opens the system save/export picker and
    preserves the original file bytes; cancelling leaves the preview open, and
    failed saves can be retried. Browsers use their download link. Large files

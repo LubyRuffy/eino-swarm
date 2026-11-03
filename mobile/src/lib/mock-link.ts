@@ -1,4 +1,4 @@
-import { OUTPUT_FILES } from "./mock-files"
+import { mockFileChunk, mockOutputFiles } from "./mock-files"
 import { restartAskHistory } from "./mock-ask-restart"
 import { generationHistory } from "./mock-generation"
 import { backoffHistory } from "./mock-backoff"
@@ -748,6 +748,7 @@ export class MockLink {
 
   private closed = false
   private listed = false
+  private readonly outputFiles = mockOutputFiles()
   private watcher: Watcher | null = null
 
   constructor(private readonly host: MockHost = mockHost()) {}
@@ -818,19 +819,12 @@ export class MockLink {
         if (!thread()) return this.missing(id)
         return this.ok({ id, files: [
           { path: "outputs", name: "outputs", size: 0, dir: true, modified: "", uploaded: false },
-          ...Object.entries(OUTPUT_FILES).map(([path, file]) => ({ path, name: path.split("/").at(-1)!, size: file.bytes.length, dir: false, modified: "", uploaded: false })),
+          ...Object.entries(this.outputFiles).map(([path, file]) => ({ path, name: path.split("/").at(-1)!, size: file.bytes.length, dir: false, modified: "", uploaded: false })),
         ], more: false })
       case OpFileChunk: {
         if (!thread()) return this.missing(id)
-        const file = OUTPUT_FILES[req.file_path ?? ""]
-        if (!file) return this.missing(id)
-        const bytes = file.bytes
-        const offset = req.before ?? 0
-        const data = Array.from(bytes.slice(offset)).map((byte) => String.fromCharCode(byte)).join("")
-        return this.ok({ id, file_chunk: {
-          path: req.file_path!, name: req.file_path!.split("/").at(-1)!, size: bytes.length, mime: file.mime,
-          offset, next_offset: bytes.length, data: btoa(data), more: false,
-        } })
+        const file_chunk = await mockFileChunk(this.outputFiles, req.file_path ?? "", req.before ?? 0)
+        return file_chunk ? this.ok({ id, file_chunk }) : this.missing(id)
       }
       case OpRefreshCatalog: {
         const scenario = new URLSearchParams(location.search).get("catalog")

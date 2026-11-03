@@ -38,36 +38,40 @@ export async function readWorkspaceFile(
   link: RemoteLink,
   threadId: string,
   path: string,
-): Promise<{ bytes: Uint8Array; mime: string }> {
-  const parts: Uint8Array[] = []
+  options?: {
+    signal: AbortSignal
+    onProgress: (loaded: number, total: number) => void
+    onSlow: () => void
+  },
+): Promise<{ bytes: Uint8Array<ArrayBuffer>; mime: string }> {
+  const signal = options?.signal
+  const rpcOptions = options && { signal, onSlow: options.onSlow }
+  let assembled: Uint8Array<ArrayBuffer> | undefined
   let offset = 0
-  let size = -1
   let mime = "application/octet-stream"
   for (;;) {
-    const resp = await link.rpc({ op: OpFileChunk, thread_id: threadId, file_path: path, before: offset })
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError")
+    const resp = await link.rpc({ op: OpFileChunk, thread_id: threadId, file_path: path, before: offset }, rpcOptions)
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError")
     const chunk = resp.file_chunk
     if (!resp.ok || !chunk) throw new RemoteFileError(resp.code || "remote_error", resp.error || "file read failed")
-    if (chunk.path !== path || chunk.offset !== offset || chunk.size < 0 || chunk.size > maxPhoneFileBytes ||
-      (size >= 0 && chunk.size !== size)) throw new Error("file changed while reading")
+    if (chunk.path !== path || chunk.offset !== offset || !Number.isSafeInteger(chunk.size) || chunk.size < 0 ||
+      (assembled && (chunk.size !== assembled.length || chunk.mime !== mime))) throw new Error("file changed while reading")
+    if (chunk.size > maxPhoneFileBytes) throw new RemoteFileError("file_too_large", "file exceeds the phone read limit")
+    if (typeof chunk.data !== "string" || typeof chunk.mime !== "string") throw new Error("file chunk is incomplete")
     const bytes = base64Bytes(chunk.data)
     if (chunk.next_offset !== offset + bytes.length || chunk.next_offset > chunk.size ||
       chunk.more !== (chunk.next_offset < chunk.size)) throw new Error("file chunk is incomplete")
     if (chunk.more && bytes.length === 0) throw new Error("file chunk made no progress")
-    if (size < 0) {
-      size = chunk.size
+    if (!assembled) {
+      assembled = new Uint8Array(chunk.size)
       mime = chunk.mime
     }
-    parts.push(bytes)
+    assembled.set(bytes, offset)
     offset = chunk.next_offset
-    if (!chunk.more) break
+    options?.onProgress(offset, chunk.size)
+    if (!chunk.more) return { bytes: assembled, mime }
   }
-  const all = new Uint8Array(size)
-  let at = 0
-  for (const part of parts) {
-    all.set(part, at)
-    at += part.length
-  }
-  return { bytes: all, mime }
 }
 
 function base64Bytes(data: string): Uint8Array {
@@ -80,10 +84,12 @@ function base64Bytes(data: string): Uint8Array {
 export type PreviewKind = "text" | "image" | "pdf" | "download" | "document"
 
 export function previewKind(name: string, mime: string, size: number): PreviewKind {
-  if (size > maxInlinePreviewBytes) return "download"
-  if (documentFormat(name)) return "document"
+  if (documentFormat(name)) return size <= maxInlinePreviewBytes ? "document" : "download"
   const kind = mime.toLowerCase()
-  if (["image/png", "image/jpeg", "image/gif", "image/webp"].includes(kind)) return "image"
+  if (["image/png", "image/jpeg", "image/gif", "image/webp"].includes(kind)) {
+    return size <= maxPhoneFileBytes ? "image" : "download"
+  }
+  if (size > maxInlinePreviewBytes) return "download"
   if (kind === "application/pdf") return "pdf"
   if (kind.startsWith("text/") || ["application/json", "application/xml", "application/javascript"].includes(kind) ||
     /\.(md|markdown|mdx|csv|tsv|json|ya?ml|xml|svg|go|py|tsx?|jsx?|css|html?)$/i.test(name)) return "text"

@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises"
-import { expect, test, type Locator, type Page } from "@playwright/test"
+import { expect, test, type Download, type Locator, type Page } from "@playwright/test"
+import { largeLandscapePath, mockOutputFiles } from "../src/lib/mock-files"
 
-async function openOutput(page: Page, name: string) {
-  await page.goto("/?mock=1&tick=0")
+async function openOutput(page: Page, name: string, url = "/?mock=1&tick=0") {
+  await page.goto(url)
   await page.getByRole("button", { name: "产出物", exact: true }).click()
   await page.getByRole("button", { name: "outputs", exact: true }).click()
   await page.getByRole("button", { name, exact: true }).click()
@@ -142,4 +143,41 @@ test("decoded image zoom keeps every edge scrollable and downloading preserves i
   await expect(fit).toBeEnabled()
   await expect.poll(() => image.evaluate((element: HTMLImageElement) => [element.naturalWidth, element.naturalHeight])).toEqual([1200, 800])
   await expect(page.getByRole("button", { name: "适应窗口", exact: true })).toHaveAttribute("aria-pressed", "true")
+})
+
+test("large images show byte progress and let users request the original download early", async ({ page }, info) => {
+  const scenario = "?mock=1&tick=0&file-preview=large-image&file-preview-delay=2500"
+  const name = "large-landscape.png"
+  const fixture = mockOutputFiles(scenario)[largeLandscapePath].bytes
+  expect(fixture.length).toBeGreaterThan(8 * 1024 * 1024)
+  const preview = await openOutput(page, name, "/" + scenario)
+  const progress = preview.getByRole("progressbar", { name: "文件加载进度" })
+  await expect(progress).toBeVisible()
+  await expect(progress).toHaveAttribute("max", String(fixture.length))
+  await expect(progress).toHaveAttribute("value", String(16 * 36 * 1024))
+  const image = preview.getByRole("img", { name })
+  await expect(image).toHaveCount(0)
+  const download = preview.getByRole("button", { name: "下载", exact: true })
+  await expect(download).toBeVisible()
+  const downloads: Download[] = []
+  page.on("download", (event) => downloads.push(event))
+  await download.click()
+  await expect(preview.getByText("接收完成后将自动下载", { exact: true })).toBeVisible()
+  await expect(progress).toHaveAttribute("value", String(128 * 36 * 1024))
+  expect(downloads).toHaveLength(0)
+  await expect(preview.getByText("49% · 4.5 MB / 9.0 MB", { exact: true })).toBeVisible()
+  await page.screenshot({ path: info.outputPath("large-image-loading.png") })
+  await expect(progress).toHaveCount(0)
+  await expect(image).toBeVisible()
+  await expect.poll(() => image.evaluate((element: HTMLImageElement) => [element.naturalWidth, element.naturalHeight])).toEqual([1200, 800])
+  expect(await image.evaluate(async (element: HTMLImageElement) => (await fetch(element.src)).headers.get("content-type"))).toBe("image/png")
+  await expect(preview.getByRole("alert")).toHaveCount(0)
+  await expect(preview.getByRole("link", { name: "下载", exact: true })).toBeVisible()
+  await expect.poll(() => downloads.length).toBe(1)
+  const received = downloads[0]
+  expect(received.suggestedFilename()).toBe(name)
+  const path = await received.path()
+  expect(path).not.toBeNull()
+  expect((await readFile(path!)).equals(fixture)).toBe(true)
+  expect(downloads).toHaveLength(1)
 })

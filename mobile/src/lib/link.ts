@@ -1,4 +1,4 @@
-import { openSaved } from "./client"
+import { openSaved, type RPCOptions } from "./client"
 import { mockLink, wantsMock } from "./mock-link"
 import type { RemoteRequest, RemoteResponse } from "./rpc"
 import type { SavedLink } from "./store"
@@ -13,7 +13,7 @@ export type RemoteLink = {
   alive(): boolean
   rpc(
     req: Omit<RemoteRequest, "v" | "id"> & { id?: string },
-    opts?: { dropOnTimeout?: boolean; timeoutMs?: number },
+    opts?: RPCOptions,
   ): Promise<RemoteResponse>
   close(): void
   announceDevice(label?: string): Promise<RemoteResponse | undefined>

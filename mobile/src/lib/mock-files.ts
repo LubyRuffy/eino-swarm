@@ -1,3 +1,5 @@
+import type { FileChunk } from "./rpc"
+
 // The same decodable 1200×800 PNG used by the desktop file-preview E2E.
 // Keep this binary intact: a text encoder would corrupt the downloaded image.
 const landscapeBase64 = [
@@ -66,9 +68,49 @@ const inspection = [
 ].join("\n")
 const textFile = (text: string, mime: string) => ({ bytes: new TextEncoder().encode(text), mime })
 
-export const OUTPUT_FILES: Record<string, { bytes: Uint8Array; mime: string }> = {
+const outputFiles: Record<string, { bytes: Uint8Array; mime: string }> = {
   "outputs/report.md": textFile("# Verified output\n\n> A finding\n\n- First result\n", "text/markdown"),
   "outputs/sample.go": textFile('package main\n\nconst value = "hello"\n', "text/plain"),
   "outputs/inspection.md": textFile(inspection, "text/markdown"),
   "outputs/landscape.png": { bytes: landscapeBytes, mime: "image/png" },
+}
+
+const mockFileChunkBytes = 36 * 1024
+export const largeLandscapePath = "outputs/large-landscape.png"
+
+export function mockOutputFiles(search = location.search) {
+  if (new URLSearchParams(search).get("file-preview") !== "large-image") return outputFiles
+
+  // Insert a valid private ancillary PNG chunk before IEND. This crosses the
+  // old inline size limit without requiring a multi-megabyte checked-in file.
+  const padding = 9 * 1024 * 1024
+  const iend = landscapeBytes.length - 12
+  const bytes = new Uint8Array(landscapeBytes.length + padding + 12)
+  const view = new DataView(bytes.buffer)
+  bytes.set(landscapeBytes.subarray(0, iend))
+  view.setUint32(iend, padding)
+  bytes.set(new TextEncoder().encode("paDd"), iend + 4)
+  view.setUint32(iend + 8 + padding, 0x3a0d188b) // CRC32 of "paDd" and the zero-filled payload.
+  bytes.set(landscapeBytes.subarray(iend), iend + padding + 12)
+  return { ...outputFiles, [largeLandscapePath]: { bytes, mime: "image/png" } }
+}
+
+export async function mockFileChunk(
+  files: ReturnType<typeof mockOutputFiles>,
+  path: string,
+  offset: number,
+): Promise<FileChunk | undefined> {
+  const file = files[path]
+  if (!file) return undefined
+  if (path === largeLandscapePath && (offset === 16 * mockFileChunkBytes || offset === 128 * mockFileChunkBytes)) {
+    // Leave time to observe both intermediate progress values on real screens.
+    const delay = Number(new URLSearchParams(location.search).get("file-preview-delay")) || 1500
+    await new Promise((resolve) => setTimeout(resolve, delay))
+  }
+  const bytes = file.bytes.subarray(offset, offset + mockFileChunkBytes)
+  const next = offset + bytes.length
+  return {
+    path, name: path.split("/").at(-1)!, size: file.bytes.length, mime: file.mime,
+    offset, next_offset: next, data: btoa(String.fromCharCode(...bytes)), more: next < file.bytes.length,
+  }
 }

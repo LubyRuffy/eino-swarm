@@ -6,6 +6,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Phone workspace previews show received bytes and a percentage as files
+  load. Each new chunk renews the waiting window, and delays show a waiting
+  status. PNG, JPEG, GIF and WebP now preview up to the 32 MiB phone read
+  limit. Download can be requested while loading and starts when the same
+  transfer finishes. (`F-224`, `C-020`)
+
 - Nuwa can select the workspace tools needed for a new worker. The worker
   retains the selection when continued or restored. (`F-136`, `C-037`)
 

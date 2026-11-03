@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { FileBrowser } from "./file-browser"
 import type { RemoteLink } from "@/lib/link"
-import type { WorkspaceFile } from "@/lib/rpc"
+import type { RemoteResponse, WorkspaceFile } from "@/lib/rpc"
 import { t } from "@/lib/i18n"
 
 const nativeSave = vi.hoisted(() => ({ enabled: false, saveFile: vi.fn() }))
@@ -61,6 +61,36 @@ describe("phone file browser", () => {
     expect(await screen.findByText(t("files.saved"))).toHaveAttribute("role", "status")
   })
 
+  it("queues an early native download and exports the same read exactly once", async () => {
+    nativeSave.enabled = true
+    const file = { ...entry, path: "data.bin", name: "data.bin" }
+    const remote = link(false, [file])
+    const list = remote.rpc
+    let finish!: (result: RemoteResponse) => void
+    const read = vi.fn(() => new Promise<RemoteResponse>((resolve) => { finish = resolve }))
+    remote.rpc = (req) => req.op === "files" ? list(req) : read()
+    render(<FileBrowser link={remote} threadId="t1" onClose={vi.fn()} />)
+    fireEvent.click(await screen.findByRole("button", { name: file.name }))
+    const download = screen.getByRole("button", { name: t("files.download") })
+    fireEvent.click(download)
+    fireEvent.click(download)
+    expect(download).toBeDisabled()
+    expect(nativeSave.saveFile).not.toHaveBeenCalled()
+    expect(read).toHaveBeenCalledOnce()
+
+    const data = btoa(String.fromCharCode(0, 255, 128))
+    await act(async () => finish({ v: 1, id: "", ok: true, file_chunk: {
+      path: file.path, name: file.name, mime: "application/octet-stream", size: 3,
+      offset: 0, next_offset: 3, data, more: false,
+    } }))
+    expect(nativeSave.saveFile).toHaveBeenCalledOnce()
+    expect(nativeSave.saveFile).toHaveBeenCalledWith({
+      name: file.name, mime: "application/octet-stream", size: 3, data,
+    })
+    expect(read).toHaveBeenCalledOnce()
+    expect(await screen.findByText(t("files.saved"))).toBeInTheDocument()
+  })
+
   it("makes a native save refusal visible and keeps the preview available for retry", async () => {
     nativeSave.enabled = true
     nativeSave.saveFile.mockRejectedValueOnce(new Error("provider_refused"))
@@ -95,7 +125,8 @@ describe("phone file browser", () => {
     const file = { ...entry, path: "report.md", name: "report.md" }
     render(<FileBrowser link={link(false, [file], "# Report", "text/markdown")} threadId="t1" onClose={vi.fn()} />)
     fireEvent.click(await screen.findByRole("button", { name: file.name }))
-    const download = await screen.findByText("Download")
+    await screen.findByRole("heading", { name: "Report" })
+    const download = screen.getByRole("button", { name: "Download" })
     fireEvent.click(download)
     fireEvent.click(download)
     expect(nativeSave.saveFile).toHaveBeenCalledOnce()
@@ -195,6 +226,77 @@ describe("phone file browser", () => {
     expect(screen.getByRole("button", { name: "report.html" })).toBeInTheDocument()
     act(() => { expect(window.__zwaiAndroidBack?.()).toBe(true) })
     expect(close).toHaveBeenCalledOnce()
+  })
+
+  it("keeps confirmed progress while waiting, resumes on new data, and surfaces a definite host error", async () => {
+    // The listing is a snapshot. Use the first chunk's size for the live total.
+    const photo = { ...entry, path: "photo.png", name: "photo.png", size: 40 * 1024 * 1024 }
+    const reads: {
+      finish: (result: Partial<RemoteResponse>) => void
+      slow: () => void
+      signal: AbortSignal
+    }[] = []
+    const remote = link(false, [photo])
+    remote.rpc = (request, options) => {
+      if (request.op === "files") return Promise.resolve({ v: 1, id: "", ok: true, files: [photo] })
+      return new Promise((resolve) => {
+        reads.push({
+          finish: (result) => resolve({ v: 1, id: "", ok: true, ...result }),
+          slow: options!.onSlow!,
+          signal: options!.signal!,
+        })
+      })
+    }
+    const send = (offset: number) => reads[offset].finish({
+      file_chunk: { path: photo.path, name: photo.name, size: 3, mime: "image/png",
+        offset, next_offset: offset + 1, data: btoa("a"), more: true },
+    })
+
+    render(<FileBrowser link={remote} threadId="t1" onClose={vi.fn()} />)
+    fireEvent.click(await screen.findByRole("button", { name: photo.name }))
+    const progress = screen.getByRole("progressbar", { name: t("files.progressLabel") })
+    expect(progress).not.toHaveAttribute("value")
+    await act(async () => send(0))
+    expect(progress).toHaveAttribute("max", "3")
+    expect(progress).toHaveAttribute("value", "1")
+    act(() => reads[1].slow())
+    expect(screen.getByRole("status")).toHaveTextContent(t("files.waiting"))
+    expect(progress).toHaveAttribute("value", "1")
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+
+    await act(async () => send(1))
+    expect(screen.getByRole("status")).toHaveTextContent(t("files.loading"))
+    expect(progress).toHaveAttribute("value", "2")
+    await act(async () => reads[2].finish({ ok: false, code: "not_found", error: "file removed on PC" }))
+    expect(screen.getByRole("alert")).toHaveTextContent("file removed on PC")
+    expect(progress).not.toBeInTheDocument()
+  })
+
+  it("cancels a queued download and read when leaving the preview", async () => {
+    nativeSave.enabled = true
+    const remote = link(false, [entry])
+    const list = remote.rpc
+    let readSignal: AbortSignal | undefined
+    let finish!: (result: RemoteResponse) => void
+    const read = vi.fn(() => new Promise<RemoteResponse>((resolve) => { finish = resolve }))
+    remote.rpc = (req, options) => {
+      if (req.op === "files") return list(req)
+      readSignal = options?.signal
+      return read()
+    }
+    render(<FileBrowser link={remote} threadId="t1" onClose={vi.fn()} />)
+    fireEvent.click(await screen.findByRole("button", { name: entry.name }))
+    fireEvent.click(screen.getByRole("button", { name: t("files.download") }))
+    fireEvent.click(screen.getByRole("button", { name: t("files.backList") }))
+    expect(readSignal?.aborted).toBe(true)
+    await act(async () => finish({ v: 1, id: "", ok: true, file_chunk: {
+      path: entry.path, name: entry.name, mime: "text/html", size: 3,
+      offset: 0, next_offset: 1, data: btoa("a"), more: true,
+    } }))
+    expect(read).toHaveBeenCalledOnce()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(URL.createObjectURL).not.toHaveBeenCalled()
+    expect(nativeSave.saveFile).not.toHaveBeenCalled()
   })
 
   it("tells the user when a paired PC is too old for file browsing", async () => {

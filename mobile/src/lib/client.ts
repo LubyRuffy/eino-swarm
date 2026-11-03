@@ -130,6 +130,14 @@ export type PendingWait = {
   timer: number
 }
 
+export type RPCOptions = {
+  dropOnTimeout?: boolean
+  timeoutMs?: number
+  signal?: AbortSignal
+  /** Treat timeout as inactivity and keep listening for the original reply. */
+  onSlow?: () => void
+}
+
 export type DeviceLinkOpts = {
   keepAliveMs?: number
   rpcTimeoutMs?: number
@@ -350,16 +358,25 @@ export class DeviceLink {
 
   async rpc(
     partial: Omit<RemoteRequest, "v" | "id"> & { id?: string },
-    opts?: { dropOnTimeout?: boolean; timeoutMs?: number },
+    opts?: RPCOptions,
   ): Promise<RemoteResponse> {
+    const signal = opts?.signal
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError")
     if (!this.alive() || !this.sess || !this.ws) throw new LinkFault("offline", "network")
     const req: RemoteRequest = {
       v: PROTOCOL_V,
       id: partial.id ?? nextRPCId(),
       ...partial,
     }
+    const abort = () => {
+      this.clearWait(req.id)?.reject(new DOMException("Aborted", "AbortError"))
+    }
     const p = new Promise<RemoteResponse>((resolve, reject) => {
       const timer = window.setTimeout(() => {
+        if (opts?.onSlow) {
+          opts.onSlow()
+          return
+        }
         this.pending.delete(req.id)
         const err = new LinkFault("rpc timeout", "network")
         reject(err)
@@ -369,6 +386,7 @@ export class DeviceLink {
       }, opts?.timeoutMs ?? this.rpcTimeoutMs)
       this.pending.set(req.id, { resolve, reject, timer })
     })
+    signal?.addEventListener("abort", abort, { once: true })
     try {
       this.ws.send(
         marshalFrame({
@@ -380,11 +398,13 @@ export class DeviceLink {
         }),
       )
     } catch {
-      this.clearWait(req.id)
       this.drop(new LinkFault("offline", "network"))
-      throw new LinkFault("offline", "network")
     }
-    return p
+    try {
+      return await p
+    } finally {
+      signal?.removeEventListener("abort", abort)
+    }
   }
 
   close() {
@@ -454,6 +474,7 @@ export class DeviceLink {
     if (!wait) return
     window.clearTimeout(wait.timer)
     this.pending.delete(id)
+    return wait
   }
 
   private failPending(err: Error) {
@@ -479,7 +500,7 @@ export function deliverResponse(
     wait.resolve(resp)
     return
   }
-  onPush?.(resp)
+  if (!resp.id) onPush?.(resp)
 }
 
 function asBytes(data: unknown): Uint8Array {
