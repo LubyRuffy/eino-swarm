@@ -45,7 +45,7 @@ func (r *Registry) toolsWithWorkerConfig(config WorkerConfig) []tool.BaseTool {
 		&ctlTool{name: "resume_agent", desc: fmt.Sprintf("continue a finished or failed worker in place under the same agent_id, seeded with that worker's conversation. Use it when you mean one particular id, for instance one of several leftover workers that share a role. After three consecutive worker-watchdog timeouts, recovery stops the manager and requires an explicit human retry; changing role does not repair a stalled task. Returns the same agent_id. Do not spawn a replacement with the same role. Do not use this on a running agent — send_message instead. A missing agent_id or task, or a still-running target, returns {error}; it does not fail the turn. The concurrency cap is %d. If %d sub-agents are already running, returns {error} and does not queue this worker.", n, n), fn: r.resume},
 	}
 	if config.SelectableToolNames != nil {
-		tools = append(tools, &ctlTool{name: "list_worker_tools", desc: "List the selectable tools available to a new worker. Copy exact names into spawn_agent tool_names to narrow its configured tools.", fn: r.listWorkerTools})
+		tools = append(tools, &ctlTool{name: "list_worker_tools", desc: "List the selectable workspace tools available to a new worker. Copy exact names into spawn_agent tool_names. Put directions for using already mounted shared-work and lifecycle tools in task.", fn: r.listWorkerTools})
 	}
 	return tools
 }
@@ -111,7 +111,7 @@ func (t *ctlTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 		}
 		if t.toolSelection {
 			params["tool_names"] = &schema.ParameterInfo{Type: schema.Array, ElemInfo: &schema.ParameterInfo{Type: schema.String},
-				Desc: "Optional exact subset of names from list_worker_tools. An empty array removes all selectable tools. Omit to inherit the available tools or retain the existing worker selection."}
+				Desc: "Optional exact subset of workspace tool names from list_worker_tools. Put directions for using already mounted shared-work and lifecycle tools in task. An empty array removes all selectable tools. Omit to inherit the available tools or retain the existing worker selection."}
 		}
 	case "send_message":
 		params = map[string]*schema.ParameterInfo{

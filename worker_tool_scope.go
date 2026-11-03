@@ -89,9 +89,11 @@ func (c WorkerConfig) withWorkerToolSelection(ctx context.Context, names *[]stri
 		if i > 0 && selected[i-1] == name {
 			return c, fmt.Errorf("duplicate tool_names entry %q", name)
 		}
-		if !slices.Contains(c.SelectableToolNames, name) ||
-			!slices.ContainsFunc(named, func(entry namedWorkerTool) bool { return entry.option.Name == name }) {
+		if !slices.ContainsFunc(named, func(entry namedWorkerTool) bool { return entry.option.Name == name }) {
 			return c, fmt.Errorf("unknown or unavailable worker tool %q; use list_worker_tools", name)
+		}
+		if !slices.Contains(c.SelectableToolNames, name) {
+			return c, fmt.Errorf("worker tool %q is already available. Omit it from tool_names and keep instructions for using it in task", name)
 		}
 	}
 	filtered := make([]tool.BaseTool, 0, len(named))

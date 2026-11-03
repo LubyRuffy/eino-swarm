@@ -24,7 +24,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 资源边界：项目指令定义目标／约束／验收，模型动态选择角色、分工及已接入模型，不固化领域流程，也不凭提示词授予未接入能力或权限。exact model ref 只引用目录内选择，标签不证明能力。新 worker 可解析默认模型，同 ID steer／resume 保留实际 provider/model/reasoning binding；显式冲突在入队、generation 变化或请求前拒绝。恢复不静默改用新默认值，不存储凭据。
 - 生命周期：后代共享 Registry 并发、冻结、Stop 和收取规则；worker 只控制自身后代。parent 在同一身份中不变，关闭子树保留各实际 generation 与 already_finished。过期 generation、已关闭 parent、跨子树目标及恢复环拒绝。role 是全局身份，不因层级制造分身。
 - 模式与工具：变更从后续 turn 生效，当前／停泊 worker 保留 WorkerConfig；checkpoint 保留 ConfigTag、DelegationEnabled、ParentID、ModelBinding 与收取状态。host tag 绑定原 turn，恢复验证 conversation/project，并按已存 Nuwa／planning／Web 模式重建工具表，不执行模型配置或序列化任意 Go 工具／凭据。失效 tag／资源在 claim／resume 前拒绝；旧 untagged／unbound 保留兼容路径。规划不挂 `record_work`。
-- 工具范围。Nuwa 通过 `list_worker_tools` 返回调用者当前可选的 workspace 工具。`spawn_agent.tool_names` 可在新角色选择其中的名称，省略时继承可用范围，空数组移除可选 workspace 工具。生命周期和共享工作工具按当前模式挂载。未知、重复、非法选择或与同角色原范围冲突时，在派工或入队前拒绝。选择随 spawn 事件和 checkpoint 持久化，恢复时所选工具缺失会在 claim 前拒绝。旧记录保留原恢复路径。
+- 工具范围。Nuwa 通过 `list_worker_tools` 返回调用者当前可选的 workspace 工具。`spawn_agent.tool_names` 可在新角色选择其中的名称，省略时继承可用范围，空数组移除可选 workspace 工具。生命周期和共享工作工具按当前模式挂载。未知、重复、非法选择或与同角色原范围冲突时，在派工或入队前拒绝。选入已挂载的共享工作工具时，拒绝会提示代理从范围中移除该名称并保留任务中的使用说明。选择随 spawn 事件和 checkpoint 持久化，恢复时所选工具缺失会在 claim 前拒绝。旧记录保留原恢复路径。
 - 项目归属迁移：Store 打开时只把旧进程未写入的 SQL NULL 回填为当时会话的项目，显式空字符串仍表示无项目。历史归属没有记录时，无法识别回填前的迁移。带 tag 的 worker 在冷恢复和活跃 Registry 接管前都检查原 turn 与当前项目归属。发现冲突时保留原 Registry 或 checkpoint，显式继续目标在新建 turn 前拒绝，用户仍可 Stop 或修复归属后继续。
 - 会话移动和 Registry 接管按同一会话排序。接管前核对 turn 捕获的项目归属，移动先完成时拒绝旧快照。显式继续目标的归属预检、恢复记录和后继 turn 准入也与移动按同一会话排序。
 - 会话移动与两侧可见协作视图的 revision 和审计回执在同一事务提交。失败保留原归属和 revision，重复移动不增加 revision。旧项目保留共享记录，跨项目的来源链接实时变为 unavailable，移回后重新核验。

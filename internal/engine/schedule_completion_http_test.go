@@ -20,7 +20,13 @@ type scheduleCompletionRequest struct {
 	ToolChoice string            `json:"tool_choice"`
 	Messages   []*schema.Message `json:"messages"`
 	Tools      []struct {
-		Function struct{ Name string } `json:"function"`
+		Function struct {
+			Name        string
+			Description string
+			Parameters  struct {
+				Properties map[string]struct{ Description string }
+			}
+		} `json:"function"`
 	} `json:"tools"`
 }
 

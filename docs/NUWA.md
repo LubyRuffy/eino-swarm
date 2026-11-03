@@ -49,7 +49,10 @@ it can pass to a worker. For a new role, `spawn_agent` accepts an optional
 `tool_names` array of exact names. Omit the array to use the caller's available
 workspace tools, or pass `[]` to omit workspace tools for that worker. Worker
 lifecycle and shared-work tools remain available as allowed by the current mode.
-The project instruction can leave this decision to the agent.
+Put instructions for using those tools in the task. If a dispatch lists an
+already mounted shared-work tool in `tool_names`, the refusal explains how to
+correct the selection while retaining the task instructions. The project
+instruction can leave workspace tool selection to the agent.
 
 Unknown and repeated names, malformed selections and an explicit scope change
 for an existing role are refused before dispatch or steering. A descendant can

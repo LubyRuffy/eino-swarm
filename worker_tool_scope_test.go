@@ -54,7 +54,7 @@ func TestWorkerToolScopeRejectsBadArgumentsBeforeClaim(t *testing.T) {
 		{`["file_read",3]`, "tool_names"},
 		{`["File_read"]`, "unknown or unavailable"},
 		{`["file_read","file_read"]`, "duplicate"},
-		{`["board_note"]`, "unknown or unavailable"},
+		{`["board_note"]`, "already available"},
 		{`["wait_agents"]`, "unknown or unavailable"},
 	} {
 		out, err := spawn.InvokableRun(t.Context(), `{"role":"observer","task":"inspect","tool_names":`+tc.selection+`}`)

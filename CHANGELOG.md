@@ -6,6 +6,9 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Nuwa dispatch explains when a shared-work tool is already mounted so an agent can
+  correct its workspace tool selection and keep the task instructions. (`C-037`)
+
 - Phone workspace previews show received bytes and a percentage as files
   load. Each new chunk renews the waiting window, and delays show a waiting
   status. PNG, JPEG, GIF and WebP now preview up to the 32 MiB phone read
