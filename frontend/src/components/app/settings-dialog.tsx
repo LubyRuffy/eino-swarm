@@ -39,7 +39,7 @@ import { resolveProviderToolsDrafts, type ProviderToolsDrafts } from "@/lib/prov
 import type { Meta, Settings, ToolDescriptor } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useT, type Translate } from "@/lib/use-t"
-import type { Theme } from "@/store/app"
+import { useApp, type Theme } from "@/store/app"
 import { errorMessage, toastError, useToasts } from "@/store/toasts"
 
 /** Scrollport for the right-hand page.
@@ -134,6 +134,16 @@ function SettingsTitlebar() {
       <div className="min-w-0 flex-1 bg-background" />
     </div>
   )
+}
+
+function publishComposerPredictions(settings: Settings) {
+  const value = settings.swarm.composer_predictions
+  if (typeof value !== "boolean") return
+  const meta = useApp.getState().meta
+  if (!meta) return
+  useApp.setState({
+    meta: { ...meta, swarm: { ...meta.swarm, composer_predictions: value } },
+  })
 }
 
 export function SettingsDialog({
@@ -255,6 +265,7 @@ export function SettingsDialog({
     setToolsDrafts(toolsDraftsRef.current)
     const resolved = resolveProviderToolsDrafts(next, toolsDraftsRef.current)
     setSettings(resolved.settings)
+    publishComposerPredictions(resolved.settings)
     useToasts.getState().dismiss("settings:save")
     if (Object.keys(resolved.errors).length) persistRef.current?.dispose()
     else persistRef.current?.schedule(resolved.settings, localeRef.current)

@@ -155,6 +155,7 @@ export const en = {
 
   "composer.placeholder":
     "Describe what you want done. It will delegate as needed.",
+  "composer.predictionHint": "Press Tab to insert. Enter sends it.",
   "composer.placeholderRunning": "Working… Enter queues, ⌘Enter steers",
   "composer.placeholderGoal": "Standing objective for this conversation",
   "composer.placeholderPlan": "What should we plan?",
@@ -777,6 +778,9 @@ export const en = {
   "settings.swarm.autoTitle": "Name conversations automatically",
   "settings.swarm.autoTitleHint":
     "The first message is named once, as soon as it is sent. Off keeps that opening line. A name you type is never overwritten. Pin a different model under Models.",
+  "settings.swarm.predictions": "Suggest a next step",
+  "settings.swarm.predictionsHint":
+    "After a reply, the empty composer shows one likely next message. Tab inserts it. Enter sends it. Off stops generating them.",
   "settings.swarm.subagents": "Sub-agents",
   "settings.swarm.maxConcurrent": "Sub-agents at once",
   "settings.swarm.maxConcurrentHint":

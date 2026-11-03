@@ -46,6 +46,17 @@ export function SwarmTab({
             onCheckedChange={(auto_title) => update({ auto_title })}
           />
         </Field>
+        <Field
+          query={query}
+          label={t("settings.swarm.predictions")}
+          hint={t("settings.swarm.predictionsHint")}
+        >
+          <Switch
+            checked={settings.swarm.composer_predictions !== false}
+            onCheckedChange={(composer_predictions) => update({ composer_predictions })}
+            aria-label={t("settings.swarm.predictions")}
+          />
+        </Field>
       </SettingsSection>
 
       <SettingsSection title={t("settings.swarm.subagents")}>

@@ -259,6 +259,9 @@ func TestSettingsPersistAndValidate(t *testing.T) {
 	if !h.app.Config.Swarm.AutoTitle {
 		t.Fatal("auto_title not applied")
 	}
+	if !h.app.Config.Swarm.ComposerPredictions {
+		t.Fatal("an older swarm save omitted composer_predictions and turned the next step off")
+	}
 	if h.app.Config.Swarm.TitleProvider != "default" || h.app.Config.Swarm.TitleModel != "tiny" {
 		t.Fatalf("title pin not applied: %+v", h.app.Config.Swarm)
 	}

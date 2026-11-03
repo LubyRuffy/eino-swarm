@@ -418,6 +418,8 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
     case "schedule_cancelled":
       next.push({ id: blockId(ev), kind: "notice", text: "A wait was cancelled." })
       return next
+    case "composer_prediction":
+      return next
     default:
       return next
   }

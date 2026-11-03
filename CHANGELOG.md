@@ -6,6 +6,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Added a next-step suggestion in the PC composer (`F-146`, `C-039`). After a
+  visible reply, the empty composer shows one likely next message. Tab inserts
+  it; Enter sends it. Settings → Swarm turns it off. Older configs that omit
+  the key stay on, and a settings save that omits the field keeps the stored
+  choice.
+
 - Fixed workspace HTML preview so SVG `href` and `xlink:href` cannot keep an
   app or loopback URL, and ZIP deflate stops when output passes its declared
   size. (`F-140`, `C-005`)

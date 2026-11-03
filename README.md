@@ -70,6 +70,10 @@ workflow or real-model efficiency improvement is implied by enabling it.
   stays intact with an error until those items are sent separately or removed.
   Draft text and quotes share a 1 MiB limit; up to 32 attachments share 256 MiB,
   with the existing eight images / 8 MiB per-image vision limits.
+- **The empty composer can suggest a next step.** After a visible reply, one
+  likely next message appears as the placeholder. Tab inserts it for editing;
+  Enter is what sends it. Settings → Swarm → Suggest a next step turns the
+  extra call off. It is on by default, including older configs that omit the key.
 - **The Mac window has bounded rendering recovery.** An independent native
   controller checks actual painted pixels, tries one reload, then replaces the
   window on the same engine if needed. Its pixel marker is covered in the native

@@ -53,6 +53,7 @@ swarm:
     progress_interval_seconds: 5
     delta_coalesce_ms: 50
     auto_title: true
+    composer_predictions: true
     title_provider: ""
     title_model: ""
     compact_provider: ""
@@ -327,6 +328,7 @@ The limits that keep a swarm from running away. All of them apply per turn.
 | `progress_interval_seconds` | `5` | how often a running turn emits a progress pulse. It is the only thing that moves while every agent sits in a slow tool call, so a higher value makes a busy run look stuck for longer. Zero or negative falls back to the default; pulses cannot be switched off. |
 | `delta_coalesce_ms` | `50` | how long streamed tokens wait to be sent as one event. A token every few milliseconds would redraw the whole UI; one pulse per interval keeps the screen moving without a frame per token. Zero or negative falls back to the default. |
 | `auto_title` | `true` | on the first user message, ask the model for a short sidebar name instead of leaving the truncated first message. The same namer labels an untitled scheduled wait from its prompt. Off keeps the placeholder. A title the user typed is never overwritten. An older config file without the key stays on. |
+| `composer_predictions` | `true` | after a visible reply, ask the conversation's model for one next message and show it as the empty PC composer's placeholder. Tab inserts it; Enter sends it. Off stops the extra call. An older file without the key stays on. A settings save that omits the field keeps the stored value. The line is Trace metadata, not a message in the next prompt. Errors, cancellation, an empty reply, a quiet completion, and a turn that starts immediately are skipped. |
 | `title_provider` | empty | endpoint the namer calls. Empty follows the conversation's provider. An id that is no longer in `providers` is cleared on load. |
 | `title_model` | empty | model name the namer calls. Empty (with an empty provider) follows the conversation's model. A name with no provider stays on the conversation's endpoint. Pin one in Settings → Models when an endpoint lists more than one name. |
 | `compact_provider` | empty | endpoint `/compact` calls. Same empty-means-follow rule as `title_provider`. A deleted id is cleared on load. |

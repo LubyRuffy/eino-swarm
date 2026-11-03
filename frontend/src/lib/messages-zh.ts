@@ -151,6 +151,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "toast.dismiss": "关闭",
 
   "composer.placeholder": "描述你想完成的事。需要时它会委派出去。",
+  "composer.predictionHint": "按 Tab 填入。回车才会发送。",
   "composer.placeholderRunning": "工作中… Enter 排队，⌘Enter 注入",
   "composer.placeholderGoal": "这次会话要一直追求的目标",
   "composer.placeholderPlan": "要规划什么？",
@@ -743,6 +744,9 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.swarm.autoTitle": "自动给会话起名",
   "settings.swarm.autoTitleHint":
     "第一条发出后立刻起名，定过就不再改。关掉则一直用首条消息。你亲手起的名字不会被覆盖。可在模型页钉一个不同的模型。",
+  "settings.swarm.predictions": "建议下一步",
+  "settings.swarm.predictionsHint":
+    "回复结束后，空的输入框显示一条可能的下一步。Tab 填入，回车才会发送。关闭后不再生成。",
   "settings.swarm.subagents": "子代理",
   "settings.swarm.maxConcurrent": "同时运行的子代理",
   "settings.swarm.maxConcurrentHint":

@@ -37,6 +37,7 @@ export type EventKind =
   | "model_retry"
   | "model_backoff"
   | "title"
+  | "composer_prediction"
   | "session_memory"
   | "done"
   | "error"
@@ -480,6 +481,8 @@ export interface SwarmLimits {
   progress_interval_seconds: number
   delta_coalesce_ms: number
   auto_title: boolean
+  /** Missing means on. Off stops the extra next-step call. */
+  composer_predictions?: boolean
   /** Empty follows this conversation's model. */
   title_provider?: string
   title_model?: string

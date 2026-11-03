@@ -860,6 +860,7 @@ func TestNotifyKindsAreStableAcrossTheWire(t *testing.T) {
 		{engine.KindProgress, "progress"},
 		{engine.KindMemoryReview, "memory_review"},
 		{engine.KindTitle, "title"},
+		{engine.KindComposerPrediction, "composer_prediction"},
 		{engine.KindSessionMemory, "session_memory"},
 		{engine.KindMaxIterations, "max_iterations"},
 		{engine.KindMaxIterationsContinued, "max_iterations_continued"},

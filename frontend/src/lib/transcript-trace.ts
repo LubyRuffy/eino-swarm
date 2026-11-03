@@ -18,6 +18,9 @@ export function traceOnlyBlock(ev: SwarmEvent): Block | undefined {
   if (ev.kind === "title" || ev.kind === "session_memory") {
     return { ...block(ev, ev.kind, ev.text || ev.err || ""), quiet: true }
   }
+  if (ev.kind === "composer_prediction") {
+    return { ...block(ev, "trace", ev.text || ev.err || ""), quiet: true, traceKind: "composer_prediction" }
+  }
   if (!ENGINE_RECEIPT_KINDS.has(ev.kind)) return undefined
   return { ...block(ev, "trace", ev.text || ""), quiet: true, traceKind: ev.kind }
 }

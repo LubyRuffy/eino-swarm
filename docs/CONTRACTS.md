@@ -2,6 +2,14 @@
 
 Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user entry points and [CHANGELOG.md](../CHANGELOG.md) for history. Contract IDs are stable.
 
+## C-039 The PC composer can suggest one next message
+
+- 状态：active；类型：lifecycle / compatibility；作用范围：PC 输入框、设置和可见回复结束后的一次辅助模型调用；关联功能：`F-146`。
+- 触发：一轮可见回复以完成结束，最终文本非空，不是安静的计划完成，且目标续跑、排队跟进或未读插话都没有立刻开始下一轮。使用该会话自己的模型，不带工具，限时 30 秒。默认开启。配置或设置里缺这个字段时保持开启；显式 false 才关闭。设置保存若省略该字段，保留已存储的选择，不能把缺字段当成关闭。
+- 展示：建议只作为空输入框的占位符。Tab 把它写入可编辑正文，不发送；回车才发送。输入框已有正文时不覆盖。Escape 只在本次页面里隐藏这一条。关闭开关后占位符消失，并且不再发起新的调用。
+- 身份：建议记录为 `composer_prediction`，归在产生它的 turn 上，进入 Trace，不进入消息历史，也不出现在下一轮模型输入里。无建议或调用失败只留下 Trace 错误，不把该 turn 改成失败，也不显示占位符。新一轮开始后，尚未落地的旧建议作废。手机收到该事件但不把它显示成聊天行或占位符。
+- 实现 `internal/engine/composer_prediction.go`。证据：`internal/engine/composer_prediction_test.go`、`internal/config/config.go`、`internal/server/settings.go`、`internal/server/composer_prediction_settings_test.go`、`frontend/src/lib/composer-prediction.ts`、`frontend/src/lib/transcript-trace.ts`、`frontend/src/components/app/composer.tsx`、`frontend/e2e/composer-prediction.spec.ts`、`mobile/src/lib/transcript.ts`。
+
 ## C-038 Agent edits to the current project description
 
 - 状态 active。作用范围为项目全局描述及 PC 项目编辑，关联 `F-120`。

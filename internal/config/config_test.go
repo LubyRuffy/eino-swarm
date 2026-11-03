@@ -135,6 +135,9 @@ func TestMemorySwitchesSurviveNormalizeAndBudgetsAreRepaired(t *testing.T) {
 	if !older.Swarm.AutoTitle {
 		t.Fatal("an older config must keep naming conversations")
 	}
+	if !older.Swarm.ComposerPredictions {
+		t.Fatal("an older config must keep suggesting a next step")
+	}
 }
 
 func TestEntryMaxAboveTheNotesBudgetIsClamped(t *testing.T) {
@@ -164,6 +167,21 @@ func TestAutoTitleFalseSurvivesNormalize(t *testing.T) {
 	}
 	if cfg.Swarm.AutoTitle {
 		t.Fatal("normalize switched auto-title back on")
+	}
+}
+
+func TestComposerPredictionsFalseSurvivesNormalize(t *testing.T) {
+	dir := t.TempDir()
+	raw := "swarm:\n  composer_predictions: false\n"
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Swarm.ComposerPredictions {
+		t.Fatal("normalize switched next-step suggestions back on")
 	}
 }
 
@@ -423,6 +441,9 @@ func TestNormalizeRepairsHandEditedConfig(t *testing.T) {
 	if !cfg.Swarm.AutoTitle {
 		t.Fatal("an older config without auto_title must keep naming conversations")
 	}
+	if !cfg.Swarm.ComposerPredictions {
+		t.Fatal("an older config without composer_predictions must keep suggesting a next step")
+	}
 	if cfg.Tools.WebSearchMaxResults != DefaultWebSearchResults {
 		t.Fatalf("web search results not repaired: %d", cfg.Tools.WebSearchMaxResults)
 	}
@@ -543,6 +564,9 @@ func TestSaveAndReplaceRoundTrip(t *testing.T) {
 	}
 	if reloaded.Swarm.AutoTitle {
 		t.Fatal("auto_title false did not survive the round trip")
+	}
+	if !reloaded.Swarm.ComposerPredictions {
+		t.Fatal("composer predictions did not stay on through the round trip")
 	}
 	if reloaded.Swarm.AutoCompactTokens != 12_000 {
 		t.Fatalf("auto-compact token budget not persisted: %+v", reloaded.Swarm)

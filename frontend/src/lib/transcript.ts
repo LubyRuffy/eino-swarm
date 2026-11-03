@@ -14,6 +14,7 @@ import {
 import { parseReview, reviewNotice } from "./transcript-review"
 import { backoffBlocks, rewindBackoff, type BackoffContext } from "./transcript-backoff-blocks"
 import { recordRecovery, type RecoveryEvent } from "./transcript-recovery"
+import { applyComposerPredictionEvent, type ComposerPrediction } from "./composer-prediction"
 import { traceOnlyBlock } from "./transcript-trace"
 import { askCardFromEvent, askRecoveryCard, applyAskRecovery, settleAskCard, type AskCard } from "./transcript-ask"
 import { isPlanEvent, planNotice } from "./transcript-plan"
@@ -232,6 +233,8 @@ export interface TranscriptState {
    *  deltas stay dropped until the replacement `user_message` arrives. */
   rewindCut?: { from: number; through: number; live: boolean }
   recoveryEvents?: RecoveryEvent[]
+  /** Latest next-step placeholder. Omitted when there is none. */
+  prediction?: ComposerPrediction
 }
 
 export function emptyTranscript(): TranscriptState {
@@ -269,6 +272,8 @@ export function reduceEvent(
     rewindCut: state.rewindCut,
     recoveryEvents: state.recoveryEvents,
   }
+  if (state.prediction) next.prediction = state.prediction
+  applyComposerPredictionEvent(next, ev)
   if (recordRecovery(next, ev)) return next
   if (applyScheduleEvent(next, ev)) return sealQuietTurns(next, ev)
   if (ev.kind === "workers_retained") {

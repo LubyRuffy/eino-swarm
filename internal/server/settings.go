@@ -170,6 +170,9 @@ func (s *Server) getSettings(c *gin.Context) {
 type putSwarmSettings struct {
 	config.SwarmConfig
 	AgentTimeoutSeconds *int `json:"agent_timeout_seconds"`
+	// Absent keeps the stored choice. A missing bool would otherwise
+	// unmarshal as false and turn the next-step call off.
+	ComposerPredictions *bool `json:"composer_predictions"`
 }
 
 // putSettingsRequest mirrors settingsView, plus the optional new API key per
@@ -228,6 +231,10 @@ func (s *Server) putSettings(c *gin.Context) {
 			next.Swarm.AgentTimeoutSeconds = cfg.Swarm.AgentTimeoutSeconds
 			if req.Swarm.AgentTimeoutSeconds != nil {
 				next.Swarm.AgentTimeoutSeconds = *req.Swarm.AgentTimeoutSeconds
+			}
+			next.Swarm.ComposerPredictions = cfg.Swarm.ComposerPredictions
+			if req.Swarm.ComposerPredictions != nil {
+				next.Swarm.ComposerPredictions = *req.Swarm.ComposerPredictions
 			}
 		}
 		if req.Tools != nil {

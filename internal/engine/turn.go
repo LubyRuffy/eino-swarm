@@ -197,6 +197,7 @@ func (rt *runtime) occupyLocked(reg *swarm.Registry, cancel context.CancelFunc, 
 	rt.acceptedAsk, rt.acceptedContinue = nil, nil
 	rt.userStopped = false
 	rt.planImplement = false
+	rt.engine.noteTurnOccupied(rt.threadID)
 }
 
 func (rt *runtime) waitIdle(d time.Duration) {
@@ -803,6 +804,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	if !started && pursue {
 		rt.continueGoal(store.TurnDone)
 	}
+	e.scheduleComposerPrediction(rt.threadID, turn, status, final.SuppressCompletion, started, res.Final)
 }
 
 // runLateSteers turns steering that the manager never read into a turn of its
@@ -835,7 +837,7 @@ func (rt *runtime) runLateSteerMessages(status string, leftover []*schema.Messag
 
 func isAuxiliaryAgent(id string) bool {
 	switch id {
-	case TitleAgentID, CompactAgentID, SessionMemoryAgentID:
+	case TitleAgentID, CompactAgentID, SessionMemoryAgentID, ComposerPredictionAgentID:
 		return true
 	default:
 		return false

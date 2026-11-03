@@ -38,6 +38,7 @@ var PushKinds = []string{
 	"model_retry",
 	"model_backoff",
 	"title",
+	"composer_prediction",
 	"session_memory",
 	"done",
 	"error",

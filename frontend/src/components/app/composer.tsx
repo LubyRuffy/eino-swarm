@@ -76,6 +76,7 @@ import { useT, type Translate } from "@/lib/use-t"
 import { chromeTypeClass, contentTypeClass } from "@/lib/chrome-type"
 import { cn } from "@/lib/utils"
 import { activeWake } from "@/lib/schedule-view"
+import { predictionToInsert, predictionsEnabled } from "@/lib/composer-prediction"
 import { useApp } from "@/store/app"
 
 /** The composer. Enter while a turn is running queues a follow-up for after
@@ -201,6 +202,9 @@ export function Composer({
       !s.status.running &&
       Boolean(s.status.waiting || activeWake(s.schedules, s.activeId)),
   )
+  const prediction = useApp((s) => s.transcript.prediction)
+  const predictionsOn = useApp((s) => predictionsEnabled(s.meta?.swarm?.composer_predictions))
+  const [dismissedPredictionTurn, setDismissedPredictionTurn] = useState<string | undefined>(undefined)
   const durable = useComposerDraft(draftKey)
   const [localText, setLocalText] = useState("")
   const [localPending, setLocalPending] = useState<File[]>([])
@@ -488,6 +492,12 @@ export function Composer({
     }
   }
 
+  const suggestion =
+    predictionsOn && !running && !awaitingAnswer && !disabled && text.trim() === "" &&
+    prediction && prediction.turnId !== dismissedPredictionTurn
+      ? prediction.text
+      : ""
+
   return (
     <div
       data-testid="composer"
@@ -620,6 +630,8 @@ export function Composer({
             rows={1}
             disabled={disabled}
             data-testid="composer-input"
+            data-prediction={suggestion ? "true" : undefined}
+            title={suggestion ? t("composer.predictionHint") : undefined}
             data-slash-open={slashOpen ? "true" : undefined}
             data-goal-draft={awaitingArg === "goal" ? "true" : undefined}
             data-plan-draft={awaitingArg === "plan" ? "true" : undefined}
@@ -632,7 +644,7 @@ export function Composer({
                   ? t("composer.placeholderAsk")
                   : running
                     ? t("composer.placeholderRunning")
-                    : t("composer.placeholder")
+                    : suggestion || t("composer.placeholder")
             }
             className={cn(
               contentTypeClass,
@@ -718,6 +730,23 @@ export function Composer({
                   if (cmd) pickCommand(cmd)
                   return
                 }
+              }
+              if (
+                e.key === "Tab" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey &&
+                !composingRef.current
+              ) {
+                const insert = predictionToInsert(text, suggestion)
+                if (insert) {
+                  e.preventDefault()
+                  setText(insert)
+                  return
+                }
+              }
+              if (e.key === "Escape" && suggestion) {
+                e.preventDefault()
+                e.stopPropagation()
+                setDismissedPredictionTurn(prediction?.turnId)
+                return
               }
               if (e.key === "Escape" && awaitingArg) {
                 e.preventDefault()

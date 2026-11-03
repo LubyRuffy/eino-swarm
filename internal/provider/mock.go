@@ -67,6 +67,8 @@ func newMockModelWithStreamDelay(role string, delay time.Duration) model.BaseCha
 		}, instant: true, role: role}
 	case titleRole:
 		return &mockModel{script: titleNamerScript, role: titleRole, chunkDelay: delay}
+	case predictionRole:
+		return &mockModel{script: composerPredictionScript, instant: true, role: predictionRole}
 	case compactRole, sessionMemoryRole:
 		// Briefings are not a chat stream. Pacing them like the manager
 		// would add seconds of fake tokens to every /compact and session
@@ -85,6 +87,9 @@ const (
 	// titleRole must match the engine's conversation namer, or a mock run
 	// would treat the namer as a worker and try to write files.
 	titleRole = "title-namer"
+	// predictionRole must match the engine's next-step agent, or a mock
+	// run would treat that call as a worker and try to write files.
+	predictionRole = "composer-prediction"
 	// compactRole must match the engine's conversation summarizer, or a mock
 	// compact would be treated as a worker and try to write files.
 	compactRole = "compact-summarizer"
@@ -330,6 +335,14 @@ const mockTitleMaxRunes = 24
 // show up in screenshots and test expectations as if the product had decided it.
 func titleNamerScript(_ int, msgs []*schema.Message) *schema.Message {
 	return schema.AssistantMessage(mockTitle(titleRequest(msgs)), nil)
+}
+
+// MockComposerPrediction is the offline next-step line. The PC end-to-end
+// test waits for this exact placeholder. It is not a sample task.
+const MockComposerPrediction = "Continue from the latest reply"
+
+func composerPredictionScript(int, []*schema.Message) *schema.Message {
+	return schema.AssistantMessage(MockComposerPrediction, nil)
 }
 
 const mockBriefingMaxRunes = 160
@@ -585,7 +598,7 @@ func mockFailCounted() bool {
 
 func mockAuxiliaryRole(role string) bool {
 	switch role {
-	case titleRole, compactRole, sessionMemoryRole, reviewerRole:
+	case titleRole, compactRole, sessionMemoryRole, reviewerRole, predictionRole:
 		return true
 	default:
 		return false

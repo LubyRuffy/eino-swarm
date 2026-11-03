@@ -1577,6 +1577,12 @@ restate the body. This changes no Markdown format or event kind.
   carries the name; the transcript does not render it. Naming a wait does **not**
   emit that event — it would rename the origin conversation. The Trace tab's Full
   log still lists the conversation event. `Shutdown` waits for namers too.
+10. **Next step** (`swarm.composer_predictions`, on by default): after a visible
+   idle completion, a goroutine asks the conversation's own model for one next
+   human message. It records `composer_prediction` and a `composer-prediction`
+   call on that turn. The PC composer shows the line as the empty input's
+   placeholder; it is not a message and does not enter the next prompt.
+   A goal continuation, queued follow-up, or new turn drops it. `Shutdown` waits.
 
 ## Why the event stream is built this way
 

@@ -14,7 +14,7 @@ from typing import Any
 
 FIELDS = ("prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens", "reasoning_tokens")
 AUX_AGENT_IDS = ("title-namer", "memory-reviewer", "schedule-answer-policy", "thread-wake-policy",
-                 "session-memory", "compact-summarizer")
+                 "session-memory", "compact-summarizer", "composer-prediction")
 
 
 def _raw(call: dict) -> dict | None:

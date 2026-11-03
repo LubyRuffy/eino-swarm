@@ -4815,7 +4815,8 @@ python3 tools/agent_eval.py --provider default --task-root output/replays --task
 - **Metrics** come from `GET /api/trace/:turn` for every turn: duration, calls
   and tokens split into manager, workers and each host-side caller
   (`title-namer`, `memory-reviewer`, `schedule-answer-policy`,
-  `thread-wake-policy`, `session-memory`, `compact-summarizer`), cached
+  `thread-wake-policy`, `session-memory`, `compact-summarizer`,
+  `composer-prediction`), cached
   prompt tokens per caller, the first manager request's `input_chars` (system
   prompt size), spawns, `fork_context`, the manager's own tool calls made
   while a spawned worker had not yet finished, tool counts, `skill_view`,
@@ -5106,6 +5107,15 @@ opening turn still keeps the landed name.
 truncated prompt then the same namer replaces it, an explicit or PATCH
 title wins, `AutoTitle` off leaves the placeholder, and naming a wait
 does not emit a conversation `title` event.
+
+It also answers as the **next-step** model (`composer-prediction`): one
+sendable line, `Continue from the latest reply`, so the PC end-to-end test
+can see the placeholder. During `go test` that call stays off unless the
+engine opts in; otherwise every turn would gain a model call and existing
+call counts would flake. `go run --mock` and Playwright still generate it.
+`internal/engine/composer_prediction_test.go` is why a finished visible reply
+records the line without putting it in the message history, why `NONE` and
+errors stay in Trace, and why a new turn drops a stale line.
 
 It answers as a **compact summarizer** (`compact-summarizer`) and as a
 **session-memory** writer (`session-memory`) with a short briefing derived

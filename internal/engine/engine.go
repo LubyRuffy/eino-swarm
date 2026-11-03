@@ -82,9 +82,13 @@ type Engine struct {
 	// titles tracks the conversation namers still running, for the same
 	// reason: a title call that is cut off just leaves the placeholder, and
 	// one that never finishes must not keep the window open.
-	titles   titlePool
-	compacts compactPool
-	sessions sessionMemoryPool
+	titles      titlePool
+	compacts    compactPool
+	sessions    sessionMemoryPool
+	predictions predictionPool
+	// composerPredictionsInTest opts one engine into the extra call.
+	// Production and go run stay on; ordinary go test stays off.
+	composerPredictionsInTest atomic.Bool
 
 	// now is the wall clock the ticker reads. Tests install a fake so a
 	// wait does not sleep a real cadence. Default is time.Now.
@@ -134,6 +138,7 @@ func NewWithAnswerRecoveryClock(cfg *config.Config, st *store.Store, pool *provi
 		titles:              newTitlePool(),
 		compacts:            newCompactPool(),
 		sessions:            newSessionMemoryPool(),
+		predictions:         newPredictionPool(),
 		answerRecoveryClock: timing.OrReal(clock),
 	}
 }
@@ -499,6 +504,9 @@ func (e *Engine) Shutdown() {
 	}
 	if !e.titles.stop(reviewShutdownGrace) {
 		e.log.Warn("a conversation was still being named at shutdown; it keeps its placeholder")
+	}
+	if !e.predictions.stop(reviewShutdownGrace) {
+		e.log.Warn("a next-step suggestion was still running at shutdown")
 	}
 	if !e.compacts.stop(reviewShutdownGrace) {
 		e.log.Warn("a compact was still running at shutdown; later turns keep the previous briefing")

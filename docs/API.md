@@ -228,7 +228,8 @@ Client startup metadata. During recovery, clients poll it until `startup` is `re
   "swarm": { "max_concurrent": 6, "agent_timeout_seconds": 3600,
              "max_turns": 200, "manager_max_iterations": 200,
              "progress_interval_seconds": 5, "delta_coalesce_ms": 50,
-             "auto_title": true, "title_provider": "", "title_model": "",
+             "auto_title": true, "composer_predictions": true,
+             "title_provider": "", "title_model": "",
              "compact_provider": "", "compact_model": "",
              "context_char_budget": 80000, "compact_keep_messages": 6,
              "auto_compact_tokens": 80000, "compact_output_reserve": 8192,
@@ -360,7 +361,8 @@ provider carries `has_api_key` and `ready` instead.
   "swarm": {"max_concurrent": 6, "agent_timeout_seconds": 3600,
             "max_turns": 200, "manager_max_iterations": 200,
             "progress_interval_seconds": 5, "delta_coalesce_ms": 50,
-            "auto_title": true, "title_provider": "", "title_model": "",
+            "auto_title": true, "composer_predictions": true,
+            "title_provider": "", "title_model": "",
             "compact_provider": "", "compact_model": "",
             "context_char_budget": 80000, "compact_keep_messages": 6,
             "auto_compact_tokens": 80000, "compact_output_reserve": 8192,
@@ -1463,7 +1465,7 @@ row carries the same `waiting` flag so the sidebar can paint a clock without
 opening the conversation.
 
 `usage` is the composer meter. `context_tokens` is the **last manager prompt**
-(workers, the namer and the reviewer have their own prompts and would lie).
+(workers, the namer, the next-step suggestion and the reviewer have their own prompts and would lie).
 `context_window` is the selected model's limit, or `0` when nobody has said.
 When it is `0` the ring still draws a growing arc (scaled by the compact
 character budget) but the label stays a count, not a fake percentage.
@@ -2441,6 +2443,17 @@ lists more than one.
 
 Compact uses the same pin: empty `compact_provider` / `compact_model` follow
 the conversation; Settings → Models has a Compact summary picker.
+
+### Next-step suggestion
+
+After a visible reply, when the conversation is idle, the engine may ask that
+conversation's model for one next message (`swarm.composer_predictions`, on by
+default). The result is a `composer_prediction` event on the same turn
+(`agent_id: "composer-prediction"`). The PC composer shows `text` as the empty
+input's placeholder. Tab inserts it; Enter sends it. The event is Trace
+metadata: it is not a message, the chat does not render it, and it is not part
+of the next model prompt. An empty text with `err` means there was no
+suggestion. The phone receives the event and does not show it.
 
 ## Workspace files
 

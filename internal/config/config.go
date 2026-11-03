@@ -76,6 +76,11 @@ type SwarmConfig struct {
 	// a title. Off leaves the truncated first message / prompt. A name the
 	// user typed is never overwritten either way.
 	AutoTitle bool `yaml:"auto_title" json:"auto_title"`
+	// ComposerPredictions asks the conversation's own model for one next
+	// message after a visible reply, and the PC composer shows it as the
+	// empty input's placeholder. Tab inserts it; Enter sends it. Off stops
+	// the extra call. An older file without the key stays on.
+	ComposerPredictions bool `yaml:"composer_predictions" json:"composer_predictions"`
 	// TitleProvider and TitleModel pin which endpoint names conversations
 	// and untitled waits. Both empty follows the conversation's (or the
 	// wait's) own model so a cheap namer is opt-in. A provider with an
@@ -472,6 +477,7 @@ func Default() *Config {
 			ProgressIntervalSeconds:    DefaultProgressIntervalSeconds,
 			DeltaCoalesceMS:            DefaultDeltaCoalesceMS,
 			AutoTitle:                  true,
+			ComposerPredictions:        true,
 			ContextCharBudget:          DefaultContextCharBudget,
 			CompactKeepMessages:        DefaultCompactKeepMessages,
 			AutoCompactTokens:          DefaultAutoCompactTokens,

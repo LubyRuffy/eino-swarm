@@ -59,6 +59,16 @@ describe("Swarm schedule caps", () => {
 // The classifiers hold a finished answer until they decide, so their thinking
 // level is a separate setting that defaults to Low and can follow the
 // conversation only when chosen.
+describe("Next-step suggestion", () => {
+  it("turns the placeholder off", () => {
+    const onChange = vi.fn()
+    render(<SwarmTab settings={base} onChange={onChange} />)
+    fireEvent.click(screen.getByRole("switch", { name: "Suggest a next step" }))
+    const next = onChange.mock.calls[0][0] as Settings
+    expect(next.swarm.composer_predictions).toBe(false)
+  })
+})
+
 describe("Policy check thinking", () => {
   it("shows Low for settings written before the field and saves inherit explicitly", () => {
     const onChange = vi.fn()

@@ -13,6 +13,7 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-136` Nuwa project collaboration
     - `F-140` Files and attachments
     - `F-145` Durable composer drafts
+    - `F-146` Next-step composer suggestions
     - `F-150` Goals and scheduled waits
     - `F-160` Trace and diagnostics
     - `F-170` Settings and providers
@@ -175,6 +176,11 @@ This is the current user-facing capability map. The code and tests named below a
 - 离开已保存且无待处理操作的 scope 后释放内存中的附件缓存和预览 URL，返回时重读原始 bytes；未保存、冲突和发送中内容继续保留。
 - `/goal`、`/plan` 仅接收文本；同时带附件、粘贴图片或引用时，输入框拒绝动作并保留完整草稿，不能用只覆盖文本的确认清理其他内容。
 - 每份草稿正文与引用合计最多 1 MiB，最多 32 个附件、附件总量 256 MiB；视觉图片另遵守最多 8 张、单张 8 MiB。此限制约束草稿保存，不改变工作区上传的单文件上限。
+
+### F-146 Next-step composer suggestions
+
+- 目的：一次可见回复结束后，给空的 PC 输入框一条基于当前会话的下一步；使用者：PC 桌面和 Web 用户；入口：空输入框占位符，设置 → 集群 → 建议下一步；输入：最近的人类消息和可见回复；输出：一条不超过 240 字、可直接发送的下一步，或没有建议；前置条件：功能开启（默认开，旧配置缺键仍开），本轮正常结束、最终回复非空、不是安静完成，且会话已经空闲；失败表现：无建议、超时、模型出错、或下一次对话已经开始时不显示占位符；Tab 只填入，回车才发送；手机不显示该占位符；关联契约：`C-039`、`C-009`、`C-012`；实现证据：`internal/engine/composer_prediction.go`、`internal/engine/composer_prediction_test.go`、`frontend/src/lib/composer-prediction.ts`、`frontend/src/components/app/composer.tsx`、`frontend/e2e/composer-prediction.spec.ts`。
+- 建议是 Trace 事件，不是对话消息。下一次模型请求不会把它当成已经发送的人类输入。关闭开关后不再发起这次调用；省略该字段的设置保存保留原值。
 
 ### F-150 Goals and scheduled waits
 
