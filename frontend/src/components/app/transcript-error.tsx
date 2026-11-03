@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, RotateCcw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { localizeNotice } from "@/lib/i18n"
@@ -6,39 +6,32 @@ import { firstByteTimeoutDuration, firstByteTimeoutSettingsKey } from "@/lib/fir
 import {
   isOutputBudgetError,
   MAX_COMPLETION_SETTINGS_KEY,
-  type BudgetRetryMessage,
 } from "@/lib/output-budget"
 import { useT } from "@/lib/use-t"
 import { useApp } from "@/store/app"
 import { openSettings, useSettingsSheet } from "@/store/settings-sheet"
 
-/** A failed turn. Configurable failures grow a hint and a settings link. The output-budget retry
- *  stays hidden until that sheet closes: the new cap is what the next
- *  run should use. Known sentences are translated. Anything else stays
- *  the server text. */
+/** Clicking Retry confirms resending the original input, without generated text. */
 export function TranscriptError({
   text,
   turnId,
-  retry,
-  onResend,
+  onRetry,
+  retrying = false,
 }: {
   text: string
   turnId?: string
-  retry?: BudgetRetryMessage
-  onResend?: (text: string, seq: number) => void
+  onRetry?: () => void
+  retrying?: boolean
 }) {
   const t = useT()
   const budget = isOutputBudgetError(text)
   const firstByte = firstByteTimeoutDuration(text)
   const providerId = useApp((s) => s.turns.find((turn) => turn.id === turnId)?.provider_id)
-  const activeId = useApp((s) => s.activeId)
   const running = useApp((s) => s.status.running || s.transcript.running)
-  const back = useSettingsSheet((s) => s.budgetReturn)
-  const ready =
-    Boolean(budget && retry && onResend) &&
-    back?.phase === "back" &&
-    back.threadId === activeId &&
-    back.turnId === turnId
+  const latest = useApp((s) => s.transcript.turns.at(-1))
+  const unavailable = useApp((s) => !s.loaded || !s.activeId || s.status.awaiting_answer || s.meta?.startup === "restoring")
+  const settingsOpen = useSettingsSheet((s) => s.open)
+  const retryable = onRetry && turnId && latest?.id === turnId && latest.status === "error"
   return (
     <div
       className="my-2 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
@@ -69,28 +62,26 @@ export function TranscriptError({
                 variant="link"
                 className="h-auto px-0 py-0 text-sm text-destructive underline underline-offset-4"
                 onClick={() =>
-                  openSettings("swarm", MAX_COMPLETION_SETTINGS_KEY, {
-                    threadId: useApp.getState().activeId ?? "",
-                    turnId: turnId ?? "",
-                  })
+                  openSettings("swarm", MAX_COMPLETION_SETTINGS_KEY)
                 }
               >
                 {t("transcript.outputBudgetSettings")}
               </Button>
             </p>
-            {ready && retry && onResend ? (
-              <Button
-                type="button"
-                size="sm"
-                className="mt-2"
-                disabled={running}
-                data-testid="output-budget-retry"
-                onClick={() => onResend(retry.text, retry.seq)}
-              >
-                {t("transcript.outputBudgetRetry")}
-              </Button>
-            ) : null}
           </div>
+        ) : null}
+        {retryable ? (
+          <Button
+            type="button"
+            size="sm"
+            className="mt-2"
+            disabled={running || retrying || unavailable || settingsOpen}
+            data-testid="transcript-error-retry"
+            onClick={onRetry}
+          >
+            <RotateCcw />
+            {t("transcript.outputBudgetRetry")}
+          </Button>
         ) : null}
       </div>
     </div>

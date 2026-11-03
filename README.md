@@ -486,6 +486,11 @@ workflow or real-model efficiency improvement is implied by enabling it.
   **Configure first-byte timeout** button opens and focuses that provider's
   field. Changes save automatically; close Settings and resend when ready.
   **Request timeout (seconds)** separately controls silence after the stream starts.
+- **Retry after an error.** When the latest turn fails on desktop or web,
+  click **Retry** to resend its original input, including images and quotations.
+  The click starts the run from that message and replaces the later history.
+  Retry is available when the original user message can be found and is
+  disabled while Settings is open or the conversation is busy.
 - **Real tools.** File read/write/edit, `ls`/`tree`/`glob`/`grep`, shell `exec`,
   web search and fetch, from [eino-tools](https://github.com/LubyRuffy/eino-tools).
   The transcript shows the command or query, not the JSON envelope; a failed

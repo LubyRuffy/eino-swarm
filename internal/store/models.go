@@ -201,6 +201,9 @@ type Turn struct {
 	// ScheduleRunID is set when this turn is a scheduled fire. Empty for
 	// every other origin. Trace uses it to join the run.
 	ScheduleRunID string `gorm:"size:64" json:"schedule_run_id,omitempty"`
+	// RetryTurnID reads lineage written by an older retry client so the
+	// transcript can locate the original request in that history.
+	RetryTurnID string `gorm:"->;size:64" json:"retry_turn_id,omitempty"`
 	// Quiet is true when a scheduled turn had nothing to report: the
 	// transcript hides the bubbles, the row still exists for `zwai trace`.
 	Quiet bool `json:"quiet,omitempty"`

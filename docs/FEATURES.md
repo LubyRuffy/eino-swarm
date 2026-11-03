@@ -74,6 +74,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-120 Conversations and projects
 
+- 失败重试：桌面和 Web 的最新一轮失败时显示「重试」。点击即确认，按原始用户消息的 `from_event_seq` 回退并立即重发原文、图片和引用，无需打开编辑框或再次发送。无可验证的原始输入时不提供入口，设置打开、回合运行、引擎恢复或本次提交进行时禁用。关联契约 `C-003`。实现 `frontend/src/components/app/transcript-error.tsx`、`frontend/src/components/app/transcript.tsx`。验证 `frontend/e2e/transcript-error-retry.spec.ts`。
+
 - 在项目会话中，可授权 manager 更新项目全局描述。保存后该项目后续回合使用新描述，Memory 关闭也可用。并发修改、对话移出项目或写入失败时返回拒绝回执。PC 项目编辑打开时读取当前描述，保存其他设置时省略未改动的描述。契约 `C-038`。实现 `internal/engine/project_description.go`、`internal/store/projects.go`、`frontend/src/components/app/project-dialog.tsx`。验证 `internal/engine/project_description_http_test.go`、`frontend/e2e/projects.spec.ts`。
 
 - PC 轮次导航：回到底部恢复实时跟随时，撤销旧轮次定位；后续消息、历史分页或已排队的定位帧不得再次拉回旧轮次。点击「跳到最新」、手动滚到底部和发送新消息共用该行为。尚在查看旧轮次时，分页后继续保持所选轮次位置。实现／验证：`frontend/src/lib/use-turn-jump.ts`、`frontend/src/lib/use-turn-jump.test.tsx`、`frontend/src/components/app/transcript-jump-latest.test.tsx`、`frontend/e2e/transcript-jump-latest.spec.ts`。
@@ -241,7 +243,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 桌面 Settings 自动保存和刷新模型目录保留手机并发修改的超时；只有实际编辑的超时才提交替换，重开设置读取最新值。关联契约：`C-009`；实现／测试：`frontend/src/lib/settings-persist.ts`、`frontend/src/store/app.ts`、`frontend/src/lib/settings-persist-delta.test.ts`、`frontend/e2e/settings-timeout-concurrency.spec.ts`、`internal/server/timeout_settings_test.go`。
 - 目的：配置模型、外观、工具和远程连接；使用者：PC 用户；入口：Settings；输入：配置字段，包括每个提供商在输入框模型列表里的开关；输出：持久化设置和可用模型，关掉的提供商不出现在输入框和已配对手机的目录里，已经选中它的会话继续用；前置条件：本机数据目录；失败表现：校验或连接错误；关联契约：`C-006`, `C-009`, `C-012`；实现证据：`internal/config`, `internal/provider`, `frontend/src`。
 - 首字节等待：设置 → 模型的每个提供商可单独设置「首字节等待时间（秒）」，默认 30 秒，与流开始后的请求空闲超时独立。首字节错误的「配置首字节等待时间」打开失败 turn 的提供商并滚动聚焦输入框，不跟随后来切换的模型；未知或已删除提供商只打开模型页。修改自动保存，关闭设置后用户可重新发送请求。实现证据：`internal/config/provider.go`, `internal/provider/http.go`, `frontend/src/components/app/model-settings.tsx`, `frontend/src/components/app/transcript-error.tsx`；验证：`internal/config/provider_timeout_test.go`, `internal/server/settings_timeout_test.go`, `frontend/src/components/app/transcript-error.test.tsx`, `frontend/e2e/api-error.spec.ts`。
-- 输出额度用尽：桌面端主对话这条错误下面有提示，链到设置 → 集群的「单次输出上限」，并聚焦该输入。关掉设置后，同一条主对话错误上出现重试，按原来的请求再跑一轮。子代理详情中的同类错误复用该配置入口，不触发主对话重试；详见 `F-130`。手机不能改这项，只显示错误原文。实现证据：`frontend/src/components/app/transcript-error.tsx`, `frontend/src/components/app/agent-failure.tsx`, `frontend/src/lib/output-budget.ts`。
+- 输出额度用尽：桌面端主对话错误保留指向设置 → 集群「单次输出上限」的链接，并聚焦该输入。该错误属于最新一轮时，可按 `F-120` 直接重试，设置打开期间禁用。子代理详情中的同类错误复用该配置入口，不触发主对话重试，详见 `F-130`。手机不能改这项，只显示错误原文。实现证据：`frontend/src/components/app/transcript-error.tsx`, `frontend/src/components/app/agent-failure.tsx`, `frontend/src/lib/output-budget.ts`。
 
 - 设置 → 集群的「策略检查推理」控制排程声明与唤醒许可两个后台策略分类器的推理档位，默认“默认（低）”，可选跟随会话或显式低/中/高；默认档在端点拒绝推理参数时去掉该参数重试一次，显式档位保留原错误。设置 → 工具的「工具结果上限（字符）」限制每个工具结果进入模型上下文的长度，默认 40000，超出时保留首尾并说明省略量。关联契约：`C-009`；实现／测试：`internal/config/auxiliary_reasoning.go`、`internal/config/tool_limits.go`、`internal/engine/policy_effort_test.go`、`internal/tools/resultcap_test.go`、`frontend/e2e/settings.spec.ts`。
 - 同源 provider 别名沿用 `F-130` 的共享冷却；保存设置不清故障档位（`C-029`）。证据：`internal/provider/backoff_integration_test.go`。

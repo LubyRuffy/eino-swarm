@@ -6,7 +6,6 @@ const closed = {
   open: false,
   section: "general" as const,
   focus: "",
-  budgetReturn: null,
 }
 
 describe("settings sheet", () => {
@@ -17,49 +16,29 @@ describe("settings sheet", () => {
       open: true,
       section: "general",
       focus: "",
-      budgetReturn: null,
     })
     openSettings("models")
     expect(useSettingsSheet.getState()).toEqual({
       open: true,
       section: "models",
       focus: "",
-      budgetReturn: null,
     })
     openSettings("swarm", "max_completion_tokens")
     expect(useSettingsSheet.getState()).toEqual({
       open: true,
       section: "swarm",
       focus: "max_completion_tokens",
-      budgetReturn: null,
     })
   })
 
-  it("offers a retry only after the output-budget link's sheet closes", () => {
+  it("clears the previous section and focus when the sheet closes", () => {
     useSettingsSheet.setState(closed)
-    openSettings("swarm", "max_completion_tokens", {
-      threadId: "th",
-      turnId: "turn-1",
-    })
-    expect(useSettingsSheet.getState().budgetReturn).toEqual({
-      threadId: "th",
-      turnId: "turn-1",
-      phase: "open",
-    })
+    openSettings("swarm", "max_completion_tokens")
     closeSettings()
-    expect(useSettingsSheet.getState()).toEqual({
-      open: false,
-      section: "general",
-      focus: "",
-      budgetReturn: { threadId: "th", turnId: "turn-1", phase: "back" },
-    })
+    expect(useSettingsSheet.getState()).toEqual(closed)
     openSettings()
-    expect(useSettingsSheet.getState().budgetReturn).toEqual({
-      threadId: "th",
-      turnId: "turn-1",
-      phase: "back",
-    })
+    expect(useSettingsSheet.getState()).toEqual({ ...closed, open: true })
     closeSettings()
-    expect(useSettingsSheet.getState().budgetReturn?.phase).toBe("back")
+    expect(useSettingsSheet.getState()).toEqual(closed)
   })
 })

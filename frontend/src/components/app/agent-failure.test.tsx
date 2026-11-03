@@ -19,7 +19,7 @@ const noop = { onTabChange: vi.fn(), onSelectAgent: vi.fn(), files: [], workspac
 
 beforeEach(() => {
   useApp.setState({ locale: "en" })
-  useSettingsSheet.setState({ open: false, section: "general", focus: "", budgetReturn: null })
+  useSettingsSheet.setState({ open: false, section: "general", focus: "" })
 })
 
 describe("agent failure details", () => {
@@ -36,7 +36,7 @@ describe("agent failure details", () => {
   it("opens the existing completion setting without arming a manager retry", () => {
     render(<AgentFailure agent={worker(OUTPUT_BUDGET_ERROR)} />)
     fireEvent.click(screen.getByRole("button", { name: "Max completion tokens" }))
-    expect(useSettingsSheet.getState()).toMatchObject({ open: true, section: "swarm", focus: "max_completion_tokens", budgetReturn: null })
+    expect(useSettingsSheet.getState()).toMatchObject({ open: true, section: "swarm", focus: "max_completion_tokens" })
   })
 
   it("links an ADK iteration stop to the worker's tool-round setting", () => {

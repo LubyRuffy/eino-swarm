@@ -6,9 +6,44 @@ const OUTPUT_BUDGET_ERROR =
   "the model used its whole output budget before it produced an answer"
 
 test("an output-budget error opens the completion cap", async ({ page }) => {
-  // The offline provider does not spend a completion budget. The stored
-  // sentence is what the desktop matches, so the log the UI paints is that
-  // sentence and nothing else about the script changes.
+  // The offline provider does not spend a completion budget. Replay events
+  // and turn metadata must identify the same failed human input; a displayed
+  // error alone cannot establish which original input Retry may resend.
+  const originalInput = "Run the check again"
+  const at = new Date().toISOString()
+  const submissions: Record<string, unknown>[] = []
+  let sourceSeq: number | undefined
+  await page.route(/\/api\/threads\/[^/]+\/turns(?:\?|$)/, async (route) => {
+    if (route.request().method() === "POST") {
+      submissions.push(route.request().postDataJSON())
+      // This turn exists only in the replay fixture. Never dispatch its seq to
+      // the real engine; the boundary assertion still checks the exact resend.
+      await route.fulfill({ status: 503, json: { error: "Retry fixture refused the resend." } })
+      return
+    }
+    if (route.request().method() !== "GET") { await route.continue(); return }
+    const res = await route.fetch()
+    if (!res.ok()) { await route.fulfill({ response: res }); return }
+    const body = await res.json()
+    const rows = Array.isArray(body.turns) ? body.turns : []
+    const id = new URL(route.request().url()).pathname.split("/").filter(Boolean)[2]
+    const seq = rows.reduce((max: number, turn: { seq?: number }) => Math.max(max, turn.seq ?? 0), 0)
+    body.turns = [...rows, {
+      id: "turn-budget",
+      thread_id: id,
+      seq: seq + 1,
+      status: "error",
+      user_text: originalInput,
+      final: "",
+      error: OUTPUT_BUDGET_ERROR,
+      provider_id: "",
+      model: "",
+      started_at: at,
+      ended_at: at,
+      duration_ms: 0,
+    }]
+    await route.fulfill({ response: res, json: body })
+  })
   await page.route(/\/api\/threads\/[^/]+\/log(?:\?|$)/, async (route) => {
     const url = new URL(route.request().url())
     const res = await route.fetch()
@@ -24,7 +59,7 @@ test("an output-budget error opens the completion cap", async ({ page }) => {
         (max: number, ev: { seq?: number }) => Math.max(max, ev.seq ?? 0),
         0,
       )
-      const at = new Date().toISOString()
+      sourceSeq = seq + 1
       events.push(
         {
           thread_id: id,
@@ -32,7 +67,7 @@ test("an output-budget error opens the completion cap", async ({ page }) => {
           seq: seq + 1,
           kind: "user_message",
           agent_id: "manager",
-          text: "Run the check again",
+          text: originalInput,
           created_at: at,
         },
         {
@@ -59,6 +94,7 @@ test("an output-budget error opens the completion cap", async ({ page }) => {
   const transcript = page.getByTestId("transcript")
   await expect(transcript.getByTestId("output-budget-error")).toBeVisible()
   await expect(transcript.getByText(OUTPUT_BUDGET_ERROR)).toBeVisible()
+  await expect(transcript.getByTestId("transcript-error-retry")).toBeEnabled()
   await transcript.getByRole("button", { name: "Max completion tokens" }).click()
 
   const dialog = page.getByRole("dialog")
@@ -69,12 +105,20 @@ test("an output-budget error opens the completion cap", async ({ page }) => {
     "aria-selected",
     "true",
   )
-  await expect(transcript.getByRole("button", { name: "Retry" })).toHaveCount(0)
+  // The modal removes the background from the accessibility tree.
+  await expect(transcript.getByTestId("transcript-error-retry")).toBeDisabled()
 
   await dialog.getByRole("button", { name: "Back to app" }).click()
   await expect(dialog).toBeHidden()
-  // The forged user_message is not a stored row, so the click is not sent.
-  // Closing the sheet is what reveals the button.
-  await expect(transcript.getByTestId("output-budget-retry")).toBeVisible()
+  // Editing the cap is optional. Returning makes the existing Retry usable.
+  await expect(transcript.getByTestId("transcript-error-retry")).toBeVisible()
   await expect(transcript.getByRole("button", { name: "Retry" })).toBeEnabled()
+  expect(submissions).toEqual([])
+  expect(sourceSeq).toBeGreaterThan(0)
+  await transcript.getByRole("button", { name: "Retry" }).click()
+  await expect.poll(() => submissions.length).toBe(1)
+  expect(submissions).toEqual([{ text: originalInput, from_event_seq: sourceSeq }])
+  await expect(page.getByText("Retry fixture refused the resend.", { exact: true })).toBeVisible()
+  await expect(transcript.getByTestId("output-budget-error")).toBeVisible()
+  await expect(transcript.getByTestId("user-message-editor")).toHaveCount(0)
 })

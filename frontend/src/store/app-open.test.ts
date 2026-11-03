@@ -457,3 +457,78 @@ it("keeps the terminal turns refresh when opening the already active conversatio
   await tick()
   expect(useApp.getState().turns).toEqual(done)
 })
+
+describe("rejected edited sends", () => {
+  it("restores the recorded history before retaining the send error", async () => {
+    const history = [event("a", 10, "user_message", "Original input"), {
+      ...event("a", 11, "error", ""), err: "Recorded model failure",
+    }]
+    vi.mocked(api.threadLog).mockResolvedValue({ events: history, has_more: false })
+    await useApp.getState().openThread("a")
+    vi.mocked(api.startTurn).mockRejectedValueOnce(new Error("Edited submission unavailable"))
+    expect(await useApp.getState().send("Edited input", undefined, { fromEventSeq: 10 })).toBe(false)
+    expect(useApp.getState().activeId).toBe("a")
+    expect(useApp.getState().error).toBe("Edited submission unavailable")
+    expect(useApp.getState().transcript.agents.manager.blocks.map((block) => block.text)).toEqual([
+      "Original input", "Recorded model failure",
+    ])
+  })
+
+  it.each(["submission", "recovery"])("retains the failure when the same conversation is reopened during %s", async (phase) => {
+    await useApp.getState().openThread("a")
+    const submitted = deferred<Awaited<ReturnType<typeof api.startTurn>>>()
+    const restored = deferred<Awaited<ReturnType<typeof api.threadLog>>>()
+    vi.mocked(api.startTurn).mockReturnValueOnce(submitted.promise)
+    vi.mocked(api.threadLog).mockReturnValueOnce(restored.promise)
+    const sending = useApp.getState().send("Edited input", undefined, { fromEventSeq: 10 })
+    if (phase === "submission") await useApp.getState().openThread("a")
+    submitted.reject(new Error("Edited submission unavailable"))
+    await tick()
+    if (phase === "recovery") await useApp.getState().openThread("a")
+    restored.resolve({ events: [event("a", 10, "user_message", "Original input"), {
+      ...event("a", 11, "error", ""), err: "Recorded model failure",
+    }], has_more: false })
+    expect(await sending).toBe(false)
+    expect(useApp.getState().error).toBe("Edited submission unavailable")
+    expect(useApp.getState().transcript.agents.manager.blocks[0].text).toBe("Original input")
+    expect(useApp.getState().transcript.running).toBe(false)
+  })
+
+  for (const revisit of [false, true]) {
+    it(`does not reopen or overwrite a conversation selected before rejection${revisit ? " after returning to the original" : ""}`, async () => {
+      await useApp.getState().openThread("a")
+      const submitted = deferred<Awaited<ReturnType<typeof api.startTurn>>>()
+      vi.mocked(api.startTurn).mockReturnValueOnce(submitted.promise)
+      const sending = useApp.getState().send("Edited input", undefined, { fromEventSeq: 10 })
+      await useApp.getState().openThread("b")
+      if (revisit) await useApp.getState().openThread("a")
+      useApp.setState({ error: "Current conversation diagnostic" })
+      const transcript = useApp.getState().transcript
+      vi.mocked(api.threadLog).mockClear()
+      submitted.reject(new Error("Earlier edited submission failed"))
+      expect(await sending).toBe(false)
+      expect(useApp.getState().activeId).toBe(revisit ? "a" : "b")
+      expect(useApp.getState().transcript).toBe(transcript)
+      expect(useApp.getState().error).toBe("Current conversation diagnostic")
+      expect(api.threadLog).not.toHaveBeenCalled()
+    })
+
+    it(`does not install the rejected send error after navigating during history recovery${revisit ? " and returning" : ""}`, async () => {
+      await useApp.getState().openThread("a")
+      const restored = deferred<Awaited<ReturnType<typeof api.threadLog>>>()
+      vi.mocked(api.threadLog).mockReturnValueOnce(restored.promise)
+      vi.mocked(api.startTurn).mockRejectedValueOnce(new Error("Earlier edited submission failed"))
+      const sending = useApp.getState().send("Edited input", undefined, { fromEventSeq: 10 })
+      await tick()
+      await useApp.getState().openThread("b")
+      if (revisit) await useApp.getState().openThread("a")
+      useApp.setState({ error: "Current conversation diagnostic" })
+      const transcript = useApp.getState().transcript
+      restored.resolve({ events: [event("a", 10, "user_message", "Original input")], has_more: false })
+      expect(await sending).toBe(false)
+      expect(useApp.getState().activeId).toBe(revisit ? "a" : "b")
+      expect(useApp.getState().transcript).toBe(transcript)
+      expect(useApp.getState().error).toBe("Current conversation diagnostic")
+    })
+  }
+})

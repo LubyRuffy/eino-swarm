@@ -500,6 +500,7 @@ export const useApp = create<AppState>((set, get) => ({
     if (opts?.fromEventSeq) {
       const id = get().activeId
       if (!id) return false
+      const generation = openGeneration
       const from = opts.fromEventSeq
       const cut = get().transcript.agents[MANAGER_ID]?.blocks.find(
         (b) => b.kind === "user" && b.seq === from,
@@ -528,9 +529,12 @@ export const useApp = create<AppState>((set, get) => ({
         void get().refreshThreads()
         return true
       } catch (e) {
-        set({ error: message(e) })
+        if (get().activeId !== id || openGeneration !== generation) return false
         set({ activeId: undefined })
-        await get().openThread(id)
+        const recovery = get().openThread(id)
+        const recoveryGeneration = openGeneration
+        await recovery
+        if (get().activeId === id && openGeneration === recoveryGeneration) set({ error: message(e) })
         return false
       }
     }

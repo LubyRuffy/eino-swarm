@@ -54,7 +54,7 @@ import { contentTypeClass } from "@/lib/chrome-type"
 import { afterImeSettles, enterSendsMessage } from "@/lib/ime"
 import { displayQuotedText, formatQuotedMessage, parseQuotedMessage } from "@/lib/quote"
 import { agentRosterLabel, agentRosterText } from "@/lib/agent-label"
-import { budgetRetryMessages } from "@/lib/output-budget"
+import { useRetryInput } from "@/lib/use-retry-input"
 import { useT } from "@/lib/use-t"
 import { Textarea } from "@/components/ui/textarea"
 import type { AgentState, Block, Pulse, TranscriptState } from "@/lib/transcript"
@@ -88,7 +88,7 @@ export function Transcript({
   onSelectAgent: (id: string) => void
   /** Edit-and-resend from this user_message seq: the bubble below is cleared
    *  and the turn starts again at that position. */
-  onResendUser?: (text: string, seq: number) => void
+  onResendUser?: (text: string, seq: number) => void | Promise<boolean>
   /** Pull one unread steer into the composer. The caller retracts it. */
   onEditQueuedSteer?: (text: string, seq: number) => void
   /** Live find query. Empty means the bar is closed or idle. */
@@ -113,7 +113,6 @@ export function Transcript({
     [blocks, state.running],
   )
   const groups = useMemo(() => turnSlices(body, state.turns), [body, state.turns])
-  const budgetRetries = useMemo(() => budgetRetryMessages(body), [body])
   const turnById = useMemo(
     () => new Map(state.turns.map((row) => [row.id, row])),
     [state.turns],
@@ -170,6 +169,11 @@ export function Transcript({
     unpin,
     loadUntilTurn,
     startId: navItems[0]?.id,
+  })
+  const { retryInput, retryingTurn, canRetryInput } = useRetryInput({
+    enabled: Boolean(onResendUser),
+    jumpTo,
+    resend: async (text, seq) => (await onResendUser?.(text, seq)) !== false,
   })
 
   const paintFind = useCallback(
@@ -263,7 +267,8 @@ export function Transcript({
                     showClock={b.kind === "user" || b.id === clockAnswerId}
                     onSelectAgent={onSelectAgent}
                     onResendUser={onResendUser}
-                    retry={b.kind === "error" ? budgetRetries.get(b.turnId) : undefined}
+                    onRetry={b.kind === "error" && canRetryInput(b.turnId) ? () => void retryInput(b.turnId) : undefined}
+                    retrying={retryingTurn === b.turnId}
                     editing={editingSeq === b.seq && !rewindHidesEdit(state.rewindCut, b.seq)}
                     onBeginEdit={beginEdit}
                     onCancelEdit={cancelEdit}
@@ -309,7 +314,8 @@ const BlockView = memo(function BlockView({
   collapseProcess,
   onSelectAgent,
   onResendUser,
-  retry,
+  onRetry,
+  retrying,
   editing,
   onBeginEdit,
   onCancelEdit,
@@ -321,7 +327,8 @@ const BlockView = memo(function BlockView({
   collapseProcess?: boolean
   onSelectAgent: (id: string) => void
   onResendUser?: (text: string, seq: number) => void
-  retry?: { text: string; seq: number }
+  onRetry?: () => void
+  retrying?: boolean
   editing?: boolean
   onBeginEdit?: (seq: number) => void
   onCancelEdit?: () => void
@@ -394,8 +401,8 @@ const BlockView = memo(function BlockView({
         <TranscriptError
           text={block.text}
           turnId={block.turnId}
-          retry={retry}
-          onResend={onResendUser}
+          onRetry={onRetry}
+          retrying={retrying}
         />
       )
 

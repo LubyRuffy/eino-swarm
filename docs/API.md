@@ -1994,6 +1994,11 @@ Every turn of the conversation, oldest first. This is what renders the
 human sends. The jump rail keys off a `user_message`, so those rows share
 the previous human tick.
 
+Historical rows with a stored `retry_turn_id` include it as a read-only
+link to the source turn. Desktop and web can follow these links to the
+original `user_message` and resend it through `from_event_seq`. New turns
+omit `retry_turn_id`. The start-turn request has no retry lineage field.
+
 ### `POST /api/threads/:id/review` → `202`
 
 Reviews the conversation's most recent successfully completed turn again,

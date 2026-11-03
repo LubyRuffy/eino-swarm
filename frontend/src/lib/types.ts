@@ -403,6 +403,7 @@ export interface Turn {
   goal_continue?: boolean
   schedule_continue?: boolean
   schedule_run_id?: string
+  retry_turn_id?: string
 }
 
 export interface FileEntry {

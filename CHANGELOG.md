@@ -764,6 +764,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-120`, `C-003`: Desktop and web **Retry** resends the latest failed turn's
+  original input in one click. It reuses the stored text, images and
+  quotations and rewinds from the original message. Older retry records
+  identify that message through their stored source turn.
+
 - `F-150`, `C-009`, `C-012`: manually cancelling a conversation wait now
   durably prevents the manager from creating another wait when the user sends
   an ordinary continuation. Only later explicit human permission allows the

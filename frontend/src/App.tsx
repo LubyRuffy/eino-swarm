@@ -688,7 +688,7 @@ function TranscriptPane({
   const send = useApp((s) => s.send)
   const resendUser = useCallback(
     (text: string, seq: number) => {
-      void send(text, undefined, { fromEventSeq: seq })
+      return send(text, undefined, { fromEventSeq: seq })
     },
     [send],
   )

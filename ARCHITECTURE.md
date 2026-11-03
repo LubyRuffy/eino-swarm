@@ -1919,6 +1919,10 @@ keep a local pending row so the bubble does not blink out before the
 replacement `user_message` arrives. An image-only send has nothing to copy,
 so copy is hidden and edit still opens the box; the original images ride
 along unless new ones are attached.
+**Retry** on the latest failed desktop/Web turn uses the same rewind path.
+One click submits the original stored `user_message` text, including its
+quotation envelope, and its sequence selects the original images. Historical
+`retry_turn_id` links, when present, resolve the source turn for this action.
 `⌘F` finds in the open conversation rather than in the window chrome
 (`frontend/src/lib/find.ts`, `frontend/src/lib/find-dom.ts`): a floating bar
 over the transcript, CSS Custom Highlights on the live text nodes, and the

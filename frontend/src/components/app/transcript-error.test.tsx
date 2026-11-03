@@ -57,13 +57,9 @@ const settings: Settings = {
 function Harness({
   text,
   turnId,
-  retry,
-  onResend,
 }: {
   text: string
   turnId?: string
-  retry?: { text: string; seq: number }
-  onResend?: (text: string, seq: number) => void
 }) {
   const open = useSettingsSheet((s) => s.open)
   const section = useSettingsSheet((s) => s.section)
@@ -74,8 +70,7 @@ function Harness({
       <TranscriptError
         text={text}
         turnId={turnId}
-        retry={retry}
-        onResend={onResend}
+        onRetry={() => undefined}
       />
       <SettingsDialog
         open={open}
@@ -103,7 +98,6 @@ describe("output budget error", () => {
       open: false,
       section: "general",
       focus: "",
-      budgetReturn: null,
     })
     useApp.setState({
       activeId: "th1",
@@ -159,26 +153,22 @@ describe("output budget error", () => {
     expect(cap).not.toHaveFocus()
   })
 
-  it("retries the same request after Settings closes", async () => {
+  it("offers Retry immediately and disables it while Settings is open", async () => {
     const user = userEvent.setup()
-    const onResend = vi.fn()
+    useApp.setState({ loaded: true, transcript: { ...emptyTranscript(), turns: [{ id: "turn-1", status: "error", userText: "The task.", agentIds: [] }] } })
     render(
       <Harness
         text={OUTPUT_BUDGET_ERROR}
         turnId="turn-1"
-        retry={{ text: "run it again", seq: 4 }}
-        onResend={onResend}
       />,
     )
-    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled()
     await user.click(
       screen.getByRole("button", { name: "Max completion tokens" }),
     )
-    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Retry" })).toBeDisabled()
     await user.click(screen.getByRole("button", { name: "Back to app" }))
-    const retry = await screen.findByRole("button", { name: "Retry" })
-    await user.click(retry)
-    expect(onResend).toHaveBeenCalledWith("run it again", 4)
+    expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled()
   })
 
   it("names a context-window rejection in the current language", () => {
