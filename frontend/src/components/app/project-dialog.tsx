@@ -63,13 +63,15 @@ export function ProjectDialog({
     setWorkdirError(undefined)
     useToasts.getState().dismiss("project:save")
     try {
-      await onSave({
+      const patch: ProjectPatch = {
         name: name.trim(),
-        system_prompt: prompt,
         workdir,
         memory_enabled: memory,
         nuwa_enabled: nuwa,
-      })
+      }
+      // A name-only save must preserve an instruction changed while open.
+      if (!project || prompt !== project.system_prompt) patch.system_prompt = prompt
+      await onSave(patch)
       onOpenChange(false)
     } catch (e) {
       // A refused working directory is shown under the field that caused it.

@@ -1,10 +1,98 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
 )
+
+func TestProjectDescriptionWriteRequiresCurrentSnapshotAndTurn(t *testing.T) {
+	s := openTestStore(t)
+	project := &Project{Name: "Operations", SystemPrompt: "initial", MemoryEnabled: true}
+	if err := s.CreateProject(project); err != nil {
+		t.Fatal(err)
+	}
+	thread := &Thread{Title: "Change", ProjectID: project.ID}
+	if err := s.CreateThread(thread); err != nil {
+		t.Fatal(err)
+	}
+	turn := &Turn{ThreadID: thread.ID, ProjectID: project.ID}
+	if err := s.CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+
+	// Both managers may read the same snapshot. At most one replacement can
+	// commit, even if neither has received the other's result yet.
+	type write struct {
+		description string
+		err         error
+	}
+	results := make(chan write, 2)
+	ctx := context.Background()
+	for _, description := range []string{"replacement A", "replacement B"} {
+		go func() {
+			results <- write{description, s.UpdateProjectDescriptionForTurn(ctx, project.ID, turn.ID, "initial", description)}
+		}()
+	}
+	var winner string
+	conflicts := 0
+	for range 2 {
+		result := <-results
+		switch {
+		case result.err == nil:
+			winner = result.description
+		case errors.Is(result.err, ErrProjectDescriptionConflict):
+			conflicts++
+		default:
+			t.Fatal(result.err)
+		}
+	}
+	if winner == "" || conflicts != 1 {
+		t.Fatalf("winner=%q conflicts=%d", winner, conflicts)
+	}
+	got, err := s.GetProject(project.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SystemPrompt != winner || got.Name != project.Name || got.MemoryEnabled != project.MemoryEnabled {
+		t.Fatalf("saved project: %+v", got)
+	}
+
+	assertRefused := func() {
+		t.Helper()
+		if err := s.UpdateProjectDescriptionForTurn(ctx, project.ID, turn.ID, winner, "stale"); !errors.Is(err, ErrProjectDescriptionConflict) {
+			t.Fatalf("write after loss of ownership: %v", err)
+		}
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if err := s.UpdateProjectDescriptionForTurn(canceled, project.ID, turn.ID, winner, "canceled"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled write: %v", err)
+	}
+	if err := s.UpdateThread(thread.ID, map[string]any{"plan_mode": true}); err != nil {
+		t.Fatal(err)
+	}
+	assertRefused()
+	if err := s.UpdateThread(thread.ID, map[string]any{"plan_mode": false, "project_id": ""}); err != nil {
+		t.Fatal(err)
+	}
+	assertRefused()
+	if err := s.SetThreadProject(thread.ID, project.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishTurn(turn.ID, TurnDone, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	assertRefused()
+	if err := s.DeleteProject(project.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertRefused()
+	if _, err := s.GetProject(project.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted project was recreated: %v", err)
+	}
+}
 
 func TestProjectRoundTrip(t *testing.T) {
 	s := openTestStore(t)

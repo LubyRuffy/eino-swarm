@@ -3312,6 +3312,20 @@ compare final supported facts, explicit corrections, conflicts and later task
 behavior. Neither prior memory, old reviewer outputs nor model consensus is a
 truth label. Keep paired/shared-output samples distinct from independent runs.
 
+## Agent edits to the project description (F-120 / C-038)
+
+`internal/engine/project_description_http_test.go` drives a gateway migration
+through the manager's real model adapter and tool runner. Memory and Skills
+already describe the new setup while the project description still names the
+retired gateway. Check the successful write receipt, the saved description,
+the unrelated project, and the actual system prompts of both the next turn in
+the existing conversation and a fresh conversation.
+The model endpoint is scripted and the addresses are test fixtures.
+`internal/store/projects_test.go` exercises concurrent replacements and
+loss of write ownership. `frontend/e2e/projects.spec.ts` checks that Edit
+shows the latest description and that a name-only save preserves a later
+concurrent description change.
+
 ## Project working-directory selection (F-120 / C-026)
 
 `frontend/src/lib/workdir.test.ts` verifies the native bridge boundary and

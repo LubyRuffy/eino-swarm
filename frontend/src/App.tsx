@@ -53,6 +53,7 @@ import { useTraceFocus } from "@/store/trace-focus"
 import { projectOf, useProjects } from "@/store/projects"
 import { useTerminal } from "@/store/terminal"
 import { openSettings, useSettingsSheet } from "@/store/settings-sheet"
+import { errorMessage, toastError, useToasts } from "@/store/toasts"
 
 export function App() {
   useEffect(installComposerRecoveryAttribution, [])
@@ -130,6 +131,29 @@ function AppShell() {
   const [panelTab, setPanelTab] = useState<PanelTab>("agents")
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [projectDialog, setProjectDialog] = useState<ProjectDialogState>()
+  const projectLoad = useRef<AbortController | null>(null)
+  useEffect(() => () => projectLoad.current?.abort(), [])
+  const openProjectDialog = async (project?: Project) => {
+    projectLoad.current?.abort()
+    useToasts.getState().dismiss("project:load")
+    if (!project) {
+      setProjectDialog({ open: true })
+      return
+    }
+    // The sidebar snapshot can predate edits by an agent or another window.
+    const load = new AbortController()
+    projectLoad.current = load
+    try {
+      const fresh = await api.project(project.id, load.signal)
+      if (!load.signal.aborted) setProjectDialog({ open: true, project: fresh })
+    } catch (error) {
+      if (!load.signal.aborted) {
+        toastError(errorMessage(error), { id: "project:load", title: t("settings.loadFailed") })
+      }
+    } finally {
+      if (projectLoad.current === load) projectLoad.current = null
+    }
+  }
   const [doomedProject, setDoomedProject] = useState<Project>()
   const [prefill, setPrefill] = useState("")
   const [prefillToken, setPrefillToken] = useState(0)
@@ -374,7 +398,7 @@ function AppShell() {
             onSettings={openSettings}
             onToggleTheme={toggleTheme}
             onToggleLocale={toggleLocale}
-            onNewProject={() => setProjectDialog({ open: true })}
+            onNewProject={() => void openProjectDialog()}
             onNewInProject={(project) => void startThreadInProject(project)}
             onHistoryReport={(project) => {
               closeClient()
@@ -385,8 +409,11 @@ function AppShell() {
                 if (id) await useApp.getState().send(t("projects.historyPrompt"), undefined, { threadId: id, historyReport: true })
               })()
             }}
-            onEditProject={(project) => setProjectDialog({ open: true, project })}
-            onDeleteProject={setDoomedProject}
+            onEditProject={(project) => void openProjectDialog(project)}
+            onDeleteProject={(project) => {
+              projectLoad.current?.abort()
+              setDoomedProject(project)
+            }}
             onOpenSkill={(project, skill) => {
               // The list is the directory; the Memory tab is the document.
               // Selecting the project loads its notes so the panel is not

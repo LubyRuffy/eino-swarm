@@ -2,6 +2,14 @@
 
 Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user entry points and [CHANGELOG.md](../CHANGELOG.md) for history. Contract IDs are stable.
 
+## C-038 Agent edits to the current project description
+
+- 状态 active。作用范围为项目全局描述及 PC 项目编辑，关联 `F-120`。
+- 入口为有人类请求的项目对话。manager 使用 `update_project_description` 提交完整新描述，保留与请求无关的说明。工具随当前项目绑定，无目标 ID 参数。独立会话、计划模式、自动目标续跑、定时运行、worker 和复盘不提供此写入口。描述与 Memory 和 Skills 分开保存。
+- SQLite 在一次条件更新中检查该回合仍在运行、对话仍属于同一项目且未进入计划模式，以及当前描述与该回合看到的一致。成功回执在写入后返回。缺失或非法参数、过期快照、失去归属及存储错误返回失败回执。描述及更新时间之外的项目字段保持原值。
+- 新描述进入该项目后续回合的 manager 系统提示。PC 编辑窗口读取当前项目数据，保存时省略未改动的描述。
+- 实现 `internal/engine/project_description.go`、`internal/store/projects.go`。验证 `internal/engine/project_description_http_test.go`、`internal/store/projects_test.go`、`frontend/e2e/projects.spec.ts`。来源 GitHub Issue #148。
+
 ## C-037 Nuwa collaboration preserves identity, evidence and recovery
 
 - 状态：active；类型：consistency / lifecycle / provenance / compatibility；作用范围：项目模式、Registry 递归分工、模型选择、共享记录、项目视图与恢复；关联功能：`F-136`、`F-130`、`F-160`、`F-330`。

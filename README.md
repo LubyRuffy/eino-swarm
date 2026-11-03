@@ -1076,6 +1076,14 @@ things:
   permissions. Leave it empty and zwai keeps one for you;
 - **memory**, on by default.
 
+When a durable project instruction changes, ask the manager in a conversation
+in that project to update its global description. It saves the revised
+description separately from Memory and Skills, even if Memory is disabled.
+The new instruction reaches the manager on subsequent turns, including in
+other conversations in the same project. If someone edited the description
+while the manager was working, start a new turn to reconcile the changes.
+You can inspect the saved description in the project's **Edit** dialog.
+
 In the desktop window, **Choose directory / 选择目录** opens the system folder
 picker and fills the working-directory field with the chosen folder's absolute
 path. Cancelling keeps the current value; a selection error appears below the

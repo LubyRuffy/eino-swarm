@@ -774,6 +774,16 @@ limit is implied. See `C-029` and
 `internal/provider/backoff.go`, `internal/provider/model_backoff.go`,
 `internal/provider/stream_completion.go`.
 
+## Project description edits
+
+Each project turn loads `projects.system_prompt` into the manager's system
+prompt. For a human-initiated project turn outside planning, the engine gives
+the manager a project-bound `update_project_description` tool. Its SQLite
+write compares the description seen by that turn and checks the running
+turn's current project membership. A later turn loads the committed value.
+The project settings editor reads the current record when opened and omits an
+untouched description from its patch.
+
 ## Conversation search
 
 The host also mounts `query_history` on manager and worker surfaces for new,

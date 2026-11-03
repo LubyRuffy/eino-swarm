@@ -12,6 +12,11 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   package contents, and EPUB renders chapters without scripts. Download stays
   an attachment. SVG remains source. (`F-140`, `F-224`, `C-005`, `C-020`)
 
+- Added a manager tool to update the current project's global description when
+  asked. Later turns load the saved description. Stale agent edits are refused,
+  and saving unrelated PC project settings preserves the latest description.
+  (`F-120`, `C-038`)
+
 - Moved mobile Web-tool status into **User center → Web tools** to free space
   above conversations. The conversation header’s settings icon opens User
   center without leaving the conversation. (`F-211`)

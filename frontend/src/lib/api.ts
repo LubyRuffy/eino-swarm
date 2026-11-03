@@ -388,6 +388,8 @@ export const api = {
 
   projects: () =>
     request<{ projects: Project[] }>("/api/projects").then((r) => r.projects),
+  project: (id: string, signal?: AbortSignal) =>
+    request<{ project: Project }>(`/api/projects/${id}`, { signal, cache: "no-store" }).then((r) => r.project),
   createProject: (patch: ProjectPatch) =>
     request<{ project: Project }>("/api/projects", {
       method: "POST",

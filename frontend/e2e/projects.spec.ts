@@ -46,6 +46,37 @@ async function openMemory(page: Page) {
   await page.getByRole("tab", { name: "Memory" }).click()
 }
 
+test("project settings load the current instruction and leave concurrent edits intact", async ({ page, request }) => {
+  const name = `Shared project ${Date.now()}`
+  const created = await request.post("/api/projects", { data: { name, system_prompt: "Original access instructions" } })
+  expect(created.ok()).toBe(true)
+  const { project } = await created.json() as { project: { id: string } }
+  const path = `/api/projects/${project.id}`
+  try {
+    await page.goto("/")
+    await expect(projectRow(page, name)).toBeVisible()
+
+    // An Agent's update changes the same project field without a page reload.
+    const current = "Updated access instructions"
+    expect((await request.patch(path, { data: { system_prompt: current } })).ok()).toBe(true)
+    await page.getByRole("button", { name: `Project options for ${name}` }).click()
+    await page.getByRole("menuitem", { name: "Edit", exact: true }).click()
+    await expect(page.getByLabel("Instruction", { exact: true })).toHaveValue(current)
+
+    const concurrent = "Newer access instructions"
+    expect((await request.patch(path, { data: { system_prompt: concurrent } })).ok()).toBe(true)
+    await page.getByRole("textbox", { name: "Name", exact: true }).fill(`${name} revised`)
+    await page.getByRole("button", { name: "Save", exact: true }).click()
+    await expect(projectRow(page, `${name} revised`)).toBeVisible()
+    const saved = await request.get(path)
+    expect(saved.ok()).toBe(true)
+    expect(await saved.json()).toMatchObject({ project: { system_prompt: concurrent } })
+  } finally {
+    // The default suite shares a server across browser contexts.
+    expect((await request.delete(path)).ok()).toBe(true)
+  }
+})
+
 test("a project carries what one conversation learned into the next", async ({
   page,
   request,

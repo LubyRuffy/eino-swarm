@@ -1071,6 +1071,11 @@ memory off.
 `PATCH` accepts `name`, `system_prompt`, `workdir`, `memory_enabled` and `nuwa_enabled`; an
 omitted field is left alone. Both respond `{"project": {…}}`.
 
+`system_prompt` is also the global description saved by the manager's
+project-bound `update_project_description` tool. Subsequent GET requests and
+turns read the saved value. When editing another field, omit `system_prompt`
+to preserve the current description.
+
 Nuwa defaults off when omitted on create. Changing it applies to subsequent
 turns; running/parked workers retain their original mode and concrete model
 binding. Disabling does not delete shared records. Actual mode changes atomically

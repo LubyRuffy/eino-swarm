@@ -214,7 +214,7 @@ in this database: notes and skills are files, so a person can read and fix them
 |---|---|---|
 | `id` | text, PK | `pj_` + 8 random bytes hex. **Also a directory name**, so it stays free of separators |
 | `name` | text | what the sidebar shows |
-| `system_prompt` | text | added to the manager's prompt for every conversation in the project |
+| `system_prompt` | text | global description added to the manager's prompt on each project turn. The project editor and the project-bound manager tool can save it. |
 | `workdir` | text | the directory the user chose; empty means zwai manages one |
 | `memory_enabled` | bool | whether this project remembers anything. `memory.enabled` in the config can override it off, never on |
 | `nuwa_enabled` | bool | opt-in collaboration mode for subsequent turns; existing projects default off |

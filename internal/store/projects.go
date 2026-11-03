@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -8,6 +9,10 @@ import (
 
 	"gorm.io/gorm"
 )
+
+// ErrProjectDescriptionConflict means the turn no longer owns a write against
+// the description it saw. It must not resubmit its stale replacement.
+var ErrProjectDescriptionConflict = errors.New("project description changed or the turn can no longer edit this project")
 
 // CreateProject inserts a new project, filling in the id and timestamps.
 func (s *Store) CreateProject(p *Project) error {
@@ -66,6 +71,26 @@ func (s *Store) UpdateProject(id string, fields map[string]any) error {
 	}
 	if res.RowsAffected == 0 {
 		return ErrNotFound
+	}
+	return nil
+}
+
+// UpdateProjectDescriptionForTurn compares the manager's snapshot and verifies
+// its live project membership in the same statement that saves the description.
+func (s *Store) UpdateProjectDescriptionForTurn(ctx context.Context, projectID, turnID, previous, description string) error {
+	res := s.db.WithContext(ctx).Model(&Project{}).
+		Where("id = ? AND COALESCE(system_prompt, '') = ?", projectID, previous).
+		Where(`EXISTS (
+			SELECT 1 FROM turns JOIN threads ON threads.id = turns.thread_id
+			WHERE turns.id = ? AND turns.status = ? AND turns.project_id = projects.id
+				AND threads.project_id = projects.id AND COALESCE(threads.plan_mode, false) = false
+		)`, turnID, TurnRunning).
+		Updates(map[string]any{"system_prompt": description, "updated_at": time.Now().UTC()})
+	if res.Error != nil {
+		return fmt.Errorf("store: update project description: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return ErrProjectDescriptionConflict
 	}
 	return nil
 }

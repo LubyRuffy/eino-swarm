@@ -227,6 +227,22 @@ describe("Project dialog", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled()
   })
 
+  it("does not resend an untouched instruction when renaming a project", async () => {
+    const { onSave } = renderDialog({ project })
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Renamed" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(onSave).toHaveBeenCalled())
+    expect(onSave.mock.calls[0][0]).toMatchObject({ name: "Renamed" })
+    expect(onSave.mock.calls[0][0]).not.toHaveProperty("system_prompt")
+  })
+
+  it("saves an explicit instruction clear", async () => {
+    const { onSave } = renderDialog({ project })
+    fireEvent.change(screen.getByLabelText("Instruction"), { target: { value: "" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ system_prompt: "" })))
+  })
+
   // Offering a switch that the install-wide setting overrides would promise
   // something the app will not do.
   it("disables the memory switch when memory is off for the install", () => {

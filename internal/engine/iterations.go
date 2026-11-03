@@ -141,6 +141,10 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		managerTools = append(managerTools, ProposePlanTool(func(markdown string) (string, error) {
 			return e.proposePlanJSON(tid, markdown)
 		}))
+	} else if th != nil && pc != nil && pc.project != nil &&
+		th.ProjectID == pc.project.ID && turn.ProjectID == pc.project.ID &&
+		!turn.GoalContinue && !turn.ScheduleContinue {
+		managerTools = append(managerTools, e.projectDescriptionTool(pc.project, turn))
 	}
 	if pursuingGoal(th) && !turn.NuwaReadOnly && (th == nil || !th.PlanMode) {
 		tid := rt.threadID
