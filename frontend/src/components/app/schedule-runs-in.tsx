@@ -91,12 +91,12 @@ export function ScheduleRunsInPicker({
       ? createPortal(
           <div
             ref={menuRef}
-            className="fixed z-[60] w-72 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md"
+            className="fixed toast-layer w-72 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md"
             style={{ right: pos.right, top: pos.top }}
           >
             <Command
               label={t("schedule.runsInSearch")}
-              className="h-auto [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground"
+              className="h-auto **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-[11px] **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground"
             >
               <CommandInput
                 placeholder={t("schedule.runsInSearch")}
@@ -160,7 +160,7 @@ export function ScheduleRunsInPicker({
         className={cn(
           settingsSelectTriggerClass,
           "inline-flex items-center justify-between gap-1",
-          expanded ? "max-w-[22rem]" : "max-w-[13rem]",
+          expanded ? "max-w-88" : "max-w-52",
         )}
       >
         <span className="truncate">{label}</span>

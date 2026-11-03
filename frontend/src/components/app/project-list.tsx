@@ -144,7 +144,7 @@ export function ProjectList({
       </div>
 
       {projects.length === 0 ? (
-        <p className={cn(chromeTypeClass, "px-[var(--sidebar-row-px)] py-3 text-sidebar-foreground/70")}>
+        <p className={cn(chromeTypeClass, "px-(--sidebar-row-px) py-3 text-sidebar-foreground/70")}>
           {t("projects.empty")}
         </p>
       ) : null}
@@ -232,7 +232,7 @@ function ProjectRow({
               <FolderOpen
                 data-testid="project-folder"
                 data-open="true"
-                className="size-[16px] shrink-0"
+                className="sidebar-kind shrink-0"
                 aria-hidden="true"
               />
             ) : (
@@ -240,7 +240,7 @@ function ProjectRow({
                 <Folder
                   data-testid="project-folder"
                   data-open="false"
-                  className="size-[16px] shrink-0"
+                  className="sidebar-kind shrink-0"
                   aria-hidden="true"
                 />
                 {asking ? (

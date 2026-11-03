@@ -14,7 +14,7 @@ export function WebExecutionSettings({ pcWeb }: { pcWeb?: PcWebSnapshot }) {
     try { action(); setSaveError(false) }
     catch { setSaveError(true) }
   }
-  const controlClass = "h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+  const controlClass = "h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
   return <section aria-label={t("account.webTools")} className="flex flex-col gap-4">
     <div className="flex flex-col gap-2">
       <label htmlFor="account-web-execution" className="text-sm font-semibold">{t("account.webDirect")}</label>

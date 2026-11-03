@@ -92,7 +92,7 @@ export function ResizeHandle({
         onWidthCommit?.(next)
       }}
       className={cn(
-        "absolute z-20 select-none touch-none hover:bg-ring/40 focus-visible:bg-ring/60 focus-visible:outline-none",
+        "absolute z-20 select-none touch-none hover:bg-ring/40 focus-visible:bg-ring/60 focus-visible:outline-hidden",
         vertical
           ? "inset-x-0 h-2 cursor-row-resize"
           : "inset-y-0 w-2 cursor-col-resize",

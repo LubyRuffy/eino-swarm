@@ -128,7 +128,7 @@ export function LocalClientsSection({ bare = false }: { bare?: boolean }) {
       onToggle={() => toggle(tool.id)}
     >
       {tool.tasks.length === 0 ? (
-        <p className={cn(chromeTypeClass, "px-[var(--sidebar-row-px)] pb-1 text-sidebar-foreground/60")}>
+        <p className={cn(chromeTypeClass, "px-(--sidebar-row-px) pb-1 text-sidebar-foreground/60")}>
           {t("sidebar.clientEmpty")}
         </p>
       ) : (
@@ -138,7 +138,7 @@ export function LocalClientsSection({ bare = false }: { bare?: boolean }) {
               <button
                 type="button"
                 className={cn(
-                  "flex w-full items-center gap-2 px-[var(--sidebar-row-px)] py-1 text-left",
+                  "flex w-full items-center gap-2 px-(--sidebar-row-px) py-1 text-left",
                   reading?.id === task.id && "bg-sidebar-accent text-sidebar-accent-foreground",
                 )}
                 onClick={() => openClient({ id: task.id, title: task.title, status: task.status })}

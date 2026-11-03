@@ -28,7 +28,7 @@ export function SidebarSection({
 }) {
   return (
     <section className={sidebarSectionClass} data-testid={testId}>
-      <div className="group flex h-[var(--sidebar-section-label-height)] items-center pr-1">
+      <div className="group flex h-(--sidebar-section-label-height) items-center pr-1">
         <button
           type="button"
           aria-expanded={open}

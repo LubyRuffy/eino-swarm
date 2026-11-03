@@ -125,7 +125,7 @@ export function NuwaPanel({
       </div>
       {error ? (
         <div role="alert" className="mb-3 rounded-md border border-destructive/30 p-2 text-xs">
-          <p className="break-words text-destructive">{error}</p>
+          <p className="wrap-break-word text-destructive">{error}</p>
           <Button className="mt-1" size="sm" variant="ghost" onClick={() => void refresh()}>
             {t("nuwa.retry")}
           </Button>
@@ -186,7 +186,7 @@ export function NuwaPanel({
                     onClick={() => setSelected(node.id)}
                     aria-pressed={selected === node.id}
                     className={cn(
-                      "flex w-full min-w-0 items-center gap-2 rounded-md border px-2 py-2 text-left hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "flex w-full min-w-0 items-center gap-2 rounded-md border px-2 py-2 text-left hover:bg-accent/50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                       selected === node.id ? "border-primary" : "border-transparent"
                     )}
                   >
@@ -263,7 +263,7 @@ function WorkerRow({ worker, onOpen }: { worker: NuwaWorker; onOpen: () => void 
     <button
       type="button"
       onClick={onOpen}
-      className="mb-1 flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="mb-1 flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-accent/50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span className="sr-only">{t("nuwa.worker")}: </span>
       <span className="min-w-0 flex-1">
@@ -310,10 +310,10 @@ function NodeDetail({
       className="mt-3 rounded-lg border border-border bg-muted/20 p-3"
     >
       <div className="mb-2 flex items-start justify-between gap-2">
-        <h3 className="break-words text-sm font-medium">{node.title}</h3>
+        <h3 className="wrap-break-word text-sm font-medium">{node.title}</h3>
         <NuwaStatus status={node.status} />
       </div>
-      <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">
+      <p className="whitespace-pre-wrap wrap-break-word text-xs text-muted-foreground">
         {node.summary}
       </p>
       {node.stale_dependencies?.length ? (
@@ -383,7 +383,7 @@ function NodeDetail({
       {expanded ? (
         <div className="mt-2 min-w-0">
           {node.detail ? (
-            <div className="prose prose-sm max-w-none break-words text-xs dark:prose-invert">
+            <div className="prose prose-sm max-w-none wrap-break-word text-xs dark:prose-invert">
               <MemoMarkdown text={node.detail} />
             </div>
           ) : null}
@@ -393,7 +393,7 @@ function NodeDetail({
               <button
                 key={`${source.thread_id}:${source.seq}:${index}`}
                 type="button"
-                className="mb-1 block w-full break-all rounded-md border border-border p-2 text-left text-xs hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                className="mb-1 block w-full break-all rounded-md border border-border p-2 text-left text-xs hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => void onSource(source)}
                 disabled={node.unavailable_evidence?.some(
                   (missing) => missing.thread_id === source.thread_id && missing.seq === source.seq

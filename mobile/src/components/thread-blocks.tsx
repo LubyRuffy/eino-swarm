@@ -42,7 +42,7 @@ export function renderBlock(b: CompactBlock) {
     return (
       // A bubble as wide as the screen for three words reads as a banner.
       // What you said hugs its own text and sits on the side you typed from.
-      <div data-quote-text="" className="ml-auto w-fit min-w-0 max-w-[85%] break-words rounded-2xl bg-secondary px-3 py-2 text-sm text-secondary-foreground">
+      <div data-quote-text="" className="ml-auto w-fit min-w-0 max-w-[85%] wrap-break-word rounded-2xl bg-secondary px-3 py-2 text-sm text-secondary-foreground">
         {text ? <QuotedPhoneText text={text} /> : null}
         {b.hasImages ? (
           <p className="mt-1 text-xs text-muted-foreground">{t("thread.image")}</p>
@@ -54,7 +54,7 @@ export function renderBlock(b: CompactBlock) {
     const text = dropPackedJson(b.text)
     if (!text) return null
     return (
-      <div data-quote-text="" className="ml-auto w-fit min-w-0 max-w-[85%] break-words rounded-2xl bg-accent px-3 py-2 text-sm">
+      <div data-quote-text="" className="ml-auto w-fit min-w-0 max-w-[85%] wrap-break-word rounded-2xl bg-accent px-3 py-2 text-sm">
         <QuotedPhoneText text={text} />
       </div>
     )
@@ -63,7 +63,7 @@ export function renderBlock(b: CompactBlock) {
     const text = dropPackedJson(b.text)
     if (!text) return null
     return (
-      <div data-quote-text="" className={cn("mr-4 min-w-0 break-words text-sm leading-snug", b.streaming && "opacity-90")}>
+      <div data-quote-text="" className={cn("mr-4 min-w-0 wrap-break-word text-sm leading-snug", b.streaming && "opacity-90")}>
         <PhoneMarkdown text={text} />
       </div>
     )
@@ -110,7 +110,7 @@ function QuotedPhoneText({ text }: { text: string }) {
       {parsed.quotes.map((q, i) => (
         <p
           key={`${i}-${q.slice(0, 24)}`}
-          className="min-w-0 whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/50 px-2 py-1 text-xs text-muted-foreground line-clamp-3"
+          className="min-w-0 whitespace-pre-wrap wrap-break-word rounded-lg border border-border bg-muted/50 px-2 py-1 text-xs text-muted-foreground line-clamp-3"
         >
           {i + 1}. {t("quote.selected")}: {q}
         </p>

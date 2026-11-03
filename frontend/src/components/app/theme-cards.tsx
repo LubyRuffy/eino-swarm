@@ -131,7 +131,7 @@ export function AppearanceTheme({
                   aria-label={name}
                   onClick={() => onThemeChange(mode)}
                   className={cn(
-                    "flex flex-col gap-2 rounded-xl text-left outline-none",
+                    "flex flex-col gap-2 rounded-xl text-left outline-hidden",
                     "focus-visible:ring-2 focus-visible:ring-ring",
                   )}
                 >

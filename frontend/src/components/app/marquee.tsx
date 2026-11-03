@@ -47,7 +47,7 @@ export function MarqueeText({
     >
       {scroll ? (
         <span
-          className="inline-flex whitespace-nowrap animate-marquee hover:[animation-play-state:paused]"
+          className="inline-flex whitespace-nowrap animate-marquee hover:paused"
           style={{ animationDuration: marqueeDuration(text) }}
         >
           <span ref={copyRef}>{text}</span>
@@ -61,7 +61,7 @@ export function MarqueeText({
           className={cn(
             "block truncate",
             shimmer &&
-              "animate-shimmer bg-gradient-to-r from-muted-foreground via-foreground to-muted-foreground bg-[length:200%_100%] bg-clip-text text-transparent",
+              "animate-shimmer bg-linear-to-r from-muted-foreground via-foreground to-muted-foreground bg-size-[200%_100%] bg-clip-text text-transparent",
           )}
         >
           {text}

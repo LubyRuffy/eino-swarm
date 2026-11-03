@@ -173,7 +173,7 @@ export function Composer({
             <li key={i} className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-muted px-3 py-1 text-xs">
               <textarea
                 aria-label={t("quote.edit", { n: i + 1 })}
-                className="min-h-12 max-h-24 min-w-0 flex-1 resize-y overflow-auto bg-transparent text-base focus-visible:outline-none"
+                className="min-h-12 max-h-24 min-w-0 flex-1 resize-y overflow-auto bg-transparent text-base focus-visible:outline-hidden"
                 rows={2}
                 value={quote}
                 data-testid="quote-draft"
@@ -261,7 +261,7 @@ export function Composer({
           }}
           className={cn(
             "min-h-9 min-w-0 flex-1 resize-none bg-transparent px-2 py-2 text-base leading-5",
-            "placeholder:text-muted-foreground focus-visible:outline-none disabled:opacity-60",
+            "placeholder:text-muted-foreground focus-visible:outline-hidden disabled:opacity-60",
           )}
         />
         <button

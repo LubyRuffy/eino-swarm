@@ -49,7 +49,7 @@ export function ProviderCloudTools({ provider, query, draft, error, onUpdate, on
             value={draft ?? JSON.stringify(provider.builtin_tools ?? [], null, 2)}
             rows={6}
             spellCheck={false}
-            className="font-mono text-[length:var(--chrome-font-size)] shadow-none"
+            className="font-mono text-(length:--chrome-font-size) shadow-none"
             onChange={(event) => onDraftChange(event.target.value)}
           />
           {error ? <p id={errorId} role="alert" className={cn(settingsHintClass, "text-destructive")}>{t(error)}</p> : null}

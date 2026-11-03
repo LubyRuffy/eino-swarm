@@ -98,7 +98,7 @@ function ThoughtBody({ text, streaming }: { text: string; streaming?: boolean })
         <div
           aria-hidden
           data-testid="thought-fade"
-          className="thought-fade pointer-events-none absolute inset-x-0 top-0 z-[1] h-10"
+          className="thought-fade pointer-events-none absolute inset-x-0 top-0 z-1 h-10"
         />
       ) : null}
       <div

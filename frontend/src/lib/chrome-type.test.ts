@@ -25,7 +25,7 @@ describe("contentTypeClass", () => {
     expect(contentTypeClass).toContain("content-type")
     expect(contentTypeClass).toContain("--ui-font-size")
     expect(contentTypeClass).not.toMatch(/\btext-sm\b/)
-    const merged = cn("text-sm shadow-sm", contentTypeClass)
+    const merged = cn("text-sm shadow-xs", contentTypeClass)
     expect(merged).toContain("--ui-font-size")
     expect(merged).not.toMatch(/\btext-sm\b/)
   })

@@ -221,7 +221,7 @@ describe("thread blocks", () => {
         })}
       </>,
     )
-    expect(document.querySelector(".md-body")).toHaveClass("break-words")
+    expect(document.querySelector(".md-body")).toHaveClass("wrap-break-word")
   })
 
   it("keeps a mid-turn answer on screen and folds only adjacent work", () => {

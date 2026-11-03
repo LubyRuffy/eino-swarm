@@ -115,7 +115,7 @@ export function ScheduleInboxForm({
         ? t("schedule.cron")
         : t("schedule.delay")
   const fieldsLocked = readOnly || disabled
-  const selectWidth = expanded ? "max-w-[22rem]" : "max-w-[13rem]"
+  const selectWidth = expanded ? "max-w-88" : "max-w-52"
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
@@ -147,8 +147,8 @@ export function ScheduleInboxForm({
           className={cn(
             "text-base shadow-none focus-visible:ring-0",
             expanded
-              ? "h-[min(32rem,50vh)] min-h-[16rem] resize-none overflow-y-auto rounded-xl border border-border bg-background px-3 py-3"
-              : "min-h-[10rem] shrink-0 border-0 bg-transparent px-0",
+              ? "h-[min(32rem,50vh)] min-h-64 resize-none overflow-y-auto rounded-xl border border-border bg-background px-3 py-3"
+              : "min-h-40 shrink-0 border-0 bg-transparent px-0",
           )}
         />
         <FormSection title={t("schedule.details")}>
@@ -219,7 +219,7 @@ export function ScheduleInboxForm({
                 "h-[32px] shadow-none",
                 cadence === "cron"
                   ? "w-40"
-                  : "w-[5.75rem] px-2 text-right tabular-nums",
+                  : "w-23 px-2 text-right tabular-nums",
               )}
             />
           </FormRow>

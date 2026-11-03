@@ -87,7 +87,7 @@ export function ProviderWindows({
                 type="number"
                 min={0}
                 className={cn(
-                  "h-[32px] w-[5.75rem] px-2 text-right tabular-nums shadow-none",
+                  "h-[32px] w-23 px-2 text-right tabular-nums shadow-none",
                   chromeTypeClass,
                 )}
                 aria-label={t("settings.models.windowFor", { name })}
@@ -114,7 +114,7 @@ export function ProviderWindows({
             type="number"
             min={0}
             className={cn(
-              "h-[32px] w-[5.75rem] px-2 text-right tabular-nums shadow-none",
+              "h-[32px] w-23 px-2 text-right tabular-nums shadow-none",
               chromeTypeClass,
             )}
             aria-label={t("settings.models.windowFallback")}

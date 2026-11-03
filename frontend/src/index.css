@@ -1,6 +1,541 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@import './styles/scroll-fade.css';
+
+@plugin 'tailwindcss-animate';
+
+@custom-variant dark (&:is(.dark *));
+
+/* Runtime font stacks live on :root and can change from Settings.
+   Inline theme tokens reference them without replacing the variables. */
+@theme inline {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+@theme {
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+
+  --color-running: hsl(var(--running));
+  --color-done: hsl(var(--done));
+  --color-failed: hsl(var(--failed));
+  --color-ask: hsl(var(--ask));
+
+  --color-qr-plate: hsl(var(--qr-plate));
+
+  --color-file-folder: hsl(var(--file-folder));
+  --color-file-code: hsl(var(--file-code));
+  --color-file-doc: hsl(var(--file-doc));
+  --color-file-config: hsl(var(--file-config));
+  --color-file-image: hsl(var(--file-image));
+
+  --color-syntax-keyword: hsl(var(--syntax-keyword));
+  --color-syntax-command: hsl(var(--syntax-command));
+  --color-syntax-string: hsl(var(--syntax-string));
+  --color-syntax-comment: hsl(var(--syntax-comment));
+  --color-syntax-operator: hsl(var(--syntax-operator));
+  --color-syntax-flag: hsl(var(--syntax-flag));
+  --color-syntax-variable: hsl(var(--syntax-variable));
+  --color-syntax-prompt: hsl(var(--syntax-prompt));
+
+  --color-diff-add: hsl(var(--diff-add));
+  --color-diff-add-bg: hsl(var(--diff-add-bg));
+  --color-diff-del: hsl(var(--diff-del));
+  --color-diff-del-bg: hsl(var(--diff-del-bg));
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-breathe: breathe 1.6s ease-in-out infinite;
+  --animate-marquee: marquee 12s linear infinite;
+  --animate-shimmer: shimmer 2.2s ease-in-out infinite;
+  --animate-swap-in: swap-in 0.22s ease-out both;
+  --animate-swap-out: swap-out 0.22s ease-out both;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+  @keyframes breathe {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.45;
+      transform: scale(0.82);
+    }
+  }
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: 200% center;
+    }
+    to {
+      background-position: -200% center;
+    }
+  }
+  @keyframes swap-in {
+    from {
+      transform: translateY(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+  @keyframes swap-out {
+    from {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateY(-100%);
+      opacity: 0;
+    }
+  }
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@utility input-image-preview {
+  &[role='dialog'] {
+    @apply gap-3 rounded-lg p-3;
+    width: max-content;
+    max-width: calc(100vw - (--spacing(8)));
+    max-height: calc(100dvh - (--spacing(8)));
+  }
+}
+
+@utility input-image-preview-image {
+  @apply mx-auto max-w-full rounded-md object-contain;
+  max-height: calc(100dvh - (--spacing(28)));
+}
+
+@utility input-image-preview-status {
+  @apply flex min-h-40 items-center justify-center gap-2 px-6 text-sm text-muted-foreground;
+}
+
+@utility content-column {
+  /* Conversation column. --content-max is 48rem (max-w-3xl) until Settings
+     or the title-bar control overwrites it to none. */
+  width: 100%;
+  max-width: var(--content-max, 48rem);
+  min-width: 0;
+  margin-inline: auto;
+}
+
+@utility theme-swatch {
+  /* Settings → General theme cards. Faces use their own tokens so a
+     light preview stays light while the window is dark. */
+  height: 4.75rem;
+  overflow: hidden;
+  border-radius: calc(var(--radius) + 2px);
+  border: 1px solid hsl(var(--border));
+}
+
+@utility theme-swatch-face {
+  height: 100%;
+  padding: 0.4rem 0.35rem 0.3rem;
+  background: hsl(var(--swatch-chrome));
+}
+
+@utility theme-swatch-page {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  gap: 0.22rem;
+  border-radius: 0.45rem;
+  background: hsl(var(--swatch-page));
+  padding: 0.45rem 0.4rem;
+}
+
+@utility theme-swatch-bar {
+  display: block;
+  height: 0.28rem;
+  border-radius: 999px;
+  background: hsl(var(--swatch-bar));
+}
+
+@utility theme-swatch-bar-accent {
+  width: 42%;
+  background: hsl(var(--swatch-accent));
+}
+
+@utility theme-swatch-bar-mid {
+  width: 72%;
+}
+
+@utility theme-swatch-bar-short {
+  width: 54%;
+}
+
+@utility theme-swatch-split {
+  clip-path: inset(0 0 0 50%);
+}
+
+@utility content-gutter {
+  /* Phone keeps 1rem. sm+ uses --content-gutter so full width can sit
+     flush against the sidebars without a second Tailwind breakpoint. */
+  padding-inline: 1rem;
+  @media (min-width: 640px) {
+    padding-inline: var(--content-gutter, 2rem);
+  }
+}
+
+@utility content-type {
+  /* Conversation body. Chrome uses --font-sans / --chrome-font-size. */
+  font-family: var(--font-content, var(--font-sans));
+  font-size: var(--ui-font-size);
+}
+
+@utility md {
+  /* Rendered markdown from the model. Prose plugins bring a lot of opinions
+     and a lot of kilobytes; these are the few rules the answers actually
+     need. Sizes are rem so Settings → Font size scales the answer too. */
+  font-family: var(--font-content, var(--font-sans));
+  font-size: var(--ui-font-size);
+  @apply min-w-0 leading-6;
+  & > * + * {
+    @apply mt-3;
+  }
+  /* Headings keep weight, not a second size — sidebar titles and body
+     titles should read as the same type unless Settings splits them. */
+  & h1 {
+    @apply font-semibold mt-4;
+    font-size: inherit;
+  }
+  & h2 {
+    @apply font-semibold mt-4;
+    font-size: inherit;
+  }
+  & h3 {
+    @apply font-semibold mt-4;
+    font-size: inherit;
+  }
+  & h4 {
+    @apply font-semibold mt-4;
+    font-size: inherit;
+  }
+  & h5 {
+    @apply font-semibold mt-4;
+    font-size: inherit;
+  }
+  & h6 {
+    @apply font-semibold mt-4;
+    font-size: inherit;
+  }
+  & ul {
+    @apply list-disc pl-5 space-y-1;
+  }
+  & ol {
+    @apply list-decimal pl-5 space-y-1;
+  }
+  & a {
+    @apply underline underline-offset-2 hover:text-foreground;
+  }
+  & blockquote {
+    @apply border-l-2 border-border pl-3 text-muted-foreground;
+  }
+  & code {
+    font-family: var(--font-mono);
+    font-size: var(--code-font-size);
+    @apply bg-muted rounded px-1 py-0.5;
+  }
+  & pre:not([data-slot='code-block-content']) {
+    @apply bg-muted rounded-md p-3 overflow-x-auto;
+  }
+  & pre code {
+    @apply bg-transparent p-0;
+  }
+  /* Fenced code uses the Code Block component. Keep the readable size
+     from Settings instead of the component's text-sm. */
+  & [data-slot='code-block'] {
+    font-size: var(--code-font-size);
+  }
+  & .md-mermaid {
+    @apply my-3 min-w-0 max-w-full rounded-lg border border-border bg-muted/40;
+  }
+  & .md-mermaid img {
+    @apply mx-auto block max-w-none;
+  }
+  & .md-math {
+    @apply my-2;
+  }
+  & .md-math-inline {
+    @apply mx-0.5;
+  }
+  & .katex-display {
+    @apply my-0 overflow-x-auto overflow-y-hidden;
+  }
+  & .katex-error {
+    color: hsl(var(--destructive));
+  }
+  /* Keep automatic, content-weighted columns, but do not let anywhere
+     wrapping squeeze short labels into one-character lines. Tables with
+     more columns than fit scroll inside the reading column. */
+  & .md-table {
+    @apply min-w-0 max-w-full overflow-x-auto;
+  }
+  & table {
+    @apply w-full text-sm border-collapse;
+  }
+  & figure {
+    @apply min-w-0;
+  }
+  & th {
+    @apply border border-border px-2 py-1 text-left align-top;
+    min-width: 10ch;
+    overflow-wrap: anywhere;
+  }
+  & td {
+    @apply border border-border px-2 py-1 text-left align-top;
+    min-width: 10ch;
+    overflow-wrap: anywhere;
+  }
+  & :is(th, td) code {
+    overflow-wrap: anywhere;
+    word-break: break-all;
+  }
+}
+
+@utility md-mermaid {
+  .md & {
+    @apply my-3 min-w-0 max-w-full rounded-lg border border-border bg-muted/40;
+  }
+  .md & img {
+    @apply mx-auto block max-w-none;
+  }
+}
+
+@utility md-mermaid-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  inset: 0 auto auto 0;
+}
+
+@utility md-math {
+  .md & {
+    @apply my-2;
+  }
+}
+
+@utility md-math-inline {
+  .md & {
+    @apply mx-0.5;
+  }
+}
+
+@utility katex-display {
+  .md & {
+    @apply my-0 overflow-x-auto overflow-y-hidden;
+  }
+}
+
+@utility katex-error {
+  .md & {
+    color: hsl(var(--destructive));
+  }
+}
+
+@utility md-table {
+  /* Keep automatic, content-weighted columns, but do not let anywhere
+     wrapping squeeze short labels into one-character lines. Tables with
+     more columns than fit scroll inside the reading column. */
+  .md & {
+    @apply min-w-0 max-w-full overflow-x-auto;
+  }
+}
+
+@utility stream-text {
+  /* Streamed text is appended character by character; without this, a long
+     unbroken token widens the whole column. */
+  @apply whitespace-pre-wrap wrap-break-word;
+}
+
+@utility thought-scroll {
+  /* A thought is a 10-line window, not a wall. leading-6 is 1.5rem. */
+  max-height: calc(var(--thought-lines) * 1.5rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@utility thought-fade {
+  /* Wash the top of a thought that is pinned at the bottom, so it does
+     not look like the reasoning starts mid-sentence. Token, not a hex:
+     the pane is --background in the transcript and --card in Agents. */
+  background: linear-gradient(
+    to bottom,
+    hsl(var(--background)) 0%,
+    hsl(var(--background) / 0) 100%
+  );
+  .bg-card & {
+    background: linear-gradient(
+      to bottom,
+      hsl(var(--card)) 0%,
+      hsl(var(--card) / 0) 100%
+    );
+  }
+}
+
+@utility bg-card {
+  & .thought-fade {
+    background: linear-gradient(
+      to bottom,
+      hsl(var(--card)) 0%,
+      hsl(var(--card) / 0) 100%
+    );
+  }
+}
+
+@utility composer-slab {
+  /* One plate behind goal / plan / wait pins and the input. Chip gaps
+     used to show transcript; stretching a % opaque fade over the hang
+     covered them and the last answer. Token, not a hex. */
+  background: hsl(var(--background));
+}
+
+@utility composer-fade {
+  /* Join above that plate. Height is px so content font-size cannot grow
+     the wash over the last answer. */
+  height: var(--composer-fade-overhang, 96px);
+  background: linear-gradient(
+    to top,
+    hsl(var(--background)) 0%,
+    hsl(var(--background) / 0) 100%
+  );
+}
+
+@utility thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+  &::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  &::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full border-4 border-solid border-transparent bg-clip-content;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@utility composer-scroll-fit {
+  /* Same empty composer, without overflow:hidden. That value is what made
+     WKWebView ignore paste until the box already had text. */
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility sidebar-row {
+  /* Directory rows. Height is the token, not Tailwind h-7, so a 13px
+     root cannot fold 28px into 23px. */
+  height: var(--sidebar-row-height);
+  padding-inline: var(--sidebar-row-px);
+}
+
+@utility sidebar-section-label {
+  height: var(--sidebar-section-label-height);
+  padding-inline: var(--sidebar-row-px);
+}
+
+@utility sidebar-kind {
+  width: 16px;
+  height: 16px;
+}
+
+@utility pl-traffic {
+  padding-left: var(--traffic-light-inset);
+}
+
+@utility pb-composer {
+  padding-bottom: var(--composer-pad);
+}
+
+@utility toast-layer {
+  /* Over the settings sheet (dialog z-50). A listing failure must not hide
+     under the page that caused it. */
+  z-index: 60;
+}
 
 /* The whole palette lives here. Components reference tokens only, so light
    and dark cannot drift apart and a theme change is one file. */
@@ -372,72 +907,6 @@
 }
 
 @layer components {
-  .input-image-preview[role="dialog"] {
-    @apply gap-3 rounded-lg p-3;
-    width: max-content;
-    max-width: calc(100vw - theme(spacing.8));
-    max-height: calc(100dvh - theme(spacing.8));
-  }
-
-  .input-image-preview-image {
-    @apply mx-auto max-w-full rounded-md object-contain;
-    max-height: calc(100dvh - theme(spacing.28));
-  }
-
-  .input-image-preview-status {
-    @apply flex min-h-40 items-center justify-center gap-2 px-6 text-sm text-muted-foreground;
-  }
-
-  /* Conversation column. --content-max is 48rem (max-w-3xl) until Settings
-     or the title-bar control overwrites it to none. */
-  .content-column {
-    width: 100%;
-    max-width: var(--content-max, 48rem);
-    min-width: 0;
-    margin-inline: auto;
-  }
-
-  /* Settings → General theme cards. Faces use their own tokens so a
-     light preview stays light while the window is dark. */
-  .theme-swatch {
-    height: 4.75rem;
-    overflow: hidden;
-    border-radius: calc(var(--radius) + 2px);
-    border: 1px solid hsl(var(--border));
-  }
-  .theme-swatch-face {
-    height: 100%;
-    padding: 0.4rem 0.35rem 0.3rem;
-    background: hsl(var(--swatch-chrome));
-  }
-  .theme-swatch-page {
-    display: flex;
-    height: 100%;
-    flex-direction: column;
-    gap: 0.22rem;
-    border-radius: 0.45rem;
-    background: hsl(var(--swatch-page));
-    padding: 0.45rem 0.4rem;
-  }
-  .theme-swatch-bar {
-    display: block;
-    height: 0.28rem;
-    border-radius: 999px;
-    background: hsl(var(--swatch-bar));
-  }
-  .theme-swatch-bar-accent {
-    width: 42%;
-    background: hsl(var(--swatch-accent));
-  }
-  .theme-swatch-bar-mid {
-    width: 72%;
-  }
-  .theme-swatch-bar-short {
-    width: 54%;
-  }
-  .theme-swatch-split {
-    clip-path: inset(0 0 0 50%);
-  }
   [data-swatch="zwai-light"] {
     --swatch-chrome: 240 5% 92%;
     --swatch-page: 0 0% 100%;
@@ -463,170 +932,6 @@
     --swatch-accent: 180 96% 48%;
   }
 
-  /* Phone keeps 1rem. sm+ uses --content-gutter so full width can sit
-     flush against the sidebars without a second Tailwind breakpoint. */
-  .content-gutter {
-    padding-inline: 1rem;
-  }
-  @media (min-width: 640px) {
-    .content-gutter {
-      padding-inline: var(--content-gutter, 2rem);
-    }
-  }
-
-  /* Conversation body. Chrome uses --font-sans / --chrome-font-size. */
-  .content-type {
-    font-family: var(--font-content, var(--font-sans));
-    font-size: var(--ui-font-size);
-  }
-
-  /* Rendered markdown from the model. Prose plugins bring a lot of opinions
-     and a lot of kilobytes; these are the few rules the answers actually
-     need. Sizes are rem so Settings → Font size scales the answer too. */
-  .md {
-    font-family: var(--font-content, var(--font-sans));
-    font-size: var(--ui-font-size);
-    @apply min-w-0 leading-6;
-  }
-  .md > * + * {
-    @apply mt-3;
-  }
-  /* Headings keep weight, not a second size — sidebar titles and body
-     titles should read as the same type unless Settings splits them. */
-  .md h1,
-  .md h2,
-  .md h3,
-  .md h4,
-  .md h5,
-  .md h6 {
-    @apply font-semibold mt-4;
-    font-size: inherit;
-  }
-  .md ul {
-    @apply list-disc pl-5 space-y-1;
-  }
-  .md ol {
-    @apply list-decimal pl-5 space-y-1;
-  }
-  .md a {
-    @apply underline underline-offset-2 hover:text-foreground;
-  }
-  .md blockquote {
-    @apply border-l-2 border-border pl-3 text-muted-foreground;
-  }
-  .md code {
-    font-family: var(--font-mono);
-    font-size: var(--code-font-size);
-    @apply bg-muted rounded px-1 py-0.5;
-  }
-  .md pre {
-    @apply bg-muted rounded-md p-3 overflow-x-auto;
-  }
-  .md pre code {
-    @apply bg-transparent p-0;
-  }
-  .md .md-code {
-    @apply bg-muted overflow-hidden rounded-md;
-  }
-  .md .md-mermaid {
-    @apply my-3 min-w-0 max-w-full rounded-lg border border-border bg-muted/40;
-  }
-  .md .md-mermaid img {
-    @apply mx-auto block max-w-none;
-  }
-  .md-mermaid-measure {
-    position: absolute;
-    visibility: hidden;
-    pointer-events: none;
-    inset: 0 auto auto 0;
-  }
-  .md .md-code pre {
-    @apply bg-transparent rounded-none px-3 pb-3 pt-1 overflow-x-auto;
-  }
-  .md .md-math {
-    @apply my-2;
-  }
-  .md .md-math-inline {
-    @apply mx-0.5;
-  }
-  .md .katex-display {
-    @apply my-0 overflow-x-auto overflow-y-hidden;
-  }
-  .md .katex-error {
-    color: hsl(var(--destructive));
-  }
-  /* Keep automatic, content-weighted columns, but do not let anywhere
-     wrapping squeeze short labels into one-character lines. Tables with
-     more columns than fit scroll inside the reading column. */
-  .md .md-table {
-    @apply min-w-0 max-w-full overflow-x-auto;
-  }
-  .md table {
-    @apply w-full text-sm border-collapse;
-  }
-  .md figure {
-    @apply min-w-0;
-  }
-  .md th,
-  .md td {
-    @apply border border-border px-2 py-1 text-left align-top;
-    min-width: 10ch;
-    overflow-wrap: anywhere;
-  }
-  .md :is(th, td) code {
-    overflow-wrap: anywhere;
-    word-break: break-all;
-  }
-
-  /* Streamed text is appended character by character; without this, a long
-     unbroken token widens the whole column. */
-  .stream-text {
-    @apply whitespace-pre-wrap break-words;
-  }
-
-  /* A thought is a 10-line window, not a wall. leading-6 is 1.5rem. */
-  .thought-scroll {
-    max-height: calc(var(--thought-lines) * 1.5rem);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-
-  /* Wash the top of a thought that is pinned at the bottom, so it does
-     not look like the reasoning starts mid-sentence. Token, not a hex:
-     the pane is --background in the transcript and --card in Agents. */
-  .thought-fade {
-    background: linear-gradient(
-      to bottom,
-      hsl(var(--background)) 0%,
-      hsl(var(--background) / 0) 100%
-    );
-  }
-  .bg-card .thought-fade {
-    background: linear-gradient(
-      to bottom,
-      hsl(var(--card)) 0%,
-      hsl(var(--card) / 0) 100%
-    );
-  }
-
-  /* One plate behind goal / plan / wait pins and the input. Chip gaps
-     used to show transcript; stretching a % opaque fade over the hang
-     covered them and the last answer. Token, not a hex. */
-  .composer-slab {
-    background: hsl(var(--background));
-  }
-
-  /* Join above that plate. Height is px so content font-size cannot grow
-     the wash over the last answer. */
-  .composer-fade {
-    height: var(--composer-fade-overhang, 96px);
-    background: linear-gradient(
-      to top,
-      hsl(var(--background)) 0%,
-      hsl(var(--background) / 0) 100%
-    );
-  }
-
   /* Inactive tab panes. Tailwind's .flex and the [hidden] preflight have
      equal specificity, so an Agents/Files pane that stayed display:flex
      sat beside Memory and a skill body painted over the file names.
@@ -636,74 +941,20 @@
   }
 }
 
-/* CSS Custom Highlight: find paints Ranges without wrapping markdown text
-   nodes, which React would otherwise throw away on the next token. */
-::highlight(zwai-find) {
-  background-color: hsl(var(--find));
-  color: hsl(var(--find-foreground));
-}
-::highlight(zwai-find-current) {
-  background-color: hsl(var(--find-active));
-  color: hsl(var(--find-active-foreground));
-}
-
-/* Scrollbars: the default macOS overlay bar disappears in a dark webview, and
-   a chat that looks unscrollable is a chat people think is broken. */
 @layer utilities {
-  .thin-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: hsl(var(--border)) transparent;
+  /* CSS Custom Highlight: find paints Ranges without wrapping markdown text
+   nodes, which React would otherwise throw away on the next token. */
+  ::highlight(zwai-find) {
+    background-color: hsl(var(--find));
+    color: hsl(var(--find-foreground));
   }
-  .thin-scrollbar::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
-  .thin-scrollbar::-webkit-scrollbar-thumb {
-    @apply bg-border rounded-full border-4 border-solid border-transparent bg-clip-content;
-  }
-  .thin-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
+  ::highlight(zwai-find-current) {
+    background-color: hsl(var(--find-active));
+    color: hsl(var(--find-active-foreground));
   }
 
-  /* Same empty composer, without overflow:hidden. That value is what made
-     WKWebView ignore paste until the box already had text. */
-  .composer-scroll-fit {
-    scrollbar-width: none;
-  }
-  .composer-scroll-fit::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* Directory rows. Height is the token, not Tailwind h-7, so a 13px
-     root cannot fold 28px into 23px. */
-  .sidebar-row {
-    height: var(--sidebar-row-height);
-    padding-inline: var(--sidebar-row-px);
-  }
-
-  .sidebar-section-label {
-    height: var(--sidebar-section-label-height);
-    padding-inline: var(--sidebar-row-px);
-  }
-
-  .sidebar-kind {
-    width: 16px;
-    height: 16px;
-  }
-
-  .pl-traffic {
-    padding-left: var(--traffic-light-inset);
-  }
-
-  .pb-composer {
-    padding-bottom: var(--composer-pad);
-  }
-
-  /* Over the settings sheet (dialog z-50). A listing failure must not hide
-     under the page that caused it. */
-  .toast-layer {
-    z-index: 60;
-  }
+  /* Scrollbars: the default macOS overlay bar disappears in a dark webview, and
+   a chat that looks unscrollable is a chat people think is broken. */
 }
 
 @media (prefers-reduced-motion: reduce) {

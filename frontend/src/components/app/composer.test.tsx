@@ -625,7 +625,7 @@ describe("Composer file drop", () => {
 })
 
 describe("Composer context meter", () => {
-  it("shows a ring once a turn has billed tokens", () => {
+  it("shows a ring-3 once a turn has billed tokens", () => {
     renderComposer({
       models: [
         {

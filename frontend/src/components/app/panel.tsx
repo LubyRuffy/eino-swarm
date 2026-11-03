@@ -328,7 +328,7 @@ function RosterSort({
       >
         <SelectTrigger
           aria-label={t("panel.sortBy")}
-          className={cn(chromeTypeClass, "h-7 w-auto max-w-[12rem] shadow-none")}
+          className={cn(chromeTypeClass, "h-7 w-auto max-w-48 shadow-none")}
         >
           <SelectValue />
         </SelectTrigger>

@@ -82,12 +82,12 @@ export function ModelPicker({
       ? createPortal(
           <div
             ref={menuRef}
-            className="fixed z-[60] w-72 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md"
+            className="fixed toast-layer w-72 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md"
             style={{ left: pos.left, bottom: pos.bottom }}
           >
             <Command
               label={t("model.search")}
-              className="h-auto [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-muted-foreground"
+              className="h-auto **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-[11px] **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:uppercase **:[[cmdk-group-heading]]:tracking-wide **:[[cmdk-group-heading]]:text-muted-foreground"
             >
               <CommandInput
                 placeholder={t("model.search")}
@@ -180,7 +180,7 @@ export function ModelPicker({
         aria-expanded={open}
         aria-haspopup="listbox"
         className={cn(
-          "inline-flex h-7 max-w-[14rem] items-center gap-1.5 rounded-md px-2 hover:bg-accent",
+          "inline-flex h-7 max-w-56 items-center gap-1.5 rounded-md px-2 hover:bg-accent",
           chromeTypeClass,
           open && "bg-accent",
         )}

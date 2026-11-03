@@ -23,9 +23,7 @@ test("paints a tagged code fence, inline math, and a contained gfm table", async
   const transcript = page.getByTestId("transcript")
   await expect(transcript.getByRole("button", { name: "Copy code" })).toBeVisible()
   await expect(transcript.locator(".katex").first()).toBeVisible()
-  await expect(
-    transcript.locator(".text-syntax-keyword", { hasText: "func" }),
-  ).toBeVisible()
+  await expect(transcript.locator("code.language-go span", { hasText: /^func$/ })).toBeVisible()
   const tableWrap = transcript.getByTestId("markdown-table")
   await expect(tableWrap).toBeVisible()
   await expect(tableWrap.getByRole("table")).toBeVisible()

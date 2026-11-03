@@ -47,7 +47,7 @@ export function AgentFailure({ agent }: { agent: AgentState }) {
         <p className="font-medium">{title}</p>
         <p
           data-testid="agent-failure-error"
-          className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words"
+          className="max-h-32 overflow-y-auto whitespace-pre-wrap wrap-break-word"
         >
           {error ? localizeNotice(error, t.locale) : t("agentFailure.unrecorded")}
         </p>

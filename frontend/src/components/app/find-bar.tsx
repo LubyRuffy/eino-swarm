@@ -134,7 +134,7 @@ export function FindBar({
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
-          className="h-7 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          className="h-7 min-w-0 flex-1 bg-transparent text-sm outline-hidden placeholder:text-muted-foreground"
         />
         <Button
           type="button"

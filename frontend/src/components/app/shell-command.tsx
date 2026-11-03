@@ -35,7 +35,7 @@ export function ShellCommand({
         "font-mono",
         compact
           ? "block truncate text-[13px]"
-          : "thin-scrollbar max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 text-[12px]",
+          : "thin-scrollbar max-h-72 overflow-auto whitespace-pre-wrap wrap-break-word rounded bg-muted p-2 text-[12px]",
       )}
     >
       {compact ? null : (

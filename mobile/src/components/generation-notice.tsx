@@ -8,7 +8,7 @@ export function GenerationNotice({ block }: { block: CompactBlock }) {
     <p data-testid="generation-notice" role="status" className="text-[11px] text-muted-foreground">
       {t("generation.interrupted", { reason: t(`generation.reason.${generation.reason}`) })}{" "}
       {t(`generation.recovery.${generation.recovery}`)}
-      {generation.detail ? <span className="ml-1 whitespace-pre-wrap break-words">{generation.detail}</span> : null}
+      {generation.detail ? <span className="ml-1 whitespace-pre-wrap wrap-break-word">{generation.detail}</span> : null}
     </p>
   )
 }

@@ -99,7 +99,7 @@ export function ScheduleListPane() {
       data-testid="schedule-list-pane"
       className={hidden ? "hidden" : "flex min-h-0 min-w-0 flex-1 flex-col"}
     >
-      <div className="flex shrink-0 items-center justify-between gap-1 px-[var(--sidebar-list-px)] pb-1 pt-2">
+      <div className="flex shrink-0 items-center justify-between gap-1 px-(--sidebar-list-px) pb-1 pt-2">
         <h1
           id="schedule-page-title"
           className={cn(chromeTypeClass, "min-w-0 flex-1 truncate font-medium text-sidebar-foreground")}
@@ -125,7 +125,7 @@ export function ScheduleListPane() {
         </Button>
       </div>
       {showSearch ? (
-        <div className="relative mx-[var(--sidebar-list-px)] mb-1 shrink-0">
+        <div className="relative mx-(--sidebar-list-px) mb-1 shrink-0">
           <Input
             id="schedule-search"
             value={query}
@@ -149,7 +149,7 @@ export function ScheduleListPane() {
         size="sm"
         data-testid="schedule-create"
         aria-expanded={creating}
-        className={cn(chromeTypeClass, "mx-[var(--sidebar-list-px)] mb-1 shrink-0 justify-start gap-2 px-2")}
+        className={cn(chromeTypeClass, "mx-(--sidebar-list-px) mb-1 shrink-0 justify-start gap-2 px-2")}
         style={{ height: "var(--sidebar-row-height)" }}
         onClick={() => openCreate()}
       >
@@ -160,12 +160,12 @@ export function ScheduleListPane() {
         <div
           role="alert"
           aria-label={t("schedule.error")}
-          className="mx-[var(--sidebar-list-px)] mb-2 shrink-0 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-sm text-destructive"
+          className="mx-(--sidebar-list-px) mb-2 shrink-0 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-sm text-destructive"
         >
           {error}
         </div>
       ) : null}
-      <div className="flex shrink-0 items-center justify-between gap-1 px-[var(--sidebar-list-px)] pb-1 pt-2">
+      <div className="flex shrink-0 items-center justify-between gap-1 px-(--sidebar-list-px) pb-1 pt-2">
         <p
           data-testid="schedule-section"
           className={cn(chromeTypeClass, "min-w-0 truncate font-medium text-sidebar-foreground")}
@@ -204,13 +204,13 @@ export function ScheduleListPane() {
         </DropdownMenu>
       </div>
       {listed.length === 0 ? (
-        <p className={cn(chromeTypeClass, "min-h-0 flex-1 px-[var(--sidebar-row-px)] text-sidebar-foreground/60")}>
+        <p className={cn(chromeTypeClass, "min-h-0 flex-1 px-(--sidebar-row-px) text-sidebar-foreground/60")}>
           {emptyText}
         </p>
       ) : (
         <ul
           data-testid="schedule-list"
-          className="thin-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-[var(--sidebar-list-px)]"
+          className="thin-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-(--sidebar-list-px)"
         >
           {listed.map((row) => (
             <ScheduleInboxRow

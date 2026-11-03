@@ -1,7 +1,13 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
+import { loadHighlighter } from "@/lib/highlighter"
 import { MemoMarkdown } from "./markdown"
+
+beforeAll(async () => {
+  await loadHighlighter("cpp")
+  await loadHighlighter("go")
+}, 20000)
 
 vi.mock("@/components/app/transcript-chart", async () => {
   const { useId } = await import("react")
@@ -122,23 +128,26 @@ describe("MemoMarkdown", () => {
     vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } })
     const src = "func Len(s string) int { return len(s) }"
     render(<MemoMarkdown text={"```go\n" + src + "\n```"} />)
-    expect(screen.getByText("func")).toHaveClass("text-syntax-keyword")
-    expect(screen.getByText("Len")).toHaveClass("text-syntax-command")
+    await waitFor(() => expect(screen.getByText("func").getAttribute("style")).toContain("--shiki-light"))
+    expect(screen.getByText("Len").getAttribute("style")).toContain("--shiki-light")
     expect(screen.getByTestId("markdown-code").textContent).toContain(src)
     fireEvent.click(screen.getByRole("button", { name: "Copy code" }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(src))
-  })
+  }, 20000)
 
-  it("maps a cpp fence onto the C highlighter", () => {
+  it("highlights a cpp fence with its own grammar", async () => {
     render(<MemoMarkdown text={"```cpp\nint x = 1;\n```"} />)
-    expect(screen.getByText("int")).toHaveClass("text-syntax-keyword")
+    await waitFor(
+      () => expect(screen.getByText("int").getAttribute("style")).toContain("--shiki-light"),
+      { timeout: 15000 },
+    )
     expect(screen.getByText("cpp")).toBeInTheDocument()
-  })
+  }, 20000)
 
-  it("leaves an unlabeled fence uncoloured and still copyable", () => {
+  it("leaves an unlabeled fence uncoloured and still copyable", async () => {
     render(<MemoMarkdown text={"```\nnot a language\n```"} />)
-    expect(document.querySelector(".text-syntax-keyword")).toBeNull()
-    expect(screen.getByRole("button", { name: "Copy code" })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole("button", { name: "Copy code" })).toBeInTheDocument())
+    expect(document.querySelector("[style*='--shiki']")).toBeNull()
     expect(screen.getByTestId("markdown-code").textContent).toContain("not a language")
   })
 

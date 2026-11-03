@@ -6063,9 +6063,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   finished answer is not rewritten, a `chart` fence paints, a `json` fence
   does not, a live truncated chart fence is a placeholder, a finished
   invalid chart fence stays code, and a closed chart keeps the same instance
-  while later tokens append prose after it. A `go` fence paints keywords
-  onto tokens and copies the original body; `cpp` maps onto the C
-  highlighter; an unlabeled fence stays plain and still copies; `$n$` /
+  while later tokens append prose after it. A `go` fence paints Shiki
+  tokens and copies the original body; `cpp` uses its own grammar; an
+  unlabeled fence stays plain and still copies; `$n$` /
   `$$…$$` and a `math` fence render as KaTeX.
 - **`src/components/app/transcript.tsx`**, rendered in jsdom: while `wait_agents`
   is pending the transcript shows the sub-agents it is waiting on, each one's
@@ -6254,9 +6254,10 @@ Several things are tested here, some as pure logic and some in jsdom:
 - **`src/lib/source-highlight.ts`** / **`src/lib/source-lang.ts`**: a `read`
   body tokenizes from the path suffix into the same token kinds; concatenating
   tokens reproduces the file; markdown and unknown suffixes are left alone.
-  A markdown fence info-string (`cpp`, `javascript`, `python`) maps onto
-  the same dialects; `chart` / `math` / unknown tags stay undefined so the
-  body is not guessed. A C `#include` line is a keyword, not an operator.
+  The same dialect map still recognises a fence info-string (`cpp`,
+  `javascript`, `python`) and leaves `chart` / `math` / unknown tags
+  undefined. Rendered Markdown fences use Shiki instead of this lexer.
+  A C `#include` line is a keyword, not an operator.
 - **`src/lib/read-result.ts`**, a `read` tool payload becomes a file listing:
   newline-separated bodies, and the older flattened one-liners, both recover
   the path and the lines; other tool output is left alone.
@@ -6948,9 +6949,10 @@ endpoint, rather than tapping an offscreen control.
 `cd mobile && npm test -- --run src/components/markdown-highlight.test.tsx src/components/markdown.test.tsx`
 checks C++ aliases, untagged/unknown plain text, exact whitespace/HTML literal
 copying, open-to-closed streamed fences and stable block/copy state. Existing
-Markdown tests keep chart, formula and safe-link behaviour covered. The phone
-imports only the shared pure source lexer; token class literals stay in mobile
-sources so the mobile Tailwind build retains both themes' syntax colours.
+Markdown tests keep chart, formula and safe-link behaviour covered. Fences load
+Shiki on demand. The phone stylesheet scans the shared highlighter class string
+so both theme colours are emitted, and its `dark` variant follows the `.dark`
+class painted from the system theme. File listings keep the separate lexer.
 
 `cd mobile && npm run e2e -- markdown-highlight.spec.ts` reaches paired and
 direct conversations on Chromium and iPhone WebKit. It checks computed token

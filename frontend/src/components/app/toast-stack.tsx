@@ -42,7 +42,7 @@ function ToastCard({ toast }: { toast: AppToast }) {
         {toast.title ? (
           <p className="font-medium text-foreground">{toast.title}</p>
         ) : null}
-        <p className="mt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap break-words">
+        <p className="mt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap wrap-break-word">
           {toast.message}
         </p>
       </div>

@@ -31,13 +31,13 @@ export const settingsHintClass = cn(chromeTypeClass, "mt-0.5 text-muted-foregrou
 /** Light bordered control, same type as the row, not a grey chip. */
 export const settingsSelectTriggerClass = cn(
   chromeTypeClass,
-  "h-[32px] w-auto max-w-[14rem] border-border bg-background px-2.5 text-foreground shadow-none",
+  "h-[32px] w-auto max-w-56 border-border bg-background px-2.5 text-foreground shadow-none",
 )
 
 function fieldControlClass(wide?: boolean) {
   return cn(
-    "[&_input]:h-[32px] [&_input]:text-[length:var(--chrome-font-size)] [&_input]:font-normal [&_input]:shadow-none",
-    "[&_input[type=number]]:w-[5.75rem] [&_input[type=number]]:px-2 [&_input[type=number]]:text-right [&_input[type=number]]:tabular-nums",
+    "[&_input]:h-[32px] [&_input]:text-(length:--chrome-font-size) [&_input]:font-normal [&_input]:shadow-none",
+    "[&_input[type=number]]:w-23 [&_input[type=number]]:px-2 [&_input[type=number]]:text-right [&_input[type=number]]:tabular-nums",
     wide
       ? "[&_input:not([type=number])]:w-72"
       : "[&_input:not([type=number])]:w-56",
@@ -234,7 +234,7 @@ export function SettingsTwinChoice({
         <Select value={left.value} onValueChange={left.onValueChange}>
           <SelectTrigger
             aria-label={left.ariaLabel}
-            className={cn(settingsSelectTriggerClass, "max-w-[9.5rem]")}
+            className={cn(settingsSelectTriggerClass, "max-w-38")}
           >
             <SelectValue />
           </SelectTrigger>
@@ -243,7 +243,7 @@ export function SettingsTwinChoice({
         <Select value={right.value} onValueChange={right.onValueChange}>
           <SelectTrigger
             aria-label={right.ariaLabel}
-            className={cn(settingsSelectTriggerClass, "max-w-[8.5rem]")}
+            className={cn(settingsSelectTriggerClass, "max-w-34")}
           >
             <SelectValue />
           </SelectTrigger>

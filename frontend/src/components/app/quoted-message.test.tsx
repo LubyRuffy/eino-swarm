@@ -42,7 +42,7 @@ describe("QuotedMessageBody", () => {
     expect(chip.className).toMatch(/\bmax-w-full\b/)
     expect(chip.className).not.toMatch(/\bw-fit\b/)
     expect(text).toHaveClass("line-clamp-3")
-    expect(text.className).toMatch(/\bbreak-words\b/)
+    expect(text.className).toMatch(/\bwrap-break-word\b/)
     expect(text.className).toMatch(/\bwhitespace-pre-wrap\b/)
     expect(text.className).not.toMatch(/\btruncate\b/)
     expect(text).toHaveTextContent(passage)

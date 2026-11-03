@@ -546,7 +546,7 @@ function SkillRow({
       {open ? (
         <div
           data-testid="skill-body"
-          className="md thin-scrollbar max-h-72 min-w-0 overflow-auto break-words border-t border-border px-2 py-2 text-sm [&>:first-child]:mt-0"
+          className="md thin-scrollbar max-h-72 min-w-0 overflow-auto wrap-break-word border-t border-border px-2 py-2 text-sm *:first:mt-0"
         >
           {error ? (
             <p className="text-xs text-destructive">{error}</p>

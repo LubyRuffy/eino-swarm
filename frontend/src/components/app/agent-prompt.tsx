@@ -44,7 +44,7 @@ export function AgentPromptButton({ instruction }: { instruction: string }) {
             </div>
             <pre
               data-testid="agent-prompt"
-              className="thin-scrollbar max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 font-mono text-xs leading-relaxed text-foreground"
+              className="thin-scrollbar max-h-[60vh] overflow-auto whitespace-pre-wrap wrap-break-word rounded-md bg-muted p-3 font-mono text-xs leading-relaxed text-foreground"
             >
               {instruction}
             </pre>

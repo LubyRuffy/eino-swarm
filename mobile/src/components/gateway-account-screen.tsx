@@ -61,7 +61,7 @@ export function GatewayAccountScreen({ account, providers, modelBusy, modelError
             {!account.bootstrap?.models.api_access_enabled ? <p className="text-sm text-muted-foreground">{t("account.modelsDenied")}</p> : null}
             {modelBusy ? <p role="status" className="text-sm text-muted-foreground">{t("account.modelsLoading")}</p> : null}
             {modelError ? <p role="alert" className="text-sm text-destructive">{t("account.modelsFailed")}</p> : null}
-            {providers.flatMap((p) => p.catalog).length ? <p className="break-words text-sm">{providers.flatMap((p) => p.catalog).join(" · ")}</p> : null}
+            {providers.flatMap((p) => p.catalog).length ? <p className="wrap-break-word text-sm">{providers.flatMap((p) => p.catalog).join(" · ")}</p> : null}
           </section>
           <section className="flex flex-col gap-2">
             <h2 className="text-sm font-semibold">{t("account.pcs")}</h2>

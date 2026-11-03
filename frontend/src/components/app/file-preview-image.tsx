@@ -11,7 +11,7 @@ export function FilePreviewImage({ src, name }: { src: string; name: string }) {
     <div className="flex h-full min-h-0 flex-col">
       <div ref={view.viewport} data-testid="image-preview-viewport" tabIndex={0}
         role="region" aria-label={t("image.viewport")} aria-busy={!view.ready && !view.failed}
-        className="thin-scrollbar min-h-0 min-w-0 flex-1 overflow-auto bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+        className="thin-scrollbar min-h-0 min-w-0 flex-1 overflow-auto bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
         {view.failed ? <p role="alert" className="p-5 text-sm text-destructive">{t("files.invalidImage")}</p> : (
           <>
             {!view.ready ? <p role="status" className="flex items-center gap-2 p-5 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />{t("image.loading")}</p> : null}

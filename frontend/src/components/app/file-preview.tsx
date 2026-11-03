@@ -42,7 +42,7 @@ export function FilePreviewDialog({ threadId, path, canReveal, onReveal, onClose
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogContent
         data-testid="file-preview"
-        className="flex h-[85dvh] w-[calc(100%_-_2rem)] max-w-5xl flex-col gap-0 overflow-hidden p-0 data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-1/2 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-1/2"
+        className="flex h-[85dvh] w-[calc(100%-2rem)] max-w-5xl flex-col gap-0 overflow-hidden p-0 data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-1/2 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-1/2"
         onCloseAutoFocus={(event) => { event.preventDefault(); onReturnFocus() }}
       >
         <header className="flex shrink-0 items-start gap-2 border-b px-5 py-4 pr-12">
@@ -76,7 +76,7 @@ export function FilePreviewDialog({ threadId, path, canReveal, onReveal, onClose
         </div>
         <section aria-label={t("files.content")} aria-busy={loading} className={`thin-scrollbar min-h-0 min-w-0 flex-1 ${file?.kind === "image" ? "overflow-hidden" : fill ? "flex flex-col overflow-hidden" : "overflow-auto p-5"}`}>
           {loading ? <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />{t("files.loading")}</p> : null}
-          {error ? <p role="alert" className="break-words text-sm text-destructive">{error}</p> : null}
+          {error ? <p role="alert" className="wrap-break-word text-sm text-destructive">{error}</p> : null}
           {file?.kind === "download" ? <p className="text-sm text-muted-foreground">{t(file.reason === "too-large" ? "files.tooLarge" : "files.unsupported")}</p> : null}
           {file?.kind === "image" && url ? <FilePreviewImage key={url} src={url} name={name} /> : null}
           {file?.kind === "document" ? <PackageFilePreview key={`${path}:${file.bytes.byteLength}`} format={file.format} bytes={file.bytes} /> : null}
@@ -86,7 +86,7 @@ export function FilePreviewDialog({ threadId, path, canReveal, onReveal, onClose
             ) : delimiter && mode === "preview" ? (
               <TableFilePreview text={file.text} delimiter={delimiter} />
             ) : markdown && mode === "preview" ? (
-              <article className="md break-words [overflow-wrap:anywhere] [&>:first-child]:mt-0"><MemoMarkdown text={file.text} /></article>
+              <article className="md wrap-break-word wrap-anywhere *:first:mt-0"><MemoMarkdown text={file.text} /></article>
             ) : <FileSource path={path} text={file.text} />
           ) : null}
         </section>
@@ -103,7 +103,7 @@ function FileSource({ path, text }: { path: string; text: string }) {
       : [{ kind: "text" as const, text }]
   }, [path, text])
   return (
-    <pre data-testid="file-source" className="min-w-0 whitespace-pre-wrap break-words font-mono text-sm [overflow-wrap:anywhere]">
+    <pre data-testid="file-source" className="min-w-0 whitespace-pre-wrap wrap-break-word font-mono text-sm wrap-anywhere">
       <code>{tokens.map((token, i) => <span key={i} className={SOURCE_KIND_CLASS[token.kind] || undefined}>{token.text}</span>)}</code>
     </pre>
   )

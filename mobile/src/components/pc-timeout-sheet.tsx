@@ -68,7 +68,7 @@ export function PCTimeoutSheet({ link, hostLabel, onClose }: { link: RemoteLink;
               const edited = Number(row.first) !== provider.first_byte_timeout_seconds || Number(row.idle) !== provider.timeout_seconds
               const effective = first && idle ? first : null
               return <fieldset key={row.id} className="flex min-w-0 flex-col gap-3 rounded-xl border border-border p-3">
-                <legend className="max-w-full break-words px-1 text-sm font-medium">{label}</legend>
+                <legend className="max-w-full wrap-break-word px-1 text-sm font-medium">{label}</legend>
                 <SecondsField caption={t("pcTimeouts.first")} label={t("pcTimeouts.first") + " · " + label}
                   value={row.first} disabled={busy || state.unsupported}
                   onChange={(value) => state.editProvider(row.id, "first", value)} />

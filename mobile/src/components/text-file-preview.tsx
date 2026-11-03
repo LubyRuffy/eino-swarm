@@ -41,9 +41,9 @@ export function TextFilePreview({ path, text }: { path: string; text: string }) 
           disabled={fontSize === 14} onClick={() => setFontSize(14)}><RotateCcw className="size-4" />{t("files.textReset")}</Button>
       </div>
       <div data-testid="phone-text-content" style={{ fontSize: `${fontSize}px` }}
-        className="file-text-content min-h-0 min-w-0 flex-1 overflow-auto [overflow-wrap:anywhere]">
+        className="file-text-content min-h-0 min-w-0 flex-1 overflow-auto wrap-anywhere">
         {render && isMarkdownPath(path) ? <PhoneMarkdown text={text} /> : (
-          <pre className="min-w-0 whitespace-pre-wrap break-words rounded-md bg-muted p-3 [font-size:inherit]">
+          <pre className="min-w-0 whitespace-pre-wrap wrap-break-word rounded-md bg-muted p-3 [font-size:inherit]">
             <code>{tokens.map((token, i) => <span key={i} className={tokenClass[token.kind]}>{token.text}</span>)}</code>
           </pre>
         )}

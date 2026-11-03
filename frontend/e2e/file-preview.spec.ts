@@ -38,7 +38,7 @@ test("opens Markdown from Files with rendered content, source and keyboard retur
   await expect(preview).toBeVisible()
   await expect(preview.getByRole("heading", { name: "Preview fixture", exact: true })).toBeVisible()
   await expect(preview.getByRole("table")).toContainText("Alpha")
-  await expect(preview.locator(".text-syntax-keyword", { hasText: "func" })).toBeVisible()
+  await expect(preview.locator("code.language-go span", { hasText: /^func$/ })).toBeVisible()
   await preview.getByRole("button", { name: "Source", exact: true }).click()
   await expect(preview.getByRole("heading", { name: "Preview fixture", exact: true })).toHaveCount(0)
   await expect(preview.locator("pre")).toHaveText(source)

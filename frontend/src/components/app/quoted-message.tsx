@@ -36,7 +36,7 @@ export function QuoteSnippet({
     >
       <p
         data-testid="quote-snippet-text"
-        className="min-w-0 flex-1 whitespace-pre-wrap break-words text-left text-xs leading-5 text-foreground line-clamp-3"
+        className="min-w-0 flex-1 whitespace-pre-wrap wrap-break-word text-left text-xs leading-5 text-foreground line-clamp-3"
       >
         <span className="text-muted-foreground">
           {n}. {t("quote.selected")}:

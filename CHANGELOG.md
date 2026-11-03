@@ -6,6 +6,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Changed desktop, Web and phone styling to Tailwind CSS v4, keeping the
+  existing colour tokens. Markdown fences on both apps now use the Code Block
+  with on-demand Shiki highlighting and follow the current light or dark
+  theme. Unknown languages stay plain text. Copying still returns the fence
+  text, including whitespace and literal markup. File listings, diffs and
+  shell rows keep their existing highlighting. (`F-120`, `F-220`, `C-032`)
+
 - Added a next-step suggestion in the PC composer (`F-146`, `C-039`). After a
   visible reply, the empty composer shows one likely next message. Tab inserts
   it; Enter sends it. Settings → Swarm turns it off. Older configs that omit

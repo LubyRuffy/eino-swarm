@@ -145,7 +145,7 @@ export function TraceTab({
                     <details>
                       <summary data-testid="review-trace-details" className="cursor-pointer truncate" title={row.text.split("\n")[0]}>{row.text.split("\n")[0]}</summary>
                       {row.text.includes("\n") ? <p className="mt-1 whitespace-pre-wrap">{row.text.split("\n").slice(1).join("\n")}</p> : null}
-                      <pre className="thin-scrollbar max-h-80 overflow-auto whitespace-pre-wrap break-words">{row.details}</pre>
+                      <pre className="thin-scrollbar max-h-80 overflow-auto whitespace-pre-wrap wrap-break-word">{row.details}</pre>
                     </details>
                   ) : row.text}
                 </div>

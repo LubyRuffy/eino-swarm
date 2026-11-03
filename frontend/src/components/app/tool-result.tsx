@@ -99,7 +99,7 @@ function OutputPre({
     <pre
       ref={ref}
       data-testid="tool-output"
-      className={`thin-scrollbar max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 font-mono [overflow-anchor:none] ${
+      className={`thin-scrollbar max-h-72 overflow-auto whitespace-pre-wrap wrap-break-word rounded bg-muted p-2 font-mono [overflow-anchor:none] ${
         failed ? "text-destructive" : ""
       }`}
     >
@@ -139,7 +139,7 @@ function FileBody({ listing, failed }: { listing: ReadListing; failed?: boolean 
       {empty ? (
         <p className="px-2 py-2 text-muted-foreground">{t("tool.emptyFile")}</p>
       ) : isMarkdownPath(listing.path) ? (
-        <div className="md thin-scrollbar max-h-72 overflow-auto px-3 py-2 [&>:first-child]:mt-0">
+        <div className="md thin-scrollbar max-h-72 overflow-auto px-3 py-2 *:first:mt-0">
           <MemoMarkdown text={listing.body} />
         </div>
       ) : (

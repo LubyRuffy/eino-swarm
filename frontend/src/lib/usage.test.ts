@@ -36,7 +36,7 @@ describe("meterFill", () => {
     expect(meterFill(71300, 256000)).toBeCloseTo(0.28)
   })
 
-  it("still grows when the window is unknown so the ring is not a dead circle", () => {
+  it("still grows when the window is unknown so the ring-3 is not a dead circle", () => {
     expect(unknownWindowFill(0, 80000)).toBe(0)
     expect(unknownWindowFill(54100, 0)).toBe(0)
     expect(unknownWindowFill(54100, 80000)).toBeCloseTo(1 - 1 / (1 + 54100 / 80000))

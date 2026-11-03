@@ -175,7 +175,7 @@ export function FilesTab({
           role="tree"
           aria-label={t("files.tree")}
           tabIndex={0}
-          className="thin-scrollbar min-h-0 flex-1 overflow-y-auto px-1 pb-2 outline-none"
+          className="thin-scrollbar min-h-0 flex-1 overflow-y-auto px-1 pb-2 outline-hidden"
           onKeyDown={(e) => {
             if ((e.target as HTMLElement).closest("button, a")) return
             const action = fileTreeKey(e.key, rows, focused, expanded, filtering)

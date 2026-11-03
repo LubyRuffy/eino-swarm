@@ -27,7 +27,7 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded px-2.5 py-1 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+      "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded px-2.5 py-1 text-xs font-medium transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs",
       className,
     )}
     {...props}
@@ -44,13 +44,13 @@ const TabsContent = React.forwardRef<
     className={cn(
       // min-h-0 lets a flex-1 pane shrink below its content so Files,
       // Trace and Memory can scroll instead of clipping at the window.
-      "flex-1 min-h-0 overflow-hidden focus-visible:outline-none",
+      "flex-1 min-h-0 overflow-hidden focus-visible:outline-hidden",
       className,
       // After `className`: the Agents pane passes `flex` so a worker log can
       // fill it. Tailwind's [hidden] rule and .flex have equal specificity,
       // so an inactive flex pane ate half the Memory tab. The important
       // hidden has to win that fight without wiping `flex` on the active pane.
-      "data-[state=inactive]:!hidden",
+      "data-[state=inactive]:hidden!",
     )}
     {...props}
   />

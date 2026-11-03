@@ -43,7 +43,7 @@ export function BackoffNotice({ block }: { block: Block }) {
           <p>{t(context.scope === "origin" ? "backoff.origin" : context.scope === "schedule_answer" ? "backoff.scheduleReason" : "backoff.unknown")}</p>
           <div>
             <p>{t("backoff.steps")}</p>
-            <ul className="list-disc pl-5">{context.callers.map((caller) => <li key={caller.agentId} className="break-words">{callerLabel(caller, t)}</li>)}</ul>
+            <ul className="list-disc pl-5">{context.callers.map((caller) => <li key={caller.agentId} className="wrap-break-word">{callerLabel(caller, t)}</li>)}</ul>
           </div>
           {context.attempt && context.scope !== "unknown" ? <p>{t(context.scope === "origin" ? "backoff.failures" : "backoff.attempt", { count: context.attempt })}</p> : null}
           {context.code ? <p>{t(`backoff.${context.code}`)}</p> : null}

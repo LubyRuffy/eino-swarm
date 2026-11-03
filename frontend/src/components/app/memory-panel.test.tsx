@@ -428,7 +428,7 @@ describe("Memory panel", () => {
     const body = await screen.findByTestId("skill-body")
     expect(body).toHaveClass("overflow-auto")
     expect(body).toHaveClass("min-w-0")
-    expect(body).toHaveClass("break-words")
+    expect(body).toHaveClass("wrap-break-word")
     expect(body).toHaveClass("max-h-72")
     const card = body.closest("[data-testid=skill-card]")
     expect(card).toHaveClass("overflow-hidden")

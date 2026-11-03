@@ -68,7 +68,7 @@ describe("ContextMeter", () => {
     expect(Number(ring?.getAttribute("data-fill"))).toBeGreaterThan(0)
   })
 
-  it("keeps an empty ring when nothing can scale the arc", () => {
+  it("keeps an empty ring-3 when nothing can scale the arc", () => {
     render(
       <TooltipProvider>
         <ContextMeter usage={{ ...sample, context_window: 0 }} window={0} />

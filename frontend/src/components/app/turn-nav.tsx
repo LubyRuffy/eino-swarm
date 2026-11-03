@@ -228,7 +228,7 @@ export function TurnNav({
                 onMouseEnter={() => setHovered(item.id)}
                 onClick={() => jump(item.id)}
               >
-                <span className="line-clamp-2 break-words">
+                <span className="line-clamp-2 wrap-break-word">
                   {previewText(item.text, TURN_NAV_LIST_PREVIEW)}
                 </span>
               </button>

@@ -1,6 +1,175 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@import '../../frontend/src/styles/scroll-fade.css';
+
+/* The phone paints `.dark` from the system theme. Follow that class. */
+@custom-variant dark (&:is(.dark *));
+
+/* Token colors are applied from the shared highlighter, outside this
+   package. Scan that file so light and dark Shiki classes ship. */
+@source '../../frontend/src/lib/highlighter.tsx';
+
+@theme inline {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+@theme {
+  --color-syntax-keyword: hsl(var(--syntax-keyword));
+  --color-syntax-command: hsl(var(--syntax-command));
+  --color-syntax-string: hsl(var(--syntax-string));
+  --color-syntax-comment: hsl(var(--syntax-comment));
+  --color-syntax-operator: hsl(var(--syntax-operator));
+  --color-syntax-flag: hsl(var(--syntax-flag));
+  --color-syntax-variable: hsl(var(--syntax-variable));
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@utility screen-push {
+  /* Opening a conversation is a push, not a repaint: the screen comes in
+     from the edge so Back has somewhere to go back to. */
+  animation: screen-push 180ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@utility rail {
+  /* A strip of chips scrolls sideways when there are too many to fit. The
+     bar a desktop engine paints under them reads as a second border. */
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility scan-stage {
+  background: hsl(var(--scrim));
+}
+
+@utility scan-shade {
+  background: hsl(var(--scrim) / 0.72);
+}
+
+@utility scan-aim {
+  color: hsl(var(--qr-plate));
+}
+
+@utility scan-frame {
+  position: relative;
+  width: min(72vw, 17.5rem);
+  aspect-ratio: 1;
+  overflow: hidden;
+  flex: none;
+}
+
+@utility scan-corner {
+  position: absolute;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-color: hsl(var(--qr-plate));
+}
+
+@utility scan-corner-tl {
+  top: 0;
+  left: 0;
+  border-top: 3px solid;
+  border-left: 3px solid;
+}
+
+@utility scan-corner-tr {
+  top: 0;
+  right: 0;
+  border-top: 3px solid;
+  border-right: 3px solid;
+}
+
+@utility scan-corner-bl {
+  bottom: 0;
+  left: 0;
+  border-bottom: 3px solid;
+  border-left: 3px solid;
+}
+
+@utility scan-corner-br {
+  bottom: 0;
+  right: 0;
+  border-bottom: 3px solid;
+  border-right: 3px solid;
+}
+
+@utility scan-beam {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  height: 2px;
+  top: 8%;
+  background: hsl(var(--qr-plate));
+  box-shadow:
+    0 0 8px hsl(var(--qr-plate)),
+    0 0 18px hsl(var(--running));
+  animation: scan-beam 2.2s ease-in-out infinite;
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 2px;
+    height: 4.5rem;
+    background: linear-gradient(
+      to top,
+      hsl(var(--running) / 0.72),
+      transparent
+    );
+  }
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    top: 50%;
+  }
+}
 
 @layer base {
   :root {
@@ -157,16 +326,14 @@
     @apply my-2 border-l-2 border-border pl-3 text-muted-foreground;
   }
   .md-body p {
-    @apply my-1.5 break-words leading-snug;
+    @apply my-1.5 wrap-break-word leading-snug;
   }
-  .md-body pre {
+  .md-body pre:not([data-slot='code-block-content']) {
     @apply my-2 overflow-x-auto rounded-md bg-muted p-3 text-xs;
   }
-  .md-body .md-code {
-    @apply my-2 overflow-hidden rounded-md bg-muted;
-  }
-  .md-body .md-code pre {
-    @apply my-0 rounded-none bg-transparent px-3 pb-3 pt-1;
+  .md-body [data-slot='code-block'] {
+    @apply my-2;
+    font-size: inherit;
   }
   .md-body .md-math {
     @apply my-2;
@@ -222,11 +389,6 @@
 }
 
 @layer components {
-  /* Opening a conversation is a push, not a repaint: the screen comes in
-     from the edge so Back has somewhere to go back to. */
-  .screen-push {
-    animation: screen-push 180ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
-  }
   @keyframes screen-push {
     from {
       opacity: 0;
@@ -237,86 +399,6 @@
       transform: none;
     }
   }
-  @media (prefers-reduced-motion: reduce) {
-    .screen-push {
-      animation: none;
-    }
-  }
-
-  /* A strip of chips scrolls sideways when there are too many to fit. The
-     bar a desktop engine paints under them reads as a second border. */
-  .rail {
-    scrollbar-width: none;
-  }
-  .rail::-webkit-scrollbar {
-    display: none;
-  }
-
-  .scan-stage {
-    background: hsl(var(--scrim));
-  }
-  .scan-shade {
-    background: hsl(var(--scrim) / 0.72);
-  }
-  .scan-aim {
-    color: hsl(var(--qr-plate));
-  }
-  .scan-frame {
-    position: relative;
-    width: min(72vw, 17.5rem);
-    aspect-ratio: 1;
-    overflow: hidden;
-    flex: none;
-  }
-  .scan-corner {
-    position: absolute;
-    width: 1.35rem;
-    height: 1.35rem;
-    border-color: hsl(var(--qr-plate));
-  }
-  .scan-corner-tl {
-    top: 0;
-    left: 0;
-    border-top: 3px solid;
-    border-left: 3px solid;
-  }
-  .scan-corner-tr {
-    top: 0;
-    right: 0;
-    border-top: 3px solid;
-    border-right: 3px solid;
-  }
-  .scan-corner-bl {
-    bottom: 0;
-    left: 0;
-    border-bottom: 3px solid;
-    border-left: 3px solid;
-  }
-  .scan-corner-br {
-    bottom: 0;
-    right: 0;
-    border-bottom: 3px solid;
-    border-right: 3px solid;
-  }
-  .scan-beam {
-    position: absolute;
-    left: 6%;
-    right: 6%;
-    height: 2px;
-    top: 8%;
-    background: hsl(var(--qr-plate));
-    box-shadow: 0 0 8px hsl(var(--qr-plate)), 0 0 18px hsl(var(--running));
-    animation: scan-beam 2.2s ease-in-out infinite;
-  }
-  .scan-beam::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 2px;
-    height: 4.5rem;
-    background: linear-gradient(to top, hsl(var(--running) / 0.72), transparent);
-  }
   @keyframes scan-beam {
     0% {
       top: 8%;
@@ -326,12 +408,6 @@
     }
     100% {
       top: 8%;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .scan-beam {
-      animation: none;
-      top: 50%;
     }
   }
 }

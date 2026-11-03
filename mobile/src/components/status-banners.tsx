@@ -95,12 +95,12 @@ export function GoalBanner({
         ) : null}
       </div>
       {reason ? (
-        <p data-testid="goal-reason" className="mt-2 break-words text-xs text-muted-foreground">
+        <p data-testid="goal-reason" className="mt-2 wrap-break-word text-xs text-muted-foreground">
           {paused ? t("goal.pauseReason", { reason }) : reason}
         </p>
       ) : null}
       {canStart ? (
-        <p className="mt-1 break-words text-xs text-muted-foreground">
+        <p className="mt-1 wrap-break-word text-xs text-muted-foreground">
           {t("goal.manualWhilePaused")}
         </p>
       ) : null}

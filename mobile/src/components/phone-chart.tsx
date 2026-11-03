@@ -71,7 +71,7 @@ function ChartTab({
       role="tab"
       aria-selected={selected}
       className={cn(
-        "h-7 rounded px-2 text-xs",
+        "h-7 rounded-sm px-2 text-xs",
         selected ? "bg-background text-foreground" : "text-muted-foreground",
       )}
       onClick={onSelect}

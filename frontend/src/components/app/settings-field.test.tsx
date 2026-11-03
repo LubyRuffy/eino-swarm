@@ -70,7 +70,7 @@ describe("settings field row", () => {
     expect(trigger.className).toContain("--chrome-font-size")
     expect(trigger.className).toContain("font-normal")
     expect(trigger.className).toMatch(/\bw-auto\b/)
-    expect(trigger.className).not.toMatch(/\bw-56\b/)
+    expect(trigger.className).not.toMatch(/(^|\s)w-56(\s|$)/)
     expect(trigger.className).not.toMatch(/\bbg-secondary\b/)
     expect(screen.getByText("chrome only")).toBeInTheDocument()
   })

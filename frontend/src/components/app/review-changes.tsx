@@ -36,7 +36,7 @@ export function ReviewChanges({ changes }: { changes?: MemoryChange[] }) {
             ) : (
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground">{t("memory.changePreviewOnly")}</p>
-                {change.text ? <pre className="stream-text whitespace-pre-wrap break-words text-foreground">{change.text}</pre> : null}
+                {change.text ? <pre className="stream-text whitespace-pre-wrap wrap-break-word text-foreground">{change.text}</pre> : null}
               </div>
             )}
           </div>
@@ -65,7 +65,7 @@ function CommittedChange({ label, before, after }: { label: string; before: stri
           {[[t("memory.changeBefore"), before], [t("memory.changeAfter"), after]].map(([title, text]) => (
             <div key={title}>
               <p className="text-xs font-medium text-foreground">{title}</p>
-              <pre className="stream-text thin-scrollbar max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 text-foreground">{text || t("memory.changeEmpty")}</pre>
+              <pre className="stream-text thin-scrollbar max-h-72 overflow-auto whitespace-pre-wrap wrap-break-word rounded bg-muted p-2 text-foreground">{text || t("memory.changeEmpty")}</pre>
             </div>
           ))}
         </div>

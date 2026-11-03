@@ -66,7 +66,7 @@ export function CompactNotice({ block }: { block: Block }) {
           {open ? (
             <pre
               data-testid="compact-briefing"
-              className="mt-2 min-w-0 whitespace-pre-wrap break-words pl-5 text-sm leading-relaxed text-foreground"
+              className="mt-2 min-w-0 whitespace-pre-wrap wrap-break-word pl-5 text-sm leading-relaxed text-foreground"
             >
               {briefing}
             </pre>

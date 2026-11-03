@@ -108,7 +108,7 @@ export function NuwaGraph({
               onClick={() => onSelect(node.id)}
               aria-pressed={selected === node.id}
               className={cn(
-                "absolute flex flex-col items-start gap-1 overflow-hidden rounded-lg border bg-card px-3 py-2 text-left shadow-sm transition-colors hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "absolute flex flex-col items-start gap-1 overflow-hidden rounded-lg border bg-card px-3 py-2 text-left shadow-xs transition-colors hover:border-primary/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                 selected === node.id ? "border-primary ring-1 ring-primary/30" : "border-border"
               )}
               style={{

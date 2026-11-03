@@ -249,12 +249,14 @@ public class CodeHighlightTest {
 
     private JSONObject dom() throws Exception {
         String script = "JSON.stringify((() => {const tidy=s=>(s||'').replace(/\\s+/g,' ').trim();"
-            + "const code=[...document.querySelectorAll('[data-testid=markdown-code] code')].find(e=>e.className==='language-cpp');"
+            + "const code=[...document.querySelectorAll('[data-testid=markdown-code] code')].find(e=>e.classList.contains('language-cpp'));"
             + "const pre=code?.closest('pre'),sc=document.querySelector('[data-testid=transcript]');"
             + "const rect=e=>{const r=e?.getBoundingClientRect();return r?{x:r.x,y:r.y,width:r.width,height:r.height,scroll_width:e.scrollWidth,client_width:e.clientWidth,scroll_top:e.scrollTop,scroll_height:e.scrollHeight,client_height:e.clientHeight}:{};};"
             + "const button=b=>{const r=b.getBoundingClientRect(),s=getComputedStyle(b),cx=r.x+r.width/2,cy=r.y+r.height/2;return {label:b.getAttribute('aria-label')||tidy(b.innerText),title:b.title,enabled:!b.disabled,visible:r.width>0&&r.height>0&&s.display!=='none'&&s.visibility==='visible'&&Number(s.opacity)>0,hit:cx>0&&cy>0&&cx<innerWidth&&cy<innerHeight&&b.contains(document.elementFromPoint(cx,cy)),x:r.x,y:r.y,width:r.width,height:r.height};};"
-            + "const tokens=code?[...code.querySelectorAll('span')]:[],kinds=tokens.map(t=>t.className.replace('text-syntax-','')).filter(Boolean);"
-            + "const colors={base:code?getComputedStyle(code).color:''};for(const kind of ['keyword','string','comment','operator']){const e=tokens.find(t=>t.classList.contains('text-syntax-'+kind));colors[kind]=e?getComputedStyle(e).color:'';}"
+            + "const tokens=code?[...code.querySelectorAll(\"span[class*='--shiki-light']\")]:[];"
+            + "const pick=pred=>{const e=tokens.find(pred);return e?getComputedStyle(e).color:'';};"
+            + "const colors={base:code?getComputedStyle(code).color:'',keyword:pick(t=>t.textContent==='const'),string:pick(t=>(t.textContent||'').includes('signal')),comment:pick(t=>(t.textContent||'').includes('Offline')),operator:pick(t=>t.textContent==='>'||t.textContent==='return')};"
+            + "const kinds=['keyword','string','comment','operator'].filter(kind=>colors[kind]&&colors[kind]!==colors.base);"
             + "const r=pre?.getBoundingClientRect(),sr=sc?.getBoundingClientRect();"
             + "return {url:location.href,dark:document.documentElement.classList.contains('dark'),source:code?.textContent||'',kinds,colors,pre:rect(pre),transcript:rect(sc),code_visible:!!r&&!!sr&&r.top>=sr.top&&r.bottom<=sr.bottom&&r.width>0,document_width:document.documentElement.scrollWidth,composer:document.querySelector('textarea')?.value||'',buttons:[...document.querySelectorAll('button')].map(button),viewport:{width:innerWidth,height:innerHeight},tokens:tokens.map(t=>({text:t.textContent,kind:t.className,color:getComputedStyle(t).color}))};})())";
         CountDownLatch ready = new CountDownLatch(1); AtomicReference<String> value = new AtomicReference<>();

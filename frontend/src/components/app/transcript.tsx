@@ -760,7 +760,7 @@ function UserMessage({
               rows={4}
               className={cn(
                 contentTypeClass,
-                "min-h-[4.5rem] border-0 bg-transparent px-1 py-1 text-secondary-foreground shadow-none focus-visible:ring-0",
+                "min-h-18 border-0 bg-transparent px-1 py-1 text-secondary-foreground shadow-none focus-visible:ring-0",
               )}
               onChange={(e) => setDraft(e.target.value)}
               onCompositionStart={() => {

@@ -10,7 +10,7 @@ export function GenerationNotice({ block }: { block: Block }) {
   return (
     <p data-testid="generation-notice" role="status" className="px-2 py-1 text-xs text-muted-foreground">
       {generationNotice(generation, t.locale)}
-      {generation.detail ? <span className="ml-1 whitespace-pre-wrap break-words">{generation.detail}</span> : null}
+      {generation.detail ? <span className="ml-1 whitespace-pre-wrap wrap-break-word">{generation.detail}</span> : null}
     </p>
   )
 }

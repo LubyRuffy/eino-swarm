@@ -17,28 +17,25 @@ import "katex/dist/katex.min.css"
 
 import { PhoneChart, PhoneChartPending } from "@/components/phone-chart"
 import { Button } from "@/components/ui/button"
+import {
+  CodeBlock,
+  CodeBlockActions,
+  CodeBlockContent,
+  CodeBlockHeader,
+  CodeBlockTitle,
+} from "@/components/ui/code-block"
 import { parseChartSpec } from "@/lib/chart-spec"
 import { cn } from "@/lib/cn"
 import { copyText } from "@/lib/copy-text"
 import { t } from "@/lib/i18n"
-import { languageFromFence, tokenizeSource, type SourceTokenKind } from "../../../frontend/src/lib/source-highlight"
+import { HighlightedLines } from "../../../frontend/src/lib/highlighted-lines"
 
 const PLUGINS = [remarkGfm, remarkMath]
 const MATH_LANGS = new Set(["math", "latex", "tex", "katex"])
-const SOURCE_CLASSES: Record<SourceTokenKind, string> = {
-  text: "",
-  keyword: "text-syntax-keyword",
-  command: "text-syntax-command",
-  string: "text-syntax-string",
-  comment: "text-syntax-comment",
-  operator: "text-syntax-operator",
-  flag: "text-syntax-flag",
-  variable: "text-syntax-variable",
-}
 
 export function PhoneMarkdown({ text, className }: { text: string; className?: string }) {
   return (
-    <div className={cn("md-body break-words text-sm", className)}>
+    <div className={cn("md-body wrap-break-word text-sm", className)}>
       <Markdown remarkPlugins={PLUGINS} components={COMPONENTS} urlTransform={safeUrl}>
         {text}
       </Markdown>
@@ -126,32 +123,22 @@ function PhonePre({
   }
   if (fence) {
     return (
-      <div className="md-code" data-testid="markdown-code">
-        <div className="flex items-center gap-2 px-3 pt-1.5">
-          <span className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-muted-foreground">
+      <CodeBlock data-testid="markdown-code">
+        <CodeBlockHeader data-find-ignore="">
+          <CodeBlockTitle className="font-mono text-xs font-normal text-muted-foreground">
             {fence.lang}
-          </span>
-          <PhoneCopy text={fence.text} kind="code" />
-        </div>
-        <pre {...props}>
-          <code className={fence.className}>
-            <PhoneHighlightedCode source={fence.text} lang={fence.lang} />
-          </code>
-        </pre>
-      </div>
+          </CodeBlockTitle>
+          <CodeBlockActions>
+            <PhoneCopy text={fence.text} kind="code" />
+          </CodeBlockActions>
+        </CodeBlockHeader>
+        <CodeBlockContent codeClassName={fence.className} {...props}>
+          <HighlightedLines text={fence.text} lang={fence.lang} />
+        </CodeBlockContent>
+      </CodeBlock>
     )
   }
   return <pre {...props}>{children}</pre>
-}
-
-function PhoneHighlightedCode({ source, lang }: { source: string; lang: string }) {
-  const tokens = useMemo(() => {
-    const dialect = languageFromFence(lang)
-    return dialect ? tokenizeSource(source, dialect) : [{ kind: "text" as const, text: source }]
-  }, [source, lang])
-  return <>{tokens.map((token, i) => (
-    <span key={i} className={SOURCE_CLASSES[token.kind] || undefined}>{token.text}</span>
-  ))}</>
 }
 
 function PhoneInlineCode({

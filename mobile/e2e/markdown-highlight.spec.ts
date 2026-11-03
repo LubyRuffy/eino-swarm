@@ -99,15 +99,19 @@ async function verifyFences(page: Page) {
   const cpp = page.locator("code.language-cpp")
   await expect(cpp).toHaveCount(1)
   await expect.poll(() => cpp.textContent()).toBe(CPP)
-  await expect(cpp.locator(".text-syntax-keyword").first()).toBeVisible()
-  await expect(cpp.locator(".text-syntax-comment")).toHaveCount(1)
-  await expect(cpp.locator(".text-syntax-string")).toHaveCount(1)
+  await expect(token(cpp, /^const$/).first()).toBeVisible()
+  await expect(token(cpp, "keep the note").first()).toBeVisible()
+  await expect(token(cpp, "边界").first()).toBeVisible()
   await expect.poll(() => page.locator("code.language-json").textContent()).toBe(JSON_SOURCE)
-  await expect(page.locator("code.language-json .text-syntax-keyword")).toHaveText("true")
+  await expect(token(page.locator("code.language-json"), /^true$/)).toHaveText("true")
   const plain = page.locator("code.language-opaque-language")
   await expect.poll(() => plain.textContent()).toBe(UNKNOWN)
-  await expect(plain.locator('[class*="text-syntax-"]')).toHaveCount(0)
+  await expect(plain.locator("[class*='--shiki-light']")).toHaveCount(0)
   await expect(plain.locator("div")).toHaveCount(0)
+}
+
+function token(root: Locator, text: string | RegExp) {
+  return root.locator("span[class*='--shiki-light']", { hasText: text })
 }
 
 async function verifyThemesAndWidth(page: Page, info: TestInfo, prefix: string) {
@@ -118,8 +122,8 @@ async function verifyThemesAndWidth(page: Page, info: TestInfo, prefix: string) 
       .toBe(theme === "dark")
     await cpp.scrollIntoViewIfNeeded()
     const foreground = await color(cpp)
-    const keyword = await color(cpp.locator(".text-syntax-keyword").first())
-    const string = await color(cpp.locator(".text-syntax-string"))
+    const keyword = await color(token(cpp, /^const$/).first())
+    const string = await color(token(cpp, "边界").first())
     expect(keyword).not.toBe(foreground)
     expect(string).not.toBe(foreground)
     expect(keyword).not.toBe(string)

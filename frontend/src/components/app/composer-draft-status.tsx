@@ -11,7 +11,7 @@ export function ComposerDraftStatus({ session, snapshot, disabled = false }: { s
     <p role="alert">
       {uncertain ? t("draft.uncertain") : snapshot.conflict ? t("draft.conflict") : t("draft.failed")}
     </p>
-    {snapshot.error ? <p className="break-words text-destructive">{snapshot.error}</p> : null}
+    {snapshot.error ? <p className="wrap-break-word text-destructive">{snapshot.error}</p> : null}
     {snapshot.conflict ? <>
       <Button type="button" variant="link" size="sm" disabled={disabled || snapshot.saving} onClick={() => void session.useStoredDraft().catch(() => undefined)}>{t("draft.useStored")}</Button>
       <Button type="button" variant="link" size="sm" disabled={disabled || snapshot.saving} onClick={() => void session.saveCurrentDraft().catch(() => undefined)}>{t("draft.useCurrent")}</Button>

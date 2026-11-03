@@ -434,15 +434,16 @@ describe("Agent log follow", () => {
 
 describe("inactive tab panels", () => {
   // The Agents pane is a flex column so the worker log can scroll. Tailwind's
-  // [hidden] preflight and .flex have equal specificity, so without !hidden
-  // the empty Agents shell kept half the column when Memory was selected.
+  // [hidden] preflight and .flex have equal specificity, so without an
+  // important hidden the empty Agents shell kept half the column when Memory
+  // was selected. Tailwind v4 writes that modifier as a suffix.
   it("hides an inactive agents pane hard enough to beat display:flex", () => {
     render(
       <RightPanel tab="agents" transcript={transcript([])} {...noop} />,
     )
     const panel = document.querySelector('[role="tabpanel"]')
     expect(panel?.className).toMatch(/\bflex\b/)
-    expect(panel?.className).toMatch(/data-\[state=inactive\]:!hidden/)
+    expect(panel?.className).toMatch(/data-\[state=inactive\]:hidden!/)
   })
 
   // flex-1 panes default to min-height:auto (content size). Without min-h-0

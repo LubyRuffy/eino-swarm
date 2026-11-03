@@ -16,17 +16,17 @@ export const sidebarSectionLabelClass = cn(
   "sidebar-section-label flex min-w-0 flex-1 items-center gap-1 text-left font-medium uppercase tracking-wide text-sidebar-foreground/60",
 )
 
-export const sidebarSectionClass = "mb-[var(--sidebar-section-gap)]"
+export const sidebarSectionClass = "mb-(--sidebar-section-gap)"
 
 /** Thread rows inside Pinned, Recents, or one folder. The 2px gap is
  *  why the selected pill floats instead of welding to its neighbours. */
 export const sidebarStackClass =
-  "flex flex-col gap-[var(--sidebar-row-gap)]"
+  "flex flex-col gap-(--sidebar-row-gap)"
 
 /** Space between project folders. Tighter than a section, looser than a
  *  topic — otherwise ten folders become one grey brick. */
 export const sidebarFolderStackClass =
-  "flex flex-col gap-[var(--sidebar-folder-gap)]"
+  "flex flex-col gap-(--sidebar-folder-gap)"
 
 /** Folder, running progress, or an empty spacer so titles share a
  *  column with the project directory. Token size, not size-4: that rem

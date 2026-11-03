@@ -189,7 +189,7 @@ describe("GoalBanner", () => {
     expect(screen.queryByTestId("goal-start")).toBeNull()
   })
 
-  it("edits the objective and saves on blur", async () => {
+  it("edits the objective and saves on blur-sm", async () => {
     const onEdit = vi.fn().mockResolvedValue(true)
     render(<GoalBanner goal="keep going" onEdit={onEdit} onClear={vi.fn()} />)
     fireEvent.click(screen.getByTestId("goal-text"))

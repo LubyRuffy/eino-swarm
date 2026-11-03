@@ -58,7 +58,7 @@ function ListToolbar({
   searchLabel: string
 }) {
   return (
-    <div className="flex items-center gap-1.5 px-[var(--sidebar-list-px)] pb-2 pt-2">
+    <div className="flex items-center gap-1.5 px-(--sidebar-list-px) pb-2 pt-2">
       {onNew ? (
         <Button
           variant="secondary"
@@ -218,7 +218,7 @@ export function Sidebar({
               onSearch={onSearch}
               searchLabel={t("sidebar.search")}
             />
-            <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto px-[var(--sidebar-list-px)] pb-3 pt-1">
+            <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto px-(--sidebar-list-px) pb-3 pt-1">
               {buckets.pinned.length > 0 ? (
                 <SidebarSection
                   testId="pinned-list"
@@ -282,7 +282,7 @@ export function Sidebar({
               newLabel={t("sidebar.newConversation")}
               searchLabel={t("sidebar.search")}
             />
-            <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto px-[var(--sidebar-list-px)] pb-3 pt-1">
+            <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto px-(--sidebar-list-px) pb-3 pt-1">
               {buckets.recents.length > 0 ? (
                 <SidebarSection
                   testId="recents-list"
@@ -315,7 +315,7 @@ export function Sidebar({
                   />
                 </SidebarSection>
               ) : (
-                <p className={cn(chromeTypeClass, "px-[var(--sidebar-row-px)] py-6 text-sidebar-foreground/70")}>
+                <p className={cn(chromeTypeClass, "px-(--sidebar-row-px) py-6 text-sidebar-foreground/70")}>
                   {t("sidebar.empty")}
                 </p>
               )}
@@ -324,12 +324,12 @@ export function Sidebar({
         ) : null}
         {pane === "scheduled" ? <ScheduleListPane /> : null}
         {pane === "clients" ? (
-          <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto px-[var(--sidebar-list-px)] py-2">
+          <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto px-(--sidebar-list-px) py-2">
             <LocalClientsSection bare />
           </div>
         ) : null}
 
-        <div className="mt-auto px-[var(--sidebar-list-px)] pb-2">
+        <div className="mt-auto px-(--sidebar-list-px) pb-2">
           <SidebarVersion />
         </div>
       </div>

@@ -91,7 +91,7 @@ export function ComposerQuotes({
           aria-controls={showDetails ? "composer-quote-details" : undefined}
           className={cn(
             badgeVariants({ variant: "outline" }),
-            "rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "rounded-full focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
           )}
           onClick={() => setPinned((v) => !v)}
           onFocus={() => setHovered(true)}
@@ -135,7 +135,7 @@ function QuoteEditor({
       aria-label={t("quote.edit", { n })}
       value={draft}
       rows={3}
-      className="min-h-[4.5rem] bg-background px-2 py-1.5 text-xs"
+      className="min-h-18 bg-background px-2 py-1.5 text-xs"
       onChange={(e) => setDraft(e.target.value)}
       onKeyDown={(e) => {
         if (e.key === "Escape") {

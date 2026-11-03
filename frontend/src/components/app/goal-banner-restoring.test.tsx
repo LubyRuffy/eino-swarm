@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest"
 import { GoalBanner } from "./goal-banner"
 
 describe("goal editing during engine restoration", () => {
-  it("keeps a focused edit through restoration and blocks Enter and blur until readiness", () => {
+  it("keeps a focused edit through restoration and blocks Enter and blur-sm until readiness", () => {
     const onEdit = vi.fn().mockResolvedValue(true)
     const onClear = vi.fn().mockResolvedValue(true)
     const onResume = vi.fn()

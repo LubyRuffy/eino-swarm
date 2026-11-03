@@ -162,7 +162,7 @@ function TidyStream({ live }: { live?: TidyLive }) {
       ref={scroller}
       data-testid="tidy-stream"
       aria-label={t("memory.tidyStream")}
-      className="thin-scrollbar max-h-32 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted px-2 py-1.5 text-muted-foreground"
+      className="thin-scrollbar max-h-32 overflow-y-auto whitespace-pre-wrap wrap-break-word rounded-md bg-muted px-2 py-1.5 text-muted-foreground"
     >
       {changes.map((change, i) => (
         <p key={`${change.action}-${change.name}-${i}`}>{tidyChangeLine(t, change)}</p>
