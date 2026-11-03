@@ -157,9 +157,10 @@ test("server and phone same-named models route by selected source and logout pre
 
 test("device-only account can select an online PC without QR or API permission", async ({ page }, testInfo) => {
   await approved(page)
+  const legacyFingerprint = "8cb10e221045cd61"
   const calls = await fixture(page, { apiEnabled: false, hosts: [
-    { id: "pc-online", name: "办公电脑", hostname: "work", version: "1", online: true, enabled: true },
-    { id: "pc-offline", name: "家里电脑", hostname: "home", version: "1", online: false, enabled: true },
+    { id: "pc-online", name: "open-abcdef0123456789", hostname: "work", display_name: "办公电脑", version: "1", online: true, enabled: true },
+    { id: "pc-offline", name: legacyFingerprint, host_fp: legacyFingerprint, hostname: "家里电脑", version: "1", online: false, enabled: true },
   ] })
   await page.goto("/?mock=1&tick=0")
   await page.getByRole("button", { name: "返回", exact: true }).click()
@@ -168,6 +169,8 @@ test("device-only account can select an online PC without QR or API permission",
   await expect(page.getByRole("heading", { name: "我的电脑" })).toBeVisible()
   await expect(page.getByText("API 权限当前不可用，请联系管理员。")).toBeVisible()
   await expect(page.getByRole("button", { name: "连接 家里电脑" })).toBeDisabled()
+  await expect(page.getByText("open-abcdef0123456789")).toHaveCount(0)
+  await expect(page.getByText(legacyFingerprint)).toHaveCount(0)
   await noOverflow(page)
   await page.screenshot({ path: testInfo.outputPath("account-pc-picker.png") })
   await page.getByRole("button", { name: "连接 办公电脑" }).click()
@@ -177,7 +180,7 @@ test("device-only account can select an online PC without QR or API permission",
   expect(calls.filter((c) => c.path.includes("pairings") || c.path === "/v1/models")).toEqual([])
   const links = await page.evaluate(() => JSON.parse(localStorage.getItem("zwai.remote.links") || "[]"))
   expect(links.filter((link: { gatewayHostID?: string }) => Boolean(link.gatewayHostID))).toHaveLength(1)
-  expect(links.find((link: { gatewayHostID?: string }) => Boolean(link.gatewayHostID))).toMatchObject({ gatewayHostID: "pc-online", gatewayOwnerID: "owner", gatewayOrigin: origin })
+  expect(links.find((link: { gatewayHostID?: string }) => Boolean(link.gatewayHostID))).toMatchObject({ gatewayHostID: "pc-online", gatewayOwnerID: "owner", gatewayOrigin: origin, label: "办公电脑" })
 })
 
 test("same-account login merges a saved anonymous PC and preserves the selected independent Hub", async ({ page }, testInfo) => {

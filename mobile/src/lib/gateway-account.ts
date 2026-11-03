@@ -19,10 +19,10 @@ const PENDING_KEY = "zwai.phone.gateway.pending"
 const CLIENT_PATH = "/client/api/v1"
 
 export type GatewayStatus = "signed_out" | "checking" | "authorization_pending" | "account_pending" | "account_rejected" | "authorized" | "access_denied" | "expired" | "error"
-export type GatewayUser = { id: string; username: string; approval_status?: string; enabled?: boolean }
+export type GatewayUser = { id: string; username: string; display_name?: string; approval_status?: string; enabled?: boolean }
 export type GatewayDevice = { id: string; expires_at: string; name?: string; platform?: string }
 export type GatewaySession = { origin: string; token: string; user: GatewayUser; device: GatewayDevice }
-export type GatewayHost = { id: string; name: string; hostname: string; version: string; online: boolean; enabled: boolean; owner_user_id?: string; host_pub?: string }
+export type GatewayHost = { id: string; name: string; hostname: string; display_name?: string; version: string; online: boolean; enabled: boolean; owner_user_id?: string; host_pub?: string; host_fp?: string }
 export type GatewayBootstrap = {
   user: GatewayUser
   device: GatewayDevice

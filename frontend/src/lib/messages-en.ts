@@ -1,4 +1,5 @@
 import { remoteLoginEn } from "./messages-remote-login"
+import { desktopAccountEn } from "./messages-desktop-account"
 import { memoryEn } from "./messages-memory-en"
 import { generationEn } from "./messages-generation"
 import { updateEN } from "./messages-update"
@@ -8,6 +9,7 @@ import { agentFailureEn } from "./messages-agent-failure-en"
 /** English UI chrome. Keys are stable; Chinese lives in messages-zh.ts.
  *  Agent replies and protocol markers (quoted-send wrappers) stay English. */
 export const en = {
+  ...desktopAccountEn,
   ...remoteLoginEn,
   ...draftEN,
   "startup.failed": "{failed} conversations could not be restored. Check Trace or logs.",

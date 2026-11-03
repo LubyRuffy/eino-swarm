@@ -3,7 +3,9 @@ package server
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"github.com/LubyRuffy/eino-swarm/internal/remote"
 	"io"
 	"net/http"
 	"strings"
@@ -103,8 +105,9 @@ func (s *Server) postRemoteLogin(c *gin.Context) {
 		return
 	}
 	var request *struct {
-		NewDevice bool `json:"new_device"`
-		Confirmed bool `json:"confirmed"`
+		NewDevice     bool `json:"new_device"`
+		Confirmed     bool `json:"confirmed"`
+		EnableAccount bool `json:"enable_account"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(c.Writer, c.Request.Body, 1024))
 	decoder.DisallowUnknownFields()
@@ -117,7 +120,18 @@ func (s *Server) postRemoteLogin(c *gin.Context) {
 		badRequest(c, "new device login requires explicit confirmation")
 		return
 	}
-	if err := s.remote.StartLogin(s.opts.OpenURL, request.NewDevice); err != nil {
+	var err error
+	if request.EnableAccount {
+		err = s.remote.StartAccountLogin(s.opts.OpenURL, request.NewDevice)
+	} else {
+		err = s.remote.StartLogin(s.opts.OpenURL, request.NewDevice)
+	}
+	if err != nil {
+		if errors.Is(err, remote.ErrAccountEnableUnavailable) {
+			s.log.Warn("remote account configuration could not be saved")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "account connection settings could not be saved", "code": "remote_login_config_unavailable"})
+			return
+		}
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "remote_login_unavailable"})
 		return
 	}

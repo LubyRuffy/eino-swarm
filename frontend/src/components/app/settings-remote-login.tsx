@@ -2,6 +2,7 @@ import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import type { MessageKey } from "@/lib/i18n"
+import { remoteAccountName } from "@/lib/remote-account-name"
 import type { RemoteLoginStatus, RemoteStatus } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog"
@@ -9,6 +10,7 @@ import { SettingsSection, settingsHintClass, settingsLabelClass } from "./settin
 
 const stateMessage: Record<RemoteLoginStatus["state"], MessageKey> = {
   signed_out: "settings.remote.login.signedOut",
+  signing_out: "desktopAccount.signingOut",
   starting: "settings.remote.login.starting",
   authorization_pending: "settings.remote.login.authorizationPending",
   account_pending: "settings.remote.login.accountPending",
@@ -27,10 +29,12 @@ const errorMessage: Record<string, MessageKey> = {
   unsafe_response: "settings.remote.login.unsafeResponse",
   browser_unavailable: "settings.remote.login.browserUnavailable",
   credential_unavailable: "settings.remote.login.credentialUnavailable",
+  logout_unsupported: "desktopAccount.logoutUnsupported",
+  logout_denied: "desktopAccount.logoutDenied",
 }
 
 export function RemoteLoginSection({
-  enabled, status, unavailable, busy, onStart, onCancel,
+  enabled, status, unavailable, busy, onStart, onCancel, accountEntry = false,
 }: {
   enabled: boolean
   status?: RemoteStatus
@@ -38,20 +42,24 @@ export function RemoteLoginSection({
   busy: boolean
   onStart: (newDevice: boolean) => void
   onCancel: () => void
+  /** Explicit account entry may enable NOSEC in the same server-side action. */
+  accountEntry?: boolean
 }) {
   const t = useT()
   const [confirm, setConfirm] = useState(false)
   const login = status?.login
   const state = login?.state ?? "signed_out"
   const active = ["starting", "authorization_pending", "account_pending", "account_rejected"].includes(state)
-  const ready = enabled && !!status?.login_available && !unavailable && !busy
-  const message = !enabled ? t("settings.remote.login.enableFirst")
+  const ready = (enabled || accountEntry) && !!status?.login_available && !unavailable && !busy && state !== "signing_out"
+  const message = !enabled && !accountEntry ? t("settings.remote.login.enableFirst")
     : unavailable ? t("settings.remote.login.statusUnavailable")
       : !status ? t("settings.remote.login.saving")
         : !status.login_available ? t("settings.remote.login.desktopRequired")
           : state === "authorized" && !status.online ? t("settings.remote.login.connecting")
             : t(stateMessage[state] ?? "settings.remote.login.error")
-  const failure = login?.error_code ? errorMessage[login.error_code] : undefined
+  const details = unavailable ? undefined : login
+  const accountName = remoteAccountName(details)
+  const failure = details?.error_code ? errorMessage[details.error_code] : undefined
   return (
     <SettingsSection title={t("settings.remote.login.title")} description={t("settings.remote.login.hint")}>
       <div className="flex flex-col gap-3 px-4 py-3" data-settings-row="">
@@ -59,17 +67,17 @@ export function RemoteLoginSection({
           <p>{message}</p>
           {failure ? <p className={settingsHintClass}>{t(failure)}</p> : null}
         </div>
-        {login?.username ? <p className={settingsHintClass}>{t("settings.remote.login.account", { name: login.username })}</p> : null}
-        {login?.user_code ? (
+        {accountName ? <p className={settingsHintClass}>{t("settings.remote.login.account", { name: accountName })}</p> : null}
+        {details?.user_code ? (
           <div>
             <p className={settingsHintClass}>{t("settings.remote.login.code")}</p>
-            <code className="select-all font-mono text-sm">{login.user_code}</code>
+            <code className="select-all font-mono text-sm">{details.user_code}</code>
           </div>
         ) : null}
-        {login?.host_fp ? (
+        {details?.host_fp ? (
           <div>
             <p className={settingsHintClass}>{t("settings.remote.login.fingerprint")}</p>
-            <code className="select-all break-all font-mono text-sm">{login.host_fp}</code>
+            <code className="select-all break-all font-mono text-sm">{details.host_fp}</code>
           </div>
         ) : null}
         <div className="flex flex-wrap gap-2">
@@ -77,12 +85,12 @@ export function RemoteLoginSection({
             <Button type="button" variant="outline" size="sm" disabled={!ready} onClick={onCancel}>
               {t("settings.remote.login.cancel")}
             </Button>
-          ) : (
+          ) : !accountEntry || state !== "authorized" ? (
             <Button type="button" size="sm" disabled={!ready} onClick={() => onStart(false)}>
               {t("settings.remote.login.start")}
             </Button>
-          )}
-          {status?.has_token || state === "error" || state === "access_denied" ? (
+          ) : null}
+          {(status?.auth_mode === "nosec" && status.has_token) || state === "error" || state === "access_denied" ? (
             <Button type="button" variant="outline" size="sm" disabled={!ready || active} onClick={() => setConfirm(true)}>
               {t("settings.remote.login.reconnect")}
             </Button>

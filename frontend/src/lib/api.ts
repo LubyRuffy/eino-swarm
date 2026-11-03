@@ -699,11 +699,15 @@ export const api = {
     request<void>(`/api/schedules/runs/${rid}/read`, { method: "POST" }),
 
   remoteStatus: (signal?: AbortSignal) => request<RemoteStatus>("/api/remote/status", { signal }),
-  startRemoteLogin: (newDevice = false) => request<RemoteStatus>("/api/remote/login", {
+  startRemoteLogin: (newDevice = false, enableAccount = false) => request<RemoteStatus>("/api/remote/login", {
     method: "POST",
-    body: JSON.stringify(newDevice ? { new_device: true, confirmed: true } : {}),
+    body: JSON.stringify({
+      ...(newDevice ? { new_device: true, confirmed: true } : {}),
+      ...(enableAccount ? { enable_account: true } : {}),
+    }),
   }),
   cancelRemoteLogin: () => request<RemoteStatus>("/api/remote/login", { method: "DELETE" }),
+  logoutRemote: () => request<RemoteStatus>("/api/remote/logout", { method: "POST", body: "{}" }),
   saveRemoteToken: (token: string) =>
     request<RemoteStatus>("/api/remote/token", {
       method: "PUT",

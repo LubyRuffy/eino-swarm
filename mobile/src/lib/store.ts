@@ -1,6 +1,8 @@
 import { b64urlToBytes, bytesToB64url } from "./bytes"
 import { fromPrivate, generateIdentity, type Identity } from "./crypto"
 import { sameLinkAuthority } from "./link-authority"
+import { readableGatewayPCName } from "./gateway-names"
+import { t } from "./i18n"
 
 const ID_KEY = "zwai.remote.identity"
 const LINK_KEY = "zwai.remote.link"
@@ -118,7 +120,7 @@ export function saveLink(link: SavedLink) {
   const links = loadSavedLinks()
   const previous = links.find((row) => row.fingerprint === next.fingerprint)
   if (previous?.label?.trim() && !next.label?.trim()) {
-    next.label = previous.label
+    next.label = next.gatewayOwnerID ? readableGatewayPCName(previous.label, next.gatewayHostID, next.fingerprint) : previous.label
   }
   const rest = links.filter((row) => row.fingerprint !== next.fingerprint)
   rest.push(next)
@@ -135,7 +137,7 @@ export function replaceSavedLink(expected: SavedLink, replacement: SavedLink): b
   const links = loadSavedLinks()
   const index = links.findIndex((row) => sameLinkAuthority(row, expected))
   if (index < 0 || replacement.fingerprint !== expected.fingerprint) return false
-  links[index] = { ...replacement, label: links[index].label || replacement.label }
+  links[index] = { ...replacement, label: readableGatewayPCName(links[index].label, replacement.gatewayHostID, replacement.fingerprint) || replacement.label }
   // One atomic storage write; active PC and per-PC last thread remain untouched.
   localStorage.setItem(LINKS_KEY, JSON.stringify(links))
   return true
@@ -149,6 +151,13 @@ export function saveHostLabel(fingerprint: string, name: string) {
   let changed = false
   const next = links.map((row) => {
     if (row.fingerprint !== fingerprint || row.label === v) return row
+    // A managed link already has the selected account name. A PC may
+    // announce a different hostname, or fill a missing older account label.
+    if (row.gatewayOwnerID) {
+      const savedName = readableGatewayPCName(row.label, row.gatewayHostID, row.fingerprint)
+      const announcedName = readableGatewayPCName(v, row.gatewayHostID, row.fingerprint)
+      if (savedName || !announcedName) return row
+    }
     changed = true
     return { ...row, label: v }
   })
@@ -200,9 +209,9 @@ export function hubHost(hubURL: string): string {
   }
 }
 
-/** Chip text: the name this PC sent, else a short fingerprint. Never the hub. */
+/** Chip text uses a saved name. Unnamed anonymous PCs retain a short fingerprint. */
 export function linkLabel(link: SavedLink, all: SavedLink[] = []): string {
-  const named = link.label?.trim()
+  const named = link.gatewayOwnerID ? readableGatewayPCName(link.label, link.gatewayHostID, link.fingerprint) : link.label?.trim()
   if (named) {
     const clashes = all.filter(
       (row) => row.fingerprint !== link.fingerprint && row.label?.trim() === named,
@@ -210,5 +219,5 @@ export function linkLabel(link: SavedLink, all: SavedLink[] = []): string {
     if (clashes.length) return named + " · " + link.fingerprint.slice(0, 4)
     return named
   }
-  return (link.fingerprint || "").slice(0, 8) || "?"
+  return link.gatewayOwnerID ? t("account.unnamedPC") : (link.fingerprint || "").slice(0, 8) || "?"
 }

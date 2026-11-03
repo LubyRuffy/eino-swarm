@@ -1,5 +1,5 @@
 import { normalizeUISettings } from "./appearance"
-import type { Settings, SettingsPatch, ProviderSettingsWrite } from "./types"
+import type { Settings, SettingsPatch, ProviderSettingsWrite, RemoteSettings } from "./types"
 
 /** Wait after the last edit before rewriting config.yaml. Toggles still
  *  feel instant; a URL or a number does not write per keystroke. */
@@ -69,6 +69,13 @@ export class SettingsPersist {
   // The dialog waits for queued writes and a fresh GET before seeding on open.
   seed(settings: Settings) {
     this.baseline = structuredClone(settings)
+  }
+
+  // An explicit device-login action saves these fields on the server. The
+  // dialog drains writes and pauses edits first; unrelated draft fields remain
+  // dirty and the confirmed account mode must never be sent back as a PUT.
+  acceptRemote(remote: RemoteSettings) {
+    if (this.baseline) this.baseline.remote = structuredClone(remote)
   }
 
   schedule(settings: Settings, locale?: string) {

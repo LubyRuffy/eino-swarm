@@ -106,6 +106,24 @@ describe("saved links", () => {
     expect(loadSavedLinks().find((row) => row.fingerprint === "a")?.label).toBe("desk-one")
   })
 
+  it("keeps the account PC label when the PC announces its hostname and fills a synthetic old label", () => {
+    saveLink({ ...link("a"), gatewayOwnerID: "owner", gatewayHostID: "pc-a", label: "Office Mac" })
+    saveLink({ ...link("b"), gatewayOwnerID: "owner", gatewayHostID: "pc-b", label: "open-abcdef0123456789" })
+    saveHostLabel("a", "office-host")
+    saveHostLabel("b", "Home Mac")
+    expect(loadSavedLinks().map((row) => row.label)).toEqual(["Office Mac", "Home Mac"])
+  })
+
+  it("hides an exact saved account fingerprint and lets the PC announce a readable name", () => {
+    const fingerprint = "8cb10e221045cd61"
+    const saved = { ...link(fingerprint), gatewayOwnerID: "owner", gatewayHostID: "pc-a", label: fingerprint }
+    saveLink(saved)
+    expect(linkLabel(saved)).toBe("Unnamed PC")
+    expect(linkLabel({ ...saved, label: "7db10e221045cd62" })).toBe("7db10e221045cd62")
+    saveHostLabel(fingerprint, "Office Mac")
+    expect(loadSavedLink()?.label).toBe("Office Mac")
+  })
+
   it("drops one host and keeps the other as active", () => {
     saveLink(link("a"))
     saveLink(link("b"))

@@ -1,4 +1,9 @@
 export const remoteLoginEn = {
+  "settings.remote.accountSetup": "Sign in to link this PC to your account. No server address or token needs to be entered.",
+  "settings.remote.currentServer": "Configured server",
+  "settings.remote.serverDefault": "Default server from this PC's configuration",
+  "settings.remote.advanced": "Advanced / self-hosted server",
+  "settings.remote.advancedHint": "For a server you operate or anonymous QR pairing, expand the connection settings. Opening this section changes nothing.",
   "settings.remote.authMode": "Connection sign-in",
   "settings.remote.authModeHint": "Use NOSEC for a managed Gateway; independent pairlink hubs use legacy mode.",
   "settings.remote.authLegacy": "Independent hub (legacy)",
@@ -39,6 +44,11 @@ export const remoteLoginEn = {
 } as const
 
 export const remoteLoginZh: { [K in keyof typeof remoteLoginEn]: string } = {
+  "settings.remote.accountSetup": "登录后将这台电脑关联到账号，无需填写服务器地址或 Token。",
+  "settings.remote.currentServer": "当前配置的服务器",
+  "settings.remote.serverDefault": "使用这台电脑配置的默认服务器",
+  "settings.remote.advanced": "高级／自建服务",
+  "settings.remote.advancedHint": "自建服务器或匿名扫码配对，可展开连接设置；仅展开不会修改当前连接。",
   "settings.remote.authMode": "连接认证",
   "settings.remote.authModeHint": "受管 Gateway 使用 NOSEC；独立 pairlink 中转使用传统模式。",
   "settings.remote.authLegacy": "独立中转（传统模式）",

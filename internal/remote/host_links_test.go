@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -40,7 +41,14 @@ func newHostLinkRelay(t *testing.T, e *engine.Engine) *hostLinkRelay {
 	t.Helper()
 	mem := pstore.NewMemory()
 	hub := relay.New(mem)
-	srv := httptest.NewServer(hub.Handler())
+	relayHandler := hub.Handler()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == desktopAuthPrefix+"logout" {
+			_, _ = io.WriteString(w, `{"data":{"logged_out":true}}`)
+			return
+		}
+		relayHandler.ServeHTTP(w, r)
+	}))
 	t.Cleanup(srv.Close)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

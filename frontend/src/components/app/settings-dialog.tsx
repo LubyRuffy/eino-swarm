@@ -21,7 +21,7 @@ import { ClientsTab } from "@/components/app/settings-clients"
 import { RemoteTab } from "@/components/app/settings-remote"
 import { SwarmTab } from "@/components/app/settings-swarm"
 import { ToolsTab } from "@/components/app/settings-tools"
-import { settingsMatch } from "@/components/app/settings-field"
+import { SettingsPage, SettingsSection, settingsMatch } from "@/components/app/settings-field"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -36,7 +36,7 @@ import { chromeTypeClass } from "@/lib/chrome-type"
 import type { LocalePref } from "@/lib/i18n"
 import { SettingsPersist } from "@/lib/settings-persist"
 import { resolveProviderToolsDrafts, type ProviderToolsDrafts } from "@/lib/provider-tools"
-import type { Meta, Settings, ToolDescriptor } from "@/lib/types"
+import { defaultRemoteSettings, type Meta, type RemoteSettings, type RemoteStatus, type Settings, type ToolDescriptor } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useT, type Translate } from "@/lib/use-t"
 import { useApp, type Theme } from "@/store/app"
@@ -95,7 +95,7 @@ function sections(t: Translate) {
       id: "remote",
       label: t("settings.nav.remote"),
       icon: Smartphone,
-      keys: "phone remote pair qr hub token pairing scan awake sleep model device 手机 扫码 远程 配对 唤醒 休眠 型号",
+      keys: "phone remote pair qr hub token pairing scan awake sleep model device account sign in nosec gateway self-hosted advanced 手机 扫码 远程 配对 唤醒 休眠 型号 账号 登录 网关 自建 高级",
     },
     {
       id: "clients",
@@ -183,6 +183,12 @@ export function SettingsDialog({
   tRef.current = t
   const nav = useMemo(() => sections(t), [t.locale])
   const [settings, setSettings] = useState<Settings>()
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
+  const [accountUpdating, setAccountUpdating] = useState(false)
+  const [accountRemoteUnknown, setAccountRemoteUnknown] = useState(false)
+  const accountUpdatingRef = useRef(false)
+  const accountOperation = useRef<Promise<RemoteStatus> | undefined>(undefined)
   const [toolsDrafts, setToolsDrafts] = useState<ProviderToolsDrafts>({})
   const toolsDraftsRef = useRef<ProviderToolsDrafts>({})
   const [catalog, setCatalog] = useState<ToolDescriptor[]>([])
@@ -222,11 +228,13 @@ export function SettingsDialog({
     setQuery("")
     setSection(initialSection)
     setSettings(undefined)
+    setAccountRemoteUnknown(false)
     let cancelled = false
     openEpoch.current++
     // Reopening must read after this dialog's older writes settle. A late GET
     // from a previous open must not replace the new draft or its baseline.
-    void persistRef.current!.flush().catch(() => undefined)
+    void Promise.resolve(accountOperation.current).catch(() => undefined)
+      .then(() => persistRef.current!.flush().catch(() => undefined))
       .then(() => cancelled ? undefined : Promise.all([api.settings(), api.tools()]))
       .then((loaded) => {
         if (cancelled || !loaded) return
@@ -258,12 +266,14 @@ export function SettingsDialog({
   }, [])
 
   const apply = (next: Settings) => {
+    if (accountUpdatingRef.current) return
     const providerIds = new Set(next.models.providers.map((provider) => provider.id))
     toolsDraftsRef.current = Object.fromEntries(
       Object.entries(toolsDraftsRef.current).filter(([id]) => providerIds.has(id)),
     )
     setToolsDrafts(toolsDraftsRef.current)
     const resolved = resolveProviderToolsDrafts(next, toolsDraftsRef.current)
+    settingsRef.current = resolved.settings
     setSettings(resolved.settings)
     publishComposerPredictions(resolved.settings)
     useToasts.getState().dismiss("settings:save")
@@ -271,7 +281,73 @@ export function SettingsDialog({
     else persistRef.current?.schedule(resolved.settings, localeRef.current)
   }
 
+  const adoptAccountRemote = (remote: RemoteSettings, epoch: number) => {
+    if (openEpoch.current !== epoch || !settingsRef.current) return
+    const next = { ...settingsRef.current, remote }
+    persistRef.current!.acceptRemote(remote)
+    settingsRef.current = next
+    setAccountRemoteUnknown(false)
+    setSettings(next)
+  }
+
+  const reloadAccountRemote = async () => {
+    if (accountUpdatingRef.current) return
+    accountUpdatingRef.current = true
+    setAccountUpdating(true)
+    const epoch = openEpoch.current
+    try {
+      // Unknown remote state can coexist with edits on another settings page.
+      // Drain their old baseline before adopting the authoritative remote slice.
+      await persistRef.current!.flush().catch(() => undefined)
+      adoptAccountRemote(defaultRemoteSettings((await api.settings()).remote), epoch)
+    } catch (error) {
+      if (openEpoch.current === epoch) toastError(errorMessage(error), {
+        id: "settings:load", title: tRef.current("settings.loadFailed"),
+      })
+    } finally {
+      accountUpdatingRef.current = false
+      setAccountUpdating(false)
+    }
+  }
+
+  const accountLogin = (newDevice: boolean): Promise<RemoteStatus> => {
+    if (accountUpdatingRef.current || !settingsRef.current) {
+      return Promise.reject(new Error(tRef.current("settings.loadFailed")))
+    }
+    accountUpdatingRef.current = true
+    setAccountUpdating(true)
+    const epoch = openEpoch.current
+    const adoptRemote = (remote: RemoteSettings) => adoptAccountRemote(remote, epoch)
+    const operation = (async () => {
+      try {
+        // An older debounced PUT must finish before Go enables account mode.
+        await persistRef.current!.flush()
+        try {
+          const status = await api.startRemoteLogin(newDevice, true)
+          const previous = defaultRemoteSettings(settingsRef.current?.remote)
+          adoptRemote({ ...previous, enabled: status.enabled,
+            hub_url: status.hub_url, auth_mode: status.auth_mode ?? "legacy" })
+          return status
+        } catch (error) {
+          // Enabling may have committed before start failed or its reply was
+          // lost. Reconcile only remote, without acknowledging other drafts.
+          try { adoptRemote(defaultRemoteSettings((await api.settings()).remote)) } catch {
+            if (openEpoch.current === epoch) setAccountRemoteUnknown(true)
+          }
+          throw error
+        }
+      } finally {
+        accountUpdatingRef.current = false
+        accountOperation.current = undefined
+        setAccountUpdating(false)
+      }
+    })()
+    accountOperation.current = operation
+    return operation
+  }
+
   const leave = async () => {
+    if (accountUpdatingRef.current) return
     if (settings && Object.keys(resolveProviderToolsDrafts(settings, toolsDraftsRef.current).errors).length) {
       setQuery("")
       setSection("models")
@@ -347,8 +423,10 @@ export function SettingsDialog({
         <form
           ref={formRef}
           className="flex min-h-0 flex-1 overflow-hidden"
+          aria-busy={accountUpdating}
           onSubmit={(e) => e.preventDefault()}
         >
+          <fieldset disabled={accountUpdating} className="contents">
           <div className="flex min-h-0 flex-1">
             <aside
               className={cn(
@@ -510,10 +588,22 @@ export function SettingsDialog({
                       query={query}
                     />
                   ) : null}
-                  {page === "remote" ? (
+                  {page === "remote" ? accountRemoteUnknown ? (
+                    <SettingsPage title={t("settings.remote.title")}>
+                      <SettingsSection title={t("desktopAccount.title")}>
+                        <div role="alert" data-settings-row="" className="flex flex-col gap-3 px-4 py-3">
+                          <p className="text-sm text-muted-foreground">{t("desktopAccount.settingsUnknown")}</p>
+                          <Button type="button" variant="outline" disabled={accountUpdating} onClick={() => void reloadAccountRemote()}>
+                            {t("desktopAccount.reloadSettings")}
+                          </Button>
+                        </div>
+                      </SettingsSection>
+                    </SettingsPage>
+                  ) : (
                     <RemoteTab
                       settings={settings}
                       onChange={apply}
+                      onAccountLogin={accountLogin}
                       query={query}
                     />
                   ) : null}
@@ -528,6 +618,7 @@ export function SettingsDialog({
               )}
             </div>
           </div>
+          </fieldset>
         </form>
       </DialogContent>
     </Dialog>

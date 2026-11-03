@@ -21,13 +21,14 @@ var ErrRemoteApprovalRequired = errors.New("remote: NOSEC login and account appr
 // RemoteCredential lives only in the private host_token file. The atomic record
 // binds a token to its origin and, after device authorization, its account.
 type RemoteCredential struct {
-	Schema     int    `json:"schema"`
-	Token      string `json:"token"`
-	Origin     string `json:"origin"`
-	Authorized bool   `json:"authorized"`
-	HostID     string `json:"host_id,omitempty"`
-	UserID     string `json:"user_id,omitempty"`
-	Username   string `json:"username,omitempty"`
+	Schema      int    `json:"schema"`
+	Token       string `json:"token"`
+	Origin      string `json:"origin"`
+	Authorized  bool   `json:"authorized"`
+	HostID      string `json:"host_id,omitempty"`
+	UserID      string `json:"user_id,omitempty"`
+	Username    string `json:"username,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
 }
 
 func RemoteOrigin(raw string) (string, error) {

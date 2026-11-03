@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import type { DirectProvider } from "@/lib/direct-provider"
 import { t } from "@/lib/i18n"
 import { GatewayError } from "@/lib/gateway-account"
+import { gatewayHostDisplayName, gatewayUserDisplayName } from "@/lib/gateway-names"
 import { WebExecutionSettings } from "@/components/web-execution-settings"
 import type { PcWebSnapshot } from "@/components/pc-web-execution-status"
 
@@ -44,7 +45,7 @@ export function GatewayAccountScreen({ account, providers, modelBusy, modelError
         {onClose ? <Button variant="ghost" className="size-10 px-0" aria-label={t("home.close")} onClick={onClose}><X className="size-5" aria-hidden /></Button> : null}
       </header>
       <div className="flex flex-col gap-4 p-5">
-        {account.session ? <p className="break-all text-sm font-medium">{account.session.user.username}</p> : null}
+        {account.session ? <p className="break-all text-sm font-medium">{gatewayUserDisplayName(account.session.user)}</p> : null}
         {statusText ? <p role="status" className="text-sm text-muted-foreground">{statusText}</p> : null}
         {account.error ? <p role="alert" className="text-sm text-destructive">{t(account.error === "browser_unavailable" ? "account.browserFailed" : account.error === "gateway_timeout" ? "account.timeout" : account.error === "pc_upgrade_failed" ? "account.upgradeFailed" : "chat.failed")}</p> : null}
         {!authorized && (!waiting || account.status === "access_denied") ? <>
@@ -66,14 +67,17 @@ export function GatewayAccountScreen({ account, providers, modelBusy, modelError
           <section className="flex flex-col gap-2">
             <h2 className="text-sm font-semibold">{t("account.pcs")}</h2>
             {!account.hosts.length ? <p className="text-sm text-muted-foreground">{t("account.empty")}</p> : <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
-              {account.hosts.map((host) => <li key={host.id} className="flex items-center gap-2 p-3">
-                <Monitor className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{host.name || host.hostname || host.id}</p><p className="text-xs text-muted-foreground">{host.online ? t("account.online") : t("account.offline")}</p></div>
-                <Button variant="outline" disabled={!host.online || !host.enabled || Boolean(connecting)} onClick={() => void connect(host.id)} aria-label={`${t("account.connect")} ${host.name || host.hostname || host.id}`}>
-                  {connecting === host.id ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> : null}
-                  {connecting === host.id ? t("account.connecting") : t("account.connect")}
-                </Button>
-              </li>)}
+              {account.hosts.map((host) => {
+                const name = gatewayHostDisplayName(host) || t("account.unnamedPC")
+                return <li key={host.id} className="flex items-center gap-2 p-3">
+                  <Monitor className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{name}</p><p className="text-xs text-muted-foreground">{host.online ? t("account.online") : t("account.offline")}</p></div>
+                  <Button variant="outline" disabled={!host.online || !host.enabled || Boolean(connecting)} onClick={() => void connect(host.id)} aria-label={`${t("account.connect")} ${name}`}>
+                    {connecting === host.id ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> : null}
+                    {connecting === host.id ? t("account.connecting") : t("account.connect")}
+                  </Button>
+                </li>
+              })}
             </ul>}
             {connectionError ? <p role="alert" className="text-sm text-destructive">{connectionError}</p> : null}
           </section>

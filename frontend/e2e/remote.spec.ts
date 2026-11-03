@@ -1,12 +1,16 @@
 import { expect, test } from "@playwright/test"
 
-test("phone settings shows a pairing QR control", async ({ page }) => {
+test("phone settings keeps manual connection settings behind an explicit advanced entry", async ({ page, request }) => {
+  const { settings } = await (await request.get("/api/settings")).json()
   await page.goto("/")
   await page.getByRole("button", { name: "Settings" }).click()
   const dialog = page.getByRole("dialog")
   await dialog.getByRole("tab", { name: "Phone" }).click()
-  await expect(dialog.getByLabel("Hub URL")).toBeVisible()
-  await expect(dialog.getByLabel("Hub URL")).toHaveValue("https://ai.fofa.info:2440")
+  await expect(dialog.getByRole("button", { name: "Sign in with NOSEC", exact: true })).toBeVisible()
+  await expect(dialog.getByText(settings.remote.hub_url, { exact: true })).toBeVisible()
+  await expect(dialog.getByLabel("Hub URL")).toHaveCount(0)
+  await dialog.getByRole("button", { name: "Advanced / self-hosted server", exact: true }).click()
+  await expect(dialog.getByLabel("Hub URL")).toHaveValue(settings.remote.hub_url)
   await expect(dialog.getByLabel("Host Token")).toHaveCount(0)
   await expect(dialog.getByLabel("Event text on the phone")).toBeVisible()
   await expect(dialog.getByLabel("Events on the phone")).toBeVisible()

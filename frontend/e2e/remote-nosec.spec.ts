@@ -47,7 +47,7 @@ test("NOSEC device sign-in distinguishes review, authorization and a live PC", a
     await route.fulfill({ json: { uri: "pairlink:v1:http://127.0.0.1:9:code:pub", png: "data:image/png;base64,aaaa", expires_at: new Date(Date.now() + 60_000).toISOString() } })
   })
   const dialog = await openPhone(page)
-  await expect(dialog.getByLabel("Connection sign-in")).toHaveText("NOSEC account")
+  await expect(dialog.getByLabel("Connection sign-in")).toHaveCount(0)
   const login = dialog.getByRole("button", { name: "Sign in with NOSEC" })
   const qr = dialog.getByRole("button", { name: "Show pairing QR" })
   await expect(login).toBeEnabled()
@@ -56,7 +56,7 @@ test("NOSEC device sign-in distinguishes review, authorization and a live PC", a
   await login.click()
   await expect(dialog.getByText("ABCD-1234-EF56-7890", { exact: true })).toBeVisible()
   await expect(dialog.getByText("1122334455667788", { exact: true })).toBeVisible()
-  expect(starts).toEqual([{}])
+  expect(starts).toEqual([{ enable_account: true }])
   current = { ...current, login: { ...current.login!, state: "account_pending" } }
   await expect(dialog.getByText("Waiting for administrator approval. No device is connected yet.")).toBeVisible()
   await expect(qr).toBeDisabled()
@@ -83,7 +83,7 @@ test("NOSEC device sign-in distinguishes review, authorization and a live PC", a
   await expect(dialog.getByLabel("Host Token")).toHaveCount(0)
 })
 
-test("new-device recovery needs confirmation and a changed Hub discards late login state", async ({ page }) => {
+test("new-device recovery confirms intent and protects edits until login start settles", async ({ page }) => {
   let current: RemoteStatus = { ...initial, login: { state: "error", error_code: "device_conflict" } }
   const starts: unknown[] = []
   let release!: () => void
@@ -93,27 +93,32 @@ test("new-device recovery needs confirmation and a changed Hub discards late log
   await page.route("**/api/remote/login", async (route) => {
     starts.push(route.request().postDataJSON())
     await barrier
-    await route.fulfill({ status: 202, json: { ...initial, login: { state: "authorization_pending", user_code: "OLD1-0000-0000-0000" } } })
+    current = { ...initial, login: { state: "authorization_pending", user_code: "OLD1-0000-0000-0000" } }
+    await route.fulfill({ status: 202, json: current })
   })
   const dialog = await openPhone(page)
+  await dialog.getByRole("button", { name: "Advanced / self-hosted server", exact: true }).click()
   await dialog.getByRole("button", { name: "Reconnect as a new device", exact: true }).click()
   expect(starts).toHaveLength(0)
   const confirm = page.getByRole("dialog", { name: "Reconnect as a new device?" })
   await expect(confirm).toBeVisible()
   await confirm.getByRole("button", { name: "Confirm reconnect" }).click()
   await expect.poll(() => starts.length).toBe(1)
-  expect(starts).toEqual([{ new_device: true, confirmed: true }])
+  expect(starts).toEqual([{ new_device: true, confirmed: true, enable_account: true }])
+  await expect(dialog.getByLabel("Hub URL")).toBeDisabled()
+  release()
+  await expect(dialog.getByText("OLD1-0000-0000-0000", { exact: true })).toBeVisible()
+  await expect(dialog.getByLabel("Hub URL")).toBeEnabled()
   current = { ...initial, hub_url: "https://next-hub.example" }
   const saved = page.waitForResponse((response) => response.url().endsWith("/api/settings") && response.request().method() === "PUT")
   await dialog.getByLabel("Hub URL").fill(current.hub_url)
   await saved
-  release()
   await expect(dialog.getByRole("button", { name: "Sign in with NOSEC" })).toBeEnabled()
   await expect(dialog.getByText("OLD1-0000-0000-0000", { exact: true })).toHaveCount(0)
   expect(starts).toHaveLength(1)
 })
 
-test("NOSEC saved configuration uses real local status and switching mode removes login", async ({ page, request }) => {
+test("NOSEC saved configuration uses real local status and legacy remains an explicit advanced choice", async ({ page, request }) => {
   const status = await (await request.get("/api/remote/status")).json()
   expect(status).toMatchObject({ enabled: true, hub_url: hub, auth_mode: "nosec", online: false, login: { state: "signed_out" } })
   expect(status).not.toHaveProperty("device_code")
@@ -121,10 +126,11 @@ test("NOSEC saved configuration uses real local status and switching mode remove
   const dialog = await openPhone(page)
   await expect(dialog.getByText("Sign in to associate this PC with your account.")).toBeVisible()
   await expect(dialog.getByRole("button", { name: "Show pairing QR" })).toBeDisabled()
+  await dialog.getByRole("button", { name: "Advanced / self-hosted server", exact: true }).click()
   await dialog.getByLabel("Accept phone pairing").click()
   await expect.poll(async () => (await (await request.get("/api/remote/status")).json()).enabled).toBe(false)
   await dialog.getByLabel("Connection sign-in").click()
   await page.getByRole("option", { name: "Independent hub (legacy)" }).click()
-  await expect(dialog.getByRole("button", { name: "Sign in with NOSEC" })).toHaveCount(0)
+  await expect(dialog.getByRole("button", { name: "Sign in with NOSEC" })).toBeVisible()
   await expect.poll(async () => (await (await request.get("/api/remote/status")).json()).auth_mode).toBe("legacy")
 })
