@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Added an opt-in `memory.review_deduplicate_feedback` experiment that removes
+  duplicate fields from aggregate memory-review refusals while preserving each
+  issue's evidence and repair details. The default feedback format stays in use.
+
 - Changed desktop, Web and phone styling to Tailwind CSS v4, keeping the
   existing colour tokens. Markdown fences on both apps now use the Code Block
   with on-demand Shiki highlighting and follow the current light or dark

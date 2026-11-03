@@ -669,8 +669,10 @@ fallback and automatic `log` reads when manager separation and phone folding
 leave no visible items. Cover filtered empty pages with a descending cursor,
 exhaustion, an empty ready's `seq+1` cursor, non-progress termination, live and
 seq=0 output during a read, and stale success/error after Back, another thread or
-a new opening of the same thread. Existing visible items, including turn-end
-dividers, must not trigger extra reads. History errors keep ready and are not
+a new opening of the same thread. A turn-end divider, blank bubble or filtered
+roster-only answer is not conversation content: waiting tasks must backfill
+past these to an actual visible item. Image-only human messages remain content.
+Existing visible content must not trigger extra reads. History errors keep ready and are not
 retried. `open-thread.test.ts` and `mobile/src/app.test.tsx` cover both orders of
 automatic/manual pagination; the App case exercises a manual reply arriving
 after automatic advancement, so a late page cannot clear a newer cursor's
@@ -3252,6 +3254,12 @@ memory files and stored outcomes, not agreement with the old reviewer's answer:
   the returned operation index and repair metadata, not a preselected round
   number. Successful repair preserves exact source authority, the iteration cap
   and committed notes; repair-only text stays outside persisted diagnostics.
+- `TestReviewFeedbackDedupOpenSSLReplay`: uses the archived OpenSSL attempt
+  categories and source excerpts with synthetic proposals where the original
+  requests were unavailable. The loopback reviewer compares the default and
+  opt-in feedback through the real adapter and checks exact quote, numeric and
+  repair fields, refusal behavior and the committed result. This is an offline
+  protocol regression, separate from model or benchmark evaluation.
 - `internal/engine/review_finalize_test.go`: an actual accepted batch followed
   by a real skill-fold write failure retains committed notes/skills and records
   `stop_reason: error` without the storage path. A separate real `NotesDraft`

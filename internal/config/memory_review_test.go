@@ -62,6 +62,55 @@ func assertMemoryReviewEffortWire(t *testing.T, memory MemoryConfig, want string
 	}
 }
 
+func TestMemoryReviewFeedbackDedupIsOptInAndRoundTrips(t *testing.T) {
+	for _, key := range []string{"OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL"} {
+		t.Setenv(key, "")
+	}
+	const key = "review_deduplicate_feedback"
+	for _, tc := range []struct {
+		name, yaml string
+		want       bool
+	}{
+		{"legacy config", "memory:\n  enabled: true\n", false},
+		{"explicit opt-in", "memory:\n  " + key + ": true\n", true},
+		{"explicit off", "memory:\n  " + key + ": false\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, FileName), []byte(tc.yaml), 0600); err != nil {
+				t.Fatal(err)
+			}
+			assertWire := func(cfg *Config) {
+				t.Helper()
+				raw, err := json.Marshal(cfg.Memory)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var wire map[string]any
+				if err := json.Unmarshal(raw, &wire); err != nil {
+					t.Fatal(err)
+				}
+				if got, present := wire[key]; present != tc.want || present && got != true {
+					t.Fatalf("feedback dedup setting=%v present=%v, want true only when opted in (%v)", got, present, tc.want)
+				}
+			}
+			cfg, err := Load(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertWire(cfg)
+			if err := cfg.Save(); err != nil {
+				t.Fatal(err)
+			}
+			again, err := Load(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertWire(again)
+		})
+	}
+}
+
 // Only the blank default is optional: an endpoint that rejects it may be
 // asked again without it. A level the human chose, or the conversation's own
 // level under inherit, keeps the endpoint's error.

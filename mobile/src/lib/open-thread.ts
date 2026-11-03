@@ -4,7 +4,7 @@ import { linkError, remoteError } from "@/lib/client"
 import { OpLog, OpOpen, OpReady, OpWatch } from "@/lib/rpc"
 import { applyOpenDetail, applyPendingOpenDetail, applyPush, emptyView, prependOlder, type PhoneView } from "@/lib/session"
 import { clearLastThreadId, loadLastThreadId, saveLastThreadId } from "@/lib/store"
-import { foldPhoneItems, managerBlocks } from "@/lib/transcript"
+import { hasPhoneHistoryContent } from "@/lib/phone-history"
 
 // A second open of the same thread invalidates the first request as well.
 const openings = new WeakMap<RemoteLink, object>()
@@ -59,7 +59,7 @@ export async function openPhoneThread(opts: {
     commitView(w.detail ? applyPush(next, { ...w, op: w.op || OpReady }) : next)
     // The live-edge page is bounded by raw events, so a worker-only tail can
     // leave the main transcript empty even while older conversation exists.
-    while (still() && view().hasMore && foldPhoneItems(managerBlocks(view().blocks)).length === 0) {
+    while (still() && view().hasMore && !hasPhoneHistoryContent(view().blocks)) {
       const current = view()
       const before = current.oldestSeq > 0 ? current.oldestSeq : current.lastSeq
       try {

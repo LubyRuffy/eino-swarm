@@ -45,4 +45,20 @@ for (const language of [
       if (visit === 0) await reopen(page)
     }
   })
+
+  test(`waiting tasks show the previous answer through a boundary on both visits (${language.locale})`, async ({ page }, info) => {
+    await page.addInitScript((locale) => localStorage.setItem("zwai.phone.locale", locale), language.locale)
+    await page.goto("/?mock=1&tick=0&history=hidden&waiting=1")
+    const transcript = page.getByTestId("transcript")
+    for (let visit = 0; visit < 2; visit++) {
+      await expect(transcript.getByText("Earlier answer", { exact: true })).toBeInViewport()
+      await expect(transcript.getByText("Earlier answer", { exact: true })).toHaveCount(1)
+      await expect(transcript.getByTestId("turn-boundary")).toHaveCount(1)
+      await expect(page.locator(".screen-push")).toHaveCSS("opacity", "1")
+      await expect(transcript).not.toContainText("这一轮暂无可显示消息")
+      await expect(transcript).not.toContainText("No visible messages in this turn yet")
+      await page.screenshot({ path: info.outputPath(`waiting-open-${language.locale}-${visit}.png`) })
+      if (visit === 0) await reopen(page)
+    }
+  })
 }

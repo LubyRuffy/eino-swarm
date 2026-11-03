@@ -41,6 +41,8 @@ type reviewBatchTool struct {
 	mu        *sync.Mutex
 	outcome   *reviewOutcome
 	complete  bool
+	// Only changes the model-facing representation of aggregated refusals.
+	deduplicateFeedback bool
 	// A successful batch ends the ADK agent without a billed closing sentence.
 	finish func(context.Context) error
 }
