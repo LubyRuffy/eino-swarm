@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { ArrowDown, ChevronLeft, ChevronRight, FileText, Loader2, MessageSquarePlus } from "lucide-react"
 
+import { AccountButton } from "@/components/account-button"
 import { AskCard } from "@/components/ask-card"
 import { Composer, type ComposerExtra } from "@/components/composer"
 import { FileBrowser } from "@/components/file-browser"
@@ -26,6 +27,7 @@ export function ThreadScreen({
   loadingOlder,
   caughtUp = true,
   onBack,
+  onOpenAccount,
   onOlder,
   followups = [],
   onSend,
@@ -57,6 +59,7 @@ export function ThreadScreen({
   loadingOlder?: boolean
   caughtUp?: boolean
   onBack: () => void
+  onOpenAccount?: () => void
   onOlder?: () => void
   followups?: FollowupView[]
   onSend: (text: string, extra?: ComposerExtra) => void
@@ -287,6 +290,7 @@ export function ThreadScreen({
             {t("thread.stop")}
           </Button>
         ) : null}
+        {agentPage === "chat" && onOpenAccount ? <AccountButton onClick={onOpenAccount} /> : null}
       </header>
       {agentPage === "chat" ? <GoalBanner
         detail={detail}

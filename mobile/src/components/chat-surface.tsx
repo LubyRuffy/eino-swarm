@@ -64,7 +64,7 @@ export function ChatSurface({
           onUnlink={onUnlink}
           onToggleLocale={onToggleLocale}
           onModels={onModels}
-          onWebSettings={account.openAccount}
+          onOpenAccount={account.openAccount}
           onOpenChange={onOpenChange}
           onBindClose={onBindClose}
         />

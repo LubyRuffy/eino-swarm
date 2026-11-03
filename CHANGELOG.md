@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Moved mobile Web-tool status into **User center → Web tools** to free space
+  above conversations. The conversation header’s settings icon opens User
+  center without leaving the conversation. (`F-211`)
+
 - Fixed worker observations and tool receipts after a structured restart
   checkpoint reaching the model twice. Recovery retains independent summaries,
   unknown-operation warnings, unread messages and legacy seed-only histories;

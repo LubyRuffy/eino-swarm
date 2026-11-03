@@ -1,5 +1,4 @@
 import { usePhoneAccount } from "@/components/gateway-account-shell"
-import { PcWebExecutionStatus } from "@/components/pc-web-execution-status"
 import { useEffect, useRef, useState } from "react"
 import { EngineStartupBanner } from "@/components/engine-startup"
 import { useEngineStartup } from "@/lib/use-engine-startup"
@@ -745,14 +744,15 @@ export function PhoneApp() {
       onRetry={() => void recover(true)}
     />
   </>)
-  const pcWebStatus = hosts.length ? <PcWebExecutionStatus connected={Boolean(link?.alive())} status={webExecutionStatus} onSettings={account.openAccount} /> : null
+  const openPcAccount = account.openAccount
+    ? () => account.openAccount?.({ connected: Boolean(link?.alive()), status: webExecutionStatus })
+    : undefined
 
   if (composing && surface !== "chat") {
     return (
       <div className="flex h-full min-w-0 flex-col overflow-hidden">
         <UpdateNotice />
         {link ? banner : null}
-        {pcWebStatus}
         <div className="screen-push flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {/* Keyed on the locale only: switching PC re-picks the project,
               and remounting would also throw away the typed message. */}
@@ -773,6 +773,7 @@ export function PhoneApp() {
             restoring={restoring}
             pending={composerPending}
             onSelectHost={selectHost}
+            onOpenAccount={openPcAccount}
             onBack={() => {
               setComposing(false)
               setComposeProject("")
@@ -792,7 +793,6 @@ export function PhoneApp() {
       <div className="flex h-full min-w-0 flex-col overflow-hidden">
         <UpdateNotice />
         {banner}
-        {pcWebStatus}
         <div className="screen-push flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <ThreadScreen
             key={locale + detail.id}
@@ -817,6 +817,7 @@ export function PhoneApp() {
             refreshError={refreshError}
             onTune={(next) => void tuneThread(detail.id, next)}
             onBack={() => void closeThread()}
+            onOpenAccount={openPcAccount}
             onOlder={() => void loadOlder()}
             onSend={(text, extra) => postTurn(OpSend, detail.id, text, extra)}
             onSteer={(text, extra) => postTurn(OpSteer, detail.id, text, extra)}
@@ -878,7 +879,6 @@ export function PhoneApp() {
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
       <UpdateNotice />
       {link ? banner : null}
-      {pcWebStatus}
       <div className="min-h-0 flex-1">
         <HomeScreen
           pcLink={link}
@@ -932,6 +932,7 @@ export function PhoneApp() {
           showChat={providers.length > 0 || Boolean(account.gatewaySourceID)}
           onSelectChat={openChat}
           onModels={() => setModelsOpen(true)}
+          onOpenAccount={openPcAccount}
         />
       </div>
       {sheet}

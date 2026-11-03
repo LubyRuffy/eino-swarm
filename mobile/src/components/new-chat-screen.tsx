@@ -1,6 +1,7 @@
 import { ChevronLeft, Monitor } from "lucide-react"
 import { useState } from "react"
 
+import { AccountButton } from "@/components/account-button"
 import { ChoiceRail } from "@/components/choice-rail"
 import { Composer, type ComposerExtra } from "@/components/composer"
 import { Button } from "@/components/ui/button"
@@ -28,6 +29,7 @@ export function NewChatScreen({
   restoring,
   onSelectHost,
   onBack,
+  onOpenAccount,
   onStart,
 }: {
   hosts: SavedLink[]
@@ -46,6 +48,7 @@ export function NewChatScreen({
   restoring?: boolean
   onSelectHost: (fingerprint: string) => void
   onBack: () => void
+  onOpenAccount?: () => void
   onStart: (text: string, projectId: string, extra?: ComposerExtra) => void
 }) {
   // A project id from another PC must not ride in as a selection this PC
@@ -69,6 +72,7 @@ export function NewChatScreen({
           <ChevronLeft className="size-5" aria-hidden />
         </Button>
         <h1 className="min-w-0 flex-1 truncate text-[15px] font-medium">{t("compose.title")}</h1>
+        {onOpenAccount ? <AccountButton onClick={onOpenAccount} /> : null}
       </header>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-3 py-3">

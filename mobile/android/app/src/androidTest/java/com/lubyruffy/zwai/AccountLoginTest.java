@@ -290,7 +290,8 @@ public class AccountLoginTest {
         choose("PC conversation Web tools", "Follow this PC's settings", "inherit");
         save("01-independent-web-settings");
         click("Chat history");
-        chooseChatModel("native-fixture-model");
+        assertNoInlineWebRouting();
+        String gatewaySource = chooseChatModel("native-fixture-model", "Server · Native gateway");
         int gatewayCalls = count("gateway_model_calls");
         int gatewayPersonalBefore = count("personal_model_calls");
         assertEquals("No personal inference precedes the Gateway stage", 0, gatewayPersonalBefore);
@@ -310,16 +311,16 @@ public class AccountLoginTest {
             .put("before_gateway_model_calls", gatewayCalls)
             .put("after_gateway_model_calls", count("gateway_model_calls"))
             .put("selected_model", dom().getString("composer_model"))
-            .put("source", dom().getString("model_source")).toString(2));
+            .put("source", gatewaySource).toString(2));
         save("02-gateway-cloud-search-fetch");
 
-        chooseChatModel("native-personal-model");
+        chooseChatModel("native-personal-model", "Native personal");
         int personal = count("personal_model_calls");
         send("Personal native cloud evidence");
         waitCount("web_search", search + 2); waitCount("web_fetch", fetch + 2);
         waitCount("personal_model_calls", personal + 3);
         waitFor("Native cloud evidence answer");
-        waitContaining("Personal endpoint · Native personal");
+        assertNoInlineWebRouting();
         save("03-personal-model-cloud-search-fetch");
 
         control("web=denied");
@@ -328,17 +329,18 @@ public class AccountLoginTest {
         waitContaining("Cloud Web tool access is unavailable");
         save("04-cloud-permission-denied");
         int beforeOff = count("web_search");
-        click("Web settings");
+        click("User center");
         choose("Phone chat Web tools", "Off: ordinary model chat", "off");
         assertSelect("PC conversation Web tools", "inherit");
         click("Close");
+        waitContaining("Cloud Web tool access is unavailable");
         send("Continue without Web tools");
         waitFor("Native ordinary answer");
         assertEquals("Disabling phone tools resumes ordinary chat without another cloud call", beforeOff, count("web_search"));
         witnessTranscriptTail("Native ordinary answer", "off-answer-visibility");
         save("05-off-recovers-same-personal-chat");
 
-        click("Web settings");
+        click("User center");
         choose("Phone chat Web tools", "Cloud server", "cloud");
         click("Close");
         control("web=stall");
@@ -355,13 +357,24 @@ public class AccountLoginTest {
             .put("web_cancelled", count("web_cancelled")).put("web_completed", count("web_completed")).toString(2));
         save("07-cloud-tool-stopped");
         control("web=normal&pc=show");
-        click("Web settings");
+        click("User center");
         assertSelect("Phone chat Web tools", "cloud");
         assertSelect("PC conversation Web tools", "inherit");
         click("Refresh account");
         click("Connect Native PC");
+        waitFor("Open Native PC conversation");
+        assertNoInlineWebRouting();
+        click("Menu");
+        click("User center");
         waitContaining("Next turn Web tools: Follow PC (last refreshed) · Run on this PC");
+        save("08-PC-route-in-user-center");
+        click("Close");
         click("Open Native PC conversation");
+        waitFor("User center");
+        assertNoInlineWebRouting();
+        click("User center");
+        waitContaining("Next turn Web tools: Follow PC (last refreshed) · Run on this PC");
+        click("Close");
         send("Native PC follows its own Web tools");
         long until = SystemClock.uptimeMillis() + 8000;
         JSONObject snapshot;
@@ -374,6 +387,11 @@ public class AccountLoginTest {
         assertEquals(0, count("invalid_model_contract"));
         save("08-PC-follows-its-own-local-execution");
         write("fixture-state.json", snapshot.toString(2));
+    }
+
+    private void assertNoInlineWebRouting() throws Exception {
+        assertFalse("The conversation must not show an inline Web settings shortcut", present("Web settings"));
+        assertFalse("Routing summaries belong in settings or the model picker", dom().getBoolean("web_routing_visible"));
     }
 
     private void beginCase(String name) throws Exception {
@@ -401,11 +419,13 @@ public class AccountLoginTest {
         secretOnScreen = true; fill("Pairing URI", uri); click("Paste and bind"); click("Native PC"); waitContaining("Native PC conversation"); secretOnScreen = false;
     }
 
-    private void chooseChatModel(String model) throws Exception {
+    private String chooseChatModel(String model, String expectedSource) throws Exception {
         long deadline = SystemClock.uptimeMillis() + 5000;
         assertTrue("Only the actual foreground app may receive a model selection", appForeground());
         if (!dom().getBoolean("model_dialog_open")) touch(stableModelControl("Model", false, deadline));
         JSONObject radio = stableModelControl(model, true, deadline);
+        String source = radio.getString("model_source");
+        assertEquals("The picker must identify the selected model's source", expectedSource, source);
         assertTrue("Model input targets the current unique dialog radio", appForeground());
         touch(radio);
         while (SystemClock.uptimeMillis() < deadline) {
@@ -414,8 +434,8 @@ public class AccountLoginTest {
                 nativeActions.put(new JSONObject().put("action", "native_model_radio_readback")
                     .put("model", model).put("radio", radio)
                     .put("composer_model", observed.getString("composer_model"))
-                    .put("source", observed.getString("model_source")));
-                return;
+                    .put("source", source));
+                return source;
             }
             SystemClock.sleep(50);
         }
@@ -684,7 +704,7 @@ public class AccountLoginTest {
     /** Read-only observations compensate for API33's stale virtual AX subtree.
      * No storage, auth state, browser transition, fetch or DOM mutation occurs here. */
     private JSONObject dom() throws Exception {
-        String script = "JSON.stringify((()=>{const tidy=s=>(s||'').replace(/\\s+/g,' ').trim();const transcript=document.querySelector('[data-testid=transcript]'),t=transcript?.getBoundingClientRect(),composer=document.querySelector('textarea[aria-label=Message]')?.closest('form'),composerTop=composer?.getBoundingClientRect().top??innerHeight;return {width:innerWidth,height:innerHeight,composer_top:composerTop,transcript_geometry:t?{x:t.x,y:t.y,width:t.width,height:t.height,bottom:Math.min(t.bottom,composerTop),scroll_top:transcript.scrollTop,scroll_height:transcript.scrollHeight,client_height:transcript.clientHeight}:null,model_dialog_open:!!document.querySelector('[role=dialog][aria-label=Model]'),composer_model:tidy(document.querySelector('button[aria-label=Model]')?.textContent),model_source:tidy(document.querySelector('[data-testid=direct-model-source]')?.textContent),entries:[...document.querySelectorAll('button,input,textarea,select,label,h1,h2,p,span,[role=status],[role=alert]')].flatMap(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e),x=r.x+r.width/2,y=r.y+r.height/2;if(!r.width||!r.height||s.visibility==='hidden'||s.display==='none'||e.closest('[inert],[aria-hidden=true]'))return [];return [{label:e.getAttribute('aria-label')||e.labels?.[0]?.innerText||e.placeholder||tidy(e.innerText),role:e.getAttribute('role')||e.tagName.toLowerCase(),in_model_dialog:e.closest('[role=dialog]')?.getAttribute('aria-label')==='Model',hit:e.contains(document.elementFromPoint(x,y)),in_transcript:!!e.closest('[data-testid=transcript]'),unobscured:e.contains(document.elementFromPoint(x,y))&&(!e.closest('[data-testid=transcript]')||(t&&r.top>=t.top&&r.bottom<=Math.min(t.bottom,composerTop))),editable:e.matches('input,textarea'),control:e.matches('input,textarea,select'),enabled:!e.disabled,visible:x>=0&&y>=0&&x<innerWidth&&y<innerHeight,x:r.x,y:r.y,width:r.width,height:r.height,value:e.type==='password'?'':e.matches('input,textarea,select')?e.value:'',password_present:e.type==='password'&&Boolean(e.value)}];})};})())";
+        String script = "JSON.stringify((()=>{const tidy=s=>(s||'').replace(/\\s+/g,' ').trim();const transcript=document.querySelector('[data-testid=transcript]'),t=transcript?.getBoundingClientRect(),composer=document.querySelector('textarea[aria-label=Message]')?.closest('form'),composerTop=composer?.getBoundingClientRect().top??innerHeight;return {width:innerWidth,height:innerHeight,composer_top:composerTop,transcript_geometry:t?{x:t.x,y:t.y,width:t.width,height:t.height,bottom:Math.min(t.bottom,composerTop),scroll_top:transcript.scrollTop,scroll_height:transcript.scrollHeight,client_height:transcript.clientHeight}:null,model_dialog_open:!!document.querySelector('[role=dialog][aria-label=Model]'),composer_model:tidy(document.querySelector('button[aria-label=Model]')?.textContent),web_routing_visible:[...document.querySelectorAll('[data-testid=direct-model-source],[data-testid=direct-web-status],[data-testid=pc-web-status]')].some(e=>!e.closest('[inert],[aria-hidden=true]')&&e.getClientRects().length>0),entries:[...document.querySelectorAll('button,input,textarea,select,label,h1,h2,p,span,[role=status],[role=alert]')].flatMap(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e),x=r.x+r.width/2,y=r.y+r.height/2;if(!r.width||!r.height||s.visibility==='hidden'||s.display==='none'||e.closest('[inert],[aria-hidden=true]'))return [];return [{label:e.getAttribute('aria-label')||e.labels?.[0]?.innerText||e.placeholder||tidy(e.innerText),role:e.getAttribute('role')||e.tagName.toLowerCase(),in_model_dialog:e.closest('[role=dialog]')?.getAttribute('aria-label')==='Model',model_source:e.getAttribute('role')==='radio'?tidy(e.parentElement?.querySelector('h3')?.textContent):'',hit:e.contains(document.elementFromPoint(x,y)),in_transcript:!!e.closest('[data-testid=transcript]'),unobscured:e.contains(document.elementFromPoint(x,y))&&(!e.closest('[data-testid=transcript]')||(t&&r.top>=t.top&&r.bottom<=Math.min(t.bottom,composerTop))),editable:e.matches('input,textarea'),control:e.matches('input,textarea,select'),enabled:!e.disabled,visible:x>=0&&y>=0&&x<innerWidth&&y<innerHeight,x:r.x,y:r.y,width:r.width,height:r.height,value:e.type==='password'?'':e.matches('input,textarea,select')?e.value:'',password_present:e.type==='password'&&Boolean(e.value)}];})};})())";
         CountDownLatch ready = new CountDownLatch(1); AtomicReference<String> value = new AtomicReference<>();
         instrumentation.runOnMainSync(() -> activity.getBridge().getWebView().evaluateJavascript(script, result -> { value.set(result); ready.countDown(); }));
         assertTrue("Read-only packaged DOM observation must return", ready.await(5, TimeUnit.SECONDS));

@@ -42,8 +42,9 @@ use the PC's catalog and execute on that PC. Sign-out removes only account
 credentials and managed tickets, retaining private providers and anonymous
 pairings. **User center → Other server** changes the default for self-hosting.
 
-**User center → Web tools** has two independent preferences, saved separately
-for each Gateway/account:
+Open **User center → Web tools** from the menu or the settings icon in an open
+conversation. The preferences and their status summaries live there. Each
+Gateway/account has two independent preferences:
 
 - **Phone model calls**: Automatic, Cloud server, or Off. Automatic attaches cloud
   Search/Fetch when the signed-in account is approved, enabled and unexpired;

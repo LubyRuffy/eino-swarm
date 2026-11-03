@@ -2,9 +2,13 @@ import { t } from "@/lib/i18n"
 import { savePcWebExecution, saveWebExecution, type PcWebExecution, type WebExecution } from "@/lib/web-execution"
 import { useWebExecution } from "@/lib/use-web-execution"
 import { useState } from "react"
+import { PcWebExecutionStatus, type PcWebSnapshot } from "@/components/pc-web-execution-status"
 
-export function WebExecutionSettings() {
-  const { mode, pcMode } = useWebExecution()
+export function WebExecutionSettings({ pcWeb }: { pcWeb?: PcWebSnapshot }) {
+  const { mode, pcMode, cloudSignedIn } = useWebExecution()
+  const directStatus = mode === "off" ? t("account.webStatusOff")
+    : cloudSignedIn ? t("account.webStatusCloud")
+    : mode === "cloud" ? t("account.webStatusRequired") : t("account.webStatusAnonymous")
   const [saveError, setSaveError] = useState(false)
   const save = (action: () => void) => {
     try { action(); setSaveError(false) }
@@ -19,6 +23,7 @@ export function WebExecutionSettings() {
         <option value="cloud">{t("account.webCloud")}</option>
         <option value="off">{t("account.webOff")}</option>
       </select>
+      <p aria-live="polite" data-testid="direct-web-status" className="text-xs leading-relaxed text-muted-foreground">{directStatus}</p>
       <p className="text-xs leading-relaxed text-muted-foreground">{t("account.webHint")}</p>
     </div>
     <div className="flex flex-col gap-2">
@@ -28,6 +33,7 @@ export function WebExecutionSettings() {
         <option value="local">{t("account.webLocal")}</option>
         <option value="cloud">{t("account.webPCCloud")}</option>
       </select>
+      {pcWeb ? <PcWebExecutionStatus {...pcWeb} /> : null}
       <p className="text-xs leading-relaxed text-muted-foreground">{t("account.webPCHint")}</p>
     </div>
     {saveError ? <p role="alert" className="text-xs text-destructive">{t("account.webSaveFailed")}</p> : null}

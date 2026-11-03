@@ -65,6 +65,7 @@ export function HomeScreen({
   showChat = false,
   onSelectChat,
   onModels,
+  onOpenAccount,
   pcLink,
   path,
   connected = true,
@@ -99,6 +100,7 @@ export function HomeScreen({
   showChat?: boolean
   onSelectChat?: () => void
   onModels?: () => void
+  onOpenAccount?: () => void
   pcLink?: RemoteLink | null
   path: string
   connected?: boolean
@@ -178,6 +180,7 @@ export function HomeScreen({
   return (
     <main className="mx-auto flex h-full max-w-lg flex-col overflow-hidden">
       <HostChrome
+        onOpenAccount={onOpenAccount}
         hosts={hosts}
         activeFingerprint={activeFingerprint}
         path={path}

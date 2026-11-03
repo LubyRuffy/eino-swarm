@@ -7806,6 +7806,9 @@ new `independentWebRoutesAndPermissionRecovery` case have separate 120- and
 independent phone/PC preferences, Gateway and personal-model Search/Fetch
 continuations, credential/cookie isolation, a visible 403 followed by ordinary
 chat with Web off, Stop cancellation, and the PC's persisted inherited route.
+The browser and packaged-app Web cases verify that the chat surface has no
+persistent Web settings strip and that users can change the preferences in
+User center and return to the same conversation.
 Counted loopback HTTP and encrypted RPC prove the execution paths in addition
 to native screenshots. Gateway-stage receipts require zero personal-provider
 calls and exactly one Search/Fetch. Direct-chat screenshots retain their initial

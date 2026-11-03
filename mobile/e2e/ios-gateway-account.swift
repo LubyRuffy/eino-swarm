@@ -206,7 +206,8 @@ final class BindFlowTests: XCTestCase {
     record(app, "web-independent-direct-and-pc-preferences")
 
     app.buttons["Chat history"].tap()
-    try chooseModel(app, name: "native-fixture-model")
+    XCTAssertFalse(app.buttons["Web settings"].exists)
+    try chooseModel(app, name: "native-fixture-model", source: "Server · Native gateway")
     try send(app, "Native server Web proof")
     XCTAssertTrue(app.staticTexts["Native cloud evidence answer"].waitForExistence(timeout: 20))
     XCTAssertEqual(try count("gateway_model_calls"), 3)
@@ -225,13 +226,15 @@ final class BindFlowTests: XCTestCase {
     let save = app.buttons["Save"].firstMatch
     try reveal(app, save)
     save.tap()
-    try chooseModel(app, name: "native-personal-model")
+    try chooseModel(app, name: "native-personal-model", source: "Native personal")
     try send(app, "Native personal Web proof")
     XCTAssertTrue(app.staticTexts["Native cloud evidence answer"].waitForExistence(timeout: 20))
     XCTAssertEqual(try count("personal_model_calls"), 3)
     XCTAssertEqual(try count("web_search"), 2)
     XCTAssertEqual(try count("web_fetch"), 2)
     XCTAssertEqual(try count("personal_mobile_token_leak"), 0)
+    XCTAssertFalse(app.buttons["Web settings"].exists)
+    XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Model source")).firstMatch.exists)
     record(app, "web-personal-model-independent-cloud-credential")
 
     try control("web=denied")
@@ -240,7 +243,7 @@ final class BindFlowTests: XCTestCase {
     XCTAssertTrue(denial.waitForExistence(timeout: 12), "A Web-only 403 must remain visible in the current conversation")
     XCTAssertEqual(try count("web_denied"), 1)
     let deniedModelCalls = try count("personal_model_calls")
-    app.buttons["Web settings"].firstMatch.tap()
+    app.buttons["User center"].tap()
     try choosePreference(app, label: "Phone chat Web tools", option: "Off: ordinary model chat")
     try assertPreference(app, label: "PC conversation Web tools", option: "Follow this PC's settings")
     app.buttons["Close"].firstMatch.tap()
@@ -251,7 +254,7 @@ final class BindFlowTests: XCTestCase {
     XCTAssertEqual(try count("web_denied"), 1, "Off must not retry the denied cloud tool")
     record(app, "web-denied-visible-off-recovers-same-conversation")
 
-    app.buttons["Web settings"].firstMatch.tap()
+    app.buttons["User center"].tap()
     try choosePreference(app, label: "Phone chat Web tools", option: "Cloud server")
     try assertPreference(app, label: "PC conversation Web tools", option: "Follow this PC's settings")
     app.buttons["Close"].firstMatch.tap()
@@ -269,7 +272,7 @@ final class BindFlowTests: XCTestCase {
     record(app, "web-native-http-stop-cancels-without-continuation")
 
     try control("web=normal")
-    app.buttons["Web settings"].firstMatch.tap()
+    app.buttons["User center"].tap()
     try assertPreference(app, label: "Phone chat Web tools", option: "Cloud server")
     try assertPreference(app, label: "PC conversation Web tools", option: "Follow this PC's settings")
     let connect = app.buttons["Connect Native PC"]
@@ -277,14 +280,22 @@ final class BindFlowTests: XCTestCase {
     connect.tap()
     let seed = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Native PC conversation")).firstMatch
     XCTAssertTrue(seed.waitForExistence(timeout: 20))
+    let pcRoute = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Follow PC (last refreshed)")).firstMatch
+    XCTAssertFalse(app.buttons["Web settings"].exists)
+    XCTAssertFalse(pcRoute.exists)
+    app.buttons["Menu"].tap()
+    app.menuItems["User center"].tap()
+    XCTAssertTrue(pcRoute.waitForExistence(timeout: 12))
+    let pcExecution = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Run on this PC")).firstMatch
+    XCTAssertTrue(pcExecution.exists, "Settings must show the anonymous PC's local execution snapshot")
+    record(app, "web-pc-routing-in-user-center")
+    app.buttons["Close"].tap()
     seed.tap()
-    let pcRoute = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Follow PC (last refreshed)"))
-    let pcExecution = app.staticTexts.matching(NSPredicate(format: "label == %@", "Run on this PC"))
-    let routeVisible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-      guard pcRoute.count == 1 && pcExecution.count == 1 else { return false }
-      return pcRoute.element(boundBy: 0).isHittable && pcExecution.element(boundBy: 0).isHittable
-    }, object: app)
-    XCTAssertEqual(XCTWaiter.wait(for: [routeVisible], timeout: 12), .completed, "A signed-in phone must preserve the anonymous PC's local execution setting")
+    XCTAssertFalse(app.buttons["Web settings"].exists)
+    XCTAssertFalse(pcRoute.exists)
+    app.buttons["User center"].tap()
+    XCTAssertTrue(pcRoute.waitForExistence(timeout: 5))
+    app.buttons["Close"].tap()
     try send(app, "Native inherited PC proof")
     let persisted = try waitForPCWebTurn(timeout: 12)
     XCTAssertEqual(persisted["pc_thread_web_execution"] as? String, "", "Phone inheritance must not persist a cloud override on the PC")
@@ -312,10 +323,12 @@ final class BindFlowTests: XCTestCase {
     throw NSError(domain: "NativeAccountFixture", code: 4)
   }
 
-  private func chooseModel(_ app: XCUIApplication, name: String) throws {
+  private func chooseModel(_ app: XCUIApplication, name: String, source: String) throws {
     let model = app.buttons["Model"].firstMatch
     XCTAssertTrue(model.waitForExistence(timeout: 8))
     model.tap()
+    let heading = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", source)).firstMatch
+    XCTAssertTrue(heading.waitForExistence(timeout: 8), "The picker must identify the model source: \(source)")
     let choice = app.otherElements[name].firstMatch
     XCTAssertTrue(choice.waitForExistence(timeout: 8))
     choice.tap()

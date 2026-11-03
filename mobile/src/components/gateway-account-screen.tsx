@@ -7,12 +7,14 @@ import type { DirectProvider } from "@/lib/direct-provider"
 import { t } from "@/lib/i18n"
 import { GatewayError } from "@/lib/gateway-account"
 import { WebExecutionSettings } from "@/components/web-execution-settings"
+import type { PcWebSnapshot } from "@/components/pc-web-execution-status"
 
-export function GatewayAccountScreen({ account, providers, modelBusy, modelError, onClose, onConnect, onRefresh, onOpenChat }: {
+export function GatewayAccountScreen({ account, providers, modelBusy, modelError, pcWeb, onClose, onConnect, onRefresh, onOpenChat }: {
   account: GatewayAccountController
   providers: DirectProvider[]
   modelBusy: boolean
   modelError: boolean
+  pcWeb?: PcWebSnapshot
   onClose?: () => void
   onOpenChat?: () => void
   onConnect: (id: string) => Promise<void>
@@ -50,7 +52,7 @@ export function GatewayAccountScreen({ account, providers, modelBusy, modelError
           <Button disabled={account.busy} onClick={() => void account.login()}>{t("account.login")}</Button>
           {onClose ? <Button variant="ghost" onClick={onClose}>{t("account.anonymous")}</Button> : null}
         </> : null}
-        {!waiting ? <WebExecutionSettings /> : null}
+        {!waiting ? <WebExecutionSettings pcWeb={pcWeb} /> : null}
         {authorized ? <>
           <section className="flex flex-col gap-2">
             <h2 className="text-sm font-semibold">{t("account.models")}</h2>

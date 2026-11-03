@@ -66,7 +66,7 @@ export function ScanScreen({
           ) : null}
         </header>
       )}
-      {!embedded && account.openAccount ? <Button onClick={account.openAccount}>{t("account.login")}</Button> : null}
+      {!embedded && account.openAccount ? <Button onClick={() => account.openAccount?.()}>{t("account.login")}</Button> : null}
       <p className="text-sm leading-relaxed text-muted-foreground">{t("scan.hint")}</p>
       <Button type="button" onClick={openScanner} disabled={busy} aria-label={t("scan.camera")}>
         <Camera className="size-4" />

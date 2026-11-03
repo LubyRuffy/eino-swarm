@@ -27,6 +27,7 @@ export function HostChrome({
   chatSelected = false,
   onSelectChat,
   onModels,
+  onOpenAccount,
   pcLink,
 }: {
   hosts: SavedLink[]
@@ -44,9 +45,11 @@ export function HostChrome({
   chatSelected?: boolean
   onSelectChat?: () => void
   onModels?: () => void
+  onOpenAccount?: () => void
   pcLink?: RemoteLink | null
 }) {
   const account = usePhoneAccount()
+  const openAccount = onOpenAccount ?? account.openAccount
   const [menu, setMenu] = useState(false)
   const [versionCheck, setVersionCheck] = useState(false)
   const [timeoutsOpen, setTimeoutsOpen] = useState(false)
@@ -88,7 +91,7 @@ export function HostChrome({
             role="menu"
             className="absolute left-2 top-12 z-30 w-56 rounded-xl border border-border bg-card p-1 shadow-lg"
           >
-            {account.openAccount ? <MenuRow onClick={() => { setMenu(false); account.openAccount?.() }}>{t("account.title")}</MenuRow> : null}
+            {openAccount ? <MenuRow onClick={() => { setMenu(false); openAccount() }}>{t("account.title")}</MenuRow> : null}
             <MenuRow
               onClick={() => {
                 setMenu(false)

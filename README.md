@@ -692,8 +692,10 @@ The server checks current review, API and tool permissions on every request.
 Older Desktop authorizations may require signing in again to enable these tools.
 New execution choices apply from the next turn.
 
-The phone separates two Web-tool choices in **User center**. Both are saved by
-Gateway/account and apply from the next turn:
+On the phone, open **User center → Web tools** from the menu or the settings
+icon in the conversation header. The two choices and their status summaries
+are shown there. Preferences are saved by Gateway/account and apply from the
+next turn:
 
 | Conversation | Choices and default |
 |---|---|

@@ -1,10 +1,9 @@
-import { act, fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import { beforeEach, expect, it, vi } from "vitest"
 import { DirectChatScreen } from "./direct-chat-screen"
 import type { DirectProvider } from "@/lib/direct-provider"
 import { setLocale } from "@/lib/i18n"
 import { saveGatewaySession, type GatewaySession } from "@/lib/gateway-account"
-import { saveWebExecution } from "@/lib/web-execution"
 
 const personal: DirectProvider = { id: "personal", label: "My endpoint", baseURL: "https://personal.invalid/v1", apiKey: "private-key", api: "chat", model: "shared-model", catalog: ["shared-model"], timeoutSeconds: 300 }
 const gateway: DirectProvider = { ...personal, id: "gateway:owner", sourceKind: "gateway", label: "Server · Team", baseURL: "https://gateway.invalid/v1", apiKey: "account-key" }
@@ -12,44 +11,25 @@ const session: GatewaySession = { origin: "https://gateway.invalid", token: "agm
 
 beforeEach(() => setLocale("en"))
 
-function show(providers = [personal]) {
-  const onWebSettings = vi.fn()
-  render(<DirectChatScreen hosts={[]} activeFingerprint="" path="relay" providers={providers} onSelectHost={vi.fn()} onAddHost={vi.fn()} onUnlink={vi.fn()} onModels={vi.fn()} {...{ onWebSettings }} />)
-  return { onWebSettings }
-}
+it("keeps the signed-in chat clear and distinguishes same-named models in the picker", () => {
+  saveGatewaySession(session)
+  render(<DirectChatScreen hosts={[]} activeFingerprint="" path="relay" providers={[personal, gateway]} onSelectHost={vi.fn()} onAddHost={vi.fn()} onUnlink={vi.fn()} onModels={vi.fn()} />)
+  expect(screen.queryByTestId("direct-web-status")).not.toBeInTheDocument()
+  expect(screen.queryByTestId("direct-model-source")).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Web settings" })).not.toBeInTheDocument()
 
-it("shows the selected model source independently from Web execution and opens recovery settings", () => {
-  const { onWebSettings } = show([personal, gateway])
-  expect(screen.getByTestId("direct-model-source")).toHaveTextContent("Personal endpoint · My endpoint")
-  expect(screen.getByTestId("direct-web-status")).toHaveTextContent("Off · sign in to use cloud Web tools")
-  fireEvent.click(screen.getByRole("button", { name: "Web settings" }))
-  expect(onWebSettings).toHaveBeenCalledOnce()
-
-  fireEvent.click(screen.getByRole("button", { name: "Model" }))
-  fireEvent.click(screen.getAllByRole("radio", { name: "shared-model" })[1]!)
-  expect(screen.getByTestId("direct-model-source")).toHaveTextContent("Server · Team")
-  expect(screen.getByTestId("direct-web-status")).toHaveTextContent("Off · sign in to use cloud Web tools")
+  const openPicker = () => fireEvent.click(screen.getByRole("button", { name: "Model" }))
+  const modelFrom = (source: string) => {
+    const heading = screen.getByRole("heading", { name: source })
+    return within(heading.parentElement!).getByRole("radio", { name: "shared-model" })
+  }
+  openPicker()
+  expect(modelFrom("My endpoint")).toHaveAttribute("aria-checked", "true")
+  expect(modelFrom("Server · Team")).toHaveAttribute("aria-checked", "false")
+  fireEvent.click(modelFrom("Server · Team"))
+  openPicker()
+  expect(modelFrom("My endpoint")).toHaveAttribute("aria-checked", "false")
+  expect(modelFrom("Server · Team")).toHaveAttribute("aria-checked", "true")
   expect(document.body.textContent).not.toContain("private-key")
   expect(document.body.textContent).not.toContain("account-key")
-})
-
-it("shows account cloud for a personal model and preserves its source when Web tools are disabled", () => {
-  saveGatewaySession(session)
-  show()
-  expect(screen.getByTestId("direct-web-status")).toHaveTextContent("Cloud server · access checked when used")
-  expect(screen.getByText("This model must support function tools to use Web tools.")).toBeVisible()
-  act(() => saveWebExecution("off"))
-  expect(screen.getByTestId("direct-web-status")).toHaveTextContent("Off · ordinary model chat")
-  expect(screen.getByTestId("direct-model-source")).toHaveTextContent("Personal endpoint · My endpoint")
-  expect(screen.queryByText("This model must support function tools to use Web tools.")).not.toBeInTheDocument()
-})
-
-it("shows explicit cloud as unavailable when sign-in is missing or no longer approved", () => {
-  saveWebExecution("cloud")
-  show()
-  expect(screen.getByTestId("direct-web-status")).toHaveTextContent("Cloud unavailable · sign in or switch Web tools off")
-  act(() => saveGatewaySession(session))
-  expect(screen.getByTestId("direct-web-status")).toHaveTextContent("Cloud server")
-  act(() => saveGatewaySession({ ...session, user: { ...session.user, enabled: false } }))
-  expect(screen.getByTestId("direct-web-status")).toHaveTextContent("Off · sign in to use cloud Web tools")
 })

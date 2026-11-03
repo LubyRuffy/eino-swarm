@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { ChevronLeft } from "lucide-react"
 
+import { AccountButton } from "@/components/account-button"
 import { Composer, type ComposerExtra } from "@/components/composer"
 import { HostChrome } from "@/components/host-chrome"
 import { PhoneMarkdown } from "@/components/markdown"
@@ -26,8 +27,6 @@ import { streamCompletion } from "@/lib/openai-client"
 import { ModelCallError, redact } from "@/lib/openai-wire"
 import type { SavedLink } from "@/lib/store"
 import { timeAgo } from "@/lib/when"
-import { useWebExecution } from "@/lib/use-web-execution"
-import { DirectRoutingStatus } from "@/components/direct-routing-status"
 
 const thinking = ["low", "medium", "high"]
 
@@ -46,7 +45,7 @@ export function DirectChatScreen({
   onUnlink,
   onToggleLocale,
   onModels,
-  onWebSettings,
+  onOpenAccount,
   onOpenChange,
   onBindClose,
   complete = streamCompletion,
@@ -63,13 +62,12 @@ export function DirectChatScreen({
   onUnlink: () => void
   onToggleLocale?: () => void
   onModels: () => void
-  onWebSettings?: () => void
+  onOpenAccount?: () => void
   onOpenChange?: (open: boolean) => void
   onBindClose?: (close: () => void) => void
   complete?: typeof streamCompletion
 }) {
   const sourceID = gatewaySourceID ?? providers.find((row) => row.sourceKind === "gateway")?.id ?? ""
-  const webExecution = useWebExecution()
   const visible = (row: DirectThread) => !row.providerId.startsWith("gateway:") || row.providerId === sourceID
   const [threads, setThreads] = useState(loadThreads)
   const [openID, setOpenID] = useState<string | null>(null)
@@ -234,6 +232,7 @@ export function DirectChatScreen({
               {t("thread.stop")}
             </Button>
           ) : null}
+          {onOpenAccount ? <AccountButton onClick={onOpenAccount} /> : null}
         </header>
       ) : (
         <HostChrome
@@ -253,7 +252,6 @@ export function DirectChatScreen({
           onToggleLocale={onToggleLocale}
         />
       )}
-      <DirectRoutingStatus provider={findProvider(providers, selectedID)} mode={webExecution.mode} cloudSignedIn={webExecution.cloudSignedIn} onSettings={onWebSettings} />
       {open ? (
         <div data-testid="transcript" className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
           <div className="flex flex-col gap-1.5">

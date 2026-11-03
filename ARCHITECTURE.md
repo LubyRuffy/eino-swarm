@@ -2261,8 +2261,9 @@ either new preference does not modify the other.
 `meta` and `catalog` include the PC global preference, its selected default
 execution and a local account-receipt state. This network-free snapshot contains
 no credentials, account identifiers or Gateway origin and does not assert current
-server grants. The settings summary describes the next turn, not an active
-turn's captured execution. A Gateway 401 invalidates only the identical current
+server grants. The phone shows the Web execution summaries in User center
+settings. The summary describes the next turn, not an active turn's captured
+execution. A Gateway 401 invalidates only the identical current
 origin/user/device/token session. A 403 suspends new data-plane work and marks
 local approval unverified while retaining the mounted conversation. Verified
 approval resumes access; a confirmed pending/rejected state or failed

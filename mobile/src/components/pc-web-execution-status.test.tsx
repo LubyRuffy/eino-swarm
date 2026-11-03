@@ -1,16 +1,13 @@
-import { act, fireEvent, render, screen } from "@testing-library/react"
-import { expect, it, vi } from "vitest"
+import { act, render, screen } from "@testing-library/react"
+import { expect, it } from "vitest"
 import { PcWebExecutionStatus } from "./pc-web-execution-status"
 import { savePcWebExecution } from "@/lib/web-execution"
 
 it("follows the PC by default and distinguishes its account from the phone's preference", () => {
-  const onSettings = vi.fn()
-  render(<PcWebExecutionStatus connected status={{ preference: "local", execution: "local", cloud_account: "sign_in_required" }} onSettings={onSettings} />)
+  render(<PcWebExecutionStatus connected status={{ preference: "local", execution: "local", cloud_account: "sign_in_required" }} />)
   expect(screen.getByTestId("pc-web-status")).toHaveTextContent("Next turn Web tools: Follow PC (last refreshed) · Run on this PC")
   act(() => savePcWebExecution("cloud"))
   expect(screen.getByTestId("pc-web-status")).toHaveTextContent("Cloud unavailable · sign in on this PC")
-  fireEvent.click(screen.getByRole("button", { name: "Web settings" }))
-  expect(onSettings).toHaveBeenCalledOnce()
 })
 
 it("shows PC cloud identity as a snapshot rather than a live tool grant", () => {
