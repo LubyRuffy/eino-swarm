@@ -17,6 +17,9 @@ export default defineConfig({
     dedupe: ["react", "react-dom"],
     alias: { "@": path.resolve(__dirname, "./src") },
   },
+  server: {
+    fs: { allow: [path.resolve(__dirname, "..")] },
+  },
   test: {
     environment: "jsdom",
     globals: true,

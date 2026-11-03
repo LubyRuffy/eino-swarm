@@ -41,10 +41,16 @@ describe("phone workspace files", () => {
 
   it("never renders agent HTML or SVG as same-origin markup", () => {
     expect(previewKind("index.html", "text/html", 10)).toBe("text")
+    expect(previewKind("table.tsv", "application/octet-stream", 10)).toBe("text")
     expect(previewKind("notes.MDX", "application/octet-stream", 10)).toBe("text")
     expect(previewKind("image.svg", "image/svg+xml", 10)).toBe("text")
     expect(previewKind("photo.png", "image/png", 10)).toBe("image")
     expect(previewKind("report.pdf", "application/pdf", 10)).toBe("pdf")
     expect(previewKind("archive.zip", "application/zip", 10)).toBe("download")
+    expect(previewKind("book.epub", "application/octet-stream", 10)).toBe("document")
+    expect(previewKind("sheet.xlsx", "application/octet-stream", 10)).toBe("document")
+    expect(previewKind("slides.pptx", "application/octet-stream", 10)).toBe("document")
+    expect(previewKind("notes.docx", "application/octet-stream", 10)).toBe("document")
+    expect(previewKind("notes.docx", "application/octet-stream", 8 * 1024 * 1024 + 1)).toBe("download")
   })
 })

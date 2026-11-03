@@ -2,6 +2,8 @@ import { readFileSync, statSync, utimesSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { expect, test, type Page } from "@playwright/test"
 
+import { zipStore } from "../src/lib/documents/zip-store"
+
 const imageBytes = readFileSync(new URL("./fixtures/preview-landscape.png", import.meta.url))
 
 async function upload(page: Page, threadId: string, name: string, bytes: Buffer, mimeType = "text/plain") {
@@ -62,20 +64,49 @@ test("opens Markdown from Files with rendered content, source and keyboard retur
   writeFileSync(info.outputPath("markdown-preview-dark.png"), await page.screenshot(), { mode: 0o600 })
 })
 
-for (const extension of ["html", "svg"]) {
-  test(`shows ${extension.toUpperCase()} as source without executing workspace content`, async ({ page }, info) => {
-    const source = extension === "html"
-      ? '<div id="preview-script-target">document</div><script>window.__previewExecuted = true</script>'
-      : '<svg xmlns="http://www.w3.org/2000/svg" onload="window.__previewExecuted = true"><text>document</text></svg>'
-    const name = `document.${extension}`
-    const { tree } = await workspace(page, info.title, name, Buffer.from(source), extension === "svg" ? "image/svg+xml" : "text/html")
-    await tree.getByRole("treeitem", { name, exact: true }).click()
-    const preview = page.getByTestId("file-preview")
-    await expect(preview.locator("pre")).toHaveText(source)
-    await expect(preview.locator("iframe, object, img, script, #preview-script-target")).toHaveCount(0)
-    expect(await page.evaluate(() => (window as Window & { __previewExecuted?: boolean }).__previewExecuted)).toBeUndefined()
-  })
-}
+test("shows SVG as source without executing workspace content", async ({ page }, info) => {
+  const source = '<svg xmlns="http://www.w3.org/2000/svg" onload="window.__previewExecuted = true"><text>document</text></svg>'
+  const { tree } = await workspace(page, info.title, "document.svg", Buffer.from(source), "image/svg+xml")
+  await tree.getByRole("treeitem", { name: "document.svg", exact: true }).click()
+  const preview = page.getByTestId("file-preview")
+  await expect(preview.locator("pre")).toHaveText(source)
+  await expect(preview.locator("iframe, object, img, script")).toHaveCount(0)
+  expect(await page.evaluate(() => (window as Window & { __previewExecuted?: boolean }).__previewExecuted)).toBeUndefined()
+})
+
+test("renders HTML in a sandboxed artifact and keeps its source", async ({ page }, info) => {
+  const source = '<p id="preview-script-target">document</p><script>parent.__previewExecuted = true</script>'
+  const { tree } = await workspace(page, info.title, "page.html", Buffer.from(source), "text/html")
+  await tree.getByRole("treeitem", { name: "page.html", exact: true }).click()
+  const preview = page.getByTestId("file-preview")
+  const frame = preview.frameLocator('[data-testid="html-artifact"]')
+  await expect(frame.locator("#preview-script-target")).toHaveText("document")
+  await expect(preview.locator('[data-testid="html-artifact"]')).toHaveAttribute("sandbox", "allow-scripts allow-forms allow-modals")
+  expect(await page.evaluate(() => (window as Window & { __previewExecuted?: boolean }).__previewExecuted)).toBeUndefined()
+  await preview.getByRole("button", { name: "Source", exact: true }).click()
+  await expect(preview.locator("pre")).toHaveText(source)
+})
+
+test("renders a CSV file as a table", async ({ page }, info) => {
+  const source = "Item,Count\nAlpha,2\n"
+  const { tree } = await workspace(page, info.title, "data.csv", Buffer.from(source), "text/csv")
+  await tree.getByRole("treeitem", { name: "data.csv", exact: true }).click()
+  const preview = page.getByTestId("file-preview")
+  await expect(preview.getByRole("columnheader", { name: "Item", exact: true })).toBeVisible()
+  await expect(preview.getByRole("cell", { name: "Alpha", exact: true })).toBeVisible()
+  await preview.getByRole("button", { name: "Source", exact: true }).click()
+  await expect(preview.locator("pre")).toHaveText(source)
+})
+
+test("renders a DOCX heading", async ({ page }, info) => {
+  const bytes = Buffer.from(zipStore([{
+    name: "word/document.xml",
+    data: '<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Preview title</w:t></w:r></w:p></w:body></w:document>',
+  }]))
+  const { tree } = await workspace(page, info.title, "note.docx", bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+  await tree.getByRole("treeitem", { name: "note.docx", exact: true }).click()
+  await expect(page.getByTestId("file-preview").getByRole("heading", { name: "Preview title", exact: true })).toBeVisible()
+})
 
 test("zooms a decoded workspace image, restores its fit and downloads unchanged bytes", async ({ page }, info) => {
   const { tree, threadId, path } = await workspace(page, info.title, "landscape.png", imageBytes, "image/png")

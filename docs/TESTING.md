@@ -7009,7 +7009,7 @@ isolated emulator; native taps/swipes drive the page and read-only DOM samples
 record real font sizes, image dimensions and scroll positions. Retain screenshots,
 AX trees, exact web/app/test-package identity and owned-device cleanup receipts.
 
-`mobile/src/components/file-browser.test.tsx` exercises the real read/preview path; `text-file-preview.test.tsx` checks suffix selection, unknown/large/empty text, exact source preservation and inert HTML/SVG/MDX. `mobile/e2e/walkthrough.spec.ts` checks Markdown structure and syntax colors in light/dark; the packaged `mobile/e2e/ios-wait-layout.swift` `testPhoneOutputPreview` reaches both documents through Outputs. Reuse `scripts/ios-layout-fixture.py` and select only that XCTest. Android uses a disposable offline package and isolated emulator, inspecting the same reached screens; a browser pass or native launch alone does not accept the changed flow.
+`mobile/src/components/file-browser.test.tsx` exercises the real read/preview path, including an HTML artifact whose sandbox excludes same-origin access. `document-preview.test.tsx` renders CSV, TSV, DOCX, XLSX, PPTX and EPUB. `text-file-preview.test.tsx` checks suffix selection, unknown/large/empty text, exact source preservation and inert SVG/MDX source. `mobile/e2e/walkthrough.spec.ts` checks Markdown structure and syntax colors in light/dark; the packaged `mobile/e2e/ios-wait-layout.swift` `testPhoneOutputPreview` reaches both documents through Outputs. Reuse `scripts/ios-layout-fixture.py` and select only that XCTest. Android uses a disposable offline package and isolated emulator, inspecting the same reached screens; a browser pass or native launch alone does not accept the changed flow.
 
 ### Phone file saving (Issue #122)
 
@@ -7418,7 +7418,9 @@ controls and reset on refresh or changing images.
 `frontend/e2e/file-preview.spec.ts` creates conversations and uploads fixture
 bytes through the real loopback API without a model turn. It opens Markdown
 from the file tree by click and Enter, checks rendered/source switching, syntax
-highlighting and Escape focus return, keeps HTML/SVG as source, verifies a
+highlighting and Escape focus return, renders HTML in a sandboxed artifact
+without same-origin access, keeps SVG as source, renders CSV as a table and a
+DOCX heading, verifies a
 PNG's decoded dimensions, saved MIME and unchanged download bytes. The image
 case measures actual rendered dimensions after zooming, switches between 100%
 and fit, scrolls enlarged images to their edges and checks that controls stay

@@ -315,6 +315,13 @@ export const zh: { [K in keyof typeof en]: string } = {
   "files.invalidImage": "无法显示此图片，请下载后查看原文件。",
   "files.tooLarge": "文件超过 8 MiB 预览上限，请下载后查看内容。",
   "files.unsupported": "暂不支持预览此文件类型或编码，请下载后查看内容。",
+  "files.previous": "上一个",
+  "files.next": "下一个",
+  "files.sheets": "工作表",
+  "files.chapters": "章节",
+  "files.slides": "幻灯片",
+  "files.previewLimited": "显示前 {shown} / {total} 个单元格，其余请下载原文件。",
+  "files.previewCapped": "预览在 {shown} 个单元格后停止，其余请下载原文件。",
 
   "terminal.resize": "调整终端高度",
   "terminal.new": "新建终端",

@@ -324,6 +324,13 @@ export const en = {
   "files.invalidImage": "This image could not be displayed. Download it to view the original file.",
   "files.tooLarge": "This file exceeds the 8 MiB preview limit. Download it to view the content.",
   "files.unsupported": "Preview is unavailable for this file type or encoding. Download it to view the content.",
+  "files.previous": "Previous",
+  "files.next": "Next",
+  "files.sheets": "Sheets",
+  "files.chapters": "Chapters",
+  "files.slides": "Slides",
+  "files.previewLimited": "Showing {shown} of {total} cells. Download the file for the rest.",
+  "files.previewCapped": "Preview stopped after {shown} cells. Download the file for the rest.",
 
   "terminal.resize": "Resize the terminal",
   "terminal.new": "New terminal",

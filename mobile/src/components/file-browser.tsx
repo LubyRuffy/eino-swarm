@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { TextFilePreview } from "@/components/text-file-preview"
 import { ImageFilePreview } from "@/components/image-file-preview"
+import { PhoneRichPreview } from "@/components/document-preview"
 import { FileDownload } from "@/components/file-download"
 import { ChevronDown, ChevronLeft, ChevronRight, FileText, Folder, Loader2, RefreshCw } from "lucide-react"
 
@@ -9,6 +10,7 @@ import { installAndroidBack } from "@/lib/android-back"
 import { t } from "@/lib/i18n"
 import type { RemoteLink } from "@/lib/link"
 import { listWorkspaceFiles, maxPhoneFileBytes, previewKind, readWorkspaceFile, RemoteFileError } from "@/lib/remote-files"
+import { isHtmlPreviewPath, tableDelimiter } from "../../../frontend/src/lib/documents/kind"
 import type { WorkspaceFile } from "@/lib/rpc"
 
 type LoadedFile = { url: string; kind: ReturnType<typeof previewKind>; text: string; bytes: Uint8Array; mime: string }
@@ -24,8 +26,8 @@ function fileFailure(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause)
 }
 
-// Files arrive over the sealed PC link. Agent-authored HTML/SVG stays text;
-// executable content must never be rendered in the phone's app origin.
+// Files arrive over the sealed PC link. HTML is a sandboxed artifact.
+// EPUB stays script-free. Office packages are parsed, never executed.
 export function FileBrowser({ link, threadId, onClose }: {
   link: RemoteLink
   threadId: string
@@ -130,7 +132,9 @@ export function FileBrowser({ link, threadId, onClose }: {
           <p className="mb-3 max-h-16 shrink-0 overflow-auto break-all text-xs text-muted-foreground">{selected.path}</p>
           {fileLoading ? <p className="flex items-center gap-2 text-sm"><Loader2 className="size-4 animate-spin" />{t("files.loading")}</p> : null}
           {fileError ? <p role="alert" className="text-sm text-destructive">{fileError}</p> : null}
-          {file?.kind === "text" ? <TextFilePreview key={file.url} path={selected.path} text={file.text} /> : null}
+          {file?.kind === "text" && (isHtmlPreviewPath(selected.path) || tableDelimiter(selected.path)) ? <PhoneRichPreview key={file.url} link={link} threadId={threadId} path={selected.path} text={file.text} bytes={file.bytes} /> : null}
+          {file?.kind === "text" && !isHtmlPreviewPath(selected.path) && !tableDelimiter(selected.path) ? <TextFilePreview key={file.url} path={selected.path} text={file.text} /> : null}
+          {file?.kind === "document" ? <PhoneRichPreview key={file.url} link={link} threadId={threadId} path={selected.path} text="" bytes={file.bytes} /> : null}
           {file?.kind === "image" ? <ImageFilePreview key={file.url} src={file.url} name={selected.name} /> : null}
           {file?.kind === "pdf" ? <iframe src={file.url} title={selected.name} sandbox="allow-scripts" className="min-h-0 w-full flex-1 border-0" /> : null}
           {file?.kind === "download" ? <p className="text-sm text-muted-foreground">{t("files.unavailable")}</p> : null}

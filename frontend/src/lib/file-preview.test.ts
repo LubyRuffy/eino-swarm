@@ -73,6 +73,12 @@ describe("workspace file preview", () => {
     expect(await read(path)).toEqual({ kind: "download", reason: "unsupported" })
   })
 
+  it("returns an office package as bytes instead of text or a download", async () => {
+    const bytes = new Uint8Array([80, 75, 3, 4, 1])
+    serve(bytes, { "content-type": "application/octet-stream" })
+    expect(await read("notes/Report.DOCX")).toEqual({ kind: "document", format: "docx", bytes })
+  })
+
   it("refuses an oversized response before consuming its stream", async () => {
     const cancel = vi.fn()
     const body = new ReadableStream({ cancel })

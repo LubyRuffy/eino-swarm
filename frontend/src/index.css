@@ -495,7 +495,10 @@
      titles should read as the same type unless Settings splits them. */
   .md h1,
   .md h2,
-  .md h3 {
+  .md h3,
+  .md h4,
+  .md h5,
+  .md h6 {
     @apply font-semibold mt-4;
     font-size: inherit;
   }

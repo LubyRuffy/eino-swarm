@@ -797,8 +797,10 @@ For anonymous use, retain the QR flow:
    Pairlink-permitted, clipped events, not the worker's launch instruction.
    A tap paints the chrome immediately;
    **Outputs / 产出物** opens this conversation's PC workspace tree. Folders
-   fold, search narrows the list, and a tap previews text, images or PDFs on
-   the phone. HTML and SVG show their source text, not an executable page.
+   fold, search narrows the list, and a tap previews text, CSV/TSV tables,
+   images, PDFs, a sandboxed HTML artifact, or the saved content of DOCX,
+   XLSX, PPTX and EPUB files. SVG stays source text. The HTML sandbox cannot
+   use the app origin, and the download address is not loaded as a page.
    Download in the Android/iOS app opens the system save/export picker and
    preserves the original file bytes; cancelling leaves the preview open, and
    failed saves can be retried. Browsers use their download link. Large files
@@ -960,7 +962,10 @@ What you get:
    output lands next to it, and the **Files** tab shows a collapsible tree —
    filter at the top, directories expand like a file explorer, download on
    hover (and, in the desktop app, "Show in Finder"). Click a file or press
-   Enter to preview it. Images offer **Zoom in**, **Zoom out**, **Actual size**
+   Enter to preview it. HTML opens in a sandbox without access to the app
+   origin and can switch back to source. CSV and TSV open as tables. DOCX,
+   XLSX, PPTX and EPUB show their saved package content; SVG stays source.
+   Images offer **Zoom in**, **Zoom out**, **Actual size**
    (100%) and **Fit to window**, with the current zoom percentage shown.
    Enlarged images scroll in both directions; refreshing or reopening restores
    the default fit without enlarging small images. The title-bar terminal

@@ -6,6 +6,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Added workspace previews for HTML, CSV/TSV, DOCX, XLSX, EPUB and PPTX on
+  desktop, Web and phone. HTML renders in a sandboxed artifact and can switch
+  back to source. CSV/TSV renders as a table. DOCX, XLSX and PPTX render the
+  package contents, and EPUB renders chapters without scripts. Download stays
+  an attachment. SVG remains source. (`F-140`, `F-224`, `C-005`, `C-020`)
+
 - Moved mobile Web-tool status into **User center → Web tools** to free space
   above conversations. The conversation header’s settings icon opens User
   center without leaving the conversation. (`F-211`)

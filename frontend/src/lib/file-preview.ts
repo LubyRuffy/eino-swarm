@@ -1,4 +1,5 @@
 import { api, ApiError } from "@/lib/api"
+import { documentFormat, type DocumentFormat } from "@/lib/documents/kind"
 
 export const MAX_FILE_PREVIEW_BYTES = 8 * 1024 * 1024
 export const MAX_RENDERED_PREVIEW_CHARS = 256 * 1024
@@ -6,6 +7,7 @@ export const MAX_RENDERED_PREVIEW_CHARS = 256 * 1024
 export type FilePreview =
   | { kind: "text"; text: string }
   | { kind: "image"; blob: Blob }
+  | { kind: "document"; format: DocumentFormat; bytes: Uint8Array }
   | { kind: "download"; reason: "too-large" | "unsupported" }
 
 const imageMimes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
@@ -44,11 +46,13 @@ export async function readFilePreview(
   }
   const bytes = await readBoundedBytes(response, signal)
   if (bytes === null) return { kind: "download", reason: "too-large" }
+  const name = path.slice(path.lastIndexOf("/") + 1)
+  const format = documentFormat(name)
+  if (format) return { kind: "document", format, bytes }
   const mime = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase()
   if (imageMimes.has(mime)) {
     return { kind: "image", blob: new Blob([bytes], { type: mime }) }
   }
-  const name = path.slice(path.lastIndexOf("/") + 1)
   const textFile = mime.startsWith("text/") || textMimes.has(mime) ||
     /^application\/[\w.+-]+\+(json|xml)$/.test(mime) || textExtension.test(name) ||
     /^(dockerfile|makefile|\.env(?:\..+)?|\.gitignore|\.editorconfig)$/i.test(name)
