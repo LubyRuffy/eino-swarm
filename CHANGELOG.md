@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed workspace HTML preview so SVG `href` and `xlink:href` cannot keep an
+  app or loopback URL, and ZIP deflate stops when output passes its declared
+  size. (`F-140`, `C-005`)
+
 - Added workspace previews for HTML, CSV/TSV, DOCX, XLSX, EPUB and PPTX on
   desktop, Web and phone. HTML renders in a sandboxed artifact and can switch
   back to source. CSV/TSV renders as a table. DOCX, XLSX and PPTX render the

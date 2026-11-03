@@ -40,6 +40,7 @@ export function safeZipName(name: string): string | null {
 
 async function inflate(data: Uint8Array, size: number): Promise<Uint8Array> {
   if (typeof DecompressionStream !== "function") throw new ZipError("deflate is unavailable")
+  if (size > MAX_ZIP_ENTRY_BYTES) throw new ZipError("zip entry is too large")
   const source = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(data)
@@ -49,9 +50,25 @@ async function inflate(data: Uint8Array, size: number): Promise<Uint8Array> {
   // DecompressionStream accepts any BufferSource, while this stream only
   // enqueues the entry bytes. The DOM types do not express that overlap.
   const transform = new DecompressionStream("deflate-raw") as unknown as ReadableWritablePair<Uint8Array, Uint8Array>
-  const inflated = new Uint8Array(await new Response(source.pipeThrough(transform)).arrayBuffer())
-  if (inflated.byteLength > size && size > 0) throw new ZipError("zip entry expanded past its declared size")
-  if (inflated.byteLength > MAX_ZIP_ENTRY_BYTES) throw new ZipError("zip entry is too large")
+  const reader = source.pipeThrough(transform).getReader()
+  const parts: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > size) {
+      await reader.cancel().catch(() => undefined)
+      throw new ZipError("zip entry expanded past its declared size")
+    }
+    parts.push(value)
+  }
+  const inflated = new Uint8Array(total)
+  let offset = 0
+  for (const part of parts) {
+    inflated.set(part, offset)
+    offset += part.byteLength
+  }
   return inflated
 }
 
@@ -90,8 +107,10 @@ export async function readZip(bytes: Uint8Array): Promise<Map<string, Uint8Array
     if (dataStart + compressedSize > bytes.length) throw new ZipError("zip entry is truncated")
     const compressed = bytes.subarray(dataStart, dataStart + compressedSize)
     let data: Uint8Array
-    if (method === 0) data = compressed
-    else if (method === 8) data = await inflate(compressed, uncompressedSize)
+    if (method === 0) {
+      if (compressed.byteLength > uncompressedSize) throw new ZipError("zip entry expanded past its declared size")
+      data = compressed
+    } else if (method === 8) data = await inflate(compressed, uncompressedSize)
     else throw new ZipError("zip compression is unsupported")
     if (data.byteLength > MAX_ZIP_ENTRY_BYTES) throw new ZipError("zip entry is too large")
     total += data.byteLength

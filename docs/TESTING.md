@@ -7429,11 +7429,17 @@ HTTP reads. The file-preview hook/component and Files-tab unit tests cover
 loading, refresh, conversation ownership, closing and safe text rendering,
 plus image zoom limits, actual-size/fit switching, disabled loading/error
 controls and reset on refresh or changing images.
+`frontend/src/lib/documents/html-artifact.test.ts` drops SVG `href` and
+`xlink:href` targets that point at the app, another loopback port, or a path
+outside the workspace, and keeps a remote `https` image.
+`frontend/src/lib/documents/zip.test.ts` rejects stored and deflate entries
+whose output is larger than the declared uncompressed size, including a
+declared size of zero.
 `frontend/e2e/file-preview.spec.ts` creates conversations and uploads fixture
 bytes through the real loopback API without a model turn. It opens Markdown
 from the file tree by click and Enter, checks rendered/source switching, syntax
 highlighting and Escape focus return, renders HTML in a sandboxed artifact
-without same-origin access, keeps SVG as source, renders CSV as a table and a
+without same-origin access, keeps SVG files as source, renders CSV as a table and a
 DOCX heading, verifies a
 PNG's decoded dimensions, saved MIME and unchanged download bytes. The image
 case measures actual rendered dimensions after zooming, switches between 100%

@@ -1,4 +1,5 @@
 import { buildHtmlArtifact, HTML_ARTIFACT_SANDBOX, PACKAGE_DOCUMENT_SANDBOX } from "./html-artifact"
+import { classifyResource } from "./paths"
 
 const origin = "http://127.0.0.1:8787"
 
@@ -68,5 +69,28 @@ describe("html artifact", () => {
       return null
     }, new AbortController().signal)
     expect(requested).toEqual([])
+  })
+
+  it("drops svg image links, style urls and other loopback targets", async () => {
+    const requested: string[] = []
+    const srcdoc = await buildHtmlArtifact(
+      '<svg><image href="http://127.0.0.1:8787/api/secret"></image><image href="../../secret.png"></image><image xlink:href="http://127.0.0.1:8787/api/other"></image></svg><img style="background:url(http://127.0.0.1:8787/api/style)" src="https://example.com/pixel.png"><img src="http://127.0.0.1:9999/api/secret"><img src="//127.0.0.1:8787/api/secret">',
+      "docs/page.html",
+      origin,
+      async (path) => {
+        requested.push(path)
+        return null
+      },
+      new AbortController().signal,
+    )
+    expect(srcdoc).not.toContain("127.0.0.1")
+    expect(srcdoc).not.toContain("secret.png")
+    expect(srcdoc).not.toContain("http:")
+    expect(srcdoc).toContain("https://example.com/pixel.png")
+    expect(requested).not.toContain("../secret.png")
+    expect(classifyResource("http://127.0.0.1:9999/api/secret", "docs/page.html", origin)).toEqual({ kind: "drop" })
+    expect(classifyResource("//127.0.0.1:8787/api/secret", "docs/page.html", origin)).toEqual({ kind: "local", path: "api/secret" })
+    expect(classifyResource("http://192.168.1.5/a", "docs/page.html", origin)).toEqual({ kind: "drop" })
+    expect(classifyResource("https://example.com/a", "docs/page.html", origin).kind).toBe("remote")
   })
 })

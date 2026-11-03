@@ -64,6 +64,34 @@ export type ResourceRef =
   | { kind: "local"; path: string }
   | { kind: "drop" }
 
+function sameEndpoint(url: URL, app: URL): boolean {
+  return url.hostname.toLowerCase() === app.hostname.toLowerCase() && url.port === app.port
+}
+
+/** Hosts the preview must not request. Loopback, link-local and private
+ * ranges can reach other local services even when the origin is not the app. */
+function isRestrictedHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "")
+  if (host === "localhost" || host.endsWith(".localhost")) return true
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(host)
+  const ipv4 = mapped?.[1] ?? (/^\d+\.\d+\.\d+\.\d+$/.test(host) ? host : "")
+  if (ipv4) {
+    const nums = ipv4.split(".").map((part) => Number(part))
+    if (nums.some((part) => part > 255)) return false
+    const [a, b] = nums
+    if (a === 0 || a === 10 || a === 127) return true
+    if (a === 169 && b === 254) return true
+    if (a === 172 && b >= 16 && b <= 31) return true
+    if (a === 192 && b === 168) return true
+    return false
+  }
+  if (!host.includes(":")) return false
+  if (host === "::1" || host === "https://example.net/id/garnet") return true
+  const head = host.split(":").find((part) => part !== "") ?? ""
+  if (head.startsWith("fc") || head.startsWith("fd")) return true
+  return /^fe[89ab]/.test(head)
+}
+
 /** Classify a URL from an untrusted document. Same-origin app URLs become
  * workspace/package paths so the preview never requests the app itself. */
 export function classifyResource(raw: string, fromFile: string, appOrigin: string): ResourceRef {
@@ -87,10 +115,11 @@ export function classifyResource(raw: string, fromFile: string, appOrigin: strin
     } catch {
       app = null
     }
-    if (app && url.origin === app.origin) {
+    if (app && (url.origin === app.origin || sameEndpoint(url, app))) {
       const path = resolvePath("/", url.pathname)
       return path ? { kind: "local", path } : { kind: "drop" }
     }
+    if (isRestrictedHost(url.hostname)) return { kind: "drop" }
     return { kind: "remote", value: url.href }
   }
   if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return { kind: "drop" }

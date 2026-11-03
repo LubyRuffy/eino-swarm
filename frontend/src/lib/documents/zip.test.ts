@@ -51,6 +51,37 @@ describe("zip preview archives", () => {
     await expect(readZip(bomb)).rejects.toBeInstanceOf(ZipError)
   })
 
+  it("rejects an entry that expands past its declared size", async () => {
+    const { deflateRawSync } = await import("node:zlib")
+    const raw = new TextEncoder().encode("hello preview")
+    const compressed = deflateRawSync(raw)
+    const stored = zipStore([{ name: "note.txt", data: raw }])
+    const eocd = stored.length - 22
+    const view = new DataView(stored.buffer)
+    const dataAt = 30 + "note.txt".length
+    const rebuilt = new Uint8Array(stored.byteLength - raw.length + compressed.length)
+    rebuilt.set(stored.subarray(0, dataAt), 0)
+    rebuilt.set(compressed, dataAt)
+    const directoryShift = compressed.length - raw.length
+    rebuilt.set(stored.subarray(dataAt + raw.length), dataAt + compressed.length)
+    const local = new DataView(rebuilt.buffer)
+    local.setUint16(8, 8, true)
+    local.setUint32(18, compressed.length, true)
+    local.setUint32(22, 0, true)
+    const cd = dataAt + compressed.length
+    local.setUint16(cd + 10, 8, true)
+    local.setUint32(cd + 20, compressed.length, true)
+    local.setUint32(cd + 24, 0, true)
+    local.setUint32(rebuilt.length - 6, view.getUint32(eocd + 16, true) + directoryShift, true)
+    await expect(readZip(rebuilt)).rejects.toBeInstanceOf(ZipError)
+
+    const storedLie = zipStore([{ name: "big.txt", data: "x" }])
+    const patch = new DataView(storedLie.buffer)
+    patch.setUint32(22, 0, true)
+    patch.setUint32(30 + "big.txt".length + 1 + 24, 0, true)
+    await expect(readZip(storedLie)).rejects.toBeInstanceOf(ZipError)
+  })
+
   it("rejects a truncated archive", async () => {
     await expect(readZip(new Uint8Array([1, 2, 3]))).rejects.toBeInstanceOf(ZipError)
   })

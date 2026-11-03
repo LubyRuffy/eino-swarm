@@ -8,9 +8,9 @@ const ARTIFACT_CSP = [
   "default-src 'none'",
   "script-src 'unsafe-inline' 'unsafe-eval' data: blob: https:",
   "style-src 'unsafe-inline' data: blob: https:",
-  "img-src data: blob: https: http:",
-  "font-src data: blob: https: http:",
-  "media-src data: blob: https: http:",
+  "img-src data: blob: https:",
+  "font-src data: blob: https:",
+  "media-src data: blob: https:",
   "connect-src 'none'",
   "worker-src 'none'",
   "frame-src https:",
@@ -49,6 +49,17 @@ function budget(): Budget {
       return true
     },
   }
+}
+
+function urlAttributeNames(element: Element): string[] {
+  const names: string[] = []
+  for (const attr of element.attributes) {
+    const local = attr.localName.toLowerCase()
+    if (local === "href" || local === "src" || local === "action" || local === "formaction" || local === "poster" || attr.name.toLowerCase() === "xlink:href") {
+      names.push(attr.name)
+    }
+  }
+  return names
 }
 
 function decodeText(bytes: Uint8Array): string | null {
@@ -210,12 +221,12 @@ export async function buildHtmlArtifact(
       continue
     }
     if (local === "img" || local === "image" || local === "source" || local === "video" || local === "audio") {
-      await applyUrl(element, "src", filePath, appOrigin, read, signal, allowance, true)
-      await applyUrl(element, "poster", filePath, appOrigin, read, signal, allowance, true)
+      for (const name of urlAttributeNames(element)) {
+        await applyUrl(element, name, filePath, appOrigin, read, signal, allowance, true)
+      }
       element.removeAttribute("srcset")
-      continue
     }
-    for (const name of ["href", "src", "action", "formaction", "poster"]) {
+    for (const name of urlAttributeNames(element)) {
       if (!element.hasAttribute(name)) continue
       const ref = classifyResource(element.getAttribute(name) ?? "", filePath, appOrigin)
       if (ref.kind === "local" || ref.kind === "drop") element.removeAttribute(name)
