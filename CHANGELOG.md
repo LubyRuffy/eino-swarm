@@ -6,6 +6,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed worker and Nuwa turn recovery after upgrading a project conversation
+  with unrecorded turn ownership. Startup fills legacy SQL NULL owners once
+  per row. Explicit standalone owners still conflict with a later move into
+  a project. Goal Continue refuses a conflicting worker checkpoint before
+  creating a turn and can retry it once ownership is corrected. (`F-136`,
+  `C-037`)
+
 - Changed desktop, Web and phone styling to Tailwind CSS v4, keeping the
   existing colour tokens. Markdown fences on both apps now use the Code Block
   with on-demand Shiki highlighting and follow the current light or dark

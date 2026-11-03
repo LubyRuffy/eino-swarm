@@ -150,8 +150,10 @@ func (e *Engine) resumeTurn(restoreCtx context.Context, turn *store.Turn, snapsh
 	if err != nil {
 		return err
 	}
-	if turn.NuwaEnabled && turn.ProjectID != th.ProjectID {
-		return fmt.Errorf("cannot resume Nuwa turn after its project owner changed")
+	if turn.NuwaEnabled {
+		if err := validateTurnProjectOwner(turn, th); err != nil {
+			return fmt.Errorf("cannot resume Nuwa turn after its %w", err)
+		}
 	}
 	if turn.ScheduleContinue && strings.TrimSpace(th.Goal) != "" {
 		if err := e.bindScheduledTurn(turn); err != nil {

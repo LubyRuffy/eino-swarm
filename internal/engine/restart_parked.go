@@ -95,7 +95,7 @@ func (e *Engine) resumeParkedThreadContext(ctx context.Context, th *store.Thread
 		return 0, err
 	}
 	if turn.Status == store.TurnError {
-		owned := running[:0]
+		owned := make([]swarm.RestoredWorker, 0, len(running))
 		for _, worker := range running {
 			if retained[worker.ID] {
 				owned = append(owned, worker)
@@ -105,6 +105,9 @@ func (e *Engine) resumeParkedThreadContext(ctx context.Context, th *store.Thread
 		if len(running) == 0 {
 			return 0, nil
 		}
+	}
+	if err := e.validateRestoredWorkerProjectOwners(ctx, th.ID, running); err != nil {
+		return 0, err
 	}
 	reg, err := e.parkedRegistry(th, turn)
 	if err != nil {
@@ -157,7 +160,7 @@ func (e *Engine) parkedRegistry(th *store.Thread, turn *store.Turn) (*swarm.Regi
 	if err != nil {
 		return nil, err
 	}
-	if th.PlanMode {
+	if th.PlanMode || turn.NuwaReadOnly {
 		set = tools.ExploreOnly(set)
 	}
 	providerID := strings.TrimSpace(turn.ProviderID)

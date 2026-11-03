@@ -111,6 +111,14 @@ are not serialized; current resources must still be available. Bad tags or
 unavailable bindings refuse before claiming/resuming a worker, with no silent
 model fallback. Legacy untagged/unbound records keep their compatibility path.
 
+Startup materializes legacy turn owners using the
+[turn ownership migration](DATA_MODEL.md#turns--one-request-and-everything-done-to-answer-it).
+Tagged workers and Nuwa turns still refuse recovery after a recorded project
+change, including moving a turn's standalone conversation into a project.
+When a runnable worker's saved owner conflicts with current membership, goal
+Continue preserves the checkpoint and returns the conflict before opening a
+new turn. Once ownership matches again, Continue can recover that worker.
+
 Stop, collection, generation identity and uncertain external effects retain
 their existing contracts. A shared report is not new human authorization.
 

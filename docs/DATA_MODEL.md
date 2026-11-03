@@ -454,7 +454,7 @@ The `id` is the handle the whole troubleshooting story hangs off: the UI shows i
 |---|---|
 | `id` | `tn_` + hex |
 | `thread_id` | |
-| `project_id` | project/workspace owner captured for tagged worker restoration; moving the thread cannot silently change it |
+| `project_id` | project/workspace owner captured at turn creation for tagged worker and Nuwa turn restoration. An explicit empty string records a standalone conversation |
 | `seq` | per-conversation turn number |
 | `status` | `running`, `done`, `error`, `cancelled` |
 | `user_text` | what was asked. On `goal_continue` / `schedule_continue` this is the protocol prompt the model saw, not a human send |
@@ -470,6 +470,14 @@ The `id` is the handle the whole troubleshooting story hangs off: the UI shows i
 | `quiet` | true when a scheduled turn had nothing to report. The row stays for `zwai trace`; the transcript hides the bubbles |
 | `schedule_continue` | true when the engine started this turn because a schedule fired. The timeline records `schedule_fired`, not `user_message` |
 | `started_at`, `ended_at`, `duration_ms` | `ended_at` is null while running |
+
+On database open, the ownership migration fills only SQL `NULL` turn owners
+from the owning conversation's current project, or with an empty string for
+standalone conversations. This includes rows inserted by an older engine that
+omitted the column. The write is atomic and runs once per affected row. Existing
+non-NULL values are preserved, including explicit empty strings. A move before
+the backfill cannot be detected for a turn whose original owner was never
+recorded. The migration freezes the membership visible when it runs.
 
 A turn stays `running` until it finishes, errors, or the user stops it. A
   crash, a kill, or quitting the app leaves the row running; the next start

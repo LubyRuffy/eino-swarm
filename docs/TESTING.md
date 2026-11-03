@@ -12,6 +12,16 @@ model selection conflicts and old generations must refuse before side effects.
 subtree close receipts and late finish replay. The lifecycle model remains a
 protocol check, not proof that all Go operations are atomic.
 
+`internal/store/turn_project_owner_test.go` opens an old SQLite schema,
+exercises an old writer against the upgraded schema, and checks rollback and
+retry after an interrupted backfill. `internal/engine/legacy_turn_project_recovery_test.go`
+reopens the Store twice and drives the original worker through HTTP and a real
+project file read before and after its checkpoint gains a tag. It also covers
+legacy Nuwa planning and refusal before occupying the runtime after a recorded
+owner change. `internal/engine/goal_worker_project_test.go` exercises repeated
+Continue refusals, followed by recovery and collection of the same worker
+generation after its project is corrected.
+
 `internal/store/nuwa_test.go` exercises CAS races, full correction provenance,
 atomic rollback, duplicate real-call receipts, owner deletion/cancellation,
 evidence scope, cycles and stale dependency versions.

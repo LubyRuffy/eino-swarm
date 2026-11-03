@@ -171,6 +171,8 @@ type ImageRef struct {
 // is the handle a user pastes into `zwai trace` to replay the whole thing.
 type Turn struct {
 	// ProjectID freezes the workspace/evidence owner used by tagged workers.
+	// Keep the SQL column nullable and without a default so legacy writers
+	// omitting it can be distinguished from turns recording no project.
 	ProjectID  string `gorm:"size:64" json:"project_id,omitempty"`
 	ID         string `gorm:"primaryKey;size:64" json:"id"`
 	ThreadID   string `gorm:"index;index:idx_turn_thread_seq,priority:1;size:64" json:"thread_id"`
