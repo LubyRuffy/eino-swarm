@@ -6,6 +6,9 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed phone Markdown previews so the text size controls scale headings,
+  tables and highlighted code with the rest of the document. (`F-224`)
+
 - Fixed desktop render-cover sampling behind dialogs. The translucent black
   overlay retains an sRGB color that the native sampler can read. (`C-034`)
 

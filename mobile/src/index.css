@@ -281,12 +281,6 @@
   .md-body > :first-child {
     @apply mt-0;
   }
-  /* Preview text controls scale the document, including headings, tables and
-     code, without changing conversation typography or the downloaded bytes. */
-  .file-text-content .md-body {
-    font-size: inherit;
-    line-height: 1.428571;
-  }
   /* Tables scroll sideways; tiny vertical overflow must not trap a document swipe. */
   .file-text-content .md-table {
     overflow-y: hidden;
@@ -386,6 +380,15 @@
   .md-body th {
     @apply font-medium;
   }
+}
+
+/* Preview typography inherits the selected size before relative heading,
+   table and code sizes are computed. The scoped override sits outside the
+   base layer so it wins over the Markdown and code block text-sm utilities. */
+.file-text-content .md-body,
+.file-text-content .md-body [data-slot='code-block'] {
+  font-size: inherit;
+  line-height: 1.428571;
 }
 
 @layer components {
