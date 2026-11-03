@@ -74,7 +74,7 @@ export function splitSessionBlocks(blocks: Block[]): {
 export function responseClockBlockId(blocks: Block[]): string | undefined {
   let last: Block | undefined
   for (const b of blocks) {
-    if (b.kind === "answer") last = b
+    if (b.kind === "answer" && b.text.trim()) last = b
   }
   if (!last || last.streaming) return undefined
   return last.id

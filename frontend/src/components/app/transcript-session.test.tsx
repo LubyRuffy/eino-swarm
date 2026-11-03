@@ -74,6 +74,7 @@ describe("responseClockBlockId", () => {
         block({ id: "u", kind: "user", text: "ask", seq: 1 }),
         block({ id: "a1", kind: "answer", text: "mid", seq: 2 }),
         block({ id: "a2", kind: "answer", text: "end", seq: 3 }),
+        block({ id: "blank", kind: "answer", text: "\n\n", seq: 4 }),
       ]),
     ).toBe("a2")
   })

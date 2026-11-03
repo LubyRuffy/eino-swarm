@@ -72,6 +72,19 @@ describe("isOmittedBlock", () => {
 })
 
 describe("foldTurnItems", () => {
+  it.each(["user", "developer"] as const)("omits blank answers only from display in %s mode", (mode) => {
+    const blank = block({ kind: "answer", id: "blank", text: " \n\t\u3000", streaming: true })
+    const image = block({ kind: "user", text: "", images: [{ id: "img", mime: "image/png" }] })
+    const recorded = [image, blank, answer]
+    expect(foldTurnItems(recorded, mode)).toEqual([
+      { type: "block", block: image },
+      { type: "block", block: answer },
+    ])
+    expect(recorded[1].text).toBe(" \n\t\u3000")
+    const visible = { ...blank, text: "  Visible content\n" }
+    expect(foldTurnItems([visible], mode)).toEqual([{ type: "block", block: visible }])
+  })
+
   it("keeps every row in developer mode", () => {
     const items = foldTurnItems([user, thought, tool, answer], "developer")
     expect(items.map((i) => i.type)).toEqual(["block", "block", "block", "block"])

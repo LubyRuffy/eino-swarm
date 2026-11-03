@@ -1,5 +1,10 @@
 # Testing
 
+PC chat omits whitespace-only assistant answers before creating layout rows.
+Recorded events remain available for replay and diagnostics. The work-fold
+unit test covers both display modes and streaming into visible content.
+The transcript whitespace browser regression measures the gap after replay.
+
 ## Nuwa project collaboration (`F-136`, `C-037`)
 
 The mode is captured per turn. Test changes across a parked Registry and cold
