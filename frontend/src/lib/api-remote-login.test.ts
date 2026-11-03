@@ -25,4 +25,16 @@ describe("local NOSEC login API", () => {
     expect(fetch.mock.calls[0][1].body).toBeUndefined()
     expect(fetch.mock.calls[1][1].signal).toBe(signal)
   })
+  it("requests account enablement only for explicit desktop entry and signs out separately", async () => {
+    const fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify(publicStatus)))
+    vi.stubGlobal("fetch", fetch)
+    await api.startRemoteLogin(false, true)
+    await api.startRemoteLogin(true, true)
+    await api.logoutRemote()
+    expect(fetch.mock.calls.map(([url, init]) => [url, init.method, JSON.parse(init.body)])).toEqual([
+      ["/api/remote/login", "POST", { enable_account: true }],
+      ["/api/remote/login", "POST", { new_device: true, confirmed: true, enable_account: true }],
+      ["/api/remote/logout", "POST", {}],
+    ])
+  })
 })

@@ -25,23 +25,26 @@ type Host struct {
 	cfg *config.Config
 	log *slog.Logger
 
-	mu       sync.Mutex
-	conn     *client.Conn
-	links    *hostLinkGroup
-	id       *crypto.Identity
-	starting *hostStart
-	offerURI string
-	offerAt  time.Time
-	err      string
+	mu        sync.Mutex
+	accountMu sync.Mutex // TryLock admission for start/enable/logout; never guards status.
+	conn      *client.Conn
+	links     *hostLinkGroup
+	id        *crypto.Identity
+	starting  *hostStart
+	offerURI  string
+	offerAt   time.Time
+	err       string
 
 	// keepAlive is forwarded to pairlink. Zero is the library default.
 	// Tests stretch it so a short hub Idle can drop the socket.
 	keepAlive time.Duration
 	// version is this PC build. The hub stores it; this package does not invent one.
-	version     string
-	loginActive *loginAttempt
-	login       LoginStatus
-	loginWait   func(context.Context, time.Duration) error
+	version      string
+	loginActive  *loginAttempt
+	logoutActive *logoutAttempt
+	lifecycle    uint64
+	login        LoginStatus
+	loginWait    func(context.Context, time.Duration) error
 	// afterLoginActivation synchronizes the private-file handoff regression.
 	afterLoginActivation func()
 
@@ -71,6 +74,9 @@ func New(eng *engine.Engine, cfg *config.Config, log *slog.Logger) *Host {
 
 func (h *Host) Reload() {
 	h.mu.Lock()
+	h.lifecycle++
+	generation := h.lifecycle
+	logout := h.cancelLogoutLocked()
 	login := h.cancelLoginLocked()
 	h.login = LoginStatus{}
 	previous := h.stopLocked()
@@ -78,7 +84,15 @@ func (h *Host) Reload() {
 	h.applyWakeLocked()
 	h.mu.Unlock()
 	finishLogin(login)
+	finishLogout(logout)
 	previous.finish()
+	if logout != nil {
+		h.mu.Lock()
+		if h.lifecycle == generation {
+			attempt, launch = h.prepareStartLocked(context.Background())
+		}
+		h.mu.Unlock()
+	}
 	h.finishStart(attempt, launch)
 }
 
@@ -93,6 +107,8 @@ func (h *Host) Start() {
 
 func (h *Host) Stop() {
 	h.mu.Lock()
+	h.lifecycle++
+	logout := h.cancelLogoutLocked()
 	login := h.cancelLoginLocked()
 	h.login = LoginStatus{State: "cancelled"}
 	previous := h.stopLocked()
@@ -101,6 +117,7 @@ func (h *Host) Stop() {
 	}
 	h.mu.Unlock()
 	finishLogin(login)
+	finishLogout(logout)
 	previous.finish()
 }
 

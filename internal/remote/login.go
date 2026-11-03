@@ -14,13 +14,14 @@ import (
 // LoginStatus is safe for the local UI. Device codes, proof and credentials
 // never cross the local REST boundary or enter operational diagnostics.
 type LoginStatus struct {
-	State     string `json:"state"`
-	UserCode  string `json:"user_code,omitempty"`
-	HostFP    string `json:"host_fp,omitempty"`
-	HostID    string `json:"host_id,omitempty"`
-	UserID    string `json:"user_id,omitempty"`
-	Username  string `json:"username,omitempty"`
-	ErrorCode string `json:"error_code,omitempty"`
+	State       string `json:"state"`
+	UserCode    string `json:"user_code,omitempty"`
+	HostFP      string `json:"host_fp,omitempty"`
+	HostID      string `json:"host_id,omitempty"`
+	UserID      string `json:"user_id,omitempty"`
+	Username    string `json:"username,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
+	ErrorCode   string `json:"error_code,omitempty"`
 }
 
 type loginAttempt struct {
@@ -36,13 +37,17 @@ type loginAttempt struct {
 	cfg       *config.Config
 }
 
-// StartLogin stages a candidate before any remote request. Starting another
+// startLogin stages a candidate before any remote request. Starting another
 // login invalidates ownership of the previous result before cancelling it.
-func (h *Host) StartLogin(open func(string) error, newDevice bool) error {
+func (h *Host) startLogin(open func(string) error, newDevice bool) error {
 	if open == nil {
 		return errors.New("remote: system browser is unavailable")
 	}
 	h.mu.Lock()
+	if h.logoutActive != nil {
+		h.mu.Unlock()
+		return ErrAccountLogoutInProgress
+	}
 	cfg := h.cfg.Snapshot()
 	if !cfg.Remote.Enabled || cfg.Remote.AuthMode != config.RemoteAuthNOSEC {
 		h.mu.Unlock()
@@ -147,6 +152,10 @@ func finishLogin(attempt *loginAttempt) {
 
 func (h *Host) CancelLogin() {
 	h.mu.Lock()
+	if h.logoutActive != nil {
+		h.mu.Unlock()
+		return
+	}
 	previous := h.cancelLoginLocked()
 	h.login = LoginStatus{State: "cancelled"}
 	h.mu.Unlock()
@@ -276,7 +285,15 @@ func (h *Host) runLogin(attempt *loginAttempt) {
 				h.mu.Unlock()
 				return
 			}
-			receipt := config.RemoteCredential{Token: attempt.candidate, Origin: attempt.origin, Authorized: true, HostID: polled.HostID, UserID: polled.User.ID, Username: polled.User.Username}
+			displayName := strings.TrimSpace(polled.User.DisplayName)
+			// An optional label must fit in the bounded private credential record.
+			if len(displayName) > 1024 {
+				displayName = ""
+			}
+			receipt := config.RemoteCredential{
+				Token: attempt.candidate, Origin: attempt.origin, Authorized: true,
+				HostID: polled.HostID, UserID: polled.User.ID, Username: polled.User.Username, DisplayName: displayName,
+			}
 			if err := h.cfg.ActivateRemoteTokenIfCurrent(attempt.pending, receipt); err != nil {
 				h.login = LoginStatus{State: "error", ErrorCode: "credential_unavailable"}
 				h.mu.Unlock()
@@ -289,7 +306,10 @@ func (h *Host) runLogin(attempt *loginAttempt) {
 			}
 			// Ownership is released before preparing pairlink. Reload/Stop therefore
 			// join the pending connection, never this login task waiting on itself.
-			h.login = LoginStatus{State: "authorized", HostID: polled.HostID, UserID: polled.User.ID, Username: polled.User.Username}
+			h.login = LoginStatus{
+				State: "authorized", HostID: receipt.HostID, UserID: receipt.UserID,
+				Username: receipt.Username, DisplayName: receipt.DisplayName,
+			}
 			h.loginActive = nil
 			connect, launch = h.prepareStartLocked(context.Background())
 			h.mu.Unlock()
@@ -331,7 +351,10 @@ func (h *Host) loginStatusLocked(cfg *config.Config) *LoginStatus {
 		credential, err := cfg.ReadRemoteCredential()
 		origin, originErr := config.RemoteOrigin(cfg.Remote.HubURL)
 		if err == nil && originErr == nil && credential.Origin == origin && credential.Authorized {
-			current = LoginStatus{State: "authorized", HostID: credential.HostID, UserID: credential.UserID, Username: credential.Username}
+			current = LoginStatus{
+				State: "authorized", HostID: credential.HostID, UserID: credential.UserID,
+				Username: credential.Username, DisplayName: credential.DisplayName,
+			}
 		}
 	}
 	if h.id != nil {

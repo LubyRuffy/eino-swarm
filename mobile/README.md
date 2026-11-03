@@ -9,11 +9,16 @@ reconnection. API access is independent: approved users with an enabled API
 grant and Key can use **Server** models in Chat without any PC. An approved
 account without API permission can still connect to its PCs.
 
+User center shows the NOSEC and PC display names provided by the Gateway.
+For older Gateways, it uses the readable part of a generated NOSEC username
+and the PC name or hostname when available. The PC name selected from the
+account list is also shown after connecting.
+
 If this phone already paired anonymously, signing both devices into the same
 account moves that saved PC to account management automatically on account
 refresh (also when the desktop comes online later). This requires the same
 complete Hub address and full PC public key in the owner's device list. It
-keeps one saved PC, its label, last thread and current selection; only the
+keeps one saved PC, its readable label, last thread and current selection; only the
 selected PC reconnects, closing the previous transport first. Other Hubs and
 other accounts are not merged. Older Gateways without the owner/public-key
 fields retain manual PC selection.

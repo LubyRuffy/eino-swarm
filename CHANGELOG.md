@@ -6,6 +6,35 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Show the verified NOSEC account name in the Desktop account menu, Phone
+  settings and Mobile user center. Mobile uses readable PC names for the
+  account picker and saved PC chips, with compatible labels for older gateways.
+  (`F-210`, `C-006`)
+
+- Changed PC **Settings → Phone** to show account status, explicit sign-in and
+  device connections first. The default service needs no manual Hub, token or
+  authentication-mode entry. A read-only configured-server summary preserves
+  existing self-hosted addresses; manual settings are under **Advanced /
+  self-hosted server**. Opening the page or advanced controls does not sign in,
+  save settings or change legacy/anonymous pairing. Default addresses remain
+  owned by Go configuration. Explicit account login drains pending settings
+  writes and adopts the server receipt without another save that could restore
+  legacy mode or interrupt authorization. (`F-210`, `C-006`)
+
+- Added a circular PC account entry at the bottom of the left rail, including
+  when the list is hidden. Its independent dialog retains browser confirmation
+  codes, device fingerprints and explicit new-device recovery; anonymous local
+  use, Settings and the app menu remain available. Explicit sign-in enables
+  NOSEC while preserving the configured Hub, and account/Phone status share one
+  reader and mutation fence outside the transcript. Avatars use local name
+  initials. (`F-210`, `C-006`)
+- Added current-device NOSEC sign-out with a visible signing-out state. Go
+  stops owned links, confirms Gateway revocation, then removes only the
+  acknowledged local credentials/proofs; unsupported, denied or failed remote
+  confirmation retains proof for retry. Replacement identities and unrelated
+  credentials, device keys, models and conversations remain protected. This
+  does not sign out the browser or every account device. (`F-210`, `C-006`)
+
 - Moved mobile Web-tool status into **User center → Web tools** to free space
   above conversations. The conversation header’s settings icon opens User
   center without leaving the conversation. (`F-211`)

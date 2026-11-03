@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import { Bot, CalendarClock, FolderKanban, MessageSquare, Settings } from "lucide-react"
 
 import { ChromeMenu } from "@/components/app/chrome-menu"
+import { DesktopAccountMenu } from "@/components/app/desktop-account-menu"
 import { Button } from "@/components/ui/button"
 import { closeClient } from "@/lib/client-open"
 import {
@@ -162,6 +163,7 @@ export function DestRail({
         >
           <Settings />
         </RailButton>
+        <DesktopAccountMenu />
       </div>
     </nav>
   )

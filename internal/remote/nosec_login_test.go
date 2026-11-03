@@ -78,7 +78,7 @@ func TestNOSECDeviceAuthorizationUsesRealWireAndConnectsOnlyAfterApproval(t *tes
 					t.Error("could not prepare authorized relay host")
 				}
 				data["host_id"] = strings.Repeat("a", 32)
-				data["user"] = map[string]string{"id": strings.Repeat("b", 32), "username": "approved-user"}
+				data["user"] = map[string]string{"id": strings.Repeat("b", 32), "username": "nosec_alvaro_0123456789abcdef", "display_name": "Álvaro García"}
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
 		default:
@@ -155,6 +155,25 @@ func TestNOSECDeviceAuthorizationUsesRealWireAndConnectsOnlyAfterApproval(t *tes
 	if err != nil || !saved.Authorized || saved.Token != start.Candidate || saved.Origin != origin || saved.HostID != strings.Repeat("a", 32) {
 		t.Fatal("authorized receipt was not activated")
 	}
+	if saved.Username != "nosec_alvaro_0123456789abcdef" {
+		t.Fatal("display name changed the stored account identifier")
+	}
+	checkDisplayName := func(value any) {
+		t.Helper()
+		raw, err := json.Marshal(value)
+		var identity struct {
+			DisplayName string `json:"display_name"`
+		}
+		if err != nil || json.Unmarshal(raw, &identity) != nil || identity.DisplayName != "Álvaro García" {
+			t.Fatal("the authorized account display name was lost")
+		}
+	}
+	checkDisplayName(saved)
+	checkDisplayName(host.Status().Login)
+	// A fresh Host must recover the label from the authorized local receipt.
+	restored := New(e, cfg, nil)
+	defer restored.Stop()
+	checkDisplayName(restored.Status().Login)
 	if registrations.Load() != 1 {
 		t.Fatal("authorization did not make exactly one actual registration")
 	}

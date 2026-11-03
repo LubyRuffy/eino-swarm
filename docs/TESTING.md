@@ -207,6 +207,8 @@ Retain the complete reply, fixture counters, XCTest attachments and cleanup.
 `mobile/e2e/gateway-account.spec.ts` uses bounded HTTP fixtures for default-origin
 sign-in/review isolation, no-PC server inference, same-name source selection,
 private-provider retention after logout and API-disabled account PC selection.
+The PC picker and saved chip cover Gateway display names and a legacy
+fingerprint-only PC record with a readable hostname fallback.
 The Chromium safe-area case overrides CSS `env(safe-area-inset-*)` through CDP,
 then checks signed-out and approved account-overlay title/Close bounds, center
 hit testing and actual dismissal. WebKit retains the account-flow regression;
@@ -234,7 +236,8 @@ The config tests cover legacy raw-token reads, origin-bound receipts, private
 permissions, atomic activation, pending-candidate reuse and the 128/129 capacity
 boundary. Remote tests use real HTTP Gateway-wire fixtures for pending/rejected
 accounts, approval plus explicit confirmation, PKCE exchange, actual pairlink
-registration/WebSocket connection, origin changes, cancellation/late receipts,
+registration/WebSocket connection, display-name readback after restarting with
+a saved credential, origin changes, cancellation/late receipts,
 redirect denial, bounded responses and explicit deleted-device recovery.
 `internal/remote/login_recovery_test.go` covers retained-candidate priority over
 an older active receipt, local refusal of a second uncertain candidate, 409 proof
@@ -242,27 +245,77 @@ reset before a retry, lost responses/restart, and cleanup concurrent with retry.
 `internal/config/remote_auth_test.go` covers scoped cleanup and proven-rejection
 persistence. Server
 contracts cover strict start bodies, missing system-browser capability and
-manual-token denial in NOSEC mode. These tests use isolated local state and
-require no real NOSEC account or production writes.
+manual-token denial in NOSEC mode. `internal/server/remote_account_test.go`
+also covers explicit sidebar `enable_account` intent, preserving unrelated
+configuration, strict logout bodies, live status during `signing_out`,
+concurrent-owner refusal (including an enable-account login that would otherwise
+Reload), retained safe identity on a failed logout, and cloud-authority removal. Config logout tests
+capture only the current origin/device token set and refuse to delete
+replacement proof. `internal/remote/logout_test.go` and
+`internal/remote/logout_wire_test.go` drive real HTTP and relay barriers for
+cancel/join, remote acknowledgement before local deletion, unsupported or
+denied logout, redirects/unsafe replies, partial success/lost responses, late
+receipts and Reload isolation. These tests use isolated local state and require
+no real NOSEC account or production writes.
 
 ```bash
 go test -race ./internal/config ./internal/remote ./internal/server -run 'TestRemote|TestNOSEC|TestDesktopLogin'
 cd frontend
 npm run lint
 npm test
-ZWAI_E2E_PORT=18879 ZWAI_E2E_DATA_DIR=.e2e-nosec-login npm run e2e -- remote-nosec.spec.ts remote.spec.ts --output=output/playwright/nosec-login
+ZWAI_E2E_PORT=18879 ZWAI_E2E_DATA_DIR=.e2e-nosec-login npm run e2e -- desktop-account.spec.ts remote-nosec.spec.ts remote.spec.ts --output=output/playwright/nosec-login
 npm run build
 ```
 
 The Phone component tests exercise explicit start/cancel, all review states,
 authorization without an online PC, new-device confirmation, saved-config
 matching, stale Hub/read/QR responses, failed-status recovery and unmount
-cleanup. Browser cases drive the real built page and isolated local web server;
-controlled local status/login responses exercise the UI, while saved-configuration
+cleanup. `remote-status-owner.test.ts` covers one shared poll/mutation owner,
+unchanged-status notification suppression, first-configuration/read fences,
+old-configuration receipts from a new read, subsequent external changes,
+late results after changes/unmount, unknown-status recovery and failed logout.
+`settings-remote-defaults.test.tsx` verifies the initial account entry without a
+Hub/token/mode form, the server address supplied by Go configuration, explicit
+advanced disclosure, preservation/editing of an existing self-hosted address,
+anonymous legacy QR use, search visibility, and keeping the advanced editor open
+across saved Hub/mode changes without automatic login or saves.
+`settings-dialog.test.tsx` and `settings-persist.test.ts` cover draining an older
+write before account login, the short edit/leave guard, remote-only adoption
+without a second PUT, failure read-back, and a fresh load after an older account
+operation. These boundaries prevent a stale legacy draft from undoing NOSEC
+enablement or causing another Reload while authorization starts.
+Recovery also drains pending and in-flight edits from other settings pages
+before adopting the authoritative remote state; a failed independent save must
+not block the read or discard its draft, and later saves must omit remote.
+`frontend/e2e/phone-defaults.spec.ts` covers the primary account path without a
+configuration form, explicit login intent, and editing/saving/reopening an
+existing legacy self-hosted address without starting account authorization. Its
+pending-draft case asserts settings-save-before-login order and that a later
+remote edit retains the enabled NOSEC account and custom server.
+`settings-dialog.test.tsx` also checks the pending-write/login barrier,
+remote-only adoption, reopening across a late reply, and explicit recovery when
+both login acknowledgement and configuration read-back fail.
+`desktop-account-menu.test.tsx` covers the anonymous entry, authorized initials,
+review and offline states, explicit sign-in, public details/new-device confirmation,
+signing-out admission, safe logout errors and keyboard focus. The Avatar/Phone
+integration uses the real shared hook. `desktop-account.spec.ts` checks the
+collapsed rail, independent dialog, local conversation preservation, shared
+Phone status and logout failure/success. Browser cases drive the real built page
+and isolated local web server; controlled local status/login responses exercise the UI, while saved-configuration
 checks use the actual Go status route. Browserless capability refusal is covered
 by component and server contract tests. They do not prove a native system-browser launch,
 real NOSEC service allowlisting, production deployment, or physical-phone
 pairing. Those require candidate-specific integration/native acceptance.
+
+The jsdom setup intercepts only the literal `Element.matches(":modal")` and
+`Element.matches(":fullscreen")` probes, returning false because jsdom has no
+native top layer. With locked nwsapi 2.2.27 these probes otherwise delegate back
+to jsdom's selector matcher recursively, stalling both existing and new Radix
+menu fixtures. `frontend/src/test/dom-top-layer.test.ts` bounds and detects that
+re-entry, while preserving ordinary class/compound/disabled/dialog-attribute
+matching and invalid-selector errors. This is test-environment adaptation;
+browser/native layout, focus and top-layer behavior still require their real
+acceptance paths. Product timeouts and dependency versions are unchanged.
 
 ## Mermaid Markdown (`F-120`, `F-140`, `C-005`, Issue #133)
 
@@ -6280,7 +6333,8 @@ Several things are tested here, some as pure logic and some in jsdom:
   does not offer New conversation (that button is on Conversations) and does not show an unread count on the rail; there is no title-bar chrome row and no hide
   control — those live on the window title bar. Settings and the app menu
   (conversation width, developer view, theme, language, which other shells are open, build version)
-  are icon buttons at the bottom of that rail, and they stay when the list column hides. Projects and Conversations are separate rail pages; each section still uses
+  are icon buttons near the bottom of that rail, above the circular Account
+  entry; all stay when the list column hides. Projects and Conversations are separate rail pages; each section still uses
   `sidebar-section-label`. Wrapping the project
   section in a second `px-2` is rejected. The list starts at
   360px, the arrow keys change that width (CSS variable, not a React `width`

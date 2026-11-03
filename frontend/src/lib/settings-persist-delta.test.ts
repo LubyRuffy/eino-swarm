@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { SettingsPersist, persistPayload } from "./settings-persist"
 import { normalizeUISettings } from "./appearance"
-import type { Settings } from "./types"
+import { defaultRemoteSettings, type Settings } from "./types"
 
 const base: Settings = {
   server: { addr: "127.0.0.1:1", open_browser: false },
@@ -125,4 +125,24 @@ describe("desktop saves preserve separately changed PC timeouts", () => {
     expect(write.mock.calls[1][0]).toEqual({ ui: expect.objectContaining({ locale: "zh" }) })
   })
 
+})
+
+
+describe("server-owned account settings", () => {
+  it("adopts only confirmed remote state without writing it again or accepting unrelated draft fields", async () => {
+    const write = vi.fn().mockResolvedValue(undefined)
+    const loaded = copy(); loaded.remote = defaultRemoteSettings({ hub_url: "https://gateway.example", enabled: false })
+    const persist = new SettingsPersist(write, 400, loaded)
+    const remote = { ...loaded.remote, enabled: true, auth_mode: "nosec" as const }
+    persist.acceptRemote(remote)
+    const draft = { ...loaded, remote, log: { level: "debug" } }
+    persist.schedule(draft); await persist.flush()
+    expect(write).toHaveBeenCalledOnce()
+    expect(write.mock.calls[0][0]).toEqual({ log: { level: "debug" } })
+    const changed = structuredClone(draft); changed.models.providers[0].label = "My endpoint"
+    persist.schedule(changed); await persist.flush()
+    expect(write.mock.calls[1][0]).toHaveProperty("models")
+    expect(write.mock.calls[1][0]).not.toHaveProperty("remote")
+    persist.dispose()
+  })
 })

@@ -63,6 +63,46 @@ describe("gateway account shell", () => {
     expect(mocks.discover).not.toHaveBeenCalled()
   })
 
+  it("uses verified account and PC names without exposing legacy identifiers", () => {
+    const username = "nosec_Old_Name_0123456789abcdef"
+    const fingerprint = "8cb10e221045cd61"
+    const alias = "7db10e221045cd62"
+    mocks.account = {
+      ...mocks.account,
+      status: "authorized",
+      session: { ...session, user: { ...session.user, username, display_name: "  林小明  " } },
+      bootstrap: { ...bootstrap, models: { ...bootstrap.models, api_access_enabled: false } },
+      hosts: [
+        { id: "pc-online", name: "open-abcdef0123456789", hostname: "desk-host", display_name: "  Office Mac  ", version: "1", online: true, enabled: true },
+        { id: "pc-legacy", name: "open-abcdef0123456788", hostname: "  Home Mac  ", version: "1", online: false, enabled: true },
+        { id: "32c7e49348b6077123aa38a120177553", name: "open-abcdef0123456787", hostname: "", version: "1", online: false, enabled: true },
+        { id: "pc-fingerprint", name: fingerprint, hostname: "", host_fp: fingerprint, version: "1", online: false, enabled: true },
+        { id: "pc-alias", name: alias, hostname: "", host_fp: "9cb10e221045cd63", version: "1", online: false, enabled: true },
+      ],
+    }
+    render(<App />)
+    expect(screen.getByText("林小明", { exact: true })).toBeVisible()
+    expect(screen.getByRole("button", { name: "Connect Office Mac" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Connect Home Mac" })).toBeDisabled()
+    expect(screen.getAllByRole("button", { name: "Connect Unnamed PC" })).toHaveLength(2)
+    expect(screen.getByRole("button", { name: "Connect " + alias })).toBeDisabled()
+    expect(document.body.textContent).not.toContain(username)
+    expect(document.body.textContent).not.toContain("open-abcdef012345678")
+    expect(document.body.textContent).not.toContain("32c7e49348b6077123aa38a120177553")
+    expect(document.body.textContent).not.toContain(fingerprint)
+  })
+
+  it.each([
+    ["nosec_旧用户名_0123456789abcdef", "旧用户名"],
+    ["nosec___0123456789abcdef", "NOSEC account"],
+    ["nosec_user_123", "nosec_user_123"],
+  ])("formats only known synthetic legacy usernames (%s)", (username, expected) => {
+    mocks.account = { ...mocks.account, status: "account_pending", session: { ...session, user: { ...session.user, username } } }
+    render(<App />)
+    expect(screen.getByText(expected, { exact: true })).toBeVisible()
+    if (username !== expected) expect(screen.queryByText(username, { exact: true })).not.toBeInTheDocument()
+  })
+
   it("retains own server history for an API-disabled approved account and hides another account's history", async () => {
     const own = newThread({ providerId: "gateway:owner", model: "shared-model", reasoning: "" }); own.title = "Own history"
     const other = newThread({ providerId: "gateway:other", model: "shared-model", reasoning: "" }); other.title = "Other account history"

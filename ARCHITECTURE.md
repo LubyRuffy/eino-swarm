@@ -535,8 +535,29 @@ pairlink registration and WebSocket lifecycle starts. Authorization is distinct
 from `online`; NOSEC QR creation requires both. Device flows last at most ten
 minutes, with five-second polling and bounded retries; server rate-limit delays
 are respected. Cancel, Stop and configuration Reload cancel and join owned work,
-so late replies cannot activate a credential for a changed origin. A local
-settings save and its status echo precede a new UI login action.
+so late replies cannot activate a credential for a changed origin. Phone drafts
+still require a matching saved enabled/Hub/mode status echo. Both the rail and
+the Phone page's explicit account sign-in send `enable_account:true` to the same
+local route: when needed, Go atomically saves only `remote.enabled=true` and
+`remote.auth_mode=nosec`, preserves the configured Hub and other fields, reloads
+the host, then starts the existing flow. The Phone page always presents account
+status/sign-in and device connections first; its configured-server summary is
+read-only. Manual Hub, authentication and pairing controls sit in the explicit
+Advanced / self-hosted server section, which also opens for Settings search.
+Expanding it survives authority-key remounts without changing the connection.
+Go supplies `DefaultGatewayOrigin` when the configured Hub is blank; the renderer
+does not hardcode an official address or infer account ownership from one.
+Merely opening Phone, the account menu or advanced controls changes neither
+configuration nor authorization, and existing legacy QR connections remain usable.
+
+`SettingsDialog` serializes its explicit Phone login with `SettingsPersist`:
+it drains older debounced writes before the login POST and temporarily blocks
+new edits and leaving the sheet. It adopts the returned enabled/Hub/mode into
+the current remote draft and only the remote persistence baseline, without a
+second PUT that could restore legacy mode or cancel the new flow. If enabling
+committed but start failed or its response was lost, it attempts a settings
+read-back for remote state only. Reopening waits for the older account operation
+and writes before a fresh load; open epochs reject stale-scope adoption.
 
 `internal/config/remote_auth.go` keeps credentials outside YAML and SQLite.
 Legacy raw tokens remain readable. After a successful legacy connection the
@@ -560,9 +581,41 @@ and retire the rejected same-scope record. Success activates and cleans up under
 the Host lock with directory sync, preserving other origins/public keys and
 refusing success on storage failure. No path restores a revoked digest or claims
 another account's active device.
-`frontend/src/lib/use-remote-status.ts` watches the local safe status, cancels
-reads on exit and rejects replies from older mutations or Hub configurations.
-It does not implement a second device-code exchange.
+`frontend/src/components/app/desktop-account-menu.tsx` adds a circular account
+entry below the existing rail controls; hiding the list leaves it available.
+Its independent dialog reuses the public login details and confirmation UI.
+The avatar is a local name initial only for an authorized account; account
+authorization and host connectivity remain distinct, and anonymous local work
+is never gated on sign-in. `frontend/src/lib/use-remote-status.ts` adapts one
+shared `remote-status-owner.ts` for the rail and Phone page, outside App's
+transcript state. It uses one visible-page status watch and mutation fence,
+ignores old reads/results across mutations, configuration changes and the last
+unmount, and does not notify subscribers for unchanged status. The Phone draft
+still requires an exact enabled/Hub/mode status echo. An unreadable status is
+unknown until recovery, not a successful sign-out. Go remains the only
+device-code exchange owner. A declared configuration must first be observed in
+a matching status receipt; an old-origin echo cannot repopulate the account.
+After confirmation, polling can discover later external configuration changes.
+
+`internal/remote/logout.go` owns explicit NOSEC device logout. It publishes
+`signing_out`, reserves a non-blocking account operation across enable/save/
+reload/start and logout, cancels and joins the login flow,
+and stops its relay and RPC links before remote confirmation outside the Host
+lock. The network phase shares a fifteen-second budget. Only captured current
+origin account credentials and this origin/public key's retained candidates go
+to the configured Gateway's `POST /admin/api/v1/auth/desktop/logout`, using an
+opaque device Bearer token rather than a browser cookie or Gateway API Key.
+Each response must confirm `data.logged_out=true`; redirects, unsafe responses
+and failed requests retain local proof for retry. Gateway `404/405` yields
+`logout_unsupported`, and `401/403` yields `logout_denied`. A complete set of
+acknowledgements permits scoped local removal only if those captured tokens and
+the current configuration still match; a late acknowledgement cannot delete a
+replacement. Stop/Reload cancel and join logout before replacement work.
+An unchanged complete account receipt can retain its safe labels while
+signing out or reporting failure; this never projects `authorized` or a public
+confirmation code. Success becomes `signed_out`, preserves unrelated credentials, device identity,
+models and conversations, and removes this PC's cloud-tool authority. This is
+device logout; it does not invalidate every account device or browser session.
 
 `host_links.go` owns the connected lifecycle that pairlink's inbox does not
 close. Each current connection group admits one handler per device, cancels its

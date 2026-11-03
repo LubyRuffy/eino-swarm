@@ -35,6 +35,9 @@ func (h *Host) StartBackground() {
 }
 
 func (h *Host) prepareStartLocked(parent context.Context) (*hostStart, bool) {
+	if h.logoutActive != nil {
+		return nil, false
+	}
 	if h.conn != nil {
 		return nil, false
 	}

@@ -1,5 +1,7 @@
 export const accountEn = {
   "account.title": "User center",
+  "account.unnamedUser": "NOSEC account",
+  "account.unnamedPC": "Unnamed PC",
   "account.login": "Sign in with NOSEC",
   "account.hint": "Sign in to use server models and connect to your PCs. No server address or Key is required.",
   "account.anonymous": "Use without an account",
@@ -70,6 +72,8 @@ export const accountEn = {
 
 export const accountZh: Record<keyof typeof accountEn, string> = {
   "account.title": "用户中心",
+  "account.unnamedUser": "NOSEC 账号",
+  "account.unnamedPC": "未命名电脑",
   "account.login": "使用 NOSEC 登录",
   "account.hint": "登录即可使用服务器模型、连接自己的电脑，无需填写服务器地址或 Key。",
   "account.anonymous": "暂不登录，匿名使用",

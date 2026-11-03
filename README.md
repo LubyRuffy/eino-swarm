@@ -720,15 +720,56 @@ account access. It does not itself mean waiting for approval. Refusal headers
 release the unread body immediately. A personal model endpoint's 401 does not
 sign out the Gateway account.
 
-For anonymous use, retain the QR flow:
+On the PC, the circular **Account** button at the bottom of the left rail opens
+the account menu, even when the conversation list is hidden. Choose **Sign in
+with NOSEC** to open its own account dialog and the system browser. Opening the
+menu does not start sign-in or change settings. Explicit sign-in enables NOSEC
+and phone connections while preserving your configured Hub and other settings;
+the default Gateway address comes from configuration. Compare the public code
+and PC fingerprint in the dialog before authorizing the device. The existing
+Settings button and **Settings → Phone** controls remain available.
 
-1. zwai **Settings → Phone**: turn pairing on, keep the default Gateway
-   address (or enter your independent hub) and choose **Connection sign-in**. **Independent hub (legacy)**
-   is the compatible default: this PC mints its hidden Host Token locally;
-   it is separate from a Gateway API Key. For a managed Gateway, select
-   **NOSEC account** and wait for the saved settings to take effect. Click
-   **Sign in with NOSEC** to open the system browser. Compare the confirmation
-   code and PC fingerprint, sign in, then explicitly authorize this PC there.
+**Settings → Phone** also shows account status and **Sign in with NOSEC**
+directly. For the default service, no Hub address, Host Token or authentication
+mode needs to be entered first. **Configured server** shows the address supplied
+by this PC's Go configuration, including an existing self-hosted address; the
+renderer does not compile in an official hostname. Opening Phone or expanding
+**Advanced / self-hosted server** does not start sign-in or change a saved
+connection. That advanced section contains the manual Hub, authentication and
+pairing controls for an independent server or anonymous QR use. If a login result
+and the configuration read-back are both unavailable, Phone offers **Reload
+account settings** before allowing another login or connection edit.
+
+An authorized account uses its name's initial as a local avatar; no avatar image
+is fetched. **Signed in · PC offline** distinguishes account authorization from
+the actual hub connection. Waiting for browser authorization, administrator
+review, rejection and unreadable status have separate messages. Local
+conversations remain usable without signing in.
+
+**Account → Sign out** stops this PC's remote connections and confirms device
+revocation with its configured Gateway before removing the corresponding local
+private credential and retained sign-in proofs. During **Signing out of this
+PC…**, another login or logout cannot start. A failed confirmation retains
+private credentials for retry; an older Gateway without device logout must be
+upgraded first. The remote connection has already stopped when a sign-out
+attempt fails. Successful sign-out preserves local conversations, model
+configuration, device identity and unrelated Hub credentials; it does not sign
+out every device or the browser account. **Cancel sign-in** only stops the
+current flow and keeps recovery proof, so it is a different action. To sign in
+again, explicitly choose **Sign in with NOSEC**.
+
+For anonymous QR use and connection settings, retain the existing flow:
+
+1. For anonymous pairing, open zwai **Settings → Phone → Advanced / self-hosted
+   server**, turn pairing on and keep **Connection sign-in → Independent hub
+   (legacy)**. Preserve the configured Hub or enter your own server's address.
+   Legacy remains the compatible configuration default: this PC mints its hidden
+   Host Token locally, separate from a Gateway API Key. Existing legacy
+   connections keep their mode until you explicitly change it or choose account
+   sign-in. For a managed Gateway, use the main Phone page's **Sign in with
+   NOSEC** button; no manual address, token or mode selection is required. Compare
+   the confirmation code and PC fingerprint in the browser flow, sign in, then
+   explicitly authorize this PC there.
    A new account waits for administrator approval; rejected or pending accounts
    cannot connect a PC. Approval alone does not authorize a device: return to
    the browser confirmation page and confirm it. The Phone page distinguishes

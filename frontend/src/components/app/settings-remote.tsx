@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react"
+import { ChevronDown } from "lucide-react"
+import { useEffect, useId, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,6 +9,7 @@ import { api } from "@/lib/api"
 import type {
   RemoteBinding,
   RemoteOffer,
+  RemoteStatus,
   Settings,
 } from "@/lib/types"
 import {
@@ -43,20 +45,28 @@ type RemoteTabProps = {
   settings: Settings
   onChange: (s: Settings) => void
   query?: string
+  /** The owning sheet flushes old drafts and adopts the saved account receipt. */
+  onAccountLogin?: (newDevice: boolean) => Promise<RemoteStatus>
 }
 
 export function RemoteTab(props: RemoteTabProps) {
   const remote = defaultRemoteSettings(props.settings.remote)
+  const [advanced, setAdvanced] = useState(false)
   const authority = JSON.stringify([remote.enabled, remote.hub_url, remote.auth_mode])
-  return <RemoteTabBody key={authority} {...props} />
+  return <RemoteTabBody key={authority} {...props} advanced={advanced} onAdvancedChange={setAdvanced} />
 }
 
 function RemoteTabBody({
   settings,
   onChange,
   query = "",
-}: RemoteTabProps) {
+  onAccountLogin,
+  advanced,
+  onAdvancedChange,
+}: RemoteTabProps & { advanced: boolean; onAdvancedChange: (value: boolean) => void }) {
   const t = useT()
+  const advancedId = useId()
+  const expanded = advanced || !!query.trim()
   const remote = defaultRemoteSettings(settings.remote)
   const update = (patch: Partial<typeof remote>) =>
     onChange({ ...settings, remote: { ...remote, ...patch } })
@@ -146,7 +156,7 @@ function RemoteTabBody({
 
   const login = (newDevice: boolean) => {
     clearFail()
-    void connection.perform(() => api.startRemoteLogin(newDevice)).catch(fail)
+    void connection.perform(() => onAccountLogin ? onAccountLogin(newDevice) : api.startRemoteLogin(newDevice)).catch(fail)
   }
   const cancelLogin = () => {
     clearFail()
@@ -168,102 +178,24 @@ function RemoteTabBody({
   return (
     <SettingsPage
       title={t("settings.remote.title")}
-      description={t(nosec ? "settings.remote.accountDesc" : "settings.remote.desc")}
+      description={t("settings.remote.accountDesc")}
     >
-      <SettingsSection title={t("settings.remote.hub")}>
-        <Field
-          query={query}
-          label={t("settings.remote.enabled")}
-          hint={t("settings.remote.enabledHint")}
-        >
-          <Switch
-            checked={remote.enabled}
-            onCheckedChange={(v) => update({ enabled: v })}
-          />
-        </Field>
-        <SettingsChoice
-          query={query}
-          label={t("settings.remote.authMode")}
-          hint={t("settings.remote.authModeHint")}
-          value={remote.auth_mode ?? "legacy"}
-          onValueChange={(value) => update({ auth_mode: value as "legacy" | "nosec" })}
-        >
-          <SelectItem value="legacy">{t("settings.remote.authLegacy")}</SelectItem>
-          <SelectItem value="nosec">{t("settings.remote.authNOSEC")}</SelectItem>
-        </SettingsChoice>
-        <Field
-          query={query}
-          label={t("settings.remote.hubUrl")}
-          hint={t("settings.remote.hubUrlHint")}
-          wide
-        >
-          <Input
-            value={remote.hub_url}
-            onChange={(e) => update({ hub_url: e.target.value })}
-            autoComplete="off"
-            spellCheck={false}
-            placeholder="https://"
-          />
-        </Field>
-        <Field
-          query={query}
-          label={t("settings.remote.displayName")}
-          hint={t("settings.remote.displayNameHint")}
-          wide
-        >
-          <Input
-            value={remote.display_name}
-            onChange={(e) => update({ display_name: e.target.value })}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </Field>
-        <Field
-          query={query}
-          label={t("settings.remote.threadLimit")}
-          hint={t("settings.remote.threadLimitHint")}
-        >
-          <Input
-            type="number"
-            min={1}
-            value={remote.thread_limit}
-            onChange={(e) => update({ thread_limit: Number(e.target.value) })}
-          />
-        </Field>
-        <Field
-          query={query}
-          label={t("settings.remote.eventChars")}
-          hint={t("settings.remote.eventCharsHint")}
-        >
-          <Input
-            type="number"
-            min={1}
-            value={remote.event_chars}
-            onChange={(e) => update({ event_chars: Number(e.target.value) })}
-          />
-        </Field>
-        <Field
-          query={query}
-          label={t("settings.remote.watchEvents")}
-          hint={t("settings.remote.watchEventsHint")}
-        >
-          <Input
-            type="number"
-            min={1}
-            value={remote.watch_events}
-            onChange={(e) => update({ watch_events: Number(e.target.value) })}
-          />
-        </Field>
-      </SettingsSection>
-
-      {nosec ? <RemoteLoginSection
+      <p className={settingsHintClass}>{t("settings.remote.accountSetup")}</p>
+      <RemoteLoginSection
+        accountEntry
         enabled={remote.enabled}
         status={status}
         unavailable={connection.unavailable}
         busy={connection.busy}
         onStart={login}
         onCancel={cancelLogin}
-      /> : null}
+      />
+
+      <SettingsSection title={t("settings.remote.currentServer")}>
+        <p className={cn(settingsLabelClass, "break-all px-4 py-3")} data-settings-row="">
+          {remote.hub_url || t("settings.remote.serverDefault")}
+        </p>
+      </SettingsSection>
 
       <SettingsSection
         title={t("settings.remote.qr")}
@@ -376,6 +308,112 @@ function RemoteTabBody({
           />
         </Field>
       </SettingsSection>
+      <div className="flex flex-col gap-3">
+        <div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-testid="remote-advanced-toggle"
+            aria-expanded={expanded}
+            aria-controls={advancedId}
+            onClick={() => onAdvancedChange(!advanced)}
+          >
+            {t("settings.remote.advanced")}
+            <ChevronDown className={cn("size-3.5 transition-transform", expanded && "rotate-180")} />
+          </Button>
+          <p className={settingsHintClass}>{t("settings.remote.advancedHint")}</p>
+        </div>
+        <div id={advancedId} hidden={!expanded}>
+          {expanded ? (
+            <SettingsSection title={t("settings.remote.hub")}>
+              <Field
+                query={query}
+                label={t("settings.remote.enabled")}
+                hint={t("settings.remote.enabledHint")}
+              >
+                <Switch
+                  checked={remote.enabled}
+                  onCheckedChange={(v) => update({ enabled: v })}
+                />
+              </Field>
+              <SettingsChoice
+                query={query}
+                label={t("settings.remote.authMode")}
+                hint={t("settings.remote.authModeHint")}
+                value={remote.auth_mode ?? "legacy"}
+                onValueChange={(value) => update({ auth_mode: value as "legacy" | "nosec" })}
+              >
+                <SelectItem value="legacy">{t("settings.remote.authLegacy")}</SelectItem>
+                <SelectItem value="nosec">{t("settings.remote.authNOSEC")}</SelectItem>
+              </SettingsChoice>
+              <Field
+                query={query}
+                label={t("settings.remote.hubUrl")}
+                hint={t("settings.remote.hubUrlHint")}
+                wide
+              >
+                <Input
+                  value={remote.hub_url}
+                  onChange={(e) => update({ hub_url: e.target.value })}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="https://"
+                />
+              </Field>
+              <Field
+                query={query}
+                label={t("settings.remote.displayName")}
+                hint={t("settings.remote.displayNameHint")}
+                wide
+              >
+                <Input
+                  value={remote.display_name}
+                  onChange={(e) => update({ display_name: e.target.value })}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </Field>
+              <Field
+                query={query}
+                label={t("settings.remote.threadLimit")}
+                hint={t("settings.remote.threadLimitHint")}
+              >
+                <Input
+                  type="number"
+                  min={1}
+                  value={remote.thread_limit}
+                  onChange={(e) => update({ thread_limit: Number(e.target.value) })}
+                />
+              </Field>
+              <Field
+                query={query}
+                label={t("settings.remote.eventChars")}
+                hint={t("settings.remote.eventCharsHint")}
+              >
+                <Input
+                  type="number"
+                  min={1}
+                  value={remote.event_chars}
+                  onChange={(e) => update({ event_chars: Number(e.target.value) })}
+                />
+              </Field>
+              <Field
+                query={query}
+                label={t("settings.remote.watchEvents")}
+                hint={t("settings.remote.watchEventsHint")}
+              >
+                <Input
+                  type="number"
+                  min={1}
+                  value={remote.watch_events}
+                  onChange={(e) => update({ watch_events: Number(e.target.value) })}
+                />
+              </Field>
+            </SettingsSection>
+          ) : null}
+        </div>
+      </div>
     </SettingsPage>
   )
 }

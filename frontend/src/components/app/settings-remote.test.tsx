@@ -98,9 +98,7 @@ describe("RemoteTab", () => {
   it("paints a scannable QR from the pairing offer", async () => {
     const onChange = vi.fn()
     render(<RemoteTab settings={base} onChange={onChange} />)
-    await waitFor(() =>
-      expect(screen.getByLabelText("Hub URL")).toBeInTheDocument(),
-    )
+    expect(screen.getByText(base.remote!.hub_url)).toBeVisible()
     fireEvent.click(screen.getByRole("button", { name: "Show pairing QR" }))
     await waitFor(() => expect(screen.getByTestId("remote-qr")).toBeInTheDocument())
     const img = screen.getByTestId("remote-qr")
@@ -111,11 +109,10 @@ describe("RemoteTab", () => {
   })
 
   it("does not show a host token field", async () => {
-    render(<RemoteTab settings={base} onChange={vi.fn()} />)
-    await waitFor(() =>
-      expect(screen.getByLabelText("Hub URL")).toBeInTheDocument(),
-    )
+    await act(async () => { render(<RemoteTab settings={base} onChange={vi.fn()} />) })
+    expect(screen.getByText(base.remote!.hub_url)).toBeVisible()
     expect(screen.queryByLabelText("Host Token")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Advanced / self-hosted server" }))
     expect(screen.getByLabelText("Event text on the phone")).toHaveValue(4000)
     expect(screen.getByLabelText("Events on the phone")).toHaveValue(80)
     expect(screen.getByLabelText("Keep this computer awake")).toBeChecked()
@@ -125,6 +122,8 @@ describe("RemoteTab", () => {
   it("describes account PC selection without making a QR or manual Hub setup a prerequisite", async () => {
     await act(async () => { render(<RemoteTab settings={{ ...base, remote: { ...base.remote!, auth_mode: "nosec" } }} onChange={vi.fn()} />) })
     expect(screen.getByText("Sign in with the same account on your phone, then select this PC without scanning. The hub forwards ciphertext; PC conversations stay here.")).toBeVisible()
+    expect(screen.queryByLabelText("Hub URL")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Advanced / self-hosted server" }))
     expect(screen.getByText("The official Gateway is set by default. Change this address only for another server.")).toBeVisible()
     expect(screen.queryByText("Scan the QR from the phone app. The hub only forwards ciphertext; conversations stay on this PC.")).not.toBeInTheDocument()
   })
@@ -190,6 +189,7 @@ describe("RemoteTab", () => {
   it("renames this computer without inventing a sample host label", async () => {
     const onChange = vi.fn()
     render(<RemoteTab settings={base} onChange={onChange} />)
+    fireEvent.click(screen.getByRole("button", { name: "Advanced / self-hosted server" }))
     await waitFor(() =>
       expect(screen.getByLabelText("This computer's name")).toBeInTheDocument(),
     )
@@ -220,9 +220,7 @@ describe("RemoteTab", () => {
         <RemoteTab settings={base} onChange={vi.fn()} />
       </>,
     )
-    await waitFor(() =>
-      expect(screen.getByLabelText("Hub URL")).toBeInTheDocument(),
-    )
+    expect(screen.getByText(base.remote!.hub_url)).toBeVisible()
     fireEvent.click(screen.getByRole("button", { name: "Show pairing QR" }))
     const alert = await screen.findByRole("alert")
     expect(alert).toHaveTextContent("Couldn't set up the phone")

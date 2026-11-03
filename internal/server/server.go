@@ -186,6 +186,7 @@ func New(opts Options) (*Server, error) {
 
 		api.GET("/remote/status", s.getRemoteStatus)
 		api.POST("/remote/login", s.postRemoteLogin)
+		api.POST("/remote/logout", s.postRemoteLogout)
 		api.DELETE("/remote/login", s.deleteRemoteLogin)
 		api.PUT("/remote/token", s.putRemoteToken)
 		api.POST("/remote/offer", s.postRemoteOffer)

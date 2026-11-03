@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { RemoteTab } from "./settings-remote"
+import { RemoteLoginSection } from "./settings-remote-login"
+import { DesktopAccountMenu } from "./desktop-account-menu"
 import { defaultRemoteSettings, type RemoteStatus, type Settings } from "@/lib/types"
 
 vi.mock("@/lib/api", () => ({
@@ -37,6 +39,51 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers() })
 
 describe("NOSEC phone connection", () => {
+  it("hides cached account and authorization details while status is unavailable", () => {
+    render(<RemoteLoginSection accountEntry enabled status={{ ...pending,
+      login: { ...pending.login!, username: "previous-account" } }} unavailable busy={false}
+      onStart={vi.fn()} onCancel={vi.fn()} />)
+    expect(screen.getByText("Cannot read connection status. Pairing is paused until it recovers.")).toBeVisible()
+    expect(screen.queryByText(/previous-account/)).not.toBeInTheDocument()
+    expect(screen.queryByText("ABCD-1234-EF56-7890")).not.toBeInTheDocument()
+    expect(screen.queryByText("1122334455667788")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Cancel sign-in" })).toBeDisabled()
+  })
+
+  it("updates the rail avatar from Phone login through the same status owner", async () => {
+    render(<><DesktopAccountMenu /><RemoteTab settings={settings} onChange={vi.fn()} /></>)
+    const login = await screen.findByRole("button", { name: "Sign in with NOSEC" })
+    await waitFor(() => expect(login).toBeEnabled())
+    const avatar = screen.getByRole("button", { name: "Account" })
+    expect(avatar).toHaveAttribute("title", "Account: Local use · Not signed in")
+    expect(api.remoteStatus).toHaveBeenCalledTimes(1)
+    fireEvent.click(login)
+    await waitFor(() => expect(avatar).toHaveAttribute("title", "Account: Awaiting browser authorization"))
+    expect(api.startRemoteLogin).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not start another authorization from an already authorized account dialog", () => {
+    render(<RemoteLoginSection accountEntry enabled status={{ ...signedOut, has_token: true,
+      login: { state: "authorized", username: "alice" } }} unavailable={false} busy={false}
+      onStart={vi.fn()} onCancel={vi.fn()} />)
+    expect(screen.queryByRole("button", { name: "Sign in with NOSEC" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Reconnect as a new device" })).toBeInTheDocument()
+  })
+
+  it("shares status admission and mutation ownership between mounted account surfaces", async () => {
+    const login = deferred<RemoteStatus>()
+    vi.mocked(api.startRemoteLogin).mockReturnValue(login.promise)
+    render(<><RemoteTab settings={settings} onChange={vi.fn()} /><RemoteTab settings={settings} onChange={vi.fn()} /></>)
+    const buttons = await screen.findAllByRole("button", { name: "Sign in with NOSEC" })
+    await waitFor(() => expect(buttons[0]).toBeEnabled())
+    expect(api.remoteStatus).toHaveBeenCalledTimes(1)
+    fireEvent.click(buttons[0])
+    fireEvent.click(buttons[1])
+    expect(api.startRemoteLogin).toHaveBeenCalledTimes(1)
+    await act(async () => { login.resolve(pending); await login.promise })
+    expect(await screen.findAllByText("ABCD-1234-EF56-7890")).toHaveLength(2)
+  })
+
   it("requires an explicit login and keeps QR unavailable before a real online connection", async () => {
     render(<RemoteTab settings={settings} onChange={vi.fn()} />)
     const login = await screen.findByRole("button", { name: "Sign in with NOSEC" })

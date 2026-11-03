@@ -626,16 +626,28 @@ frames, not WebSocket control pings). A drop is a reconnect banner on the
 inbox or transcript; Retry uses the saved ticket and does not unlink.
 
 In NOSEC mode, optional `login` contains `state` and public metadata only:
-`user_code`, `host_fp`, `host_id`, `user_id`, `username`, `error_code`.
-`state` is `signed_out`, `starting`, `authorization_pending`, `account_pending`,
-`account_rejected`, `authorized`, `access_denied`, `expired`, `error` or
+`user_code`, `host_fp`, `host_id`, `user_id`, `username`, `display_name`, `error_code`.
+The optional `login.display_name` is saved with the authorized device receipt.
+Desktop shows this account name in its menu and Phone settings. A receipt from
+an older Gateway uses the readable portion of a generated NOSEC username until
+another verified login provides a name. Ordinary usernames remain readable.
+`state` is `signed_out`, `signing_out`, `starting`, `authorization_pending`,
+`account_pending`, `account_rejected`, `authorized`, `access_denied`, `expired`, `error` or
 `cancelled`. `authorized` alone does not prove the WebSocket is online.
 `login_available` means this local server can open the system browser; a web
-server without that capability cannot begin login. The Phone page polls this
-local endpoint once a second, pauses while hidden and cancels on exit. It starts
-login only after enabled/Hub/mode match the saved status. Network read failure
-pauses QR creation until status recovers; old configuration/mutation replies
-cannot update the new view.
+server without that capability cannot begin login. The rail account entry and
+Phone page share one local status watch, once a second while visible, and one
+mutation fence. The last subscriber leaving cancels reads. Phone actions require
+enabled/Hub/mode to match the saved status. Network read failure reports unknown
+account status and pauses QR creation until recovery; old configuration/mutation
+replies cannot update the new view. `signing_out` means device logout is in
+progress; login and another logout are unavailable until it settles, including
+explicit sidebar enable/save/reload requests. Logout
+errors use `login.state=error`, with `logout_unsupported` or `logout_denied` in
+`login.error_code` when applicable. A retained, unchanged account receipt may
+supply its safe name/IDs during sign-out or an error; those labels do not prove
+current authorization. Unreadable status hides cached account/code/fingerprint
+details until recovery.
 
 ### `POST /api/remote/login`
 
@@ -644,6 +656,35 @@ the validated Gateway verification URL in the system browser, and owns polling
 with S256 proof. It returns `202` with the same safe status; a later status read
 shows the public confirmation code and PC fingerprint. No verification URL,
 Host Token, secret device code or verifier is returned to the renderer.
+
+The explicit sidebar and Phone-page account actions send
+`{"enable_account":true}`. Phone presents sign-in without requiring a manual Hub,
+token or mode entry, and shows the configured server read-only; manual fields
+remain under Advanced / self-hosted server. For an initial blank configuration,
+Go supplies the effective `DefaultGatewayOrigin` in settings; an existing custom
+Hub is preserved. When account mode needs enabling, Go saves
+`remote.enabled=true` and `remote.auth_mode="nosec"` against the latest
+configuration, preserves the Hub and all other fields, and reloads the host
+before starting the same flow. A failed save returns
+`500 remote_login_config_unavailable` and does not start login. Opening the
+account menu, Phone page or advanced section does not call this route. Existing
+`{}` callers retain the requirement to enable and save NOSEC settings first.
+`enable_account` may also accompany an explicitly confirmed `new_device`
+request; it does not replace `confirmed:true`. Unknown fields, invalid types
+and trailing JSON are rejected.
+
+The Phone settings caller drains its earlier debounced settings writes before
+this POST; a failed flush does not start login. While that account operation is
+pending, the sheet blocks new edits and leaving. It adopts the returned
+enabled/Hub/mode into its remote draft and persistence baseline without a second
+settings PUT. If enabling may have committed but start failed, it attempts a
+settings read-back for remote only. If that read also fails, Phone withholds
+login and connection controls and offers an explicit remote reload, draining
+earlier independent edits before its read so their stale draft cannot undo the
+new account baseline. It never resends the uncertain legacy remote to recover
+or marks unrelated drafts saved. A failed independent save retains its error
+and dirty draft but does not prevent the remote read;
+reopening waits for the older operation and obtains a fresh authoritative load.
 
 The account must pass administrator review, and the browser must explicitly
 confirm the matching PC before a host is activated. Pending/rejected accounts
@@ -675,6 +716,45 @@ Candidate markers are private files and add no fields to the renderer API.
 No body. Cancels and joins the current local flow and returns safe status with
 `login.state=cancelled`. Candidate proof is retained privately for explicit
 retry after an uncertain server result. This does not revoke a Gateway device.
+While logout owns the host, cancel leaves its `signing_out` status intact.
+
+### `POST /api/remote/logout`
+
+Body `{}` explicitly signs this PC out of its current NOSEC Gateway. The strict
+body is limited to 1 KiB; null, unknown fields, malformed or trailing JSON return
+`400`. This is separate from cancelling a login and is unavailable in legacy
+mode. Go fences new login/logout work, publishes `signing_out`, cancels and
+joins the current login, and closes owned remote connections. Status remains
+readable while it confirms revocation outside the Host lock.
+
+The network phase has one fifteen-second budget. Go sends `{}` to the
+configured origin's `POST /admin/api/v1/auth/desktop/logout` with each captured
+opaque device token in `Authorization: Bearer`; no browser cookie or Gateway
+API Key is required. The Gateway acknowledgement is `200` with
+`{"data":{"logged_out":true}}`, including an unknown or already revoked bounded
+device token so an uncertain/lost response can be retried. The client rejects redirects
+and acknowledgements over 64 KiB, and requires that explicit success flag.
+Only after all acknowledgements does it delete the current origin's account
+receipt and this origin/public key's matching retained candidates. Replacement
+credentials/candidates and configuration changes fence deletion. Device
+identity, unrelated origins/public keys, local models and conversations remain.
+
+Success returns `200` safe status with `login.state="signed_out"`; it removes
+this PC's cloud-tool authority without signing out every account device or the
+browser. A failed acknowledgement retains local private proof for retry and
+reports an error; remote connections have already stopped. A remote partial
+success or lost acknowledgement is not local success.
+
+| Condition | Local HTTP result | Safe status error code |
+|---|---|---|
+| Legacy mode / another logout owns the host | `409 remote_logout_unavailable` / `409 remote_logout_in_progress` | Existing state is retained |
+| Gateway `404` or `405` | `409 remote_logout_unsupported` | `logout_unsupported`; upgrade Gateway before retrying |
+| Gateway `401` or `403` | `500 remote_logout_failed` | `logout_denied`; private credentials are retained |
+| Network, Gateway, unsafe receipt or local credential failure | `500 remote_logout_failed` | `network_unavailable`, `gateway_unavailable`, `unsafe_response` or `credential_unavailable` |
+
+An absent remote host returns `409 remote_offline`. Local errors never return
+private file paths, tokens or Gateway response bodies. Stop/Reload cancels and
+joins logout; a late acknowledgement cannot clear a new configuration's proof.
 
 ### `PUT /api/remote/token`
 

@@ -668,13 +668,14 @@ export interface RemoteStatus {
 
 /** Only public device approval information; proof and host credentials stay in Go. */
 export interface RemoteLoginStatus {
-  state: "signed_out" | "starting" | "authorization_pending" | "account_pending"
+  state: "signed_out" | "signing_out" | "starting" | "authorization_pending" | "account_pending"
     | "account_rejected" | "authorized" | "access_denied" | "expired" | "error" | "cancelled"
   user_code?: string
   host_fp?: string
   host_id?: string
   user_id?: string
   username?: string
+  display_name?: string
   error_code?: string
 }
 

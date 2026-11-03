@@ -251,10 +251,9 @@ export function useGatewayAccount() {
       completeAccountHostLink(current, id, saved)
       throw new GatewayError(401, "session_expired")
     }
-    const named = { ...saved, label: selected.name || selected.hostname }
-    try { saveLink(named) } catch (error) { window.dispatchEvent(new Event("zwai.gateway.account")); throw error }
+    try { saveLink(saved) } catch (error) { window.dispatchEvent(new Event("zwai.gateway.account")); throw error }
     completeAccountHostLink(current, id, saved)
-    return named
+    return saved
   }, [failure, hosts, status])
 
   useEffect(() => {

@@ -45,6 +45,16 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 
 if (typeof Element !== "undefined") {
   Element.prototype.scrollIntoView = function () {}
+
+  // jsdom has no native modal/fullscreen top layer. nwsapi 2.2.27 tries to
+  // delegate these exact selectors back to Element.matches, which delegates
+  // straight back to nwsapi. Floating UI probes :modal while positioning a
+  // menu, so that recursion otherwise stalls real Radix interactions here.
+  const matches = Element.prototype.matches
+  Element.prototype.matches = function (selector: string) {
+    if (selector === ":modal" || selector === ":fullscreen") return false
+    return matches.call(this, selector)
+  }
 }
 
 afterEach(async () => {

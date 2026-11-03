@@ -1,5 +1,6 @@
 import { b64urlToBytes, bytesToB64url } from "./bytes"
 import { GATEWAY_ACCOUNT_EVENT, GatewayError, issueGatewayHostLink, loadGatewaySession, requireCurrentGatewaySession, type GatewayHost, type GatewaySession } from "./gateway-account"
+import { gatewayHostDisplayName } from "./gateway-names"
 import { hubEndpoint, sameLinkAuthority } from "./link-authority"
 import { loadSavedLinks, replaceSavedLink, type SavedLink } from "./store"
 import { parseOffer } from "./offer"
@@ -54,7 +55,7 @@ export async function accountHostLink(session: GatewaySession, host: GatewayHost
     const issuance = entry
     issuance.promise = issueGatewayHostLink(session, host.id).then((next) => {
       if (host.host_pub && next.hostPub !== host.host_pub) throw new GatewayError(0, "invalid_gateway_response")
-      issuance.next = original ? { ...next, fingerprint: original.fingerprint } : next
+      issuance.next = { ...next, fingerprint: original?.fingerprint ?? next.fingerprint, label: gatewayHostDisplayName(host) }
       return issuance.next
     }).catch((error: unknown) => { if (issuances.get(id) === issuance) issuances.delete(id); throw error })
       .finally(() => { issuance.settled = true })

@@ -1,4 +1,5 @@
 import { remoteLoginZh } from "./messages-remote-login"
+import { desktopAccountZh } from "./messages-desktop-account"
 import { memoryZh } from "./messages-memory-zh"
 import { generationZh } from "./messages-generation"
 import { updateZH } from "./messages-update"
@@ -9,6 +10,7 @@ import type { en } from "./messages-en"
 
 /** Chinese UI chrome. Every key in messages-en.ts must have a string here. */
 export const zh: { [K in keyof typeof en]: string } = {
+  ...desktopAccountZh,
   ...remoteLoginZh,
   ...draftZH,
   "startup.failed": "有 {failed} 个会话恢复失败，请查看 Trace 或日志。",

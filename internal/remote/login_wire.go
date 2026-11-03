@@ -43,8 +43,9 @@ type loginPollResponse struct {
 	Status string `json:"status"`
 	HostID string `json:"host_id"`
 	User   *struct {
-		ID       string `json:"id"`
-		Username string `json:"username"`
+		ID          string `json:"id"`
+		Username    string `json:"username"`
+		DisplayName string `json:"display_name"`
 	} `json:"user"`
 	Approval string `json:"approval_status"`
 }
