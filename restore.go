@@ -18,6 +18,7 @@ import (
 type RestoredWorker struct {
 	ConfigTag         string        `json:"config_tag,omitempty"`
 	DelegationEnabled *bool         `json:"delegation_enabled,omitempty"`
+	WorkerToolNames   *[]string     `json:"worker_tool_names,omitempty"`
 	ParentID          string        `json:"parent_id,omitempty"`
 	ModelBinding      *ModelBinding `json:"model_binding,omitempty"`
 	Generation        int           `json:"generation,omitempty"`
@@ -38,6 +39,7 @@ type RestoredWorker struct {
 type FinishedWorker struct {
 	ConfigTag         string        `json:"config_tag,omitempty"`
 	DelegationEnabled *bool         `json:"delegation_enabled,omitempty"`
+	WorkerToolNames   *[]string     `json:"worker_tool_names,omitempty"`
 	ParentID          string        `json:"parent_id,omitempty"`
 	ModelBinding      *ModelBinding `json:"model_binding,omitempty"`
 	Generation        int           `json:"generation,omitempty"`
@@ -74,8 +76,12 @@ func (r *Registry) Restore(ctx context.Context, w RestoredWorker, modelOpt Model
 	if err != nil {
 		return nil, err
 	}
+	config, err = config.restoreWorkerToolSelection(ctx, w.WorkerToolNames)
+	if err != nil {
+		return nil, err
+	}
 	ctx = withWorkerConfig(ctx, config)
-	if w.ConfigTag != "" && len(extraTools) == 0 {
+	if config.workerToolNames != nil || (w.ConfigTag != "" && len(extraTools) == 0) {
 		extraTools = append(append([]tool.BaseTool(nil), config.SubAgentTools...), r.SendTool())
 	}
 	instruction := strings.TrimSpace(w.Instruction)
@@ -89,7 +95,7 @@ func (r *Registry) Restore(ctx context.Context, w RestoredWorker, modelOpt Model
 	if err != nil {
 		return nil, err
 	}
-	h, err := r.claimForRestore(id, role, w.TimeoutFailures, w.ParentID)
+	h, err := r.claimForRestore(id, role, w.TimeoutFailures, w.ParentID, config.workerToolNames)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +119,7 @@ func (r *Registry) Restore(ctx context.Context, w RestoredWorker, modelOpt Model
 	return h, nil
 }
 
-func (r *Registry) claimForRestore(id, role string, failures int, parentID string) (*Handle, error) {
+func (r *Registry) claimForRestore(id, role string, failures int, parentID string, toolNames *[]string) (*Handle, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.handingOff {
@@ -125,8 +131,16 @@ func (r *Registry) claimForRestore(id, role string, failures int, parentID strin
 	if err := r.validateParentRelationLocked(id, parentID); err != nil {
 		return nil, err
 	}
-	if p := r.past[id]; p != nil && p.TimeoutFailures > failures {
-		failures = p.TimeoutFailures
+	if err := r.checkRestoredWorkerToolParentLocked(parentID, toolNames); err != nil {
+		return nil, err
+	}
+	if p := r.past[id]; p != nil {
+		if !sameWorkerToolSelection(p.checkpoint.WorkerToolNames, toolNames) {
+			return nil, fmt.Errorf("restore: worker tool selection cannot change")
+		}
+		if p.TimeoutFailures > failures {
+			failures = p.TimeoutFailures
+		}
 	}
 	if cur, ok := r.agents[id]; ok {
 		if cur.ParentID != parentID {
@@ -136,6 +150,10 @@ func (r *Registry) claimForRestore(id, role string, failures int, parentID strin
 			return nil, fmt.Errorf("restore: agent %q is still running; use send_message", id)
 		}
 		cur.mu.Lock()
+		if !sameWorkerToolSelection(cur.workerToolNames, toolNames) {
+			cur.mu.Unlock()
+			return nil, fmt.Errorf("restore: worker tool selection cannot change")
+		}
 		if cur.timeoutFailures > failures {
 			failures = cur.timeoutFailures
 		}
@@ -157,6 +175,7 @@ func (r *Registry) claimForRestore(id, role string, failures int, parentID strin
 	h := &Handle{
 		ID: id, Role: role, ParentID: parentID, done: make(chan struct{}),
 		spawned: time.Now(), resumedFrom: id, gen: 1, timeoutFailures: failures,
+		workerToolNames: cloneWorkerToolNames(toolNames),
 	}
 	r.agents[id] = h
 	r.notePendingLocked(h)
@@ -171,6 +190,9 @@ func (r *Registry) PlantFinished(w FinishedWorker) error {
 	if id == "" {
 		return fmt.Errorf("restore: agent_id is required")
 	}
+	if w.WorkerToolNames != nil && *w.WorkerToolNames == nil {
+		return fmt.Errorf("restore: worker tool selection must not be null")
+	}
 	role := strings.TrimSpace(w.Role)
 	if role == "" {
 		role = id
@@ -183,7 +205,7 @@ func (r *Registry) PlantFinished(w FinishedWorker) error {
 		spawned: time.Now(), finished: time.Now(),
 		result: w.Result, err: w.Err, history: cloneMessages(w.History), timeoutFailures: w.TimeoutFailures,
 		gen: w.Generation, collected: w.Collected, closeRequested: w.CloseRequested,
-		modelBinding: cloneModelBinding(w.ModelBinding),
+		modelBinding: cloneModelBinding(w.ModelBinding), workerToolNames: cloneWorkerToolNames(w.WorkerToolNames),
 	}
 	if h.gen <= 0 {
 		h.gen = 1
@@ -200,12 +222,20 @@ func (r *Registry) PlantFinished(w FinishedWorker) error {
 		r.mu.Unlock()
 		return err
 	}
+	if err := r.checkRestoredWorkerToolParentLocked(w.ParentID, w.WorkerToolNames); err != nil {
+		r.mu.Unlock()
+		return err
+	}
 	if cur, ok := r.agents[id]; ok {
 		r.mu.Unlock()
 		if _, _, finished := cur.Result(); !finished {
 			return fmt.Errorf("restore: agent %q is still running; use send_message", id)
 		}
 		return nil
+	}
+	if past := r.past[id]; past != nil && !sameWorkerToolSelection(past.checkpoint.WorkerToolNames, h.workerToolNames) {
+		r.mu.Unlock()
+		return fmt.Errorf("restore: worker tool selection cannot change")
 	}
 	r.agents[id] = h
 	r.notePendingLocked(h)

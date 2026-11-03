@@ -145,6 +145,7 @@ type workerSlot struct {
 	parentID                       string
 	configTag                      string
 	delegationEnabled              *bool
+	workerToolNames                *[]string
 	role, instruction, result, err string
 	running, spawned, inflight     bool
 	seed                           strings.Builder
@@ -193,6 +194,7 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 			s.modelBinding = w.ModelBinding
 			s.parentID = w.ParentID
 			s.configTag, s.delegationEnabled = w.ConfigTag, w.DelegationEnabled
+			s.workerToolNames = w.WorkerToolNames
 			s.role, s.instruction, s.spawned, s.running = w.Role, w.Instruction, true, !w.Finished
 			s.result, s.err, s.timeoutFailures = w.Result, w.Err, w.TimeoutFailures
 			s.generation, s.collected, s.closeRequested = w.Generation, w.Collected, w.CloseRequested
@@ -258,6 +260,9 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 			}
 			if ev.ModelBinding != nil {
 				s.modelBinding = ev.ModelBinding
+			}
+			if ev.WorkerToolNames != nil {
+				s.workerToolNames = ev.WorkerToolNames
 			}
 			s.spawned = true
 			s.running = true
@@ -332,7 +337,7 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 			w := swarm.RestoredWorker{
 				ModelBinding: s.modelBinding,
 				ParentID:     s.parentID,
-				ConfigTag:    s.configTag, DelegationEnabled: s.delegationEnabled,
+				ConfigTag:    s.configTag, DelegationEnabled: s.delegationEnabled, WorkerToolNames: s.workerToolNames,
 				Generation: s.generation, Collected: s.collected, CloseRequested: s.closeRequested,
 				ID: id, Role: s.role, Instruction: s.instruction, Task: resumeCue, TimeoutFailures: s.timeoutFailures,
 				History: s.restoredHistory, Inbox: s.inbox,
@@ -356,7 +361,7 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 		finished = append(finished, swarm.FinishedWorker{
 			ModelBinding: s.modelBinding,
 			ParentID:     s.parentID,
-			ConfigTag:    s.configTag, DelegationEnabled: s.delegationEnabled,
+			ConfigTag:    s.configTag, DelegationEnabled: s.delegationEnabled, WorkerToolNames: s.workerToolNames,
 			Generation: s.generation, Collected: s.collected, CloseRequested: s.closeRequested,
 			ID: id, Role: s.role, Result: s.result, Err: ferr, History: s.history, TimeoutFailures: s.timeoutFailures,
 		})

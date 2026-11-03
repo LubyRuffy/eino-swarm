@@ -160,6 +160,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 目的：由模型基于目标与事实选择计划、分工和已接入模型，并让项目内共享任务、事实报告、成果及依赖可检查；使用者：PC 用户；入口：项目创建／编辑的 Nuwa collaboration、Instruction、右侧 Collaboration、`list_models`／`read_work`／`record_work` 及项目 Nuwa GET／SSE；输入：项目提示词、已配置资源、实际事件证据及已有成果文件；输出：动态 worker 树、实际模型绑定、有版本和来源的共享记录与依赖图；前置条件：项目启用模式，资源已接入；失败表现：不可用模型、跨子树控制、无效引用、过期版本及存储失败明确拒绝；关联契约：`C-037`、`C-019`、`C-027`、`C-012`；实现证据：`internal/engine/nuwa_models.go`、`internal/engine/nuwa_tools.go`、`internal/store/nuwa.go`、`internal/server/nuwa.go`、`delegation.go`、`worker_config.go`、`model_binding.go`、`frontend/src/components/app/nuwa-panel.tsx`；验证：`internal/engine/nuwa_engine_http_test.go`、`internal/store/nuwa_test.go`、`internal/server/nuwa_stream_test.go`、`delegation_http_test.go`、`model_binding_http_test.go`、`frontend/e2e/nuwa.spec.ts`。
 - 模式变更从后续 turn 生效；既有 worker 保留原配置／模型和执行身份。fact／artifact 是 reported，引用存在不证明推导成立；来源纠正／删除需明确重查。项目 revision 仅使视图失效重读，不进入聊天 seq。停用保留已存内容，规划模式不挂共享写工具。见 [Nuwa](NUWA.md)；不预置领域流程，不宣称 CyberGym、原生或真实模型效率已验收。
+- 规划者可查询当前可用 worker 工具，并在派工时为新角色选择所需的 workspace 工具。所选范围随身份恢复，后代可继承或缩小。见 `C-037` 和 [Nuwa](NUWA.md)。 验证：`internal/engine/worker_tool_scope_flow_test.go`、`internal/engine/worker_tool_scope_restore_test.go`。
+- Agent 可用已见的工具调用 ID 将自己的持久回执关联到共享记录。活跃 worker 跨轮保留时可引用当前执行的回执，冷恢复后可引用新执行产生的回执。事实保留原始作者，链接指向实际记录结果的轮次。持久化失败时写入会明确拒绝。验证见 `internal/engine/nuwa_adopted_evidence_test.go`、`internal/engine/nuwa_worker_restore_test.go` 和 `internal/store/nuwa_own_tool_evidence_test.go`。
 - 升级时回填旧 turn 未记录的项目归属，既有 worker 可跨重启恢复。已记录归属与当前项目不符时，显式继续目标返回冲突并保留 checkpoint，归属修复后可继续。见 [归属迁移](DATA_MODEL.md#turns--one-request-and-everything-done-to-answer-it)。
 
 ### F-140 Files and attachments

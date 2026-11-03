@@ -130,6 +130,9 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	managerTools := append([]tool.BaseTool(nil), pc.managerTools(toolset)...)
 	if turn.NuwaEnabled {
 		instruction = JoinPromptSections(instruction, nuwaInstruction)
+		if reg.WorkerConfiguration().SelectableToolNames != nil {
+			instruction = JoinPromptSections(instruction, nuwaWorkerToolHint)
+		}
 		managerTools = append(managerTools, e.nuwaModelTool(turn))
 		if pc != nil && pc.project != nil {
 			managerTools = append(managerTools, e.nuwaWorkTools(pc.project.ID, toolset.WorkspaceDir, turn, turn.NuwaReadOnly || (th != nil && th.PlanMode))...)

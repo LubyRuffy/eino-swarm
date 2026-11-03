@@ -16,11 +16,19 @@ type AgentIdentity struct {
 }
 
 type toolCallerKey struct{}
+type toolReceiptScopeKey struct{}
 
 // ToolCaller returns trusted runtime provenance, never model-supplied arguments.
 func ToolCaller(ctx context.Context) (AgentIdentity, bool) {
 	identity, ok := ctx.Value(toolCallerKey{}).(AgentIdentity)
 	return identity, ok
+}
+
+// ToolReceiptScope returns the runtime's receipt scope for a worker tool call.
+// It is stable while that execution lives, including across manager turns.
+func ToolReceiptScope(ctx context.Context) string {
+	scope, _ := ctx.Value(toolReceiptScopeKey{}).(string)
+	return scope
 }
 
 func withToolCaller(ctx context.Context, identity AgentIdentity) context.Context {

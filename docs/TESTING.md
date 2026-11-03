@@ -28,6 +28,16 @@ evidence scope, cycles and stale dependency versions.
 `internal/engine/nuwa_engine_http_test.go` drives `record_work`/`read_work` through
 the real manager adapter. `nuwa_validation_test.go` covers forged callers,
 actual artifact paths, read-only planning and bounded complete JSON.
+The worker tool-scope flow attaches an actual read receipt and verifies the
+same stored reference through the manager's targeted read. Its storage fault
+still delivers the read reply to the worker, then refuses the evidence write.
+`internal/store/nuwa_own_tool_evidence_test.go` checks exact caller scope,
+metadata-only indexed resolution, atomic refusal and replay.
+`internal/engine/nuwa_adopted_evidence_test.go` waits for a later wake's
+actual manager request before releasing the retained worker. The worker cites
+its new result while retaining its original author turn. The parked-worker
+HTTP recovery fixture checks the same provenance after restoring a newer
+checkpoint under the original worker configuration.
 `internal/server/nuwa_stream_test.go` uses actual GET/SSE readers across project
 conversations. A revision is a snapshot invalidation, never a transcript seq.
 

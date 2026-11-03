@@ -6,6 +6,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Nuwa can select the workspace tools needed for a new worker. The worker
+  retains the selection when continued or restored. (`F-136`, `C-037`)
+
+- Nuwa agents can cite their own durable tool replies by call ID when recording
+  shared work. Retained and restored workers can cite new replies recorded by
+  a later manager turn while preserving their original author. (`F-136`, `C-037`)
+
 - Fixed phone Markdown previews so the text size controls scale headings,
   tables and highlighted code with the rest of the document. (`F-224`)
 

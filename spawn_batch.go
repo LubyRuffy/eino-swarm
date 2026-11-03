@@ -13,15 +13,21 @@ import (
 )
 
 type spawnArgs struct {
-	Role        string `json:"role"`
-	Task        string `json:"task"`
-	ForkContext bool   `json:"fork_context"`
-	ModelRef    string `json:"model_ref"`
+	Role        string    `json:"role"`
+	Task        string    `json:"task"`
+	ForkContext bool      `json:"fork_context"`
+	ModelRef    string    `json:"model_ref"`
+	ToolNames   *[]string `json:"-"`
 }
 
 func readSpawnArgs(args string) (spawnArgs, string) {
 	var a spawnArgs
-	if err := json.Unmarshal([]byte(args), &a); err != nil {
+	var input struct {
+		*spawnArgs
+		ToolNames json.RawMessage `json:"tool_names"`
+	}
+	input.spawnArgs = &a
+	if err := json.Unmarshal([]byte(args), &input); err != nil {
 		return a, "spawn_agent: could not read the arguments"
 	}
 	a.Role = strings.TrimSpace(a.Role)
@@ -32,6 +38,13 @@ func readSpawnArgs(args string) (spawnArgs, string) {
 	}
 	if a.Task == "" {
 		return a, "spawn_agent: task is required"
+	}
+	if len(input.ToolNames) != 0 {
+		var names []string
+		if err := json.Unmarshal(input.ToolNames, &names); err != nil || names == nil {
+			return a, "spawn_agent: tool_names must be an array of tool names, not null"
+		}
+		a.ToolNames = &names
 	}
 	return a, ""
 }

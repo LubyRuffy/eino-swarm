@@ -67,7 +67,8 @@ func (r *Registry) spawnAgentWithModel(ctx context.Context, role, task string,
 	r.seq++
 	id := fmt.Sprintf("%s-%d", role, r.seq)
 	enabled := config.EnableDelegation
-	h := &Handle{configTag: config.Tag, delegationEnabled: &enabled, workerConfig: &config, ID: id, Role: role, ParentID: parentID, done: make(chan struct{}), spawned: time.Now(), gen: 1, modelBinding: cloneModelBinding(binding)}
+	h := &Handle{configTag: config.Tag, delegationEnabled: &enabled, workerConfig: &config,
+		workerToolNames: cloneWorkerToolNames(config.workerToolNames), ID: id, Role: role, ParentID: parentID, done: make(chan struct{}), spawned: time.Now(), gen: 1, modelBinding: cloneModelBinding(binding)}
 	h.handoff.task, h.handoff.instruction = task, instruction
 	r.agents[id] = h
 	r.notePendingLocked(h)

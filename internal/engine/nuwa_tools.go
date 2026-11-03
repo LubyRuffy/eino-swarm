@@ -18,16 +18,17 @@ import (
 )
 
 type recordWorkArgs struct {
-	ID           string               `json:"id"`
-	Version      int64                `json:"version"`
-	Kind         string               `json:"kind"`
-	Title        string               `json:"title"`
-	Summary      string               `json:"summary"`
-	Detail       string               `json:"detail"`
-	Status       string               `json:"status"`
-	DependsOn    []string             `json:"depends_on"`
-	Evidence     []store.NuwaEvidence `json:"evidence"`
-	ArtifactPath string               `json:"artifact_path"`
+	ID             string               `json:"id"`
+	Version        int64                `json:"version"`
+	Kind           string               `json:"kind"`
+	Title          string               `json:"title"`
+	Summary        string               `json:"summary"`
+	Detail         string               `json:"detail"`
+	Status         string               `json:"status"`
+	DependsOn      []string             `json:"depends_on"`
+	Evidence       []store.NuwaEvidence `json:"evidence"`
+	OwnToolCallIDs json.RawMessage      `json:"own_tool_call_ids"`
+	ArtifactPath   string               `json:"artifact_path"`
 }
 
 func decodeNuwaArgs(args string, value any) error {
@@ -43,6 +44,34 @@ func decodeNuwaArgs(args string, value any) error {
 		return fmt.Errorf("tool arguments must contain one JSON object")
 	}
 	return nil
+}
+
+func decodeNuwaEvidenceFields(fields map[string]json.RawMessage) (bool, []string, error) {
+	var hasEvidence bool
+	var ownIDsJSON json.RawMessage
+	for key, raw := range fields {
+		switch {
+		case strings.EqualFold(key, "evidence"):
+			hasEvidence = true
+		case strings.EqualFold(key, "own_tool_call_ids"):
+			if ownIDsJSON != nil {
+				return false, nil, fmt.Errorf("own_tool_call_ids was supplied with multiple spellings")
+			}
+			ownIDsJSON = raw
+		}
+	}
+	if ownIDsJSON == nil {
+		return hasEvidence, nil, nil
+	}
+	if hasEvidence {
+		return false, nil, fmt.Errorf("evidence and own_tool_call_ids are mutually exclusive")
+	}
+	// Decode the same final JSON value the receipt hash sees, into a fresh slice.
+	var ownIDs []string
+	if err := json.Unmarshal(ownIDsJSON, &ownIDs); err != nil || ownIDs == nil {
+		return false, nil, fmt.Errorf("own_tool_call_ids must be an array of strings")
+	}
+	return true, ownIDs, nil
 }
 
 func nuwaArtifactPath(workspace, selected string) (string, error) {
@@ -88,6 +117,8 @@ func (e *Engine) nuwaWorkTools(projectID, workspace string, turn *store.Turn, re
 			"id": {Type: schema.String}, "version": {Type: schema.Integer}, "kind": {Type: schema.String}, "title": {Type: schema.String},
 			"summary": {Type: schema.String}, "detail": {Type: schema.String}, "status": {Type: schema.String}, "artifact_path": {Type: schema.String},
 			"depends_on": {Type: schema.Array, ElemInfo: &schema.ParameterInfo{Type: schema.String}},
+			"own_tool_call_ids": {Type: schema.Array, ElemInfo: &schema.ParameterInfo{Type: schema.String},
+				Desc: "Exact IDs of your own persisted tool results in this manager turn or worker execution. Use instead of evidence. An empty array clears evidence."},
 			"evidence": {Type: schema.Array, ElemInfo: &schema.ParameterInfo{Type: schema.Object, SubParams: map[string]*schema.ParameterInfo{
 				"thread_id": {Type: schema.String, Required: true}, "turn_id": {Type: schema.String}, "seq": {Type: schema.Integer, Required: true}, "label": {Type: schema.String},
 			}}},
@@ -115,6 +146,10 @@ func (e *Engine) recordNuwaWork(ctx context.Context, projectID, workspace string
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(args), &fields); err != nil {
+		return "", err
+	}
+	evidenceSupplied, ownToolCallIDs, err := decodeNuwaEvidenceFields(fields)
+	if err != nil {
 		return "", err
 	}
 	canonical, err := json.Marshal(fields)
@@ -152,7 +187,7 @@ func (e *Engine) recordNuwaWork(ctx context.Context, projectID, workspace string
 				input.DependsOn = previous.DependsOn
 				dependencyVersions = previous.DependencyVersions
 			}
-			if _, set := fields["evidence"]; !set {
+			if !evidenceSupplied {
 				input.Evidence = previous.Evidence
 			}
 			if _, set := fields["artifact_path"]; !set {
@@ -178,7 +213,10 @@ func (e *Engine) recordNuwaWork(ctx context.Context, projectID, workspace string
 	if err != nil {
 		return "", err
 	}
-	receipt := store.NuwaWriteReceipt{Key: fmt.Sprintf("%x", sha256.Sum256(identity)), Hash: fmt.Sprintf("%x", sha256.Sum256(canonical))}
+	receipt := store.NuwaWriteReceipt{
+		Key: fmt.Sprintf("%x", sha256.Sum256(identity)), Hash: fmt.Sprintf("%x", sha256.Sum256(canonical)),
+		OwnToolCallIDs: ownToolCallIDs, CurrentToolCallID: callID, ToolReceiptScope: swarm.ToolReceiptScope(ctx),
+	}
 	e.recordMu.Lock()
 	defer e.recordMu.Unlock()
 	if _, dropped := e.droppedTurns[turn.ID]; dropped {

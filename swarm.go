@@ -79,6 +79,7 @@ type Handle struct {
 	configTag         string
 	delegationEnabled *bool
 	workerConfig      *WorkerConfig
+	workerToolNames   *[]string
 	modelBinding      *ModelBinding
 	handoff           workerHandoff
 }
@@ -236,6 +237,10 @@ type Registry struct {
 	// SubAgentTools are registered on every spawned sub-agent in addition to
 	// the swarm's send_message tool (e.g. web_search/web_fetch for workers).
 	SubAgentTools []tool.BaseTool
+
+	// SelectableToolNames seeds the worker configuration at initialization.
+	// A running host uses ConfigureWorkers to replace its worker surface.
+	SelectableToolNames []string
 
 	// WorkerPreamble is prepended to every sub-agent's Instruction. The task
 	// stays the user message. Empty keeps the previous behaviour: Instruction
@@ -884,12 +889,13 @@ func WithManagerHandler(hs ...adk.ChatModelAgentMiddleware) ManagerOption {
 // Injector delivers steering messages at each turn boundary.
 type Injector struct {
 	adk.BaseChatModelAgentMiddleware
-	handle     *Handle
-	generation int
-	config     WorkerConfig
-	configured bool
-	histCap    int
-	reg        *Registry
+	handle           *Handle
+	generation       int
+	config           WorkerConfig
+	configured       bool
+	histCap          int
+	reg              *Registry
+	toolReceiptScope string
 }
 
 // BeforeModelRewriteState drains queued steering messages into the
@@ -931,7 +937,9 @@ func (in *Injector) WrapInvokableToolCall(ctx context.Context,
 				config = in.reg.WorkerConfiguration()
 			}
 			ctx = withWorkerConfig(ctx, config)
-			ctx = withToolCaller(ctx, AgentIdentity{AgentID: in.handle.ID, Role: in.handle.Role, Generation: in.generation, ParentID: in.handle.ParentID})
+			ctx = withToolCaller(ctx, AgentIdentity{AgentID: in.handle.ID, Role: in.handle.Role,
+				Generation: in.generation, ParentID: in.handle.ParentID})
+			ctx = context.WithValue(ctx, toolReceiptScopeKey{}, in.toolReceiptScope)
 			ctx = in.reg.bindToolOutput(ctx, in.handle.ID, in.handle.Role, tc)
 		}
 		out, err := endpoint(ctx, argumentsInJSON, opts...)

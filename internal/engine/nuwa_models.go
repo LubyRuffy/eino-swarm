@@ -55,11 +55,13 @@ func (e *Engine) wireNuwaRegistry(reg *swarm.Registry, set *tools.Set, pc *proje
 		return e.pool.RestoreWorkerModel(ctx, binding, recorder)
 	}
 	reg.SelectWorkerModel = nil
+	reg.SelectableToolNames = nil
 	reg.EnableDelegation = false
 	if !turn.NuwaEnabled || pc == nil || pc.project == nil {
 		return
 	}
 	reg.EnableDelegation = true
+	reg.SelectableToolNames = selectableWorkerToolNames(pc.workerTools(set))
 	reg.SelectWorkerModel = func(ctx context.Context, ref string) (swarm.ModelBinding, swarm.ModelBuilder, error) {
 		id, name := turn.ProviderID, turn.Model
 		if ref != "" {
@@ -81,10 +83,33 @@ func (e *Engine) wireNuwaRegistry(reg *swarm.Registry, set *tools.Set, pc *proje
 	reg.SubAgentTools = append(reg.SubAgentTools, e.nuwaModelTool(turn))
 	reg.SubAgentTools = append(reg.SubAgentTools, e.nuwaWorkTools(pc.project.ID, set.WorkspaceDir, turn, turn.NuwaReadOnly)...)
 	reg.WorkerPreamble = JoinPromptSections(reg.WorkerPreamble, nuwaInstruction)
+	if reg.SelectableToolNames != nil {
+		reg.WorkerPreamble = JoinPromptSections(reg.WorkerPreamble, nuwaWorkerToolHint)
+	}
 	if turn.NuwaReadOnly {
 		reg.WorkerPreamble = JoinPromptSections(reg.WorkerPreamble, "Planning is read-only: record_work is not mounted. Read evidence and report proposed work to the manager.")
 	}
 }
+
+// Only workspace and project skill-view tools can be narrowed. An unknown
+// tool schema disables selection rather than treating that tool as a control
+// that would remain available inside an explicitly restricted worker.
+func selectableWorkerToolNames(eligible []tool.BaseTool) []string {
+	names := make([]string, 0, len(eligible))
+	for _, candidate := range eligible {
+		if candidate == nil {
+			return nil
+		}
+		info, err := candidate.Info(context.Background())
+		if err != nil || info == nil || info.Name == "" {
+			return nil
+		}
+		names = append(names, info.Name)
+	}
+	return names
+}
+
+const nuwaWorkerToolHint = "When a new worker needs only certain workspace tools, optionally discover names with list_worker_tools and pass them in spawn_agent.tool_names. Omit tool_names to inherit the available scope."
 
 const nuwaInstruction = `## Evidence-driven collaboration
 

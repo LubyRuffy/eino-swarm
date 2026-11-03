@@ -238,10 +238,14 @@ func (r *Registry) resumeHandle(ctx context.Context, fromID, task string,
 	if err != nil {
 		return nil, err
 	}
-	if past.workerConfig != nil && (past.workerConfig.Tag != "" || past.workerConfig.EnableDelegation || past.checkpoint.ModelBinding != nil) {
+	if past.workerConfig != nil && (past.workerConfig.Tag != "" || past.workerConfig.EnableDelegation || past.checkpoint.ModelBinding != nil || past.checkpoint.WorkerToolNames != nil) {
 		ctx = withWorkerConfig(ctx, *past.workerConfig)
 	}
 	config, err := r.restoreWorkerConfiguration(ctx, past.checkpoint.ConfigTag, past.checkpoint.DelegationEnabled)
+	if err != nil {
+		return nil, err
+	}
+	config, err = config.restoreWorkerToolSelection(ctx, past.checkpoint.WorkerToolNames)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +253,7 @@ func (r *Registry) resumeHandle(ctx context.Context, fromID, task string,
 	if admit {
 		modelOpt = config.ModelBuilder
 	}
-	if admit || (config.Tag != "" && len(extraTools) == 0) {
+	if admit || config.workerToolNames != nil || (config.Tag != "" && len(extraTools) == 0) {
 		extraTools = append(append([]tool.BaseTool(nil), config.SubAgentTools...), r.SendTool())
 	}
 	modelOpt, err = r.restoreWorkerModel(ctx, past.checkpoint.ModelBinding, modelOpt)
@@ -261,6 +265,7 @@ func (r *Registry) resumeHandle(ctx context.Context, fromID, task string,
 		return nil, err
 	}
 	h.mu.Lock()
+	h.workerToolNames = cloneWorkerToolNames(config.workerToolNames)
 	instruction := workerInstructionWithConfig(r.workerConfigurationForContext(ctx), task)
 	h.handoff.task, h.handoff.instruction = task, instruction
 	h.mu.Unlock()
@@ -301,6 +306,9 @@ func (r *Registry) claimForResume(past *agentPast, admit bool) (*Handle, error) 
 	if r.closed {
 		return nil, fmt.Errorf("resume_agent: registry closed")
 	}
+	if err := r.checkRestoredWorkerToolParentLocked(past.ParentID, past.checkpoint.WorkerToolNames); err != nil {
+		return nil, err
+	}
 	if cur, exists := r.agents[past.ID]; exists {
 		if _, _, finished := cur.Result(); !finished {
 			return nil, fmt.Errorf("resume_agent: agent %q is still running; use send_message", past.ID)
@@ -328,6 +336,7 @@ func (r *Registry) claimForResume(past *agentPast, admit bool) (*Handle, error) 
 		ID: past.ID, Role: past.Role, ParentID: past.ParentID, done: make(chan struct{}),
 		spawned: time.Now(), resumedFrom: past.ID, gen: past.checkpoint.Generation + 1, timeoutFailures: past.TimeoutFailures,
 		modelBinding: cloneModelBinding(past.checkpoint.ModelBinding), configTag: past.checkpoint.ConfigTag, delegationEnabled: past.checkpoint.DelegationEnabled,
+		workerToolNames: cloneWorkerToolNames(past.checkpoint.WorkerToolNames),
 	}
 	r.agents[past.ID] = fresh
 	r.notePendingLocked(fresh)

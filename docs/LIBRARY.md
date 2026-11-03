@@ -53,6 +53,14 @@ a subtree returns `closed_agents` with exact generations and genuine
 `cancelled`/`already_finished` results. Pending descendants keep ancestry and
 collection state across archive pruning, manager turns and cold replay.
 
+Hosts can enable per-worker selection with a non-nil
+`WorkerConfig.SelectableToolNames` drawn from `SubAgentTools`. The catalog lists
+currently selectable names. An explicit `spawn_agent.tool_names` array selects
+which of them a new worker receives. The host's remaining tools are mounted
+according to the captured configuration. Selection is scoped to the worker,
+and descendants may further narrow it. Resuming a scoped worker reapplies
+the saved `WorkerToolNames` before claiming a generation.
+
 For durable configuration, set a host-owned `WorkerConfig.Tag` and implement
 `Registry.ResolveWorkerConfig(ctx, tag)`. Checkpoints, `RestoredWorker` and
 `FinishedWorker` retain `ConfigTag`, `DelegationEnabled`, `ParentID` and

@@ -65,10 +65,10 @@ func (a *accumulator) event(n swarm.Notification, kind string) store.Event {
 	ev := store.Event{
 		ThreadID: a.threadID, TurnID: a.turnID,
 		Kind: kind, AgentID: n.AgentID, Role: n.Role,
-		Text: n.Text, ToolCallID: n.ToolCallID, MessageID: n.MessageID,
+		Text: n.Text, ToolCallID: n.ToolCallID, MessageID: n.MessageID, ToolReceiptScope: n.ToolReceiptScope,
 		ModelBinding: n.ModelBinding,
 		ParentID:     n.ParentID, WorkerGeneration: n.WorkerGeneration,
-		ConfigTag: n.ConfigTag, DelegationEnabled: n.DelegationEnabled,
+		ConfigTag: n.ConfigTag, DelegationEnabled: n.DelegationEnabled, WorkerToolNames: n.WorkerToolNames,
 	}
 	if n.Err != nil {
 		ev.Err = n.Err.Error()

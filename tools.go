@@ -27,13 +27,13 @@ const sendMessageDesc = "queue a steering message. agent_id is the id spawn_agen
 //	close_agent(agent_id)                   — cancel a still-running agent; leftover finished ids return already_finished
 //	resume_agent(agent_id, task)             — continue a finished worker in place under the same agent_id
 func (r *Registry) Tools() []tool.BaseTool {
-	return r.toolsWithModelSelection(r.WorkerConfiguration().SelectWorkerModel != nil)
+	return r.toolsWithWorkerConfig(r.WorkerConfiguration())
 }
 
-func (r *Registry) toolsWithModelSelection(selection bool) []tool.BaseTool {
+func (r *Registry) toolsWithWorkerConfig(config WorkerConfig) []tool.BaseTool {
 	n := r.advertisedCap()
-	return []tool.BaseTool{
-		&ctlTool{name: "spawn_agent", desc: fmt.Sprintf("start a sub-agent in the background; returns its agent_id immediately. A second call with the same role does not mint a twin: if that worker is still running, the new task is queued for its next turn; if it already finished, it continues in place under the same agent_id. fork_context only applies when this role has no worker yet — it copies this manager conversation so far into the new worker, not a previous worker's. A missing role or task returns {error}; it does not fail the turn. Supply both in one corrected call. In manager runs, same-error invalid calls in one reply are coalesced with rejected_calls; they did not create workers. The concurrency cap is %d. Do not start a larger batch. If %d sub-agents are already running, returns {error} and does not start or queue another worker: wait for one to finish, then resume that id or spawn the next piece.", n, n), fn: r.spawn, modelSelection: selection},
+	tools := []tool.BaseTool{
+		&ctlTool{name: "spawn_agent", desc: fmt.Sprintf("start a sub-agent in the background; returns its agent_id immediately. A second call with the same role does not mint a twin: if that worker is still running, the new task is queued for its next turn; if it already finished, it continues in place under the same agent_id. fork_context only applies when this role has no worker yet — it copies this manager conversation so far into the new worker, not a previous worker's. A missing role or task returns {error}; it does not fail the turn. Supply both in one corrected call. In manager runs, same-error invalid calls in one reply are coalesced with rejected_calls; they did not create workers. The concurrency cap is %d. Do not start a larger batch. If %d sub-agents are already running, returns {error} and does not start or queue another worker: wait for one to finish, then resume that id or spawn the next piece.", n, n), fn: r.spawn, modelSelection: config.SelectWorkerModel != nil, toolSelection: config.SelectableToolNames != nil},
 		&ctlTool{name: "send_message", desc: sendMessageDesc, fn: r.send},
 		&ctlTool{name: "wait_agents", desc: "wait until the next listed agent reaches a final status, or the timeout hits; " +
 			"returns every listed agent's status (running/done/failed), the finished ones' results, " +
@@ -44,6 +44,10 @@ func (r *Registry) toolsWithModelSelection(selection bool) []tool.BaseTool {
 		&ctlTool{name: "close_agent", desc: "cancel a still-running agent. A leftover finished id is already stopped: the result is already_finished, not cancelled. Do not close leftover ids as cleanup. An unknown agent_id returns {error}; it does not fail the turn.", fn: r.close},
 		&ctlTool{name: "resume_agent", desc: fmt.Sprintf("continue a finished or failed worker in place under the same agent_id, seeded with that worker's conversation. Use it when you mean one particular id, for instance one of several leftover workers that share a role. After three consecutive worker-watchdog timeouts, recovery stops the manager and requires an explicit human retry; changing role does not repair a stalled task. Returns the same agent_id. Do not spawn a replacement with the same role. Do not use this on a running agent — send_message instead. A missing agent_id or task, or a still-running target, returns {error}; it does not fail the turn. The concurrency cap is %d. If %d sub-agents are already running, returns {error} and does not queue this worker.", n, n), fn: r.resume},
 	}
+	if config.SelectableToolNames != nil {
+		tools = append(tools, &ctlTool{name: "list_worker_tools", desc: "List the selectable tools available to a new worker. Copy exact names into spawn_agent tool_names to narrow its configured tools.", fn: r.listWorkerTools})
+	}
+	return tools
 }
 
 // SendTool returns only the send_message tool, for registering inside
@@ -90,6 +94,7 @@ type ctlTool struct {
 	desc           string
 	fn             func(ctx context.Context, args string) (string, error)
 	modelSelection bool
+	toolSelection  bool
 }
 
 func (t *ctlTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
@@ -103,6 +108,10 @@ func (t *ctlTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 		}
 		if t.modelSelection {
 			params["model_ref"] = &schema.ParameterInfo{Type: schema.String, Desc: "model reference from the host catalog; omit to use the default for a new worker, or preserve an existing worker model. A worker keeps its model across resumption"}
+		}
+		if t.toolSelection {
+			params["tool_names"] = &schema.ParameterInfo{Type: schema.Array, ElemInfo: &schema.ParameterInfo{Type: schema.String},
+				Desc: "Optional exact subset of names from list_worker_tools. An empty array removes all selectable tools. Omit to inherit the available tools or retain the existing worker selection."}
 		}
 	case "send_message":
 		params = map[string]*schema.ParameterInfo{
@@ -171,6 +180,14 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 	if err != nil {
 		return ctlRefuse(err.Error())
 	}
+	selected, err := config.withWorkerToolSelection(ctx, a.ToolNames)
+	if err != nil {
+		return ctlRefuse("spawn_agent: " + err.Error())
+	}
+	var requested *[]string
+	if a.ToolNames != nil {
+		requested = selected.workerToolNames
+	}
 	var binding *ModelBinding
 	var builder ModelBuilder
 	if a.ModelRef != "" {
@@ -186,9 +203,6 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 		a.Role = r.claimReadableRole(spawnStem(a.Role))
 		defer r.releaseRoleClaim(a.Role)
 	}
-	tools := make([]tool.BaseTool, 0, len(config.SubAgentTools)+1)
-	tools = append(tools, config.SubAgentTools...)
-	tools = append(tools, r.SendTool())
 	lk := r.lockRole(a.Role)
 	lk.Lock()
 	defer lk.Unlock()
@@ -199,6 +213,12 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 		h, ok := r.get(id)
 		if ok {
 			if _, _, finished := h.Result(); !finished {
+				h.mu.Lock()
+				existing := h.workerToolNames
+				h.mu.Unlock()
+				if err := checkWorkerToolSelection(existing, requested); err != nil {
+					return ctlRefuse(err.Error())
+				}
 				if a.ModelRef != "" {
 					if err := checkWorkerModel(r.workerModelBinding(id), binding); err != nil {
 						return ctlRefuse(err.Error())
@@ -213,16 +233,21 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 		if err := r.requireWorkerTargets(ctx, []string{id}); err != nil {
 			return ctlRefuse(err.Error())
 		}
-		if a.ModelRef != "" {
+		if a.ModelRef != "" || requested != nil {
 			past, err := r.recall(id)
 			if err != nil {
 				return ctlRefuse(err.Error())
 			}
-			if err := checkWorkerModel(past.checkpoint.ModelBinding, binding); err != nil {
+			if err := checkWorkerToolSelection(past.checkpoint.WorkerToolNames, requested); err != nil {
 				return ctlRefuse(err.Error())
 			}
+			if a.ModelRef != "" {
+				if err := checkWorkerModel(past.checkpoint.ModelBinding, binding); err != nil {
+					return ctlRefuse(err.Error())
+				}
+			}
 		}
-		h, err := r.resumeAdmitted(ctx, id, a.Task, config.ModelBuilder, tools...)
+		h, err := r.resumeAdmitted(ctx, id, a.Task, config.ModelBuilder)
 		if err != nil {
 			var exhausted *WorkerTimeoutLimitError
 			if errors.As(err, &exhausted) {
@@ -246,7 +271,8 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 	if a.ForkContext {
 		seed = forkContext(r.spawnContext(parentID))
 	}
-	h, err := r.spawnAgentWithModel(ctx, a.Role, a.Task, builder, binding, parentID, seed, true, tools...)
+	tools := append(append([]tool.BaseTool(nil), selected.SubAgentTools...), r.SendTool())
+	h, err := r.spawnAgentWithModel(withWorkerConfig(ctx, selected), a.Role, a.Task, builder, binding, parentID, seed, true, tools...)
 	if err != nil {
 		if out, rerr, ok := refuseAdmit(err); ok {
 			return out, rerr

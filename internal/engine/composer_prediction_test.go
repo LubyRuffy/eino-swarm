@@ -299,40 +299,23 @@ func TestAStaleSuggestionIsNotRecorded(t *testing.T) {
 
 func TestSuggestionSkipsARunningConversation(t *testing.T) {
 	e := newTestEngine(t)
-	e.Config().Swarm.ComposerPredictions = false
 	e.composerPredictionsInTest.Store(true)
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	turn, err := e.StartTurn(th.ID, "hello")
-	if err != nil {
+	// This test drives prediction directly. Seed the finished turn without
+	// launching its automatic prediction scheduler.
+	turn := mustStoredTurn(t, e, th.ID, store.Turn{})
+	if err := e.store.FinishTurn(turn.ID, store.TurnDone, "answer", ""); err != nil {
 		t.Fatal(err)
 	}
-	waitForTurn(t, e, turn.ID)
-	e.Config().Swarm.ComposerPredictions = true
-	e.mu.Lock()
-	rt := e.runtimes[th.ID]
-	e.mu.Unlock()
-	// The finished turn's defer still closes its original idle channel.
-	// Reusing that turn id and marking it running makes the defer close
-	// the channel a second time. A later turn id leaves that defer alone.
-	replaced := make(chan struct{})
-	rt.mu.Lock()
-	rt.turnID = turn.ID + "-later"
-	rt.idle = replaced
-	rt.running = true
-	rt.mu.Unlock()
-	t.Cleanup(func() {
-		rt.mu.Lock()
-		rt.running = false
-		rt.mu.Unlock()
-		select {
-		case <-replaced:
-		default:
-			close(replaced)
-		}
-	})
+	rt := e.runtimeFor(th.ID)
+	laterTurnID, idle := store.NewID("tn_"), make(chan struct{})
+	if !rt.occupy(nil, nil, laterTurnID, idle) {
+		t.Fatal("could not occupy the conversation")
+	}
+	t.Cleanup(func() { rt.release(nil, idle, laterTurnID) })
 	gen, ok := e.predictions.begin(th.ID)
 	if !ok {
 		t.Fatal("begin")
@@ -342,22 +325,22 @@ func TestSuggestionSkipsARunningConversation(t *testing.T) {
 	if got := predictionEvents(t, e, turn.ID); len(got) != 0 {
 		t.Fatalf("a running conversation recorded a suggestion: %+v", got)
 	}
+	if calls, err := e.store.ListLLMCalls(turn.ID); err != nil || len(calls) != 0 {
+		t.Fatalf("a running conversation reached the model: %+v, %v", calls, err)
+	}
 }
 
 func TestSuggestionRecordsAMissingEndpoint(t *testing.T) {
 	e := newTestEngine(t)
-	e.Config().Swarm.ComposerPredictions = false
 	e.composerPredictionsInTest.Store(true)
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	turn, err := e.StartTurn(th.ID, "hello")
-	if err != nil {
+	turn := mustStoredTurn(t, e, th.ID, store.Turn{})
+	if err := e.store.FinishTurn(turn.ID, store.TurnDone, "answer", ""); err != nil {
 		t.Fatal(err)
 	}
-	waitForTurn(t, e, turn.ID)
-	e.Config().Swarm.ComposerPredictions = true
 	gen, ok := e.predictions.begin(th.ID)
 	if !ok {
 		t.Fatal("begin")
@@ -365,7 +348,7 @@ func TestSuggestionRecordsAMissingEndpoint(t *testing.T) {
 	defer e.predictions.done()
 	e.runComposerPrediction(th.ID, turn.ID, "missing-provider", "missing-model", "hello", "answer", gen)
 	got := predictionEvents(t, e, turn.ID)
-	if len(got) != 1 || got[0].Err == "" || got[0].Text != "" {
+	if len(got) != 1 || !strings.Contains(got[0].Err, "missing-provider") || got[0].Text != "" {
 		t.Fatalf("missing endpoint = %+v", got)
 	}
 }

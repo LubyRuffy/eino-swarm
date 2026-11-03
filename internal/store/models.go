@@ -234,8 +234,10 @@ type Event struct {
 	WorkerGeneration   int                 `json:"generation,omitempty"`
 	ConfigTag          string              `json:"config_tag,omitempty"`
 	DelegationEnabled  *bool               `json:"delegation_enabled,omitempty"`
+	WorkerToolNames    *[]string           `gorm:"serializer:json" json:"worker_tool_names,omitempty"`
 	Text               string              `json:"text"`
-	ToolCallID         string              `gorm:"size:128" json:"tool_call_id,omitempty"`
+	ToolCallID         string              `gorm:"size:128;index:idx_evt_tool_receipt_scope,priority:2" json:"tool_call_id,omitempty"`
+	ToolReceiptScope   string              `gorm:"size:64;index:idx_evt_tool_receipt_scope,priority:1,where:tool_receipt_scope <> ''" json:"-"`
 	MessageID          string              `gorm:"size:64" json:"message_id,omitempty"`
 	Err                string              `json:"err,omitempty"`
 	Images             []ImageRef          `gorm:"serializer:json" json:"images,omitempty"`

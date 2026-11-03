@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"strings"
@@ -68,6 +69,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 	extraTools = r.workerTools(config, r.bindSendCaller(extraTools, id, role))
 
 	identity := AgentIdentity{AgentID: id, Role: role, ParentID: h.ParentID, Generation: h.generation()}
+	receiptScope := rand.Text()
 	go func() {
 		defer close(done)
 		defer r.finishAgent(h)
@@ -89,8 +91,10 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 		defer cancel()
 		defer watchCancel()
 
-		acc := &streamAcc{reg: r, agentID: id, role: role, handle: h, rawEvents: true, workerGeneration: h.generation(), parentID: h.ParentID}
-		inj := &Injector{handle: h, histCap: r.historyCap(), reg: r, generation: h.generation(), config: config, configured: true}
+		acc := &streamAcc{reg: r, agentID: id, role: role, handle: h, rawEvents: true,
+			workerGeneration: identity.Generation, parentID: identity.ParentID, toolReceiptScope: receiptScope}
+		inj := &Injector{handle: h, histCap: r.historyCap(), reg: r, generation: identity.Generation,
+			config: config, configured: true, toolReceiptScope: receiptScope}
 		agent, err := adk.NewChatModelAgent(watchCtx, &adk.ChatModelAgentConfig{
 			Name:        id,
 			Description: "spawned sub-agent " + role,
@@ -140,7 +144,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 			if r.OnEvent != nil {
 				r.OnEvent(role, id, ev)
 			}
-			r.emitComplete(role, id, ev, identity)
+			r.emitComplete(role, id, ev, workerNotificationOwner{identity: identity, receiptScope: receiptScope})
 			if o != nil && o.MessageOutput != nil && !o.MessageOutput.IsStreaming &&
 				o.MessageOutput.Message != nil && o.MessageOutput.Message.Role == schema.Assistant &&
 				len(o.MessageOutput.Message.ToolCalls) == 0 {

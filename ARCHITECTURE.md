@@ -1997,14 +1997,23 @@ parent/generation identities. Recursive worker tools share Registry admission,
 collection, Stop and handoff. `WorkerConfig` snapshots prevent a later manager
 turn from changing existing workers; a host tag references the durable original
 turn so recovery can rebuild its collaboration/planning/Web tool surface.
+Nuwa dispatch can narrow the actual workspace tools on a new worker. The
+selection is recorded with its spawn and checkpoint, then reapplied before
+recovery claims that worker. Descendants inherit the available subset.
 
 `nuwa_tools.go` mounts project-scoped reads and, outside planning, trusted shared
 writes. Store transactions commit node CAS, project revision, provenance audit
-and tool-call idempotency together. Dependency version stamps make corrections
-and unavailable references explicit; reported nodes do not prove semantic truth
-or execute a DAG. `nuwa_snapshot.go` combines these records with workers projected
-from actual lifecycle receipts. GET and a separate project-revision SSE stream
-drive the Collaboration panel; they do not add another chat event sequence.
+and tool-call idempotency together. Agents can cite their own persisted tool
+replies by call ID without mounting the history query tool. The transaction
+resolves manager IDs within the turn and worker IDs within one execution.
+Worker notification ownership can pass to a new manager turn while the
+execution continues. A fact retains its original author and links to the
+actual result event. Recovery creates a fresh scope for new tool calls.
+Dependency version stamps make corrections and unavailable references
+explicit. Reported nodes record claims and their sources. `nuwa_snapshot.go`
+combines these records with workers projected from actual lifecycle receipts.
+GET and a separate project-revision SSE stream drive the Collaboration panel
+without adding another chat event sequence.
 See [Nuwa](docs/NUWA.md), `F-136` and `C-037`.
 
 ## Independent conversation coordination

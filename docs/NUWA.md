@@ -30,6 +30,18 @@ worker resolves that worker's default. Same-role steering, resume and recovery
 retain the concrete binding; an explicit conflict refuses before queuing a
 message or changing a generation. Roles remain globally unique in the Registry.
 
+A delegating agent can call `list_worker_tools` to discover the workspace tools
+it can pass to a worker. For a new role, `spawn_agent` accepts an optional
+`tool_names` array of exact names. Omit the array to use the caller's available
+workspace tools, or pass `[]` to omit workspace tools for that worker. Worker
+lifecycle and shared-work tools remain available as allowed by the current mode.
+The project instruction can leave this decision to the agent.
+
+Unknown and repeated names, malformed selections and an explicit scope change
+for an existing role are refused before dispatch or steering. A descendant can
+inherit the selection or choose a subset. The selection controls the tools
+mounted on that worker. A selected shell tool retains its normal access.
+
 Agents can inspect existing project-scoped model-call observations through
 `query_history`: discover its schema, then query `llm_calls` for recorded
 provider/model, agent, tokens and durations. This is historical evidence, not a
@@ -61,6 +73,20 @@ and event `seq`; an optional turn must match. This checks identity and
 availability, not whether the evidence supports the claim. Empty evidence stays
 explicitly unverified. Worker lifecycle is a separate projection: a shared task
 marked `done` does not finish an engine turn or collect a worker result.
+
+An agent can also pass `own_tool_call_ids` to `record_work` using exact IDs from
+its earlier tool replies. The host resolves up to 16 IDs in the current
+manager turn or worker execution. A retained worker keeps that execution
+scope when a later turn takes over its notifications. The fact keeps its
+original author and the evidence points to the turn where the result was
+recorded. Recovery starts a fresh execution scope for new tool calls.
+Earlier receipts remain referable by explicit `evidence`, and a retry of an
+already committed write returns its saved response.
+
+Each ID needs a unique earlier call and its result. A missing, still-uncommitted
+or ambiguous receipt refuses the entire write. Supply either evidence field on
+an update to replace the evidence, use an empty array to clear it, or omit both
+to preserve it.
 
 `read_work` returns bounded summaries, then detail and provenance by `id`.
 `offset`/`limit` page list entries or detail runes. JSON remains complete under
@@ -102,7 +128,11 @@ An actual switch change also advances the project revision. The view remains
 available if the switch is turned off before the first pending result arrives;
 ordinary edits and repeated settings do not advance that revision.
 
-Checkpoints retain parent, generation, model binding and configuration tag.
+Checkpoints and worker-spawn events retain the explicit workspace tool selection.
+A resumed or restored worker receives that same selection. A missing selected
+tool causes recovery to refuse. Earlier records without a selection retain the
+existing recovery behavior. Checkpoints also retain parent, generation, model
+binding and configuration tag.
 The app's tag refers to the original durable turn. Restore validates its
 conversation/project and rebuilds the tool surface from saved collaboration,
 planning and Web execution mode. In-memory workers retain their tool

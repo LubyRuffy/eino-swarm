@@ -46,7 +46,7 @@ func (r *Registry) workerTools(config WorkerConfig, existing []tool.BaseTool) []
 	if !config.EnableDelegation {
 		return existing
 	}
-	for _, candidate := range r.toolsWithModelSelection(config.SelectWorkerModel != nil) {
+	for _, candidate := range r.toolsWithWorkerConfig(config) {
 		if toolName(candidate) != "send_message" {
 			existing = append(existing, candidate)
 		}

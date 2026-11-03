@@ -72,7 +72,13 @@ type NuwaRevision struct {
 
 // NuwaWriteReceipt binds a trusted runtime tool call to its canonical arguments.
 // A repeated call returns the exact committed version without adding a node.
-type NuwaWriteReceipt struct{ Key, Hash string }
+type NuwaWriteReceipt struct {
+	Key, Hash string
+	// A nil list preserves literal evidence. An empty list clears it.
+	OwnToolCallIDs    []string
+	CurrentToolCallID string
+	ToolReceiptScope  string
+}
 
 func invalidNuwa(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrInvalidNuwaNode, fmt.Sprintf(format, args...))
@@ -265,6 +271,13 @@ func (s *Store) UpsertNuwaNode(ctx context.Context, node *NuwaNode, expectedVers
 				return err
 			}
 		}
+		if receipt.OwnToolCallIDs != nil {
+			evidence, err := resolveNuwaOwnToolEvidence(tx, candidate, receipt)
+			if err != nil {
+				return err
+			}
+			candidate.Evidence = evidence
+		}
 		revision, err := advanceNuwaRevision(tx, candidate.ProjectID)
 		if err != nil {
 			return err
@@ -287,9 +300,11 @@ func (s *Store) UpsertNuwaNode(ctx context.Context, node *NuwaNode, expectedVers
 			candidate.ThreadID, candidate.TurnID, candidate.AgentID, candidate.Generation = previous.ThreadID, previous.TurnID, previous.AgentID, previous.Generation
 			candidate.CreatedAt = previous.CreatedAt
 		}
-		for _, evidence := range candidate.Evidence {
-			if err := validateNuwaEvidence(tx, candidate.ProjectID, evidence); err != nil {
-				return err
+		if receipt.OwnToolCallIDs == nil {
+			for _, evidence := range candidate.Evidence {
+				if err := validateNuwaEvidence(tx, candidate.ProjectID, evidence); err != nil {
+					return err
+				}
 			}
 		}
 		var nodes []NuwaNode

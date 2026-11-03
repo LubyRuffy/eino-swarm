@@ -3,6 +3,7 @@ package swarm
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -12,19 +13,25 @@ import (
 // workers. Existing workers and their descendants retain their own snapshot.
 // Concurrency, handoff and Stop remain shared Registry state.
 type WorkerConfig struct {
-	Tag                 string
-	ModelBuilder        ModelBuilder
-	SelectWorkerModel   func(context.Context, string) (ModelBinding, ModelBuilder, error)
-	RestoreWorkerModel  func(context.Context, ModelBinding) (ModelBuilder, error)
-	EnableDelegation    bool
-	SubAgentTools       []tool.BaseTool
+	Tag                string
+	ModelBuilder       ModelBuilder
+	SelectWorkerModel  func(context.Context, string) (ModelBinding, ModelBuilder, error)
+	RestoreWorkerModel func(context.Context, ModelBinding) (ModelBuilder, error)
+	EnableDelegation   bool
+	SubAgentTools      []tool.BaseTool
+	// SelectableToolNames opts in to selection of these configured worker tools.
+	// Nil disables selection; an empty non-nil slice enables an empty catalog.
+	SelectableToolNames []string
 	WorkerPreamble      string
 	ToolOutputBinder    func(context.Context, func(string), string, string) context.Context
 	WorkerContextValues func(context.Context, context.Context) context.Context
+	workerToolNames     *[]string
 }
 
 func cloneWorkerConfig(config WorkerConfig) WorkerConfig {
 	config.SubAgentTools = append([]tool.BaseTool(nil), config.SubAgentTools...)
+	config.SelectableToolNames = slices.Clone(config.SelectableToolNames)
+	config.workerToolNames = cloneWorkerToolNames(config.workerToolNames)
 	return config
 }
 
@@ -37,7 +44,7 @@ func (r *Registry) WorkerConfiguration() WorkerConfig {
 	if r.workerConfig != nil {
 		return cloneWorkerConfig(*r.workerConfig)
 	}
-	return cloneWorkerConfig(WorkerConfig{ModelBuilder: r.ModelBuilder, SelectWorkerModel: r.SelectWorkerModel, RestoreWorkerModel: r.RestoreWorkerModel, EnableDelegation: r.EnableDelegation, SubAgentTools: r.SubAgentTools, WorkerPreamble: r.WorkerPreamble, ToolOutputBinder: r.ToolOutputBinder, WorkerContextValues: r.WorkerContextValues})
+	return cloneWorkerConfig(WorkerConfig{ModelBuilder: r.ModelBuilder, SelectWorkerModel: r.SelectWorkerModel, RestoreWorkerModel: r.RestoreWorkerModel, EnableDelegation: r.EnableDelegation, SubAgentTools: r.SubAgentTools, SelectableToolNames: r.SelectableToolNames, WorkerPreamble: r.WorkerPreamble, ToolOutputBinder: r.ToolOutputBinder, WorkerContextValues: r.WorkerContextValues})
 }
 
 // ConfigureWorkers atomically replaces the surface for new manager-dispatched

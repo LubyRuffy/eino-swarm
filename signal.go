@@ -125,8 +125,10 @@ const DefaultManagerID = "manager"
 // accumulators and reset on NotifyTurn. Tool deltas key on ToolCallID and
 // reset when that call's NotifyToolResult arrives.
 type Notification struct {
+	ToolReceiptScope  string        `json:"-"`
 	ConfigTag         string        `json:"config_tag,omitempty"`
 	DelegationEnabled *bool         `json:"delegation_enabled,omitempty"`
+	WorkerToolNames   *[]string     `json:"worker_tool_names,omitempty"`
 	ParentID          string        `json:"parent_id,omitempty"`
 	WorkerGeneration  int           `json:"generation,omitempty"`
 	ModelBinding      *ModelBinding `json:"model_binding,omitempty"`
@@ -208,12 +210,14 @@ func (r *Registry) emitSpawned(role, agentID, instruction string) {
 	r.mu.Unlock()
 	tag := ""
 	var enabled *bool
+	var toolNames *[]string
 	if h != nil {
 		h.mu.Lock()
 		tag, enabled = h.configTag, h.delegationEnabled
+		toolNames = cloneWorkerToolNames(h.workerToolNames)
 		h.mu.Unlock()
 	}
-	r.emit(Notification{Kind: NotifySpawned, ConfigTag: tag, DelegationEnabled: enabled, AgentID: agentID, Role: role, Text: instruction, ModelBinding: r.workerModelBinding(agentID), ParentID: identity.ParentID, WorkerGeneration: identity.Generation})
+	r.emit(Notification{Kind: NotifySpawned, ConfigTag: tag, DelegationEnabled: enabled, WorkerToolNames: toolNames, AgentID: agentID, Role: role, Text: instruction, ModelBinding: r.workerModelBinding(agentID), ParentID: identity.ParentID, WorkerGeneration: identity.Generation})
 }
 
 func (r *Registry) emitFinished(role, agentID, result string, err error, identity AgentIdentity) {
@@ -255,14 +259,23 @@ func clipToolResult(s string, n int) string {
 	return s
 }
 
+type workerNotificationOwner struct {
+	identity     AgentIdentity
+	receiptScope string
+}
+
 // emitComplete maps one NON-streaming agent event to notifications. Streamed
 // assistant messages are handled by streamAcc (the single stream reader);
 // this path covers tool results and models that do not stream.
-func (r *Registry) emitComplete(role, agentID string, ev *adk.AgentEvent, identities ...AgentIdentity) {
+func (r *Registry) emitComplete(role, agentID string, ev *adk.AgentEvent, owners ...workerNotificationOwner) {
 	emit := func(n Notification) {
-		if len(identities) > 0 {
-			n.ParentID = identities[0].ParentID
-			n.WorkerGeneration = identities[0].Generation
+		if len(owners) > 0 {
+			owner := owners[0]
+			n.ParentID = owner.identity.ParentID
+			n.WorkerGeneration = owner.identity.Generation
+			if n.Kind == NotifyToolCall || n.Kind == NotifyToolResult {
+				n.ToolReceiptScope = owner.receiptScope
+			}
 		}
 		r.emit(n)
 	}
@@ -370,6 +383,7 @@ func itoa(i int) string {
 type streamAcc struct {
 	parentID         string
 	workerGeneration int
+	toolReceiptScope string
 	reg              *Registry
 	agentID          string
 	role             string
@@ -614,6 +628,9 @@ func (s *streamAcc) answerText() string {
 
 func (s *streamAcc) emit(n Notification) {
 	n.ParentID, n.WorkerGeneration = s.parentID, s.workerGeneration
+	if n.Kind == NotifyToolCall {
+		n.ToolReceiptScope = s.toolReceiptScope
+	}
 	n.AgentID = s.agentID
 	n.Role = s.role
 	s.mu.Lock()

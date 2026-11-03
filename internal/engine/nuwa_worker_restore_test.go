@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -25,6 +27,8 @@ func TestNuwaParkedWorkerRestoresOriginalModelAndModeAtHTTPBoundary(t *testing.T
 	for _, readOnly := range []bool{false, true} {
 		t.Run(map[bool]string{false: "shared-write", true: "read-only"}[readOnly], func(t *testing.T) {
 			var calls atomic.Int32
+			var e *Engine
+			const readID = "restored-source-read"
 			endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var request struct {
 					scheduleCompletionRequest
@@ -45,20 +49,44 @@ func TestNuwaParkedWorkerRestoresOriginalModelAndModeAtHTTPBoundary(t *testing.T
 				if !available["list_models"] || !available["spawn_agent"] || !available["read_work"] || available["record_work"] == readOnly {
 					t.Errorf("original worker mode lost across recovery: %+v", available)
 				}
-				if calls.Add(1) == 1 && !readOnly {
-					writeScheduleCompletionTool(w, request.scheduleCompletionRequest, "record_work", `{"kind":"fact","title":"Recovered observation","summary":"Original source retained."}`)
-					return
+				step := calls.Add(1)
+				if !readOnly {
+					switch step {
+					case 1:
+						nuwaValidationTool(w, request.scheduleCompletionRequest, readID, "read", `{"file_path":"source.txt"}`)
+						return
+					case 2:
+						if !strings.Contains(nuwaValidationReceipt(request.scheduleCompletionRequest, readID), "Original source retained.") {
+							t.Error("recovered worker did not receive the source")
+						}
+						if _, err := awaitNuwaToolResult(r.Context(), e.store, readID); err != nil {
+							t.Error(err)
+							http.Error(w, "missing durable receipt", http.StatusInternalServerError)
+							return
+						}
+						nuwaValidationTool(w, request.scheduleCompletionRequest, "restored-record", "record_work",
+							`{"kind":"fact","title":"Recovered observation","own_tool_call_ids":["restored-source-read"]}`)
+						return
+					case 3:
+						if !strings.Contains(nuwaValidationReceipt(request.scheduleCompletionRequest, "restored-record"), `"ok":true`) {
+							t.Error("recovered worker could not cite its new source")
+						}
+					}
 				}
 				writeContextFlowReply(w, request.Stream, map[string]any{"content": "Recovered work completed."}, "stop")
 			}))
 			t.Cleanup(endpoint.Close)
-			e := newTestEngine(t)
+			e = newTestEngine(t)
 			e.cfg.Swarm.AutoTitle = false
 			e.cfg.Models.Default = "restore-fixture"
 			e.cfg.Models.Providers = []config.Provider{{ID: "restore-fixture", BaseURL: endpoint.URL,
 				Model: "planner/current", Catalog: []string{"planner/original", "planner/current", "executor/original"}}}
 			e.pool = provider.New(e.cfg)
-			project, err := e.CreateProject("Original project", "Use the supplied evidence.", "", false, true)
+			workspace := t.TempDir()
+			if err := os.WriteFile(filepath.Join(workspace, "source.txt"), []byte("Original source retained.\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			project, err := e.CreateProject("Original project", "Use the supplied evidence.", workspace, false, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -73,12 +101,19 @@ func TestNuwaParkedWorkerRestoresOriginalModelAndModeAtHTTPBoundary(t *testing.T
 			if err := e.store.FinishTurn(turn.ID, store.TurnDone, "Waiting for the next check.", ""); err != nil {
 				t.Fatal(err)
 			}
+			latest := &store.Turn{ThreadID: thread.ID, ProjectID: project.ID, ProviderID: "restore-fixture", Model: "planner/current", NuwaEnabled: true}
+			if err := e.store.CreateTurn(latest); err != nil {
+				t.Fatal(err)
+			}
+			if err := e.store.FinishTurn(latest.ID, store.TurnDone, "The worker stayed active.", ""); err != nil {
+				t.Fatal(err)
+			}
 			if _, err := e.CreateSchedule(ScheduleInput{Kind: store.ScheduleThread, ThreadID: thread.ID, Title: "Recovery ownership", Prompt: "Inspect progress", EveryS: 3600, CreatedBy: store.ScheduleCreatedManager}); err != nil {
 				t.Fatal(err)
 			}
 			enabled := true
 			binding := &swarm.ModelBinding{Ref: provider.ChoiceID("restore-fixture", "executor/original"), ProviderID: "restore-fixture", Model: "executor/original"}
-			appendParkedCheckpoint(t, e, thread.ID, turn.ID, restartCheckpoint{Version: 1, Workers: []swarm.WorkerCheckpoint{{
+			appendParkedCheckpoint(t, e, thread.ID, latest.ID, restartCheckpoint{Version: 1, Workers: []swarm.WorkerCheckpoint{{
 				ID: "observer-4", Role: "observer", Generation: 3, ConfigTag: turn.ID, DelegationEnabled: &enabled, ModelBinding: binding,
 				Task: "Inspect the supplied evidence.", History: []*schema.Message{schema.UserMessage("Inspect the supplied evidence.")},
 			}}})
@@ -103,8 +138,15 @@ func TestNuwaParkedWorkerRestoresOriginalModelAndModeAtHTTPBoundary(t *testing.T
 				if len(nodes) != 0 || calls.Load() != 1 {
 					t.Fatalf("read-only recovery wrote shared work: nodes=%+v calls=%d", nodes, calls.Load())
 				}
-			} else if len(nodes) != 1 || nodes[0].TurnID != turn.ID || nodes[0].AgentID != "observer-4" || nodes[0].Generation != 3 || calls.Load() != 2 {
-				t.Fatalf("recovered write lost original provenance: nodes=%+v calls=%d", nodes, calls.Load())
+			} else {
+				read, err := awaitNuwaToolResult(t.Context(), e.store, readID)
+				if err != nil || len(nodes) != 1 || nodes[0].TurnID != turn.ID || nodes[0].AgentID != "observer-4" ||
+					nodes[0].Generation != 3 || calls.Load() != 3 || len(nodes[0].Evidence) != 1 ||
+					nodes[0].Evidence[0].TurnID != latest.ID || nodes[0].Evidence[0].Seq != read.Seq ||
+					read.TurnID != latest.ID || read.ToolReceiptScope == "" {
+					t.Fatalf("recovered write lost original provenance or actual observation: nodes=%+v calls=%d read=%+v err=%v",
+						nodes, calls.Load(), read, err)
+				}
 			}
 		})
 	}

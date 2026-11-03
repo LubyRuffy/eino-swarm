@@ -427,6 +427,137 @@ macOS v0.1.57 installer remains unchanged.
 | `assigned-v3-cost-attribution.json` | `e344bdba69e1bd578178b22dae58344d06373ff807c27a3762142516582f422f` |
 | `assigned-v3-cost-attribution-independent.json` | `5ed3dfbbb2da3f2468429d822b3352a478499d8be061c33ae2b56951dc0e739b` |
 
+## Separate AppWorld shared-instruction dev cohort
+
+This 27-run cohort used three selected AppWorld dev scenarios with three tasks
+each. The baseline used GLM alone. The two Nuwa arms requested a GLM planner
+with DS execution. One Nuwa arm used the candidate's shared-instruction
+forwarding syntax and the other kept the same excerpt as ordinary prompt text.
+The manager could see the syntax difference.
+
+| Arm | Official passes / assigned | DS worker requests | Reported total tokens | Median paired task time vs default |
+|---|---:|---:|---:|---:|
+| `default-glm` | 8/9 | 0 | 3,216,484 | — |
+| `nuwa-ds-preferred` | 9/9 | 184 | 4,912,524 | +46.16 s (8 successful pairs) |
+| `nuwa-ds-shared` | 8/9 | 163 | 4,352,500 | +32.70 s (7 successful pairs) |
+
+Against the preferred arm, the shared arm took 14.55 seconds less at the
+median over eight common successes and used 560,024 fewer reported tokens
+across all nine assignments. It passed one fewer task. Both Nuwa arms used
+more tokens and took longer on common successful tasks than default. The
+candidate did not meet the joint quality, speed and token criteria.
+
+| Private evidence within `worker-efficiency-input-audit-01/v8-shared-instruction-dev` | SHA-256 |
+|---|---|
+| `live/protocol.json` | `19158f31714c7d9541effa42bed432b7e2c3c193c2e95e733f13d94d5641fd43` |
+| `report/report.json` | `2d2b374f34d5518568f9efedec289227972f2ec927a17214643eaadb9e58a2d3` |
+| `launch/cleanup-verified.json` | `5e98de280a471cfdf65b9a5f8a6bc567e3d081529be9031c20815fc6d3487fb4` |
+
+## Separate cross-module specification diagnostic
+
+This fixed-order pair reused one development task with four independently
+implementable modules and 17 original checks. Both arms received the same
+public fixture, GLM planner, model catalog and limits. The Nuwa project
+instruction asked the planner to delegate independently verifiable work to
+DS and select the worker's tools. Each solver ran in a fresh container.
+An independent evaluator received the public files and four designated
+deliverables only after the solver exited.
+
+| Arm | Checks passed | Terminal task time | Gateway requests | Reported total tokens |
+|---|---:|---:|---:|---:|
+| `default-glm` | 15/17 | 101.92 s | 72 | 961,586 |
+| `nuwa-auto` | 15/17 | 91.23 s | 46 | 625,219 |
+
+Three DS workers made 29 model requests and wrote deliverables. The planner
+collected each worker's result from the same generation that did the work.
+Both arms missed the same two original checks. The 10.69-second terminal-time
+reduction and 336,367-token reduction
+describe this pair. Neither arm passed the whole task, so successful paired
+speed is unavailable. This pair used an experimental engine from before the
+shared-work receipt-reference change.
+
+An earlier attempt ended after the default arm. Its session-memory request
+exceeded the 35-second provider deadline and yielded incomplete token usage.
+Its 15/17 score remains separate. The completed pair gave both arms the same
+75-second provider deadline and retained the original whole-arm budgets.
+Separate probes of the saved deliverables found representation-limit
+violations against the public specifications in both arms. Those probes
+did not modify the original scoring or enter the solver inputs.
+
+| Private evidence within `worker-efficiency-input-audit-01` | SHA-256 |
+|---|---|
+| `independent-spec-container-pair-timeout-01/inputs.json` | `3631ded072fcb288a7d15138a8e250cdad61a353c0184e8662c59fdeac88de89` |
+| `independent-spec-container-pair-timeout-01/launch-real-01/audit.json` | `8018b88662876884dbc43f7f403351a6cc6762d7d678cb76563e76b74548e61e` |
+| `independent-spec-container-pair-timeout-01/original-timeout-attribution.json` | `8b0fd4116f6ccf25698c4e3344b2d12a814686458ce70bcb246921460d65d2f5` |
+| `independent-spec-public-boundary-audit-02/audit.json` | `96aedc2a33e70c8d4fa348619d91e8db4eb994364ea8a8647c611aad320039e2` |
+
+### Public boundary acceptance instruction
+
+A fresh pair on the same development task added the same acceptance criterion
+to both project prompts. Where an implementation limit could narrow a public
+requirement, the model was asked to find the limit, run a source-derived
+counterexample and keep that check through any correction. Both arms used the
+same engine, fixture, budgets and independent evaluator as the preceding
+completed pair. The DS delegation preference remained specific to the Nuwa arm.
+
+| Arm | Checks passed | Terminal task time | Gateway requests | Reported total tokens |
+|---|---:|---:|---:|---:|
+| `default-glm` | 15/17 | 76.00 s | 36 | 783,070 |
+| `nuwa-auto` | 14/17 | 95.51 s | 46 | 875,832 |
+
+One DS worker implemented duration and made eight model requests. The GLM
+planner received its completed result for the same worker generation and
+then edited the deliverable. The reviewed tool calls covered finite examples
+and semantic bounds. Neither trace established a source-derived check that
+crossed the runtime conversion limit. The final files in both arms still
+violated the three public representation-limit probes. The two separate
+invalid-ISO probes passed in both arms. These probes ran after grading, using
+the exact scored file bytes. They were separate from the 17 original checks.
+
+Nuwa passed one fewer check and used 92,762 more reported tokens in this pair.
+Its terminal task time was 19.51 seconds longer. Neither arm passed the task,
+so successful paired speed is unavailable. This repeated development task
+does not establish a causal effect of the instruction across runs. The
+request-level evidence is complete and both arms cleaned up their resources.
+
+| Private evidence within `worker-efficiency-input-audit-01/independent-spec-falsification-pair-01` | SHA-256 |
+|---|---|
+| `inputs.json` | `c70047edbcefa0f431a3831a567ee01c2d8d2614fe2c823fdd4ef1b6110b9d17` |
+| `scoring-scope.json` | `986da757c9fa8f101e445a8031dd046f050ef2025003ea48385e8d774f3cf4a4` |
+| `launch-real-01/audit.json` | `8163ca150f28d007ea223270e7b9d9902ec8fe72f7cf95644660102455e75609` |
+| `launch-audit/mechanism-review.json` | `a8b58c511393c9dca7f43d28309c54d6dff39803c682e423b92641a2b2ebbd26` |
+| `public-audit-real-01/public-boundary.json` | `890901a094e971984dc345a9c6c3ad75066e4f321ba3f171ec1704f9255ca05d` |
+
+### Routing and coordination limits
+
+A retrospective selection over the 27 AppWorld shared-instruction cohort
+rows evaluated all 19,683 assignments of the three observed routes to the
+nine tasks. Of these, 840 improved both the completed pass count and total
+tokens. None reached the successful paired speed threshold. This calculation
+uses the recorded results of each route and gives the selector advance
+knowledge of all outcomes. It does not predict a policy's future results.
+
+On the same successful pair sets, an idealized overlap of the recorded
+manager and worker model intervals, with all other time removed, still left
+the preferred arm 27.30 seconds slower and the shared arm 12.63 seconds
+slower at the median. Keeping the recorded manager intervals, the preferred
+arm would require about 82% less worker interval time to cross the speed
+gate under these assumptions. The shared arm would still miss the 4-second
+gate even if all worker model time vanished.
+
+A separate scripted HTTP comparison held parallel dispatch, executor calls
+and both stored artifacts fixed. Batching two independent single-worker
+`wait_agents` calls in one response reduced planner requests from five to
+four. Each result was collected under its actual worker generation. This
+checks the request count and collection contract. Successful wall time and
+provider token savings require real-model measurements.
+
+| Private evidence within `worker-efficiency-input-audit-01` | SHA-256 |
+|---|---|
+| `v8-route-oracle-audit-01/audit.json` | `3738f432557cd70960b90aaabe2227ca7bee0a7a653fc63be612216f3c8cb0a0` |
+| `v8-runtime-floor-audit-01/audit.json` | `2452e9e0dd92e40bc2e54cc2f9aa1c2650fdadc7867d8bdc5e39c4c49009ddf0` |
+| `isolated-wait-batch-http-01/targeted.log` | `8842acfe06bdf364d76dcc615db8535415e3aa4093f98143f735c8396eaad8be` |
+
 ## Evidence identity for the original generic cohort
 
 The private evidence set is `20261102-01a199cc`. Identifiers below allow a
