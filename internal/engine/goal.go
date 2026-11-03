@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -217,8 +218,8 @@ func (e *Engine) ResumeThreadGoal(id string) (*store.Turn, error) {
 	if strings.TrimSpace(th.Goal) == "" {
 		return nil, fmt.Errorf("engine: there is no standing objective to resume")
 	}
-	if e.Status(id).Running {
-		return nil, ErrBusy
+	if err := e.runtimeFor(id).checkGoalResumeWorkerProjects(); err != nil {
+		return nil, err
 	}
 	prev := map[string]any{
 		"goal_complete":     th.GoalComplete,
@@ -251,6 +252,25 @@ func (e *Engine) ResumeThreadGoal(id string) (*store.Turn, error) {
 		return nil, startErr
 	}
 	return turn, nil
+}
+
+// Refuse a persistent ownership mismatch before reopening the objective or
+// creating a successor turn. A parked registry already owns its live workers.
+func (rt *runtime) checkGoalResumeWorkerProjects() error {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.running {
+		return ErrBusy
+	}
+	if rt.parked != nil {
+		return nil
+	}
+	ctx := context.Background()
+	snapshot, err := rt.engine.readRestoreSnapshot(ctx, rt.threadID)
+	if err != nil {
+		return err
+	}
+	return rt.engine.validateRestoredWorkerProjectOwners(ctx, rt.threadID, snapshot.running)
 }
 
 // ReopenThreadGoal clears a complete_goal from this conversation so pursuit

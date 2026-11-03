@@ -31,6 +31,7 @@ CONSTANTS
     ParkedNotCheckpointed,  \* handoff checkpoints running managers only
     IdleCountsOnlyManagers, \* idle load ignores parked workers, restoration and handoff
     ParkedAdmissionNonAtomic, \* choose/take drops the parked runtime before successor occupancy
+    RestoreOwnerCheckedLate, \* occupy before checking a tagged worker's project
     MaxTurns
 
 Engines == {"old", "new"}
@@ -53,7 +54,7 @@ VARIABLES
     work,         \* the conversation's in-memory execution on owner
     owner,        \* engine executing work
     checkpoint,   \* durable restart checkpoint awaiting restoration: "none", "running", "parked"
-    restorePhase, \* replacement's restoration of this conversation: "pending", "read", "done"
+    restorePhase, \* replacement's restoration phase, including owner refusal
     snapshot,     \* what restoration read from the checkpoint
     stopped,      \* durable human Stop for the current turn
     stopAcked,    \* the human was told the Stop succeeded
@@ -268,7 +269,7 @@ RestoringHere == IF RestoreBeforeListen THEN "booting" ELSE "restoring"
 
 Publish ==
     /\ eng["new"] = "booting"
-    /\ ~RestoreBeforeListen \/ restorePhase = "done"
+    /\ ~RestoreBeforeListen \/ restorePhase \in {"done", "owner_refused", "foreign_claimed"}
     /\ eng' = [eng EXCEPT !["new"] = IF RestoreBeforeListen THEN "serving" ELSE "restoring"]
     /\ lease' = "new"
     /\ UNCHANGED <<stopping, sampled, hold, launcher, target, deadline, work, owner,
@@ -276,19 +277,31 @@ Publish ==
 
 ReadCheckpoint ==
     /\ eng["new"] = RestoringHere /\ restorePhase = "pending"
-    /\ snapshot' = IF stopped THEN "none" ELSE checkpoint
+    /\ IF stopped THEN snapshot' = "none"
+       ELSE snapshot' \in (IF checkpoint = "none" THEN {"none"} ELSE {checkpoint, "foreign"})
     /\ restorePhase' = "read"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
                    work, owner, checkpoint, stopped, stopAcked, gate, turns, successor>>
 
 OccupyRuntime ==
     /\ eng["new"] = RestoringHere /\ restorePhase = "read"
-    /\ work' = snapshot
+    /\ snapshot # "foreign" \/ RestoreOwnerCheckedLate
+    /\ work' = IF snapshot = "foreign" THEN checkpoint ELSE snapshot
     /\ owner' = IF snapshot = "none" THEN owner ELSE "new"
-    /\ checkpoint' = "none" /\ snapshot' = "none" /\ restorePhase' = "done"
+    /\ checkpoint' = "none" /\ snapshot' = "none"
+    /\ restorePhase' = IF snapshot = "foreign" THEN "foreign_claimed" ELSE "done"
     /\ eng' = IF RestoreBeforeListen THEN eng ELSE [eng EXCEPT !["new"] = "serving"]
     /\ UNCHANGED <<lease, stopping, sampled, hold, launcher, target, deadline,
                    stopped, stopAcked, gate, turns, successor>>
+
+(* Complete this handoff attempt without occupying the runtime. The handoff
+   obligation is cleared here; the database retains the recovery input. *)
+RefuseForeignRuntime ==
+    /\ eng["new"] = RestoringHere /\ restorePhase = "read" /\ snapshot = "foreign"
+    /\ checkpoint' = "none" /\ snapshot' = "none" /\ restorePhase' = "owner_refused"
+    /\ eng' = IF RestoreBeforeListen THEN eng ELSE [eng EXCEPT !["new"] = "serving"]
+    /\ UNCHANGED <<lease, stopping, sampled, hold, launcher, target, deadline,
+                   work, owner, stopped, stopAcked, gate, turns, successor>>
 
 -----------------------------------------------------------------------------
 (* Shell presence (desktop launch and the presence endpoints). *)
@@ -359,7 +372,7 @@ Next ==
     \/ BeginHandoff \/ Freeze \/ Ack \/ OldAlreadyGone \/ HandoffTimesOut
     \/ OldExits \/ Spawn \/ DeadlineExpires \/ DeadlineKillsReplacement
     \/ HumanCancelsLaunch
-    \/ Publish \/ ReadCheckpoint \/ OccupyRuntime
+    \/ Publish \/ ReadCheckpoint \/ OccupyRuntime \/ RefuseForeignRuntime
     \/ Reserve \/ Attach \/ FrontendAttaches \/ WindowCloses
     \/ \E e \in Engines : IdleCommit(e) \/ IdleSample(e) \/ IdleExit(e)
 
@@ -380,8 +393,8 @@ TypeOK ==
     /\ work \in WorkStates
     /\ owner \in Engines
     /\ checkpoint \in {"none", "running", "parked"}
-    /\ restorePhase \in {"pending", "read", "done"}
-    /\ snapshot \in {"none", "running", "parked"}
+    /\ restorePhase \in {"pending", "read", "done", "owner_refused", "foreign_claimed"}
+    /\ snapshot \in {"none", "running", "parked", "foreign"}
     /\ stopped \in BOOLEAN
     /\ stopAcked \in BOOLEAN
     /\ gate \in BOOLEAN
@@ -403,6 +416,8 @@ StopIsFinal == stopAcked => work = "none"
 (* A privately held parked Registry must still be counted by its runtime. *)
 RegistryAlwaysAccounted == successor = "detached" => work # "none"
 
+RestoreOwnsProject == restorePhase # "foreign_claimed"
+
 (* A window the shell opened has an engine behind it until the window closes. *)
 WindowHasEngine == launcher = "opened" => Alive(target)
 
@@ -413,6 +428,7 @@ WindowHasEngine == launcher = "opened" => Alive(target)
 NeverRestoredIntoWindow ==
     ~(launcher = "opened" /\ target = "new" /\ owner = "new" /\ work # "none")
 NeverParkedCheckpoint == ~(checkpoint = "parked")
+NeverRefusedForeignRuntime == restorePhase # "owner_refused"
 NeverParkedSuccessor == ~(successor = "admitted" /\ work = "running" /\ turns > 0)
 NeverRefusedParkedSuccessor == ~(successor = "refused" /\ work = "parked")
 NeverStopBeforeRestore == ~(stopAcked /\ checkpoint # "none")

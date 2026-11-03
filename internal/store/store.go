@@ -88,6 +88,14 @@ func Open(path string) (*Store, error) {
 	if err := s.ensureSearch(); err != nil {
 		return nil, err
 	}
+	// Pre-Nuwa inserts omitted the nullable project_id column. Concrete values
+	// (including the empty string) are already ownership snapshots.
+	if err := db.Exec(`UPDATE turns
+		SET project_id = COALESCE((SELECT project_id FROM threads WHERE threads.id = turns.thread_id), '')
+		WHERE project_id IS NULL`).Error; err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("store: backfill turn project owners: %w", err)
+	}
 	return s, nil
 }
 

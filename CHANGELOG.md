@@ -6,6 +6,16 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed desktop render-cover sampling behind dialogs. The translucent black
+  overlay retains an sRGB color that the native sampler can read. (`C-034`)
+
+- Fixed worker and Nuwa turn recovery after upgrading a project conversation
+  with unrecorded turn ownership. Startup fills legacy SQL NULL owners once
+  per row. Explicit standalone owners still conflict with a later move into
+  a project. Goal Continue refuses a conflicting worker checkpoint before
+  creating a turn and can retry it once ownership is corrected. (`F-136`,
+  `C-037`)
+
 - Added an opt-in `memory.review_deduplicate_feedback` experiment that removes
   duplicate fields from aggregate memory-review refusals while preserving each
   issue's evidence and repair details. The default feedback format stays in use.

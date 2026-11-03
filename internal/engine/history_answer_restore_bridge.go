@@ -31,6 +31,9 @@ func (rt *runtime) prepareLeftoverWorkers(ctx context.Context, turn *store.Turn,
 			return nil, err
 		}
 	}
+	if err := rt.engine.validateRestoredWorkerProjectOwners(ctx, turn.ThreadID, snapshot.running); err != nil {
+		return nil, err
+	}
 	owners, err := leftoverWorkerOwners(snapshot)
 	if err != nil {
 		return nil, err

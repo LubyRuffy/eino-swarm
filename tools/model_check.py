@@ -64,9 +64,9 @@ MODELS = {
             "lifecycle", ROOT / "models" / "lifecycle" / "EngineLifecycle.tla",
             ("DeadlineKillsChild", "RestoreBeforeListen", "StopRacesRestore", "PresenceAfterWindow",
              "IdleCommitNonAtomic", "FinishUngated", "ParkedNotCheckpointed", "IdleCountsOnlyManagers",
-             "ParkedAdmissionNonAtomic"),
+             "ParkedAdmissionNonAtomic", "RestoreOwnerCheckedLate"),
             ("TypeOK", "WorkHasLiveOwner", "CheckpointHasOwner", "StopIsFinal", "WindowHasEngine",
-             "RegistryAlwaysAccounted"),
+             "RegistryAlwaysAccounted", "RestoreOwnsProject"),
             (("MaxTurns", 2),),
         ),
         Model(
@@ -164,6 +164,9 @@ CASES: tuple[Case, ...] = (
     _case("nuwa-reach-result", "witness", witness="NeverSharedResult", model="nuwa"),
     _case("nuwa-reach-delegation", "witness", witness="NeverDelegated", model="nuwa"),
     _case("current", "current design: every switch off"),
+    _case("restore-owner-checked-late", "tagged project checked only after runtime occupation",
+          ("RestoreOwnerCheckedLate",), "RestoreOwnsProject"),
+    _case("reach-refused-foreign-runtime", "witness", witness="NeverRefusedForeignRuntime"),
     # Historical: the shipped code before these commits had the behaviour.
     _case("pre-d77e8d4", "historical, before d77e8d4: the restart deadline bounded the replacement "
           "child, which restored every task before publishing its lease",
