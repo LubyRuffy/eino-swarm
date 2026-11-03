@@ -2909,6 +2909,12 @@ memory files and stored outcomes, not agreement with the old reviewer's answer:
   the returned operation index and repair metadata, not a preselected round
   number. Successful repair preserves exact source authority, the iteration cap
   and committed notes; repair-only text stays outside persisted diagnostics.
+- `TestReviewFeedbackDedupOpenSSLReplay`: uses the archived OpenSSL attempt
+  categories and source excerpts with synthetic proposals where the original
+  requests were unavailable. The loopback reviewer compares the default and
+  opt-in feedback through the real adapter and checks exact quote, numeric and
+  repair fields, refusal behavior and the committed result. This is an offline
+  protocol regression, separate from model or benchmark evaluation.
 - `internal/engine/review_finalize_test.go`: an actual accepted batch followed
   by a real skill-fold write failure retains committed notes/skills and records
   `stop_reason: error` without the storage path. A separate real `NotesDraft`

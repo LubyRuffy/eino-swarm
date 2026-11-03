@@ -87,6 +87,9 @@ func (t *reviewBatchTool) validateProposal(ctx context.Context, operations []rev
 
 func (t *reviewBatchTool) refuseIssues(number int, issues []reviewValidationIssue, operations []reviewOperation) string {
 	var result map[string]any
+	if t.deduplicateFeedback {
+		result = map[string]any{"success": false}
+	}
 	all := make([]map[string]any, 0, len(issues))
 	shownSources := map[int64]bool{}
 	for _, issue := range issues {
@@ -103,7 +106,11 @@ func (t *reviewBatchTool) refuseIssues(number int, issues []reviewValidationIssu
 			}
 		}
 		fields := t.refusal(number, issue.index, issue.code, issue.err, operations)
-		if result == nil {
+		if t.deduplicateFeedback {
+			// refusal supplies the same false status and repeats error in note.
+			delete(fields, "success")
+			delete(fields, "note")
+		} else if result == nil {
 			// Keep the original first-refusal fields for existing tool clients.
 			result = make(map[string]any, len(fields)+2)
 			for key, value := range fields {

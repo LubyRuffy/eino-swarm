@@ -343,10 +343,13 @@ func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectCo
 		}
 		notes = &snapshot
 	}
-	instruction := memory.ReviewPrompt()
+	memorySettings := e.cfg.Snapshot().Memory
+	deduplicateFeedback := memorySettings.ReviewDeduplicateFeedback
+	instruction := memory.ReviewPromptWithFeedback(deduplicateFeedback)
 	description := "curates this project's memory after a conversation"
 	batch := &reviewBatchTool{store: pc.memory, sources: reviewEvidenceSources(sourceEvents, input.Events),
-		humanOnly: turn.Status == store.TurnError, library: pc.library, mu: &mu, outcome: &outcome, finish: finishReviewBatch}
+		humanOnly: turn.Status == store.TurnError, library: pc.library, mu: &mu, outcome: &outcome,
+		deduplicateFeedback: deduplicateFeedback, finish: finishReviewBatch}
 	if notes != nil {
 		batch.notesRev = notes.Rev
 	}
@@ -357,12 +360,15 @@ func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectCo
 	}
 	if pc.library {
 		instruction = memory.LibraryReviewPrompt()
+		if deduplicateFeedback {
+			instruction += "\n" + memory.DeduplicatedReviewFeedbackInstruction
+		}
 		description = "records reusable procedures from a conversation that belongs to no project"
 	}
 	if turn.Status != store.TurnError {
 		instruction += "\n" + workerLifecycleGuidance + "\n"
 	}
-	effort, optionalEffort := e.cfg.Memory.ReviewEffort(turn.ReasoningEffort)
+	effort, optionalEffort := memorySettings.ReviewEffort(turn.ReasoningEffort)
 	e.driveReviewer(reviewRun{
 		threadID:       threadID,
 		turnID:         turn.ID,
@@ -373,7 +379,7 @@ func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectCo
 		description:    description,
 		instruction:    instruction,
 		userMsg:        e.reviewUserMessageWithNotes(pc, input.Transcript, notes),
-		maxIter:        e.cfg.Memory.ReviewIterations(),
+		maxIter:        memorySettings.ReviewIterations(),
 		tools:          tools,
 		sequential:     true,
 		completed: func() (string, bool) {

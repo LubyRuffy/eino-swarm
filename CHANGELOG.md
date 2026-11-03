@@ -17,6 +17,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- Added an opt-in `memory.review_deduplicate_feedback` experiment that removes
+  duplicate fields from aggregate memory-review refusals while preserving each
+  issue's evidence and repair details. The default feedback format stays in use.
+
 - `F-140`: PC workspace image previews offer zoom in/out, a zoom percentage,
   actual size (100%) and fit-to-window controls. Enlarged images remain fully
   reachable by scrolling; refresh, changing images and reopening reset the fit.

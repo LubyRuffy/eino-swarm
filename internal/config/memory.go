@@ -31,6 +31,9 @@ type MemoryConfig struct {
 	// medium or high. Unknown values are repaired to blank. No level disables
 	// thinking; inherit keeps the conversation's provider behavior.
 	ReviewReasoningEffort string `yaml:"review_reasoning_effort" json:"review_reasoning_effort"`
+	// ReviewDeduplicateFeedback omits repeated fields from the turn reviewer's
+	// aggregate refusal feedback. The experiment is off unless explicitly enabled.
+	ReviewDeduplicateFeedback bool `yaml:"review_deduplicate_feedback,omitempty" json:"review_deduplicate_feedback,omitempty"`
 	// SkillsIndexMax is how many skills the prompt lists. Only the name and
 	// the one-line summary are listed, so the agent pays for the index and not
 	// for every procedure it might not need.

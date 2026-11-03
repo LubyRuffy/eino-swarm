@@ -391,6 +391,10 @@ provider carries `has_api_key` and `ready` instead.
 }}
 ```
 
+`memory.review_deduplicate_feedback` appears as `true` when the experiment is
+enabled and is omitted otherwise. A `PUT /api/settings` request that supplies
+`memory` replaces that section. Include the flag to keep the experiment on.
+
 ### `GET /api/clients`
 
 Read-only progress for local Claude, Codex, and Cursor transcripts. `enabled`
@@ -2203,6 +2207,14 @@ metadata. Repair preserves per-note/total limits, evidence and numeric checks,
 unique matching and the original notes revision. The draft checks operations in
 order: a supported shortening/replacement must make room before an addition.
 Unrelated notes must not be removed to fit a proposal.
+
+With `memory.review_deduplicate_feedback` enabled, the internal reviewer sees
+one shared rejection status and instruction plus all structured `issues`.
+Each issue retains its `error`, `index`, `code` and complete repair data,
+including source excerpts and numeric spellings. The reviewer no longer sees
+the duplicate first issue at the top level or the duplicate `success` and
+`note` fields within each issue. The default format, ordinary receipts
+without `issues`, and persisted review diagnostics keep their existing shape.
 
 The reviewer submits one complete `apply_memory_review` proposal. Notes retain
 the existing agent checks in an in-memory draft and are committed once against
