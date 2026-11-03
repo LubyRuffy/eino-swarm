@@ -167,7 +167,40 @@ func (s *Store) ListThreadIDsByProject(projectID string) ([]string, error) {
 }
 
 // SetThreadProject moves a conversation into a project, or out of every
-// project when projectID is empty.
+// project when projectID is empty. Invalidate affected Collaboration views
+// in the same transaction as the membership change.
 func (s *Store) SetThreadProject(threadID, projectID string) error {
-	return s.UpdateThread(threadID, map[string]any{"project_id": strings.TrimSpace(projectID)})
+	projectID = strings.TrimSpace(projectID)
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var thread Thread
+		if err := tx.Select("project_id").First(&thread, "id = ?", threadID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return fmt.Errorf("store: read project membership: %w", err)
+		}
+		result := tx.Model(&Thread{}).Where("id = ?", threadID).Updates(map[string]any{
+			"project_id": projectID, "updated_at": time.Now().UTC(),
+		})
+		if result.Error != nil {
+			return fmt.Errorf("store: update thread: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return ErrNotFound
+		}
+		if thread.ProjectID == projectID {
+			return nil
+		}
+		var visible []string
+		if err := tx.Model(&Project{}).Where("id IN ? AND (nuwa_enabled = ? OR nuwa_revision > 0)",
+			[]string{thread.ProjectID, projectID}, true).Order("id").Pluck("id", &visible).Error; err != nil {
+			return fmt.Errorf("store: find affected collaboration views: %w", err)
+		}
+		for _, id := range visible {
+			if err := bumpNuwaRevision(tx, id); err != nil {
+				return fmt.Errorf("store: invalidate collaboration after project move: %w", err)
+			}
+		}
+		return nil
+	})
 }

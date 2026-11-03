@@ -188,13 +188,11 @@ test("Nuwa creation shares live evidence paths and preserves them after disablin
     )
     await page.getByRole("button", { name: "Entire project", exact: true }).click()
     fixture.revise({ id: finding.id, version: finding.version })
-    expect(
-      (
-        await request.post(`/api/threads/${second}/turns`, {
-          data: { text: "Review the recorded evidence." },
-        })
-      ).status()
-    ).toBe(202)
+    const reviewed = await request.post(`/api/threads/${second}/turns`, {
+      data: { text: "Review the recorded evidence." },
+    })
+    expect(reviewed.status()).toBe(202)
+    const { turn: reviewTurn } = await reviewed.json()
     await expect(graph.getByRole("button", { name: /Measured finding/ })).toContainText(
       "Superseded"
     )
@@ -205,7 +203,27 @@ test("Nuwa creation shares live evidence paths and preserves them after disablin
     await graph.getByRole("button", { name: /Measured finding/ }).click()
     await expect(detail).toContainText("A later check superseded the initial result")
     await detail.getByRole("button", { name: "Details and evidence", exact: true }).click()
-    await expect(detail.getByRole("button", { name: /Original task input/ })).toContainText("#1")
+    const sourceLink = detail.getByRole("button", { name: /Original task input/ })
+    await expect(sourceLink).toContainText("#1")
+    await expect
+      .poll(async () => (await (await request.get(`/api/trace/${reviewTurn.id}`)).json()).turn.status)
+      .toBe("done")
+    const newProject = await request.post("/api/projects", {
+      data: { name: "Moved evidence project", nuwa_enabled: true },
+    })
+    expect(newProject.ok()).toBe(true)
+    const { project: destination } = await newProject.json()
+    const moveSource = async (projectId: string) => {
+      const moved = await request.patch(`/api/threads/${firstThread}`, {
+        data: { project_id: projectId },
+      })
+      expect(moved.ok()).toBe(true)
+    }
+    await moveSource(destination.id)
+    await expect(sourceLink).toBeDisabled()
+    await expect(sourceLink).toContainText("Source unavailable")
+    await moveSource(project.id)
+    await expect(sourceLink).toBeEnabled()
     const wrap = page
       .getByTestId("project-wrap")
       .filter({ has: page.getByRole("button", { name: projectName, exact: true }) })

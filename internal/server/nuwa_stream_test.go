@@ -69,7 +69,16 @@ func TestNuwaProjectSSEPublishesCommittedRevisionsAcrossConversations(t *testing
 	if err := h.app.Store.CreateTurn(turn); err != nil {
 		t.Fatal(err)
 	}
-	node := store.NuwaNode{ProjectID: id, Kind: "fact", Title: "New observation", Summary: "A measured result.", ThreadID: thread.ID, TurnID: turn.ID, AgentID: "manager"}
+	source, err := h.app.Engine.CreateThread("Evidence source", "", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceEvent := store.Event{ThreadID: source.ID, Kind: "agent_message", AgentID: "manager", Text: "Measured result."}
+	if err := h.app.Store.AppendEvent(&sourceEvent); err != nil {
+		t.Fatal(err)
+	}
+	evidence := store.NuwaEvidence{ThreadID: source.ID, Seq: sourceEvent.Seq}
+	node := store.NuwaNode{ProjectID: id, Kind: "fact", Title: "New observation", Summary: "A measured result.", ThreadID: thread.ID, TurnID: turn.ID, AgentID: "manager", Evidence: []store.NuwaEvidence{evidence}}
 	if err := h.app.Store.UpsertNuwaNode(ctx, &node, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -80,6 +89,38 @@ func TestNuwaProjectSSEPublishesCommittedRevisionsAcrossConversations(t *testing
 	nodes := snapshot["nodes"].([]any)
 	if snapshot["revision"] != float64(1) || len(nodes) != 1 || nodes[0].(map[string]any)["id"] != node.ID {
 		t.Fatalf("snapshot after named event=%v", snapshot)
+	}
+	if nodes[0].(map[string]any)["unavailable_evidence"] != nil {
+		t.Fatalf("the original source should be available: %v", nodes[0])
+	}
+	// Moving a different conversation must update the currently open project
+	// even though its shared record and the evidence event both still exist.
+	destination := h.newProject(map[string]any{"name": "Destination", "nuwa_enabled": true})["id"].(string)
+	movePath := "/api/threads/" + source.ID
+	h.json(http.MethodPatch, movePath, map[string]any{"project_id": destination}, http.StatusOK)
+	afterMove := h.json(http.MethodGet, path, nil, http.StatusOK)
+	movedNode := afterMove["nodes"].([]any)[0].(map[string]any)
+	unavailable, _ := movedNode["unavailable_evidence"].([]any)
+	if afterMove["revision"] != float64(2) || movedNode["id"] != node.ID || len(unavailable) != 1 {
+		t.Fatalf("moving the evidence source must invalidate the open snapshot: %v", afterMove)
+	}
+	if change := next(); change["project_id"] != id || change["revision"] != afterMove["revision"] {
+		t.Fatalf("move invalidation=%v", change)
+	}
+	destinationPath := "/api/projects/" + destination + "/nuwa"
+	if to := h.json(http.MethodGet, destinationPath, nil, http.StatusOK); to["revision"] != float64(1) || len(to["nodes"].([]any)) != 0 {
+		t.Fatalf("destination did not get its own invalidation: %v", to)
+	}
+	h.json(http.MethodPatch, movePath, map[string]any{"project_id": destination}, http.StatusOK)
+	if repeated := h.json(http.MethodGet, path, nil, http.StatusOK); repeated["revision"] != afterMove["revision"] {
+		t.Fatalf("repeating a move changed the original project again: %v", repeated)
+	}
+	h.json(http.MethodPatch, movePath, map[string]any{"project_id": id}, http.StatusOK)
+	if change := next(); change["project_id"] != id || change["revision"] != float64(3) {
+		t.Fatalf("move-back invalidation=%v", change)
+	}
+	if back := h.json(http.MethodGet, path, nil, http.StatusOK); back["nodes"].([]any)[0].(map[string]any)["unavailable_evidence"] != nil {
+		t.Fatalf("move back did not restore the evidence link: %v", back)
 	}
 	h.json(http.MethodPatch, "/api/projects/"+id, map[string]any{"nuwa_enabled": false}, http.StatusOK)
 	if after := h.json(http.MethodGet, path, nil, http.StatusOK); len(after["nodes"].([]any)) != 1 {

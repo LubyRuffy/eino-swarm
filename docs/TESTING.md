@@ -29,6 +29,10 @@ a real project move at the admission boundary for a retained Registry,
 explicit goal continuation and a fresh turn. They check model requests and
 durable receipts. `ProjectMoveAdmission.tla` checks both orderings and retains
 counterexamples for a stale Registry claim and a false goal-resume receipt.
+The Nuwa HTTP/SSE and browser suites move the source of an already visible
+record to another project and back. The open view updates the evidence link
+without a reload. Store fault injection checks that a failed second revision
+receipt rolls back both revisions and the move.
 
 `internal/store/nuwa_test.go` exercises CAS races, full correction provenance,
 atomic rollback, duplicate real-call receipts, owner deletion/cancellation,

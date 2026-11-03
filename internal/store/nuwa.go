@@ -355,12 +355,16 @@ func (s *Store) UpsertNuwaNode(ctx context.Context, node *NuwaNode, expectedVers
 // BumpNuwaRevision invalidates the shared snapshot after a worker-state change.
 func (s *Store) BumpNuwaRevision(ctx context.Context, projectID string) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		revision, err := advanceNuwaRevision(tx, projectID)
-		if err != nil {
-			return err
-		}
-		return tx.Create(&NuwaRevision{ProjectID: projectID, Revision: revision, Payload: "{}", CreatedAt: time.Now().UTC()}).Error
+		return bumpNuwaRevision(tx, projectID)
 	})
+}
+
+func bumpNuwaRevision(tx *gorm.DB, projectID string) error {
+	revision, err := advanceNuwaRevision(tx, projectID)
+	if err != nil {
+		return err
+	}
+	return tx.Create(&NuwaRevision{ProjectID: projectID, Revision: revision, Payload: "{}", CreatedAt: time.Now().UTC()}).Error
 }
 
 // NuwaSnapshot reads the project revision and its nodes from one read snapshot.

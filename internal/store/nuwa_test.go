@@ -392,6 +392,76 @@ func failNuwaOperation(t *testing.T, s *Store, operation, table string, nth int)
 	return &failed
 }
 
+func TestNuwaThreadMoveCommitsBothInvalidationsOrKeepsOriginalProject(t *testing.T) {
+	f := newNuwaFixture(t)
+	// A disabled project with saved work still owns an open Collaboration view.
+	if err := f.s.UpdateProject(f.project.ID, map[string]any{"nuwa_enabled": false}); err != nil {
+		t.Fatal(err)
+	}
+	destination := &Project{Name: "Destination", NuwaEnabled: true}
+	if err := f.s.CreateProject(destination); err != nil {
+		t.Fatal(err)
+	}
+	original, err := f.s.GetProject(f.project.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := failNuwaOperation(t, f.s, "create", "nuwa_revisions", 2)
+	if err := f.s.SetThreadProject(f.thread.ID, destination.ID); err == nil || !*failed {
+		t.Fatalf("move accepted despite a failed invalidation: fired=%t err=%v", *failed, err)
+	}
+	verify := func(owner string, before, after, receipts int64) {
+		t.Helper()
+		thread, err := f.s.GetThread(f.thread.ID)
+		if err != nil || thread.ProjectID != owner {
+			t.Fatalf("move owner=%+v err=%v", thread, err)
+		}
+		for id, want := range map[string]int64{original.ID: before, destination.ID: after} {
+			project, err := f.s.GetProject(id)
+			if err != nil || project.NuwaRevision != want {
+				t.Fatalf("move revision=%+v want=%d err=%v", project, want, err)
+			}
+		}
+		var count int64
+		if err := f.s.DB().Model(&NuwaRevision{}).Count(&count).Error; err != nil || count != receipts {
+			t.Fatalf("move receipts=%d want=%d err=%v", count, receipts, err)
+		}
+	}
+	verify(original.ID, original.NuwaRevision, 0, 0)
+	if err := f.s.SetThreadProject(f.thread.ID, destination.ID); err != nil {
+		t.Fatal(err)
+	}
+	verify(destination.ID, original.NuwaRevision+1, 1, 2)
+	if err := f.s.SetThreadProject(f.thread.ID, destination.ID); err != nil {
+		t.Fatal(err)
+	}
+	verify(destination.ID, original.NuwaRevision+1, 1, 2)
+}
+
+func TestNuwaThreadMoveRefusesIncompleteStorageWork(t *testing.T) {
+	for _, tc := range []struct{ operation, table string }{
+		{"query", "threads"},
+		{"update", "threads"},
+		{"query", "projects"},
+	} {
+		t.Run(tc.operation+"/"+tc.table, func(t *testing.T) {
+			f := newNuwaFixture(t)
+			failed := failNuwaOperation(t, f.s, tc.operation, tc.table, 1)
+			if err := f.s.SetThreadProject(f.thread.ID, ""); err == nil || !*failed {
+				t.Fatalf("move accepted with incomplete storage work: fired=%t err=%v", *failed, err)
+			}
+			thread, err := f.s.GetThread(f.thread.ID)
+			if err != nil || thread.ProjectID != f.project.ID {
+				t.Fatalf("failed move changed membership: thread=%+v err=%v", thread, err)
+			}
+		})
+	}
+	f := newNuwaFixture(t)
+	if err := f.s.SetThreadProject("missing-thread", f.project.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing thread move returned %v", err)
+	}
+}
+
 func TestNuwaWriteFailuresRollBackNodeRevisionAndAuditTogether(t *testing.T) {
 	for _, test := range []struct {
 		operation, table string
