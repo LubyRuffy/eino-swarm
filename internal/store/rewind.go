@@ -11,7 +11,8 @@ import (
 // TruncateFromEventSeq drops the named event and everything after it: later
 // turns, their model messages, their model-call records, and any queued
 // follow-up. Metadata owned by a removed turn is also dropped even if it
-// precedes that turn's user event. Earlier turns stay. The in-memory counter
+// precedes that turn's user event. Earlier turns stay. A visible collaboration
+// view is invalidated in the same transaction. The in-memory counter
 // is not wound back, so a live subscriber's Last-Event-ID still lands on new
 // events instead of colliding with a seq that just vanished. A reopened store
 // reseeds from the rows that remain, so the caller must store a row above
@@ -41,8 +42,9 @@ func (s *Store) TruncateFromEventSeq(threadID string, fromSeq int64) error {
 		for _, t := range later {
 			ids = append(ids, t.ID)
 		}
-		if err := tx.Where("thread_id = ? AND (seq >= ? OR turn_id IN ?)", threadID, fromSeq, ids).Delete(&Event{}).Error; err != nil {
-			return err
+		removed := tx.Where("thread_id = ? AND (seq >= ? OR turn_id IN ?)", threadID, fromSeq, ids).Delete(&Event{})
+		if removed.Error != nil {
+			return removed.Error
 		}
 		if err := tx.Where("thread_id = ? AND event_seq >= ?", threadID, fromSeq).Delete(&ThreadWakeDecision{}).Error; err != nil {
 			return err
@@ -75,7 +77,13 @@ func (s *Store) TruncateFromEventSeq(threadID string, fromSeq int64) error {
 		if err := tx.Where("thread_id = ?", threadID).Delete(&Followup{}).Error; err != nil {
 			return err
 		}
-		return s.clearBrokenCompact(tx, threadID)
+		if err := s.clearBrokenCompact(tx, threadID); err != nil {
+			return err
+		}
+		if removed.RowsAffected == 0 && len(ids) == 0 {
+			return nil
+		}
+		return invalidateNuwaRewind(tx, threadID)
 	})
 	if err != nil {
 		return fmt.Errorf("store: truncate from seq %d: %w", fromSeq, err)
@@ -84,6 +92,21 @@ func (s *Store) TruncateFromEventSeq(threadID string, fromSeq int64) error {
 	delete(s.followupSeq, threadID)
 	s.mu.Unlock()
 	return s.IndexThread(threadID)
+}
+
+func invalidateNuwaRewind(tx *gorm.DB, threadID string) error {
+	// Resolve membership inside the truncation transaction. The source may
+	// have moved since the caller read the thread or its original turn.
+	var project Project
+	err := tx.Select("id").Where(`id = (SELECT project_id FROM threads WHERE id = ?)
+		AND (nuwa_enabled = ? OR nuwa_revision > 0)`, threadID, true).Take(&project).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return bumpNuwaRevision(tx, project.ID)
 }
 
 // GetEvent loads one timeline row by its per-conversation sequence number.

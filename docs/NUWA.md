@@ -148,6 +148,11 @@ ordinary edits and repeated settings do not advance that revision.
 Moving a conversation refreshes the affected Collaboration views. A saved
 evidence link is unavailable while its source conversation belongs to another
 project. Moving the source back restores the link when the event still exists.
+Editing and resending a message refreshes Collaboration when it removes
+earlier evidence. Existing references to removed events show **Source
+unavailable**. Explicitly deleting a conversation removes the shared work it created
+and its version history from every project that still holds it. References
+from other conversations stay visible as unavailable.
 
 Checkpoints and worker-spawn events retain the explicit workspace tool selection.
 A resumed or restored worker receives that same selection. A missing selected

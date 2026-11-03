@@ -72,7 +72,7 @@ MODELS = {
         ),
         Model(
             "project-move", ROOT / "models" / "lifecycle" / "ProjectMoveAdmission.tla",
-            ("UnorderedClaim", "UnorderedGoal"),
+            ("UnorderedClaim", "UnorderedGoal", "RefusalDropsParked"),
             ("TypeOK", "ClaimOwnsProject", "ResumeReceiptOwnsProject", "RefusalKeepsParked"),
             (),
         ),
@@ -85,9 +85,10 @@ MODELS = {
         Model(
             "nuwa", ROOT / "models" / "nuwa" / "NuwaCollaboration.tla",
             ("RebindOnRestore", "CancelParentOnly", "WriteAfterStop",
-             "CrossProjectEvidence", "PublishBeforeCommit"),
+             "CrossProjectEvidence", "PublishBeforeCommit", "RewindSkipsRevision",
+             "DeleteMovedSkipsRevision"),
             ("TypeOK", "BindingStable", "StopOwnsDescendants", "NoLateFact",
-             "ProjectScoped", "VisibleIsCommitted"),
+             "ProjectScoped", "VisibleIsCommitted", "SourceChangeHasRevision"),
             (("MaxWrites", 2),),
         ),
         Model(
@@ -167,6 +168,10 @@ CASES: tuple[Case, ...] = (
           ("CrossProjectEvidence",), "ProjectScoped", model="nuwa"),
     _case("nuwa-uncommitted-revision", "seeded revision publication before the write commits",
           ("PublishBeforeCommit",), "VisibleIsCommitted", model="nuwa"),
+    _case("nuwa-rewind-stale-source", "rewind erases a source without invalidating collaboration",
+          ("RewindSkipsRevision",), "SourceChangeHasRevision", model="nuwa"),
+    _case("nuwa-delete-moved-stale-source", "deleting a moved author leaves the original project revision stale",
+          ("DeleteMovedSkipsRevision",), "SourceChangeHasRevision", model="nuwa"),
     _case("nuwa-reach-restore", "witness", witness="NeverRestored", model="nuwa"),
     _case("nuwa-reach-result", "witness", witness="NeverSharedResult", model="nuwa"),
     _case("nuwa-reach-delegation", "witness", witness="NeverDelegated", model="nuwa"),
@@ -222,6 +227,8 @@ CASES: tuple[Case, ...] = (
           ("UnorderedClaim",), "ClaimOwnsProject", model="project-move"),
     _case("project-move-false-goal-resume", "Move commits after goal preflight, before its durable receipt",
           ("UnorderedGoal",), "ResumeReceiptOwnsProject", model="project-move"),
+    _case("project-move-refusal-drops-parked", "foreign owner refusal discards the parked registry",
+          ("RefusalDropsParked",), "RefusalKeepsParked", model="project-move"),
     *(_case(name, "witness", witness=witness, model="project-move") for name, witness in (
         ("project-move-reach-wake", "NeverWakeClaim"),
         ("project-move-reach-goal", "NeverGoalClaim"),

@@ -34,6 +34,14 @@ record to another project and back. The open view updates the evidence link
 without a reload. Store fault injection checks that a failed second revision
 receipt rolls back both revisions and the move.
 
+`internal/server/nuwa_source_lifecycle_test.go` keeps the project SSE open
+through edit/resend and explicit deletion after a move. It checks committed
+revision delivery, unavailable references and removal of the deleted
+author's private history. Store tests inject failed revision writes and
+check transaction rollback. The Nuwa model reproduces stale revisions for
+both mutations. The browser scenario drives the open Collaboration view
+through the same source changes.
+
 `internal/store/nuwa_test.go` exercises CAS races, full correction provenance,
 atomic rollback, duplicate real-call receipts, owner deletion/cancellation,
 evidence scope, cycles and stale dependency versions.

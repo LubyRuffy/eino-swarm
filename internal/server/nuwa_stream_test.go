@@ -23,41 +23,7 @@ func TestNuwaProjectSSEPublishesCommittedRevisionsAcrossConversations(t *testing
 	if initial["revision"] != float64(0) || len(initial["nodes"].([]any)) != 0 || len(initial["workers"].([]any)) != 0 {
 		t.Fatalf("initial snapshot=%v", initial)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, h.srv.URL+path+"/events", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response, err := h.srv.Client().Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK || !strings.HasPrefix(response.Header.Get("Content-Type"), "text/event-stream") {
-		t.Fatalf("stream status=%d headers=%v", response.StatusCode, response.Header)
-	}
-	reader := bufio.NewReader(response.Body)
-	next := func() map[string]any {
-		t.Helper()
-		name := ""
-		for {
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				t.Fatal(err)
-			}
-			if strings.HasPrefix(line, "event:") {
-				name = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
-			}
-			if strings.HasPrefix(line, "data:") && name == "nuwa_updated" {
-				var value map[string]any
-				if err := json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &value); err != nil {
-					t.Fatal(err)
-				}
-				return value
-			}
-		}
-	}
+	next := openNuwaRevisionStream(t, h, path)
 	if ready := next(); ready["project_id"] != id || ready["revision"] != float64(0) {
 		t.Fatalf("ready=%v", ready)
 	}
@@ -79,7 +45,7 @@ func TestNuwaProjectSSEPublishesCommittedRevisionsAcrossConversations(t *testing
 	}
 	evidence := store.NuwaEvidence{ThreadID: source.ID, Seq: sourceEvent.Seq}
 	node := store.NuwaNode{ProjectID: id, Kind: "fact", Title: "New observation", Summary: "A measured result.", ThreadID: thread.ID, TurnID: turn.ID, AgentID: "manager", Evidence: []store.NuwaEvidence{evidence}}
-	if err := h.app.Store.UpsertNuwaNode(ctx, &node, 0); err != nil {
+	if err := h.app.Store.UpsertNuwaNode(t.Context(), &node, 0); err != nil {
 		t.Fatal(err)
 	}
 	if change := next(); change["project_id"] != id || change["revision"] != float64(1) {
@@ -126,7 +92,45 @@ func TestNuwaProjectSSEPublishesCommittedRevisionsAcrossConversations(t *testing
 	if after := h.json(http.MethodGet, path, nil, http.StatusOK); len(after["nodes"].([]any)) != 1 {
 		t.Fatalf("disabling erased shared history: %v", after)
 	}
-	cancel()
+}
+
+func openNuwaRevisionStream(t *testing.T, h *harness, path string) func() map[string]any {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	t.Cleanup(cancel)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, h.srv.URL+path+"/events", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := h.srv.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = response.Body.Close() })
+	if response.StatusCode != http.StatusOK || !strings.HasPrefix(response.Header.Get("Content-Type"), "text/event-stream") {
+		t.Fatalf("stream status=%d headers=%v", response.StatusCode, response.Header)
+	}
+	reader := bufio.NewReader(response.Body)
+	return func() map[string]any {
+		t.Helper()
+		name := ""
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				t.Fatalf("read next nuwa_updated from %s: %v", path, err)
+			}
+			if strings.HasPrefix(line, "event:") {
+				name = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			}
+			if strings.HasPrefix(line, "data:") && name == "nuwa_updated" {
+				var value map[string]any
+				if err := json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &value); err != nil {
+					t.Fatal(err)
+				}
+				return value
+			}
+		}
+	}
 }
 
 func TestNuwaReadRoutesRefuseMissingProjects(t *testing.T) {

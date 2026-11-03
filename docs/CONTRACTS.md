@@ -28,6 +28,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 项目归属迁移：Store 打开时只把旧进程未写入的 SQL NULL 回填为当时会话的项目，显式空字符串仍表示无项目。历史归属没有记录时，无法识别回填前的迁移。带 tag 的 worker 在冷恢复和活跃 Registry 接管前都检查原 turn 与当前项目归属。发现冲突时保留原 Registry 或 checkpoint，显式继续目标在新建 turn 前拒绝，用户仍可 Stop 或修复归属后继续。
 - 会话移动和 Registry 接管按同一会话排序。接管前核对 turn 捕获的项目归属，移动先完成时拒绝旧快照。显式继续目标的归属预检、恢复记录和后继 turn 准入也与移动按同一会话排序。
 - 会话移动与两侧可见协作视图的 revision 和审计回执在同一事务提交。失败保留原归属和 revision，重复移动不增加 revision。旧项目保留共享记录，跨项目的来源链接实时变为 unavailable，移回后重新核验。
+- 编辑重发与当前可见协作项目的 revision 同事务提交，保留对移除事件的不可用引用。显式删除会话按节点原始作者清理当前及历史项目中的节点和对应版本回执，并推进受影响项目的 revision。其他作者的节点和版本保留，引用失效可见。任一版本写入失败回滚整笔操作。验证见 `internal/store/nuwa_rewind_test.go`、`internal/store/nuwa_moved_delete_test.go` 和 `internal/server/nuwa_source_lifecycle_test.go`。
 - 共享读：实际工具读取以可信原 turn 的当前项目归属为准，归属检查与共享节点读取使用同一事务快照。已移动会话的旧 worker 不能新读原项目的共享记录。
 - 冷恢复包含未收取的已完成结果。其原项目不匹配时拒绝加载；已收取或明确丢弃的旧项目结果继续保存在原历史，但不进入目的项目的新 Registry。
 - 共享写：必须来自受信 project/thread/turn/agent/generation 的实际工具调用，参数不能伪造作者。correction 保留原 author 并记录实际更新者。patch 仅改显式字段，省略 evidence/dependencies 保留，空数组清除。CAS、项目 revision 和完整版本审计原子提交；通过当前归属和输入有效性检查后，同 tool-call 身份与参数重送返回冻结回执，不重建节点、覆盖更新版本或增加 revision；幂等不绕过取消、删除归属／目标或成果文件有效性检查，异参复用身份冲突。取消、删除归属及存储失败不发布假回执。

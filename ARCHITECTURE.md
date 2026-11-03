@@ -2020,6 +2020,9 @@ explicit. Reported nodes record claims and their sources. `nuwa_snapshot.go`
 combines these records with workers projected from actual lifecycle receipts.
 GET and a separate project-revision SSE stream drive the Collaboration panel
 without adding another chat event sequence.
+Timeline truncation advances the current project's visible collaboration
+revision in the same transaction. Explicit conversation deletion cleans up authored
+nodes across their historical projects and advances each affected revision.
 See [Nuwa](docs/NUWA.md), `F-136` and `C-037`.
 
 ## Independent conversation coordination

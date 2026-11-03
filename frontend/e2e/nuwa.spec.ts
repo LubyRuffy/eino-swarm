@@ -224,6 +224,27 @@ test("Nuwa creation shares live evidence paths and preserves them after disablin
     await expect(sourceLink).toContainText("Source unavailable")
     await moveSource(project.id)
     await expect(sourceLink).toBeEnabled()
+    const replacement = await startNuwaFixture("direct")
+    try {
+      await configureNuwaFixture(request, replacement.url)
+      replacement.releaseTask()
+      const resent = await request.post(`/api/threads/${firstThread}/turns`, {
+        data: { text: "Save the replacement result.", from_event_seq: 1 },
+      })
+      expect(resent.status()).toBe(202)
+      const { turn: replacementTurn } = await resent.json()
+      await expect
+        .poll(async () => (await (await request.get(`/api/trace/${replacementTurn.id}`)).json()).turn.status)
+        .toBe("done")
+      await expect(sourceLink).toBeDisabled()
+      await expect(sourceLink).toContainText("Source unavailable")
+      expect(replacement.workerModels).toEqual([])
+      expect(replacement.errors).toEqual([])
+    } finally {
+      replacement.releaseTask()
+      await request.post(`/api/threads/${firstThread}/interrupt`).catch(() => undefined)
+      await replacement.close()
+    }
     const wrap = page
       .getByTestId("project-wrap")
       .filter({ has: page.getByRole("button", { name: projectName, exact: true }) })
@@ -256,6 +277,11 @@ test("Nuwa creation shares live evidence paths and preserves them after disablin
       await page.screenshot({ animations: "disabled" }),
       { mode: 0o600 }
     )
+    await moveSource(destination.id)
+    const deleted = await request.delete(`/api/threads/${firstThread}`)
+    expect(deleted.status()).toBe(204)
+    await expect(graph.getByRole("button", { name: /Measured finding/ })).toHaveCount(0)
+    await expect(page.getByTestId("nuwa-panel")).toContainText("Nuwa collaboration is off")
   } finally {
     fixture.releaseTask()
     if (firstThread)

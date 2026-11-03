@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -428,26 +429,31 @@ func deleteNuwaThread(tx *gorm.DB, threadID string) error {
 	if err := tx.First(&thread, "id = ?", threadID).Error; err != nil {
 		return err
 	}
-	if thread.ProjectID == "" {
-		return nil
-	}
-	var ids []string
-	if err := tx.Model(&NuwaNode{}).Where("project_id = ? AND thread_id = ?", thread.ProjectID, threadID).Pluck("id", &ids).Error; err != nil {
+	// Moving a conversation leaves its shared nodes in their original projects.
+	// Their origin still owns the nodes and every full version or call receipt.
+	var projects []string
+	if err := tx.Model(&NuwaNode{}).Distinct().Where("thread_id = ?", threadID).Pluck("project_id", &projects).Error; err != nil {
 		return err
 	}
-	if len(ids) > 0 {
-		if err := tx.Where("project_id = ? AND node_id IN ?", thread.ProjectID, ids).Delete(&NuwaRevision{}).Error; err != nil {
+	if len(projects) > 0 {
+		authoredNodes := tx.Model(&NuwaNode{}).Select("id").Where("thread_id = ?", threadID)
+		if err := tx.Where("node_id IN (?)", authoredNodes).Delete(&NuwaRevision{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("project_id = ? AND id IN ?", thread.ProjectID, ids).Delete(&NuwaNode{}).Error; err != nil {
+		if err := tx.Where("thread_id = ?", threadID).Delete(&NuwaNode{}).Error; err != nil {
 			return err
 		}
 	}
-	revision, err := advanceNuwaRevision(tx, thread.ProjectID)
-	if err != nil {
-		return err
+	if thread.ProjectID != "" && !slices.Contains(projects, thread.ProjectID) {
+		projects = append(projects, thread.ProjectID)
 	}
-	return tx.Create(&NuwaRevision{ProjectID: thread.ProjectID, Revision: revision, Payload: "{}", CreatedAt: time.Now().UTC()}).Error
+	slices.Sort(projects)
+	for _, projectID := range projects {
+		if err := bumpNuwaRevision(tx, projectID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func deleteNuwaProject(tx *gorm.DB, projectID string) error {

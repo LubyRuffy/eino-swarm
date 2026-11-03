@@ -4,7 +4,11 @@ EXTENDS TLC
 (* Refinement of EngineLifecycle's ParkedSuccessorOwnsProject.
    Unlike its atomic ownerMatches input, this model distinguishes the saved
    lookup, concurrent Move, goal receipt, and Registry publication. *)
-CONSTANTS UnorderedClaim, UnorderedGoal
+CONSTANTS
+    UnorderedClaim,
+    UnorderedGoal,
+    RefusalDropsParked
+
 VARIABLES project, phase, origin, observed, registry, resumedForeign, claimedForeign
 
 vars == <<project, phase, origin, observed, registry, resumedForeign, claimedForeign>>
@@ -23,7 +27,8 @@ Observe ==
     /\ phase = "lookup"
     /\ observed' = project
     /\ phase' = IF project = "original" THEN "validated" ELSE "refused"
-    /\ UNCHANGED <<project, origin, registry, resumedForeign, claimedForeign>>
+    /\ registry' = IF project = "foreign" /\ RefusalDropsParked THEN "lost" ELSE registry
+    /\ UNCHANGED <<project, origin, resumedForeign, claimedForeign>>
 
 Move ==
     /\ (phase \notin {"lookup", "validated", "resumed"}
@@ -60,7 +65,7 @@ TypeOK ==
     /\ phase \in {"idle", "lookup", "validated", "resumed", "refused", "claimed"}
     /\ origin \in {"none", "wake", "goal"}
     /\ observed \in {"unknown", "original", "foreign"}
-    /\ registry \in {"parked", "occupied"}
+    /\ registry \in {"parked", "occupied", "lost"}
     /\ resumedForeign \in BOOLEAN
     /\ claimedForeign \in BOOLEAN
 

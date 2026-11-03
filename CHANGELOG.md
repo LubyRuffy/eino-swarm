@@ -22,6 +22,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 - Nuwa Collaboration updates evidence links in open project views when their
   source conversation moves to another project or back. (`F-136`, `C-037`)
 
+- Editing and resending a source message refreshes open Nuwa Collaboration
+  views. Deleting a moved conversation also removes the shared work and
+  versions it authored in former projects. (`F-136`, `C-037`)
+
 - Nuwa can select the workspace tools needed for a new worker. The worker
   retains the selection when continued or restored. (`F-136`, `C-037`)
 

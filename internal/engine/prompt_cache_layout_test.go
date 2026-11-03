@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -14,6 +15,13 @@ import (
 // were cached on a first call, against 80% or more on later calls). The path now
 // follows all static text, so the shared prefix is the whole generic prompt.
 func TestManagerPromptSharesItsPrefixAcrossConversations(t *testing.T) {
+	// Compare workspaces against the same host facts. A transient uname
+	// failure in just one prompt would otherwise also change its prefix.
+	savedProbe := probeUname
+	t.Cleanup(func() { probeUname = savedProbe })
+	probeUname = func(context.Context) ([]byte, error) {
+		return []byte("fixture-kernel"), nil
+	}
 	a := ManagerPrompt(&tools.Set{WorkspaceDir: "/data/ws/th_aaaaaaaaaaaaaaaa", Names: []string{"exec"}}, "")
 	b := ManagerPrompt(&tools.Set{WorkspaceDir: "/data/ws/th_bbbbbbbbbbbbbbbb", Names: []string{"exec"}}, "")
 
