@@ -6,6 +6,9 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed desktop render-cover sampling behind dialogs. The translucent black
+  overlay retains an sRGB color that the native sampler can read. (`C-034`)
+
 - Fixed worker and Nuwa turn recovery after upgrading a project conversation
   with unrecorded turn ownership. Startup fills legacy SQL NULL owners once
   per row. Explicit standalone owners still conflict with a later move into

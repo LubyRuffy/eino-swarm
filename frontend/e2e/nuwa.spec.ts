@@ -49,7 +49,7 @@ test("Nuwa creation shares live evidence paths and preserves them after disablin
                 },
               ],
             },
-            swarm: { ...settings.swarm, auto_title: false },
+            swarm: { ...settings.swarm, auto_title: false, composer_predictions: false },
             memory: { ...settings.memory, auto_review: false },
           },
         })
