@@ -220,11 +220,17 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 			}
 		} else {
 			restore, planted := rt.takeWorkerRestore()
+			answer.admitCommentary = func(note swarm.Notification, prefix []string) bool {
+				policyCtx, endPolicy := rt.scheduleAnswerContext(ctx, reg)
+				defer endPolicy()
+				return e.admitManagerCommentary(policyCtx, turn, acc.event(note, note.Kind.String()), prefix)
+			}
 			middlewares := append(e.autoCompactHandlers(rt.threadID, turn.ID, th, forceCompact), answer)
 			answerCtx := context.WithValue(ctx, scheduleAnswerBufferContextKey{}, answer)
 			res, runErr = reg.RunWith(answerCtx, swarm.RunConfig{
 				Instruction: instruction, Messages: messages, ManagerTools: managerTools, MaxIterations: budget,
 				RestoreWorkers: restore, FinishedWorkers: planted, ManagerMiddlewares: middlewares,
+				ManagerForkContextFilter: withoutPendingManagerProse, OrderManagerCommentary: true,
 			}, swarm.Callback(func(n swarm.Notification) {
 				if n.Kind == swarm.NotifyGenerationStarted && isManagerAgent(n.AgentID) {
 					modelRounds.Add(1)

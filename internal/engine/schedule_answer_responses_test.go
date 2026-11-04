@@ -58,12 +58,12 @@ func TestRejectedScheduleClaimIsAbsentFromActualResponsesContinuation(t *testing
 			}
 		}
 		if strings.HasPrefix(system, "## Schedule answer claims") {
-			n := checks.Add(1)
+			checks.Add(1)
 			if req.Stream || len(req.Tools) != 0 || len(req.Input) != 2 {
 				t.Errorf("classifier escaped read-only request: %+v", req)
 			}
 			classification := `{"claims":[]}`
-			if n == 1 {
+			if len(req.Input) == 2 && len(req.Input[1].Content) == 1 && strings.Contains(req.Input[1].Content[0].Text, fixtureScheduleClaim) {
 				classification = `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureScheduleClaim + `","scope":"thread","scope_quote":"on this conversation","new":true,"every_s":90}]}`
 			}
 			writeAnswerResponses(w, false, []map[string]any{{"type": "message", "id": "classifier-answer", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": classification}}}})
@@ -112,7 +112,7 @@ func TestRejectedScheduleClaimIsAbsentFromActualResponsesContinuation(t *testing
 	if done.Status != store.TurnDone || done.Final != "No future check has been arranged." {
 		t.Fatalf("correction failed: %+v", done)
 	}
-	if manager.Load() != 3 || checks.Load() != 2 {
+	if manager.Load() != 3 || checks.Load() != 3 {
 		t.Fatalf("missing/unbounded correction: manager=%d checks=%d", manager.Load(), checks.Load())
 	}
 	mu.Lock()

@@ -52,25 +52,41 @@ func TestManagerAnswerBufferKeepsWorkerAndToolActivityLive(t *testing.T) {
 	_, release := ownManagerTestFixture(context.Background(), e.runtimeFor(th.ID), turn.ID, reg)
 	defer release()
 	b := newManagerAnswerBuffer(newAccumulator(e, th.ID, turn.ID, 0))
+	b.admitCommentary = func(n swarm.Notification, _ []string) bool {
+		if n.MessageID != "ordinary" {
+			return false
+		}
+		event := b.acc.event(n, n.Kind.String())
+		return e.admitManagerProse(context.Background(), th.ID, turn.ID, nil, []store.Event{event}, nil) == nil
+	}
 	b.onNotify(swarm.Notification{Kind: swarm.NotifyAgentMessage, AgentID: "worker", Text: "worker result"})
 	b.onNotify(swarm.Notification{Kind: swarm.NotifyReasoningDelta, AgentID: "manager", Text: "inspect the actual state"})
-	b.onNotify(swarm.Notification{Kind: swarm.NotifyDelta, AgentID: "manager", Text: "candidate commentary", MessageID: "commentary"})
-	b.onNotify(swarm.Notification{Kind: swarm.NotifyToolCall, AgentID: "manager", Text: "exec({})", ToolCallID: "tool"})
+	b.onNotify(swarm.Notification{Kind: swarm.NotifyDelta, AgentID: "manager", Text: "ordinary commentary", MessageID: "ordinary"})
+	b.onNotify(swarm.Notification{Kind: swarm.NotifyToolCall, AgentID: "manager", Text: "exec({})", ToolCallID: "ordinary-tool", MessageID: "ordinary"})
+	b.onNotify(swarm.Notification{Kind: swarm.NotifyDelta, AgentID: "manager", Text: "candidate schedule statement", MessageID: "candidate"})
+	b.onNotify(swarm.Notification{Kind: swarm.NotifyToolCall, AgentID: "manager", Text: "exec({})", ToolCallID: "candidate-tool", MessageID: "candidate"})
 	b.onNotify(swarm.Notification{Kind: swarm.NotifyTurn, AgentID: "manager"})
 	b.onNotify(swarm.Notification{Kind: swarm.NotifyDelta, AgentID: "manager", Text: "partial interrupted answer"})
 	b.onNotify(swarm.Notification{Kind: swarm.NotifyGenerationInterrupted, AgentID: "manager"})
 	b.onNotify(swarm.Notification{Kind: swarm.NotifyAgentMessage, AgentID: "manager", Text: "accepted answer", MessageID: "answer"})
 	before, _ := e.store.ListTurnEvents(turn.ID)
 	worker, tool, reason := false, false, false
+	ordinarySeen := false
 	for _, ev := range before {
 		worker = worker || ev.AgentID == "worker"
 		tool = tool || ev.Kind == "tool_call"
 		reason = reason || ev.Kind == KindReasoning
 		if isManagerAgent(ev.AgentID) && ev.Kind == "agent_message" {
-			t.Fatalf("candidate prose escaped buffer: %+v", ev)
+			if ev.MessageID != "ordinary" || ev.Text != "ordinary commentary" {
+				t.Fatalf("unadmitted prose escaped buffer: %+v", ev)
+			}
+			ordinarySeen = true
+		}
+		if ev.ToolCallID == "ordinary-tool" && !ordinarySeen {
+			t.Fatalf("ordinary commentary did not precede its tool: %+v", before)
 		}
 	}
-	if !worker || !tool || !reason {
+	if !worker || !tool || !reason || !ordinarySeen {
 		t.Fatalf("buffer suppressed live activity: %+v", before)
 	}
 	if err := b.publish(nil); err != nil {
@@ -83,7 +99,7 @@ func TestManagerAnswerBufferKeepsWorkerAndToolActivityLive(t *testing.T) {
 			bodies = append(bodies, ev.Text)
 		}
 	}
-	if strings.Join(bodies, "|") != "candidate commentary|accepted answer" {
+	if strings.Join(bodies, "|") != "ordinary commentary|candidate schedule statement|accepted answer" {
 		t.Fatalf("admitted wrong outputs: %v", bodies)
 	}
 	if err := b.publish(nil); err != nil {

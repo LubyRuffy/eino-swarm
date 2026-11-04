@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Manager commentary confirmed to contain no scheduling-success claim appears
+  before its tool call in live chat and replay. Unadmitted claims stay out of
+  public events and forked worker input. (#152, `C-009`, `C-022`)
+
 - Worker history guidance follows the tools the worker receives. When
   `query_history` is absent, the worker can report the evidence it needs to
   its delegator. (`C-037`)

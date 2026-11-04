@@ -334,8 +334,12 @@ writes them into this table so the next force-quit does not depend on the
 event scan. An answer already stored for that turn — including below
 `compact_through_seq` — is not rewritten; that would mint a new seq and
 undo `/compact`.
-Candidate manager prose is withheld while scheduling-success claims are
-checked. Admission rechecks the matched schedules and the running turn in one
+A complete manager tool-round commentary is admitted before its associated
+tool call when the chronological prose prefix has no scheduling-success claim.
+Its public event and replay row
+are committed together using the original output identity. Prose with a claim
+or an unknown classification stays private until the final check, including
+when a worker forks the conversation in the same round. Admission rechecks the matched schedules and the running turn in one
 transaction, then writes its `agent_message` events and assistant replay rows
 together before broadcasting. A cancelled/retargeted schedule or ended turn
 cannot admit a late success answer. `schedule_report` findings pass the same

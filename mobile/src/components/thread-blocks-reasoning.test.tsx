@@ -2,7 +2,9 @@ import { fireEvent, render, screen, within } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
 import { setLocale } from "@/lib/i18n"
-import type { CompactBlock } from "@/lib/transcript"
+import { OpEvent, OpReady, type RemoteEvent } from "@/lib/rpc"
+import { applyPush, openView, prependOlder } from "@/lib/session"
+import { managerBlocks, type CompactBlock } from "@/lib/transcript"
 
 import { renderBlock, ThreadLog } from "./thread-blocks"
 
@@ -75,6 +77,64 @@ describe("phone reasoning disclosure", () => {
       thoughts.forEach((thought) => expect(thought).toHaveAttribute("aria-expanded", "false"))
       unmount()
     }
+  })
+
+  it("keeps manager commentary between separate tool folds during live and paged replay", () => {
+    setLocale("en")
+    const thread = { id: "thread", title: "Compare sources" }
+    const first = "I will inspect the first source."
+    const second = "I will inspect the second source."
+    const event = (seq: number, kind: string, text: string, tool_call_id?: string): RemoteEvent => ({
+      thread_id: thread.id, turn_id: "turn", agent_id: "manager",
+      seq, kind, text, tool_call_id, created_at: "2026-01-01T00:00:00Z",
+    })
+    const rows = [
+      event(1, "reasoning", "Find the first source."),
+      event(2, "agent_message", first),
+      event(3, "tool_call", 'read({"file_path":"first.txt"})', "first"),
+      event(4, "tool_result", "First source contents", "first"),
+      event(5, "reasoning", "Identify the comparison source."),
+      event(6, "agent_message", second),
+      event(7, "tool_call", 'read({"file_path":"second.txt"})', "second"),
+      event(8, "tool_result", "Second source contents", "second"),
+    ]
+    const wire = { v: 1, id: "", ok: true, thread_id: thread.id } as const
+    let live = applyPush(openView(thread), { ...wire, op: OpReady, seq: 0, status: { running: true, turn_id: "turn" } })
+    for (const row of rows.slice(0, 6)) {
+      live = applyPush(live, { ...wire, op: OpEvent, seq: row.seq, event: row })
+    }
+    const liveLog = render(<ThreadLog running blocks={managerBlocks(live.blocks)} />)
+    expect(screen.getByText(second)).toBeVisible()
+    expect(screen.getAllByTestId("work-fold")).toHaveLength(1)
+    for (const row of rows.slice(6)) {
+      live = applyPush(live, { ...wire, op: OpEvent, seq: row.seq, event: row })
+    }
+    liveLog.rerender(<ThreadLog running blocks={managerBlocks(live.blocks)} />)
+
+    function expectSeparateFolds() {
+      const [firstFold, secondFold] = screen.getAllByTestId("work-fold")
+      expect(screen.getAllByTestId("work-fold")).toHaveLength(2)
+      expect(screen.getByText(first).compareDocumentPosition(firstFold)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+      expect(firstFold.compareDocumentPosition(screen.getByText(second))).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+      expect(screen.getByText(second).compareDocumentPosition(secondFold)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+      expect(firstFold).toHaveAttribute("aria-expanded", "false")
+      expect(secondFold).toHaveAttribute("aria-expanded", "false")
+      fireEvent.click(firstFold)
+      expect(screen.getByText("First source contents")).toBeVisible()
+      expect(screen.queryByText("Second source contents")).not.toBeInTheDocument()
+      expect(screen.getAllByTestId("phone-thought-toggle")).toHaveLength(2)
+      fireEvent.click(secondFold)
+      expect(screen.getByText("Second source contents")).toBeVisible()
+    }
+
+    expectSeparateFolds()
+    liveLog.unmount()
+
+    // The latest Watch page can start in the middle of a group.
+    const tail = applyPush(openView(thread), { ...wire, op: OpReady, seq: 8, more: true, events: rows.slice(4) })
+    const paged = prependOlder(tail, rows.slice(0, 4), false)
+    render(<ThreadLog blocks={managerBlocks(paged.blocks)} />)
+    expectSeparateFolds()
   })
 
   it("reveals the complete original reasoning only through its own toggle", () => {

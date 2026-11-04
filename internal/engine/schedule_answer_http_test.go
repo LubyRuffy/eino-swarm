@@ -60,7 +60,11 @@ func TestUnverifiedScheduleClaimNeverBecomesLiveOrStoredAnswer(t *testing.T) {
 			if mode == "goal-only" {
 				wantCalls = 2 * scheduleClaimGoalFailureCap
 			}
-			if manager.Load() != wantCalls || checks.Load() != wantCalls {
+			wantChecks := wantCalls
+			if mode == "denied" || mode == "storage-failure" || mode == "cancelled" {
+				wantChecks++ // The first tool round's prose was inspected before the tool row.
+			}
+			if manager.Load() != wantCalls || checks.Load() != wantChecks {
 				t.Fatalf("unbounded/missing correction: manager=%d classifier=%d", manager.Load(), checks.Load())
 			}
 			events, err := e.Store().ListTurnEvents(turn.ID)
@@ -96,7 +100,11 @@ func TestUnverifiedScheduleClaimNeverBecomesLiveOrStoredAnswer(t *testing.T) {
 					count++
 				}
 			}
-			if count != 2 {
+			wantTraceChecks := wantChecks
+			if mode == "goal-only" {
+				wantTraceChecks = 2 // The other checks ran in separate automatic turns.
+			}
+			if count != int(wantTraceChecks) {
 				t.Fatalf("classifier calls missing from the original turn Trace: %+v", calls)
 			}
 		})
@@ -216,7 +224,11 @@ func TestVerifiedSchedulingAndNonClaimsKeepTheirRealMeaning(t *testing.T) {
 			if mode == "corrected" {
 				wantCalls = 2
 			}
-			if got.Status != wantStatus || manager.Load() != wantCalls || checks.Load() != wantCalls {
+			wantChecks := wantCalls
+			if mode == "success" {
+				wantChecks++ // The tool-round claim stayed private until the receipt was available.
+			}
+			if got.Status != wantStatus || manager.Load() != wantCalls || checks.Load() != wantChecks {
 				t.Fatalf("answer/call admission mismatch: turn=%+v manager=%d checks=%d", got, manager.Load(), checks.Load())
 			}
 			if mode == "success" {

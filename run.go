@@ -49,6 +49,15 @@ type RunConfig struct {
 	// middleware (history recorder + steering injector).
 	ManagerMiddlewares []adk.ChatModelAgentMiddleware
 
+	// ManagerForkContextFilter projects the conversation inherited by a
+	// manager's fork_context tool call in this run. Treat the input messages
+	// as immutable. The Registry retains its original transcript.
+	ManagerForkContextFilter func([]adk.Message) []adk.Message
+
+	// OrderManagerCommentary lets the event consumer finish admitting
+	// prose before showing the same round's tool previews.
+	OrderManagerCommentary bool
+
 	// MaxIterations caps the manager's ReAct loop (<=0 keeps the default).
 	MaxIterations int
 
@@ -61,6 +70,9 @@ type RunConfig struct {
 	// process. wait_agents / resume_agent still need to find them.
 	FinishedWorkers []FinishedWorker
 }
+
+type managerForkContextFilterKey struct{}
+type orderManagerCommentaryKey struct{}
 
 // RunResult is what one manager run produced.
 type RunResult struct {
@@ -138,6 +150,8 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 	defer r.setSink(prevSink)
 
 	r.resetHistory()
+	ctx = context.WithValue(ctx, managerForkContextFilterKey{}, cfg.ManagerForkContextFilter)
+	ctx = context.WithValue(ctx, orderManagerCommentaryKey{}, cfg.OrderManagerCommentary)
 
 	opts := []ManagerOption{WithInstruction(cfg.Instruction)}
 	if len(cfg.ManagerTools) > 0 {

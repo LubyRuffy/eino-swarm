@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 )
@@ -269,7 +270,14 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 	}
 	seed := ""
 	if a.ForkContext {
-		seed = forkContext(r.spawnContext(parentID))
+		messages := r.spawnContext(parentID)
+		if parentID == "" {
+			filter, _ := ctx.Value(managerForkContextFilterKey{}).(func([]adk.Message) []adk.Message)
+			if filter != nil {
+				messages = filter(messages)
+			}
+		}
+		seed = forkContext(messages)
 	}
 	tools := append(append([]tool.BaseTool(nil), selected.SubAgentTools...), r.SendTool())
 	h, err := r.spawnAgentWithModel(withWorkerConfig(ctx, selected), a.Role, a.Task, builder, binding, parentID, seed, true, tools...)

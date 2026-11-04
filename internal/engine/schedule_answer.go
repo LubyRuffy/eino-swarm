@@ -62,9 +62,14 @@ func (e *scheduleAnswerError) Unwrap() error { return e.Cause }
 
 func storeAnswerID() string { return store.NewID("answer") }
 
-func (e *Engine) verifyScheduleAnswer(ctx context.Context, turn *store.Turn, text []string, committedRearm ...string) ([]store.Schedule, *scheduleAnswerError) {
+type scheduleAnswerClassification struct {
+	claims []scheduleAnswerClaim
+	hash   string
+}
+
+func (e *Engine) classifyScheduleAnswer(ctx context.Context, turn *store.Turn, text []string) (scheduleAnswerClassification, *scheduleAnswerError) {
 	if len(text) == 0 {
-		return nil, nil
+		return scheduleAnswerClassification{}, nil
 	}
 	ctx = provider.WithIsolatedRecovery(ctx)
 	body, _ := json.Marshal(struct {
@@ -80,29 +85,35 @@ func (e *Engine) verifyScheduleAnswer(ctx context.Context, turn *store.Turn, tex
 	if err != nil {
 		failure.Code = "answer_storage_failed"
 		failure.Cause = err
-		return nil, failure
+		return scheduleAnswerClassification{}, failure
 	}
 	build, err := e.policyModelBuilder(ctx, th, e.callRecorder(turn.ThreadID, turn.ID))
 	if err != nil {
 		failure.Code = "classification_configuration_unavailable"
 		failure.Cause = err
-		return nil, failure
+		return scheduleAnswerClassification{}, failure
 	}
 	out, err := build(scheduleAnswerAgentID, scheduleAnswerAgentID).Generate(ctx, []*schema.Message{schema.SystemMessage(scheduleAnswerPrompt), schema.UserMessage(string(body))}, model.WithTools(nil), model.WithToolChoice(schema.ToolChoiceForbidden))
 	if err != nil {
 		failure.Cause = err
-		return nil, failure
+		return scheduleAnswerClassification{}, failure
 	}
 	claims, err := decodeScheduleAnswer(out, text)
 	if err != nil {
 		failure.Code = "classification_invalid"
 		failure.Cause = err
+		return scheduleAnswerClassification{}, failure
+	}
+	return scheduleAnswerClassification{claims: claims, hash: failure.Hash}, nil
+}
+
+func (e *Engine) verifyScheduleAnswer(ctx context.Context, turn *store.Turn, text []string, committedRearm ...string) ([]store.Schedule, *scheduleAnswerError) {
+	classification, failure := e.classifyScheduleAnswer(ctx, turn, text)
+	claims := classification.claims
+	if failure != nil || len(claims) == 0 {
 		return nil, failure
 	}
-	if len(claims) == 0 {
-		return nil, nil
-	}
-	failure.Claims = len(claims)
+	failure = &scheduleAnswerError{Hash: classification.hash, Claims: len(claims)}
 	rows, err := e.store.ListSchedules()
 	if err != nil {
 		failure.Code = "schedule_state_unavailable"

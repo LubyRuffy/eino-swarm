@@ -97,6 +97,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
+- 主管在工具前给出的完整说明通过调度声明核对后出现在对应工具之前，分隔主对话的工作折叠。PC 与手机按同一事件顺序显示实时及分页记录。关联 `C-009`、`C-022`；证据 `internal/engine/manager_prose_order_http_test.go`。
+
 - 联网工具执行位置：`web_search`／`web_fetch` 保持普通函数名、参数、开关、结果截断和工具 Trace；默认 `auto` 在当前 NOSEC 账号授权后走该服务器云端，匿名走本机。设置可显式选本机或云端；云端拒绝／失败不重跑本地。Host 凭据仅在 Go 后端调用专用云工具路由，不进入 renderer、模型或普通推理 API；旧授权缺少服务端精确 Key 绑定时要求重新登录。关联 `C-006`、`C-009`；证据：`internal/tools/cloud_web.go`、`internal/tools/cloud_web_test.go`、`internal/tools/cloud_web_response_test.go`、`internal/engine/web_execution_test.go`。
 
 - 桌面/Web 的 `memory add/replace/remove` 工具行复用 edit 的默认折叠、增删行数和红绿差异视图，展开只显示本次条目变更。新成功回执保存完整 before/after，旧记录缺快照时明确标注请求片段预览；失败保留错误和请求，重复添加显示未变化。关联 `C-025`；证据：`internal/memory/tool_result_test.go`、`frontend/src/lib/memory-diff.ts`、`frontend/src/components/app/tool-row.test.tsx`、`frontend/e2e/memory-diff.spec.ts`。

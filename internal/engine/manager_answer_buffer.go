@@ -16,19 +16,22 @@ import (
 
 const pendingScheduleAnswerKey = "zwai_pending_schedule_answer"
 
-// Only manager prose waits for admission. Reasoning, tools and workers remain
-// live; an unsupported scheduling promise must never reach SSE or replay first.
+// Manager prose stays private until admission. Tool previews that follow
+// pending prose wait at the same generation boundary to preserve its order.
 type managerAnswerBuffer struct {
 	adk.BaseChatModelAgentMiddleware
-	acc           *accumulator
-	id            string
-	mu            sync.Mutex
-	complete      []swarm.Notification
-	pending       *swarm.Notification
-	generated     []*schema.Message
-	reportFailure *scheduleAnswerError
-	historyReport *pendingHistoryReport
-	historyScope  *string
+	acc             *accumulator
+	id              string
+	mu              sync.Mutex
+	complete        []swarm.Notification
+	pending         *swarm.Notification
+	previews        []swarm.Notification
+	admitCommentary func(swarm.Notification, []string) bool
+	toolCommentary  []string
+	generated       []*schema.Message
+	reportFailure   *scheduleAnswerError
+	historyReport   *pendingHistoryReport
+	historyScope    *string
 }
 
 type scheduleAnswerBufferContextKey struct{}
@@ -123,12 +126,34 @@ func (b *managerAnswerBuffer) onNotify(n swarm.Notification) {
 	case swarm.NotifyAgentMessage:
 		b.complete = append(b.complete, n)
 		b.pending = nil
+		b.previews = nil
 		b.mu.Unlock()
 		return
+	case swarm.NotifyToolCallDelta:
+		if b.pending != nil {
+			if n.MessageID != "" && n.MessageID == b.pending.MessageID {
+				b.bufferToolPreview(n)
+			}
+			b.mu.Unlock()
+			return
+		}
 	case swarm.NotifyToolCall:
-		b.sealPending()
+		var pending *swarm.Notification
+		var prefix []string
+		if b.pending != nil && b.pending.MessageID == n.MessageID {
+			pending, b.pending = b.pending, nil
+			// The model state reader can advance ahead of this consumer.
+			// Classify only the prose whose tool boundaries we have seen.
+			b.toolCommentary = append(b.toolCommentary, pending.Text)
+			prefix = append([]string(nil), b.toolCommentary...)
+		}
+		preview := b.takeToolPreview(n)
+		b.mu.Unlock()
+		b.beforeTool(pending, preview, prefix)
+		b.acc.onNotify(n)
+		return
 	case swarm.NotifyTurn, swarm.NotifyGenerationInterrupted:
-		b.pending = nil
+		b.pending, b.previews = nil, nil
 	case swarm.NotifyDone, swarm.NotifyError:
 		n.Text = ""
 	}
@@ -136,13 +161,50 @@ func (b *managerAnswerBuffer) onNotify(n swarm.Notification) {
 	b.acc.onNotify(n)
 }
 
-func (b *managerAnswerBuffer) sealPending() {
-	if b.pending != nil {
-		n := *b.pending
-		n.Kind = swarm.NotifyAgentMessage
-		b.complete = append(b.complete, n)
-		b.pending = nil
+func (b *managerAnswerBuffer) bufferToolPreview(n swarm.Notification) {
+	for i := range b.previews {
+		if b.previews[i].ToolCallID == n.ToolCallID {
+			b.previews[i] = n
+			return
+		}
 	}
+	b.previews = append(b.previews, n)
+}
+
+func (b *managerAnswerBuffer) takeToolPreview(call swarm.Notification) *swarm.Notification {
+	for i, preview := range b.previews {
+		if preview.ToolCallID == call.ToolCallID && preview.MessageID == call.MessageID {
+			b.previews = append(b.previews[:i], b.previews[i+1:]...)
+			return &preview
+		}
+	}
+	return nil
+}
+
+func (b *managerAnswerBuffer) beforeTool(pending, preview *swarm.Notification, prefix []string) {
+	if pending != nil {
+		pending.Kind = swarm.NotifyAgentMessage
+		if b.admitCommentary == nil || !b.admitCommentary(*pending, prefix) {
+			b.mu.Lock()
+			b.complete = append(b.complete, *pending)
+			b.mu.Unlock()
+		}
+	}
+	if preview != nil {
+		b.acc.onNotify(*preview)
+	}
+}
+
+func (e *Engine) admitManagerCommentary(ctx context.Context, turn *store.Turn, event store.Event, prefix []string) bool {
+	required, _, failure := e.historyAnswerMode(turn)
+	if failure != nil || required || ctx.Err() != nil {
+		return false
+	}
+	classification, failure := e.classifyScheduleAnswer(ctx, turn, prefix)
+	if failure != nil || len(classification.claims) > 0 || ctx.Err() != nil {
+		return false
+	}
+	return e.admitManagerProse(ctx, turn.ThreadID, turn.ID, nil, []store.Event{event}, nil) == nil
 }
 
 func (b *managerAnswerBuffer) textLocked() []string {
@@ -217,6 +279,10 @@ func (e *Engine) admitScheduleAnswer(threadID, turnID string, expected []store.S
 }
 
 func (e *Engine) admitScheduleAnswerWithHistory(threadID, turnID string, expected []store.Schedule, events []store.Event, history *store.HistoryEvidence, candidates ...string) *scheduleAnswerError {
+	return e.admitManagerProse(context.Background(), threadID, turnID, expected, events, history, candidates...)
+}
+
+func (e *Engine) admitManagerProse(ctx context.Context, threadID, turnID string, expected []store.Schedule, events []store.Event, history *store.HistoryEvidence, candidates ...string) *scheduleAnswerError {
 	// Stop/restart ownership and publication share the established rt.mu ->
 	// recordMu order. A still-running turn row alone does not prove ownership.
 	rt := e.runtimeFor(threadID)
@@ -233,6 +299,9 @@ func (e *Engine) admitScheduleAnswerWithHistory(threadID, turnID string, expecte
 	}
 	e.recordMu.Lock()
 	defer e.recordMu.Unlock()
+	if ctx.Err() != nil {
+		return interruptedScheduleAnswer(ctx)
+	}
 	if _, dropped := e.droppedTurns[turnID]; dropped {
 		return &scheduleAnswerError{Code: "answer_owner_deleted"}
 	}

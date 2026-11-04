@@ -11,6 +11,8 @@ rewind and restart), and models/scheduling/ScheduleAuthorization.tla (C-009 /
 C-012 human cancellation, durable waiting authority and manager mutations).
 models/scheduling/WakeConsentTimeline.tla checks multiple original human
 decisions, asynchronous classification and exact-ID cancellation deduplication.
+models/stream/ManagerCommentary.tla checks the order and privacy of admitted
+manager commentary before it enters the event stream.
 Every case sets its model's switch constants and states
 the expected outcome: the current design must pass every safety invariant;
 each historical or seeded behaviour must break the named invariant (checked
@@ -81,6 +83,14 @@ MODELS = {
             ("MarkerUnstored", "MarkerAfterUnlock", "BroadcastAfterUnlock", "DropWhenSlow"),
             ("TypeOK", "ConvergedView", "SeqIdentity"),
             (("MaxSeq", 5), ("Cap", 1)),
+        ),
+        Model(
+            "manager-commentary", ROOT / "models" / "stream" / "ManagerCommentary.tla",
+            ("DeferOrdinary", "PublishPrivate", "KeepPrivateInHistory",
+             "AcceptWithoutEvidence", "PublishAfterStop"),
+            ("TypeOK", "OrdinaryBeforeTool", "PrivateProseNotPublic",
+             "PrivateProseNotInHistory", "ClaimAdmissionHasEvidence", "StopKeepsPublishedPrefix"),
+            (),
         ),
         Model(
             "nuwa", ROOT / "models" / "nuwa" / "NuwaCollaboration.tla",
@@ -157,6 +167,23 @@ def _consent(name: str, source: str, switches: tuple[str, ...] = (), violates: s
 
 
 CASES: tuple[Case, ...] = (
+    _case("manager-commentary-current", "admit ordinary commentary before its tool",
+          model="manager-commentary"),
+    _case("manager-commentary-historical-defer", "historical 56ae732: defer ordinary commentary until the run ends",
+          ("DeferOrdinary",), "OrdinaryBeforeTool", model="manager-commentary"),
+    _case("manager-commentary-publish-private", "publish a private candidate before terminal admission",
+          ("PublishPrivate",), "PrivateProseNotPublic", model="manager-commentary"),
+    _case("manager-commentary-private-history", "keep unadmitted prose in the next model request",
+          ("KeepPrivateInHistory",), "PrivateProseNotInHistory", model="manager-commentary"),
+    _case("manager-commentary-no-evidence", "accept a terminal claim without matching durable evidence",
+          ("AcceptWithoutEvidence",), "ClaimAdmissionHasEvidence", model="manager-commentary"),
+    _case("manager-commentary-after-stop", "append commentary after Stop acknowledged",
+          ("PublishAfterStop",), "StopKeepsPublishedPrefix", model="manager-commentary"),
+    *(_case(name, "witness", witness=witness, model="manager-commentary") for name, witness in (
+        ("manager-commentary-reach-two-rounds", "NeverTwoOrdinaryRounds"),
+        ("manager-commentary-reach-private-claim-tool", "NeverPrivateClaimAndToolProgress"),
+        ("manager-commentary-reach-terminal-verified-claim", "NeverTerminalVerifiedClaim"),
+    )),
     _case("nuwa-current", "Nuwa current protocol", model="nuwa"),
     _case("nuwa-rebind-on-restore", "pre-fix WorkerCheckpoint omitted the selected model",
           ("RebindOnRestore",), "BindingStable", model="nuwa"),

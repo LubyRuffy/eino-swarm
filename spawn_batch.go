@@ -137,6 +137,8 @@ func (m *spawnBatchModel) Stream(ctx context.Context, input []*schema.Message, o
 		defer sr.Close()
 		var calls, previewCalls []schema.ToolCall
 		preview := &streamAcc{reg: m.reg, agentID: DefaultManagerID, role: "manager"}
+		ordered, _ := ctx.Value(orderManagerCommentaryKey{}).(bool)
+		var hasProse bool
 		first := ""
 		for {
 			msg, recvErr := sr.Recv()
@@ -167,7 +169,11 @@ func (m *spawnBatchModel) Stream(ctx context.Context, input []*schema.Message, o
 					previewCalls = append(previewCalls, call)
 				}
 			}
-			if m.reg != nil {
+			// This producer can run ahead of the event reader while a
+			// previous paragraph is being admitted. For prose-bearing
+			// rounds the reader supplies the preview with its output ID.
+			hasProse = hasProse || msg.Content != ""
+			if m.reg != nil && (!ordered || !hasProse) {
 				preview.noteStreamingTools(previewCalls)
 			}
 			copy := *msg
