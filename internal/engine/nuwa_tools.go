@@ -120,14 +120,20 @@ func (e *Engine) nuwaWorkTools(projectID, workspace string, turn *store.Turn, re
 	}
 	record := &nuwaTool{name: "record_work", description: "Record a shared task, reported fact or existing workspace artifact. Creating requires kind/title and omits id/version. Updating requires id/current version and patches only supplied fields; omitted dependencies and evidence remain unchanged, while explicit empty arrays clear them. A fact is reported, never independently verified by this tool. Origin and correction identity are supplied by the runtime.",
 		params: map[string]*schema.ParameterInfo{
-			"id": {Type: schema.String}, "version": {Type: schema.Integer}, "kind": {Type: schema.String}, "title": {Type: schema.String},
-			"summary": {Type: schema.String}, "detail": {Type: schema.String}, "status": {Type: schema.String}, "artifact_path": {Type: schema.String},
+			"id": {Type: schema.String}, "version": {Type: schema.Integer}, "title": {Type: schema.String},
+			"summary": {Type: schema.String}, "detail": {Type: schema.String},
+			"kind": {Type: schema.String, Desc: "A task, fact, or artifact. Required on creation."},
+			"status": {Type: schema.String,
+				Desc: "For a task use pending, running, done, blocked, or cancelled. For a fact or artifact use reported, superseded, or retracted. On creation a task defaults to pending and a fact or artifact defaults to reported."},
+			"artifact_path": {Type: schema.String,
+				Desc: "Required for an artifact. Give a workspace-relative or absolute path that resolves to an existing regular file within this conversation's workspace."},
 			"depends_on": {Type: schema.Array, ElemInfo: &schema.ParameterInfo{Type: schema.String}},
 			"own_tool_call_ids": {Type: schema.Array, ElemInfo: &schema.ParameterInfo{Type: schema.String},
-				Desc: "Exact IDs of your own persisted tool results in this manager turn or worker execution. Use instead of evidence. An empty array clears evidence."},
-			"evidence": {Type: schema.Array, ElemInfo: &schema.ParameterInfo{Type: schema.Object, SubParams: map[string]*schema.ParameterInfo{
-				"thread_id": {Type: schema.String, Required: true}, "turn_id": {Type: schema.String}, "seq": {Type: schema.Integer, Required: true}, "label": {Type: schema.String},
-			}}},
+				Desc: "Exact IDs of your own persisted tool results in this manager turn or worker execution. Mutually exclusive with evidence, even when empty. An empty array clears evidence."},
+			"evidence": {Type: schema.Array, Desc: "References to existing events in this project. Mutually exclusive with own_tool_call_ids, even when empty. An empty array clears evidence.",
+				ElemInfo: &schema.ParameterInfo{Type: schema.Object, SubParams: map[string]*schema.ParameterInfo{
+					"thread_id": {Type: schema.String, Required: true}, "turn_id": {Type: schema.String}, "seq": {Type: schema.Integer, Required: true}, "label": {Type: schema.String},
+				}}},
 		}, run: func(ctx context.Context, args string) (string, error) {
 			return e.recordNuwaWork(ctx, projectID, workspace, turn, args)
 		}}

@@ -91,6 +91,9 @@ A turn can complete directly without recording a graph.
 | fact | `reported`, `superseded`, `retracted` | a claim and its correction state |
 | artifact | `reported`, `superseded`, `retracted` | a reference to an existing workspace file |
 
+On creation, a task defaults to `pending`. Facts and artifacts default to
+`reported`.
+
 An evidence reference binds to an existing event in this project by conversation
 and event `seq`; an optional turn must match. This checks identity and
 availability, not whether the evidence supports the claim. Empty evidence stays
@@ -107,9 +110,10 @@ Earlier receipts remain referable by explicit `evidence`, and a retry of an
 already committed write returns its saved response.
 
 Each ID needs a unique earlier call and its result. A missing, still-uncommitted
-or ambiguous receipt refuses the entire write. Supply either evidence field on
-an update to replace the evidence, use an empty array to clear it, or omit both
-to preserve it.
+or ambiguous receipt refuses the entire write. The two evidence fields are
+mutually exclusive, including when either array is empty. On an update, supply
+one field to replace evidence, use an empty array to clear it, or omit both to
+preserve it.
 
 `read_work` returns bounded summaries, then detail and provenance by `id`.
 `offset`/`limit` page list entries or detail runes. JSON remains complete under
@@ -117,8 +121,10 @@ the existing tool-result budget; oversized metadata refuses explicitly.
 
 `record_work` creates without `id`/`version`, or patches an existing node using
 its current version. Omitted fields remain; `[]` explicitly clears dependencies
-or evidence. Creation requires kind/title. Artifacts must name existing regular
-files within the workspace. A saved path is not an immutable content receipt.
+or evidence. Creation requires kind/title. An artifact requires an
+`artifact_path` that resolves to an existing regular file within the
+conversation workspace. Use a workspace-relative or absolute path. A saved path
+is not an immutable content receipt.
 An unknown update ID is refused with guidance to omit the ID and version for
 creation or retrieve an existing ID and version with `read_work` for an update.
 

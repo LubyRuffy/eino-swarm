@@ -10,6 +10,9 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   explains how to create a record or look up an existing ID and version
   before trying again. (`C-037`)
 
+- Nuwa's `record_work` tool tells managers and workers which statuses and
+  artifact paths are valid and how to choose an evidence field. (`C-037`)
+
 - Mermaid diagrams render when a label identifier ends in `url` before a
   parenthesis. CSS `url()` and `@import` still stay as source. (`F-120`, `C-005`)
 

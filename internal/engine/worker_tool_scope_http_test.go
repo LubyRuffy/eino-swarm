@@ -127,6 +127,7 @@ func TestNuwaSpawnToolFeedbackPreservesWorkerTaskAtModelHTTP(t *testing.T) {
 					if !available["record_work"] || !available["read"] || available["write"] {
 						t.Errorf("corrected selection must retain the receipt tool and narrow workspace tools: %v", available)
 					}
+					assertNuwaRecordWorkSchema(t, request, "worker")
 					writeContextFlowReply(w, request.Stream, map[string]any{"content": "The source receipt was inspected."}, "stop")
 					return
 				}

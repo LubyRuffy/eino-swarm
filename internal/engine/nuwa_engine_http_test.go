@@ -24,6 +24,7 @@ func TestNuwaManagerSharesEvidenceThroughActualHTTPModel(t *testing.T) {
 		}
 		switch step {
 		case 1:
+			assertNuwaRecordWorkSchema(t, request, "manager")
 			writeScheduleCompletionTool(w, request, "record_work", `{"kind":"fact","title":"Measured result","summary":"The supplied input was inspected.","evidence":[]}`)
 		case 2:
 			var receipt struct {
@@ -77,4 +78,33 @@ func TestNuwaManagerSharesEvidenceThroughActualHTTPModel(t *testing.T) {
 	if err != nil || revision != 2 || len(nodes) != 1 || nodes[0].TurnID != turn.ID || nodes[0].ThreadID != thread.ID {
 		t.Fatalf("durable shared result: revision=%d nodes=%+v err=%v", revision, nodes, err)
 	}
+}
+
+func assertNuwaRecordWorkSchema(t *testing.T, request scheduleCompletionRequest, actor string) {
+	t.Helper()
+	for _, offered := range request.Tools {
+		if offered.Function.Name != "record_work" {
+			continue
+		}
+		fields := offered.Function.Parameters.Properties
+		for _, check := range []struct {
+			field string
+			terms []string
+		}{
+			{"kind", []string{"task", "fact", "artifact"}},
+			{"status", []string{"task", "pending, running, done, blocked, or cancelled", "fact", "artifact", "reported, superseded, or retracted", "defaults to pending", "defaults to reported"}},
+			{"artifact_path", []string{"required", "existing", "regular file", "conversation", "workspace"}},
+			{"evidence", []string{"own_tool_call_ids", "mutually exclusive", "empty"}},
+			{"own_tool_call_ids", []string{"evidence", "mutually exclusive", "empty"}},
+		} {
+			description := strings.ToLower(fields[check.field].Description)
+			for _, term := range check.terms {
+				if !strings.Contains(description, term) {
+					t.Errorf("%s record_work.%s description %q is missing %q", actor, check.field, description, term)
+				}
+			}
+		}
+		return
+	}
+	t.Errorf("%s model did not receive record_work", actor)
 }
