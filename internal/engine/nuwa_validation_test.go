@@ -334,6 +334,10 @@ func TestNuwaValidationActualManagerRefusesForgedOrInvalidWrites(t *testing.T) {
 				if last.Role != "tool" || !strings.Contains(last.Content, `"ok":false`) {
 					t.Errorf("refused write did not reach the actual next model request: %s", last.Content)
 				}
+				if strings.Contains(args, `"id":"missing-node"`) &&
+					(!strings.Contains(last.Content, "omit id and version to create") || !strings.Contains(last.Content, "read_work")) {
+					t.Errorf("unknown work ID did not explain how to correct the actual next call: %s", last.Content)
+				}
 				writeContextFlowReply(w, request.Stream, map[string]any{"content": "The invalid operation was refused."}, "stop")
 			})
 			project, err := e.CreateProject("Actual write refusal", "", "", false, true)

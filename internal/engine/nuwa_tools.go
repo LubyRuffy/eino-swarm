@@ -202,7 +202,7 @@ func (e *Engine) recordNuwaWork(ctx context.Context, projectID, workspace string
 			break
 		}
 		if !found {
-			return "", store.ErrNotFound
+			return "", fmt.Errorf("unknown shared work id: omit id and version to create, or use an existing id and version from read_work to update: %w", store.ErrNotFound)
 		}
 	}
 	path, err := nuwaArtifactPath(workspace, input.ArtifactPath)

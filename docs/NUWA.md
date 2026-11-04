@@ -119,6 +119,8 @@ the existing tool-result budget; oversized metadata refuses explicitly.
 its current version. Omitted fields remain; `[]` explicitly clears dependencies
 or evidence. Creation requires kind/title. Artifacts must name existing regular
 files within the workspace. A saved path is not an immutable content receipt.
+An unknown update ID is refused with guidance to omit the ID and version for
+creation or retrieve an existing ID and version with `read_work` for an update.
 
 The host supplies project, conversation, turn, caller and generation identity.
 Corrections preserve the original author and record the actual updating caller.
