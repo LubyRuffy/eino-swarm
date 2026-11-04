@@ -6,6 +6,9 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed desktop stalls and phone reconnects caused by scanning unrelated turns
+  during history evidence checks in long conversations. (`C-036`)
+
 - Fixed Nuwa shared-work feedback for an unknown update ID. The tool now
   explains how to create a record or look up an existing ID and version
   before trying again. (`C-037`)

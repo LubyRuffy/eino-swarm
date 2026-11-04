@@ -3,12 +3,76 @@ package store
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"gorm.io/gorm"
 )
+
+func TestHistoryRegistryLookupsSeekByTurnInLongConversation(t *testing.T) {
+	f := newHistoryEvidenceFixture(t)
+	if err := f.s.AppendEvent(&Event{ThreadID: f.turn.ThreadID, TurnID: f.turn.ID, Kind: "tool_call", Text: "query_history({})"}); err != nil {
+		t.Fatal(err)
+	}
+	for range 128 {
+		turn := historyRegistrySuccessor(t, f)
+		if err := f.s.AppendEvent(&Event{ThreadID: turn.ThreadID, TurnID: turn.ID, Kind: "history_report_requested"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	target := historyRegistrySuccessor(t, f)
+	if err := f.s.RecordHistoryRegistryInheritance(t.Context(), target.ThreadID, target.ID, f.turn.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	type query struct {
+		sql  string
+		args []any
+	}
+	var queries []query
+	if err := f.s.db.Callback().Row().Before("gorm:row").Register("test:history_registry_plan", func(tx *gorm.DB) {
+		queries = append(queries, query{tx.Statement.SQL.String(), append([]any(nil), tx.Statement.Vars...)})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if seen, err := f.s.TurnHasHistoryQuery(target.ThreadID, target.ID); err != nil || !seen {
+		t.Fatalf("legacy tool call on inherited turn: seen=%t err=%v", seen, err)
+	}
+	if seen, err := f.s.TurnHasHistoryReportRequest(target.ThreadID, target.ID); err != nil || seen {
+		t.Fatalf("unrelated report request leaked into lineage: seen=%t err=%v", seen, err)
+	}
+	if err := f.s.db.Callback().Row().Remove("test:history_registry_plan"); err != nil {
+		t.Fatal(err)
+	}
+	if len(queries) != 3 {
+		t.Fatalf("captured %d queries, want the read-start, legacy tool call and report lookups", len(queries))
+	}
+	for i, q := range queries {
+		var plan []struct{ Detail string }
+		if err := f.s.db.Raw("EXPLAIN QUERY PLAN "+q.sql, q.args...).Scan(&plan).Error; err != nil {
+			t.Fatal(err)
+		}
+		for _, seek := range []struct{ table, keys string }{
+			{"current", "(id=?)"},
+			{"source", "(id=?)"},
+			{"edge", "(thread_id=? AND turn_id=? AND kind=?)"},
+			{"observed", "(thread_id=? AND turn_id=? AND kind=?)"},
+		} {
+			found := false
+			for _, step := range plan {
+				if strings.HasPrefix(step.Detail, "SEARCH "+seek.table+" ") && strings.HasSuffix(step.Detail, seek.keys) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("lookup %d: expected %s seek by %s, got plan %v", i+1, seek.table, seek.keys, plan)
+			}
+		}
+	}
+}
 
 func historyRegistrySuccessor(t *testing.T, f historyEvidenceFixture) Turn {
 	t.Helper()

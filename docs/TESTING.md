@@ -413,6 +413,11 @@ settled archives cannot manufacture inheritance. The corresponding lifecycle
 model check remains separate from those real-boundary regressions.
 Multiple recovered owners need proof through existing single-parent Registry
 edges; missing, foreign, broken or unrelated chains fail before a model starts.
+`TestHistoryRegistryLookupsSeekByTurnInLongConversation` captures the real
+read-start, legacy tool-call and explicit-report lookups against a file-backed
+store. It checks that SQLite seeks each linked turn by ID and each event by
+thread, turn and kind, so unrelated turns cannot drive work on the engine's
+shared SQLite connection.
 `restore_snapshot_lock_test.go` interleaves the actual fresh Registry claim and
 generation-interruption notification in a subprocess. The old lock cycle leaves
 its Go timeout stack; the parent's private TMPDIR owns all child fixture data.

@@ -29,13 +29,15 @@ var ErrHistoryEvidenceChanged = errors.New("store: original history evidence cha
 // ErrHistoryRegistryInheritanceInvalid means a Registry edge is invalid or conflicts with its stored parent.
 var ErrHistoryRegistryInheritanceInvalid = errors.New("store: invalid original history registry inheritance")
 
+// CROSS JOIN keeps each recursive step anchored to the known child turn.
+// Reordering the joins can make SQLite scan unrelated turns in the thread.
 const historyRegistryLineageSQL = `WITH RECURSIVE lineage(id) AS (
 	SELECT id FROM turns WHERE thread_id=? AND id=?
 	UNION
 	SELECT source.id FROM lineage AS child
-	JOIN turns AS current ON current.id=child.id AND current.thread_id=?
-	JOIN events AS edge INDEXED BY idx_evt_thread_turn_kind_seq ON edge.thread_id=current.thread_id AND edge.turn_id=current.id AND edge.kind='history_registry_inherited'
-	JOIN turns AS source ON source.id=edge.source_turn_id AND source.thread_id=current.thread_id AND source.seq>0 AND source.seq<current.seq
+	CROSS JOIN turns AS current ON current.id=child.id AND current.thread_id=?
+	CROSS JOIN events AS edge INDEXED BY idx_evt_thread_turn_kind_seq ON edge.thread_id=current.thread_id AND edge.turn_id=current.id AND edge.kind='history_registry_inherited'
+	CROSS JOIN turns AS source ON source.id=edge.source_turn_id AND source.thread_id=current.thread_id AND source.seq>0 AND source.seq<current.seq
 )`
 
 // ProvenHistoryRegistryOwner selects only a supplied owner whose stored lineage
@@ -247,8 +249,9 @@ func (s *Store) historyTurnEventExists(threadID, turnID, kind, prefix string) (b
 	if threadID == "" || turnID == "" {
 		return false, nil
 	}
+	// Starting with lineage lets SQLite seek all three event index keys.
 	query := historyRegistryLineageSQL + ` SELECT EXISTS(SELECT 1 FROM lineage
-		JOIN events AS observed INDEXED BY idx_evt_thread_turn_kind_seq ON observed.thread_id=? AND observed.turn_id=lineage.id AND observed.kind=?`
+		CROSS JOIN events AS observed INDEXED BY idx_evt_thread_turn_kind_seq ON observed.thread_id=? AND observed.turn_id=lineage.id AND observed.kind=?`
 	args := []any{threadID, turnID, threadID, threadID, kind}
 	if prefix != "" {
 		query += ` AND substr(observed.text,1,?)=?`
