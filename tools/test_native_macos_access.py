@@ -42,18 +42,19 @@ class NativeAccessTests(unittest.TestCase):
 action=sys.argv[1]
 arg=lambda name: sys.argv[sys.argv.index(name)+1]
 evidence=pathlib.Path(arg('--evidence')); evidence.mkdir()
+peers=[sys.argv[i+1] for i, name in enumerate(sys.argv) if name=='--peer-queue-root']
 if action=='inspect':
  result=dict(identity=dict(hostname='ci-macOS.local',uid=int(arg('--expected-uid')),virtualized=True,
                           mac=arg('--expected-mac'),interface=arg('--interface')),
              network=dict(active=True,ip='192.168.64.4',default_route_on_interface=True),
              sshd=dict(loaded=True,disabled=False),
-             current_peer_roots=[sys.argv[i+1] for i,arg in enumerate(sys.argv) if arg=='--peer-queue-root' and
-                                 pathlib.Path(sys.argv[i+1],'fixture-live').exists()])
+             current_peer_roots=[path for path in peers if pathlib.Path(path,'fixture-live').exists()])
 else:
  root=pathlib.Path(arg('--own-queue-root')); request=arg('--request-id')
  claim=json.loads((root/'claims'/(request+'.json')).read_text())
  assert claim['id']==request and claim['nonce']
  result=dict(status='renewed',renewals=1,guest_network_ready=True,host_connectivity='unverified')
+result['seen_peers']=peers
 print(json.dumps(result))
 """)
         self.workers = []
@@ -173,6 +174,33 @@ print(json.dumps(result))
         self.assertEqual(len(seen), 1)
         self.assertEqual(len(seen[0]["id"]), 32)
 
+    def test_shared_probe_delivers_all_peers_within_the_real_queue_envelope(self):
+        live = self.queue("00-live")
+        seen = self.worker(live)
+        peers = [live] + [self.queue(f"history/{number:02d} quoted's path", stopped=True)
+                          for number in range(45)]
+        self.host_run(interfaces="en0")
+
+        code, output, evidence = self.cli()
+
+        self.assertEqual(code, 0)
+        self.assertEqual(output["control_channel"], "shared_queue")
+        self.assertEqual(len(seen), 1)
+        stage = json.loads((evidence / "guest.json").read_text())
+        self.assertEqual(stage["result"]["seen_peers"], [queue["guest"] for queue in peers])
+
+    def test_queue_rejects_a_request_whose_serialized_file_exceeds_the_limit(self):
+        queue = self.queue()
+        request = dict(id="a" * 32, nonce=queue["nonce"], argv=[sys.executable, ""],
+                       cwd=queue["guest"], timeout_seconds=1)
+        padding = 65536 - len(json.dumps(request).encode())
+        argv = [sys.executable, "x" * padding]
+
+        with self.assertRaisesRegex(ValueError, "existing queue protocol"):
+            access.queue_call(queue, lambda root, request: argv, .01)
+
+        self.assertEqual(list((queue["host"] / "requests").iterdir()), [])
+
     def test_timeout_removes_only_own_pending_request_without_claiming_it_never_ran(self):
         queue = self.queue()
         peer = queue["host"] / "requests/peer.json"
@@ -208,10 +236,10 @@ print(json.dumps(result))
         access.save_json(stopped["host"] / "claims/old-stop.json", {"id": "old-stop", "nonce": stopped["nonce"]})
         access.save_json(stopped["host"] / "responses/old-stop.json", {"id": "old-stop", "nonce": stopped["nonce"], "status": "stopped"})
         self.host_run()
-        self.cli(repair=True)
-        renewal = next(request for request in seen if request["argv"][7] == "renew-dhcp")
-        self.assertIn(queue["guest"], renewal["argv"])
-        self.assertNotIn(stopped["guest"], renewal["argv"])
+        _, _, evidence = self.cli(repair=True)
+        self.assertIn("renew-dhcp", [request["argv"][7] for request in seen])
+        renewal = json.loads((evidence / "repair.json").read_text())
+        self.assertEqual(renewal["result"]["seen_peers"], [queue["guest"]])
         self.assertTrue((stopped["host"] / "claims/old-stop.json").exists())
 
     def test_unknown_current_peer_inventory_cannot_emit_a_dhcp_request(self):
@@ -264,9 +292,12 @@ print(json.dumps(result))
 
     def test_ssh_requires_pinned_host_and_real_stage_then_repair_refuses_without_queue(self):
         self.leases.write_text("{ip_address=192.168.64.4\nhw_address=1," + self.profile["mac"] + "}")
+        stopped = self.queue("history/quote's path", stopped=True)
         calls = self.host_run(ssh="ok")
         code, output, evidence = self.cli()
         self.assertEqual((code, output["control_channel"]), (0, "ssh"))
+        guest = json.loads((evidence / "guest.json").read_text())
+        self.assertEqual(guest["result"]["seen_peers"], [stopped["guest"]])
         ssh = next(argv for argv in calls if argv[0] == "ssh")
         for option in ("BatchMode=yes", "StrictHostKeyChecking=yes", "IdentitiesOnly=yes", "HostKeyAlias=selected-guest",
                        "UserKnownHostsFile=" + self.profile["known_hosts"]):
@@ -333,6 +364,17 @@ print(json.dumps(result))
         self.assertNotEqual(raw["exit_code"], 0)
         self.assertIn("guest source hash differs", raw["stderr"])
         self.assertNotIn("must not execute", raw["stderr"])
+
+    def test_real_bootstrap_rejects_a_malformed_peer_vector_before_running_the_probe(self):
+        evidence = self.root / "stage-evidence"
+        evidence.mkdir()
+        frozen = access.freeze(self.profile, evidence)
+        for peers in ("/absolute", [True], ["relative"], ["/null\x00path"]):
+            with self.subTest(peers=peers):
+                raw = access.run(access.stage_argv(self.profile, frozen, "probe", "inspect", "", "request", peers))
+                self.assertNotEqual(raw["exit_code"], 0)
+                self.assertIn("guest peer paths must be an array of absolute paths", raw["stderr"])
+        self.assertFalse((Path(frozen["guest_path"]).parent / "inspect-request").exists())
 
     def test_real_stage_receipt_requires_exact_source_path_probe_status_and_guest_identity(self):
         evidence = self.root / "stage-evidence"

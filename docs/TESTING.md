@@ -1525,6 +1525,10 @@ key and strict pinned host checking. A failed SSH probe falls back to newly
 identified shared-queue requests, including nested queue roots. Replies must
 match request/session, frozen source and guest identity; local monotonic waits
 bound the attempt without treating guest/host clock differences as expiry.
+The probe sends the complete, ordered peer-root inventory as one JSON
+argument. The guest bootstrap validates and expands it before inspection or
+DHCP renewal. The queue still refuses requests beyond 64 arguments or
+65,536 bytes as written, without dropping peers to fit.
 
 Exit `0` means a target control channel was verified; shared control can be
 available while guest networking remains down. Exit `3` means control is

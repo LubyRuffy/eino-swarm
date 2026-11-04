@@ -20,7 +20,14 @@ LEASES = Path("/var/db/dhcpd_leases")
 BOOTSTRAP = """import hashlib,json,pathlib,subprocess,sys
 source=pathlib.Path(sys.argv[1]); digest=hashlib.sha256(source.read_bytes()).hexdigest()
 if digest != sys.argv[2]: raise RuntimeError('guest source hash differs')
-child=subprocess.run([sys.executable,str(source)]+sys.argv[5:],capture_output=True,text=True,
+peers=json.loads(sys.argv[-1])
+if not isinstance(peers,list) or any(not isinstance(root,str) or '\\x00' in root or
+                                    not pathlib.Path(root).is_absolute() for root in peers):
+    raise ValueError('guest peer paths must be an array of absolute paths')
+args=[sys.executable,str(source)]+sys.argv[5:-1]
+for root in peers:
+    args.extend(['--peer-queue-root',root])
+child=subprocess.run(args,capture_output=True,text=True,
                      timeout=90 if sys.argv[4]=='renew-dhcp' else 20)
 print(json.dumps(dict(probe_id=sys.argv[3],source_sha256=digest,guest_path=str(source),
                      action=sys.argv[4],exit_code=child.returncode,result=json.loads(child.stdout))))
@@ -28,11 +35,14 @@ sys.exit(child.returncode)
 """
 
 
+def json_record(row):
+    return json.dumps(row, indent=2) + "\n"
+
+
 def save_json(path, row):
     with open(path, "x", encoding="utf-8") as stream:
         os.chmod(path, 0o600)
-        json.dump(row, stream, indent=2)
-        stream.write("\n")
+        stream.write(json_record(row))
 
 
 def load_profile(path):
@@ -114,7 +124,7 @@ def queue_call(queue, argv_factory, timeout, evidence=None):
     request = {"id": request_id, "nonce": queue["nonce"], "argv": argv_factory(queue["guest"], request_id),
                "cwd": queue["guest"], "timeout_seconds": int(max(1, min(90, timeout)))}
     if (not request["argv"] or len(request["argv"]) > 64 or not Path(request["argv"][0]).is_absolute() or
-            not Path(request["cwd"]).is_absolute() or len(json.dumps(request).encode()) > 65536):
+            not Path(request["cwd"]).is_absolute() or len(json_record(request).encode("utf-8")) > 65536):
         raise ValueError("request exceeds the existing queue protocol")
     if evidence:
         save_json(evidence / ("request-" + request_id + ".json"), {"request_id": request_id, "queue_root": queue["guest"], "timeout_seconds": request["timeout_seconds"]})
@@ -165,9 +175,8 @@ def stage_argv(profile, frozen, probe_id, action, queue_root, request_id, peer_r
             "--expected-mac", profile["mac"], "--interface", profile["interface"]]
     if action != "inspect":
         args += ["--own-queue-root", queue_root, "--request-id", request_id]
-    for root in peer_roots:
-        args += ["--peer-queue-root", root]
-    return args
+    # Restore the full inventory in the guest without spending two wire args per root.
+    return args + [json.dumps(peer_roots)]
 
 
 def validate_stage(raw, frozen, probe_id, action, profile):
