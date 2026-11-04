@@ -37,7 +37,7 @@ test(`a project ${menu ? "uses its history menu and an unfiltered query for" : r
     const { settings } = await (await request.get("/api/settings")).json()
     expect((await request.put("/api/settings", { data: {
       models: { default: "history-fixture", providers: [{ id: "history-fixture", label: "Offline raw history regression", base_url: fixture.url, model: "fixture-model", api_key: "", context_window: 128000 }] },
-      swarm: { ...settings.swarm, auto_title: false }, memory: { ...settings.memory, auto_review: false },
+      swarm: { ...settings.swarm, auto_title: false, composer_predictions: false }, memory: { ...settings.memory, auto_review: false },
     } })).ok()).toBe(true)
     const projectID = await createProject(request, projectName)
     const otherProjectID = await createProject(request, `Other ${nonce}`)

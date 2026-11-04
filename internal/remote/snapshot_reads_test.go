@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -242,6 +243,16 @@ func TestPhoneAskingForHumanDoesNotReadActionHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The manager can still query this store while the phone observes the
+	// pending question. Keep its callback installed until the store closes.
+	var actionReads atomic.Int32
+	if err := e.Store().DB().Callback().Query().After("gorm:query").Register("test:ask_action_reads", func(tx *gorm.DB) {
+		if strings.Contains(tx.Statement.SQL.String(), "FROM events INDEXED BY idx_evt_thread_turn_kind_seq") {
+			actionReads.Add(1)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := e.StartTurn(th.ID, "Inspect the current state."); err != nil {
 		t.Fatal(err)
 	}
@@ -252,22 +263,9 @@ func TestPhoneAskingForHumanDoesNotReadActionHistory(t *testing.T) {
 	if !e.Status(th.ID).AwaitingAnswer {
 		t.Fatal("real manager ask did not pause for a human")
 	}
-	var actionReads int
-	if err := e.Store().DB().Callback().Query().After("gorm:query").Register("test:ask_action_reads", func(tx *gorm.DB) {
-		if strings.Contains(tx.Statement.SQL.String(), "idx_evt_thread_turn_kind_seq") {
-			actionReads++
-		}
-	}); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := e.Store().DB().Callback().Query().Remove("test:ask_action_reads"); err != nil {
-			t.Error(err)
-		}
-	}()
 	view := runningView(e, th, 80)
-	if view.Action != "ask_user" || !view.AskUser || actionReads != 0 {
-		t.Fatalf("human question=%+v action reads=%d", view, actionReads)
+	if reads := actionReads.Load(); view.Action != "ask_user" || !view.AskUser || reads != 0 {
+		t.Fatalf("human question=%+v action reads=%d", view, reads)
 	}
 }
 
