@@ -6,6 +6,9 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Mermaid diagrams render when a label identifier ends in `url` before a
+  parenthesis. CSS `url()` and `@import` still stay as source. (`F-120`, `C-005`)
+
 - Manager commentary confirmed to contain no scheduling-success claim appears
   before its tool call in live chat and replay. Unadmitted claims stay out of
   public events and forked worker input. (#152, `C-009`, `C-022`)

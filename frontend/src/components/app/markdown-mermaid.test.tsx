@@ -80,6 +80,13 @@ describe("Mermaid markdown", () => {
     expect(mermaid.render).not.toHaveBeenCalled()
   })
 
+  it("renders a label whose identifier ends in url", async () => {
+    const source = 'flowchart LR\n  A["itemurl(group)"] --> B["Shown"]'
+    render(<MemoMarkdown text={fence(source)} />)
+    expect(await screen.findByRole("img", { name: "Mermaid" })).toBeInTheDocument()
+    expect(mermaid.render).toHaveBeenCalledWith(expect.stringMatching(/^mermaid-/), source, expect.any(HTMLElement))
+  })
+
   it("keeps optional resource-bearing diagrams as source", async () => {
     render(<MemoMarkdown text={fence('flowchart LR\nA@{img:"https://example.invalid/private.png"}')} />)
     await act(async () => {})

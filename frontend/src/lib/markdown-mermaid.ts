@@ -50,14 +50,15 @@ export function readMermaidAppearance(): MermaidAppearance {
 }
 
 /** Optional resource-bearing Mermaid constructs remain source. Plain labels,
- * including URLs and <br/> line breaks, do not need to fetch anything. */
+ * including URLs and <br/> line breaks, do not need to fetch anything.
+ * CSS url() is a function call: a word character before "url" is label text. */
 export function mermaidSourceUsesResources(source: string): boolean {
   const metadata = /@\s*\{/.test(source)
   // Metadata is YAML: quoted/escaped keys and braces inside labels must not
   // hide an image request. Escaped metadata is intentionally kept as source.
   return (metadata && /(?:["']?\bimg["']?\s*:|\\)/i.test(source)) ||
     /!\[[^\]]*\]/.test(source) ||
-    /url\s*\(|@import/i.test(source) ||
+    /\burl\s*\(|@import/i.test(source) ||
     (/\b(?:classDef|style|linkStyle|UpdateElementStyle|UpdateRelStyle)\b/i.test(source) && source.includes("\\"))
 }
 

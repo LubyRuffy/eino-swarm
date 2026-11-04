@@ -134,6 +134,13 @@ test("keeps invalid Mermaid and ordinary fences readable and isolates diagram HT
   expect(external).toEqual([])
 })
 
+test("renders a Mermaid label whose identifier ends in url", async ({ page }, info) => {
+  const graph = 'flowchart LR\n  A["itemurl(group)"] --> B["Shown"]'
+  const { preview } = await openDocument(page, info.title, ["```mermaid", graph, "```"].join("\n"))
+  expect((await decodedDiagram(preview.getByTestId("markdown-mermaid"))).text).toContain("Shown")
+  await expect(preview.getByTestId("markdown-code")).toHaveCount(0)
+})
+
 test("keeps optional Mermaid image metadata as source without fetching its resources", async ({ page }, info) => {
   const resources = [
     'flowchart LR\n  A@{img: "https://mermaid.invalid/plain", label: "Image"}',

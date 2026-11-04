@@ -11,6 +11,7 @@ describe("Mermaid source boundaries", () => {
     'flowchart LR\nA@{ label: "}", img: "https://example.invalid/pixel" }',
     'flowchart LR\nA["`![Image](https://example.invalid/pixel)`"]',
     'flowchart LR\nA-->B\nclassDef remote fill:url(https://example.invalid/pixel);',
+    'flowchart LR\nA-->B\nstyle A fill:url (https://example.invalid/pixel)',
     'flowchart LR\nA-->B\nstyle A fill:u\\72l(https://example.invalid/pixel)',
     'flowchart LR\nA-->B\nlinkStyle 0 fill:url(https://example.invalid/pixel)',
     'C4Context\nPerson(a,"Client")\nUpdateElementStyle(a, $bgColor="url(https://example.invalid/pixel)")',
@@ -22,6 +23,8 @@ describe("Mermaid source boundaries", () => {
   it.each([
     'graph TB\nsubgraph Layer["服务层"]\nA["Client<br/>请求"] --> B["Worker"]\nend',
     'flowchart LR\nA["https://example.invalid/docs"] --> B["image: diagram"]',
+    'flowchart LR\nA["itemurl(group)"] --> B["Shown"]',
+    'flowchart LR\nA["itemurl (group)"] --> B["Shown"]',
     'flowchart LR\nA-->B\nclassDef active fill:green,stroke:blue;',
     'flowchart LR\nA@{ shape: rect, label: "image: diagram" } --> B',
     'sequenceDiagram\nClient->>Server: Query',
