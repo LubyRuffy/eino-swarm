@@ -61,8 +61,10 @@ mounted on that worker. A selected shell tool retains its normal access.
 
 Agents can inspect existing project-scoped model-call observations through
 `query_history`: discover its schema, then query `llm_calls` for recorded
-provider/model, agent, tokens and durations. This is historical evidence, not a
-price or capability rating. An unfinished request has no final usage yet;
+provider/model, agent, tokens and durations. Workers use the history guidance
+when the tool is listed in their own tool set. If a task needs history outside
+that selection, the worker can report the missing evidence to its delegator.
+Recorded calls describe historical observations, not a price or capability rating. An unfinished request has no final usage yet;
 stored numeric zeros cannot distinguish unreported usage from an explicit zero.
 
 `fork_context` copies the spawning agent's conversation as historical evidence,

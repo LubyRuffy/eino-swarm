@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Worker history guidance follows the tools the worker receives. When
+  `query_history` is absent, the worker can report the evidence it needs to
+  its delegator. (`C-037`)
+
 - Phone EPUB previews show the filename once and give the remaining space to
   the page. Tap left or right to turn pages and tap the middle to show or hide
   the chapter list and Download. (`F-224`, `C-020`)
