@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Phone EPUB previews show the filename once and give the remaining space to
+  the page. Tap left or right to turn pages and tap the middle to show or hide
+  the chapter list and Download. (`F-224`, `C-020`)
+
 - Nuwa dispatch explains when a shared-work tool is already mounted so an agent can
   correct its workspace tool selection and keep the task instructions. (`C-037`)
 

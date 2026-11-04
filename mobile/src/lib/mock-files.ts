@@ -1,4 +1,5 @@
 import type { FileChunk } from "./rpc"
+import { zipStore } from "../../../frontend/src/lib/documents/zip-store"
 
 // The same decodable 1200×800 PNG used by the desktop file-preview E2E.
 // Keep this binary intact: a text encoder would corrupt the downloaded image.
@@ -77,9 +78,30 @@ const outputFiles: Record<string, { bytes: Uint8Array; mime: string }> = {
 
 const mockFileChunkBytes = 36 * 1024
 export const largeLandscapePath = "outputs/large-landscape.png"
+export const epubPath = "outputs/reading-test.epub"
+
+function mockEpub() {
+  const titles = ["The arrival", "The garden", "The lantern"]
+  return zipStore([
+    { name: "mimetype", data: "application/epub+zip" },
+    { name: "META-INF/container.xml", data: '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>' },
+    {
+      name: "book.opf",
+      data: `<package xmlns="http://www.idpf.org/2007/opf"><manifest>${titles.map((_, i) => `<item id="chapter${i}" href="chapter${i}.xhtml" media-type="application/xhtml+xml"/>`).join("")}</manifest><spine>${titles.map((_, i) => `<itemref idref="chapter${i}"/>`).join("")}</spine></package>`,
+    },
+    ...titles.map((title, i) => ({
+      name: `chapter${i}.xhtml`,
+      data: `<html><head><title>${title}</title></head><body><h1>${title}</h1>${i === 0
+        ? Array.from({ length: 35 }, (_, n) => `<p>Passage ${n + 1}. The train followed the river into the valley while the afternoon light faded from the fields.</p>`).join("")
+        : `<p>From the window, they could see the old road.</p>`}</body></html>`,
+    })),
+  ])
+}
 
 export function mockOutputFiles(search = location.search) {
-  if (new URLSearchParams(search).get("file-preview") !== "large-image") return outputFiles
+  const scenario = new URLSearchParams(search).get("file-preview")
+  if (scenario === "epub") return { ...outputFiles, [epubPath]: { bytes: mockEpub(), mime: "application/epub+zip" } }
+  if (scenario !== "large-image") return outputFiles
 
   // Insert a valid private ancillary PNG chunk before IEND. This crosses the
   // old inline size limit without requiring a multi-megabyte checked-in file.

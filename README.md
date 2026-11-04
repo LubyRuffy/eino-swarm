@@ -851,6 +851,9 @@ For anonymous QR use and connection settings, retain the existing flow:
    images, PDFs, a sandboxed HTML artifact, or the saved content of DOCX,
    XLSX, PPTX and EPUB files. SVG stays source text. The HTML sandbox cannot
    use the app origin, and the download address is not loaded as a page.
+   On a phone, an open EPUB shows the filename once above the reading area.
+   Tap the left or right side of the page to go back or forward, or tap the
+   middle to show or hide the chapter list and Download.
    Phone previews show the received bytes and percentage while reading.
    Delays show a waiting message. PNG, JPEG, GIF and WebP can be previewed up
    to 32 MiB. Selecting Download while loading uses the active transfer and

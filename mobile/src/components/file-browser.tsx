@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { TextFilePreview } from "@/components/text-file-preview"
 import { ImageFilePreview } from "@/components/image-file-preview"
 import { PhoneRichPreview } from "@/components/document-preview"
+import { PhoneEpubPreview } from "@/components/epub-preview"
 import { FileDownload } from "@/components/file-download"
 import { ChevronDown, ChevronLeft, ChevronRight, FileText, Folder, Loader2, RefreshCw } from "lucide-react"
 
@@ -10,7 +11,7 @@ import { installAndroidBack } from "@/lib/android-back"
 import { t } from "@/lib/i18n"
 import type { RemoteLink } from "@/lib/link"
 import { listWorkspaceFiles, previewKind, readWorkspaceFile, RemoteFileError } from "@/lib/remote-files"
-import { isHtmlPreviewPath, tableDelimiter } from "../../../frontend/src/lib/documents/kind"
+import { documentFormat, isHtmlPreviewPath, tableDelimiter } from "../../../frontend/src/lib/documents/kind"
 import type { WorkspaceFile } from "@/lib/rpc"
 
 type LoadedFile = { url: string; kind: ReturnType<typeof previewKind>; text: string; bytes: Uint8Array; mime: string }
@@ -124,6 +125,24 @@ export function FileBrowser({ link, threadId, onClose }: {
     loaded: fileSize(progress.loaded),
     total: fileSize(progress.total),
   }) : undefined
+  const epub = selected && documentFormat(selected.name) === "epub"
+  const previewStatus = <>
+    {progress ? (
+      <div className="space-y-2">
+        <p role="status" className="flex items-center gap-2 text-sm">
+          <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+          {t(progress.waiting ? "files.waiting" : "files.loading")}
+        </p>
+        <progress aria-label={t("files.progressLabel")} aria-valuetext={progressText}
+          max={progress.total || undefined} value={progress.total ? progress.loaded : undefined}
+          className="block h-2 w-full accent-primary" />
+        {progressText ? <p className="text-xs tabular-nums text-muted-foreground">{progressText}</p> : null}
+      </div>
+    ) : null}
+    {fileError ? <p role="alert" className="text-sm text-destructive">{fileError}</p> : null}
+    {file?.kind === "download" ? <p className="text-sm text-muted-foreground">{t("files.unavailable")}</p> : null}
+  </>
+  const download = selected && !fileError ? <FileDownload key={readRevision} name={selected.name} file={file} /> : null
 
   return (
     <main data-testid="phone-file-browser" className="mx-auto flex h-full min-w-0 w-full max-w-lg flex-col overflow-hidden bg-background">
@@ -139,28 +158,19 @@ export function FileBrowser({ link, threadId, onClose }: {
         )}
       </header>
       {selected ? (
-        <section data-testid="phone-file-preview" className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
-          <p className="mb-3 max-h-16 shrink-0 overflow-auto break-all text-xs text-muted-foreground">{selected.path}</p>
-          {progress ? (
-            <div className="space-y-2">
-              <p role="status" className="flex items-center gap-2 text-sm">
-                <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-                {t(progress.waiting ? "files.waiting" : "files.loading")}
-              </p>
-              <progress aria-label={t("files.progressLabel")} aria-valuetext={progressText}
-                max={progress.total || undefined} value={progress.total ? progress.loaded : undefined}
-                className="block h-2 w-full accent-primary" />
-              {progressText ? <p className="text-xs tabular-nums text-muted-foreground">{progressText}</p> : null}
-            </div>
-          ) : null}
-          {fileError ? <p role="alert" className="text-sm text-destructive">{fileError}</p> : null}
-          {file?.kind === "text" && (isHtmlPreviewPath(selected.path) || tableDelimiter(selected.path)) ? <PhoneRichPreview key={file.url} link={link} threadId={threadId} path={selected.path} text={file.text} bytes={file.bytes} /> : null}
-          {file?.kind === "text" && !isHtmlPreviewPath(selected.path) && !tableDelimiter(selected.path) ? <TextFilePreview key={file.url} path={selected.path} text={file.text} /> : null}
-          {file?.kind === "document" ? <PhoneRichPreview key={file.url} link={link} threadId={threadId} path={selected.path} text="" bytes={file.bytes} /> : null}
-          {file?.kind === "image" ? <ImageFilePreview key={file.url} src={file.url} name={selected.name} /> : null}
-          {file?.kind === "pdf" ? <iframe src={file.url} title={selected.name} sandbox="allow-scripts" className="min-h-0 w-full flex-1 border-0" /> : null}
-          {file?.kind === "download" ? <p className="text-sm text-muted-foreground">{t("files.unavailable")}</p> : null}
-          {!fileError ? <div className="shrink-0"><FileDownload key={readRevision} name={selected.name} file={file} /></div> : null}
+        <section data-testid="phone-file-preview" className={`flex min-h-0 flex-1 flex-col overflow-hidden ${epub ? "" : "p-4"}`}>
+          {epub ? (
+            <PhoneEpubPreview key={selected.path} bytes={file?.kind === "document" ? file.bytes : undefined} status={previewStatus} download={download} />
+          ) : <>
+            <p className="mb-3 max-h-16 shrink-0 overflow-auto break-all text-xs text-muted-foreground">{selected.path}</p>
+            {previewStatus}
+            {file?.kind === "text" && (isHtmlPreviewPath(selected.path) || tableDelimiter(selected.path)) ? <PhoneRichPreview key={file.url} link={link} threadId={threadId} path={selected.path} text={file.text} bytes={file.bytes} /> : null}
+            {file?.kind === "text" && !isHtmlPreviewPath(selected.path) && !tableDelimiter(selected.path) ? <TextFilePreview key={file.url} path={selected.path} text={file.text} /> : null}
+            {file?.kind === "document" ? <PhoneRichPreview key={file.url} link={link} threadId={threadId} path={selected.path} text="" bytes={file.bytes} /> : null}
+            {file?.kind === "image" ? <ImageFilePreview key={file.url} src={file.url} name={selected.name} /> : null}
+            {file?.kind === "pdf" ? <iframe src={file.url} title={selected.name} sandbox="allow-scripts" className="min-h-0 w-full flex-1 border-0" /> : null}
+            {download ? <div className="shrink-0">{download}</div> : null}
+          </>}
         </section>
       ) : (
         <section className="flex min-h-0 flex-1 flex-col">

@@ -4,10 +4,9 @@ import { Loader2 } from "lucide-react"
 import { TextFilePreview } from "@/components/text-file-preview"
 import { Button } from "@/components/ui/button"
 import { limitCells, parseDelimited } from "../../../frontend/src/lib/documents/delimited"
-import { buildHtmlArtifact, HTML_ARTIFACT_SANDBOX, PACKAGE_DOCUMENT_SANDBOX, type AssetReader } from "../../../frontend/src/lib/documents/html-artifact"
+import { buildHtmlArtifact, HTML_ARTIFACT_SANDBOX, type AssetReader } from "../../../frontend/src/lib/documents/html-artifact"
 import { documentFormat, isHtmlPreviewPath, tableDelimiter } from "../../../frontend/src/lib/documents/kind"
 import { parseDocx } from "../../../frontend/src/lib/documents/docx"
-import { parseEpub } from "../../../frontend/src/lib/documents/epub"
 import { parsePptx } from "../../../frontend/src/lib/documents/pptx"
 import { parseXlsx } from "../../../frontend/src/lib/documents/xlsx"
 import type { DocBlock, InlineRun } from "../../../frontend/src/lib/documents/types"
@@ -100,7 +99,7 @@ export function PhoneRichPreview({ link, threadId, path, text, bytes }: {
           <Button variant={mode === "source" ? "outline" : "ghost"} aria-pressed={mode === "source"} onClick={() => setMode("source")}>{t("files.source")}</Button>
         </div>
       ) : null}
-      {switchable && mode === "source" ? <TextFilePreview path={path} text={text} /> : format ? (
+      {switchable && mode === "source" ? <TextFilePreview path={path} text={text} /> : format && format !== "epub" ? (
         <PackageView format={format} bytes={bytes} />
       ) : html ? (
         <HtmlView link={link} threadId={threadId} path={path} html={text} />
@@ -141,14 +140,13 @@ function HtmlView({ link, threadId, path, html }: { link: RemoteLink; threadId: 
   return <iframe data-testid="html-artifact" title={name} sandbox={HTML_ARTIFACT_SANDBOX} referrerPolicy="no-referrer" srcDoc={srcDoc} className="min-h-0 w-full flex-1 border-0 bg-white" />
 }
 
-function PackageView({ format, bytes }: { format: NonNullable<ReturnType<typeof documentFormat>>; bytes: Uint8Array }) {
+function PackageView({ format, bytes }: { format: "docx" | "xlsx" | "pptx"; bytes: Uint8Array }) {
   const [index, setIndex] = useState(0)
   const [failed, setFailed] = useState(false)
   const [view, setView] = useState<
     | { kind: "docx"; blocks: DocBlock[] }
     | { kind: "xlsx"; names: string[]; rows: string[][][]; truncated: boolean; shown: number }
     | { kind: "pptx"; titles: string[]; slides: { title: string; blocks: DocBlock[] }[] }
-    | { kind: "epub"; titles: string[]; chapters: { title: string; srcdoc: string }[] }
     | null
   >(null)
   useEffect(() => {
@@ -162,12 +160,8 @@ function PackageView({ format, bytes }: { format: NonNullable<ReturnType<typeof 
         const book = await parseXlsx(bytes)
         return { kind: "xlsx" as const, names: book.sheets.map((sheet) => sheet.name), rows: book.sheets.map((sheet) => sheet.rows), truncated: book.truncated, shown: book.shown }
       }
-      if (format === "pptx") {
-        const deck = await parsePptx(bytes)
-        return { kind: "pptx" as const, titles: deck.slides.map((slide) => slide.title), slides: deck.slides }
-      }
-      const book = await parseEpub(bytes)
-      return { kind: "epub" as const, titles: book.chapters.map((chapter) => chapter.title), chapters: book.chapters }
+      const deck = await parsePptx(bytes)
+      return { kind: "pptx" as const, titles: deck.slides.map((slide) => slide.title), slides: deck.slides }
     })().then((next) => { if (active) setView(next) }).catch(() => { if (active) setFailed(true) })
     return () => { active = false }
   }, [format, bytes])
@@ -186,20 +180,11 @@ function PackageView({ format, bytes }: { format: NonNullable<ReturnType<typeof 
       </div>
     )
   }
-  if (view.kind === "pptx") {
-    const slide = view.slides[index]
-    return (
-      <div data-testid="document-preview" className="min-h-0 flex-1 overflow-auto">
-        <Chooser label={t("files.slides")} names={view.titles} index={index} onChange={setIndex} />
-        {slide ? <section className="rounded-md border bg-card p-4"><h2 className="mb-3 text-lg font-semibold">{slide.title}</h2><Blocks blocks={slide.blocks} /></section> : null}
-      </div>
-    )
-  }
-  const chapter = view.chapters[index]
+  const slide = view.slides[index]
   return (
-    <div data-testid="document-preview" className="flex min-h-0 flex-1 flex-col">
-      <Chooser label={t("files.chapters")} names={view.titles} index={index} onChange={setIndex} />
-      {chapter ? <iframe title={chapter.title} sandbox={PACKAGE_DOCUMENT_SANDBOX} referrerPolicy="no-referrer" srcDoc={chapter.srcdoc} className="min-h-0 w-full flex-1 border-0 bg-white" /> : null}
+    <div data-testid="document-preview" className="min-h-0 flex-1 overflow-auto">
+      <Chooser label={t("files.slides")} names={view.titles} index={index} onChange={setIndex} />
+      {slide ? <section className="rounded-md border bg-card p-4"><h2 className="mb-3 text-lg font-semibold">{slide.title}</h2><Blocks blocks={slide.blocks} /></section> : null}
     </div>
   )
 }

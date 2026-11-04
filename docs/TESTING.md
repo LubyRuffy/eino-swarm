@@ -7154,6 +7154,21 @@ AX trees, exact web/app/test-package identity and owned-device cleanup receipts.
 
 `mobile/src/components/file-browser.test.tsx` exercises the real read/preview path, including an HTML artifact whose sandbox excludes same-origin access. `document-preview.test.tsx` renders CSV, TSV, DOCX, XLSX, PPTX and EPUB. `text-file-preview.test.tsx` checks suffix selection, unknown/large/empty text, exact source preservation and inert SVG/MDX source. `mobile/e2e/walkthrough.spec.ts` checks Markdown structure and syntax colors in light/dark; the packaged `mobile/e2e/ios-wait-layout.swift` `testPhoneOutputPreview` reaches both documents through Outputs. Reuse `scripts/ios-layout-fixture.py` and select only that XCTest. Android uses a disposable offline package and isolated emulator, inspecting the same reached screens; a browser pass or native launch alone does not accept the changed flow.
 
+The EPUB case in `mobile/e2e/file-preview-controls.spec.ts` opens a packaged
+book through Outputs and uses actual taps to turn pages within and across
+chapters. It checks that showing Contents and Download keeps the page in place
+and compares the downloaded file with the original EPUB bytes. In the private
+iOS layout fixture, set `IOS_LAYOUT_QUERY='/?mock=1&tick=0&file-preview=epub'`
+and `IOS_LAYOUT_SCENARIO=ios-epub-preview.swift`, then select
+`AppUITests/BindFlowTests/testPhoneEpubUsesReadingSpaceAndTapNavigation`.
+Set `IOS_LAYOUT_PRESERVE_PUBLIC=1` and point `IOS_LAYOUT_PUBLIC` at the frozen
+production build to preserve the web assets. Inspect the XCTest screenshots
+and accessibility trees for reading and controls.
+On a private Android emulator, select
+`FilePreviewControlsTest#nativeEpubPreviewUsesFullReadingAreaAndTapNavigation`.
+It uses native taps and read-only WebView layout observations. Keep its
+screenshots, accessibility trees and installed app and test APK identities.
+
 ### Phone file saving (Issue #122)
 
 `mobile/e2e/file-download.spec.ts` receives the browser's actual download and

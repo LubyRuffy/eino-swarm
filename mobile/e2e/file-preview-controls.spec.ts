@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises"
 import { expect, test, type Download, type Locator, type Page } from "@playwright/test"
-import { largeLandscapePath, mockOutputFiles } from "../src/lib/mock-files"
+import { epubPath, largeLandscapePath, mockOutputFiles } from "../src/lib/mock-files"
 
 async function openOutput(page: Page, name: string, url = "/?mock=1&tick=0") {
   await page.goto(url)
@@ -22,6 +22,84 @@ async function downloadBytes(page: Page) {
 async function fontSize(element: Locator) {
   return element.evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize))
 }
+
+test("EPUB gives the screen to reading and opens navigation only on a center tap", async ({ page }, info) => {
+  await page.setViewportSize({ width: 320, height: 700 })
+  const scenario = "?mock=1&tick=0&file-preview=epub"
+  const name = "reading-test.epub"
+  const preview = await openOutput(page, name, "/" + scenario)
+  const frame = preview.locator("iframe")
+  const chapter = frame.contentFrame()
+  const arrival = chapter.getByRole("heading", { name: "The arrival" })
+  const garden = chapter.getByRole("heading", { name: "The garden" })
+  const firstPassage = chapter.getByText(/^Passage 1\./)
+  const finalPassage = chapter.getByText(/^Passage 35\./)
+  const contents = preview.getByRole("combobox", { name: "目录" })
+  const download = preview.getByRole("link", { name: "下载", exact: true })
+  const tap = async (fraction: number) => {
+    await expect(frame).toBeVisible()
+    const box = await frame.boundingBox()
+    if (!box) throw new Error("EPUB reading surface has no visible bounds")
+    await page.touchscreen.tap(box.x + box.width * fraction, box.y + box.height / 2)
+  }
+
+  await expect(arrival).toBeInViewport()
+  await expect(firstPassage).toBeInViewport()
+  await expect(finalPassage).not.toBeInViewport()
+  await expect(page.getByRole("heading", { name, exact: true })).toHaveCount(1)
+  await expect(preview.getByText(epubPath, { exact: true })).toHaveCount(0)
+  await expect(preview.getByText(name, { exact: true })).toHaveCount(0)
+  await expect(contents).toBeHidden()
+  await expect(download).toBeHidden()
+  await expect(preview.getByRole("button", { name: /上一个|下一个/ })).toHaveCount(0)
+  const readingBounds = await frame.boundingBox()
+  const previewBounds = await preview.boundingBox()
+  expect(readingBounds!.height).toBeGreaterThan(previewBounds!.height * 0.9)
+  await page.screenshot({ path: info.outputPath("epub-reading.png") })
+
+  // The first turn stays within the long first chapter. It must move the
+  // visible text, and a left tap must return to the same first page.
+  await tap(0.12)
+  await expect(arrival).toBeInViewport()
+  await tap(0.88)
+  await expect(arrival).not.toBeInViewport()
+  await expect(frame).toHaveAttribute("title", "The arrival")
+  await expect(chapter.getByText(/^Passage 7\./)).toBeInViewport()
+  await expect(finalPassage).not.toBeInViewport()
+  await expect(download).toBeHidden()
+  await page.screenshot({ path: info.outputPath("epub-page-turned.png") })
+  await tap(0.12)
+  await expect(arrival).toBeInViewport()
+
+  await tap(0.5)
+  await expect(contents).toBeVisible()
+  await expect(download).toBeVisible()
+  expect(await frame.boundingBox()).toEqual(readingBounds)
+  await expect(arrival).toBeInViewport()
+  await page.screenshot({ path: info.outputPath("epub-controls.png") })
+  const downloaded = await downloadBytes(page)
+  expect(downloaded.name).toBe(name)
+  expect(downloaded.bytes).toEqual(Buffer.from(mockOutputFiles(scenario)[epubPath].bytes))
+  await tap(0.5)
+  await expect(contents).toBeHidden()
+  await expect(download).toBeHidden()
+  await expect(arrival).toBeInViewport()
+
+  await tap(0.5)
+  await contents.selectOption({ label: "The garden" })
+  await expect(garden).toBeInViewport()
+  // A left tap from the first page of the next chapter returns to the
+  // previous chapter's last page. A right tap crosses that boundary again.
+  await tap(0.12)
+  await expect(finalPassage).toBeInViewport()
+  await tap(0.88)
+  await expect(garden).toBeInViewport()
+
+  await page.getByRole("button", { name: "返回列表", exact: true }).click()
+  await page.getByRole("button", { name, exact: true }).click()
+  await expect(arrival).toBeInViewport()
+  await expect(download).toBeHidden()
+})
 
 test("document text, headings, tables and code enlarge together while controls remain reachable", async ({ page }, info) => {
   await page.setViewportSize({ width: 320, height: 700 })

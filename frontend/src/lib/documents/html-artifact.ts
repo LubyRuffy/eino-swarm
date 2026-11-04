@@ -145,7 +145,7 @@ async function applyUrl(element: Element, name: string, fromFile: string, appOri
  * The iframe must use HTML_ARTIFACT_SANDBOX and must not use the download
  * URL as src: that URL is same-origin with the app. allow-same-origin is
  * omitted so scripts cannot read the app. Package documents (EPUB) pass
- * scripts:false and PACKAGE_DOCUMENT_SANDBOX.
+ * scripts:false and must use a sandbox that does not allow scripts.
  */
 export async function buildHtmlArtifact(
   html: string,
@@ -167,8 +167,15 @@ export async function buildHtmlArtifact(
       element.remove()
       continue
     }
+    if (!scripts && (local === "a" || local === "area")) {
+      // A CSP restricting resources does not stop a link navigating this frame.
+      for (const name of urlAttributeNames(element)) {
+        if (!element.getAttribute(name)?.trim().startsWith("#")) element.removeAttribute(name)
+      }
+      for (const name of ["target", "download", "ping"]) element.removeAttribute(name)
+    }
     if (local === "meta") {
-      const equiv = element.getAttribute("http-equiv")?.toLowerCase()
+      const equiv = element.getAttribute("http-equiv")?.trim().toLowerCase()
       if (equiv === "refresh" || equiv === "content-security-policy") element.remove()
       continue
     }
@@ -207,6 +214,10 @@ export async function buildHtmlArtifact(
         }
         continue
       }
+      if (!scripts) {
+        element.remove()
+        continue
+      }
       if (/\b(?:preload|modulepreload|prefetch|preconnect|dns-prefetch|prerender)\b/.test(rel) && ref.kind !== "remote") {
         element.remove()
         continue
@@ -217,7 +228,7 @@ export async function buildHtmlArtifact(
     if (local === "iframe" || local === "object" || local === "embed") {
       const attr = local === "object" ? "data" : "src"
       const ref = classifyResource(element.getAttribute(attr) ?? "", filePath, appOrigin)
-      if (ref.kind !== "remote") element.remove()
+      if (!scripts || ref.kind !== "remote") element.remove()
       continue
     }
     if (local === "img" || local === "image" || local === "source" || local === "video" || local === "audio") {

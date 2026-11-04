@@ -238,7 +238,7 @@ Office and EPUB documents. HTML artifacts render in an isolated frame. SVG stays
 source text and MDX components never execute. Unknown text stays plain. Text over
 256 Ki characters stays complete but skips document parsing and syntax colors.
 PNG, JPEG, GIF and WebP can be previewed up to the 32 MiB phone read limit.
-Other previews are limited to 8 MiB. While reading, the preview shows received
+Other previews are limited to 8 MiB. While loading, the preview shows received
 bytes, total bytes and a percentage. Each new chunk gets a fresh waiting
 window. If data is delayed, the preview shows that it is still waiting.
 **Download** is available during loading. An early tap uses the active
@@ -255,8 +255,12 @@ zoom. Markdown, source and plain-text previews offer smaller/larger text
 (12–28 px, initially 14 px) and reset; headings, tables and code scale together,
 including their line spacing.
 Preview tables scroll horizontally; vertical swipes continue through the document.
-Controls and Download remain outside the scrolling content. Reopening a file
-resets its view; preview adjustments preserve the original download bytes.
+Image and text controls and Download remain outside the scrolling content.
+An EPUB shows its filename once in the header. Tap the left or right side of
+the reading area to turn one page, including across chapters. Tap the middle
+to show or hide the chapter list and Download. They start hidden and appear
+over the reading area, so the current page stays in place. Reopening a file
+resets its view. Preview adjustments preserve the original download bytes.
 Full Settings, PTY and Trace stay on the PC; paired phones also expose PC timeout controls.
 
 While a PC turn runs, the empty composer shows a square Stop button. Typing a message or adding an attachment or quote switches it to Follow-up; Steer stays available for that draft. The header Stop remains available while drafting. A parked wait has no live turn to stop. In direct model chat, the square Stop cancels the stream, keeps the text received so far, and restores Send.

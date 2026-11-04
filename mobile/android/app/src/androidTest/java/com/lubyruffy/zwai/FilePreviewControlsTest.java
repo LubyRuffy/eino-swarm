@@ -44,11 +44,12 @@ public class FilePreviewControlsTest {
     private File evidenceDirectory;
     private long deadline;
 
-    @Test
-    public void nativeFilePreviewControlsResizeTextAndImages() throws Exception {
+    private interface PreviewCase { void run() throws Exception; }
+
+    private void runPreviewCase(String name, String query, PreviewCase test) throws Exception {
         deadline = SystemClock.uptimeMillis() + 120000;
         evidenceDirectory = new File(instrumentation.getTargetContext().getExternalFilesDir(null),
-            "file-preview-controls-" + UUID.randomUUID());
+            name + "-" + UUID.randomUUID());
         assertTrue(evidenceDirectory.mkdir());
         Bundle identity = new Bundle();
         identity.putString("evidence_directory", evidenceDirectory.getAbsolutePath());
@@ -67,7 +68,7 @@ public class FilePreviewControlsTest {
         assertTrue(reached instanceof BridgeActivity);
         activity = (BridgeActivity) reached;
         instrumentation.runOnMainSync(() -> activity.getBridge().getWebView()
-            .loadUrl("https://localhost/?mock=1&tick=0"));
+            .loadUrl("https://localhost/?mock=1&tick=0" + query));
         Throwable primary = null;
         try {
             waitNativeBack();
@@ -76,6 +77,21 @@ public class FilePreviewControlsTest {
             click("Open Sweep the unused exports");
             waitButton("Outputs"); click("Outputs");
             waitButton("outputs"); click("outputs");
+            test.run();
+        } catch (Exception | AssertionError failure) {
+            primary = failure;
+            try { capture("failure"); }
+            catch (Exception | AssertionError capture) { failure.addSuppressed(capture); }
+            throw failure;
+        } finally {
+            try { instrumentation.runOnMainSync(activity::finish); }
+            catch (RuntimeException cleanup) { if (primary != null) primary.addSuppressed(cleanup); else throw cleanup; }
+        }
+    }
+
+    @Test
+    public void nativeFilePreviewControlsResizeTextAndImages() throws Exception {
+        runPreviewCase("file-preview-controls", "", () -> {
             waitButton("inspection.md"); click("inspection.md");
             waitState(s -> s.getJSONObject("text").optDouble("font") == 14);
             JSONObject initial = dom().getJSONObject("text");
@@ -165,15 +181,89 @@ public class FilePreviewControlsTest {
                 .put("text_min_px", 12).put("text_max_px", 28).put("text_default_px", 14)
                 .put("image_original_width", 1200).put("image_original_height", 800)
                 .put("native_actions", actions).toString(2));
-        } catch (Exception | AssertionError failure) {
-            primary = failure;
-            try { capture("failure"); }
-            catch (Exception | AssertionError capture) { failure.addSuppressed(capture); }
-            throw failure;
-        } finally {
-            try { instrumentation.runOnMainSync(activity::finish); }
-            catch (RuntimeException cleanup) { if (primary != null) primary.addSuppressed(cleanup); else throw cleanup; }
-        }
+        });
+    }
+
+    @Test
+    public void nativeEpubPreviewUsesFullReadingAreaAndTapNavigation() throws Exception {
+        runPreviewCase("epub-preview", "&file-preview=epub", () -> {
+            waitButton("reading-test.epub");
+            click("reading-test.epub");
+            waitState(s -> s.getJSONObject("epub").optBoolean("heading_in_view"));
+            JSONObject first = dom().getJSONObject("epub");
+            assertEquals("The arrival", first.getString("title"));
+            assertEquals("reading-test.epub", first.getString("header"));
+            assertFalse("No second filename in the reading area", first.getBoolean("repeated_filename"));
+            assertTrue("Body fills the preview", first.getDouble("viewport_height") >= first.getDouble("preview_height") * 0.9);
+            assertFalse(first.getBoolean("last_passage_in_view"));
+            assertEpubControls(false);
+            capture("reading-first-page");
+
+            tapEpub(0.12);
+            assertTrue("The first page does not wrap", dom().getJSONObject("epub").getBoolean("heading_in_view"));
+            tapEpub(0.88);
+            waitState(s -> "The arrival".equals(s.getJSONObject("epub").optString("title"))
+                && !s.getJSONObject("epub").optBoolean("heading_in_view"));
+            assertEpubControls(false);
+            capture("reading-next-page");
+            tapEpub(0.12);
+            waitState(s -> s.getJSONObject("epub").optBoolean("heading_in_view"));
+
+            tapEpub(0.5);
+            waitButton("Contents");
+            waitButton("Download");
+            assertEpubControls(true);
+            JSONObject withControls = dom().getJSONObject("epub");
+            for (String metric : new String[] {"x", "y", "viewport_width", "viewport_height"})
+                assertEquals("Opening the controls does not resize the reading area: " + metric,
+                    first.getDouble(metric), withControls.getDouble(metric), 0.1);
+            assertTrue(withControls.getBoolean("heading_in_view"));
+            capture("reading-with-controls");
+            tapEpub(0.5);
+            waitState(s -> !s.getJSONObject("epub").optBoolean("contents_visible"));
+            assertEpubControls(false);
+            assertTrue(dom().getJSONObject("epub").getBoolean("heading_in_view"));
+
+            // A right tap after the last page reaches the next chapter. Going
+            // back resumes the previous chapter at its final visible passage.
+            for (int i = 0; i < 30 && !"The garden".equals(dom().getJSONObject("epub").optString("title")); i++) {
+                tapEpub(0.88);
+                waitState(s -> s.getJSONObject("epub").optBoolean("ready"));
+            }
+            waitState(s -> "The garden".equals(s.getJSONObject("epub").optString("title"))
+                && s.getJSONObject("epub").optBoolean("heading_in_view"));
+            capture("reading-next-chapter");
+            tapEpub(0.12);
+            waitState(s -> "The arrival".equals(s.getJSONObject("epub").optString("title"))
+                && s.getJSONObject("epub").optBoolean("last_passage_in_view"));
+            capture("reading-previous-chapter-last-page");
+            click("Back to list");
+            waitButton("reading-test.epub");
+            click("reading-test.epub");
+            waitState(s -> "The arrival".equals(s.getJSONObject("epub").optString("title"))
+                && s.getJSONObject("epub").optBoolean("heading_in_view"));
+            assertEpubControls(false);
+            write("result.json", new JSONObject().put("passed", true).put("native_actions", actions).toString(2));
+        });
+    }
+
+    private void assertEpubControls(boolean visible) throws Exception {
+        JSONObject state = dom();
+        assertEquals("Contents visibility", visible, state.getJSONObject("epub").getBoolean("contents_visible"));
+        JSONObject download = button(state, "Download");
+        assertEquals("Download hittability", visible, download != null && download.getBoolean("hit"));
+        for (String label : new String[] {"Previous", "Next"})
+            assertNull("No on-screen page buttons", button(state, label));
+    }
+
+    private void tapEpub(double fraction) throws Exception {
+        assertTrue("No input after the original case deadline", SystemClock.uptimeMillis() < deadline);
+        JSONObject state = dom(), bounds = state.getJSONObject("epub");
+        assertTrue("Read area must be drawn before native input", bounds.getBoolean("ready"));
+        touch(bounds.getDouble("x") + bounds.getDouble("viewport_width") * fraction,
+            bounds.getDouble("y") + bounds.getDouble("viewport_height") / 2, state.getJSONObject("viewport"));
+        actions.put(new JSONObject().put("action", "native_touch_reading_area")
+            .put("horizontal_fraction", fraction).put("before", bounds));
     }
 
     private interface StateCheck { boolean accepts(JSONObject state) throws Exception; }
@@ -305,7 +395,10 @@ public class FilePreviewControlsTest {
             + "const image={...rect(iv),width:img?.getBoundingClientRect().width||0,height:img?.getBoundingClientRect().height||0,natural_width:img?.naturalWidth||0,natural_height:img?.naturalHeight||0,src:img?.src||'',decoded:!!img?.complete&&img.naturalWidth>0};"
             + "const readable=e=>{let out='';const walker=document.createTreeWalker(e,NodeFilter.SHOW_TEXT);for(let node;node=walker.nextNode();)if(!node.parentElement.closest('[aria-hidden=true]'))out+=node.textContent;return tidy(out);};"
             + "const button=b=>{const r=b.getBoundingClientRect(),s=getComputedStyle(b),cx=r.x+r.width/2,cy=r.y+r.height/2;return{label:b.getAttribute('aria-label')||readable(b),enabled:!b.disabled,pressed:b.getAttribute('aria-pressed')==='true',hit:r.width>0&&r.height>0&&s.visibility==='visible'&&Number(s.opacity)>0&&cx>0&&cy>0&&cx<innerWidth&&cy<innerHeight&&b.contains(document.elementFromPoint(cx,cy)),x:r.x,y:r.y,width:r.width,height:r.height};};"
-            + "return{url:location.href,viewport:{width:innerWidth,height:innerHeight},document_width:document.documentElement.scrollWidth,text:{...rect(text),font:font(text),body_font:font(body),body_line_height:line(body),heading_font:font(text?.querySelector('h1')),heading_line_height:line(text?.querySelector('h1')),code_font:font(text?.querySelector('pre code')),code_line_height:line(text?.querySelector('pre code')),table_font:font(text?.querySelector('table')),table_line_height:line(text?.querySelector('table')),content:text?.textContent||''},image,buttons:[...document.querySelectorAll('button,a')].map(button)};})())";
+            + "const preview=document.querySelector('[data-testid=phone-file-preview]'),frame=preview?.querySelector('iframe'),chapter=frame?.contentDocument;"
+            + "const visibleInChapter=e=>!!e&&[...e.getClientRects()].some(r=>r.right>0&&r.left<frame.clientWidth&&r.bottom>0&&r.top<frame.clientHeight);"
+            + "const epub={...rect(frame),ready:!!chapter&&getComputedStyle(frame).visibility==='visible',title:frame?.title,header:document.querySelector('header h1')?.textContent,preview_height:preview?.clientHeight,repeated_filename:!!preview?.innerText.includes('reading-test.epub'),contents_visible:!!preview?.querySelector('select[aria-label=Contents]')?.getBoundingClientRect().height,heading_in_view:visibleInChapter(chapter?.querySelector('h1')),last_passage_in_view:visibleInChapter([...chapter?.querySelectorAll('p')||[]].find(p=>p.textContent.startsWith('Passage 35.')))};"
+            + "return{url:location.href,viewport:{width:innerWidth,height:innerHeight},document_width:document.documentElement.scrollWidth,text:{...rect(text),font:font(text),body_font:font(body),body_line_height:line(body),heading_font:font(text?.querySelector('h1')),heading_line_height:line(text?.querySelector('h1')),code_font:font(text?.querySelector('pre code')),code_line_height:line(text?.querySelector('pre code')),table_font:font(text?.querySelector('table')),table_line_height:line(text?.querySelector('table')),content:text?.textContent||''},image,epub,buttons:[...document.querySelectorAll('button,a,select')].map(button)};})())";
         CountDownLatch ready = new CountDownLatch(1); AtomicReference<String> value = new AtomicReference<>();
         instrumentation.runOnMainSync(() -> activity.getBridge().getWebView().evaluateJavascript(script,
             result -> { value.set(result); ready.countDown(); }));

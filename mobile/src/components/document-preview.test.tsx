@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest"
 import { zipStore } from "../../../frontend/src/lib/documents/zip-store"
 import type { RemoteLink } from "@/lib/link"
 import { PhoneRichPreview } from "./document-preview"
+import { PhoneEpubPreview } from "./epub-preview"
 
 const link = { path: "relay", alive: () => true, close: () => undefined, announceDevice: () => undefined, rpc: () => Promise.resolve({}) } as unknown as RemoteLink
 
@@ -61,9 +62,9 @@ describe("phone rich file preview", () => {
       { name: "OEBPS/content.opf", data: '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf"><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/></spine></package>' },
       { name: "OEBPS/c1.xhtml", data: "<html><head><title>Chapter One</title></head><body><p>Readable</p><script>bad()</script></body></html>" },
     ])
-    preview("story.epub", "", bytes)
+    render(<PhoneEpubPreview bytes={bytes} />)
     const frame = await screen.findByTitle("Chapter One")
-    expect(frame.getAttribute("sandbox")).toBe("")
+    expect(frame.getAttribute("sandbox")).toBe("allow-same-origin")
     expect(frame.getAttribute("srcdoc")).toContain("Readable")
     expect(frame.getAttribute("srcdoc")).not.toContain("bad()")
   })

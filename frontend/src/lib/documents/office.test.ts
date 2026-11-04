@@ -136,7 +136,7 @@ describe("office and book preview", () => {
         </package>` },
       { name: "OEBPS/style.css", data: "p { color: rgb(4, 5, 6); }" },
       { name: "OEBPS/cover.png", data: png },
-      { name: "OEBPS/c1.xhtml", data: `<html><head><title>Chapter One</title><link rel="stylesheet" href="style.css"></head><body><p>Readable</p><img src="cover.png"><script>bad()</script></body></html>` },
+      { name: "OEBPS/c1.xhtml", data: `<html><head><title>Chapter One</title><link rel="stylesheet" href="style.css"><link rel="preconnect" href="https://example.org/preconnect"></head><body><p>Readable</p><img src="cover.png"><script>bad()</script><a href="#note">Note</a><a href="https://example.org/outside">Outside</a><iframe src="https://example.org/nested"></iframe></body></html>` },
     ]))
     expect(book.title).toBe("Sample Book")
     expect(book.chapters).toHaveLength(1)
@@ -145,6 +145,8 @@ describe("office and book preview", () => {
     expect(book.chapters[0].srcdoc).toContain("rgb(4, 5, 6)")
     expect(book.chapters[0].srcdoc).toContain("data:image/png;base64,")
     expect(book.chapters[0].srcdoc).not.toContain("bad()")
+    expect(book.chapters[0].srcdoc).toContain('href="#note"')
+    expect(book.chapters[0].srcdoc).not.toContain("https://example.org/")
     expect(PACKAGE_DOCUMENT_SANDBOX).toBe("")
   })
 })
