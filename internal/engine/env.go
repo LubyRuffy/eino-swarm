@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	goruntime "runtime"
 	"strings"
 	"time"
@@ -180,10 +179,8 @@ func formatTimezone(now time.Time) string {
 
 func unameSupported(goos string) bool { return goos != "windows" }
 
-// probeUname is the uname invocation so a test can fail it without a real binary.
-var probeUname = func(ctx context.Context) ([]byte, error) {
-	return exec.CommandContext(ctx, "uname", "-s", "-r").Output()
-}
+// probeUname is the platform kernel reader so tests can simulate missing facts.
+var probeUname = platformUname
 
 func probeKernel() string { return kernelRelease(goruntime.GOOS) }
 

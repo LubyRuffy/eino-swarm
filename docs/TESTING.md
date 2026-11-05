@@ -12,6 +12,13 @@ from a failed terminal write. These sequential observations are not an atomic
 snapshot; message bodies, tool arguments, results and credentials are omitted.
 The diagnostic reads do not resume or retry the turn.
 
+Darwin kernel facts use `kern.ostype` and `kern.osrelease` system queries,
+without launching `uname`; the Darwin build tag also covers iOS. A missing
+query omits the kernel suffix, preserving the environment prompt's format.
+`env_kernel_darwin_test.go` checks real facts with an empty executable PATH,
+both query errors and cancellation. The existing one-second context remains;
+Sysctl itself has no interruptible API. Other uname-supported platforms keep the existing command.
+
 ## External MCP tools (`F-176`, `C-041`)
 
 `internal/config/mcp_test.go` checks valid transports, private map validation,
