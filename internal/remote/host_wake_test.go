@@ -4,8 +4,16 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/wakeup"
 )
+
+func setRemote(t *testing.T, cfg *config.Config, edit func(*config.RemoteConfig)) {
+	t.Helper()
+	if err := cfg.Update(func(c *config.Config) error { edit(&c.Remote); return nil }); err != nil {
+		t.Fatal(err)
+	}
+}
 
 type errWake struct{}
 
@@ -41,14 +49,15 @@ func TestHostKeepAwakeFollowsPairingAndSurvivesReload(t *testing.T) {
 		t.Fatal("reload must still be holding")
 	}
 
-	cfg.Remote.KeepAwake = false
+	// A live save goes through Update; the account-model refresh reads config
+	// from its own goroutine and must not race a test's direct field write.
+	setRemote(t, cfg, func(r *config.RemoteConfig) { r.KeepAwake = false })
 	h.Reload()
 	if rec.On() || h.Status().Awake || h.Status().KeepAwake {
 		t.Fatal("switch off must release")
 	}
 
-	cfg.Remote.KeepAwake = true
-	cfg.Remote.Enabled = false
+	setRemote(t, cfg, func(r *config.RemoteConfig) { r.KeepAwake, r.Enabled = true, false })
 	h.Start()
 	if rec.On() {
 		t.Fatal("pairing off must not hold")

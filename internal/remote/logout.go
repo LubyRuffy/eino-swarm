@@ -138,6 +138,7 @@ func (h *Host) LogoutContext(parent context.Context) error {
 		return fmt.Errorf("remote: account logout failed: %w", err)
 	}
 	h.login = LoginStatus{State: "signed_out"}
+	h.accounts.Trigger()
 	return nil
 }
 

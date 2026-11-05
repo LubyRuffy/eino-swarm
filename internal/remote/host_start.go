@@ -25,6 +25,7 @@ type hostStart struct {
 // StartBackground starts one cancellable connection attempt. Local readiness
 // does not depend on the hub; Stop and Reload own cancellation and cleanup.
 func (h *Host) StartBackground() {
+	h.accounts.Start()
 	h.mu.Lock()
 	attempt, launch := h.prepareStartLocked(context.Background())
 	h.applyWakeLocked()

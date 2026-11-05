@@ -226,6 +226,7 @@ Client startup metadata. During recovery, clients poll it until `startup` is `re
   "mock": false,
   "configured": true,
   "default_provider": "default",
+  "account_models": {"state": "signed_out", "models": 0},
   "reasoning_levels": ["low", "medium", "high"],
   "data_dir": "/Users/me/.zwai-swarm",
   "capabilities": { "reveal": false, "open_url": false, "memory": true, "restart_handoff": true },
@@ -246,10 +247,31 @@ Client startup metadata. During recovery, clients poll it until `startup` is `re
   "ui": {"locale": "system", "font": "system", "ui_font_size": "medium",
          "content_font": "ui", "font_size": "ui", "code_font": "mono",
          "code_font_size": "content", "content_width": "comfortable",
-         "transcript_mode": "user", "palette": "zwai"},
+         "transcript_mode": "user", "palette": "zwai", "welcome_dismissed": false},
   "clients": [{"id": "pc_ab12", "surface": "desktop", "pid": 4242}]
 }
 ```
+
+`configured` is true when a model can answer: the offline provider, a configured
+provider with a usable endpoint, **or** a signed-in server account whose models
+are ready. `default_provider` is the provider id a new conversation uses
+(`gateway:<hex>` when the account's models are the chosen default source, see
+`models.default_source`). `account_models` is what the local UI may know about
+the signed-in server account's model access; it never carries a credential or an
+endpoint:
+
+| `state` | meaning |
+|---|---|
+| `signed_out` | no device login on this machine |
+| `pending` | signed in; the model catalog has not been read yet |
+| `ready` | models are available (`models` is their count) and listed first in `GET /api/models` |
+| `no_access` | signed in but the account may not use the model API |
+| `unavailable` | signed in but the catalog could not be used; `reason` is one of `rejected`, `unsupported`, `network`, `gateway`, `unsafe_response`, `no_models` |
+
+`label`, `username` and `display_name` are present once known. The catalog is
+refreshed after sign-in/out and periodically; a reload that does not change the
+account does not refetch it. The offline provider (`--mock`) never reaches a
+network, so it always reports `signed_out`.
 
 `startup` is `restoring` while the serving process restores conversation state,
 then `ready`. `restore.completed/total` counts examined conversations. Optional
@@ -354,7 +376,7 @@ provider carries `has_api_key` and `ready` instead.
 ```json
 {"settings": {
   "server": {"addr": "127.0.0.1:8787", "open_browser": true},
-  "models": {"default": "default", "providers": [
+  "models": {"default": "default", "default_source": "provider", "providers": [
     {"id": "default", "label": "", "base_url": "https://endpoint/v1",
      "model": "some-model", "catalog": ["some-model", "other-model"],
      "api_mode": "", "builtin_tools": [],
@@ -461,6 +483,14 @@ conversation column. Unknown locale values become `system`; unknown `font` /
 Omitted ui fields keep what is stored, so a language PUT cannot reset the
 typeface.
 
+`models.default_source` (`account` or `provider`) chooses whose models a new
+conversation starts on; omitting it keeps the stored value (the model list is
+saved from many places that do not know it) and any other value is rejected with
+`400`. `ui.welcome_dismissed` is a boolean with the same omitted-keeps rule, so a
+language-only write cannot bring the first-run welcome back. The runtime account
+projection is not part of the settings: provider ids starting with `gateway:`
+are reserved and rejected.
+
 Within a supplied `swarm` section, omitted `agent_timeout_seconds` preserves the
 latest stored value. Within a supplied provider row, omitted `timeout_seconds`
 and `first_byte_timeout_seconds` preserve that provider's latest values by ID;
@@ -527,14 +557,23 @@ conversation can still select it, and a turn already on it keeps running.
 {"models": [{
   "id": "default\talpha", "provider_id": "default", "provider_label": "Main",
   "label": "alpha", "model": "alpha", "ready": true, "default": true,
-  "context_window": 128000
+  "context_window": 128000, "source": "provider"
 }],
  "default": "default", "mock": false}
 ```
 
+`source` is `account` for the signed-in server's models and `provider` for the
+user's own endpoints. Account rows come first, their `provider_id` is
+`gateway:<32 hex>`, and they exist only while the account is signed in and its
+catalog is ready (they are never in `config.yaml`; no credential or endpoint is
+returned). A conversation that stored such an id and finds the account gone
+fails with the stable `account_login_required` error instead of falling back to
+a provider with a same-named model.
+
 `id` is the composer's opaque selection key (`provider_id`, tab, `model`).
 `default` on a row is that provider's configured default name. `default` at the
-top level is still the default **provider** id. `context_window` is that name's
+top level is still the default **provider** id (the account's `gateway:<hex>`
+when `models.default_source` is `account` and the account is ready). `context_window` is that name's
 token limit: a discovered per-name value, else the provider fallback, else `0`
 (unknown — the meter then shows a count without a percentage). Offline (`--mock`)
 reports a simulated window so the ring still moves.

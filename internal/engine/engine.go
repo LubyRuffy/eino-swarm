@@ -163,7 +163,7 @@ func (e *Engine) snapshotScheduleCaps() {
 		min = config.DefaultScheduleMinIntervalSeconds
 	}
 	e.schedMinIntervalS.Store(int32(min))
-	def := strings.TrimSpace(e.cfg.ModelsSnapshot().Default)
+	def := e.newConversationProvider()
 	e.schedDefaultProvider.Store(&def)
 }
 
@@ -203,7 +203,17 @@ func (e *Engine) scheduleDefaultProvider() string {
 			return *p
 		}
 	}
-	return e.cfg.ModelsSnapshot().Default
+	return e.newConversationProvider()
+}
+
+// newConversationProvider is the provider a run with no explicit choice uses:
+// the signed-in account's models when that is the chosen source and they are
+// available, otherwise the configured default provider.
+func (e *Engine) newConversationProvider() string {
+	if e.pool != nil {
+		return strings.TrimSpace(e.pool.DefaultProviderID())
+	}
+	return strings.TrimSpace(e.cfg.ModelsSnapshot().Default)
 }
 
 // Providers exposes the model pool.

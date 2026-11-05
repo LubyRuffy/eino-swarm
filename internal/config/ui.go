@@ -31,6 +31,10 @@ type UIConfig struct {
 	// Palette is the named color set. zwai is the current chrome;
 	// fofa is the intelligence-console tokens (both have light and dark).
 	Palette string `yaml:"palette" json:"palette"`
+	// WelcomeDismissed records that the first-run welcome was answered or put
+	// off, so it does not come back every launch. Signing in or configuring a
+	// model service hides it regardless.
+	WelcomeDismissed bool `yaml:"welcome_dismissed" json:"welcome_dismissed"`
 }
 
 // UI languages. system follows the browser; en and zh pin the chrome.

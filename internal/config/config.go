@@ -53,8 +53,11 @@ type ServerConfig struct {
 
 // ModelsConfig is the provider list plus which one new conversations use.
 type ModelsConfig struct {
-	Default   string     `yaml:"default" json:"default"`
-	Providers []Provider `yaml:"providers" json:"providers"`
+	Default string `yaml:"default" json:"default"`
+	// DefaultSource is account or provider: whose models a new conversation
+	// starts on when both are available. See settleDefaultSource.
+	DefaultSource string     `yaml:"default_source" json:"default_source"`
+	Providers     []Provider `yaml:"providers" json:"providers"`
 }
 
 // SwarmConfig bounds the agent swarm.
@@ -593,6 +596,9 @@ func Load(dataDir string) (*Config, error) {
 	if err := cfg.validateProviders(); err != nil {
 		return nil, err
 	}
+	if err := cfg.validateDefaultSource(); err != nil {
+		return nil, err
+	}
 	if err := cfg.validateWebExecution(); err != nil {
 		return nil, err
 	}
@@ -815,6 +821,7 @@ func (c *Config) normalize() {
 		c.Swarm.CompactProvider = ""
 		c.Swarm.CompactModel = ""
 	}
+	c.settleDefaultSource()
 	c.normalizeRemote()
 	c.normalizeSearch()
 	c.normalizeClients()
@@ -873,6 +880,9 @@ func (c *Config) save() error {
 		return err
 	}
 	if err := c.validateProviders(); err != nil {
+		return err
+	}
+	if err := c.validateDefaultSource(); err != nil {
 		return err
 	}
 	if err := c.validateWebExecution(); err != nil {

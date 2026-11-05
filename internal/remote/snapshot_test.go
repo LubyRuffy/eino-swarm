@@ -15,7 +15,11 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
-func testEngine(t *testing.T) *engine.Engine {
+func testEngine(t *testing.T) *engine.Engine { return testEngineWithPool(t, true) }
+
+// testEngineWithPool is testEngine with a choice of provider pool: the scripted
+// offline pool never refreshes the server account, a live one does.
+func testEngineWithPool(t *testing.T, scripted bool) *engine.Engine {
 	t.Helper()
 	t.Setenv("OPENAI_BASE_URL", "")
 	t.Setenv("OPENAI_API_KEY", "")
@@ -32,7 +36,11 @@ func testEngine(t *testing.T) *engine.Engine {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	e := engine.New(cfg, st, provider.NewMock(cfg), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	pool := provider.New(cfg)
+	if scripted {
+		pool = provider.NewMock(cfg)
+	}
+	e := engine.New(cfg, st, pool, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	t.Cleanup(e.Shutdown)
 	return e
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
+	"github.com/LubyRuffy/eino-swarm/internal/remote"
 	"github.com/LubyRuffy/eino-swarm/internal/tools"
 	"github.com/gin-gonic/gin"
 )
@@ -26,19 +27,24 @@ type metaView struct {
 	Mock            bool                   `json:"mock"`
 	Configured      bool                   `json:"configured"`
 	DefaultProvider string                 `json:"default_provider"`
-	ReasoningLevels []string               `json:"reasoning_levels"`
-	DataDir         string                 `json:"data_dir"`
-	Capabilities    map[string]bool        `json:"capabilities"`
-	Swarm           config.SwarmConfig     `json:"swarm"`
-	Locale          string                 `json:"locale"`
-	UI              config.UIConfig        `json:"ui"`
-	Clients         []PresenceClient       `json:"clients"`
+	// AccountModels is the signed-in server account's model access. It lets
+	// the UI send a new user to sign-in first, and explain why server models
+	// are missing when they are.
+	AccountModels   remote.AccountModelsState `json:"account_models"`
+	ReasoningLevels []string                  `json:"reasoning_levels"`
+	DataDir         string                    `json:"data_dir"`
+	Capabilities    map[string]bool           `json:"capabilities"`
+	Swarm           config.SwarmConfig        `json:"swarm"`
+	Locale          string                    `json:"locale"`
+	UI              config.UIConfig           `json:"ui"`
+	Clients         []PresenceClient          `json:"clients"`
 }
 
 func (s *Server) getMeta(c *gin.Context) {
 	startup, progress := s.engine.StartupStatus()
 	cfg := s.engine.Config().Snapshot()
 	pool := s.engine.Providers()
+	account := s.remote.AccountModels()
 	clients := s.Clients()
 	if clients == nil {
 		clients = []PresenceClient{}
@@ -48,8 +54,9 @@ func (s *Server) getMeta(c *gin.Context) {
 		Version:         s.opts.Version,
 		Mode:            s.opts.Mode,
 		Mock:            pool.IsMock(),
-		Configured:      pool.IsMock() || cfg.Configured(),
-		DefaultProvider: cfg.Models.Default,
+		Configured:      pool.IsMock() || cfg.Configured() || account.State == remote.AccountReady,
+		DefaultProvider: pool.DefaultProviderID(),
+		AccountModels:   account,
 		ReasoningLevels: config.ReasoningEfforts(),
 		DataDir:         cfg.DataDir(),
 		Capabilities: map[string]bool{
@@ -76,8 +83,9 @@ func (s *Server) getMeta(c *gin.Context) {
 type settingsView struct {
 	Server config.ServerConfig `json:"server"`
 	Models struct {
-		Default   string         `json:"default"`
-		Providers []providerView `json:"providers"`
+		Default       string         `json:"default"`
+		DefaultSource string         `json:"default_source"`
+		Providers     []providerView `json:"providers"`
 	} `json:"models"`
 	Swarm       config.SwarmConfig       `json:"swarm"`
 	Tools       config.ToolsConfig       `json:"tools"`
@@ -120,6 +128,7 @@ func toSettingsView(cfg *config.Config) settingsView {
 	v.Search = cfg.Search
 	v.Clients = cfg.Clients
 	v.Models.Default = cfg.Models.Default
+	v.Models.DefaultSource = cfg.Models.DefaultSource
 	for _, p := range cfg.Models.Providers {
 		catalog := p.Catalog
 		if catalog == nil {
@@ -181,8 +190,11 @@ type putSwarmSettings struct {
 type putSettingsRequest struct {
 	Server *config.ServerConfig `json:"server"`
 	Models *struct {
-		Default   string `json:"default"`
-		Providers []struct {
+		Default string `json:"default"`
+		// Absent keeps the stored source: the model list is saved from many
+		// places and most of them do not know the field.
+		DefaultSource *string `json:"default_source"`
+		Providers     []struct {
 			APIMode                 *string           `json:"api_mode"`
 			BuiltinTools            *[]map[string]any `json:"builtin_tools"`
 			ID                      string            `json:"id"`
@@ -205,10 +217,18 @@ type putSettingsRequest struct {
 	Memory      *config.MemoryConfig      `json:"memory"`
 	Personality *config.PersonalityConfig `json:"personality"`
 	Log         *config.LogConfig         `json:"log"`
-	UI          *config.UIConfig          `json:"ui"`
+	UI          *putUISettings            `json:"ui"`
 	Remote      *config.RemoteConfig      `json:"remote"`
 	Search      *config.SearchConfig      `json:"search"`
 	Clients     *config.ClientsConfig     `json:"clients"`
+}
+
+// putUISettings carries the optional welcome flag beside the appearance
+// fields. A missing bool would unmarshal as false and bring the first-run
+// welcome back on every language change.
+type putUISettings struct {
+	config.UIConfig
+	WelcomeDismissed *bool `json:"welcome_dismissed"`
 }
 
 var errNoModelProviders = errors.New("at least one model provider is required")
@@ -256,7 +276,11 @@ func (s *Server) putSettings(c *gin.Context) {
 		if req.UI != nil {
 			// A language-only PUT must not reset the typeface. Blank fields
 			// keep what is already stored; Normalize maps junk to defaults.
-			next.UI = config.MergeUI(cfg.UI, *req.UI)
+			next.UI = config.MergeUI(cfg.UI, req.UI.UIConfig)
+			next.UI.WelcomeDismissed = cfg.UI.WelcomeDismissed
+			if req.UI.WelcomeDismissed != nil {
+				next.UI.WelcomeDismissed = *req.UI.WelcomeDismissed
+			}
 		}
 		if req.Remote != nil {
 			next.Remote = *req.Remote
@@ -330,7 +354,11 @@ func (s *Server) putSettings(c *gin.Context) {
 			if len(providers) == 0 {
 				return errNoModelProviders
 			}
-			next.Models = config.ModelsConfig{Default: req.Models.Default, Providers: providers}
+			source := cfg.Models.DefaultSource
+			if req.Models.DefaultSource != nil {
+				source = *req.Models.DefaultSource
+			}
+			next.Models = config.ModelsConfig{Default: req.Models.Default, DefaultSource: source, Providers: providers}
 		}
 
 		*cfg = next
@@ -356,7 +384,7 @@ func (s *Server) putSettings(c *gin.Context) {
 func (s *Server) getModels(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"models":  s.engine.Providers().List(),
-		"default": s.engine.Config().Snapshot().Models.Default,
+		"default": s.engine.Providers().DefaultProviderID(),
 		"mock":    s.engine.Providers().IsMock(),
 	})
 }

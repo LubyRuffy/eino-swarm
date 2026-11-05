@@ -8,6 +8,7 @@ import (
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
+	"github.com/LubyRuffy/eino-swarm/internal/provider"
 )
 
 func handleCatalogRefresh(ctx context.Context, eng *engine.Engine, req Request, path, sessionID string) Response {
@@ -67,9 +68,23 @@ func discoverModelViews(ctx context.Context, eng *engine.Engine) ([]ModelView, e
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	var models []ModelView
+	// The account's models are already the server's current answer, refreshed
+	// on its own schedule, and they always lead the list.
+	models := accountModelViews(eng)
 	for _, r := range results {
 		models = append(models, r...)
 	}
 	return models, nil
+}
+
+func accountModelViews(eng *engine.Engine) []ModelView {
+	var out []ModelView
+	for _, info := range eng.Providers().List() {
+		if info.Source == provider.SourceAccount && info.Ready {
+			out = append(out, ModelView{
+				ProviderID: info.ProviderID, ProviderLabel: info.ProviderLabel, Model: info.Model, Default: info.Default,
+			})
+		}
+	}
+	return out
 }

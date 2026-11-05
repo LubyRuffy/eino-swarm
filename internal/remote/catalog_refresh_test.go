@@ -231,3 +231,41 @@ func TestRefreshCatalogDeadlineCancelsAnUnresponsiveUpstream(t *testing.T) {
 		t.Fatal("upstream outlived the shared deadline")
 	}
 }
+
+// A phone that refreshes its model list must see what the PC can run right
+// now, including the signed-in server's models, ahead of the PC's own services.
+// The account's credential and endpoint stay on the PC.
+func TestRefreshCatalogListsAccountModelsFirstWithoutTheirCredential(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[{"id":"own-a"}]}`)
+	}))
+	defer server.Close()
+	e := catalogEngine(t, config.Provider{ID: "endpoint", Label: "Endpoint", BaseURL: server.URL + "/v1", APIKey: "own-key", Model: "own-a"})
+	src, err := provider.NewAccountSource(accountModelsSourceID, "Server", "https://account.invalid/client/desktop/v1", accountModelsToken,
+		provider.Catalog{Names: []string{"server-a", "server-b"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Providers().SetAccountSource(src)
+
+	resp := Handle(e, config.RemoteConfig{}, Request{ID: "fresh", Op: "refresh_catalog"}, "relay", "session")
+	if !resp.OK {
+		t.Fatalf("refresh failed: %s %s", resp.Code, resp.Error)
+	}
+	got := make([]string, 0, len(resp.Models))
+	for _, m := range resp.Models {
+		got = append(got, m.ProviderID+"/"+m.Model)
+	}
+	want := []string{accountModelsSourceID + "/server-a", accountModelsSourceID + "/server-b", "endpoint/own-a"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("models=%v want %v", got, want)
+	}
+	if !resp.Models[0].Default {
+		t.Fatalf("a new conversation starts on the account's first model: %+v", resp.Models)
+	}
+	raw, _ := json.Marshal(resp)
+	if strings.Contains(string(raw), accountModelsToken) || strings.Contains(string(raw), "account.invalid") {
+		t.Fatal("the account credential or endpoint reached the phone")
+	}
+}

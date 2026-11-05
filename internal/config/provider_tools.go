@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 const (
@@ -54,6 +55,11 @@ func (p Provider) Validate() error {
 
 func (c *Config) validateProviders() error {
 	for _, p := range c.Models.Providers {
+		// Not part of Provider.Validate: the runtime account projection is a
+		// Provider with a reserved id, and it must stay valid to call.
+		if strings.HasPrefix(strings.TrimSpace(p.ID), AccountSourcePrefix) {
+			return fmt.Errorf("%w: provider ids may not start with %q", ErrInvalidProviderConfig, AccountSourcePrefix)
+		}
 		if err := p.Validate(); err != nil {
 			return err
 		}

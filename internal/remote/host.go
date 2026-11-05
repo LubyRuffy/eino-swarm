@@ -48,6 +48,9 @@ type Host struct {
 	// afterLoginActivation synchronizes the private-file handoff regression.
 	afterLoginActivation func()
 
+	// accounts projects the signed-in account's server models into the pool.
+	accounts *AccountModels
+
 	// wake is the sleep assertion. It follows config, not the hub
 	// socket: Reload must not release and re-acquire or idle sleep
 	// wins the gap.
@@ -69,7 +72,22 @@ func New(eng *engine.Engine, cfg *config.Config, log *slog.Logger) *Host {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Host{eng: eng, cfg: cfg, log: log, wake: wakeup.ForProcess()}
+	h := &Host{eng: eng, cfg: cfg, log: log, wake: wakeup.ForProcess()}
+	// The scripted offline provider never reaches a network and ignores a
+	// projected account source, so it gets no account refresh at all; a nil
+	// component reports signed out without reading configuration or the server.
+	if eng != nil && eng.Providers() != nil && !eng.Providers().IsMock() {
+		h.accounts = NewAccountModels(cfg, eng.Providers(), log)
+	}
+	return h
+}
+
+// AccountModels is the state of the signed-in account's model access.
+func (h *Host) AccountModels() AccountModelsState {
+	if h == nil {
+		return AccountModelsState{State: AccountSignedOut}
+	}
+	return h.accounts.State()
 }
 
 func (h *Host) Reload() {
@@ -83,6 +101,7 @@ func (h *Host) Reload() {
 	attempt, launch := h.prepareStartLocked(context.Background())
 	h.applyWakeLocked()
 	h.mu.Unlock()
+	h.accounts.Reconcile()
 	finishLogin(login)
 	finishLogout(logout)
 	previous.finish()
@@ -98,6 +117,7 @@ func (h *Host) Reload() {
 
 // Start connects before returning. Concurrent callers share the pending attempt.
 func (h *Host) Start() {
+	h.accounts.Start()
 	h.mu.Lock()
 	attempt, launch := h.prepareStartLocked(context.Background())
 	h.applyWakeLocked()
@@ -119,6 +139,7 @@ func (h *Host) Stop() {
 	finishLogin(login)
 	finishLogout(logout)
 	previous.finish()
+	h.accounts.Stop()
 }
 
 func (h *Host) applyWakeLocked() {

@@ -31,6 +31,7 @@ server:
     open_browser: true
 models:
     default: default
+    default_source: provider
     providers:
         - id: default
           label: ""
@@ -104,6 +105,7 @@ ui:
     content_width: comfortable
     transcript_mode: user
     palette: zwai
+    welcome_dismissed: false
 remote:
     enabled: false
     hub_url: https://ai.fofa.info:2440
@@ -300,6 +302,25 @@ same turn's Trace; they are distinct from local `tool_call` / `tool_result` even
 See the [official OpenAI web search guide](https://developers.openai.com/api/docs/guides/tools-web-search?api-mode=responses)
 for supported search parameters. This integration does not implement client-side
 computer control, shell execution, hosted MCP approvals or arbitrary tool types.
+
+### Official-server models and `default_source`
+
+Signing in to the official server (Settings → Models, the first-run welcome, or
+Settings → Phone) gives this app the account's models without any provider row.
+They are a runtime projection: fetched from the server after sign-in, kept in
+memory, and **never written to `config.yaml`**. The account credential stays in
+Go (the private remote credential); the UI sees only counts and state.
+
+| key | default | meaning |
+|---|---|---|
+| `default_source` | `account` for a new setup, `provider` for an existing one | `account` or `provider`: whose models a new conversation starts on when both exist. `account` falls back to `models.default` while the account has no ready models. A file or first run (`OPENAI_*`) that already has a working default provider migrates to `provider`, so an upgrade changes nothing for its owner. Absent from a settings save keeps the stored value; junk is rejected. |
+
+Provider ids starting with `gateway:` are reserved for the projection and are
+rejected in `models.providers`. A conversation that stored such an id keeps it:
+after sign-out or loss of access it asks to sign in again and never falls back to
+a private provider that has a model with the same name. Third-party providers
+keep working exactly as before; the composer lists the account group first,
+then each provider group.
 
 ### First-run seeding
 
@@ -503,6 +524,7 @@ Chrome only. Agents still answer in the language you are using.
 | `code_font_size` | `content` | Code size. `content` follows `font_size`, `ui` follows chrome, or `small` / `medium` / `large`. |
 | `content_width` | `comfortable` | `comfortable` keeps the reading column (`max-w-3xl`). `full` fills the space between the sidebars. The app menu and ⌘K toggle the same preference. Junk becomes `comfortable`. |
 | `transcript_mode` | `user` | `user` folds consecutive thinking and tool calls behind one live ticker. Answers stay visible and split the group. The current activity swaps in vertically; the line itself marquees left-to-right. Copy is **Thinking** (or the latest thought line), **Planning next moves** between model turns on the live tail only, and **Editing** / **Reading** / **Exec** `{name}` while a tool runs. An answer that already follows the latest fold is that tail: the fold keeps the thought / tool count, a streaming answer has no Planning row, and a closed answer with the turn still in the gap shows Planning under the text. Earlier folds keep the thought / tool count. `developer` keeps every thought and tool row. The app menu and ⌘K toggle the same preference. Junk becomes `user`. |
+| `welcome_dismissed` | `false` | Set once the first-run welcome was answered or put off (**Not now**, or **Use my own model service**), so it does not return every launch. Signing in or configuring a model service hides the welcome regardless. A settings save that omits it keeps the stored value. There is no Settings toggle; edit the file or `PUT /api/settings` to see the welcome again. |
 | `palette` | `zwai` | Named color set. `zwai` is the current chrome. `fofa` maps [FOFA DESIGN 7.2](https://book.fofa.info/docs/design/DESIGN.html) / fofa.info: navy page, cyan signal, blue embellishment, cyan→blue composer rim. Each set has light and dark; the app menu still pins light / dark / system. Junk becomes `zwai`. Settings → General shows System / Light / Dark cards and a Color theme menu. |
 
 Light / dark stays in the browser; language, typeface, column width, transcript

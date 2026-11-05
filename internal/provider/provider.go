@@ -11,6 +11,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -58,6 +59,9 @@ type Info struct {
 	Default       bool   `json:"default"`
 	// ContextWindow is this name's token limit, or 0 when nobody has said.
 	ContextWindow int `json:"context_window"`
+	// Source is SourceAccount for the signed-in server's models and
+	// SourceProvider for the user's own endpoints.
+	Source string `json:"source"`
 }
 
 // ChoiceID is the composer's selection key: provider plus model. A tab
@@ -83,6 +87,10 @@ type Pool struct {
 	mockDelay time.Duration
 	// Fixed at construction, shared by every endpoint gate in this pool.
 	backoffClock timing.Clock
+
+	// account is the signed-in server's model catalog, nil when signed out.
+	// Atomic because Resolve is reached from paths that already hold mu.
+	account atomic.Pointer[AccountSource]
 
 	mu       sync.Mutex
 	cache    map[string]model.BaseChatModel
@@ -131,6 +139,15 @@ func (p *Pool) IsMock() bool { return p.mock }
 // Resolve returns the provider record for id, falling back to the configured
 // default when id is empty.
 func (p *Pool) Resolve(id string) (config.Provider, error) {
+	if strings.TrimSpace(id) == "" {
+		id = p.DefaultProviderID()
+	}
+	if src := p.account.Load(); src != nil && id == src.ID() {
+		return src.provider(), nil
+	}
+	if strings.HasPrefix(id, config.AccountSourcePrefix) {
+		return config.Provider{}, ErrAccountLoginRequired
+	}
 	prov, ok := p.cfg.Provider(id)
 	if !ok {
 		return config.Provider{}, fmt.Errorf("provider: unknown provider %q", id)
@@ -197,7 +214,18 @@ const MockContextWindow = 128000
 // An endpoint switched off in Settings is omitted. Lookup still resolves it,
 // so a conversation that already picked it keeps running.
 func (p *Pool) List() []Info {
-	return listModels(p.cfg.Snapshot(), p.mock)
+	rows := listModels(p.cfg.Snapshot(), p.mock)
+	src := p.account.Load()
+	if src == nil {
+		return rows
+	}
+	accountDefault := p.DefaultProviderID() == src.ID()
+	if accountDefault {
+		for i := range rows {
+			rows[i].Default = false
+		}
+	}
+	return append(src.rows(accountDefault), rows...)
 }
 
 func listModels(cfg *config.Config, mock bool) []Info {
@@ -226,6 +254,7 @@ func listModels(cfg *config.Config, mock bool) []Info {
 				Ready:         ready && name != "",
 				Default:       name == prov.Model || (prov.Model == "" && p.mock && name == MockModelName),
 				ContextWindow: p.WindowFor(prov.ID, name),
+				Source:        SourceProvider,
 			})
 		}
 	}
