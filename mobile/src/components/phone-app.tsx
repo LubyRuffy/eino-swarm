@@ -671,10 +671,20 @@ export function PhoneApp() {
       }
     }
     const chat = () => setSurface("chat")
+    const scan = () => setAdding(true)
+    const models = () => setModelsOpen(true)
     window.addEventListener("zwai.gateway.chat", chat)
+    window.addEventListener("zwai.gateway.scan", scan)
+    window.addEventListener("zwai.gateway.models", models)
     window.addEventListener("zwai.gateway.connect", select)
     window.addEventListener("zwai.gateway.account", sync)
-    return () => { window.removeEventListener("zwai.gateway.chat", chat); window.removeEventListener("zwai.gateway.connect", select); window.removeEventListener("zwai.gateway.account", sync) }
+    return () => {
+      window.removeEventListener("zwai.gateway.chat", chat)
+      window.removeEventListener("zwai.gateway.scan", scan)
+      window.removeEventListener("zwai.gateway.models", models)
+      window.removeEventListener("zwai.gateway.connect", select)
+      window.removeEventListener("zwai.gateway.account", sync)
+    }
   }, [])
 
   const commitProviders = (next: DirectProvider[]) => {
@@ -704,8 +714,20 @@ export function PhoneApp() {
     />
   ) : null
 
+  const sheet = adding ? (
+    <AddHostSheet
+      onURI={(uri) => void onURI(uri)}
+      busy={bindBusy}
+      error={addError}
+      onClose={() => {
+        setAdding(false)
+        setAddError(undefined)
+      }}
+    />
+  ) : null
+
   if (phoneShell(hosts.length, providers.length) === "scan" && !(surface === "chat" && account.gatewaySourceID)) {
-    if (account.empty) return account.empty
+    if (account.empty) return <>{account.empty}{sheet}{modelSheet}</>
     return (
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
         <UpdateNotice />
@@ -723,18 +745,6 @@ export function PhoneApp() {
       </div>
     )
   }
-
-  const sheet = adding ? (
-    <AddHostSheet
-      onURI={(uri) => void onURI(uri)}
-      busy={bindBusy}
-      error={addError}
-      onClose={() => {
-        setAdding(false)
-        setAddError(undefined)
-      }}
-    />
-  ) : null
 
   const banner = (<>
     <EngineStartupBanner startup={startup} />

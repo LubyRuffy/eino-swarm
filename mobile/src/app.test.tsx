@@ -72,12 +72,18 @@ describe("App boot chrome", () => {
     expect(screen.getByLabelText(t("composer.attach"))).toBeInTheDocument()
   })
 
-  it("shows the scan form only when this phone has never bound", () => {
+  it("opens on sign-in when this phone has never bound, with QR pairing one tap away", () => {
     render(<App />)
+    expect(screen.getByRole("heading", { name: t("welcome.title") })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: t("account.login") })).toBeInTheDocument()
+    // Pairing is not removed, only folded: it must not compete with the account.
+    expect(screen.queryByRole("button", { name: t("scan.camera") })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(t("scan.uri"))).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: t("welcome.other") }))
     expect(screen.getByRole("button", { name: t("scan.camera") })).toBeInTheDocument()
+    expect(screen.getByLabelText(t("scan.uri"))).toBeInTheDocument()
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument()
     expect(systemBack()).toBe(false)
-    expect(screen.getByRole("button", { name: t("scan.camera") })).toBeInTheDocument()
   })
 
   it("paints host tabs and a connecting inbox when a ticket is saved", () => {
@@ -117,7 +123,8 @@ describe("App boot chrome", () => {
     })
     fireEvent.click(screen.getByRole("button", { name: t("home.menu") }))
     fireEvent.click(screen.getByRole("menuitem", { name: t("home.unlink") }))
-    expect(screen.getByRole("button", { name: t("scan.camera") })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: t("welcome.title") })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: t("welcome.other") })).toHaveAttribute("aria-expanded", "false")
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument()
   })
 

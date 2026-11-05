@@ -24,7 +24,7 @@ async function fixture(page: Page, options: { apiEnabled?: boolean; hosts?: unkn
     calls.push({ path, authorization: request.headers().authorization || "", body })
     let data: unknown = {}
     if (path === "/client/api/v1/auth/mobile/start") data = { device_code: "d".repeat(43), user_code: "1234-5678-abcd-ef01", verification_uri: origin + "/client/api/v1/auth/sso/nosec/start?mobile_code=1234-5678-abcd-ef01", expires_at: new Date(Date.now() + 600_000).toISOString(), interval: 5 }
-    else if (path === "/client/api/v1/auth/mobile/poll") data = { status: options.review || "account_pending" }
+    else if (path === "/client/api/v1/auth/mobile/poll") data = options.review === "authorized" ? { status: "authorized", mobile_id: device.id, user } : { status: options.review || "account_pending" }
     else if (path === "/client/api/v1/auth/me") data = { user: connectionRefused ? { ...user, approval_status: "rejected" } : user, device }
     else if (path === "/client/api/v1/bootstrap" && options.denyBootstrap) { await route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: { code: "permission_denied" } }) }); return }
     else if (path === "/client/api/v1/bootstrap") data = { ...bootstrap, models: { ...bootstrap.models, api_access_enabled: options.apiEnabled !== false } }
@@ -85,7 +85,7 @@ test("account overlays keep the title and close control inside the safe area", a
 
   await page.getByRole("button", { name: "使用 NOSEC 登录" }).click()
   await checkOverlay("signed-out-safe-area")
-  await expect(page.getByRole("button", { name: "扫描二维码" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "其他方式", exact: true })).toBeVisible()
 
   await approved(page)
   await page.goto("/")
@@ -183,6 +183,43 @@ test("device-only account can select an online PC without QR or API permission",
   expect(links.find((link: { gatewayHostID?: string }) => Boolean(link.gatewayHostID))).toMatchObject({ gatewayHostID: "pc-online", gatewayOwnerID: "owner", gatewayOrigin: origin, label: "办公电脑" })
 })
 
+const workPC = { id: "pc-online", name: "办公电脑", hostname: "work", version: "1", online: true, enabled: true, owner_user_id: user.id }
+const connectCalls = (calls: { path: string }[]) => calls.filter((call) => call.path.endsWith("/connect"))
+
+test("a fresh sign-in opens the account's only online PC without scanning", async ({ page }) => {
+  const calls = await fixture(page, { apiEnabled: false, review: "authorized", hosts: [workPC] })
+  await page.goto("/")
+  await page.getByRole("button", { name: "使用 NOSEC 登录" }).click()
+  await page.getByRole("button", { name: "使用 NOSEC 登录" }).click()
+  await expect(page.getByRole("tab", { name: "办公电脑" })).toHaveAttribute("aria-selected", "true", { timeout: 20_000 })
+  expect(connectCalls(calls)).toHaveLength(1)
+  expect(calls.filter((call) => call.path.includes("pairings"))).toEqual([])
+  const links = await page.evaluate(() => JSON.parse(localStorage.getItem("zwai.remote.links") || "[]"))
+  expect(links).toHaveLength(1)
+  expect(links[0]).toMatchObject({ gatewayHostID: "pc-online", gatewayOwnerID: "owner" })
+})
+
+test("a returning session with an online PC still waits for the person to choose", async ({ page }) => {
+  await approved(page)
+  const calls = await fixture(page, { apiEnabled: false, hosts: [workPC] })
+  await page.goto("/")
+  await expect(page.getByRole("button", { name: "连接 办公电脑" })).toBeEnabled()
+  await page.waitForTimeout(1_000)
+  expect(connectCalls(calls)).toHaveLength(0)
+  await expect(page.getByRole("tab", { name: "办公电脑" })).toHaveCount(0)
+})
+
+test("a fresh sign-in with several online PCs lets the person pick one", async ({ page }) => {
+  const calls = await fixture(page, { apiEnabled: false, review: "authorized", hosts: [workPC, { ...workPC, id: "pc-lab", name: "实验室电脑", hostname: "lab" }] })
+  await page.goto("/")
+  await page.getByRole("button", { name: "使用 NOSEC 登录" }).click()
+  await page.getByRole("button", { name: "使用 NOSEC 登录" }).click()
+  await expect(page.getByRole("button", { name: "连接 办公电脑" })).toBeEnabled({ timeout: 20_000 })
+  await expect(page.getByRole("button", { name: "连接 实验室电脑" })).toBeEnabled()
+  await page.waitForTimeout(1_000)
+  expect(connectCalls(calls)).toHaveLength(0)
+})
+
 test("same-account login merges a saved anonymous PC and preserves the selected independent Hub", async ({ page }, testInfo) => {
   await approved(page)
   const hostPub = "D".repeat(42) + "A"
@@ -236,6 +273,7 @@ test("real anonymous QR becomes one account connection and the replacement ticke
     const offer = (await (await page.request.get(real.origin + "/fixture/anonymous-offer?origin=primary")).json()).data.uri as string
     await page.addInitScript((gateway) => { localStorage.setItem("zwai.phone.gateway.origin", gateway) }, real.origin)
     await page.goto("/")
+    await page.getByRole("button", { name: "其他方式", exact: true }).click()
     await page.getByLabel("配对 URI").fill(offer)
     await page.getByRole("button", { name: "粘贴并绑定", exact: true }).click()
     await expect(page.getByRole("button", { name: /Native PC conversation/ })).toBeVisible()

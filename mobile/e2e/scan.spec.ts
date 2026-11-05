@@ -1,9 +1,14 @@
 import { expect, test } from "@playwright/test"
 
-test("scan screen is the product path and paste uses the same URI", async ({
+test("sign-in leads, and scan and paste use the same URI from Other ways", async ({
   page,
 }) => {
   await page.goto("/")
+  await expect(page.getByRole("heading", { name: "登录 zwai 账号" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "使用 NOSEC 登录" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "扫描二维码" })).toHaveCount(0)
+  await expect(page.getByLabel("配对 URI")).toHaveCount(0)
+  await page.getByRole("button", { name: "其他方式", exact: true }).click()
   await expect(page.getByRole("button", { name: "扫描二维码" })).toBeVisible()
   await expect(page.getByLabel("配对 URI")).toBeVisible()
   await page.getByLabel("配对 URI").fill("https://example.test/not-this")
@@ -19,6 +24,7 @@ test("scan screen is the product path and paste uses the same URI", async ({
 
 test("scan opens a viewfinder whose beam sweeps the frame", async ({ page }) => {
   await page.goto("/")
+  await page.getByRole("button", { name: "其他方式", exact: true }).click()
   await page.getByRole("button", { name: "扫描二维码" }).click()
   const finder = page.getByRole("dialog", { name: "扫描二维码" })
   await expect(finder).toBeVisible()

@@ -68,6 +68,13 @@ export const accountEn = {
   "account.webLimit": "The web tool call exceeded its round, argument or output limit.",
   "account.webPCUpgrade": "Update this PC to use the selected web tool location. Your draft is retained.",
   "account.webSaveFailed": "Could not save the web tool location. Free phone storage and try again.",
+  "welcome.title": "Sign in to zwai",
+  "welcome.hint": "Sign in to use the server's models and connect to your computers. No scanning, server address or Key is needed.",
+  "welcome.other": "Other ways",
+  "welcome.otherHint": "Pair a computer by QR code, or use a model service of your own.",
+  "welcome.autoConnecting": "Connecting to your computer…",
+  "account.addPcs": "Your computers",
+  "account.addPcsHint": "Pick a computer signed in to this account, or pair another one below.",
 } as const
 
 export const accountZh: Record<keyof typeof accountEn, string> = {
@@ -140,4 +147,11 @@ export const accountZh: Record<keyof typeof accountEn, string> = {
   "account.webLimit": "联网工具调用超出了轮次、参数或结果大小限制。",
   "account.webPCUpgrade": "请更新这台 PC 后使用所选联网工具位置，草稿已保留。",
   "account.webSaveFailed": "无法保存联网工具位置，请清理手机存储空间后重试。",
+  "welcome.title": "登录 zwai 账号",
+  "welcome.hint": "登录后可使用服务器模型、连接自己的电脑，无需扫码，也无需填写服务器地址或 Key。",
+  "welcome.other": "其他方式",
+  "welcome.otherHint": "用二维码配对一台电脑，或使用自己的模型服务。",
+  "welcome.autoConnecting": "正在连接你的电脑…",
+  "account.addPcs": "我的电脑",
+  "account.addPcsHint": "选择登录了这个账号的电脑，或在下方配对另一台。",
 }

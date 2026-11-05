@@ -21,6 +21,11 @@ export function useGatewayAccount() {
   const [hosts, putHosts] = useState<GatewayHost[]>([])
   const [error, putError] = useState<string>()
   const [busy, putBusy] = useState(false)
+  // True from the first successful account read after a sign-in completes until
+  // the shell decides whether to open the one online computer. It is memory
+  // only: a restart with a cached session never counts as a fresh sign-in.
+  const [freshLogin, putFreshLogin] = useState(false)
+  const freshToken = useRef("")
   const generation = useRef(0)
   const active = useRef<AbortController | undefined>(undefined)
   const pollTimer = useRef(0)
@@ -30,6 +35,11 @@ export function useGatewayAccount() {
   const selecting = useRef(0)
   const refreshing = useRef<number | null>(null)
   const pollRef = useRef<() => Promise<void>>(async () => undefined)
+
+  const forgetFreshLogin = useCallback(() => {
+    freshToken.current = ""
+    putFreshLogin(false)
+  }, [])
 
   const cancel = useCallback(() => {
     generation.current++
@@ -48,6 +58,7 @@ export function useGatewayAccount() {
 
   const failure = useCallback(async (err: unknown) => {
     if (err instanceof DOMException && err.name === "AbortError") return
+    forgetFreshLogin()
     if (err instanceof GatewayError && (err.status === 401 || err.status === 403)) {
       cancel()
       selecting.current++
@@ -81,7 +92,7 @@ export function useGatewayAccount() {
         finally { if (refreshing.current === round) refreshing.current = null }
       }
     }
-  }, [cancel, clearResources])
+  }, [cancel, clearResources, forgetFreshLogin])
 
   const refresh = useCallback(async () => {
     if (pending.current) {
@@ -104,6 +115,10 @@ export function useGatewayAccount() {
       putBootstrap(state.bootstrap)
       putHosts(state.hosts)
       putError(undefined)
+      if (freshToken.current === current.token) {
+        freshToken.current = ""
+        if (state.status === "authorized") putFreshLogin(true)
+      }
       if (state.status !== "authorized") {
         selecting.current++
         dropGatewayLinks()
@@ -165,6 +180,7 @@ export function useGatewayAccount() {
         clearGatewayPending()
         saveGatewaySession(result.session)
         putSession(result.session)
+        freshToken.current = result.session.token
         await refresh()
       } else if (result.status === "expired" || result.status === "access_denied") {
         pending.current = null
@@ -190,6 +206,7 @@ export function useGatewayAccount() {
     clearGatewaySession()
     clearResources()
     putSession(null)
+    forgetFreshLogin()
     putError(undefined)
     putStatus("checking")
     putBusy(true)
@@ -209,7 +226,7 @@ export function useGatewayAccount() {
         await failure(err)
       }
     } finally { if (round === generation.current) putBusy(false) }
-  }, [cancel, clearResources, failure])
+  }, [cancel, clearResources, failure, forgetFreshLogin])
 
   const logout = useCallback(async () => {
     cancel()
@@ -218,12 +235,13 @@ export function useGatewayAccount() {
     clearGatewaySession()
     clearResources()
     putSession(null)
+    forgetFreshLogin()
     putStatus("signed_out")
     putError(undefined)
     if (current) {
       try { await logoutGatewaySession(current) } catch { if (round === generation.current) putError("logout_unconfirmed") }
     }
-  }, [cancel, clearResources])
+  }, [cancel, clearResources, forgetFreshLogin])
 
   const setOrigin = useCallback((raw: string) => {
     if (normalizeGatewayOrigin(raw) === getGatewayOrigin()) return
@@ -231,10 +249,11 @@ export function useGatewayAccount() {
     cancel()
     putOrigin(getGatewayOrigin())
     putSession(null)
+    forgetFreshLogin()
     clearResources()
     putStatus("signed_out")
     putError(undefined)
-  }, [cancel, clearResources])
+  }, [cancel, clearResources, forgetFreshLogin])
 
   const connectHost = useCallback(async (id: string) => {
     const current = loadGatewaySession()
@@ -277,5 +296,7 @@ export function useGatewayAccount() {
     return () => { void listener.then((handle) => handle.remove()).catch(() => undefined) }
   }, [refresh])
 
-  return { origin, session, status, bootstrap, hosts, error, busy, login, refresh, logout, setOrigin, connectHost }
+  const consumeFreshLogin = useCallback(() => putFreshLogin(false), [])
+
+  return { origin, session, status, bootstrap, hosts, error, busy, freshLogin, consumeFreshLogin, login, refresh, logout, setOrigin, connectHost }
 }

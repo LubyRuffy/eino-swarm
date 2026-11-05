@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { PhoneAccountContext } from "@/components/gateway-account-shell"
 import { ScanScreen } from "./scan-screen"
 import { encodeOffer } from "@/lib/offer"
 import { primeScanChime } from "@/lib/scan-chime"
@@ -91,5 +92,64 @@ describe("ScanScreen", () => {
     })
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     expect(screen.getByLabelText(t("scan.uri"))).toBeEnabled()
+  })
+})
+
+describe("ScanScreen on a phone that can sign in", () => {
+  beforeEach(() => setLocale("en"))
+
+  const withAccount = (openAccount: () => void, onURI = vi.fn(), error?: string) => render(
+    <PhoneAccountContext.Provider value={{ providers: [], openAccount }}>
+      <ScanScreen onURI={onURI} error={error} onAddModel={vi.fn()} />
+    </PhoneAccountContext.Provider>,
+  )
+
+  it("leads with the account and folds pairing and own-model entry behind Other ways", () => {
+    const openAccount = vi.fn()
+    withAccount(openAccount)
+    expect(screen.getByRole("heading", { name: t("welcome.title") })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: t("account.login") }))
+    expect(openAccount).toHaveBeenCalledOnce()
+    // The hidden controls are absent, not merely invisible, so a screen reader
+    // and the keyboard order see the account first.
+    for (const name of [t("scan.camera"), t("scan.paste"), t("chat.connect")]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument()
+    }
+    const toggle = screen.getByRole("button", { name: t("welcome.other") })
+    expect(toggle).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute("aria-expanded", "true")
+    for (const name of [t("scan.camera"), t("scan.paste"), t("chat.connect")]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument()
+    }
+    fireEvent.click(toggle)
+    expect(screen.queryByRole("button", { name: t("scan.camera") })).not.toBeInTheDocument()
+  })
+
+  it("still binds a pasted URI from the folded section", () => {
+    const onURI = vi.fn()
+    withAccount(vi.fn(), onURI)
+    fireEvent.click(screen.getByRole("button", { name: t("welcome.other") }))
+    const uri = sampleURI()
+    fireEvent.change(screen.getByLabelText(t("scan.uri")), { target: { value: uri } })
+    fireEvent.click(screen.getByRole("button", { name: t("scan.paste") }))
+    expect(onURI).toHaveBeenCalledWith(uri)
+  })
+
+  it("opens the folded section when pairing reports an error so it is never hidden", () => {
+    withAccount(vi.fn(), vi.fn(), "pairing failed")
+    expect(screen.getByRole("alert")).toHaveTextContent("pairing failed")
+    expect(screen.getByRole("button", { name: t("welcome.other") })).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByLabelText(t("scan.uri"))).toBeInTheDocument()
+  })
+
+  it("keeps the embedded Add a PC form unfolded", () => {
+    render(
+      <PhoneAccountContext.Provider value={{ providers: [], openAccount: vi.fn() }}>
+        <ScanScreen embedded onURI={vi.fn()} />
+      </PhoneAccountContext.Provider>,
+    )
+    expect(screen.queryByRole("button", { name: t("welcome.other") })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: t("scan.camera") })).toBeInTheDocument()
   })
 })

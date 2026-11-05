@@ -73,6 +73,7 @@ test("an offline direct-model answer keeps highlighted source after reload", asy
     })
   })
   await page.goto("/")
+  await page.getByRole("button", { name: "其他方式", exact: true }).click()
   await page.getByRole("button", { name: "连接模型", exact: true }).click()
   await page.getByLabel("接口地址", { exact: true }).fill(endpoint)
   await page.getByLabel("接口类型", { exact: true }).selectOption("chat")

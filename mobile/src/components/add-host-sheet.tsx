@@ -1,5 +1,7 @@
 import { X } from "lucide-react"
 
+import { AccountPcList } from "@/components/account-pc-list"
+import { usePhoneAccount } from "@/components/gateway-account-shell"
 import { ScanScreen } from "@/components/scan-screen"
 import { Button } from "@/components/ui/button"
 import { t } from "@/lib/i18n"
@@ -15,6 +17,7 @@ export function AddHostSheet({
   error?: string
   onClose: () => void
 }) {
+  const pcs = usePhoneAccount().pcs
   return (
     <div className="fixed inset-0 z-40 flex flex-col justify-end">
       <button
@@ -42,6 +45,13 @@ export function AddHostSheet({
             <X className="size-5" aria-hidden />
           </Button>
         </div>
+        {pcs?.hosts.length ? (
+          <section aria-labelledby="add-host-pcs" className="flex flex-col gap-2 px-5 pb-4">
+            <h3 id="add-host-pcs" className="text-sm font-semibold">{t("account.addPcs")}</h3>
+            <p className="text-xs text-muted-foreground">{t("account.addPcsHint")}</p>
+            <AccountPcList hosts={pcs.hosts} onConnect={pcs.connect} />
+          </section>
+        ) : null}
         <ScanScreen embedded onURI={onURI} busy={busy} error={error} />
       </div>
     </div>

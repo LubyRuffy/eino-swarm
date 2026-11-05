@@ -35,6 +35,7 @@ test("connecting a model adds a chat tab and answers on the phone", async ({ pag
   })
 
   await page.goto("/")
+  await page.getByRole("button", { name: "其他方式", exact: true }).click()
   await page.getByRole("button", { name: "连接模型" }).click()
   await page.getByLabel("接口地址").fill("http://127.0.0.1:9/v1")
   await page.getByLabel("接口类型").selectOption("responses")

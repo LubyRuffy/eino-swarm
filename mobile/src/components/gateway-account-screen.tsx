@@ -1,16 +1,16 @@
 import { useState } from "react"
-import { Loader2, Monitor, X } from "lucide-react"
+import { X } from "lucide-react"
+import { AccountPcList } from "@/components/account-pc-list"
 import type { GatewayAccountController } from "@/components/gateway-account-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { DirectProvider } from "@/lib/direct-provider"
 import { t } from "@/lib/i18n"
-import { GatewayError } from "@/lib/gateway-account"
-import { gatewayHostDisplayName, gatewayUserDisplayName } from "@/lib/gateway-names"
+import { gatewayUserDisplayName } from "@/lib/gateway-names"
 import { WebExecutionSettings } from "@/components/web-execution-settings"
 import type { PcWebSnapshot } from "@/components/pc-web-execution-status"
 
-export function GatewayAccountScreen({ account, providers, modelBusy, modelError, pcWeb, onClose, onConnect, onRefresh, onOpenChat }: {
+export function GatewayAccountScreen({ account, providers, modelBusy, modelError, pcWeb, onClose, onConnect, onRefresh, onOpenChat, onOtherWays }: {
   account: GatewayAccountController
   providers: DirectProvider[]
   modelBusy: boolean
@@ -18,11 +18,14 @@ export function GatewayAccountScreen({ account, providers, modelBusy, modelError
   pcWeb?: PcWebSnapshot
   onClose?: () => void
   onOpenChat?: () => void
+  /** Present on the signed-in start page, where pairing by QR and a model
+   *  service of one's own are the secondary ways in. */
+  onOtherWays?: { scan: () => void; addModel: () => void }
   onConnect: (id: string) => Promise<void>
   onRefresh: () => Promise<void>
 }) {
-  const [connecting, setConnecting] = useState("")
-  const [connectionError, setConnectionError] = useState("")
+  const [formError, setFormError] = useState("")
+  const [otherWays, setOtherWays] = useState(false)
   const [advanced, setAdvanced] = useState(false)
   const [server, setServer] = useState(account.origin)
   const authorized = account.status === "authorized"
@@ -33,11 +36,6 @@ export function GatewayAccountScreen({ account, providers, modelBusy, modelError
     : account.status === "checking" ? t("account.checking")
     : account.status === "access_denied" ? t(account.session ? "account.accessDenied" : "account.denied")
     : account.status === "expired" ? t("account.expired") : ""
-  const connect = async (id: string) => {
-    setConnecting(id); setConnectionError("")
-    try { await onConnect(id) } catch (error) { setConnectionError(t(error instanceof GatewayError && [401, 403].includes(error.status) ? "account.expired" : error instanceof GatewayError && error.status === 409 ? "account.hostOffline" : "account.connectionFailed")) }
-    finally { setConnecting("") }
-  }
   return (
     <main data-testid="gateway-account" className="mx-auto flex h-full max-w-lg flex-col overflow-y-auto pb-[env(safe-area-inset-bottom)]">
       <header className="flex h-12 shrink-0 items-center border-b border-border px-4">
@@ -66,32 +64,28 @@ export function GatewayAccountScreen({ account, providers, modelBusy, modelError
           </section>
           <section className="flex flex-col gap-2">
             <h2 className="text-sm font-semibold">{t("account.pcs")}</h2>
-            {!account.hosts.length ? <p className="text-sm text-muted-foreground">{t("account.empty")}</p> : <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
-              {account.hosts.map((host) => {
-                const name = gatewayHostDisplayName(host) || t("account.unnamedPC")
-                return <li key={host.id} className="flex items-center gap-2 p-3">
-                  <Monitor className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{name}</p><p className="text-xs text-muted-foreground">{host.online ? t("account.online") : t("account.offline")}</p></div>
-                  <Button variant="outline" disabled={!host.online || !host.enabled || Boolean(connecting)} onClick={() => void connect(host.id)} aria-label={`${t("account.connect")} ${name}`}>
-                    {connecting === host.id ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> : null}
-                    {connecting === host.id ? t("account.connecting") : t("account.connect")}
-                  </Button>
-                </li>
-              })}
-            </ul>}
-            {connectionError ? <p role="alert" className="text-sm text-destructive">{connectionError}</p> : null}
+            {!account.hosts.length ? <p className="text-sm text-muted-foreground">{t("account.empty")}</p> : <AccountPcList hosts={account.hosts} onConnect={onConnect} />}
           </section>
+          {onOtherWays ? <section className="flex flex-col gap-2">
+            <Button variant="ghost" aria-expanded={otherWays} aria-controls="account-other-ways" onClick={() => setOtherWays((value) => !value)}>{t("welcome.other")}</Button>
+            {otherWays ? <div id="account-other-ways" className="flex flex-col gap-2">
+              <p className="text-xs text-muted-foreground">{t("welcome.otherHint")}</p>
+              <Button variant="outline" onClick={onOtherWays.scan}>{t("home.addHost")}</Button>
+              <Button variant="outline" onClick={onOtherWays.addModel}>{t("chat.connect")}</Button>
+            </div> : null}
+          </section> : null}
         </> : null}
         {(authorized || waiting) ? <Button variant="outline" disabled={account.busy} onClick={() => void onRefresh()}>{t("account.retry")}</Button> : null}
         {(account.session || waiting) ? <Button variant="ghost" onClick={() => void account.logout()}>{t("account.logout")}</Button> : null}
         {!waiting ? <>
           <Button variant="ghost" onClick={() => setAdvanced((value) => !value)} aria-expanded={advanced}>{t("account.advanced")}</Button>
-          {advanced ? <form className="flex flex-col gap-2" onSubmit={(event) => { event.preventDefault(); setConnectionError(""); try { account.setOrigin(server) } catch { setConnectionError(t("chat.badUrl")) } }}>
+          {advanced ? <form className="flex flex-col gap-2" onSubmit={(event) => { event.preventDefault(); setFormError(""); try { account.setOrigin(server) } catch { setFormError(t("chat.badUrl")) } }}>
             <label htmlFor="account-server" className="text-sm">{t("account.server")}</label>
             <Input id="account-server" value={server} onChange={(event) => setServer(event.target.value)} autoCapitalize="off" autoCorrect="off" spellCheck={false} />
             <p className="text-xs text-muted-foreground">{t("account.serverHint")}</p>
             <Button variant="outline" type="submit">{t("account.saveServer")}</Button>
           </form> : null}
+          {formError ? <p role="alert" className="text-sm text-destructive">{formError}</p> : null}
         </> : null}
       </div>
     </main>

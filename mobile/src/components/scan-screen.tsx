@@ -1,5 +1,5 @@
 import { usePhoneAccount } from "@/components/gateway-account-shell"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Camera } from "lucide-react"
 
 import { ScanViewfinder } from "@/components/scan-viewfinder"
@@ -28,6 +28,10 @@ export function ScanScreen({
   const [paste, setPaste] = useState("")
   const [localError, setLocalError] = useState<string>()
   const [live, setLive] = useState(false)
+  // A signed-out phone opens on the account: pairing by QR, a pasted URI and a
+  // model service of one's own are still here, one tap away.
+  const accountFirst = !embedded && Boolean(account.openAccount)
+  const [other, setOther] = useState(false)
 
   const submitPaste = () => {
     setLocalError(undefined)
@@ -47,6 +51,8 @@ export function ScanScreen({
   }
 
   const shown = error || localError
+  useEffect(() => { if (shown) setOther(true) }, [shown])
+  const showOther = !accountFirst || other
 
   return (
     <main
@@ -58,7 +64,7 @@ export function ScanScreen({
     >
       {embedded ? null : (
         <header className="flex items-start justify-between gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">{t("scan.title")}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t(accountFirst ? "welcome.title" : "scan.title")}</h1>
           {onToggleLocale ? (
             <Button variant="ghost" onClick={onToggleLocale} aria-label={localeSwitchLabel()}>
               {localeSwitchLabel()}
@@ -66,29 +72,48 @@ export function ScanScreen({
           ) : null}
         </header>
       )}
-      {!embedded && account.openAccount ? <Button onClick={() => account.openAccount?.()}>{t("account.login")}</Button> : null}
-      <p className="text-sm leading-relaxed text-muted-foreground">{t("scan.hint")}</p>
-      <Button type="button" onClick={openScanner} disabled={busy} aria-label={t("scan.camera")}>
-        <Camera className="size-4" />
-        {t("scan.camera")}
-      </Button>
-      <label className="flex flex-col gap-2 text-sm text-muted-foreground">
-        {t("scan.uri")}
-        <Textarea
-          aria-label={t("scan.uri")}
-          value={paste}
-          onChange={(e) => setPaste(e.target.value)}
-          placeholder="pairlink:v1:…"
-          spellCheck={false}
-        />
-      </label>
-      <Button variant="outline" onClick={submitPaste} disabled={busy}>
-        {t("scan.paste")}
-      </Button>
-      {onAddModel && !embedded ? (
-        <Button type="button" variant="outline" onClick={onAddModel}>
-          {t("chat.connect")}
-        </Button>
+      {accountFirst ? (
+        <>
+          <p className="text-sm leading-relaxed text-muted-foreground">{t("welcome.hint")}</p>
+          <Button onClick={() => account.openAccount?.()}>{t("account.login")}</Button>
+          <Button
+            type="button"
+            variant="ghost"
+            aria-expanded={showOther}
+            aria-controls="welcome-other-ways"
+            onClick={() => setOther((value) => !value)}
+          >
+            {t("welcome.other")}
+          </Button>
+        </>
+      ) : null}
+      {showOther ? (
+        <section id="welcome-other-ways" className={embedded ? "flex flex-col gap-4" : "flex flex-col gap-5"}>
+          {accountFirst ? <p className="text-sm leading-relaxed text-muted-foreground">{t("welcome.otherHint")}</p> : null}
+          <p className="text-sm leading-relaxed text-muted-foreground">{t("scan.hint")}</p>
+          <Button type="button" onClick={openScanner} disabled={busy} aria-label={t("scan.camera")}>
+            <Camera className="size-4" />
+            {t("scan.camera")}
+          </Button>
+          <label className="flex flex-col gap-2 text-sm text-muted-foreground">
+            {t("scan.uri")}
+            <Textarea
+              aria-label={t("scan.uri")}
+              value={paste}
+              onChange={(e) => setPaste(e.target.value)}
+              placeholder="pairlink:v1:…"
+              spellCheck={false}
+            />
+          </label>
+          <Button variant="outline" onClick={submitPaste} disabled={busy}>
+            {t("scan.paste")}
+          </Button>
+          {onAddModel && !embedded ? (
+            <Button type="button" variant="outline" onClick={onAddModel}>
+              {t("chat.connect")}
+            </Button>
+          ) : null}
+        </section>
       ) : null}
       {shown ? (
         <p className="text-sm text-destructive" role="alert">
