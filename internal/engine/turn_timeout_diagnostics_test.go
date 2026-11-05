@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"os"
 	"runtime/pprof"
 	"strings"
 	"testing"
@@ -16,7 +17,9 @@ func logTurnTimeout(t *testing.T, e *Engine, turnID string) {
 	t.Helper()
 	var stack bytes.Buffer
 	_ = pprof.Lookup("goroutine").WriteTo(&stack, 2)
-	t.Logf("turn timeout goroutines:\n%s", stack.Bytes())
+	// Bypass testing.T's buffered logs if a later diagnostic read blocks.
+	// The go command can still buffer this output until the package exits.
+	fmt.Fprintf(os.Stderr, "turn timeout goroutines:\n%s", stack.Bytes())
 	fingerprint := func(text string) string {
 		if text == "" {
 			return ""
