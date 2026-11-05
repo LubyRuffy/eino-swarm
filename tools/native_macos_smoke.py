@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import plistlib
 import re
+import stat
 import struct
 import subprocess
 import sys
@@ -631,6 +632,20 @@ def png_dimensions(path):
     return list(header[:2])
 
 
+def secure_screenshot(image, primary):
+    """Secure the tool's final file even when it replaced the private placeholder."""
+    try:
+        if image.is_symlink() or not image.is_file():
+            raise OSError("native screenshot is not a regular private file")
+        image.chmod(0o600)
+        if stat.S_IMODE(image.stat().st_mode) != 0o600:
+            raise OSError("native screenshot final mode is not 0600")
+    except OSError as error:
+        if primary is None:
+            raise readiness.Failure("native_evidence_failed", "pixels", "private screenshot mode could not be secured") from error
+        primary.__notes__ = [*getattr(primary, "__notes__", []), "private screenshot mode also failed: " + type(error).__name__]
+
+
 def capture_window(context, deadline, window, name):
     """Observe fresh window pixels; the caller owns the unchanged deadline."""
     assert_process(context, context["app_pid"], "desktop")
@@ -638,9 +653,12 @@ def capture_window(context, deadline, window, name):
     descriptor = os.open(image, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     os.close(descriptor)
     command = ["/usr/sbin/screencapture", "-x", "-l", str(window["window_id"]), str(image)]
-    result = observed_command(context, deadline, command, "window_pixels", 8)
-    if result.returncode:
-        raise readiness.Failure("native_pixels_failed", "pixels", "native window screenshot failed: " + result.stderr[:500])
+    try:
+        result = observed_command(context, deadline, command, "window_pixels", 8)
+        if result.returncode:
+            raise readiness.Failure("native_pixels_failed", "pixels", "native window screenshot failed: " + result.stderr[:500])
+    finally:
+        secure_screenshot(image, sys.exc_info()[1])
     dimensions = png_dimensions(image)
     observation = readiness.pixel_observation(image)
     observation.update(path=str(image), sha256=hashlib.sha256(image.read_bytes()).hexdigest(),
@@ -711,10 +729,15 @@ def run_smoke(context, *, deadline=None):
     final = wait_window(context, deadline, expected=fragment)
     runner.save_json(context["evidence"] / "smoke-window-final.json", final)
     image = context["evidence"] / "smoke-window.png"
-    result = subprocess.run(["/usr/sbin/screencapture", "-x", "-l", str(final["window_id"]), str(image)],
-                            capture_output=True, text=True, timeout=deadline.remaining("native window screenshot"))
-    if result.returncode:
-        raise RuntimeError("native window screenshot failed: " + result.stderr.strip()[:500])
+    descriptor = os.open(image, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    os.close(descriptor)
+    try:
+        result = subprocess.run(["/usr/sbin/screencapture", "-x", "-l", str(final["window_id"]), str(image)],
+                                capture_output=True, text=True, timeout=deadline.remaining("native window screenshot"))
+        if result.returncode:
+            raise RuntimeError("native window screenshot failed: " + result.stderr.strip()[:500])
+    finally:
+        secure_screenshot(image, sys.exc_info()[1])
     dimensions = png_dimensions(image)
     deadline.remaining("final native evidence")
     phases["scenario_seconds"] = deadline.clock() - deadline.started

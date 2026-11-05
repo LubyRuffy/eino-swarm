@@ -784,6 +784,9 @@ Create private evidence files with explicit mode `0600` while preserving and
 recording the normal compiler/test subprocess umask; a restrictive logging-only
 mask must not silently change executable-mode fixtures or be reported as a
 product regression without a controlled comparison.
+Initial and final smoke screenshots explicitly precreate mode `0600`, then reapply
+and verify it after the tool returns (including replacement), without rewriting PNG bytes;
+a mode failure is evidence failure and never replaces an earlier command failure.
 
 ## Paused goal replies and runtime provenance (`F-150`, `F-220`, `C-008`, `C-009`)
 
