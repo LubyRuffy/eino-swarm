@@ -271,6 +271,24 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-171`, `C-040`: The official server is now the primary model source on the
+  desktop. A first-run welcome offers **Sign in to the official server** with
+  **Use my own model service** and **Not now** as equal alternatives; once
+  signed in, the account's models appear first in the model picker and in a
+  card at the top of **Settings → Models**, as a runtime-only provider
+  (`gateway:<hex>`, never written to `config.yaml`) whose credential stays in
+  Go. `/api/meta` gains `account_models` and `ui.welcome_dismissed`,
+  `/api/models` rows gain `source`, and `models.default_source`
+  (`account`/`provider`) picks the source of new conversations (an existing
+  setup with a working provider migrates to `provider`). A conversation on an
+  account model whose sign-in is gone fails with `account_login_required`
+  instead of using a same-named private model.
+- `F-211`, `C-006`: A phone with no computer opens on a sign-in-first page;
+  scanning, pasting a pairing link and your own model service are under **Other
+  ways**. A signed-in phone lists its computers on the home page and in Add a
+  PC, and connects once, right after sign-in, when it has no saved connection
+  and the account has exactly one online computer.
+
 - `F-224`, `C-020`: Phone file previews offer image zoom in/out, 100% and fit
   controls, plus text-size adjustment/reset for Markdown, source and plain text.
   Controls stay visible while content scrolls; downloads retain original bytes.
@@ -530,6 +548,13 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-420`, `C-025`: Settings → Memory can set a separate reasoning level for automatic and manual turn review. Empty retains conversation inheritance; conversation work, catalog tidy, model and output cap are unchanged.
 
 ### Changed
+
+- `F-211`, `C-006`: Account mode no longer waits for an explicit choice when
+  the phone has no connection and the account has exactly one online computer
+  (replaces "never auto-connect"); several computers, an existing connection,
+  a relaunch or a failed attempt still leave the choice to the user.
+- `F-171`, `C-009`: The first-run setup banner offers sign-in and own-model
+  setup together, and no longer appears for an account whose models are ready.
 
 - `F-130`, `C-025`: Desktop/Web `memory` add/replace/remove rows now use
   edit-style collapsed line counts and highlighted diffs of the affected note.

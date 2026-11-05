@@ -201,6 +201,44 @@ receipt status as distinct from live server grants. Browser
 fixtures do not establish native iOS/Android transport or Mac WebView acceptance;
 record those separately when running the packaged clients.
 
+## Official server account models (`F-171`, `C-040`, `C-009`)
+
+Go tests prove the projection against a loopback server that speaks the desktop
+model routes: `internal/remote/account_models_test.go` covers bootstrap identity
+and foreign-origin refusal before any credential is sent, redirects, oversized
+bodies, `no_access`/`unsupported`/`network` classification, a revoked device,
+transient failure with and without working models, sign-out racing an
+in-flight refresh and a cancelled refresh. `host_account_models_test.go` drives
+login, logout, `Reload` and `Stop` through the real `Host`, including "reload
+refetches only when the account changed". `internal/provider/account_source_test.go`
+checks that no printable form or accessor exposes the credential and that a
+stored `gateway:` id never falls back to a same-named private provider.
+`internal/config/default_source_test.go` covers the legacy migration and the
+reserved prefix; `internal/server/account_models_http_test.go` goes through HTTP
+for `configured`, model order, credential absence, `default_source` and
+`welcome_dismissed` surviving unrelated saves.
+
+Frontend unit tests cover the pure rules (`account-models.test.ts`), the
+welcome gate and banner (`welcome-gate.test.tsx`, `configured-banner.test.tsx`),
+the Models card, the sync hook and the settings-persist omit-keeps behaviour.
+`frontend/e2e/account-welcome.spec.ts` rewrites only `/api/meta` (and answers
+the settings write by echoing stored settings) so the offline server shows a
+first run without touching the shared data directory: "Not now" is remembered
+across reload, "Use my own model service" lands on Settings → Models, and a
+ready account never sees the welcome. It needs a private `ZWAI_E2E_PORT` and
+`ZWAI_E2E_DATA_DIR` when another zwai already holds the default port.
+
+Phone tests (`gateway-auto-connect.test.ts`, `use-gateway-account-fresh-login.test.tsx`,
+`gateway-account-start.test.tsx`, `gateway-account-shell.test.tsx` and
+`mobile/e2e/gateway-account.spec.ts`) include the counter-examples of the
+auto-connect rule: several online PCs, no online PC, an existing saved
+connection or active fingerprint, a restart with a cached session, a sign-out,
+server change or second sign-in before the first read lands, and a failed first
+read must not connect; offline or disabled siblings are not counted as choices. The real gateway side is covered in the
+aigateway repository's own tests. These are offline/browser results; they do
+not accept the packaged desktop app or the iOS/Android shells (see
+`docs/NATIVE_TESTING_FAST_PATH.md` for the `ci-macOS` guest procedure).
+
 ## Mobile account login and model sources (`F-211`, `C-006`, `C-013`)
 
 Mobile unit tests cover device-flow secrets/PKCE, URL and response validation,

@@ -608,8 +608,19 @@ dependencies and development build tools. An empty or partial `node_modules`
 is repaired before building even when its directory timestamp is recent.
 Installation is checked again before the build can be stamped as current.
 
-First launch writes `~/.zwai-swarm/config.yaml` and shows a setup banner until a
-model is configured. Open **Settings** (⌘,) — a full-page sheet that starts on
+First launch writes `~/.zwai-swarm/config.yaml`. Until a model can answer, a
+welcome dialog leads with **Sign in to the official server**: sign in once in
+the browser and the account's models, phone connection and cloud web tools work
+with no address or API key. **Use my own model service** (or **Not now**) is the
+equally supported alternative; either answer is remembered, signing in or
+configuring a model hides the dialog by itself, and a banner keeps both paths
+visible while no model is set up. Signed-in models are a temporary list, never
+written to `config.yaml`, and appear first in the model picker; **Settings →
+Models** shows their state above your own providers. For a new setup, new
+conversations start on the account's models; an existing setup with a working
+provider keeps starting on it (`models.default_source` in
+[docs/CONFIG.md](docs/CONFIG.md)). Third-party and self-hosted endpoints work
+exactly as before. Open **Settings** (⌘,) — a full-page sheet that starts on
 **General**, with sections in the
 left rail (on the desktop window, **Back to app** sits below the traffic
 lights). Each page is a list of compact rows (name and hint left, control
@@ -673,9 +684,15 @@ end-to-end tests run on and the fastest way to see the UI work.
 
 ### Sign in on a phone or scan this PC
 
-Official clients have a default Gateway address. On the phone, choose **Sign in
-with NOSEC**; no server address, API Key or Pairlink configuration is needed.
-Finish the browser confirmation. A pending or rejected account only displays
+Official clients have a default Gateway address. A phone with no computer yet
+opens on **Sign in to zwai**; choose **Sign in with NOSEC** there, with
+no server address, API Key or Pairlink configuration. Scanning a QR code,
+pasting a pairing link and using your own model service sit under **Other
+ways**. Finish the browser confirmation. If this phone has no saved computer and
+the account has exactly one online PC, the phone connects to it once right after
+that sign-in; with several PCs, or when the phone already has a connection, you
+choose from **Your computers** (nothing is guessed, and a later launch never
+auto-selects). A pending or rejected account only displays
 its review status. Once approved, **User center → Your computers** lists PCs
 signed in to the same account. Choose an online PC to connect without scanning;
 the phone remembers that selection and reconnects only that PC. A signed-in

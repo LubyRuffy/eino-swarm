@@ -9,6 +9,17 @@ reconnection. API access is independent: approved users with an enabled API
 grant and Key can use **Server** models in Chat without any PC. An approved
 account without API permission can still connect to its PCs.
 
+A phone with no computer opens on **Sign in to zwai**. Scanning a QR code,
+pasting a pairing link and using your own model service are under **Other
+ways**, so anonymous pairing and private providers work unchanged. When this
+phone has no saved computer or active connection and the account has exactly one
+online, enabled PC, it connects to that PC once right after the sign-in
+completes. The marker lives in memory only, clears on failure, sign-out, a new
+sign-in or a server change, and a relaunch never auto-selects; with several
+online PCs, or any existing connection, you choose from the list (nothing is
+guessed). A signed-in phone with no connected PC lists its computers on the home
+page, with the same **Other ways**, and Add a PC lists them above the QR options.
+
 User center shows the NOSEC and PC display names provided by the Gateway.
 For older Gateways, it uses the readable part of a generated NOSEC username
 and the PC name or hostname when available. The PC name selected from the
@@ -110,11 +121,11 @@ Paste is the same URI, not a second protocol. After bind, a live
 turn (or the last thread this phone opened) opens immediately; otherwise
 the inbox lists projects and threads. A later launch with saved tickets
 paints host chips (the name this PC sent on `hello`/`list`) and a connecting
-skeleton; the scan form is only when this
+skeleton; the unbound root page (sign in first, scan under **Other ways**) is only when this
 phone has never bound (or after Unlink of the last PC). Add a PC is a
 side control that opens a sheet. Android's system back returns from a
 conversation, or from that sheet, to the screen under it. The activity
-finishes only from the inbox, or from the scan screen when this phone has
+finishes only from the inbox, or from the unbound root page when this phone has
 never bound (the header Back control does the same pop). The phone talks to the PC over
 pairlink (WebSocket relay). After the ticket socket is up it sends `hello`
 with a one-line model (OS + version + device) so Settings → Phone can

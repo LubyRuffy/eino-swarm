@@ -17,6 +17,7 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-150` Goals and scheduled waits
     - `F-160` Trace and diagnostics
     - `F-170` Settings and providers
+    - `F-171` Official server first: sign-in, welcome and account models
     - `F-175` Provider cloud built-in tools
     - `F-180` PC text quoting
     - `F-190` Desktop updates
@@ -251,6 +252,14 @@ This is the current user-facing capability map. The code and tests named below a
 - 设置 → 集群的「策略检查推理」控制排程声明与唤醒许可两个后台策略分类器的推理档位，默认“默认（低）”，可选跟随会话或显式低/中/高；默认档在端点拒绝推理参数时去掉该参数重试一次，显式档位保留原错误。设置 → 工具的「工具结果上限（字符）」限制每个工具结果进入模型上下文的长度，默认 40000，超出时保留首尾并说明省略量。关联契约：`C-009`；实现／测试：`internal/config/auxiliary_reasoning.go`、`internal/config/tool_limits.go`、`internal/engine/policy_effort_test.go`、`internal/tools/resultcap_test.go`、`frontend/e2e/settings.spec.ts`。
 - 同源 provider 别名沿用 `F-130` 的共享冷却；保存设置不清故障档位（`C-029`）。证据：`internal/provider/backoff_integration_test.go`。
 
+### F-171 Official server first: sign-in, welcome and account models
+
+- 目的：默认体验以官方服务器为主，登录后即可使用其模型、手机连接和云端联网工具，无需手填端点或密钥；自配的第三方模型服务继续完整支持，是并列的次要路径。使用者：PC 用户；入口：首次启动的欢迎对话框、Settings → Models 顶部的官方服务器卡片、未配置横幅、输入框模型选择器的账号分组、`F-210` 的 Account 菜单；输入：NOSEC 浏览器登录（沿用 `F-210` 的设备登录）和用户对欢迎的选择；输出：Go 以私有设备凭据调用服务器的桌面模型接口读取目录，账号模型作为仅存内存的临时 provider（id `gateway:<hex>`，`source:account`）排在自配服务之前，`/api/meta.account_models` 只向界面提供状态、数量和原因；前置条件：服务器地址来自 `remote.hub_url`（Go 默认值，Settings 可改），前端不硬编码；失败表现：`pending`／`no_access`／`unavailable`（含 `reason`）分别在卡片和欢迎里说明，不暴露凭据或端点，不影响自配服务。关联契约：`C-040`、`C-009`、`C-006`、`C-013`；实现证据：`internal/config/default_source.go`、`internal/provider/account_source.go`、`internal/remote/account_models.go`、`internal/server/settings.go`、`frontend/src/lib/account-models.ts`、`frontend/src/components/app/welcome-gate.tsx`、`frontend/src/components/app/account-models-card.tsx`、`frontend/src/components/app/account-sign-in.tsx`；验证：`internal/config/default_source_test.go`、`internal/provider/account_source_test.go`、`internal/remote/account_models_test.go`、`internal/remote/host_account_models_test.go`、`internal/server/account_models_http_test.go`、`frontend/src/components/app/welcome-gate.test.tsx`、`frontend/src/components/app/account-models-card.test.tsx`、`frontend/src/components/app/configured-banner.test.tsx`、`frontend/e2e/account-welcome.spec.ts`。
+- 首次启动欢迎：仅当没有可用模型（`configured=false`）、尚未回答过欢迎且不在 `restoring` 时出现。主操作是登录官方服务器，次要是「使用自己的模型服务」（保存回答后打开 Settings → Models）和「稍后再说」；两种回答都写入 `ui.welcome_dismissed`，刷新或重启不再弹出。登录成功或配置好任一模型服务会自动收起欢迎，无需回答。关掉对话框等同「稍后再说」，不会被困住。回答之后只要仍无可用模型，未配置横幅继续同时提供登录和设置自有模型两个入口。
+- 模型来源：账号目录在登录／注销后及每 10 分钟刷新，只有账号变化才重新读取。`models.default_source`（`account`／`provider`）决定新会话先用谁：新配置默认 `account`，账号模型尚未就绪时回落到 `models.default`；已有可用默认 provider 的旧配置或首启 `OPENAI_*` 迁移为 `provider`，升级不改变原用户的行为。账号模型只读，没有编辑、密钥或端点输入；注销或失去权限后，已选账号模型的会话得到稳定的 `account_login_required`，不会改走同名自配服务。
+- 手机侧的登录优先首页、自动连接唯一在线电脑见 `F-211`；手机直连服务器模型见 `F-230`。
+- 同一条一 id 排障路径不变：账号模型的 turn 以 `gateway:` provider id 前缀标识来源，Trace 不新增事件类型，也不记录凭据。
+
 ### F-175 Provider cloud built-in tools
 
 - 目的：让支持 Responses 的 provider 在云端执行自带工具；使用者：PC 用户及 API 配置管理者；入口：Settings → Models 的 provider API 模式和工具 JSON、`PUT /api/settings`、`config.yaml`；输入：`api_mode` 和 `builtin_tools`，工具对象包含唯一非空 `type` 及服务商参数；输出：云端工具与本地函数工具共同供模型选择，流式回答含可点击来源，同 turn 的 `builtin_tool` Trace 回执；前置条件：端点、模型及所配置工具支持 Responses；失败表现：无效配置拒绝且保留草稿，服务端拒绝或流错误沿现有模型错误通道显示；关联契约：`C-030`、`C-009`、`C-012`；实现证据：`internal/config/provider_tools.go`、`internal/provider/responses.go`、`internal/engine/builtin_tools.go`、`frontend/src/components/app/model-settings.tsx`；验证：`internal/config/provider_tools_test.go`、`internal/server/settings_provider_tools_test.go`、`internal/engine/builtin_tools_test.go`、`frontend/e2e/builtin-tools.spec.ts`。
@@ -290,7 +299,9 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 用户中心弹层的标题与关闭按钮保留设备顶部和左右安全区；独立审核页沿用页面安全区，底部内边距不重复增加。布局与实际关闭回归见 `mobile/e2e/gateway-account.spec.ts`，iOS 还需原生布局验收。
 
-- 目的：不手工配置服务器即可登录、发现并连接本人电脑；入口：手机「使用 NOSEC 登录」及菜单「用户中心」；输入：浏览器登录和显式设备授权、用户选择的在线 PC；输出：审核状态、本人 PC 列表、自动获取的连接票据和心跳。待审／拒审只显示审核界面，普通 API 权限不决定设备连接权限。匿名扫码独立保留，账号模式选择 PC 无需扫码；保存并重连选中的 Host ID／公钥，不自动连接所有 PC。失败可刷新／重新登录，离线 PC 禁用连接，退出删除受管票据而保留匿名票据与自配模型。关联 `C-006`、`C-013`、`F-230`；实现证据：`mobile/src/lib/gateway-account.ts`、`mobile/src/lib/use-gateway-account.ts`、`mobile/src/components/gateway-account-shell.tsx`、`mobile/src/components/gateway-account-screen.tsx`、`mobile/e2e/gateway-account.spec.ts`。
+- 目的：不手工配置服务器即可登录、发现并连接本人电脑；入口：手机「使用 NOSEC 登录」及菜单「用户中心」；输入：浏览器登录和显式设备授权、用户选择的在线 PC；输出：审核状态、本人 PC 列表、自动获取的连接票据和心跳。待审／拒审只显示审核界面，普通 API 权限不决定设备连接权限。匿名扫码独立保留，账号模式选择 PC 无需扫码；保存并重连选中的 Host ID／公钥，不批量连接账号的所有 PC（唯一在线电脑的一次性自动连接见本节「登录优先」条目）。失败可刷新／重新登录，离线 PC 禁用连接，退出删除受管票据而保留匿名票据与自配模型。关联 `C-006`、`C-013`、`F-230`；实现证据：`mobile/src/lib/gateway-account.ts`、`mobile/src/lib/use-gateway-account.ts`、`mobile/src/components/gateway-account-shell.tsx`、`mobile/src/components/gateway-account-screen.tsx`、`mobile/e2e/gateway-account.spec.ts`。
+
+- 登录优先：手机尚无任何电脑时，首页以「使用 NOSEC 登录」为主操作，扫码、粘贴配对链接和「自配模型」收进「其他方式」；已登录但未连接电脑时，首页直接列出本人电脑并保留同一「其他方式」，「添加电脑」面板也列出本人电脑。登录刚完成时，若手机没有任何已保存连接或活动指纹，且账号恰有一台在线且启用的电脑，自动连接这一台一次：该标记只在内存，在失败、退出、重新登录、换服务器后清除，每次登录最多一次，之后重启或刷新不会再自动选；有多台、没有在线电脑或手机已有连接时不猜测，由用户选择。离线电脑仍禁用，自动连接失败回到可选列表。这取代了此前「账号模式一律不自动连接」的说法；关联 `C-006`；证据：`mobile/src/lib/gateway-auto-connect.ts`、`mobile/src/lib/gateway-auto-connect.test.ts`、`mobile/src/lib/use-gateway-account-fresh-login.test.tsx`、`mobile/src/components/gateway-account-shell.tsx`、`mobile/src/components/account-pc-list.tsx`、`mobile/src/components/scan-screen.tsx`、`mobile/src/components/gateway-account-start.test.tsx`、`mobile/e2e/gateway-account.spec.ts`。
 
 ### F-220 Read and control PC conversations
 
