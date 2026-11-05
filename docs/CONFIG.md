@@ -232,17 +232,20 @@ deadline. Classification completely bypasses the shared origin gate and the HTTP
 adapter's implicit header reconnect; it cannot delay other conversations or
 change the service's recovery state. Request failures and invalid output retry
 the original private candidate with persistent 5/10/20/30-second capped delay.
-After three consecutive request failures, the candidate is durably deferred:
-its unpublished text stays private, and the same turn/Registry/workers continue
-user work under an executable goal or active same-thread wake. Without that
-owner, the turn uses the existing human Continue/Stop pause. Invalid output
-resets the consecutive request-failure counter; local storage/configuration
-failures have separate codes. Deferral does not grant a schedule-claim correction
-or retry the old answer. The cap (`DefaultScheduleAnswerFailures`) and backoff
+After three consecutive request failures, three consecutive invalid responses,
+or six total attempts, the candidate is durably deferred: its unpublished text
+stays private, and the same turn/Registry/workers continue user work under an
+executable goal or active same-thread wake. Without that owner, the turn uses
+the existing human Continue/Stop pause. Request failures and invalid output
+have separate persistent consecutive counts and reset each other's count;
+local storage/configuration failures have separate codes and consume neither
+budget. Deferral does not grant a schedule-claim correction or retry the old
+answer. The limits (`DefaultScheduleAnswerFailures`,
+`DefaultScheduleAnswerInvalids`, `DefaultScheduleAnswerAttempts`) and backoff
 live in `internal/config/backoff.go`, with no new YAML fields or Settings controls.
 Stop or a superseding human steer cancels verification. Attempts, next retry
-time, failure count and deferral survive restart, so an exhausted candidate
-cannot block the goal again or overwrite a newer checkpoint.
+time, both consecutive counts and deferral survive restart, so an exhausted
+candidate cannot block the goal again or overwrite a newer checkpoint.
 
 A provider is **ready** when it has both `base_url` and `model`. Until the default
 provider is ready, `GET /api/meta` reports `configured: false` and the UI shows a

@@ -2,13 +2,12 @@ import { block } from "./transcript-blocks"
 import type { Block } from "./transcript"
 import type { SwarmEvent } from "./types"
 
-import { modelBackoffNotice } from "./transcript-backoff"
+import { modelBackoffNotice, scheduleAnswerBackoff, type ScheduleAnswerBackoff } from "./transcript-backoff"
 
-export interface BackoffContext {
+export interface BackoffContext extends ScheduleAnswerBackoff {
   scope: "origin" | "schedule_answer" | "unknown"
   cooldownId?: string
   attempt?: number
-  code?: "classification_unavailable" | "classification_invalid" | "classification_deferred"
   callers: { agentId: string; role?: string; seq: number }[]
 }
 
@@ -23,6 +22,7 @@ export function modelBackoffContext(text: string | undefined, agentId: string, r
     if (context.scope === "origin" && typeof body.cooldown_id === "string" && body.cooldown_id) context.cooldownId = body.cooldown_id
     if (Number.isSafeInteger(body.attempt) && body.attempt > 0) context.attempt = body.attempt
     if (["classification_unavailable", "classification_invalid", "classification_deferred"].includes(body.code)) context.code = body.code
+    Object.assign(context, scheduleAnswerBackoff(text))
   } catch { /* Older receipts may have no structured context. */ }
   return context
 }

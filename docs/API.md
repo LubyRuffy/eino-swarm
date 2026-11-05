@@ -2301,29 +2301,46 @@ header reconnect. Its request failure cannot block unrelated calls or emit
 origin cooldown observations. Request failures (`classification_unavailable`)
 and malformed output (`classification_invalid`) retry the original durable
 candidate with 5/10/20/30-second capped delay, retaining the same turn, Registry,
-workers and actual tool receipts. Invalid output resets the separate consecutive
-request-failure counter; local storage/configuration errors use distinct
-`answer_storage_failed` / `classification_configuration_unavailable` codes.
+workers and actual tool receipts. The two failure kinds have separate durable
+consecutive counters and reset each other's streak. Local storage/configuration
+errors use distinct `answer_storage_failed` /
+`classification_configuration_unavailable` codes and do not consume either budget.
 These retries neither repeat manager/tools nor consume schedule-claim correction.
 
-Three consecutive request failures atomically defer that candidate and retain
-its unpublished bytes. The old candidate is not retried. An executable goal or
-active same-thread wake continues the next user-work slice within the same turn
-and Registry; without such an owner, the existing human Continue/Stop pause
+Three consecutive request failures, three consecutive invalid responses, or
+six total attempts atomically defer that candidate and retain its unpublished
+bytes. These limits are internal config constants, not Settings fields. The
+old candidate is not retried. An executable goal or active same-thread wake
+continues the next user-work slice within the same turn and Registry; without such an owner, the existing human Continue/Stop pause
 controls further work. Deferral does not prove the schedule claim false, publish
-its prose or grant another claim correction. Attempts, next retry time, failure
-count and deferral survive restart. A deferred candidate cannot reclaim the
-critical path or overwrite a newer checkpoint with its old transcript. Legacy
-attempts derive a failure budget only from contiguous candidate-bound durable
-unavailable receipts, not generic origin waits.
+its prose or grant another claim correction. Already committed `schedule_task`
+and `schedule_wake` rows remain unchanged. Attempts, next retry time, both
+consecutive counts and deferral survive restart. A deferred candidate cannot
+reclaim the critical path or overwrite a newer checkpoint with its old transcript.
+Legacy attempts derive each consecutive budget only from a contiguous same-kind
+suffix of candidate-bound durable classification receipts ending at the saved
+attempt, not generic origin waits or gaps. Unavailable receipts without `detail`
+retain their prior recovery meaning. A restored candidate already at any limit
+is deferred before another model request.
 
 Candidate `model_backoff` records have `agent_id:"schedule-answer-policy"` and
-JSON `{scope:"schedule_answer",attempt,wait_ms,code,candidate_id}`. Normal retries
-use `classification_unavailable` or `classification_invalid`; the durable cap
-uses `classification_deferred` with `wait_ms:0`. Chat distinguishes these from
-service cooldowns. HTTP 200 with invalid classifier JSON remains diagnosable
-even if its LLM-call transport error is empty. Actual classification calls and
-errors remain in the original Trace; private prose stays out of events, SSE,
+text JSON `{scope:"schedule_answer",attempt,wait_ms,code,candidate_id,detail?}`.
+Normal retries use `classification_unavailable` or `classification_invalid`;
+the durable cap uses `classification_deferred` with `wait_ms:0`. Invalid retry
+`detail` is limited to `missing_message`, `json`, `trailing`, `claim_list`,
+`claim_meaning`, `claim_shape`, `unspecified_scope_quote`, `scope_quote`,
+`schedule_id`, `quote_not_in_candidate` or `next_run_at`. The deferred receipt
+instead identifies the exhausted limit with `detail:"unavailable"`, `"invalid"`
+or `"attempts"`. No raw Cause/error string, model response, quote, scope quote
+or candidate prose enters `detail`. Markdown fences, extra fields and approximate
+quotes remain invalid. Desktop and phone localize these reasons in retry details;
+older events without `detail` keep the generic invalid-response message.
+Deferral still means the retained answer is unpublished, with no promise to
+retry it. Chat distinguishes candidate recovery from service cooldowns.
+HTTP 200 with invalid classifier JSON remains diagnosable
+even if its LLM-call transport error is empty. Classification call records,
+transport errors and safe structural diagnostics remain in the original Trace;
+private prose stays out of events, SSE,
 Trace, ordinary history, compaction and subsequent manager input. Stop cancels
 a request or wait, and a superseding human steer retires its unpublished
 candidate. Existing worker lifetime/resource limits still apply. Private

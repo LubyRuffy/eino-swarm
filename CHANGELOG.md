@@ -6,6 +6,14 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed unpublished scheduling answers retrying indefinitely after invalid
+  classifier responses. Each candidate now defers after three consecutive
+  request failures, three consecutive invalid responses, or six total attempts,
+  retaining both counters across restart. Desktop and phone retry details show
+  safe validation reasons and the exhausted limit; committed schedules and
+  the unsupported-claim correction allowance stay unchanged. (`F-150`, `F-160`,
+  `C-009`, `C-012`, `C-029`)
+
 - Fixed account-model publication so a catalog fetched for a credential that
   has since signed out, or been replaced, is not what login or logout leaves
   behind. (`F-171`, `C-040`)

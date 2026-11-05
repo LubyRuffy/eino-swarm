@@ -73,3 +73,62 @@ it("explains candidate verification and malformed legacy receipts without exposi
   expect(document.body).not.toHaveTextContent("private-candidate")
   expect(document.body).not.toHaveTextContent("bad private payload")
 })
+
+const invalidDetails = [
+  ["missing_message", "核对响应缺少正文或包含工具调用。"],
+  ["json", "核对响应不是符合要求的 JSON。"],
+  ["trailing", "核对响应的 JSON 后还有多余内容。"],
+  ["claim_list", "核对响应的 claims 列表无效。"],
+  ["claim_meaning", "核对声明的立场、时间或归属无效。"],
+  ["claim_shape", "核对声明的必需字段或枚举无效。"],
+  ["unspecified_scope_quote", "未指定范围的声明却附带了范围引文。"],
+  ["scope_quote", "声明的范围引文缺失或没有原文依据。"],
+  ["schedule_id", "声明的计划 ID 不在引文中。"],
+  ["quote_not_in_candidate", "声明引文不是候选答复中的原文。"],
+  ["next_run_at", "声明的下次运行时间不是 RFC3339 格式。"],
+] as const
+
+it.each(invalidDetails)("explains invalid classifier detail %s without rendering its payload", (detail, reason) => {
+  act(() => useApp.setState({ locale: "zh" }))
+  const state = reduceEvents(emptyTranscript(), [wait(1, "schedule-answer-policy", {
+    scope: "schedule_answer", candidate_id: "private-candidate", code: "classification_invalid", detail, attempt: 2,
+    cause: "private-model-fragment", quote: "private-quote",
+  })])
+  render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+  fireEvent.click(screen.getByRole("button", { name: "重试说明" }))
+  expect(screen.getByText(reason)).toBeVisible()
+  expect(document.body).not.toHaveTextContent("private-")
+})
+
+it.each([
+  ["unavailable", "连续核对请求失败达到上限，已暂缓。"],
+  ["invalid", "连续核对响应格式无效达到上限，已暂缓。"],
+  ["attempts", "这份候选答复的核对总尝试次数达到上限，已暂缓。"],
+])("explains deferral limit %s without promising another attempt", (detail, reason) => {
+  act(() => useApp.setState({ locale: "zh" }))
+  const state = reduceEvents(emptyTranscript(), [wait(1, "schedule-answer-policy", {
+    scope: "schedule_answer", code: "classification_deferred", detail, wait_ms: 0,
+  })])
+  render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+  expect(screen.getByText("答复核对暂不可用，未发布候选已保留。")).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "重试说明" }))
+  expect(screen.getByText(reason)).toBeVisible()
+  expect(screen.queryByText("本次等待发生在未发布答复的调度声明核对步骤，核对恢复前保留原候选答复。")).not.toBeInTheDocument()
+})
+
+it.each([undefined, "private-model-fragment", "attempts", { error: "private-model-fragment" }])("falls back safely for an invalid detail %j", (detail) => {
+  act(() => useApp.setState({ locale: "zh" }))
+  const state = reduceEvents(emptyTranscript(), [wait(1, "schedule-answer-policy", { scope: "schedule_answer", code: "classification_invalid", detail })])
+  render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+  fireEvent.click(screen.getByRole("button", { name: "重试说明" }))
+  expect(screen.getByText("核对响应格式无效。")).toBeVisible()
+  expect(JSON.stringify(state.agents)).not.toContain("private-model-fragment")
+})
+
+it("keeps an unscoped legacy invalid receipt's original explanation", () => {
+  act(() => useApp.setState({ locale: "zh" }))
+  const state = reduceEvent(emptyTranscript(), { ...wait(1), text: '{"code":"classification_invalid","wait_ms":5000}' })
+  render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+  fireEvent.click(screen.getByRole("button", { name: "重试说明" }))
+  expect(screen.getByText("核对响应格式无效。")).toBeVisible()
+})

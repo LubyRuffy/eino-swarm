@@ -986,7 +986,20 @@ answer. A legal HTTP 200 with invalid classification JSON retains
 even though its LLM transport call succeeded. Request failures retain
 `classification_unavailable`; local storage/configuration failures have distinct
 codes. A retry does not repeat the manager/tools or consume the single
-same-turn correction for a confirmed unsupported claim.
+same-turn correction for a confirmed unsupported claim. HTTP budget regressions
+use the offline loopback provider and temporary persistent stores, never the
+reported live conversation, its credentials or its successful schedule.
+
+`internal/engine/schedule_answer_invalid_budget_http_test.go` drives the real
+Registry, HTTP adapter and persistent store. Three malformed HTTP 200 responses
+defer once with `detail:"invalid"`; alternating unavailable/invalid responses
+stop at the sixth attempt with `detail:"attempts"`. A legal third response after
+two invalid ones publishes the original answer once. Both switch directions
+reset only the opposite consecutive count. The tests retain the original
+manager/tool invocation counts, unchanged committed schedule row and untouched
+claim-correction allowance, and check public events, broadcasts, Trace and replay
+for withheld prose or decoder fragments. Every invalid structural category is
+also exercised through a real HTTP response, rather than only the decoder.
 
 `internal/provider/isolated_recovery_test.go` crosses the real HTTP adapter:
 classification header timeouts use one full request budget with no implicit
@@ -1010,13 +1023,34 @@ in-process engine/HTTP regressions, not native-window acceptance.
 `internal/store/schedule_answer_deferred_test.go` checks atomic failure-count
 and deferred-state persistence, stale/invalid/unowned writes, legacy consumed
 budget restoration, private prose retention with only one full transcript,
-compaction rollback, and terminal/deletion cleanup. The request-failure cap is
-separate from malformed-output retries, claim correction and worker watchdogs.
+compaction rollback, and terminal/deletion cleanup. The two persisted
+consecutive counts are independently bounded by `attempts`: three unavailable
+request failures, three invalid responses, or six total attempts defer the
+same candidate. Each kind resets only the other consecutive count, so alternating
+failures cannot evade the total limit. These policy constants remain separate
+from claim correction and worker watchdogs; no Settings field is added.
+`internal/store/schedule_answer_invalid_test.go` covers independent invalid-count
+persistence, negative/excess/stale writes, preservation through legacy retry
+writes and restoration of already exhausted pending rows without another attempt.
+Its `TestLegacyPendingAnswerMigrationPreservesItsUnavailableBudget` removes the
+new `classification_invalids` column from a real file-backed database, then
+reopens it through normal migration. Existing attempts, unavailable count,
+private payload and retry time remain unchanged; the new invalid count reads as
+zero and can subsequently be saved independently.
 `internal/engine/schedule_answer_deferred_test.go` checks legacy exhausted and
-broken-streak budgets, storage-read/write refusal, and ordinary turns without
+broken-streak budgets for both kinds, backward compatibility with unavailable
+receipts without `detail`, storage-read/write refusal, and ordinary turns without
 an executable owner: Continue, an already approved pause, queued human steer,
 decline and Stop retain their existing semantics without duplicate continuation
 or losing an input arriving before pause installation.
+Desktop `frontend/src/components/app/backoff-notice.test.tsx` and phone
+`mobile/src/lib/transcript-backoff.test.tsx` exercise all eleven invalid-response
+`detail` values and all three deferral-limit values through the displayed retry
+explanation. Missing, unknown, wrong-code and non-string details retain the old
+generic invalid-response message, with no raw model fragment displayed. Deferral
+copy states that verification was deferred, without promising another retry or
+claiming that the private candidate was false. The event kind and text-JSON
+payload remain compatible with old events.
 `internal/engine/schedule_answer_deferred_restore_test.go` crosses real engine
 and HTTP boundaries: a restored ordinary pause needs only one human Continue,
 and a deferred report retains its actual tool receipt while rejecting an
@@ -1070,8 +1104,16 @@ real headless engine entry point records a private candidate and classifier
 failure, the test verifies its owned lease/PID and SIGKILLs that child, then a
 different engine PID reopens the same private data. It checks actual SSE and
 Trace retain the original turn/candidate/output identity, with no repeated
-manager call or duplicate answer after the local classifier recovers. This is
-headless engine acceptance, separate from a native desktop-window case.
+manager call or duplicate answer after the local classifier recovers.
+`TestClassifierBudgetsSurviveRealEngineCrashFromOnlyBackoffEvents` records two
+unavailable or invalid failures, kills and joins the owned engine, clears both
+private counters and verifies they read back as zero before replacement. The
+new process restores the consecutive count only from durable `model_backoff`
+receipts and defers on the third failure, once, with the matching closed limit
+`detail`. The unavailable case removes event `detail` to exercise old receipts.
+No manager replay, extra claim correction or private-prose publication is
+permitted. These are headless engine acceptance cases, separate from a native
+desktop-window case.
 `internal/engine/report_admission_test.go` checks actual manager tools retain
 their original receipt/candidate IDs, defer findings verification until the
 manager boundary and avoid repeating committed rearms. A blocked model request

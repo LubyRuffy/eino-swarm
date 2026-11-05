@@ -15,15 +15,20 @@ import (
 
 func TestLegacyClassifierFailureBudgetCannotBlockAgainAfterUpgrade(t *testing.T) {
 	for _, tc := range []struct {
-		name               string
-		codes              []string
-		attempts, failures int
-		deferred           bool
+		name                         string
+		codes                        []string
+		attempts, failures, invalids int
+		detail                       string
+		deferred                     bool
 	}{
-		{"exhausted", []string{"classification_unavailable", "classification_unavailable", "classification_unavailable"}, 3, 3, true},
-		{"invalid-breaks-streak", []string{"classification_unavailable", "classification_invalid", "classification_unavailable"}, 3, 1, false},
-		{"invalid-latest", []string{"classification_unavailable", "classification_invalid"}, 2, 0, false},
-		{"gap", []string{"classification_unavailable"}, 2, 0, false},
+		{"exhausted", []string{"classification_unavailable", "classification_unavailable", "classification_unavailable"}, 3, 3, 0, "unavailable", true},
+		{"invalid-breaks-streak", []string{"classification_unavailable", "classification_invalid", "classification_unavailable"}, 3, 1, 0, "", false},
+		{"invalid-latest", []string{"classification_unavailable", "classification_invalid"}, 2, 0, 1, "", false},
+		{"gap", []string{"classification_unavailable"}, 2, 0, 0, "", false},
+		{"invalid-exhausted", []string{"classification_invalid", "classification_invalid", "classification_invalid"}, 3, 0, 3, "invalid", true},
+		{"unavailable-breaks-invalid", []string{"classification_invalid", "classification_unavailable"}, 2, 1, 0, "", false},
+		{"alternating-exhausted", []string{"classification_invalid", "classification_unavailable", "classification_invalid", "classification_unavailable", "classification_invalid", "classification_unavailable"}, 6, 1, 0, "attempts", true},
+		{"attempts-without-tail", nil, 6, 0, 0, "attempts", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newTestEngine(t)
@@ -51,8 +56,22 @@ func TestLegacyClassifierFailureBudgetCannotBlockAgainAfterUpgrade(t *testing.T)
 				t.Fatal(failure)
 			}
 			got, err := e.store.GetPendingScheduleAnswer(row.ID)
-			if err != nil || got.ClassificationFailures != tc.failures || (got.State == "deferred") != tc.deferred || !got.RetryAt.Equal(row.RetryAt) || got.Attempts != tc.attempts {
+			if err != nil || got.ClassificationFailures != tc.failures || got.ClassificationInvalids != tc.invalids || (got.State == "deferred") != tc.deferred || !got.RetryAt.Equal(row.RetryAt) || got.Attempts != tc.attempts {
 				t.Fatalf("budget=%+v error=%v", got, err)
+			}
+			events, _ := e.store.ListTurnEvents(turn.ID)
+			deferrals := 0
+			for _, event := range events {
+				var body map[string]any
+				if event.Kind == KindModelBackoff && json.Unmarshal([]byte(event.Text), &body) == nil && body["code"] == "classification_deferred" {
+					deferrals++
+					if body["detail"] != tc.detail || body["wait_ms"] != float64(0) {
+						t.Fatalf("wrong deferral detail: %s", event.Text)
+					}
+				}
+			}
+			if (deferrals == 1) != tc.deferred || deferrals > 1 {
+				t.Fatalf("deferrals=%d", deferrals)
 			}
 			if tc.deferred {
 				_, failure := e.runtimeFor(th.ID).verifyPendingScheduleAnswer(context.Background(), turn, row, &pendingScheduleAnswer{})

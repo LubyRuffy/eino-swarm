@@ -4,12 +4,17 @@ import { writeFile } from "node:fs/promises"
 const API_ERROR = "model API request failed: HTTP 502 Bad Gateway: unexpected end of JSON input"
 
 for (const language of [
-  { locale: "en", service: "Waiting 5s before retrying the model request.", next: "Waiting 10s before retrying the model request.", candidate: "Waiting 5s before checking the unpublished answer again.", deferred: "Answer verification is unavailable. The unpublished answer is retained.", unknown: "Waiting before retrying the model request." },
-  { locale: "zh", service: "等待 5 秒后重试模型请求。", next: "等待 10 秒后重试模型请求。", candidate: "等待 5 秒后重试未发布答复的核对。", deferred: "答复核对暂不可用，未发布候选已保留。", unknown: "等待后重试模型请求。" },
+  { locale: "en", service: "Waiting 5s before retrying the model request.", next: "Waiting 10s before retrying the model request.", candidate: "Waiting 5s before checking the unpublished answer again.", deferred: "Answer verification is unavailable. The unpublished answer is retained.", unknown: "Waiting before retrying the model request.", details: "Retry details", invalid: "Waiting 10s before checking the unpublished answer again.", invalidReason: "The verification response is not valid JSON in the required format.", deferredReason: "This candidate reached the total verification attempt limit. Verification was deferred." },
+  { locale: "zh", service: "等待 5 秒后重试模型请求。", next: "等待 10 秒后重试模型请求。", candidate: "等待 5 秒后重试未发布答复的核对。", deferred: "答复核对暂不可用，未发布候选已保留。", unknown: "等待后重试模型请求。", details: "重试说明", invalid: "等待 10 秒后重试未发布答复的核对。", invalidReason: "核对响应不是符合要求的 JSON。", deferredReason: "这份候选答复的核对总尝试次数达到上限，已暂缓。" },
 ]) {
   test(`phone separates answer checks from one service notice per cooldown (${language.locale})`, async ({ page }, info) => {
+    const errors: string[] = []
+    page.on("pageerror", (error) => errors.push(error.message))
+    page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()) })
     await page.addInitScript((locale) => localStorage.setItem("zwai.phone.locale", locale), language.locale)
     await page.goto("/?mock=1&tick=0&history=answer-backoff")
+    await expect(page).toHaveURL(/history=answer-backoff/)
+    await expect(page).toHaveTitle("zwai")
     for (const phase of ["first-open", "replayed"]) {
       const transcript = page.getByTestId("transcript")
       for (const text of [language.service, language.next, language.candidate, language.deferred]) {
@@ -19,9 +24,15 @@ for (const language of [
       await expect(page.getByTestId("agent-roster")).toHaveCount(0)
       await expect(transcript).not.toContainText("private-answer")
       await expect(transcript).not.toContainText("wait_ms")
+      for (const [notice, reason] of [[language.invalid, language.invalidReason], [language.deferred, language.deferredReason]]) {
+        const row = transcript.getByTestId("backoff-notice").filter({ hasText: notice })
+        await row.getByRole("button", { name: language.details, exact: true }).click()
+        await expect(row.getByText(reason, { exact: true })).toBeVisible()
+      }
       await writeFile(info.outputPath(`answer-backoff-${language.locale}-${phase}.png`), await page.screenshot({ animations: "disabled" }), { mode: 0o600 })
       if (phase === "first-open") await page.reload()
     }
+    expect(errors).toEqual([])
   })
 }
 

@@ -1,3 +1,4 @@
+import { BackoffNotice } from "./backoff-notice"
 import { GenerationNotice } from "./generation-notice"
 import { useEffect, useState } from "react"
 import { ChevronRight, Loader2 } from "lucide-react"
@@ -93,6 +94,7 @@ export function renderBlock(b: CompactBlock) {
   }
   if (b.kind === "notice") {
     if (b.generation) return <GenerationNotice block={b} />
+    if (b.backoff) return <BackoffNotice block={b} text={localizeNotice(b.text)} />
     const text = localizeNotice(b.text)
     if (!text) return null
     return <p className="text-[11px] text-muted-foreground">{text}</p>

@@ -18,7 +18,7 @@ func TestClassifierFailureBudgetAndDeferralSurviveReadbackWithoutPublication(t *
 		failures int
 		deferred bool
 	}{{1, 1, false}, {2, 0, false}, {3, 1, false}, {4, 2, false}, {5, 3, true}} {
-		if err := s.SetScheduleAnswerRecovery(row.ID, step.attempts, step.failures, retry, step.deferred); err != nil {
+		if err := s.SetScheduleAnswerRecovery(row.ID, step.attempts, step.failures, 0, retry, step.deferred); err != nil {
 			t.Fatal(err)
 		}
 		got, err := s.GetPendingScheduleAnswer(row.ID)
@@ -42,7 +42,7 @@ func TestClassifierFailureBudgetAndDeferralSurviveReadbackWithoutPublication(t *
 	}
 	for _, retryCall := range []func() error{
 		func() error { return s.SetScheduleAnswerRetry(row.ID, 6, retry) },
-		func() error { return s.SetScheduleAnswerRecovery(row.ID, 6, 0, retry, false) },
+		func() error { return s.SetScheduleAnswerRecovery(row.ID, 6, 0, 0, retry, false) },
 	} {
 		if err := retryCall(); !errors.Is(err, ErrScheduleAnswerChanged) {
 			t.Fatalf("deferred candidate was revived: %v", err)
@@ -61,12 +61,12 @@ func TestClassifierFailureBudgetAndDeferralSurviveReadbackWithoutPublication(t *
 }
 
 func TestClassifierRecoveryRejectsStaleInvalidAndUnownedChanges(t *testing.T) {
-	for _, mode := range []string{"idempotent", "legacy-preserves-failures", "negative-attempts", "negative-failures", "excess-failures", "empty-deferral", "same-attempt-failures", "same-attempt-deferral", "rewind", "retry-time", "accepted", "rejected", "missing", "ended", "stop", "read-failure", "owner-failure", "write-failure"} {
+	for _, mode := range []string{"idempotent", "legacy-preserves-failures", "negative-attempts", "negative-failures", "excess-failures", "zero-attempt-deferral", "same-attempt-failures", "same-attempt-deferral", "rewind", "retry-time", "accepted", "rejected", "missing", "ended", "stop", "read-failure", "owner-failure", "write-failure"} {
 		t.Run(mode, func(t *testing.T) {
 			s, thread, turn, _ := answerAdmissionFixture(t)
 			row := savedPendingAnswer(t, s, thread, turn, "candidate")
 			retry := time.Now().UTC().Add(time.Minute)
-			if err := s.SetScheduleAnswerRecovery(row.ID, 2, 1, retry, false); err != nil {
+			if err := s.SetScheduleAnswerRecovery(row.ID, 2, 1, 0, retry, false); err != nil {
 				t.Fatal(err)
 			}
 			attempts, failures, at, deferred := 3, 2, retry, false
@@ -82,8 +82,8 @@ func TestClassifierRecoveryRejectsStaleInvalidAndUnownedChanges(t *testing.T) {
 				failures = -1
 			case "excess-failures":
 				failures = 4
-			case "empty-deferral":
-				failures, deferred = 0, true
+			case "zero-attempt-deferral":
+				attempts, failures, deferred = 0, 0, true
 			case "same-attempt-failures":
 				attempts = 2
 			case "same-attempt-deferral":
@@ -129,7 +129,7 @@ func TestClassifierRecoveryRejectsStaleInvalidAndUnownedChanges(t *testing.T) {
 			if mode == "legacy-preserves-failures" {
 				err = s.SetScheduleAnswerRetry(row.ID, attempts, at)
 			} else {
-				err = s.SetScheduleAnswerRecovery(row.ID, attempts, failures, at, deferred)
+				err = s.SetScheduleAnswerRecovery(row.ID, attempts, failures, 0, at, deferred)
 			}
 			storageFailure := strings.HasSuffix(mode, "failure")
 			if storageFailure {
@@ -159,7 +159,7 @@ func TestNewAnswerRetainsDeferredProseButOnlyOneRecoveryTranscript(t *testing.T)
 	if err := s.SavePendingScheduleAnswer(&row); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetScheduleAnswerRecovery(row.ID, 3, 3, time.Time{}, true); err != nil {
+	if err := s.SetScheduleAnswerRecovery(row.ID, 3, 3, 0, time.Time{}, true); err != nil {
 		t.Fatal(err)
 	}
 	latest, err := s.GetPendingScheduleAnswer(row.ID)
@@ -217,7 +217,7 @@ func TestFailedDeferredCompactionPreservesTheOnlyRecoveryTranscript(t *testing.T
 			if err := s.DB().Model(&row).Update("payload", payload).Error; err != nil {
 				t.Fatal(err)
 			}
-			if err := s.SetScheduleAnswerRecovery(row.ID, 3, 3, time.Time{}, true); err != nil {
+			if err := s.SetScheduleAnswerRecovery(row.ID, 3, 3, 0, time.Time{}, true); err != nil {
 				t.Fatal(err)
 			}
 			if mode == "write-error" || mode == "ignored-write" {
@@ -249,7 +249,7 @@ func TestDeferredCandidateCleanupCommitsWithTerminalTurnAndDeletion(t *testing.T
 		t.Run(action, func(t *testing.T) {
 			s, thread, turn, _ := answerAdmissionFixture(t)
 			row := savedPendingAnswer(t, s, thread, turn, "candidate")
-			if err := s.SetScheduleAnswerRecovery(row.ID, 3, 3, time.Time{}, true); err != nil {
+			if err := s.SetScheduleAnswerRecovery(row.ID, 3, 3, 0, time.Time{}, true); err != nil {
 				t.Fatal(err)
 			}
 			if action == "delete" {
@@ -296,7 +296,7 @@ func TestLegacyClassifierRecoveryRestoresOnlyTheAlreadyConsumedBudget(t *testing
 			if err := s.SetScheduleAnswerRetry(row.ID, 3, retry); err != nil {
 				t.Fatal(err)
 			}
-			if err := s.RestoreScheduleAnswerRecovery(row.ID, 3, failures, retry, failures == 3); err != nil {
+			if err := s.RestoreScheduleAnswerRecovery(row.ID, 3, failures, 0, retry, failures == 3); err != nil {
 				t.Fatal(err)
 			}
 			got, err := s.GetPendingScheduleAnswer(row.ID)
@@ -313,7 +313,7 @@ func TestLegacyClassifierRecoveryRestoresOnlyTheAlreadyConsumedBudget(t *testing
 }
 
 func TestLegacyClassifierRecoveryCannotReplaceKnownOrChangedState(t *testing.T) {
-	for _, mode := range []string{"known-failures", "new-attempt", "older-attempt", "empty-failures", "negative-failures", "excess-failures", "changed-time", "zero-time", "accepted", "deferred", "rejected", "missing", "stop", "ended"} {
+	for _, mode := range []string{"known-failures", "new-attempt", "older-attempt", "zero-attempt-deferral", "negative-failures", "excess-failures", "changed-time", "zero-time", "accepted", "deferred", "rejected", "missing", "stop", "ended"} {
 		t.Run(mode, func(t *testing.T) {
 			s, thread, turn, _ := answerAdmissionFixture(t)
 			row := savedPendingAnswer(t, s, thread, turn, "legacy")
@@ -328,7 +328,7 @@ func TestLegacyClassifierRecoveryCannotReplaceKnownOrChangedState(t *testing.T) 
 			want := error(ErrScheduleAnswerChanged)
 			switch mode {
 			case "known-failures":
-				if err := s.SetScheduleAnswerRecovery(row.ID, 4, 1, retry, false); err != nil {
+				if err := s.SetScheduleAnswerRecovery(row.ID, 4, 1, 0, retry, false); err != nil {
 					t.Fatal(err)
 				}
 				attempts = 4
@@ -336,8 +336,8 @@ func TestLegacyClassifierRecoveryCannotReplaceKnownOrChangedState(t *testing.T) 
 				attempts = 4
 			case "older-attempt":
 				attempts = 2
-			case "empty-failures":
-				failures = 0
+			case "zero-attempt-deferral":
+				attempts, failures = 0, 0
 			case "negative-failures":
 				failures = -1
 			case "excess-failures":
@@ -350,7 +350,7 @@ func TestLegacyClassifierRecoveryCannotReplaceKnownOrChangedState(t *testing.T) 
 				}
 				want = ErrScheduleAnswerAlreadyAdmitted
 			case "deferred":
-				if err := s.RestoreScheduleAnswerRecovery(row.ID, 3, 3, retry, true); err != nil {
+				if err := s.RestoreScheduleAnswerRecovery(row.ID, 3, 3, 0, retry, true); err != nil {
 					t.Fatal(err)
 				}
 			case "rejected":
@@ -370,7 +370,7 @@ func TestLegacyClassifierRecoveryCannotReplaceKnownOrChangedState(t *testing.T) 
 				}
 			}
 			before, beforeErr := s.GetPendingScheduleAnswer(row.ID)
-			err := s.RestoreScheduleAnswerRecovery(row.ID, attempts, failures, at, true)
+			err := s.RestoreScheduleAnswerRecovery(row.ID, attempts, failures, 0, at, true)
 			if !errors.Is(err, want) {
 				t.Fatalf("legacy budget refusal=%v want=%v", err, want)
 			}

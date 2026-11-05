@@ -227,9 +227,10 @@ or receive the HTTP adapter's implicit header-timeout reconnect. Each request
 still uses the complete configured response-header and body-idle budgets,
 without an extra total deadline. Request failures (`classification_unavailable`)
 and malformed output (`classification_invalid`) retry only the original
-candidate with persistent 5/10/20/30-second capped delay. Malformed output resets
-the separate consecutive request-failure counter. Local storage/configuration
-failures have distinct codes and do not consume that counter.
+candidate with persistent 5/10/20/30-second capped delay. The private row keeps
+separate consecutive request-failure and invalid-output counters; each kind
+resets the other counter. Local storage/configuration failures have distinct
+codes and do not consume either classifier budget.
 Both this classifier and the wake-permission classifier think at
 `swarm.policy_reasoning_effort`, independent of the conversation's level; an
 empty setting sends the background default `low` through
@@ -240,15 +241,22 @@ whether it claimed a new wait, which cadence fields it stated and their `delay_s
 active in-scope rows existed, the closest row's failed requirements and its own
 numbers), never the claim's words.
 
-After three consecutive classification request failures, the candidate becomes
-`deferred` durably and its unpublished text remains private. This decision does
-not establish a false schedule claim or consume its correction allowance.
+After three consecutive classification request failures, three consecutive
+invalid responses, or six total attempts on the same candidate, it becomes
+`deferred` durably and its unpublished text remains private. The retry time,
+both counters and decision save atomically; `model_backoff` records `wait_ms:0`
+and a closed `detail` of `unavailable`, `invalid` or `attempts` for the limit.
+Invalid retry receipts carry only a closed validation-reason `detail`, never
+raw decode errors, model output, quotes or candidate prose. Desktop and phone
+localize that reason; older receipts without it retain the generic message.
+This decision does not establish a false schedule claim or consume its
+correction allowance.
 The same turn, Registry and workers keep their identities: an executable goal
 or active same-thread wake permits the next manager work slice with real tool
 receipts, while an ordinary turn uses the existing human Continue/Stop pause.
 The old candidate is not retried or published. Stop cancels a request or wait;
 a human steer supersedes the unpublished candidate and continues with actual
-receipts. The failure limit is an internal policy constant, not a new setting.
+receipts. The limits are internal config policy constants, not new settings.
 
 A confirmed unsupported scheduling claim still gets one correction in the
 same turn. Its durable `model_retry` receipt preserves that allowance across
@@ -290,11 +298,13 @@ answer's decision and restores its workers before deciding whether the manager
 may run; a rejected latest candidate cannot revive an older answer. Recovery
 first verifies an eligible pending candidate. A deferred candidate cannot
 reclaim execution or replace a newer checkpoint with its old transcript.
-Legacy retry state derives its consecutive failure budget only from a
-contiguous suffix of that candidate's durable classification receipts; origin
-waits and missing attempts cannot prove the budget. Admission atomically writes
-public events, replay messages and the accepted candidate state, so an already
-accepted candidate is not broadcast again. Thread/project deletion and rewind
+Legacy retry state derives both consecutive counters only from a contiguous
+same-kind suffix of that candidate's durable classification receipts ending at
+its saved attempt; origin waits and missing attempts cannot prove the budget.
+Legacy unavailable receipts need no `detail` and retain their prior meaning.
+An already exhausted consecutive or total budget defers before another model
+request. Admission atomically writes public events, replay messages and the
+accepted candidate state, so an already accepted candidate is not broadcast again. Thread/project deletion and rewind
 remove private candidates in the same transaction as their owners. A terminal
 turn commit clears its candidate payloads and retains lightweight decision
 receipts; a failed commit preserves the full recovery payload. A private

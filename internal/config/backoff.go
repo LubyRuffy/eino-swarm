@@ -7,7 +7,9 @@ import "time"
 const (
 	DefaultModelBackoffInitial = 5 * time.Second
 	DefaultModelBackoffMax     = 30 * time.Second
-	// A read-only answer check must yield execution after repeated request
-	// failures. Its unpublished candidate remains private and recoverable.
+	// Read-only answer checks yield after either failure streak or the total
+	// candidate budget. Unpublished candidates remain private and recoverable.
 	DefaultScheduleAnswerFailures = 3
+	DefaultScheduleAnswerInvalids = 3
+	DefaultScheduleAnswerAttempts = 6
 )

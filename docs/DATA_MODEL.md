@@ -403,10 +403,11 @@ attention. Legacy rows need no output-ID or cause migration.
 | `ordinal` | int64, unique with `turn_id` | assigned as that turn's `MAX(ordinal)+1` inside the save transaction. Determines insertion/recovery order; caller values, clock rollback and equal timestamps cannot change it |
 | `kind` | text | `answer` or `report` |
 | `payload` | text | latest answer's private versioned JSON while the turn is running; contains original answer ID, candidate text/events, Final/Transcript and max-iteration state. Reports retain their distinct committed-rearm IDs and original tool-call/result receipt. Cleared by the successful terminal transaction |
-| `state` | text | `pending`, `deferred`, `accepted` or `rejected`; deferred releases candidate execution after the request-failure cap while retaining unpublished bytes. Terminal turns retain lightweight receipts, with pending/deferred changed to rejected |
+| `state` | text | `pending`, `deferred`, `accepted` or `rejected`; deferred releases candidate execution at either consecutive failure cap or the total-attempt cap while retaining unpublished bytes. Terminal turns retain lightweight receipts, with pending/deferred changed to rejected |
 | `created_at` | time | immutable wall-clock diagnostic; does not decide candidate order |
 | `attempts` | int | persisted classifier recovery count, never decreased by a stale retry write |
-| `classification_failures` | int | consecutive `classification_unavailable` request failures; invalid output resets it. Saved atomically with the retry time and deferred decision; local storage/configuration failures do not consume it |
+| `classification_failures` | int | consecutive `classification_unavailable` request failures; invalid output resets it. Saved atomically with the other count, retry time and deferred decision; local storage/configuration failures do not consume it |
+| `classification_invalids` | int | consecutive `classification_invalid` responses; a request failure resets it. Defaults to zero for existing rows; separate from the transport-failure budget |
 | `retry_at` | time | next pending-candidate retry time; restart waits out the remaining delay. A deferred candidate is not retried |
 
 Saving checks the owning thread, running turn and durable Stop receipt in the
@@ -438,13 +439,18 @@ project deletion remove all candidate states transactionally. Rewind removes
 the candidates of every deleted turn, including private payloads created
 before the cut event in that same turn; late writes cannot recreate a deleted
 owner. This table is independent of planned engine-handoff checkpoints. Three
-consecutive request failures atomically move a pending candidate to deferred;
-ordinary retry writes cannot revive it. Recovery does not use a deferred
-candidate's older transcript in place of a newer checkpoint. For legacy rows
-whose new counter is zero, the engine derives only a contiguous suffix of
-candidate-bound `classification_unavailable` receipts ending at `attempts`;
-invalid output, gaps or origin waits cannot establish more failures. The
-recovered counter/deferral commits before further classification.
+consecutive unavailable request failures, three consecutive invalid responses,
+or six total attempts atomically move a pending candidate to deferred; ordinary retry
+writes cannot revive it. `SetScheduleAnswerRecovery` and
+`RestoreScheduleAnswerRecovery` save both nonnegative consecutive counts, each
+no greater than `attempts`, together with retry time and the deferred decision.
+Recovery does not use a deferred candidate's older transcript in place of a
+newer checkpoint. Legacy budgets derive both counters only from a contiguous
+same-kind suffix of candidate-bound classification receipts ending at `attempts`.
+Gaps and origin waits cannot establish more failures; old unavailable receipts
+without `detail` keep their existing meaning. The recovered counts/deferral
+commit before further classification; an already exhausted budget causes no
+new model request.
 For reports, the schedule action commits before the separate private save.
 An existing original-call receipt prevents repeating that action during
 classification recovery. If the process dies before the private save, this
@@ -553,13 +559,19 @@ time; a later failure can extend it. Chat and replay show one timed notice per
 conversation/generation and omit zero-delay probe notices; Trace keeps each
 caller record. This event grants no retry allowance and is not an LLM request.
 
-Candidate recovery contains `{scope:"schedule_answer",attempt,wait_ms,code,
-candidate_id}`. Codes are `classification_unavailable`, `classification_invalid`
-and `classification_deferred` (with `wait_ms:0` at the cap). Candidate attempts
-are independent of origin generations. Classifier calls bypass the origin gate
-and implicit HTTP reconnect entirely. These events contain identity/decision
-metadata, never the private candidate payload. Older events may omit scope or
-cooldown_id; a candidate_id still identifies legacy candidate recovery.
+Candidate recovery remains text JSON containing
+`{scope:"schedule_answer",attempt,wait_ms,code,candidate_id,detail?}`. Codes are
+`classification_unavailable`, `classification_invalid` and
+`classification_deferred` (with `wait_ms:0` at any cap). Invalid retry `detail`
+is one of `missing_message`, `json`, `trailing`, `claim_list`, `claim_meaning`,
+`claim_shape`, `unspecified_scope_quote`, `scope_quote`, `schedule_id`,
+`quote_not_in_candidate` or `next_run_at`; deferred `detail` identifies its
+limit as `unavailable`, `invalid` or `attempts`. Candidate attempts are independent
+of origin generations. Classifier calls bypass the origin gate and implicit
+HTTP reconnect entirely. These events contain identity/decision metadata, never
+raw decoder errors, model response text, quotes or the private candidate payload.
+Older events may omit `detail` and retain generic diagnostics; events may also
+omit scope or cooldown_id, and a candidate_id still identifies legacy recovery.
 
 `workers_retained` is an additive event kind using the existing `events.text`
 JSON payload, without a schema migration or new column:

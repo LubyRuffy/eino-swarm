@@ -1,3 +1,4 @@
+import { backoffZh } from "./messages-backoff"
 import { remoteLoginZh } from "./messages-remote-login"
 import { desktopAccountZh } from "./messages-desktop-account"
 import { memoryZh } from "./messages-memory-zh"
@@ -10,6 +11,7 @@ import type { en } from "./messages-en"
 
 /** Chinese UI chrome. Every key in messages-en.ts must have a string here. */
 export const zh: { [K in keyof typeof en]: string } = {
+  ...backoffZh,
   ...desktopAccountZh,
   ...remoteLoginZh,
   ...draftZH,
@@ -434,29 +436,6 @@ export const zh: { [K in keyof typeof en]: string } = {
   "notice.goalPaused": "目标已暂停。点「开始目标」继续。",
   "notice.goalBlocked": "目标已卡住：需要你或外部条件才能继续。",
   "notice.modelRetry": "模型出错，正在重试。",
-  "backoff.details": "重试说明",
-  "backoff.hide": "收起说明",
-  "backoff.steps": "本次等待涉及的步骤：",
-  "backoff.origin": "模型服务在请求失败后进入共享冷却。以下步骤在等待发送模型请求，不代表每个步骤都发生了失败；此记录未标明最初触发共享冷却的请求。",
-  "backoff.scheduleReason": "本次等待发生在未发布答复的调度声明核对步骤，核对恢复前保留原候选答复。",
-  "backoff.unknown": "此记录表示模型请求发送前的等待，未记录具体重试原因。",
-  "backoff.failures": "服务连续失败次数：{count}",
-  "backoff.attempt": "核对尝试次数：{count}",
-  "backoff.manager": "主管模型请求",
-  "backoff.title": "对话或调度标题生成",
-  "backoff.compact": "对话上下文压缩",
-  "backoff.memory": "记忆复核",
-  "backoff.schedule": "调度答复核对",
-  "backoff.wake": "定时唤醒权限核对",
-  "backoff.model": "模型请求",
-  "backoff.classification_unavailable": "核对请求失败。",
-  "backoff.classification_invalid": "核对响应格式无效。",
-  "backoff.classification_deferred": "核对已暂缓，此提示不承诺再次重试已保留的答复。",
-  "notice.modelBackoff": "等待 {seconds} 秒后重试模型请求。",
-  "notice.modelBackoffUnknown": "等待后重试模型请求。",
-  "notice.scheduleAnswerBackoff": "等待 {seconds} 秒后重试未发布答复的核对。",
-  "notice.scheduleAnswerBackoffUnknown": "等待重试未发布答复的核对。",
-  "notice.scheduleAnswerDeferred": "答复核对暂不可用，未发布候选已保留。",
   "notice.modelRetryToolJSON": "模型返回的工具调用不是合法 JSON，正在重试。",
   "notice.modelRetryRateLimited": "模型服务正在限流，正在重试。",
   "notice.modelRetryUnavailable": "模型服务不可用，正在重试。",

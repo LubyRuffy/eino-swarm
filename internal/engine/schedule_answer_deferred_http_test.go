@@ -239,7 +239,7 @@ func TestDeferredCandidateColdRecoveryContinuesWithoutClassifyingOldProse(t *tes
 	if failure != nil {
 		t.Fatal(failure)
 	}
-	if err := e.store.SetScheduleAnswerRecovery(row.ID, 3, 3, time.Now().Add(time.Hour), true); err != nil {
+	if err := e.store.SetScheduleAnswerRecovery(row.ID, 3, 3, 0, time.Now().Add(time.Hour), true); err != nil {
 		t.Fatal(err)
 	}
 	release()

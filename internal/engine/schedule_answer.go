@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"sort"
 	"strings"
@@ -44,6 +44,7 @@ type scheduleAnswerClaim struct {
 
 type scheduleAnswerError struct {
 	Code   string
+	Detail string
 	Claims int
 	Hash   string
 	Cause  error
@@ -98,10 +99,14 @@ func (e *Engine) classifyScheduleAnswer(ctx context.Context, turn *store.Turn, t
 		failure.Cause = err
 		return scheduleAnswerClassification{}, failure
 	}
-	claims, err := decodeScheduleAnswer(out, text)
-	if err != nil {
+	claims, invalid := decodeScheduleAnswer(out, text)
+	if invalid != nil {
 		failure.Code = "classification_invalid"
-		failure.Cause = err
+		var diagnostic *scheduleAnswerError
+		if errors.As(invalid, &diagnostic) {
+			failure.Detail = diagnostic.Detail
+		}
+		failure.Cause = invalid
 		return scheduleAnswerClassification{}, failure
 	}
 	return scheduleAnswerClassification{claims: claims, hash: failure.Hash}, nil
@@ -157,8 +162,13 @@ func (e *Engine) verifyScheduleAnswer(ctx context.Context, turn *store.Turn, tex
 }
 
 func decodeScheduleAnswer(out *schema.Message, text []string) ([]scheduleAnswerClaim, error) {
-	if out == nil || len(out.ToolCalls) != 0 {
-		return nil, fmt.Errorf("missing claim classification")
+	// Causes may include model fragments. Only this closed structural detail
+	// crosses the public diagnostic boundary, never Cause.Error().
+	invalid := func(detail string, cause error) ([]scheduleAnswerClaim, error) {
+		return nil, &scheduleAnswerError{Code: "classification_invalid", Detail: detail, Cause: cause}
+	}
+	if out == nil || len(out.ToolCalls) != 0 || strings.TrimSpace(out.Content) == "" {
+		return invalid("missing_message", nil)
 	}
 	var answer struct {
 		Claims []scheduleAnswerClaim `json:"claims"`
@@ -166,33 +176,33 @@ func decodeScheduleAnswer(out *schema.Message, text []string) ([]scheduleAnswerC
 	dec := json.NewDecoder(strings.NewReader(out.Content))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&answer); err != nil {
-		return nil, err
+		return invalid("json", err)
 	}
 	if err := dec.Decode(new(any)); err != io.EOF {
-		return nil, fmt.Errorf("trailing claim content")
+		return invalid("trailing", nil)
 	}
 	if answer.Claims == nil || len(answer.Claims) > 32 {
-		return nil, fmt.Errorf("invalid claim list")
+		return invalid("claim_list", nil)
 	}
 	claims := make([]scheduleAnswerClaim, 0, len(answer.Claims))
 	for _, claim := range answer.Claims {
 		if (claim.Stance != "affirmed" && claim.Stance != "negated" && claim.Stance != "hypothetical") ||
 			(claim.Temporal != "current" && claim.Temporal != "historical" && claim.Temporal != "intended") ||
 			(claim.Attribution != "assistant" && claim.Attribution != "reported") {
-			return nil, fmt.Errorf("invalid claim meaning")
+			return invalid("claim_meaning", nil)
 		}
 		if claim.New == nil || (claim.Scope != "thread" && claim.Scope != "independent" && claim.Scope != "unspecified") || strings.TrimSpace(claim.Quote) == "" || claim.DelayS < 0 || claim.EveryS < 0 {
-			return nil, fmt.Errorf("invalid claim")
+			return invalid("claim_shape", nil)
 		}
 		if claim.Scope == "unspecified" {
 			if claim.ScopeQuote != "" {
-				return nil, fmt.Errorf("unspecified scope has an explicit destination quote")
+				return invalid("unspecified_scope_quote", nil)
 			}
 		} else if strings.TrimSpace(claim.ScopeQuote) == "" || !strings.Contains(claim.Quote, claim.ScopeQuote) {
-			return nil, fmt.Errorf("explicit scope lacks a grounded destination quote")
+			return invalid("scope_quote", nil)
 		}
 		if claim.ScheduleID != "" && !strings.Contains(claim.Quote, claim.ScheduleID) {
-			return nil, fmt.Errorf("schedule identity is not in the claim quote")
+			return invalid("schedule_id", nil)
 		}
 		found := false
 		for _, body := range text {
@@ -202,11 +212,11 @@ func decodeScheduleAnswer(out *schema.Message, text []string) ([]scheduleAnswerC
 			}
 		}
 		if !found {
-			return nil, fmt.Errorf("claim quote is not candidate text")
+			return invalid("quote_not_in_candidate", nil)
 		}
 		if claim.NextRunAt != "" {
 			if _, err := time.Parse(time.RFC3339, claim.NextRunAt); err != nil {
-				return nil, err
+				return invalid("next_run_at", err)
 			}
 		}
 		if claim.Stance == "affirmed" && claim.Temporal == "current" && claim.Attribution == "assistant" {

@@ -265,12 +265,16 @@ workflow or real-model efficiency improvement is implied by enabling it.
   allowed for a confirmed unsupported claim; repeating it ends with an error.
   Classification retries only the private candidate with capped delays,
   using the full provider first-byte/body-idle budgets while bypassing shared
-  service cooldowns and implicit reconnects. After three consecutive request
-  failures, that candidate is durably deferred and stays unpublished. The same
-  turn, Registry and workers continue user work under an executable goal or
-  active conversation wake; other turns use the existing Continue/Stop pause.
-  Invalid classifier output resets that failure streak and retries the candidate;
-  neither case consumes the unsupported-claim correction or replays tools.
+  service cooldowns and implicit reconnects. A candidate is durably deferred
+  after three consecutive request failures, three consecutive invalid responses,
+  or six total attempts, and stays unpublished. Each failure kind resets the
+  other kind's consecutive count; both counts and the total survive restart.
+  The same turn, Registry and workers continue user work under an executable
+  goal or active conversation wake; other turns use the existing Continue/Stop
+  pause. Deferral does not prove a claim false, consume the unsupported-claim
+  correction or replay tools. Desktop and phone retry details show a safe,
+  specific validation reason or which limit deferred verification, without
+  exposing the private candidate or promising another retry of that candidate.
   Stop cancels verification; human guidance supersedes the old candidate.
   Recovery preserves deferral and cannot let old prose block new work or replace
   a newer checkpoint. Tool, thinking and worker activity remain live.

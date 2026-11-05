@@ -32,6 +32,23 @@ const processPendingAnswer = "The current inspection result is ready."
 // cancelled HTTP client's behavior. Kill only this test's owned engine, then
 // use the real engine entry point in a different OS process with the same data.
 func TestScheduleAnswerRecoversAcrossRealEngineCrashWithoutManagerReplay(t *testing.T) {
+	runScheduleAnswerProcessRecovery(t, "recover")
+}
+
+// The new process must reconstruct each consecutive budget from durable events
+// even when upgrading private rows that have no persisted counters yet.
+func TestClassifierBudgetsSurviveRealEngineCrashFromOnlyBackoffEvents(t *testing.T) {
+	for _, outcome := range []string{"unavailable", "invalid"} {
+		t.Run(outcome, func(t *testing.T) { runScheduleAnswerProcessRecovery(t, outcome) })
+	}
+}
+
+func runScheduleAnswerProcessRecovery(t *testing.T, outcome string) {
+	t.Helper()
+	wantFailures := 1
+	if outcome != "recover" {
+		wantFailures = 2
+	}
 	for _, name := range []string{"OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL", "ZWAI_MODEL_API_KEY", "ZWAI_MODEL_BASE_URL", "ZWAI_MODEL_NAME", "ZWAI_RESTORE_OLD", "ZWAI_RESTORE_DELAY"} {
 		t.Setenv(name, "")
 	}
@@ -75,7 +92,11 @@ func TestScheduleAnswerRecoversAcrossRealEngineCrashWithoutManagerReplay(t *test
 				return
 			}
 			policies.Add(1)
-			if !allowPolicy.Load() {
+			if !allowPolicy.Load() || outcome != "recover" {
+				if outcome == "invalid" {
+					fixture.reply(w, false, `{"claims":[private-policy-fragment`, "", "", nil)
+					return
+				}
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusServiceUnavailable)
 				_, _ = w.Write([]byte(`{"error":{"type":"fixture_unavailable","message":"The local classifier is temporarily unavailable."}}`))
@@ -125,7 +146,7 @@ func TestScheduleAnswerRecoversAcrossRealEngineCrashWithoutManagerReplay(t *test
 		Turn store.Turn `json:"turn"`
 	}
 	restartJSON(t, http.MethodPost, oldRecord.URL+"/api/threads/"+created.Thread.ID+"/turns", map[string]string{"text": "Inspect the current state."}, http.StatusAccepted, &started)
-	waitRestartCondition(t, 10*time.Second, "the actual classifier service failure", func() bool { return policies.Load() == 1 })
+	waitRestartCondition(t, 10*time.Second, "the actual classifier failures", func() bool { return policies.Load() == int32(wantFailures) })
 	// The separate read-only connection does not migrate or mutate a live
 	// engine's schema. Only its private pending row may retain withheld prose.
 	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(cfg.DBPath())+"?mode=ro")
@@ -140,15 +161,16 @@ func TestScheduleAnswerRecoversAcrossRealEngineCrashWithoutManagerReplay(t *test
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("classifier failed but the original candidate has no private recovery state: %v", err)
 		}
-		if err != nil || state != "pending" || attempts != 1 {
+		if err != nil || state != "pending" || attempts != wantFailures {
 			return false
 		}
+		waits := 0
 		for _, event := range restartTrace(t, oldRecord.URL, started.Turn.ID).Events {
 			if event.Kind == "model_backoff" && event.AgentID == "schedule-answer-policy" {
-				return true
+				waits++
 			}
 		}
-		return false
+		return waits == wantFailures
 	})
 	var payload struct {
 		Version  int           `json:"version"`
@@ -171,7 +193,7 @@ func TestScheduleAnswerRecoversAcrossRealEngineCrashWithoutManagerReplay(t *test
 			t.Fatal("the original process published the unverified candidate")
 		}
 	}
-	if before.Turn.Status != store.TurnRunning || managers.Load() != 1 || waits != 1 {
+	if before.Turn.Status != store.TurnRunning || managers.Load() != 1 || waits != wantFailures {
 		t.Fatalf("the classifier outage terminated or replayed the original task: turn=%+v manager=%d waits=%d", before.Turn, managers.Load(), waits)
 	}
 	current, err := lease.Discover(dataDir, false)
@@ -190,10 +212,18 @@ func TestScheduleAnswerRecoversAcrossRealEngineCrashWithoutManagerReplay(t *test
 	if !errors.As(old.waitErr, &killed) || killed.Sys().(syscall.WaitStatus).Signal() != syscall.SIGKILL {
 		t.Fatalf("the original process did not cross the intended crash boundary: %v", old.waitErr)
 	}
+	if outcome != "recover" {
+		resetProcessClassifierCounters(t, cfg.DBPath(), candidateID, started.Turn.ID, outcome)
+	}
 	replacement := startRestartProcess(t, dir, os.Args[0], "engine", "--data-dir", dataDir, "--addr", "127.0.0.1:0")
 	newRecord := waitRestartRecord(t, dataDir, oldRecord.PID, 10*time.Second, replacement)
 	if newRecord.PID != replacement.cmd.Process.Pid {
 		t.Fatalf("the recovered lease belongs to another process: %+v", newRecord)
+	}
+	if outcome != "recover" {
+		assertProcessClassifierBudgetDeferred(t, db, newRecord.URL, started.Turn.ID, candidateID, outcome, &managers, &policies)
+		stopScheduleAnswerRecoveryProcess(t, replacement)
+		return
 	}
 	streamCtx, cancelStream := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancelStream()
@@ -278,18 +308,135 @@ func TestScheduleAnswerRecoversAcrossRealEngineCrashWithoutManagerReplay(t *test
 	if len(turns.Turns) != 1 || turns.Turns[0].ID != started.Turn.ID {
 		t.Fatalf("the OS recovery created a replacement user turn: %+v", turns.Turns)
 	}
-	if err := replacement.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+	stopScheduleAnswerRecoveryProcess(t, replacement)
+	t.Logf("real_crash_recovery old_pid=%d replacement_pid=%d turn=%s candidate=%s message=%s managers=%d policies=%d stored_answers=%d old_exit=%v replacement_exit=%v", oldRecord.PID, newRecord.PID, started.Turn.ID, candidateID, messageID, managers.Load(), policies.Load(), answers, old.waitErr, replacement.waitErr)
+}
+
+// This connection is opened only after SIGKILL and wait confirm the old owner
+// exited. It emulates an upgrade row without mutating a running engine's state.
+func resetProcessClassifierCounters(t *testing.T, path, candidateID, turnID, outcome string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	result, err := db.ExecContext(t.Context(), "UPDATE pending_schedule_answers SET classification_failures = 0, classification_invalids = 0, retry_at = ? WHERE id = ? AND attempts = 2 AND state = 'pending'", time.Now().UTC(), candidateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected != 1 {
+		t.Fatalf("did not clear exactly the crashed candidate's counters: affected=%d error=%v", affected, err)
+	}
+	var attempts, unavailable, invalid int
+	if err := db.QueryRowContext(t.Context(), "SELECT attempts, classification_failures, classification_invalids FROM pending_schedule_answers WHERE id = ?", candidateID).Scan(&attempts, &unavailable, &invalid); err != nil || attempts != 2 || unavailable != 0 || invalid != 0 {
+		t.Fatalf("event-only recovery fixture retained private counters: attempts=%d unavailable=%d invalid=%d error=%v", attempts, unavailable, invalid, err)
+	}
+	if outcome != "unavailable" {
+		return
+	}
+	// Old unavailable events predate detail. Their contiguous suffix must
+	// retain exactly the same failure-budget meaning after the upgrade.
+	rows, err := db.QueryContext(t.Context(), "SELECT id, text FROM events WHERE turn_id = ? AND kind = 'model_backoff' AND agent_id = 'schedule-answer-policy' ORDER BY seq", turnID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type change struct {
+		id   uint
+		text string
+	}
+	var changes []change
+	for rows.Next() {
+		var item change
+		if err := rows.Scan(&item.id, &item.text); err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		if err := json.Unmarshal([]byte(item.text), &body); err != nil {
+			t.Fatal(err)
+		}
+		delete(body, "detail")
+		encoded, _ := json.Marshal(body)
+		item.text = string(encoded)
+		changes = append(changes, item)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range changes {
+		if _, err := db.ExecContext(t.Context(), "UPDATE events SET text = ? WHERE id = ?", item.text, item.id); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func assertProcessClassifierBudgetDeferred(t *testing.T, db *sql.DB, baseURL, turnID, candidateID, outcome string, managers, policies *atomic.Int32) {
+	t.Helper()
+	var trace restartProcessTrace
+	waitRestartCondition(t, 8*time.Second, "reconstructed consecutive classifier budget", func() bool {
+		trace = restartTrace(t, baseURL, turnID)
+		for _, event := range trace.Events {
+			if event.Kind == "model_backoff" && event.AgentID == "schedule-answer-policy" && strings.Contains(event.Text, `"classification_deferred"`) {
+				return true
+			}
+		}
+		return false
+	})
+	deferred := 0
+	for _, event := range trace.Events {
+		if strings.Contains(event.Text, processPendingAnswer) || strings.Contains(event.Text, "private-policy-fragment") {
+			t.Fatalf("process recovery exposed candidate or decoder fragments: %+v", event)
+		}
+		if event.Kind == "model_retry" {
+			t.Fatalf("process recovery spent manager correction allowance: %+v", event)
+		}
+		if event.Kind != "model_backoff" || event.AgentID != "schedule-answer-policy" {
+			continue
+		}
+		var body struct {
+			Code, Detail string
+			WaitMS       int64 `json:"wait_ms"`
+		}
+		if err := json.Unmarshal([]byte(event.Text), &body); err != nil {
+			t.Fatal(err)
+		}
+		if body.Code == "classification_deferred" {
+			deferred++
+			if body.Detail != outcome || body.WaitMS != 0 {
+				t.Fatalf("recovered budget lacked its safe exhaustion reason: %+v", event)
+			}
+		}
+	}
+	var state, payload string
+	var attempts, unavailable, invalid int
+	if err := db.QueryRowContext(t.Context(), "SELECT state, payload, attempts, classification_failures, classification_invalids FROM pending_schedule_answers WHERE id = ?", candidateID).Scan(&state, &payload, &attempts, &unavailable, &invalid); err != nil {
+		t.Fatal(err)
+	}
+	wantUnavailable, wantInvalid := 3, 0
+	if outcome == "invalid" {
+		wantUnavailable, wantInvalid = 0, 3
+	}
+	if state != "deferred" || attempts != 3 || unavailable != wantUnavailable || invalid != wantInvalid || !strings.Contains(payload, processPendingAnswer) || deferred != 1 || trace.Turn.Status != store.TurnRunning || trace.Turn.Final != "" || managers.Load() != 1 || policies.Load() != 3 {
+		t.Fatalf("new process did not honor event-only budget: state=%s attempts=%d unavailable=%d invalid=%d deferrals=%d manager=%d checks=%d turn=%+v", state, attempts, unavailable, invalid, deferred, managers.Load(), policies.Load(), trace.Turn)
+	}
+}
+
+func stopScheduleAnswerRecoveryProcess(t *testing.T, process *restartProcess) {
+	t.Helper()
+	if err := process.cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		t.Fatal(err)
 	}
 	select {
-	case <-replacement.done:
-		if replacement.waitErr != nil {
-			t.Fatalf("the owned replacement did not cleanly exit: %v", replacement.waitErr)
+	case <-process.done:
+		if process.waitErr != nil {
+			t.Fatalf("the owned replacement did not cleanly exit: %v", process.waitErr)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the owned replacement remained alive after cleanup")
 	}
-	t.Logf("real_crash_recovery old_pid=%d replacement_pid=%d turn=%s candidate=%s message=%s managers=%d policies=%d stored_answers=%d old_exit=%v replacement_exit=%v", oldRecord.PID, newRecord.PID, started.Turn.ID, candidateID, messageID, managers.Load(), policies.Load(), answers, old.waitErr, replacement.waitErr)
 }
 
 func scheduleAnswerProcessPrompt(t *testing.T) string {

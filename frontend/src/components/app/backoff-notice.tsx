@@ -3,6 +3,7 @@ import { useId, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { localizeNotice } from "@/lib/i18n"
+import { scheduleAnswerBackoffReason } from "@/lib/transcript-backoff"
 import type { Block } from "@/lib/transcript"
 import { useT, type Translate } from "@/lib/use-t"
 
@@ -27,6 +28,7 @@ export function BackoffNotice({ block }: { block: Block }) {
   const id = useId()
   const context = block.backoff
   if (block.quiet || !context) return null
+  const reason = scheduleAnswerBackoffReason(context)
   return (
     <div data-testid="backoff-notice" className="my-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[13px] text-muted-foreground">
       <div className="flex items-start gap-2">
@@ -40,13 +42,13 @@ export function BackoffNotice({ block }: { block: Block }) {
       </div>
       <div id={id} hidden={!open} role="region" aria-label={t("backoff.details")}>
         <div className="mt-2 space-y-2 pl-5 leading-relaxed">
-          <p>{t(context.scope === "origin" ? "backoff.origin" : context.scope === "schedule_answer" ? "backoff.scheduleReason" : "backoff.unknown")}</p>
+          {context.code !== "classification_deferred" ? <p>{t(context.scope === "origin" ? "backoff.origin" : context.scope === "schedule_answer" ? "backoff.scheduleReason" : "backoff.unknown")}</p> : null}
           <div>
             <p>{t("backoff.steps")}</p>
             <ul className="list-disc pl-5">{context.callers.map((caller) => <li key={caller.agentId} className="wrap-break-word">{callerLabel(caller, t)}</li>)}</ul>
           </div>
           {context.attempt && context.scope !== "unknown" ? <p>{t(context.scope === "origin" ? "backoff.failures" : "backoff.attempt", { count: context.attempt })}</p> : null}
-          {context.code ? <p>{t(`backoff.${context.code}`)}</p> : null}
+          {reason ? <p>{t(reason)}</p> : null}
         </div>
       </div>
     </div>

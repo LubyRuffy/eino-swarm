@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, expect, it } from "vitest"
 
 import { renderBlock } from "@/components/thread-blocks"
@@ -52,4 +52,43 @@ it("describes private answer recovery separately and never adds a classifier wor
   render(<>{blocks.map((block) => <div key={block.id}>{renderBlock(block)}</div>)}</>)
   expect(screen.getByText("等待 5 秒后重试未发布答复的核对。")).toBeVisible()
   expect(screen.getByText("答复核对暂不可用，未发布候选已保留。")).toBeVisible()
+})
+
+it.each([
+  ["classification_invalid", "missing_message", "核对响应缺少正文或包含工具调用。"],
+  ["classification_invalid", "json", "核对响应不是符合要求的 JSON。"],
+  ["classification_invalid", "trailing", "核对响应的 JSON 后还有多余内容。"],
+  ["classification_invalid", "claim_list", "核对响应的 claims 列表无效。"],
+  ["classification_invalid", "claim_meaning", "核对声明的立场、时间或归属无效。"],
+  ["classification_invalid", "claim_shape", "核对声明的必需字段或枚举无效。"],
+  ["classification_invalid", "unspecified_scope_quote", "未指定范围的声明却附带了范围引文。"],
+  ["classification_invalid", "scope_quote", "声明的范围引文缺失或没有原文依据。"],
+  ["classification_invalid", "schedule_id", "声明的计划 ID 不在引文中。"],
+  ["classification_invalid", "quote_not_in_candidate", "声明引文不是候选答复中的原文。"],
+  ["classification_invalid", "next_run_at", "声明的下次运行时间不是 RFC3339 格式。"],
+  ["classification_deferred", "unavailable", "连续核对请求失败达到上限，已暂缓。"],
+  ["classification_deferred", "invalid", "连续核对响应格式无效达到上限，已暂缓。"],
+  ["classification_deferred", "attempts", "这份候选答复的核对总尝试次数达到上限，已暂缓。"],
+])("shows the phone retry explanation for %s / %s", (code, detail, reason) => {
+  setLocale("zh")
+  const receipt = event({ scope: "schedule_answer", candidate_id: "private-answer", code, detail, attempt: 3, wait_ms: code === "classification_deferred" ? 0 : 5000, cause: "private-fragment" }, 1, "schedule-answer-policy")
+  const blocks = applyEvent([], receipt)
+  expect(applyEvent(blocks, receipt)).toEqual(blocks)
+  expect(phoneAgents(blocks)).toEqual([])
+  render(renderBlock(blocks[0]))
+  const details = screen.getByRole("button", { name: "重试说明" })
+  expect(details).toHaveAttribute("aria-expanded", "false")
+  fireEvent.click(details)
+  expect(screen.getByText(reason)).toBeVisible()
+  expect(screen.getByText("核对尝试次数：3")).toBeVisible()
+  expect(JSON.stringify(blocks)).not.toContain("private-")
+})
+
+it.each([undefined, "private-fragment", "attempts", { message: "private-fragment" }])("keeps the old phone invalid message for detail %j", (detail) => {
+  setLocale("zh")
+  const blocks = applyEvent([], event({ scope: "schedule_answer", code: "classification_invalid", detail, wait_ms: 5000 }, 1))
+  render(renderBlock(blocks[0]))
+  fireEvent.click(screen.getByRole("button", { name: "重试说明" }))
+  expect(screen.getByText("核对响应格式无效。")).toBeVisible()
+  expect(JSON.stringify(blocks)).not.toContain("private-fragment")
 })

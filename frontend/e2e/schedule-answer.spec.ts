@@ -18,7 +18,7 @@ test("a live scheduling answer survives classifier failures and a response beyon
     const { settings } = await (await request.get("/api/settings")).json()
     expect((await request.put("/api/settings", { data: {
       models: { default: "answer-fixture", providers: [{ id: "answer-fixture", label: "Offline scheduling admission", base_url: fixture.url, model: "fixture-model", api_key: "", context_window: 128000, first_byte_timeout_seconds: 40, timeout_seconds: 10 }] },
-      swarm: { ...settings.swarm, auto_title: false, schedule_min_interval_seconds: 1 },
+      swarm: { ...settings.swarm, auto_title: false, composer_predictions: false, schedule_min_interval_seconds: 1 },
       memory: { ...settings.memory, auto_review: false },
     } })).ok()).toBe(true)
     await page.addInitScript(() => {
@@ -123,7 +123,7 @@ test("Stop cancels a classification recovery wait without publishing or rerunnin
     const { settings } = await (await request.get("/api/settings")).json()
     expect((await request.put("/api/settings", { data: {
       models: { default: "answer-stop-fixture", providers: [{ id: "answer-stop-fixture", label: "Offline classification cancellation", base_url: fixture.url, model: "fixture-model", api_key: "", context_window: 128000, first_byte_timeout_seconds: 40, timeout_seconds: 10 }] },
-      swarm: { ...settings.swarm, auto_title: false },
+      swarm: { ...settings.swarm, auto_title: false, composer_predictions: false },
       memory: { ...settings.memory, auto_review: false },
     } })).ok()).toBe(true)
     await page.addInitScript(() => {
@@ -194,7 +194,7 @@ test("consecutive unsupported corrections stop goal continuation with separate r
     const { settings } = await (await request.get("/api/settings")).json()
     expect((await request.put("/api/settings", { data: {
       models: { default: "answer-refusal-fixture", providers: [{ id: "answer-refusal-fixture", label: "Offline correction limit", base_url: fixture.url, model: "fixture-model", api_key: "", context_window: 128000 }] },
-      swarm: { ...settings.swarm, auto_title: false },
+      swarm: { ...settings.swarm, auto_title: false, composer_predictions: false },
       memory: { ...settings.memory, auto_review: false },
     } })).ok()).toBe(true)
     await page.addInitScript(() => {
@@ -266,6 +266,53 @@ test("consecutive unsupported corrections stop goal continuation with separate r
     await writeFile(info.outputPath("goal-schedule-refusal-evidence.json"), JSON.stringify({ thread, traces, lifecycle, fixture: fixture.state(), errors: fixture.errors }, null, 2), { mode: 0o600 })
   } finally {
     await page.unroute(history)
+    if (threadID) await request.post(`/api/threads/${threadID}/interrupt`, { timeout: 5000 }).catch(() => undefined)
+    await fixture.close()
+  }
+})
+
+
+test("invalid answer checks explain their format error and defer without retrying the manager", async ({ page, request }, info) => {
+  test.skip(process.env.ZWAI_E2E_SCHEDULE_ANSWER !== "1", "requires the offline answer admission fixture")
+  const fixture = await startScheduleAnswerFixture({ invalid: true })
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()) })
+  let threadID = ""
+  try {
+    const { settings } = await (await request.get("/api/settings")).json()
+    expect((await request.put("/api/settings", { data: {
+      models: { default: "answer-invalid-fixture", providers: [{ id: "answer-invalid-fixture", label: "Offline invalid classification", base_url: fixture.url, model: "fixture-model", api_key: "", context_window: 128000 }] },
+      swarm: { ...settings.swarm, auto_title: false, composer_predictions: false }, memory: { ...settings.memory, auto_review: false },
+    } })).ok()).toBe(true)
+    await freshConversation(page)
+    threadID = (await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute("data-id")) ?? ""
+    await composer(page).fill("Inspect the assigned task state.")
+    await composer(page).press("Enter")
+    const transcript = page.getByTestId("transcript")
+    const invalid = transcript.getByTestId("backoff-notice").filter({ hasText: "Waiting 5s before checking the unpublished answer again." })
+    await invalid.getByRole("button", { name: "Retry details", exact: true }).click()
+    await expect(invalid.getByText("The verification response is not valid JSON in the required format.", { exact: true })).toBeVisible()
+    const deferred = transcript.getByTestId("backoff-notice").filter({ hasText: "Answer verification is unavailable. The unpublished answer is retained." })
+    await expect(deferred).toBeVisible({ timeout: 25_000 })
+    await deferred.getByRole("button", { name: "Retry details", exact: true }).click()
+    await expect(deferred.getByText("Consecutive invalid verification responses reached the limit. Verification was deferred.", { exact: true })).toBeVisible()
+    await expect(deferred).not.toContainText("while verification recovers")
+    await expect(transcript).not.toContainText(unsupportedScheduleAnswer)
+    await expect(transcript).not.toContainText("private-format-error")
+    await expect(page.getByRole("button", { name: "Continue for more tool rounds", exact: true })).toBeVisible()
+    expect(fixture.state()).toEqual({ managerRequests: 1, checks: 3 })
+    await writeFile(info.outputPath("invalid-verification-deferred.png"), await page.screenshot({ animations: "disabled" }), { mode: 0o600 })
+    await reloadOpenConversation(page)
+    await expect(deferred).toBeVisible()
+    await deferred.getByRole("button", { name: "Retry details", exact: true }).click()
+    await expect(deferred.getByText("Consecutive invalid verification responses reached the limit. Verification was deferred.", { exact: true })).toBeVisible()
+    await expect(deferred).not.toContainText("while verification recovers")
+    expect(fixture.state()).toEqual({ managerRequests: 1, checks: 3 })
+    expect(fixture.errors).toEqual([])
+    expect(errors).toEqual([])
+    await writeFile(info.outputPath("invalid-verification-deferred-replay.png"), await page.screenshot({ animations: "disabled" }), { mode: 0o600 })
+  } finally {
     if (threadID) await request.post(`/api/threads/${threadID}/interrupt`, { timeout: 5000 }).catch(() => undefined)
     await fixture.close()
   }

@@ -1,3 +1,4 @@
+import { backoffEn } from "./messages-backoff"
 import { remoteLoginEn } from "./messages-remote-login"
 import { desktopAccountEn } from "./messages-desktop-account"
 import { memoryEn } from "./messages-memory-en"
@@ -9,6 +10,7 @@ import { agentFailureEn } from "./messages-agent-failure-en"
 /** English UI chrome. Keys are stable; Chinese lives in messages-zh.ts.
  *  Agent replies and protocol markers (quoted-send wrappers) stay English. */
 export const en = {
+  ...backoffEn,
   ...desktopAccountEn,
   ...remoteLoginEn,
   ...draftEN,
@@ -450,29 +452,6 @@ export const en = {
   "notice.goalBlocked":
     "Standing objective blocked: progress needs you or an external change.",
   "notice.modelRetry": "Retrying after a model error.",
-  "backoff.details": "Retry details",
-  "backoff.hide": "Hide details",
-  "backoff.steps": "Steps associated with this wait:",
-  "backoff.origin": "The model service is cooling down after request failures. These steps were waiting to send a model request; this does not mean each step failed. The event does not identify which request triggered the shared cooldown.",
-  "backoff.scheduleReason": "This wait belongs to verification of an unpublished scheduling answer. The original answer is retained while verification recovers.",
-  "backoff.unknown": "This receipt records a wait before a model request. Its exact retry cause was not recorded.",
-  "backoff.failures": "Consecutive service failures: {count}",
-  "backoff.attempt": "Verification attempt: {count}",
-  "backoff.manager": "Manager model request",
-  "backoff.title": "Conversation or schedule title generation",
-  "backoff.compact": "Conversation context compression",
-  "backoff.memory": "Memory review",
-  "backoff.schedule": "Scheduling answer verification",
-  "backoff.wake": "Scheduled wake permission check",
-  "backoff.model": "Model request",
-  "backoff.classification_unavailable": "The verification request failed.",
-  "backoff.classification_invalid": "The verification response was invalid.",
-  "backoff.classification_deferred": "Verification was deferred; this notice does not promise another retry of the retained answer.",
-  "notice.modelBackoff": "Waiting {seconds}s before retrying the model request.",
-  "notice.modelBackoffUnknown": "Waiting before retrying the model request.",
-  "notice.scheduleAnswerBackoff": "Waiting {seconds}s before checking the unpublished answer again.",
-  "notice.scheduleAnswerBackoffUnknown": "Waiting to check the unpublished answer again.",
-  "notice.scheduleAnswerDeferred": "Answer verification is unavailable. The unpublished answer is retained.",
   "notice.modelRetryToolJSON":
     "The model returned a tool call that was not valid JSON. Retrying.",
   "notice.modelRetryRateLimited":

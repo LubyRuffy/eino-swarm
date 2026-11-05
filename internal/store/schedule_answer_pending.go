@@ -24,13 +24,14 @@ type PendingScheduleAnswer struct {
 	CreatedAt              time.Time `json:"created_at"`
 	Attempts               int       `json:"attempts"`
 	ClassificationFailures int       `json:"classification_failures"`
+	ClassificationInvalids int       `json:"classification_invalids"`
 	RetryAt                time.Time `json:"retry_at"`
 }
 
 // SavePendingScheduleAnswer binds immutable candidate bytes to a live owner.
 // Re-saving an identity reads its existing decision and retry state back into p.
 func (s *Store) SavePendingScheduleAnswer(p *PendingScheduleAnswer) error {
-	if p == nil || p.ThreadID == "" || p.TurnID == "" || (p.Kind != "answer" && p.Kind != "report") || p.Attempts < 0 || p.ClassificationFailures < 0 || p.ClassificationFailures > p.Attempts {
+	if p == nil || p.ThreadID == "" || p.TurnID == "" || (p.Kind != "answer" && p.Kind != "report") || p.Attempts < 0 || p.ClassificationFailures < 0 || p.ClassificationFailures > p.Attempts || p.ClassificationInvalids < 0 || p.ClassificationInvalids > p.Attempts {
 		return ErrScheduleAnswerChanged
 	}
 	row := *p
@@ -152,25 +153,25 @@ func (s *Store) ListScheduleReportsForRecovery(threadID string) ([]PendingSchedu
 // SetScheduleAnswerRetry persists the consumed allowance before another call.
 // A stale write cannot rewind attempts or revive a settled/deleted candidate.
 func (s *Store) SetScheduleAnswerRetry(id string, attempts int, retryAt time.Time) error {
-	return s.setScheduleAnswerRecovery(id, attempts, nil, retryAt, false, false)
+	return s.setScheduleAnswerRecovery(id, attempts, nil, nil, retryAt, false, false)
 }
 
 // SetScheduleAnswerRecovery saves classifier failures and its durable deferral
 // decision together. A deferred candidate cannot regain execution ownership by
 // retrying or by restarting; its unpublished bytes remain private.
-func (s *Store) SetScheduleAnswerRecovery(id string, attempts, classificationFailures int, retryAt time.Time, deferred bool) error {
-	return s.setScheduleAnswerRecovery(id, attempts, &classificationFailures, retryAt, deferred, false)
+func (s *Store) SetScheduleAnswerRecovery(id string, attempts, classificationFailures, classificationInvalids int, retryAt time.Time, deferred bool) error {
+	return s.setScheduleAnswerRecovery(id, attempts, &classificationFailures, &classificationInvalids, retryAt, deferred, false)
 }
 
 // RestoreScheduleAnswerRecovery records a legacy candidate's existing failure
-// evidence without consuming another attempt. It only fills a missing counter;
-// the engine must derive that counter from this candidate's durable receipts.
-func (s *Store) RestoreScheduleAnswerRecovery(id string, attempts, classificationFailures int, retryAt time.Time, deferred bool) error {
-	return s.setScheduleAnswerRecovery(id, attempts, &classificationFailures, retryAt, deferred, true)
+// evidence without consuming another attempt. It fills missing counters or
+// defers an exhausted budget, never replacing an already known counter.
+func (s *Store) RestoreScheduleAnswerRecovery(id string, attempts, classificationFailures, classificationInvalids int, retryAt time.Time, deferred bool) error {
+	return s.setScheduleAnswerRecovery(id, attempts, &classificationFailures, &classificationInvalids, retryAt, deferred, true)
 }
 
-func (s *Store) setScheduleAnswerRecovery(id string, attempts int, classificationFailures *int, retryAt time.Time, deferred, restore bool) error {
-	if attempts < 0 || classificationFailures != nil && (*classificationFailures < 0 || *classificationFailures > attempts || deferred && *classificationFailures == 0) {
+func (s *Store) setScheduleAnswerRecovery(id string, attempts int, classificationFailures, classificationInvalids *int, retryAt time.Time, deferred, restore bool) error {
+	if attempts < 0 || deferred && attempts == 0 || classificationFailures != nil && (*classificationFailures < 0 || *classificationFailures > attempts) || classificationInvalids != nil && (*classificationInvalids < 0 || *classificationInvalids > attempts) {
 		return ErrScheduleAnswerChanged
 	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -187,14 +188,17 @@ func (s *Store) setScheduleAnswerRecovery(id string, attempts int, classificatio
 		if row.State != "pending" || attempts < row.Attempts || (attempts == row.Attempts && !row.RetryAt.IsZero() && !row.RetryAt.Equal(retryAt)) {
 			return ErrScheduleAnswerChanged
 		}
-		failures := row.ClassificationFailures
+		failures, invalids := row.ClassificationFailures, row.ClassificationInvalids
 		if classificationFailures != nil {
-			failures = *classificationFailures
+			failures, invalids = *classificationFailures, *classificationInvalids
 			if restore {
-				if row.ClassificationFailures != 0 || attempts != row.Attempts || failures == 0 || !row.RetryAt.Equal(retryAt) {
+				if attempts != row.Attempts || !row.RetryAt.Equal(retryAt) ||
+					row.ClassificationFailures != 0 && failures != row.ClassificationFailures ||
+					row.ClassificationInvalids != 0 && invalids != row.ClassificationInvalids ||
+					failures == row.ClassificationFailures && invalids == row.ClassificationInvalids && !deferred {
 					return ErrScheduleAnswerChanged
 				}
-			} else if attempts == row.Attempts && (failures != row.ClassificationFailures || deferred) {
+			} else if attempts == row.Attempts && (failures != row.ClassificationFailures || invalids != row.ClassificationInvalids || deferred) {
 				return ErrScheduleAnswerChanged
 			}
 		}
@@ -205,7 +209,7 @@ func (s *Store) setScheduleAnswerRecovery(id string, attempts int, classificatio
 		if deferred {
 			state = "deferred"
 		}
-		return requireScheduleAnswerWrite(tx.Model(&row).Updates(map[string]any{"attempts": attempts, "classification_failures": failures, "retry_at": retryAt, "state": state}), 1)
+		return requireScheduleAnswerWrite(tx.Model(&row).Updates(map[string]any{"attempts": attempts, "classification_failures": failures, "classification_invalids": invalids, "retry_at": retryAt, "state": state}), 1)
 	})
 	if err != nil {
 		return fmt.Errorf("store: update schedule answer retry: %w", err)

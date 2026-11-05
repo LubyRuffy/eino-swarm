@@ -8,9 +8,10 @@ type Input = { messages: { role: string; content?: string }[]; stream?: boolean;
 
 // An actor/step protocol, independent of the human task. The correction waits
 // at the fixture boundary until the browser has observed its live SSE notice.
-export async function startScheduleAnswerFixture({ secondPolicyDelayMS = 0, secondPolicyFailures = [], unavailable = false, uncorrected = false }: {
+export async function startScheduleAnswerFixture({ secondPolicyDelayMS = 0, secondPolicyFailures = [], unavailable = false, uncorrected = false, invalid = false }: {
   secondPolicyDelayMS?: number
   secondPolicyFailures?: number[]
+  invalid?: boolean
   unavailable?: boolean
   uncorrected?: boolean
 } = {}) {
@@ -39,6 +40,11 @@ export async function startScheduleAnswerFixture({ secondPolicyDelayMS = 0, seco
         if (system.startsWith("## Schedule answer claims")) {
           if (input.stream || input.tools?.length || input.tool_choice !== "none" || input.messages.length !== 2 || input.messages[0].role !== "system" || input.messages[1].role !== "user") throw new Error("Claim policy must remain a separate read-only request")
           checks += 1
+          if (invalid) {
+            res.writeHead(200, { "Content-Type": "application/json" })
+            res.end(JSON.stringify({ choices: [{ index: 0, message: { role: "assistant", content: "{private-format-error" }, finish_reason: "stop" }] }))
+            return
+          }
           const failureStatus = unavailable ? 503 : checks > 1 ? secondPolicyFailures[checks - 2] : undefined
           if (failureStatus) {
             res.writeHead(failureStatus, { "Content-Type": "application/json" })

@@ -30,3 +30,38 @@ export function modelBackoffNotice(text?: string): ModelBackoffNotice | undefine
   }
   return { text: "Waiting before retrying the model request." }
 }
+
+const invalidDetails = ["missing_message", "json", "trailing", "claim_list", "claim_meaning", "claim_shape", "unspecified_scope_quote", "scope_quote", "schedule_id", "quote_not_in_candidate", "next_run_at"] as const
+const deferredDetails = ["unavailable", "invalid", "attempts"] as const
+
+type InvalidDetail = typeof invalidDetails[number]
+type DeferredDetail = typeof deferredDetails[number]
+export interface ScheduleAnswerBackoff {
+  code?: "classification_unavailable" | "classification_invalid" | "classification_deferred"
+  detail?: InvalidDetail | DeferredDetail
+  attempt?: number
+}
+
+/** Retain only closed diagnostics; model output and private candidate text never enter UI state. */
+export function scheduleAnswerBackoff(text?: string): ScheduleAnswerBackoff | undefined {
+  try {
+    const body = JSON.parse(text ?? "")
+    if (!body || (body.scope !== "schedule_answer" && typeof body.candidate_id !== "string")) return
+    const result: ScheduleAnswerBackoff = {}
+    if (["classification_unavailable", "classification_invalid", "classification_deferred"].includes(body.code)) result.code = body.code
+    if (Number.isSafeInteger(body.attempt) && body.attempt > 0) result.attempt = body.attempt
+    if (result.code === "classification_invalid" && invalidDetails.includes(body.detail)) result.detail = body.detail
+    if (result.code === "classification_deferred" && deferredDetails.includes(body.detail)) result.detail = body.detail
+    return result
+  } catch { return undefined }
+}
+
+export function scheduleAnswerBackoffReason(context: ScheduleAnswerBackoff) {
+  if (context.code === "classification_invalid" && invalidDetails.includes(context.detail as InvalidDetail)) {
+    return `backoff.classification_invalid.${context.detail as InvalidDetail}` as const
+  }
+  if (context.code === "classification_deferred" && deferredDetails.includes(context.detail as DeferredDetail)) {
+    return `backoff.classification_deferred.${context.detail as DeferredDetail}` as const
+  }
+  return context.code ? `backoff.${context.code}` as const : undefined
+}

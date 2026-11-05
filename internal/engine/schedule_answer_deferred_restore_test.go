@@ -47,7 +47,7 @@ func TestRestartedDeferredAnswerNeedsOnlyOneHumanContinue(t *testing.T) {
 	if failure != nil {
 		t.Fatal(failure)
 	}
-	if err := e.store.SetScheduleAnswerRecovery(row.ID, 3, 3, time.Now().Add(time.Hour), true); err != nil {
+	if err := e.store.SetScheduleAnswerRecovery(row.ID, 3, 3, 0, time.Now().Add(time.Hour), true); err != nil {
 		t.Fatal(err)
 	}
 	close(ready)
@@ -164,7 +164,7 @@ func TestDeferredReportRejectsTheUnexaminedAnswerBeforeContinuingWork(t *testing
 		t.Fatal("report tool did not return its real receipt")
 	}
 	reportID := turn.ID + ":deferred-report"
-	if err := e.store.SetScheduleAnswerRecovery(reportID, 2, 2, time.Time{}, false); err != nil {
+	if err := e.store.SetScheduleAnswerRecovery(reportID, 2, 2, 0, time.Time{}, false); err != nil {
 		t.Fatal(err)
 	}
 	release()
