@@ -398,15 +398,23 @@ behalf; the system still decides whether to honor it.
 The replacement preserves
 engine, turn and worker identities; it cannot perform engine handoff or restart
 task work. Sleep/focus changes reset observation grace, not the failure budget.
+If a successor fails while an attempt remains, the original window resumes
+probing after the retry delay with fresh observation grace. Only a new failed
+foreground probe can justify the next replacement. Activity changes discard
+stale probe evidence, and ticks accumulated during launch cannot spend an
+attempt. A final failure ends recovery and shows the native error once.
 Normal exit does not restart the shell. Local diagnostic journals are bounded;
 attributed recovery events enter the existing one-turn Trace path.
 
 Before an automatic reload/replacement, the controller reports its last probe
-boundary and age using the same diagnostic path. This adds no per-probe journal
-stream or recovery delay. Callback absence is distinct from a pending snapshot,
-capture error and mismatched pixels. Lease failures keep `ErrUnreachable` while
-exposing only safe HTTP categories, status and elapsed time; parent prelaunch,
-successor attach and post-ready precommit validation have separate error prefixes.
+boundary and age using the same diagnostic path. A successor waiting for its
+first paint reports unresolved probe boundaries during the existing wait, so
+the shared journal can record them before the parent's deadline. Recovery
+ownership still requires commit. Callback absence is distinct from a pending
+snapshot, capture error and mismatched pixels. Lease failures keep
+`ErrUnreachable` while exposing only safe HTTP categories, status and elapsed
+time. Parent prelaunch, successor attach and post-ready precommit validation
+have separate error prefixes.
 The existing asynchronous reporter does not guarantee that enqueueing has become
 durable before reload. Neither a lease error nor a missing callback identifies
 the renderer's root cause.

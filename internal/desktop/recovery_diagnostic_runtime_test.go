@@ -64,3 +64,46 @@ func TestSnapshotFailureKeepsItsCategoryWithoutLoggingNativeErrorContent(t *test
 		})
 	}
 }
+
+func TestRecoveryPendingSuccessorReportsItsProbeBeforeTheParentDeadline(t *testing.T) {
+	for _, boundary := range []string{"callback_missing", "location_pending", "snapshot_pending"} {
+		t.Run(boundary, func(t *testing.T) {
+			started := make(chan struct{}, 1)
+			h := newRecoveryHarness(t, 1, func(h *recoveryHarness) {
+				h.c.opts.Ready = func(context.Context) error { h.actions <- "commit"; return nil }
+				h.c.opts.Relaunch = func(context.Context, RecoveryAttempt) error { h.actions <- "replace"; return nil }
+				switch boundary {
+				case "callback_missing":
+					h.responsive.Store(false)
+				case "location_pending":
+					h.c.windowURL = recoveryLocation{ThreadID: "th_missing"}.windowURL(h.c.origin)
+				case "snapshot_pending":
+					h.c.capture = func(ctx context.Context) ([]byte, error) {
+						started <- struct{}{}
+						<-ctx.Done()
+						return nil, ctx.Err()
+					}
+				}
+			})
+			h.advance(1)
+			if boundary == "snapshot_pending" {
+				select {
+				case <-started:
+				case <-time.After(time.Second):
+					t.Fatal("snapshot did not start")
+				}
+			}
+			h.advance(int(recoveryProbeInterval / time.Second))
+			event := h.phase(t, "probe_failed")
+			if event.Reason != boundary || event.DurationMS <= 0 || event.SessionID != "session" || event.Generation != 2 || event.Attempt != 1 {
+				t.Fatalf("missing successor probe boundary or lineage: %+v", event)
+			}
+			h.advance(35)
+			select {
+			case action := <-h.actions:
+				t.Fatalf("uncommitted successor acted on the diagnostic: %s", action)
+			default:
+			}
+		})
+	}
+}

@@ -2081,6 +2081,20 @@ Incident evidence and the upstream-cause uncertainty are recorded in
 `internal/desktop/recovery*_test.go` exercises the actual controller with injected
 clock/probe/snapshot effects, including stale challenges, blank pixels, source
 origin, inactivity, sleep-sized tick gaps, retry exhaustion and cancellation.
+The retry regressions check that a timed-out successor leaves the second
+attempt available until a new foreground probe fails. Exercise both focus
+changes and ticks queued during the blocked launch, and require the next
+replacement to report its own probe boundary. The blocked-launch test uses a
+launcher fixture that waits for a real 30-second context deadline. The final
+failed attempt shows one native error. Before its first paint, a successor
+reports unresolved probe boundaries during the wait while the original shell
+keeps recovery ownership. Run the targeted source suite without opening a
+native window.
+
+```bash
+go test -race -count=1 -timeout 120s ./internal/desktop/ ./cmd/zwai/ -run 'Recovery|DesktopRecovery'
+```
+
 `recovery_diagnostic_runtime_test.go` requires the observed probe boundary before
 reload, preserving its policy reason and lineage without leaking native error
 content. `internal/lease/discover_diagnostics_test.go` uses real offline HTTP for

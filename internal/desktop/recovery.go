@@ -211,9 +211,11 @@ func (c *recoveryController) run(ctx context.Context) {
 		}
 	}()
 	ready := false
+	state.probeOnly = c.opts.Ready != nil
 	foreground, minimized, sleeping := c.initialActivity.focused, c.initialActivity.minimized, false
 	state.active = foreground && !minimized
 	snapshotPending := false
+	probeReported := false
 	report := func(phase, reason string) {
 		if c.opts.Diagnostic != nil {
 			observed := c.now()
@@ -223,6 +225,19 @@ func (c *recoveryController) run(ctx context.Context) {
 			}
 			c.opts.Diagnostic(RecoveryDiagnostic{SessionID: c.opts.SessionID, Generation: c.opts.Generation, Attempt: state.attempts, ShellPID: os.Getpid(), ThreadID: location.ThreadID, TurnID: location.TurnID, Phase: phase, Reason: reason, At: observed.UTC(), DurationMS: elapsed})
 		}
+	}
+	clearProbe := func() {
+		challenge = ""
+		if snapshotCancel != nil {
+			snapshotCancel()
+			snapshotCancel = nil
+		}
+		snapshotPending = false
+	}
+	showExhausted := func() {
+		clearProbe()
+		report("exhausted", "renderer_recovery_budget_exhausted")
+		c.showError()
 	}
 	for {
 		if ctx.Err() != nil {
@@ -250,12 +265,8 @@ func (c *recoveryController) run(ctx context.Context) {
 					continue
 				}
 				state.setActive(active, now)
-				challenge = ""
+				clearProbe()
 				probeStage, probeStarted = "probe_not_started", time.Time{}
-				if snapshotCancel != nil {
-					snapshotCancel()
-				}
-				snapshotPending = false
 				if active {
 					report("resumed", "")
 				} else {
@@ -272,12 +283,8 @@ func (c *recoveryController) run(ctx context.Context) {
 					// A pre-restore capture cannot acknowledge the restored document.
 					// Only the per-probe work is discarded; outer deadlines stay fixed.
 					awaitingLocation = false
-					challenge = ""
+					clearProbe()
 					probeStage, probeStarted = "probe_not_started", time.Time{}
-					if snapshotCancel != nil {
-						snapshotCancel()
-					}
-					snapshotPending = false
 					state.pendingUntil, state.nextProbe = time.Time{}, now
 				}
 				continue
@@ -286,8 +293,7 @@ func (c *recoveryController) run(ctx context.Context) {
 				if input.probe != challenge || !state.active {
 					continue
 				}
-				snapshotPending = false
-				challenge = ""
+				clearProbe()
 				if input.err != nil || !snapshotMatchesProbe(input.pixels, first, second, input.probe) {
 					probeStage = "snapshot_mismatch"
 					if input.err != nil {
@@ -309,6 +315,7 @@ func (c *recoveryController) run(ctx context.Context) {
 							return
 						}
 					}
+					state.probeOnly = false
 				}
 				continue
 			}
@@ -331,35 +338,40 @@ func (c *recoveryController) run(ctx context.Context) {
 				}
 			}(challenge, snapshotCtx, cancelSnapshot)
 		case now = <-ticks:
+			// Relaunch can block for its full deadline. Ignore any tick queued
+			// before it returned, including when it was about to enter sleep.
+			if now.Before(lastTick) {
+				continue
+			}
 			if now.Sub(lastTick) > recoveryHealthTimeout {
 				state.setActive(state.active, now)
-				challenge = ""
+				clearProbe()
 				probeStage, probeStarted = "probe_not_started", time.Time{}
-				if snapshotCancel != nil {
-					snapshotCancel()
-				}
-				snapshotPending = false
 			}
 			lastTick = now
 			// A document can mount after evaluation. Retry an unanswered startup probe
 			// without replacing a real snapshot or extending either recovery deadline.
-			if (!ready || state.stage == recoveryReload) && !snapshotPending && !state.pendingUntil.IsZero() && !now.Before(state.nextProbe) {
-				state.pendingUntil = time.Time{}
-			}
-			action := state.tick(now)
-			// Until the parent commits a successor, it remains the sole recovery owner.
-			if !ready && c.opts.Ready != nil && action != recoveryProbe {
-				continue
-			}
-			switch action {
-			case recoveryProbe:
-				if snapshotCancel != nil {
-					snapshotCancel()
+			retrying := !state.retryAt.IsZero()
+			if state.active && !retrying && (!ready || state.stage == recoveryReload) && !state.pendingUntil.IsZero() && !now.Before(state.nextProbe) {
+				if state.probeOnly && !probeReported {
+					// Report before the parent deadline, even though the successor
+					// cannot reload or replace itself before commit.
+					report("probe_failed", probeStage)
+					probeReported = true
 				}
-				snapshotPending = false
+				if !snapshotPending {
+					state.pendingUntil = time.Time{}
+				} else if state.probeOnly && !now.Before(state.pendingUntil) {
+					clearProbe()
+				}
+			}
+			switch state.tick(now) {
+			case recoveryProbe:
+				clearProbe()
+				probeReported = false
 				var random [8]byte
 				if _, err := rand.Read(random[:]); err != nil {
-					state.failed(now)
+					state.pendingUntil = time.Time{}
 					continue
 				}
 				challenge = hex.EncodeToString(random[:])
@@ -375,28 +387,27 @@ func (c *recoveryController) run(ctx context.Context) {
 				// that document. This adds no per-probe journal traffic or retries.
 				report("probe_failed", probeStage)
 				report("reloading", "renderer_unresponsive")
-				challenge = ""
-				if snapshotCancel != nil {
-					snapshotCancel()
-				}
-				snapshotPending = false
+				clearProbe()
 				document++
 				expected = location
 				awaitingLocation = expected != (recoveryLocation{})
 				c.reload(location.windowURL(c.windowURL))
 			case recoveryReplace:
 				report("probe_failed", probeStage)
-				report("replacing", "reload_did_not_restore_renderer")
-				challenge = ""
-				if snapshotCancel != nil {
-					snapshotCancel()
+				reason := "reload_did_not_restore_renderer"
+				if retrying {
+					reason = probeStage
 				}
-				snapshotPending = false
-				if c.opts.Relaunch == nil {
-					state.replacementFailed(now)
-					continue
-				}
-				if err := c.opts.Relaunch(ctx, RecoveryAttempt{Generation: c.opts.Generation + 1, Attempts: state.attempts, ThreadID: location.ThreadID, ProjectID: location.ProjectID, DraftKey: location.DraftKey}); err != nil {
+				report("replacing", reason)
+				clearProbe()
+				if c.opts.Relaunch != nil {
+					err := c.opts.Relaunch(ctx, RecoveryAttempt{Generation: c.opts.Generation + 1, Attempts: state.attempts, ThreadID: location.ThreadID, ProjectID: location.ProjectID, DraftKey: location.DraftKey})
+					lastTick = c.now()
+					if err == nil {
+						report("recovered", "")
+						c.quit()
+						return
+					}
 					report("replacement_failed", err.Error())
 					if errors.Is(err, ErrRecoveryCancelled) {
 						c.quit()
@@ -405,20 +416,17 @@ func (c *recoveryController) run(ctx context.Context) {
 					if errors.Is(err, ErrRecoveryCleanup) {
 						state.attempts = recoveryMaxAttempts
 					}
-					state.replacementFailed(c.now())
-					continue
+					if ctx.Err() != nil {
+						return
+					}
 				}
-				report("recovered", "")
-				c.quit()
-				return
+				if state.replacementFailed(lastTick) == recoveryExhausted {
+					showExhausted()
+				} else {
+					probeStage, probeStarted = "probe_not_started", time.Time{}
+				}
 			case recoveryExhausted:
-				challenge = ""
-				if snapshotCancel != nil {
-					snapshotCancel()
-				}
-				snapshotPending = false
-				report("exhausted", "renderer_recovery_budget_exhausted")
-				c.showError()
+				showExhausted()
 			}
 		}
 	}

@@ -149,16 +149,111 @@ func TestRecoveryLoopVerifiesPixelsBeforeReadyAndPreservesActualContext(t *testi
 }
 
 func TestPendingSuccessorNeverStartsASecondRecoveryOwner(t *testing.T) {
-	h := newRecoveryHarness(t, 1)
-	h.responsive.Store(false)
-	h.c.opts.Ready = func(context.Context) error { return nil }
-	h.c.opts.Relaunch = func(context.Context, RecoveryAttempt) error { h.actions <- "replace"; return nil }
+	h := newRecoveryHarness(t, 1, func(h *recoveryHarness) {
+		h.responsive.Store(false)
+		h.c.opts.Ready = func(context.Context) error { return nil }
+		h.c.opts.Relaunch = func(context.Context, RecoveryAttempt) error { h.actions <- "replace"; return nil }
+	})
 	h.advance(65)
 	select {
 	case action := <-h.actions:
 		t.Fatalf("uncommitted successor took ownership: %s", action)
 	default:
 	}
+	h.responsive.Store(true)
+	h.advance(5)
+	if event := h.phase(t, "ready"); event.Attempt != 1 {
+		t.Fatalf("precommit detection spent inherited recovery budget: %+v", event)
+	}
+}
+
+func TestRecoverySuccessorTimeoutRequiresAnotherFailedProbe(t *testing.T) {
+	var calls atomic.Int64
+	h := newRecoveryHarness(t, 0, func(h *recoveryHarness) {
+		h.responsive.Store(false)
+		h.c.opts.Relaunch = func(context.Context, RecoveryAttempt) error {
+			calls.Add(1)
+			return context.DeadlineExceeded
+		}
+	})
+	h.advance(50)
+	h.phase(t, "replacement_failed")
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("spent the second attempt without a new failed probe: calls=%d", got)
+	}
+	h.advance(25)
+	if event := h.phase(t, "replacing"); event.Attempt != 2 || event.Reason != "callback_missing" || event.DurationMS < recoveryHealthTimeout.Milliseconds() {
+		t.Fatalf("new unanswered probe did not justify the retry: %+v", event)
+	}
+	h.phase(t, "replacement_failed")
+	h.phase(t, "exhausted")
+	h.action(t, "reload")
+	h.action(t, "error")
+	h.advance(30)
+	select {
+	case action := <-h.actions:
+		t.Fatalf("terminal recovery repeated: %s", action)
+	default:
+	}
+}
+
+func TestRecoveryDropsTheTickQueuedDuringAThirtySecondSuccessorTimeout(t *testing.T) {
+	const successorDeadline = 30 * time.Second
+	entered := make(chan time.Time, 1)
+	h := newRecoveryHarness(t, 0, func(h *recoveryHarness) {
+		h.ticks = make(chan time.Time, 1)
+		h.c.ticks = h.ticks
+		h.responsive.Store(false)
+		h.c.capture = func(context.Context) ([]byte, error) { return nil, nil }
+		h.c.opts.Relaunch = func(ctx context.Context, attempt RecoveryAttempt) error {
+			h.actions <- "replace"
+			if attempt.Attempts == 2 {
+				return context.DeadlineExceeded
+			}
+			deadline, cancel := context.WithTimeout(ctx, successorDeadline)
+			defer cancel()
+			started := h.c.now()
+			entered <- started
+			<-deadline.Done()
+			h.clock.Store(started.Add(successorDeadline).UnixNano())
+			return deadline.Err()
+		}
+	})
+	h.advance(45)
+	h.action(t, "reload")
+	h.action(t, "replace")
+	started := <-entered
+	h.ticks <- started.Add(time.Second) // time.Ticker can hold one stale delivery.
+	timeout := time.NewTimer(successorDeadline + 5*time.Second)
+	defer timeout.Stop()
+	var failed RecoveryDiagnostic
+	for failed.Phase != "replacement_failed" {
+		select {
+		case <-timeout.C:
+			t.Fatal("successor deadline did not release the recovery controller")
+		case failed = <-h.phases:
+		}
+	}
+	if failed.Reason != context.DeadlineExceeded.Error() || failed.At.Sub(started) != successorDeadline {
+		t.Fatalf("first launch did not retain its timeout: %+v", failed)
+	}
+	h.responsive.Store(true)
+	h.advance(1)
+	select {
+	case action := <-h.actions:
+		t.Fatalf("queued tick launched a successor without a new probe: %s", action)
+	default:
+	}
+	h.advance(2)
+	if event := h.phase(t, "probe_failed"); event.Reason != "snapshot_mismatch" {
+		t.Fatalf("fresh retry did not inspect its own pixels: %+v", event)
+	}
+	h.advance(20)
+	if event := h.phase(t, "replacing"); event.Attempt != 2 || event.Reason != "snapshot_mismatch" || event.At.Sub(failed.At) < recoveryRetryDelay+recoveryHealthTimeout {
+		t.Fatalf("second launch lost its fresh probe boundary: %+v", event)
+	}
+	h.action(t, "replace")
+	h.action(t, "error")
 }
 
 func TestRecoveryLoopRefusesEmptySnapshotsAndShowsOneBoundedNativeError(t *testing.T) {
@@ -236,15 +331,16 @@ func TestRecoveryRawHandlerDropsOversizedAndWrongWindowWithoutBlocking(t *testin
 func TestRecoveryReadyHandshakeCanCommitOrAbortWithoutAnExtraWatchdog(t *testing.T) {
 	for _, accept := range []bool{false, true} {
 		t.Run(fmt.Sprint(accept), func(t *testing.T) {
-			h := newRecoveryHarness(t, 1)
 			called := make(chan struct{})
-			h.c.opts.Ready = func(context.Context) error {
-				close(called)
-				if !accept {
-					return errors.New("parent did not commit")
+			h := newRecoveryHarness(t, 1, func(h *recoveryHarness) {
+				h.c.opts.Ready = func(context.Context) error {
+					close(called)
+					if !accept {
+						return errors.New("parent did not commit")
+					}
+					return nil
 				}
-				return nil
-			}
+			})
 			h.advance(1)
 			select {
 			case <-called:
@@ -376,19 +472,20 @@ func TestStartupProbeRetryKeepsTheOneRealSnapshotInFlight(t *testing.T) {
 func TestShutdownWaitsForTheCurrentReadyOrRelaunchOwnerBeforeCleanup(t *testing.T) {
 	for _, stage := range []string{"ready", "commit"} {
 		t.Run(stage, func(t *testing.T) {
-			h := newRecoveryHarness(t, 0)
 			entered := make(chan struct{})
 			waitForCancellation := func(ctx context.Context) error {
 				close(entered)
 				<-ctx.Done()
 				return ctx.Err()
 			}
-			if stage == "ready" {
-				h.c.opts.Ready = waitForCancellation
-			} else {
-				h.responsive.Store(false)
-				h.c.opts.Relaunch = func(ctx context.Context, _ RecoveryAttempt) error { return waitForCancellation(ctx) }
-			}
+			h := newRecoveryHarness(t, 0, func(h *recoveryHarness) {
+				if stage == "ready" {
+					h.c.opts.Ready = waitForCancellation
+				} else {
+					h.responsive.Store(false)
+					h.c.opts.Relaunch = func(ctx context.Context, _ RecoveryAttempt) error { return waitForCancellation(ctx) }
+				}
+			})
 			var stopped atomic.Int64
 			h.c.opts.OnStopped = func() {
 				select {
@@ -414,10 +511,15 @@ func TestShutdownWaitsForTheCurrentReadyOrRelaunchOwnerBeforeCleanup(t *testing.
 }
 
 func TestShutdownWithoutAStoppedOwnerRetainsItsPrivateCopy(t *testing.T) {
-	h := newRecoveryHarness(t, 0)
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	h.c.opts.Ready = func(context.Context) error { close(entered); <-release; return errors.New("uncooperative owner ended") }
+	h := newRecoveryHarness(t, 0, func(h *recoveryHarness) {
+		h.c.opts.Ready = func(context.Context) error {
+			close(entered)
+			<-release
+			return errors.New("uncooperative owner ended")
+		}
+	})
 	var stopped atomic.Bool
 	h.c.opts.OnStopped = func() { stopped.Store(true) }
 	h.advance(1)

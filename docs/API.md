@@ -110,6 +110,10 @@ Before reload or replacement, `probe_failed` reports the last observed boundary:
 `snapshot_mismatch`, or no pending probe. These are observations, not proof of a
 JavaScript/GPU cause. `duration_ms` is the age of the latest dispatched probe
 when known, not a completed recovery duration. Native error text is excluded.
+A successor waiting for its first paint sends bounded `probe_failed` records
+for unresolved probes during the existing wait. These use the successor's own
+PID and generation in the shared journal. A retry from the original window
+reports the new probe's boundary as its `replacing` reason.
 Replacement errors distinguish `parent prelaunch`, `successor attach` and
 `post-ready precommit`. An unreachable lease retains its error category and
 reports only `transport` / `status` / `read` / `decode`, HTTP status and elapsed

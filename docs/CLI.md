@@ -150,9 +150,11 @@ checks. This adds no CLI option and does not change recovery deadlines.
 After its 30-second startup grace, a 20-second health failure triggers one page
 reload and a 15-second wait, then an owned shell replacement with a 30-second
 deadline. At most two replacements are allowed until five continuous healthy,
-active minutes reset the budget. Inactivity, minimization and sleep pause health
-decisions and reset that continuous-health timer. Exhaustion shows a native
-error. The original engine and its task identities remain in place.
+active minutes reset the budget. When a successor fails to take over, the
+original window waits at least two seconds and needs a new failed foreground
+paint probe before replacing again. Inactivity, minimization and sleep pause
+health decisions and reset that continuous-health timer. Exhaustion shows a
+native error. The original engine and its task identities remain in place.
 
 Conversation/project selection is reported independently of that five-second
 paint check. Reload preserves its recovery scope in the native URL; initial

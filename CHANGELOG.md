@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed macOS renderer recovery so the remaining replacement attempt requires
+  a new failed foreground paint probe. A successor waiting for its first paint
+  reports where its probe stopped. (`F-115`, `C-034`)
+
 - Fixed desktop stalls and phone reconnects caused by scanning unrelated turns
   during history evidence checks in long conversations. (`C-036`)
 

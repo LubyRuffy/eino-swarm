@@ -23,8 +23,7 @@ func TestUnresponsiveRendererReloadsThenUsesOnlyItsBoundedSuccessorBudget(t *tes
 	if len(actions) != 2 || actions[0] != recoveryReload || actions[1] != recoveryReplace || s.attempts != 2 {
 		t.Fatalf("missing bounded reload/replacement: actions=%v state=%+v", actions, s)
 	}
-	s.replacementFailed(now.Add(time.Minute))
-	if got := s.tick(now.Add(time.Minute + recoveryRetryDelay)); got != recoveryExhausted {
+	if got := s.replacementFailed(now.Add(time.Minute)); got != recoveryExhausted {
 		t.Fatalf("replacement failure restarted an exhausted lineage: %v", got)
 	}
 	for i := 0; i < 10; i++ {
@@ -60,6 +59,41 @@ func TestBackgroundAndSleepingDesktopGetsANewForegroundGrace(t *testing.T) {
 	s.healthy(now.Add(3*time.Hour + time.Second))
 	if s.attempts != 0 || s.reloadUsed {
 		t.Fatal("sleep or foregrounding consumed recovery budget")
+	}
+}
+
+func TestRecoverySuccessorTimeoutAndFocusDoNotSpendTheRemainingAttempt(t *testing.T) {
+	now := time.Unix(100, 0)
+	s := newRecoveryState(now, 0)
+	s.healthy(now)
+	if got := s.tick(now.Add(recoveryHealthTimeout)); got != recoveryReload {
+		t.Fatalf("expected reload, got %v", got)
+	}
+	replacedAt := now.Add(recoveryHealthTimeout + recoveryReloadTimeout)
+	if got := s.tick(replacedAt); got != recoveryReplace {
+		t.Fatalf("expected first replacement, got %v", got)
+	}
+	failedAt := replacedAt.Add(30 * time.Second)
+	s.replacementFailed(failedAt)
+	s.setActive(false, failedAt)
+	s.setActive(true, failedAt.Add(11*time.Millisecond))
+	if got := s.tick(failedAt.Add(time.Second)); got != recoveryNoAction || s.attempts != 1 {
+		t.Fatalf("focus during the retry spent the next attempt: action=%d attempts=%d", got, s.attempts)
+	}
+	probeAt := failedAt.Add(recoveryRetryDelay)
+	if got := s.tick(probeAt); got != recoveryProbe {
+		t.Fatalf("retry did not ask the original window for fresh pixels: %v", got)
+	}
+	s.failed(probeAt.Add(time.Second))
+	// Focus or a clock-gap reset invalidates even a completed retry probe.
+	wakeAt := probeAt.Add(time.Minute)
+	s.setActive(true, wakeAt)
+	if got := s.tick(wakeAt); got != recoveryProbe {
+		t.Fatalf("wake reused the stale failed probe: %v", got)
+	}
+	s.healthy(wakeAt.Add(time.Second))
+	if got := s.tick(wakeAt.Add(2 * time.Second)); got != recoveryNoAction || s.attempts != 1 {
+		t.Fatalf("healthy pixels did not prevent a second launch: action=%d attempts=%d", got, s.attempts)
 	}
 }
 

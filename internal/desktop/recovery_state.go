@@ -24,15 +24,18 @@ const (
 )
 
 type recoveryState struct {
-	active       bool
-	attempts     int
-	reloadUsed   bool
-	stage        recoveryAction
-	graceUntil   time.Time
-	nextProbe    time.Time
-	pendingUntil time.Time
-	reloadUntil  time.Time
-	stableSince  time.Time
+	active           bool
+	attempts         int
+	reloadUsed       bool
+	probeOnly        bool
+	stage            recoveryAction
+	graceUntil       time.Time
+	nextProbe        time.Time
+	pendingUntil     time.Time
+	reloadUntil      time.Time
+	stableSince      time.Time
+	retryAt          time.Time
+	retryProbeFailed bool
 }
 
 func newRecoveryState(now time.Time, attempts int) recoveryState {
@@ -47,6 +50,8 @@ func (s *recoveryState) healthy(now time.Time) {
 	s.graceUntil = now.Add(recoveryHealthTimeout)
 	s.nextProbe = now.Add(recoveryProbeInterval)
 	s.stage = recoveryNoAction
+	s.retryAt = time.Time{}
+	s.retryProbeFailed = false
 	if s.stableSince.IsZero() {
 		s.stableSince = now
 	}
@@ -56,6 +61,7 @@ func (s *recoveryState) healthy(now time.Time) {
 }
 
 func (s *recoveryState) failed(now time.Time) {
+	s.retryProbeFailed = !s.retryAt.IsZero()
 	s.pendingUntil = time.Time{}
 	s.stableSince = time.Time{}
 	s.nextProbe = now.Add(recoveryProbeInterval)
@@ -68,13 +74,25 @@ func (s *recoveryState) tick(now time.Time) recoveryAction {
 	if s.stage == recoveryReload && !now.Before(s.reloadUntil) {
 		return s.replace()
 	}
-	if s.stage == recoveryProbe && !now.Before(s.nextProbe) {
-		return s.replace()
+	retrying := !s.retryAt.IsZero()
+	if retrying {
+		if now.Before(s.retryAt) {
+			return recoveryNoAction
+		}
+		if s.retryProbeFailed {
+			if now.Before(s.graceUntil) {
+				return recoveryNoAction
+			}
+			return s.replace()
+		}
 	}
 	if !s.pendingUntil.IsZero() && !now.Before(s.pendingUntil) {
+		if retrying {
+			return s.replace()
+		}
 		s.failed(now)
 	}
-	if s.stage != recoveryReload && !now.Before(s.graceUntil) {
+	if !s.probeOnly && !retrying && s.stage != recoveryReload && !now.Before(s.graceUntil) {
 		s.stableSince = time.Time{}
 		if s.reloadUsed {
 			return s.replace()
@@ -88,6 +106,9 @@ func (s *recoveryState) tick(now time.Time) recoveryAction {
 	if s.pendingUntil.IsZero() && !now.Before(s.nextProbe) {
 		s.pendingUntil = now.Add(recoveryHealthTimeout)
 		s.nextProbe = now.Add(recoveryProbeInterval)
+		if retrying {
+			s.graceUntil = s.pendingUntil
+		}
 		return recoveryProbe
 	}
 	return recoveryNoAction
@@ -107,6 +128,7 @@ func (s *recoveryState) setActive(active bool, now time.Time) {
 	s.active = active
 	s.stableSince = time.Time{}
 	s.pendingUntil = time.Time{}
+	s.retryProbeFailed = false
 	s.nextProbe = now
 	s.graceUntil = now.Add(recoveryHealthTimeout)
 	if s.stage == recoveryReload {
@@ -114,7 +136,16 @@ func (s *recoveryState) setActive(active bool, now time.Time) {
 	}
 }
 
-func (s *recoveryState) replacementFailed(now time.Time) {
-	s.stage = recoveryProbe
-	s.nextProbe = now.Add(recoveryRetryDelay)
+func (s *recoveryState) replacementFailed(now time.Time) recoveryAction {
+	if s.attempts >= recoveryMaxAttempts {
+		return s.replace()
+	}
+	// Focus, location and clock resets can schedule probes, but only a new
+	// failed foreground probe can spend the remaining replacement attempt.
+	s.stage = recoveryNoAction
+	s.pendingUntil = time.Time{}
+	s.retryProbeFailed = false
+	s.retryAt = now.Add(recoveryRetryDelay)
+	s.nextProbe = s.retryAt
+	return recoveryNoAction
 }
