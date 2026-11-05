@@ -5,6 +5,7 @@ import { streamCompletion } from "@/lib/openai-client"
 import { DirectChatScreen } from "./direct-chat-screen"
 import { maxAttachmentBytes } from "@/lib/attachments"
 import { saveProviders, type DirectProvider } from "@/lib/direct-provider"
+import { loadThreads, saveThreads, type DirectThread } from "@/lib/direct-threads"
 import { setLocale, t } from "@/lib/i18n"
 import { ModelCallError, type StreamPiece, type WireTurn } from "@/lib/openai-wire"
 
@@ -39,6 +40,147 @@ function harness(complete: typeof streamCompletion = async (input) => {
 }
 
 describe("DirectChatScreen", () => {
+  it("moves a new chat onto a remaining endpoint when the selected one is removed", () => {
+    setLocale("en")
+    const keep: DirectProvider = {
+      ...provider,
+      id: "p-keep",
+      label: "Keep",
+      model: "two",
+      catalog: ["two"],
+    }
+    const view = render(
+      <DirectChatScreen
+        hosts={[]}
+        activeFingerprint=""
+        path="relay"
+        providers={[provider, keep]}
+        onSelectHost={vi.fn()}
+        onAddHost={vi.fn()}
+        onUnlink={vi.fn()}
+        onModels={vi.fn()}
+      />,
+    )
+    expect(screen.getByLabelText(t("composer.model"))).toHaveTextContent("one")
+    view.rerender(
+      <DirectChatScreen
+        hosts={[]}
+        activeFingerprint=""
+        path="relay"
+        providers={[keep]}
+        onSelectHost={vi.fn()}
+        onAddHost={vi.fn()}
+        onUnlink={vi.fn()}
+        onModels={vi.fn()}
+      />,
+    )
+    expect(screen.getByLabelText(t("composer.model"))).toHaveTextContent("two")
+    expect(screen.queryByText(t("account.sourceUnavailable"))).not.toBeInTheDocument()
+  })
+
+  it("keeps an open chat on a removed endpoint instead of switching it", async () => {
+    setLocale("en")
+    const keep: DirectProvider = {
+      ...provider,
+      id: "p-keep",
+      label: "Keep",
+      model: "two",
+      catalog: ["two"],
+    }
+    const view = render(
+      <DirectChatScreen
+        hosts={[]}
+        activeFingerprint=""
+        path="relay"
+        providers={[provider, keep]}
+        onSelectHost={vi.fn()}
+        onAddHost={vi.fn()}
+        onUnlink={vi.fn()}
+        onModels={vi.fn()}
+        complete={async (input) => {
+          input.onDelta({ text: "pong", reasoning: "" })
+        }}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "start" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    await screen.findByText("pong")
+    view.rerender(
+      <DirectChatScreen
+        hosts={[]}
+        activeFingerprint=""
+        path="relay"
+        providers={[keep]}
+        onSelectHost={vi.fn()}
+        onAddHost={vi.fn()}
+        onUnlink={vi.fn()}
+        onModels={vi.fn()}
+        complete={async (input) => {
+          input.onDelta({ text: "pong", reasoning: "" })
+        }}
+      />,
+    )
+    expect(screen.getByLabelText(t("composer.model"))).toHaveTextContent("one")
+    expect(screen.getByText(t("account.sourceUnavailable"))).toBeInTheDocument()
+  })
+
+  it("returns to a remaining endpoint after viewing history whose endpoint was removed", async () => {
+    setLocale("en")
+    const keep: DirectProvider = { ...provider, id: "p-keep", model: "two", catalog: ["two"] }
+    const history: DirectThread = {
+      id: "c-history",
+      title: "Saved history",
+      providerId: provider.id,
+      model: provider.model,
+      reasoning: "",
+      updatedAt: 1,
+      messages: [
+        { id: "m-user", role: "user", text: "original question" },
+        { id: "m-answer", role: "assistant", text: "original answer" },
+      ],
+    }
+    saveThreads([history])
+    const savedHistory = localStorage.getItem("zwai.phone.directThreads")
+    const original = loadThreads()[0]
+    const complete = vi.fn(async (input: Parameters<typeof streamCompletion>[0]) => {
+      input.onDelta({ text: "new answer", reasoning: "" })
+    })
+    const remaining = [keep]
+    const chat = (providers: DirectProvider[]) => (
+      <DirectChatScreen
+        hosts={[]}
+        activeFingerprint=""
+        path="relay"
+        providers={providers}
+        onSelectHost={vi.fn()}
+        onAddHost={vi.fn()}
+        onUnlink={vi.fn()}
+        onModels={vi.fn()}
+        complete={complete}
+      />
+    )
+    const view = render(chat([provider, keep]))
+    view.rerender(chat(remaining))
+    expect(screen.getByLabelText(t("composer.model"))).toHaveTextContent(keep.model)
+
+    fireEvent.click(screen.getByRole("button", { name: t("home.open", { title: history.title }) }))
+    expect(screen.getByLabelText(t("composer.model"))).toHaveTextContent(provider.model)
+    expect(screen.getByText(t("account.sourceUnavailable"))).toBeInTheDocument()
+    expect(localStorage.getItem("zwai.phone.directThreads")).toBe(savedHistory)
+
+    // Reading a preserved conversation must not make a new draft use its removed source.
+    fireEvent.click(screen.getByRole("button", { name: t("thread.back") }))
+    expect(screen.getByLabelText(t("composer.model"))).toHaveTextContent(keep.model)
+    expect(screen.queryByText(t("account.sourceUnavailable"))).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(t("thread.message")), { target: { value: "new request" } })
+    fireEvent.click(screen.getByRole("button", { name: t("thread.send") }))
+    await screen.findByText("new answer")
+    expect(complete).toHaveBeenCalledTimes(1)
+    expect(complete.mock.calls[0][0]).toMatchObject({ provider: { id: keep.id }, model: keep.model })
+    expect(loadThreads().find((row) => row.id === history.id)).toEqual(original)
+    expect(loadThreads().find((row) => row.id !== history.id)).toMatchObject({ providerId: keep.id, model: keep.model })
+  })
+
   it.each([
     ["gateway_login_required", "Sign in to the Gateway to use cloud Web tools, or switch Web tools off for ordinary model chat."],
     ["gateway_access_denied", "Account access could not be confirmed. Refresh or sign in again."],

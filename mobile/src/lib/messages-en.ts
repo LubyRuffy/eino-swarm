@@ -366,6 +366,8 @@ export const en = {
   "chat.typeModel": "Type a model name",
   "chat.save": "Save",
   "chat.remove": "Remove",
+  "chat.removeName": "Remove {name}",
+  "chat.removeCancel": "Cancel",
   "chat.removeConfirm": "Remove this endpoint",
   "chat.badUrl": "Enter an http or https base URL.",
   "chat.tooBig": "That file is too large to send.",

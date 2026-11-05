@@ -359,6 +359,8 @@ export const zh: Record<MessageKey, string> = {
   "chat.typeModel": "输入模型名",
   "chat.save": "保存",
   "chat.remove": "移除",
+  "chat.removeName": "移除 {name}",
+  "chat.removeCancel": "取消",
   "chat.removeConfirm": "确认移除这个接口",
   "chat.badUrl": "接口地址必须是 http 或 https。",
   "chat.tooBig": "这个文件太大，发不出去。",

@@ -1163,7 +1163,9 @@ issues a fresh ticket. Logout/revocation removes managed links while
 preserving anonymous ones. The original private device identity stays local.
 The existing bounded direct-thread store retains the exact `providerId`; Gateway
 source IDs are account-qualified and transient provider projections never enter
-`zwai.phone.providers`. Server conversation history is visible only for the
+`zwai.phone.providers`. Removing a saved personal provider deletes only that
+row from `zwai.phone.providers`; direct-thread rows stay, including their
+`providerId`. Server conversation history is visible only for the
 current validated bootstrap source ID; sign-out/another account hides it without
 deleting it, and an approved same-account API-disabled session can still read
 its own history. No private provider configuration is synchronized to the
