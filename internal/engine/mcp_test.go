@@ -34,106 +34,178 @@ func engineMCPFixture(t *testing.T) (config.MCPServer, *atomic.Int32) {
 // Both manager and worker must receive and execute the actual MCP definition
 // through Registry, ADK and the model HTTP adapter, not a manual tool hook.
 func TestMCPToolsReachManagerAndWorkerAtTheRealModelBoundary(t *testing.T) {
-	server, calls := engineMCPFixture(t)
-	var managerSteps, workerSteps atomic.Int32
-	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var request scheduleCompletionRequest
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Error(err)
-			http.Error(w, "invalid", 400)
-			return
-		}
-		if len(request.Messages) > 0 && replyNoScheduleClaimsFixture(t, w, request.Messages[0].Content, request.Stream, len(request.Tools)) {
-			return
-		}
-		manager := false
-		list, call := "", ""
-		for _, offered := range request.Tools {
-			manager = manager || offered.Function.Name == "spawn_agent"
-			if strings.Contains(offered.Function.Name, "_list_tools_") {
-				list = offered.Function.Name
+	for _, tc := range []struct {
+		name string
+		nuwa bool
+	}{{"default", false}, {"nuwa-selected-model-and-tools", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			const managerModel, workerModel, workerProvider = "mcp-fixture", "mcp-selected-worker", "mcp-worker-fixture"
+			var selectedRef string
+			var selectedTools atomic.Value // []string, published before the real spawn response.
+			server, calls := engineMCPFixture(t)
+			var managerSteps, workerSteps atomic.Int32
+			endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var wire struct {
+					scheduleCompletionRequest
+					Model string `json:"model"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&wire); err != nil {
+					t.Error(err)
+					http.Error(w, "invalid", 400)
+					return
+				}
+				request := wire.scheduleCompletionRequest
+				if len(request.Messages) > 0 && replyNoScheduleClaimsFixture(t, w, request.Messages[0].Content, request.Stream, len(request.Tools)) {
+					return
+				}
+				manager := false
+				list, call := "", ""
+				for _, offered := range request.Tools {
+					manager = manager || offered.Function.Name == "spawn_agent"
+					if strings.Contains(offered.Function.Name, "_list_tools_") {
+						list = offered.Function.Name
+					}
+					if strings.Contains(offered.Function.Name, "_call_tool_") {
+						call = offered.Function.Name
+						if offered.Function.Parameters.Properties["arguments"].Description == "" {
+							t.Error("proxy argument schema did not reach model")
+						}
+					}
+				}
+				if tc.nuwa {
+					// Nuwa workers also receive spawn_agent for delegation; the selected
+					// HTTP model, rather than that tool's presence, identifies this actor.
+					manager = wire.Model == managerModel
+					expectedPath := "/worker/v1/chat/completions"
+					if manager {
+						expectedPath = "/manager/v1/chat/completions"
+					}
+					if (!manager && wire.Model != workerModel) || r.URL.Path != expectedPath {
+						t.Errorf("selected model route changed: model=%q path=%q", wire.Model, r.URL.Path)
+					}
+					if !manager {
+						selected, _ := selectedTools.Load().([]string)
+						if len(selected) != 2 || list != selected[0] || call != selected[1] {
+							t.Errorf("selected MCP definitions did not reach the worker: list=%q call=%q selected=%v", list, call, selected)
+						}
+						for _, offered := range request.Tools {
+							switch offered.Function.Name {
+							case "read", "write", "exec", ToolQueryHistory:
+								t.Errorf("worker gained an unselected workspace tool: %s", offered.Function.Name)
+							}
+						}
+					}
+				}
+
+				answer := func(text string) { writeContextFlowReply(w, request.Stream, map[string]any{"content": text}, "stop") }
+				if list == "" || call == "" {
+					if manager {
+						t.Error("manager has no MCP proxy tools")
+					}
+					answer("The available evidence was inspected.")
+					return
+				}
+				checkCatalog := func(id string) {
+					receipt := nuwaValidationReceipt(request, id)
+					if !strings.Contains(receipt, "record identity") || !strings.Contains(receipt, "input_schema") {
+						t.Error("complete remote MCP schema did not reach model through discovery")
+					}
+				}
+				if !manager {
+					switch workerSteps.Add(1) {
+					case 1:
+						nuwaValidationTool(w, request, "worker-list", list, "{}")
+					case 2:
+						checkCatalog("worker-list")
+						nuwaValidationTool(w, request, "worker-mcp", call, `{"name":"inspect_record","arguments":{"key":"record"}}`)
+					default:
+						if !strings.Contains(nuwaValidationReceipt(request, "worker-mcp"), "mcp-protocol-evidence") {
+							t.Error("worker did not receive real MCP result")
+						}
+						answer("External evidence is available.")
+					}
+					return
+				}
+				switch managerSteps.Add(1) {
+				case 1:
+					nuwaValidationTool(w, request, "manager-list", list, "{}")
+				case 2:
+					checkCatalog("manager-list")
+					nuwaValidationTool(w, request, "manager-mcp", call, `{"name":"inspect_record","arguments":{"key":"record"}}`)
+				case 3:
+					if !strings.Contains(nuwaValidationReceipt(request, "manager-mcp"), "mcp-protocol-evidence") {
+						t.Error("manager did not receive real MCP result")
+					}
+					args := map[string]any{"role": "external-reader", "task": "Inspect the external record and report the evidence."}
+					if tc.nuwa {
+						args["model_ref"], args["tool_names"] = selectedRef, []string{list, call}
+						selectedTools.Store([]string{list, call})
+					}
+					raw, err := json.Marshal(args)
+					if err != nil {
+						t.Error(err)
+						return
+					}
+					nuwaValidationTool(w, request, "spawn-mcp", "spawn_agent", string(raw))
+				case 4:
+					var spawned struct {
+						AgentID string `json:"agent_id"`
+					}
+					if err := json.Unmarshal([]byte(nuwaValidationReceipt(request, "spawn-mcp")), &spawned); err != nil || spawned.AgentID == "" {
+						t.Errorf("spawn result: %v", err)
+					}
+					raw, _ := json.Marshal(map[string]any{"agent_ids": []string{spawned.AgentID}, "timeout_s": 5})
+					nuwaValidationTool(w, request, "wait-mcp", "wait_agents", string(raw))
+				default:
+					if !strings.Contains(nuwaValidationReceipt(request, "wait-mcp"), "External evidence is available.") {
+						t.Error("manager did not collect worker evidence")
+					}
+					answer("The external record was inspected and its evidence collected.")
+				}
+			}))
+			t.Cleanup(endpoint.Close)
+			e := newTestEngine(t)
+			e.cfg.Swarm.AutoTitle = false
+			e.cfg.Models.Providers[0].BaseURL = endpoint.URL
+			e.cfg.Models.Providers[0].Model = managerModel
+			if tc.nuwa {
+				e.cfg.Models.Providers[0].BaseURL = endpoint.URL + "/manager/v1"
+				e.cfg.Models.Providers = append(e.cfg.Models.Providers, config.Provider{ID: workerProvider, BaseURL: endpoint.URL + "/worker/v1", Model: workerModel})
+				selectedRef = nuwaModelRef(workerProvider, workerModel)
 			}
-			if strings.Contains(offered.Function.Name, "_call_tool_") {
-				call = offered.Function.Name
-				if offered.Function.Parameters.Properties["arguments"].Description == "" {
-					t.Error("proxy argument schema did not reach model")
+			e.cfg.MCP.Servers = []config.MCPServer{server}
+			e.pool = provider.New(e.cfg)
+			projectID := ""
+			if tc.nuwa {
+				project, err := e.CreateProject("External evidence with a selected worker", "", "", false, true)
+				if err != nil {
+					t.Fatal(err)
+				}
+				projectID = project.ID
+			}
+			thread, err := e.CreateThread("External records", "", projectID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			turn, err := e.StartTurn(thread.ID, "Inspect the external record and ask a worker to verify the result.")
+			if err != nil {
+				t.Fatal(err)
+			}
+			finished := waitForTurn(t, e, turn.ID)
+			waitSettled(t, e, thread.ID)
+			if finished.Status != store.TurnDone || calls.Load() != 2 || managerSteps.Load() != 5 || workerSteps.Load() != 3 {
+				t.Fatalf("MCP flow: status=%s calls=%d manager=%d worker=%d", finished.Status, calls.Load(), managerSteps.Load(), workerSteps.Load())
+			}
+			if tc.nuwa {
+				if !finished.NuwaEnabled {
+					t.Error("selected-worker case did not execute a Nuwa turn")
+				}
+				view, err := e.ProjectNuwaSnapshot(t.Context(), projectID)
+				if err != nil || len(view.Workers) != 1 || view.Workers[0].Status != "done" || view.Workers[0].Generation != 1 || view.Workers[0].ModelBinding == nil || view.Workers[0].ModelBinding.ProviderID != workerProvider || view.Workers[0].ModelBinding.Model != workerModel || view.Workers[0].ModelBinding.Ref != provider.ChoiceID(workerProvider, workerModel) {
+					t.Errorf("selected MCP worker lost its completed model binding: workers=%+v err=%v", view.Workers, err)
 				}
 			}
-		}
-		answer := func(text string) { writeContextFlowReply(w, request.Stream, map[string]any{"content": text}, "stop") }
-		if list == "" || call == "" {
-			if manager {
-				t.Error("manager has no MCP proxy tools")
-			}
-			answer("The available evidence was inspected.")
-			return
-		}
-		checkCatalog := func(id string) {
-			receipt := nuwaValidationReceipt(request, id)
-			if !strings.Contains(receipt, "record identity") || !strings.Contains(receipt, "input_schema") {
-				t.Error("complete remote MCP schema did not reach model through discovery")
-			}
-		}
-		if !manager {
-			switch workerSteps.Add(1) {
-			case 1:
-				nuwaValidationTool(w, request, "worker-list", list, "{}")
-			case 2:
-				checkCatalog("worker-list")
-				nuwaValidationTool(w, request, "worker-mcp", call, `{"name":"inspect_record","arguments":{"key":"record"}}`)
-			default:
-				if !strings.Contains(nuwaValidationReceipt(request, "worker-mcp"), "mcp-protocol-evidence") {
-					t.Error("worker did not receive real MCP result")
-				}
-				answer("External evidence is available.")
-			}
-			return
-		}
-		switch managerSteps.Add(1) {
-		case 1:
-			nuwaValidationTool(w, request, "manager-list", list, "{}")
-		case 2:
-			checkCatalog("manager-list")
-			nuwaValidationTool(w, request, "manager-mcp", call, `{"name":"inspect_record","arguments":{"key":"record"}}`)
-		case 3:
-			if !strings.Contains(nuwaValidationReceipt(request, "manager-mcp"), "mcp-protocol-evidence") {
-				t.Error("manager did not receive real MCP result")
-			}
-			nuwaValidationTool(w, request, "spawn-mcp", "spawn_agent", `{"role":"external-reader","task":"Inspect the external record and report the evidence."}`)
-		case 4:
-			var spawned struct {
-				AgentID string `json:"agent_id"`
-			}
-			if err := json.Unmarshal([]byte(nuwaValidationReceipt(request, "spawn-mcp")), &spawned); err != nil || spawned.AgentID == "" {
-				t.Errorf("spawn result: %v", err)
-			}
-			raw, _ := json.Marshal(map[string]any{"agent_ids": []string{spawned.AgentID}, "timeout_s": 5})
-			nuwaValidationTool(w, request, "wait-mcp", "wait_agents", string(raw))
-		default:
-			if !strings.Contains(nuwaValidationReceipt(request, "wait-mcp"), "External evidence is available.") {
-				t.Error("manager did not collect worker evidence")
-			}
-			answer("The external record was inspected and its evidence collected.")
-		}
-	}))
-	t.Cleanup(endpoint.Close)
-	e := newTestEngine(t)
-	e.cfg.Swarm.AutoTitle = false
-	e.cfg.Models.Providers[0].BaseURL = endpoint.URL
-	e.cfg.Models.Providers[0].Model = "mcp-fixture"
-	e.cfg.MCP.Servers = []config.MCPServer{server}
-	e.pool = provider.New(e.cfg)
-	thread, err := e.CreateThread("External records", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	turn, err := e.StartTurn(thread.ID, "Inspect the external record and ask a worker to verify the result.")
-	if err != nil {
-		t.Fatal(err)
-	}
-	finished := waitForTurn(t, e, turn.ID)
-	if finished.Status != store.TurnDone || calls.Load() != 2 || managerSteps.Load() != 5 || workerSteps.Load() != 3 {
-		t.Fatalf("MCP flow: status=%s calls=%d manager=%d worker=%d", finished.Status, calls.Load(), managerSteps.Load(), workerSteps.Load())
+		})
 	}
 }
 

@@ -11,7 +11,7 @@ type NodeReceipt = { ok: boolean; node: { id: string; version: number } }
 
 /** Real model HTTP → Registry tool → durable project nodes → snapshot/SSE.
  * This is protocol evidence, not a measurement of autonomous model reasoning. */
-export async function startNuwaFixture(mode?: "direct") {
+export async function startNuwaFixture(mode?: "direct" | "published") {
   const errors: string[] = []
   const workerModels: string[] = []
   let taskNode: { id: string; version: number } | undefined
@@ -103,6 +103,33 @@ export async function startNuwaFixture(mode?: "direct") {
         }
         if (input.model === "nuwa-worker") {
           workerModels.push(input.model)
+          if (mode === "published") {
+            const written = input.messages.findLast(
+              (message) => message.role === "tool" && message.tool_call_id === "nuwa-worker-write"
+            )
+            if (!written) {
+              call(response, input, "nuwa-worker-write", {
+                file_path: "field-observations.md",
+                content: "# Field observations\n\nObserved facts were recorded.\n",
+              }, "write")
+              return
+            }
+            if (!written.content?.startsWith("Updated file "))
+              throw new Error(`Worker artifact write failed: ${written.content}`)
+            if (!result("nuwa-worker-artifact")) {
+              call(response, input, "nuwa-worker-artifact", {
+                kind: "artifact",
+                title: "Field observations",
+                summary: "Independent observations ready for review",
+                status: "reported",
+                depends_on: [],
+                artifact_path: "field-observations.md",
+              })
+              return
+            }
+            reply(response, input, { role: "assistant", content: "Field observations published." })
+            return
+          }
           if (!taskNode) throw new Error("Worker started before its shared task")
           const fact = result("nuwa-fact")
           if (!fact) {
@@ -144,7 +171,7 @@ export async function startNuwaFixture(mode?: "direct") {
           return
         }
         const task = result("nuwa-task")
-        if (!task) {
+        if (!task && mode !== "published") {
           call(response, input, "nuwa-task", {
             kind: "task",
             title: "Compare the evidence",
@@ -179,7 +206,9 @@ export async function startNuwaFixture(mode?: "direct") {
             "nuwa-spawn",
             {
               role: "independent-review",
-              task: `Review the supplied evidence for shared task ${task.id}; record the bounded observation and cite its source.`,
+              task: task
+                ? `Review the supplied evidence for shared task ${task.id}; record the bounded observation and cite its source.`
+                : "Publish your independent field observations as a shared artifact.",
               model_ref: chosen.ref,
             },
             "spawn_agent"
@@ -209,7 +238,7 @@ export async function startNuwaFixture(mode?: "direct") {
           !settled.agents?.some(
             (agent) => agent.agent_id === started.agent_id && agent.status === "done"
           ) ||
-          !workerFact
+          (mode !== "published" && !workerFact)
         )
           throw new Error(`Actual worker result was not collected: ${waited.content}`)
         const fact = workerFact
@@ -229,7 +258,7 @@ export async function startNuwaFixture(mode?: "direct") {
           )
           return
         }
-        if (written.content?.startsWith("error:"))
+        if (!written.content?.startsWith("Updated file "))
           throw new Error(`Artifact write failed: ${written.content}`)
         if (!result("nuwa-artifact")) {
           call(response, input, "nuwa-artifact", {
@@ -237,13 +266,13 @@ export async function startNuwaFixture(mode?: "direct") {
             title: "Review notes",
             summary: "A result ready for independent review",
             status: "reported",
-            depends_on: [fact.id],
+            depends_on: fact ? [fact.id] : [],
             artifact_path: "review-notes.md",
             detail: "# Review notes\n\nThe conclusion is limited to the measured input.",
           })
           return
         }
-        if (!result("nuwa-task-done")) {
+        if (task && !result("nuwa-task-done")) {
           call(response, input, "nuwa-task-done", {
             id: task.id,
             version: task.version,

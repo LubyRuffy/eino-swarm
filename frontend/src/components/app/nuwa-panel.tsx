@@ -160,6 +160,7 @@ export function NuwaPanel({
           {nodes.length ? (
             <NuwaGraph
               nodes={nodes}
+              workers={current.workers}
               selected={selected}
               onSelect={setSelected}
               onExpand={() => setGraphOpen(true)}
@@ -249,7 +250,7 @@ export function NuwaPanel({
                 </DialogDescription>
               </DialogHeader>
               <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[minmax(0,1fr)_280px]">
-                <NuwaGraph nodes={nodes} selected={selected} onSelect={setSelected} expanded />
+                <NuwaGraph nodes={nodes} workers={current.workers} selected={selected} onSelect={setSelected} expanded />
                 <div className="thin-scrollbar min-h-0 overflow-y-auto">
                   {detail ? (
                     <NodeDetail

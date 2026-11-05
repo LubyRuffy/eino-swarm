@@ -77,7 +77,10 @@ Closing a subtree records the affected generations and retains
 Open **Collaboration** in the right panel. **Entire project** shows all recorded
 work; **This conversation** retains cross-conversation prerequisites so their
 paths remain visible. Select a node for detail, sources and correction identity,
-or expand the dependency graph. Worker rows show durable lifecycle status and
+or expand the collaboration graph. Solid arrows show recorded work dependencies.
+For a record without a visible work edge, dashed arrows show its original turn
+and author. These arrows use the saved identity and do not assert that one
+result relied on another. Worker rows show durable lifecycle status and
 recorded model bindings. Source links open the source conversation and, when a
 turn is given, its Trace; results use the existing file API.
 
@@ -138,7 +141,9 @@ cancellation, deleted owners/targets or artifact-file validity. Different
 arguments under that identity refuse. That receipt may predate a later correction.
 
 Dependencies must exist in the same project without cycles. Writes retain the
-source versions on which a result depends. Correction, supersession or retraction
+source versions on which a result depends. Use exact IDs from `record_work` or
+`read_work` for material prerequisites the work actually relied on. Independent
+work can omit `depends_on` on creation. Correction, supersession or retraction
 marks downstream results **Needs review**. An unrelated patch cannot silently
 acknowledge new evidence: reread and explicitly supply the reviewed `depends_on`
 list. Deleted prerequisites and unavailable events remain visibly unavailable.
