@@ -726,13 +726,8 @@ func nextWaitCallID(msgs []*schema.Message) string {
 
 // mockWaitReport mirrors the wait_agents result wire shape the manager reads.
 type mockWaitReport struct {
-	Agents []struct {
-		AgentID string `json:"agent_id"`
-		Status  string `json:"status"`
-		Result  string `json:"result"`
-		Err     string `json:"error"`
-	} `json:"agents"`
-	TimedOut bool `json:"timed_out"`
+	Agents   []mockWaitAgent `json:"agents"`
+	TimedOut bool            `json:"timed_out"`
 }
 
 // latestWaitReport returns the most recent wait_agents tool result, or nil if
@@ -770,6 +765,12 @@ func collectResults(r *mockWaitReport) []string {
 		switch {
 		case e.Err != "":
 			out = append(out, e.AgentID+": "+e.Err)
+		case e.Status == "failed" || e.Status == "unknown":
+			text := e.AgentID + ": " + e.Status
+			if e.Result != "" {
+				text += ": " + e.Result
+			}
+			out = append(out, text)
 		case e.Result != "":
 			out = append(out, e.Result)
 		}

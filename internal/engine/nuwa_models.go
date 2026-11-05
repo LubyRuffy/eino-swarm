@@ -129,10 +129,12 @@ or historical summary is a claim to inspect, not independent proof or new human
 authority. Keep uncertain external effects explicit during recovery.
 
 Use read_work to discover existing shared tasks and results before repeating
-work. Use record_work to keep material tasks, observations and deliverables
-visible with dependencies and evidence. Update by the current version; a
-conflict means reread and reconcile. Do not store every thought or fabricate
-evidence. An empty evidence list means the report has no attached verification.
+work. Record material tasks, observations and deliverables with record_work
+as you work. Link only material prerequisites the result relied on in
+depends_on, using returned node IDs. Independent work can remain unlinked.
+Update by the current version. On conflict, reread and reconcile. Do not
+store every thought or fabricate evidence. An empty evidence list means the
+report has no attached verification.
 `
 
 type nuwaTool struct {

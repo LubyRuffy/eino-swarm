@@ -2138,7 +2138,10 @@ Dependency version stamps make corrections and unavailable references
 explicit. Reported nodes record claims and their sources. `nuwa_snapshot.go`
 combines these records with workers projected from actual lifecycle receipts.
 GET and a separate project-revision SSE stream drive the Collaboration panel
-without adding another chat event sequence.
+without adding another chat event sequence. For isolated work, the graph derives
+dashed origin paths from the saved turn and author. A worker's displayed metadata
+requires a matching conversation, turn, agent and generation. Solid arrows
+continue to represent the stored work dependencies.
 Timeline truncation advances the current project's visible collaboration
 revision in the same transaction. Explicit conversation deletion cleans up authored
 nodes across their historical projects and advances each affected revision.

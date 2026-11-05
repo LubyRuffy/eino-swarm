@@ -98,6 +98,7 @@ func waitForTurn(t *testing.T, e *Engine, turnID string) *store.Turn {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	logTurnTimeout(t, e, turnID)
 	t.Fatalf("turn %s never finished", turnID)
 	return nil
 }

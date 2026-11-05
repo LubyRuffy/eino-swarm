@@ -588,3 +588,5 @@ The separate strict-case artifacts are under `strict-policy-capability`:
 | `capability-result.json` | `bd132c02b6881fc9f52d9a91c24e2ffa6b45e47ff29ebdc323a1179564c2eecd` |
 | `completion-audit.json` | `43b2146ab33034b27d82b17a9d41b8ed5ebad328c5b1118bf9cda1eb10dd5add` |
 | `receipt-manifest.json` | `b2cbe2377691bea240950631b9a1df210889f643869af297a56475c26e827596` |
+
+See [development observations dated 2026-11-05](OBSERVATIONS_20261105.md) for the separately scoped larger-budget logistics, Observatory, Drone and workbook results.

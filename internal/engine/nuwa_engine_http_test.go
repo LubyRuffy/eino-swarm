@@ -24,7 +24,7 @@ func TestNuwaManagerSharesEvidenceThroughActualHTTPModel(t *testing.T) {
 		}
 		switch step {
 		case 1:
-			assertNuwaRecordWorkSchema(t, request, "manager")
+			assertNuwaRecordWorkGuidance(t, request, "manager")
 			writeScheduleCompletionTool(w, request, "record_work", `{"kind":"fact","title":"Measured result","summary":"The supplied input was inspected.","evidence":[]}`)
 		case 2:
 			var receipt struct {
@@ -80,8 +80,21 @@ func TestNuwaManagerSharesEvidenceThroughActualHTTPModel(t *testing.T) {
 	}
 }
 
-func assertNuwaRecordWorkSchema(t *testing.T, request scheduleCompletionRequest, actor string) {
+func assertNuwaRecordWorkGuidance(t *testing.T, request scheduleCompletionRequest, actor string) {
 	t.Helper()
+	var system strings.Builder
+	for _, message := range request.Messages {
+		if message.Role == "system" {
+			system.WriteString(message.Content)
+			system.WriteByte('\n')
+		}
+	}
+	prompt := strings.Join(strings.Fields(system.String()), " ")
+	for _, term := range []string{"as you work", "material prerequisites", "returned node IDs", "Independent work can remain unlinked"} {
+		if !strings.Contains(prompt, term) {
+			t.Errorf("%s system prompt is missing shared-work guidance %q", actor, term)
+		}
+	}
 	for _, offered := range request.Tools {
 		if offered.Function.Name != "record_work" {
 			continue
@@ -94,6 +107,7 @@ func assertNuwaRecordWorkSchema(t *testing.T, request scheduleCompletionRequest,
 			{"kind", []string{"task", "fact", "artifact"}},
 			{"status", []string{"task", "pending, running, done, blocked, or cancelled", "fact", "artifact", "reported, superseded, or retracted", "defaults to pending", "defaults to reported"}},
 			{"artifact_path", []string{"required", "existing", "regular file", "conversation", "workspace"}},
+			{"depends_on", []string{"exact node ids", "record_work", "read_work", "material prerequisites", "actually relied on", "on update", "omit", "preserve", "[]", "clear"}},
 			{"evidence", []string{"own_tool_call_ids", "mutually exclusive", "empty"}},
 			{"own_tool_call_ids", []string{"evidence", "mutually exclusive", "empty"}},
 		} {

@@ -23,7 +23,7 @@ export interface NuwaNode {
   detail?: string
   status: string
   version: number
-  depends_on: string[]
+  depends_on: string[] | null
   thread_id: string
   turn_id: string
   agent_id?: string
@@ -80,23 +80,27 @@ export function scopeNuwaNodes(nodes: NuwaNode[], threadId?: string): NuwaNode[]
   return nodes.filter((node) => included.has(node.id))
 }
 
-export interface NuwaPosition {
-  node: NuwaNode
+type NuwaPathNode = Pick<NuwaNode, "id" | "created_at"> & { depends_on: string[] | null }
+
+function compareNuwaCreation(a: NuwaPathNode, b: NuwaPathNode) {
+  return a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
+}
+
+interface NuwaPosition<T> {
+  node: T
   column: number
   row: number
 }
 
 /** Kahn layers keep real dependencies visible without trusting the stored
  * graph to be acyclic. Cyclic records are still inspectable, never dropped. */
-export function layoutNuwa(input: NuwaNode[]): {
-  positions: NuwaPosition[]
+export function layoutNuwa<T extends NuwaPathNode>(input: T[]): {
+  positions: NuwaPosition<T>[]
   edges: { from: string; to: string }[]
   missing: string[]
   cyclic: boolean
 } {
-  const ordered = [...input].sort(
-    (a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
-  )
+  const ordered = [...input].sort(compareNuwaCreation)
   const known = new Set(ordered.map((node) => node.id))
   const remaining = new Map(ordered.map((node) => [node.id, node]))
   const columns = new Map<string, number>()
@@ -134,4 +138,52 @@ export function layoutNuwa(input: NuwaNode[]): {
       return { node, column, row }
     })
   return { positions, edges, missing: [...missing].sort(), cyclic }
+}
+
+type CollaborationNode = NuwaPathNode & { depends_on: string[] } & (
+  | { type: "work"; record: NuwaNode }
+  | { type: "turn"; turnId: string }
+  | { type: "author"; agentId: string; worker?: NuwaWorker }
+)
+
+/** Isolated records still have a durable author and turn. Keep these display
+ * relationships separate from the saved dependencies between work records. */
+export function layoutNuwaCollaboration(nodes: NuwaNode[], workers: NuwaWorker[]) {
+  const known = new Set(nodes.map(({ id }) => id))
+  const connected = new Set<string>()
+  for (const node of nodes) {
+    for (const dependency of node.depends_on ?? []) {
+      if (!known.has(dependency)) continue
+      connected.add(dependency)
+      connected.add(node.id)
+    }
+  }
+
+  // Stored work IDs use the nw_ prefix. Origin keys live only in this view.
+  const authorKey = (thread: string, turn: string, agent: string, generation?: number) =>
+    `author:${JSON.stringify([thread, turn, agent, generation])}`
+  const roster = new Map(workers.map((worker) => [
+    authorKey(worker.thread_id, worker.turn_id, worker.agent_id, worker.generation), worker,
+  ]))
+  const origins = new Map<string, CollaborationNode>()
+  const entries = [...nodes].sort(compareNuwaCreation).map((record): CollaborationNode => {
+    const { id, thread_id, turn_id, agent_id, generation, created_at } = record
+    const entry: CollaborationNode = { type: "work", id, record, created_at, depends_on: record.depends_on ?? [] }
+    if (connected.has(id) || !thread_id || !turn_id || !agent_id) return entry
+
+    const turnKey = `turn:${JSON.stringify([thread_id, turn_id])}`
+    const author = authorKey(thread_id, turn_id, agent_id, generation)
+    if (!origins.has(turnKey)) {
+      origins.set(turnKey, { type: "turn", id: turnKey, turnId: turn_id, created_at, depends_on: [] })
+    }
+    if (!origins.has(author)) {
+      origins.set(author, {
+        type: "author", id: author, agentId: agent_id, worker: roster.get(author),
+        created_at, depends_on: [turnKey],
+      })
+    }
+    entry.depends_on = [...entry.depends_on, author]
+    return entry
+  })
+  return layoutNuwa([...origins.values(), ...entries])
 }

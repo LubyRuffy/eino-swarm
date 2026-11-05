@@ -5,6 +5,20 @@ Recorded events remain available for replay and diagnostics. The work-fold
 unit test covers both display modes and streaming into visible content.
 The transcript whitespace browser regression measures the gap after replay.
 
+Engine tests retain the original 30-second `waitForTurn` deadline. On timeout,
+the helper logs goroutine stacks before reading the durable turn, runtime,
+event identities and model-call metadata, so a running task can be distinguished
+from a failed terminal write. These sequential observations are not an atomic
+snapshot; message bodies, tool arguments, results and credentials are omitted.
+The diagnostic reads do not resume or retry the turn.
+
+Darwin kernel facts use `kern.ostype` and `kern.osrelease` system queries,
+without launching `uname`; the Darwin build tag also covers iOS. A missing
+query omits the kernel suffix, preserving the environment prompt's format.
+`env_kernel_darwin_test.go` checks real facts with an empty executable PATH,
+both query errors and cancellation. The existing one-second context remains;
+Sysctl itself has no interruptible API. Other uname-supported platforms keep the existing command.
+
 ## External MCP tools (`F-176`, `C-041`)
 
 `internal/config/mcp_test.go` checks valid transports, private map validation,
@@ -159,6 +173,9 @@ model selection conflicts and old generations must refuse before side effects.
 The Nuwa browser suite also drives a direct turn that records no graph nodes
 through the real model adapter and verifies its live status, exact Trace and
 workspace result file in the Collaboration panel.
+It also creates two dependency-free artifacts with different recorded authors in
+one turn, checks each dashed origin link against the persisted identities before
+and after browser reload, and checks that explicit dependencies remain solid.
 `worker_config_test.go`, `model_binding_http_test.go` and
 `delegation_http_test.go` cover the library/actual HTTP model boundaries.
 `internal/engine/nuwa_collection_replay_test.go` covers descendant collection,
@@ -347,6 +364,11 @@ fixtures do not establish native iOS/Android transport or Mac WebView acceptance
 record those separately when running the packaged clients.
 
 ## Official server account models (`F-171`, `C-040`, `C-009`)
+
+`internal/engine/nuwa_account_default_http_test.go` starts a real Nuwa manager
+against account and private HTTP routes that expose the same model name. It
+checks the persisted default source, exact catalog-selected private worker and
+same-generation collection, plus explicit-source and signed-out boundaries.
 
 Go tests prove the projection against a loopback server that speaks the desktop
 model routes: `internal/remote/account_models_test.go` covers bootstrap identity
@@ -743,6 +765,20 @@ an observable running worker. This change does not shorten it, add E2E shards,
 weaken coverage/race/GUI gates, or create a VM pool. Parallel-stage timing alone
 cannot establish a speed gain or VM contention; measure comparable candidates
 before changing those policies.
+
+The default offline manager retains collected results across partial waits and
+waits only for workers without a current terminal receipt. Known worker IDs
+must all be covered before it answers; resumed numbered generations invalidate
+older results when a newer numbered tool receipt is observed. Generationless
+legacy receipts retain ID-level compatibility, not proof of the current
+generation after restoration. A runtime roster supplies identities, never
+collection or generation evidence; its System-prefix position is not time order.
+Failed or unknown results are
+reported as errors and cannot complete an open goal. A generationless unknown-ID
+lookup remains an ID-level failure without lowering a known generation or
+pretending to collect it. Provider policy tests cover the receipt rules;
+`TestOfflineManagerCollectsRealRegistryPartialResults` also exercises the
+actual Registry/ADK boundary with a delayed worker and a partial result set.
 
 Create private evidence files with explicit mode `0600` while preserving and
 recording the normal compiler/test subprocess umask; a restrictive logging-only
