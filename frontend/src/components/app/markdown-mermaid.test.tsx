@@ -80,6 +80,48 @@ describe("Mermaid markdown", () => {
     expect(mermaid.render).not.toHaveBeenCalled()
   })
 
+  it("measures a diagram that finished loading before the listener attached", async () => {
+    const client = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.dataset.testid === "mermaid-viewport" ? 200 : 0
+    })
+    const naturalWidth = vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(400)
+    const naturalHeight = vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(200)
+    try {
+      render(<MemoMarkdown text={fence()} />)
+      const image = await screen.findByRole("img", { name: "Mermaid" })
+      await waitFor(() => expect(image).toHaveStyle({ width: "200px", height: "100px" }))
+      expect(screen.getByRole("button", { name: "Zoom in" })).toBeEnabled()
+    } finally {
+      client.mockRestore()
+      naturalWidth.mockRestore()
+      naturalHeight.mockRestore()
+    }
+  })
+
+  it("fits the diagram to the reading frame and zooms from that size", async () => {
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.dataset.testid === "mermaid-viewport" ? 200 : 0
+    })
+    try {
+      render(<MemoMarkdown text={fence()} />)
+      const image = await screen.findByRole("img", { name: "Mermaid" })
+      Object.defineProperty(image, "naturalWidth", { value: 400 })
+      Object.defineProperty(image, "naturalHeight", { value: 200 })
+      fireEvent.load(image)
+      await waitFor(() => expect(image).toHaveStyle({ width: "200px", height: "100px" }))
+      expect(screen.getByLabelText("Zoom level")).toHaveTextContent("50%")
+      expect(screen.getByRole("button", { name: "Fit to window" })).toHaveAttribute("aria-pressed", "true")
+      fireEvent.click(screen.getByRole("button", { name: "Zoom in" }))
+      await waitFor(() => expect(image).toHaveStyle({ width: "300px", height: "150px" }))
+      fireEvent.click(screen.getByRole("button", { name: "Actual size" }))
+      await waitFor(() => expect(image).toHaveStyle({ width: "400px", height: "200px" }))
+      fireEvent.click(screen.getByRole("button", { name: "Fit to window" }))
+      await waitFor(() => expect(image).toHaveStyle({ width: "200px", height: "100px" }))
+    } finally {
+      width.mockRestore()
+    }
+  })
+
   it("renders a label whose identifier ends in url", async () => {
     const source = 'flowchart LR\n  A["itemurl(group)"] --> B["Shown"]'
     render(<MemoMarkdown text={fence(source)} />)

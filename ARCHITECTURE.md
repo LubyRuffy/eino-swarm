@@ -1832,7 +1832,9 @@ payload on the `copy` event, so WKWebView cannot report Copied with an empty
 pasteboard when the Clipboard API refuses). `$...$` / `$$...$$` and `math` / `latex` / `tex` fences render as
 KaTeX (lazy-loaded, same as a `chart` plot). Desktop and Web `mermaid`
 fences use a lazy-loaded, bundled renderer and display generated SVG as an
-image, retaining source copying. Rendering waits for a live fence to close;
+image, retaining source copying. The image keeps its measured pixel size;
+the view fits that image to the reading column and a bounded height, and
+zoom or actual size scrolls inside the figure. Rendering waits for a live fence to close;
 syntax failures retain readable code. Theme changes redraw diagrams, while
 later prose leaves completed diagrams mounted. The phone has its own Markdown
 renderer and does not share this Mermaid path. A fenced `chart` block

@@ -115,8 +115,8 @@ export function renderMermaid(
 }
 
 /** A percentage-sized standalone SVG otherwise gets the image default width
- * (300px). Preserve its measured layout so a large diagram can scroll at its
- * intended text size instead of shrinking every label to fit the column. */
+ * (300px). Keep the measured pixel size so 100% is the diagram's own text
+ * size; the view scales that image to fit or zoom. */
 export function mermaidSVGDataURL(svg: string): string | null {
   const parsed = new DOMParser().parseFromString(svg, "image/svg+xml")
   const root = parsed.documentElement
@@ -128,6 +128,48 @@ export function mermaidSVGDataURL(svg: string): string | null {
   root.setAttribute("height", String(box[3]))
   root.style.removeProperty("max-width")
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(root))}`
+}
+
+export type MermaidBox = { width: number; height: number }
+
+export const MERMAID_ZOOM_MIN = 0.1
+export const MERMAID_ZOOM_MAX = 4
+export const MERMAID_ZOOM_STEP = 0.25
+
+/** Fit the whole diagram inside the reading frame. Never enlarge a diagram
+ * that is already smaller than the frame. A zero axis means that axis is
+ * not known yet and does not constrain the scale. */
+export function mermaidFitScale(natural: MermaidBox, frame: MermaidBox): number {
+  if (!(natural.width > 0) || !(natural.height > 0)) return 1
+  const limits = [1]
+  if (frame.width > 0) limits.push(frame.width / natural.width)
+  if (frame.height > 0) limits.push(frame.height / natural.height)
+  return Math.min(...limits)
+}
+
+/** One zoom step from the scale the reader is looking at, clamped to the
+ * manual range. Fit may sit below that range for a very large diagram. */
+export function mermaidZoomBy(current: number, direction: 1 | -1): number {
+  const next = Math.round((current + direction * MERMAID_ZOOM_STEP) * 100) / 100
+  return Math.min(MERMAID_ZOOM_MAX, Math.max(MERMAID_ZOOM_MIN, next))
+}
+
+function cssPx(value: string): number {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+/** Content box the diagram can occupy. max-height is the vertical budget;
+ * clientHeight follows the image and cannot be used as that budget. */
+export function readMermaidFrame(element: HTMLElement): MermaidBox {
+  const style = getComputedStyle(element)
+  const padX = cssPx(style.paddingLeft) + cssPx(style.paddingRight)
+  const padY = cssPx(style.paddingTop) + cssPx(style.paddingBottom)
+  const maxHeight = cssPx(style.maxHeight)
+  return {
+    width: Math.max(0, element.clientWidth - padX),
+    height: maxHeight > 0 ? Math.max(0, maxHeight - padY) : 0,
+  }
 }
 
 type PositionNode = { position?: { start?: { offset?: number }; end?: { offset?: number } } }

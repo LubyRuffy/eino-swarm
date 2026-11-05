@@ -332,7 +332,14 @@
     @apply my-3 min-w-0 max-w-full rounded-lg border border-border bg-muted/40;
   }
   & .md-mermaid img {
-    @apply mx-auto block max-w-none;
+    @apply mx-auto block h-auto max-w-full;
+  }
+  /* A panorama stays inside the reading column. Zooming larger scrolls here
+     instead of widening the page. The gutter is reserved so fitting does not
+     gain and lose a scrollbar. */
+  & .md-mermaid-view {
+    max-height: min(70vh, 36rem);
+    scrollbar-gutter: stable;
   }
   & .md-math {
     @apply my-2;
@@ -379,7 +386,14 @@
     @apply my-3 min-w-0 max-w-full rounded-lg border border-border bg-muted/40;
   }
   .md & img {
-    @apply mx-auto block max-w-none;
+    @apply mx-auto block h-auto max-w-full;
+  }
+}
+
+@utility md-mermaid-view {
+  .md & {
+    max-height: min(70vh, 36rem);
+    scrollbar-gutter: stable;
   }
 }
 

@@ -393,6 +393,8 @@ export const en = {
   "transcript.copyMessage": "Copy message",
   "markdown.copyCode": "Copy code",
   "markdown.source": "Source",
+  "markdown.diagramControls": "Diagram controls",
+  "markdown.diagramViewport": "Diagram viewport",
   "markdown.copyFormula": "Copy formula",
   "transcript.editMessage": "Edit message",
   "transcript.cancelEdit": "Cancel",

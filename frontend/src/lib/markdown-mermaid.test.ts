@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
-import { mermaidFenceIsClosed, mermaidSourceUsesResources, mermaidSVGDataURL, readMermaidAppearance } from "./markdown-mermaid"
+import { mermaidFenceIsClosed, mermaidFitScale, mermaidSourceUsesResources, mermaidSVGDataURL, mermaidZoomBy, readMermaidAppearance, readMermaidFrame } from "./markdown-mermaid"
 
 describe("Mermaid source boundaries", () => {
   it.each([
@@ -79,6 +79,35 @@ describe("Mermaid source boundaries", () => {
     expect(svg.getAttribute("height")).toBe("400")
     expect((svg as unknown as SVGElement).style.maxWidth).toBe("")
     expect(svg.textContent).toBe("甲 & 乙")
+  })
+
+  it("fits a diagram inside the reading frame without enlarging it", () => {
+    expect(mermaidFitScale({ width: 2000, height: 800 }, { width: 500, height: 600 })).toBe(0.25)
+    expect(mermaidFitScale({ width: 400, height: 2000 }, { width: 800, height: 500 })).toBe(0.25)
+    expect(mermaidFitScale({ width: 200, height: 100 }, { width: 800, height: 500 })).toBe(1)
+    expect(mermaidFitScale({ width: 2000, height: 800 }, { width: 0, height: 0 })).toBe(1)
+    expect(mermaidFitScale({ width: 0, height: 100 }, { width: 500, height: 500 })).toBe(1)
+  })
+
+  it("steps zoom within the manual range", () => {
+    expect(mermaidZoomBy(0.4, 1)).toBe(0.65)
+    expect(mermaidZoomBy(0.4, -1)).toBe(0.15)
+    expect(mermaidZoomBy(3.9, 1)).toBe(4)
+    expect(mermaidZoomBy(0.2, -1)).toBe(0.1)
+  })
+
+  it("reads the content box under the diagram's max height", () => {
+    const element = document.createElement("div")
+    element.style.maxHeight = "480px"
+    element.style.padding = "12px"
+    document.body.appendChild(element)
+    const width = vi.spyOn(element, "clientWidth", "get").mockReturnValue(224)
+    try {
+      expect(readMermaidFrame(element)).toEqual({ width: 200, height: 456 })
+    } finally {
+      width.mockRestore()
+      element.remove()
+    }
   })
 
   it.each([
