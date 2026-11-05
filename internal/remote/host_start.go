@@ -11,8 +11,16 @@ import (
 )
 
 // Registration and the initial socket share the same bounded attempt. The
-// deadline does not govern the connected client's later reconnects.
+// deadline does not govern the connected client's later reconnects, or the
+// backoff before a socket exists.
 const hostConnectTimeout = 15 * time.Second
+
+// A laptop can lose its source address for longer than one attempt. Retry
+// until the hub accepts the PC; Stop, sign-out and Reload cancel the wait.
+const (
+	hostReconnectStart = time.Second
+	hostReconnectMax   = 15 * time.Second
+)
 
 type hostStart struct {
 	ctx     context.Context
@@ -22,8 +30,17 @@ type hostStart struct {
 	private bool
 }
 
+// hostReconnect is one pending backoff. done closes after the wait returns,
+// including when that wait goes on to dial.
+type hostReconnect struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
 // StartBackground starts one cancellable connection attempt. Local readiness
 // does not depend on the hub; Stop and Reload own cancellation and cleanup.
+// A failed attempt schedules its own replacement and does not block startup.
 func (h *Host) StartBackground() {
 	h.accounts.Start()
 	h.mu.Lock()
@@ -138,15 +155,23 @@ func (h *Host) connect(attempt *hostStart) {
 	}
 	if err != nil {
 		h.err = err.Error()
+		retry, delay := h.armReconnectLocked()
 		h.mu.Unlock()
 		if conn != nil {
 			_ = conn.Close()
 		}
-		h.log.Warn("remote host connect failed", "err", err)
+		if retry != nil {
+			go h.reconnectAfter(retry, delay)
+			h.log.Warn("remote host connect failed", "err", err, "retry_in", delay.String())
+		} else {
+			h.log.Warn("remote host connect failed", "err", err)
+		}
 		return
 	}
 	if origin, originErr := config.RemoteOrigin(attempt.config.HubURL); originErr == nil {
 		if err := h.cfg.BindRemoteOrigin(attempt.config.Token, origin); err != nil {
+			// The dial succeeded, but the saved credential belongs to another
+			// gateway. Retrying would repeat that refusal.
 			h.err = "remote: connection credential origin changed"
 			h.mu.Unlock()
 			_ = conn.Close()
@@ -157,10 +182,62 @@ func (h *Host) connect(attempt *hostStart) {
 	links := &hostLinkGroup{ctx: ctx, cancel: cancel, current: make(map[string]*hostLink)}
 	h.conn = conn
 	h.links = links
+	h.reconnectNext = 0
 	conn.OnLink(func(l *client.Link) { h.acceptLink(links, l) })
 	h.id = attempt.config.Identity
 	h.err = ""
 	h.mu.Unlock()
+}
+
+// armReconnectLocked records one backoff. The caller starts it after releasing
+// the host lock so the waiter cannot deadlock on that lock.
+func (h *Host) armReconnectLocked() (*hostReconnect, time.Duration) {
+	if h.reconnect != nil {
+		return nil, 0
+	}
+	delay := h.reconnectNext
+	gap := h.reconnectGap
+	if gap <= 0 {
+		gap = hostReconnectStart
+	}
+	if delay <= 0 {
+		delay = gap
+	}
+	limit := hostReconnectMax
+	if h.reconnectGap > 0 {
+		limit = h.reconnectGap
+	}
+	next := delay * 2
+	if next > limit {
+		next = limit
+	}
+	h.reconnectNext = next
+	ctx, cancel := context.WithCancel(context.Background())
+	retry := &hostReconnect{ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	h.reconnect = retry
+	return retry, delay
+}
+
+func (h *Host) reconnectAfter(retry *hostReconnect, delay time.Duration) {
+	defer close(retry.done)
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-retry.ctx.Done():
+		return
+	case <-timer.C:
+	}
+	h.mu.Lock()
+	if h.reconnect != retry {
+		h.mu.Unlock()
+		return
+	}
+	h.reconnect = nil
+	attempt, launch := h.prepareStartLocked(context.Background())
+	h.mu.Unlock()
+	if launch {
+		h.connect(attempt)
+	}
 }
 
 func (s *hostStart) connect() (*client.Conn, error) {

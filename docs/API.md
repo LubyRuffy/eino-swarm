@@ -668,9 +668,12 @@ falls back to anonymous registration or manual-token admission.
 `has_token` is a boolean. The Host Token is never returned. `keep_awake` is
 the setting; `awake` is whether this process currently holds the sleep
 assertion (`enabled && keep_awake`). `online` is the
-host WebSocket to the hub, not “pairing HTTP worked”. A quiet socket is
-dropped by the hub after 60s; the desktop keepalives and reconnects so a
-new QR can redeem. The phone ticket socket does the same (punch-ping data
+host WebSocket to the hub, not “pairing HTTP worked”. Before that socket
+exists, a failed registration or dial stays offline and retries in the
+background, from one second to fifteen. `error` keeps the latest failure
+until an attempt succeeds. Stop, sign-out and a settings save cancel the
+pending retry. A quiet socket is dropped by the hub after 60s; the desktop
+keepalives and reconnects so a new QR can redeem. The phone ticket socket does the same (punch-ping data
 frames, not WebSocket control pings). A drop is a reconnect banner on the
 inbox or transcript; Retry uses the saved ticket and does not unlink.
 

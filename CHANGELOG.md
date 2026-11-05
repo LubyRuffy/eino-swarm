@@ -6,6 +6,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed a signed-in PC staying offline after one failed hub registration or
+  dial, including when its network address disappears. The desktop retries in
+  the background, from one second out to fifteen, until the socket connects.
+  Stop, sign-out and saving settings cancel that wait. Refreshing account
+  status still only reads the current result.
+
 - Added removal of a phone's own model endpoint from Menu → Models. The first
   tap asks for confirmation, and account models in that list cannot be removed.
   Existing direct chats stay on the phone. A new chat moves to a remaining

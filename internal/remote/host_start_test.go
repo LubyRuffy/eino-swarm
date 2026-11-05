@@ -382,3 +382,126 @@ func TestStoppedHostClosesALateSocketHandshake(t *testing.T) {
 		t.Fatalf("late connection revived a stopped host: %+v", st)
 	}
 }
+
+// A network change can fail the only registration. The PC has to dial again
+// by itself; requiring a restart leaves the account signed in and the phone
+// unable to reach this computer.
+func TestHostRegistersAgainAfterTheHubRefusesTheFirstAttempt(t *testing.T) {
+	hubStore := pstore.NewMemory()
+	hub := relay.New(hubStore)
+	handler := hub.Handler()
+	var posts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/pairlink/v1/hosts" && posts.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	e := testEngine(t)
+	cfg := e.Config()
+	cfg.Remote.Enabled, cfg.Remote.HubURL = true, srv.URL
+	token, err := relay.IssueHostToken(t.Context(), hubStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.WriteHostToken(token); err != nil {
+		t.Fatal(err)
+	}
+	h := New(e, cfg, nil)
+	t.Cleanup(h.Stop)
+	h.reconnectGap = 20 * time.Millisecond
+	h.StartBackground()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && !h.Status().Online {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if st := h.Status(); !st.Online || st.Error != "" {
+		t.Fatalf("host stayed offline after the hub recovered: %+v posts=%d", st, posts.Load())
+	}
+	if got := posts.Load(); got < 2 {
+		t.Fatalf("recovery did not register again: %d", got)
+	}
+}
+
+func TestStopDuringReconnectWaitDoesNotRegisterAgain(t *testing.T) {
+	var posts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/pairlink/v1/hosts" {
+			posts.Add(1)
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(srv.Close)
+	e := testEngine(t)
+	cfg := e.Config()
+	cfg.Remote.Enabled, cfg.Remote.HubURL = true, srv.URL
+	h := New(e, cfg, nil)
+	h.reconnectGap = 300 * time.Millisecond
+	h.StartBackground()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && h.Status().Error == "" {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if h.Status().Error == "" {
+		t.Fatal("failed registration did not stay visible during the backoff")
+	}
+	stopped := time.Now()
+	h.Stop()
+	if time.Since(stopped) > 200*time.Millisecond {
+		t.Fatalf("Stop waited %s for the reconnect backoff", time.Since(stopped))
+	}
+	time.Sleep(500 * time.Millisecond)
+	if got := posts.Load(); got != 1 {
+		t.Fatalf("stopped host registered %d times", got)
+	}
+}
+
+func TestReloadCancelsReconnectWaitAndUsesTheReplacement(t *testing.T) {
+	hubStore := pstore.NewMemory()
+	hub := relay.New(hubStore)
+	handler := hub.Handler()
+	var posts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/pairlink/v1/hosts" && posts.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	e := testEngine(t)
+	cfg := e.Config()
+	cfg.Remote.Enabled, cfg.Remote.HubURL = true, srv.URL
+	token, err := relay.IssueHostToken(t.Context(), hubStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.WriteHostToken(token); err != nil {
+		t.Fatal(err)
+	}
+	h := New(e, cfg, nil)
+	t.Cleanup(h.Stop)
+	h.reconnectGap = time.Second
+	h.StartBackground()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && h.Status().Error == "" {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if h.Status().Error == "" {
+		t.Fatal("reload raced the first registration")
+	}
+	h.Reload()
+	if st := h.Status(); !st.Online || st.Error != "" {
+		t.Fatalf("reload did not replace the failed connection: %+v", st)
+	}
+	if got := posts.Load(); got != 2 {
+		t.Fatalf("reload registered %d times, want the failed attempt plus one replacement", got)
+	}
+	stopped := time.Now()
+	h.Stop()
+	if time.Since(stopped) > 200*time.Millisecond {
+		t.Fatalf("Stop waited %s for a reconnect the reload should have cancelled", time.Since(stopped))
+	}
+}

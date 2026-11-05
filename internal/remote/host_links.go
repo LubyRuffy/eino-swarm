@@ -25,17 +25,21 @@ type hostLink struct {
 }
 
 type hostStop struct {
-	attempt *hostStart
-	conn    *client.Conn
-	links   *hostLinkGroup
+	attempt   *hostStart
+	conn      *client.Conn
+	links     *hostLinkGroup
+	reconnect *hostReconnect
 }
 
 func (h *Host) stopLocked() hostStop {
-	previous := hostStop{attempt: h.starting, conn: h.conn, links: h.links}
-	h.starting, h.conn, h.links = nil, nil, nil
+	previous := hostStop{attempt: h.starting, conn: h.conn, links: h.links, reconnect: h.reconnect}
+	h.starting, h.conn, h.links, h.reconnect = nil, nil, nil, nil
 	h.offerURI = ""
 	if previous.attempt != nil {
 		previous.attempt.cancel()
+	}
+	if previous.reconnect != nil {
+		previous.reconnect.cancel()
 	}
 	if previous.links != nil {
 		previous.links.cancel()
@@ -53,6 +57,11 @@ func (s hostStop) finish() {
 	}
 	if s.links != nil {
 		s.links.wg.Wait()
+	}
+	// The waiter may be inside the attempt above. Join it after that attempt
+	// so Stop cannot return while a cancelled dial is still publishing.
+	if s.reconnect != nil {
+		<-s.reconnect.done
 	}
 }
 

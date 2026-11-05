@@ -45,6 +45,11 @@ type Host struct {
 	lifecycle    uint64
 	login        LoginStatus
 	loginWait    func(context.Context, time.Duration) error
+	// reconnect waits out a failed registration or dial. Stop, sign-out and
+	// Reload cancel it; a connected socket uses pairlink's own reconnect.
+	reconnect     *hostReconnect
+	reconnectGap  time.Duration
+	reconnectNext time.Duration
 	// afterLoginActivation synchronizes the private-file handoff regression.
 	afterLoginActivation func()
 
