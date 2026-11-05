@@ -14,9 +14,16 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   the unsupported-claim correction allowance stay unchanged. (`F-150`, `F-160`,
   `C-009`, `C-012`, `C-029`)
 
+- New conversations honor the selected account model source before starting
+  their manager, while explicit provider choices retain their identity. (`C-040`)
+
 - Fixed account-model publication so a catalog fetched for a credential that
   has since signed out, or been replaced, is not what login or logout leaves
   behind. (`F-171`, `C-040`)
+
+- Nuwa shows a recorded turn and author for isolated work in the collaboration
+  graph, with a different arrow style from explicit dependencies. The shared-work
+  tool explains how to link the prerequisites actually used. (`F-136`, `C-037`)
 
 - Mermaid diagrams fit inside the reading column so the whole figure is visible.
   Zoom in, zoom out, actual size, and fit scroll inside the diagram instead of

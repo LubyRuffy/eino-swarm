@@ -225,7 +225,7 @@ func (e *Engine) Providers() *provider.Pool { return e.pool }
 // the project's directory; one in no project gets a workspace of its own.
 func (e *Engine) CreateThread(title, providerID, projectID string) (*store.Thread, error) {
 	if strings.TrimSpace(providerID) == "" {
-		providerID = e.cfg.ModelsSnapshot().Default
+		providerID = e.newConversationProvider()
 	}
 	if _, err := e.pool.Resolve(providerID); err != nil {
 		return nil, err

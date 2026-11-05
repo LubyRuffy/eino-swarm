@@ -14,6 +14,9 @@ model selection conflicts and old generations must refuse before side effects.
 The Nuwa browser suite also drives a direct turn that records no graph nodes
 through the real model adapter and verifies its live status, exact Trace and
 workspace result file in the Collaboration panel.
+It also creates two dependency-free artifacts with different recorded authors in
+one turn, checks each dashed origin link against the persisted identities before
+and after browser reload, and checks that explicit dependencies remain solid.
 `worker_config_test.go`, `model_binding_http_test.go` and
 `delegation_http_test.go` cover the library/actual HTTP model boundaries.
 `internal/engine/nuwa_collection_replay_test.go` covers descendant collection,
@@ -202,6 +205,11 @@ fixtures do not establish native iOS/Android transport or Mac WebView acceptance
 record those separately when running the packaged clients.
 
 ## Official server account models (`F-171`, `C-040`, `C-009`)
+
+`internal/engine/nuwa_account_default_http_test.go` starts a real Nuwa manager
+against account and private HTTP routes that expose the same model name. It
+checks the persisted default source, exact catalog-selected private worker and
+same-generation collection, plus explicit-source and signed-out boundaries.
 
 Go tests prove the projection against a loopback server that speaks the desktop
 model routes: `internal/remote/account_models_test.go` covers bootstrap identity
