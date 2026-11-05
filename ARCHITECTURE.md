@@ -761,6 +761,14 @@ cancellation and failed writes return separately without changing the PC file.
 
 ## Phone navigation
 
+The iOS shell uses a single UIKit scene. `Info.plist` assigns Main.storyboard
+to `SceneDelegate`, so UIKit creates the existing `BridgeViewController` and
+its streaming/file-save plugins once. The scene delegate forwards both initial
+connection URLs/user activities and later URL/universal-link callbacks through
+Capacitor's `ApplicationDelegateProxy`. It does not create another window or
+synthesize application lifecycle notifications. This is required for apps
+linked with the iOS 27 SDK to launch on iOS 27.
+
 The first bind or a cold launch may resume a live or last PC conversation.
 Explicitly selecting a saved PC instead lands on that PC's inbox, including
 after reconnect, so the selected host does not choose a conversation for the

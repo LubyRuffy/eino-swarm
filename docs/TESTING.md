@@ -7160,6 +7160,32 @@ cross-references, evidence paths, and links in the current snapshots. It is
 part of `make check`; semantic correctness still requires review against
 current entry points and tests.
 
+### iOS scene startup regression
+
+Apps linked with the iOS 27 SDK require UIKit scene lifecycle adoption on
+iOS 27. `mobile/ios-scene-lifecycle.test.ts` checks the single-scene manifest,
+the existing storyboard's custom bridge, and registration in the actual App
+target. These source checks do not accept native startup.
+
+Use `mobile/scripts/ios-layout-fixture.py` with
+`IOS_LAYOUT_SCENARIO=ios-scene-lifecycle.swift`,
+`IOS_LAYOUT_PRESERVE_PUBLIC=1`, `IOS_LAYOUT_PUBLIC=<identified public directory>`,
+`IOS_LAYOUT_QUERY='/?mock=1&tick=0'`, and `IOS_LAYOUT_LOCALE=en`.
+Run the packaged `AppUITests/BindFlowTests/testNativeSceneColdStartBackgroundReturnAndRelaunch`
+on an owned iOS 27.2 simulator. It verifies visible PC controls and a real menu
+action after cold launch, Home/background/activate, and terminate/relaunch,
+retaining screenshots and accessibility trees. The same case can run on an
+older supported iOS runtime. For the current fresh account homepage, create a
+separate fixture with `IOS_LAYOUT_QUERY=/` and select
+`testNativeSceneFreshAccountPageSurvivesBackgroundReturnAndRelaunch`.
+
+For a native red/green comparison, freeze the same packaged public bytes and
+XCTest source for both rounds; only the scene adoption changes. Retain the
+original UIKit crash, build SDK, command, exit status, and result bundles.
+Stop the owned app before the next round and shut down/delete only the owned
+simulator on completion. These cases do not prove physical-device or TestFlight
+delivery, or native URL/universal-link dispatch.
+
 ### Phone composer bounds and iOS focus regression (C-017)
 
 `mobile/e2e/walkthrough.spec.ts` checks the actual message/quote font size and

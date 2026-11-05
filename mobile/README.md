@@ -9,6 +9,13 @@ reconnection. API access is independent: approved users with an enabled API
 grant and Key can use **Server** models in Chat without any PC. An approved
 account without API permission can still connect to its PCs.
 
+The iOS shell uses UIKit's single-window scene lifecycle, including when built
+with the iOS 27 SDK. The scene loads the existing Main storyboard and retains
+Capacitor URL and universal-link delivery on cold launch and while running.
+For packaged cold-launch/background/relaunch regression, use
+`e2e/ios-scene-lifecycle.swift` with the disposable native fixture described in
+[Testing](../docs/TESTING.md#ios-scene-startup-regression).
+
 A phone with no computer opens on **Sign in to zwai**. Scanning a QR code,
 pasting a pairing link and using your own model service are under **Other
 ways**, so anonymous pairing and private providers work unchanged. When this
