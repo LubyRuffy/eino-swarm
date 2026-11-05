@@ -433,7 +433,7 @@ def initial_window_snapshot(context, deadline):
                                                      stderr=readiness.stream_record(record["stderr"]))
                     and "exception" not in saved and isinstance(body, dict)
                     and body.get("ax_read_failed") is True and type(body.get("ax_error")) is int
-                    and body["ax_error"] == -25204 and body.get("ax_attribute") == "AXRole"
+                    and body["ax_error"] == -25204 and body.get("ax_attribute") in ("AXRole", "AXWindows")
                     and body.get("ax_read_reason") == "api_error"
                     and ("retryable" not in body or body["retryable"] is True)
                     and all(key not in body or body[key] is False
@@ -442,6 +442,7 @@ def initial_window_snapshot(context, deadline):
                     raise error
                 first = first or error
                 observation = dict(failed_call=index, failed_call_path=str(path), failed_call_sha256=hashlib.sha256(raw).hexdigest(),
+                                   ax_attribute=body["ax_attribute"],
                                    partial_graph_discarded=True, input_repeated=False,
                                    activation_policy="unchanged helper policy; at most one activation per invocation",
                                    shared_deadline_monotonic=deadline.ends)
@@ -450,7 +451,9 @@ def initial_window_snapshot(context, deadline):
                 error.__notes__ = [*getattr(error, "__notes__", []), "initial observation evidence refused: " + type(secondary).__name__]
                 raise error from secondary
             try:
-                pending(context, deadline, "window", "initial_ax_role_messaging_incomplete")
+                reason = ("initial_ax_windows_messaging_incomplete" if body["ax_attribute"] == "AXWindows"
+                          else "initial_ax_role_messaging_incomplete")
+                pending(context, deadline, "window", reason)
             except TimeoutError as exhausted:
                 raise exhausted from first
             except (OSError, ValueError, TypeError) as secondary:

@@ -109,7 +109,7 @@ make native-smoke APP="$CANDIDATE_APP" \
 
 每轮用全新 evidence 目录。现有入口默认 scenario 50 秒、整轮 60 秒；锁内最多 5 秒的本次非交互预检共享预算，之后仍检查正确 PID／bundle／origin、真实 AX 窗口、非空像素、一次输入／Send、worker／文件／Trace 和可见结果。`ready_for_attempt`、App 登记、激活、AXPress 或 API 200 都不等于这些断言通过。明确 registration/window/content pending，以及下述严格限定的初始 AX 消息不完整观测，可在原共享 deadline 内等待；身份／权限拒绝、其他未知或业务断言失败不盲轮询、不重复 Send。
 
-初始 readiness 仅对空 snapshot 的结构化 `AXRole`／`-25204`／`api_error`，在核对本次完整独立调用收据后，沿原 pause 和 shared deadline 重新取得全新完整观察。失败图不证明 absence／unique／ready，原 code2 和原始流保持，后续完整窗口／像素证明前不输入；不是重跑已失败业务或整个 case。snapshot 仍可能执行原有每调用一次 activation／raise；带 expected 的滚动观察、fill／Send／Press、证据损坏、超时及库存 EIO 不适用。不要由此改写旧失败或清理 latch。
+初始 readiness 仅对空 snapshot 的结构化（`AXRole` 或 `AXWindows`）／`-25204`／`api_error`，在核对本次完整独立调用收据后，沿原 pause 和 shared deadline 重新取得全新完整观察。失败图不证明 absence／unique／ready，原 code2 和原始流保持，后续完整窗口／像素证明前不输入；不是重跑已失败业务或整个 case。snapshot 仍可能执行原有每调用一次 activation／raise；带 expected 的滚动观察、fill／Send／Press、证据损坏、超时及库存 EIO 不适用。不要由此改写旧失败或清理 latch。
 
 ### 场景触发矩阵
 

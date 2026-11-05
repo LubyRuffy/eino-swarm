@@ -2063,8 +2063,11 @@ guest returned an empty AX list or accept its native window.
 
 Initial readiness additionally exercises `wait_initial_ready` → `wait_window` →
 `native_snapshot` → `observed_command` through the real Python caller. Only an
-empty initial snapshot with a completed, fully recorded `AXRole`/`-25204` API
-refusal may be reacquired in the same deadline. A failed partial graph is never
+empty initial snapshot with a completed, fully recorded `-25204` `api_error`
+refusal of `AXRole` or `AXWindows` may be reacquired in the same deadline.
+The pending reason and retained incomplete-observation receipt identify the
+failed attribute; neither the helper's activation policy nor the deadline changes.
+A failed partial graph is never
 passed to window/input checks. Regress continuous failures, exact current-call
 evidence mismatch, duplicate controls in the fresh graph, identity/permission/
 inventory/evidence failures, noninitial/result snapshots and input failures in
