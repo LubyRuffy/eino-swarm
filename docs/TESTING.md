@@ -5,6 +5,13 @@ Recorded events remain available for replay and diagnostics. The work-fold
 unit test covers both display modes and streaming into visible content.
 The transcript whitespace browser regression measures the gap after replay.
 
+Engine tests retain the original 30-second `waitForTurn` deadline. On timeout,
+the helper logs goroutine stacks before reading the durable turn, runtime,
+event identities and model-call metadata, so a running task can be distinguished
+from a failed terminal write. These sequential observations are not an atomic
+snapshot; message bodies, tool arguments, results and credentials are omitted.
+The diagnostic reads do not resume or retry the turn.
+
 ## External MCP tools (`F-176`, `C-041`)
 
 `internal/config/mcp_test.go` checks valid transports, private map validation,
