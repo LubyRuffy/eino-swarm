@@ -772,9 +772,13 @@ account settings** before allowing another login or connection edit.
 
 An authorized account uses its name's initial as a local avatar; no avatar image
 is fetched. **Signed in · PC offline** distinguishes account authorization from
-the actual hub connection. Waiting for browser authorization, administrator
-review, rejection and unreadable status have separate messages. Local
-conversations remain usable without signing in.
+the actual hub connection. A failed registration or dial keeps that sign-in
+and retries on its own, from one second out to fifteen. The account menu
+follows the next successful attempt; **Refresh account status** only reads the
+current result, and restarting the app is not required after a network change.
+Stop, sign-out and saving settings cancel the pending retry. Waiting for
+browser authorization, administrator review, rejection and unreadable status
+have separate messages. Local conversations remain usable without signing in.
 
 **Account → Sign out** stops this PC's remote connections and confirms device
 revocation with its configured Gateway before removing the corresponding local

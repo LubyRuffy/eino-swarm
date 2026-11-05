@@ -3,6 +3,8 @@ package provider
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -50,8 +52,11 @@ func managerScript(turn int, msgs []*schema.Message) *schema.Message {
 	// wait_agents returns as soon as one sub-agent finishes, so the manager
 	// waits in a loop: it answers once everyone is done and otherwise
 	// reports what just came back before waiting for the rest.
-	report := latestWaitReport(msgs)
-	if report != nil && allFinished(report) {
+	state := defaultMockWaitState(msgs, ids)
+	if len(state.pending) == 0 {
+		if state.failed {
+			return schema.AssistantMessage("Worker results include a failure or an unknown worker:\n"+strings.Join(collectResults(state.report), "\n"), nil)
+		}
 		if mockShouldCompleteGoal(msgs) {
 			args, _ := json.Marshal(map[string]any{
 				"summary": "the standing objective is satisfied",
@@ -64,12 +69,12 @@ func managerScript(turn int, msgs []*schema.Message) *schema.Message {
 				},
 			}
 		}
-		return schema.AssistantMessage(mockAnswer(task, collectResults(report)), nil)
+		return schema.AssistantMessage(mockAnswer(task, collectResults(state.report)), nil)
 	}
-	args, _ := json.Marshal(map[string]any{"agent_ids": ids, "timeout_s": 60})
+	args, _ := json.Marshal(map[string]any{"agent_ids": state.pending, "timeout_s": 60})
 	content := "Checking the workers’ current results.\n"
-	if report != nil {
-		content = waitProgressLine(report)
+	if len(state.report.Agents) > 0 {
+		content = fmt.Sprintf("%d reported, %d still working; waiting for the rest.\n", len(ids)-len(state.pending), len(state.pending))
 	}
 	return &schema.Message{
 		Role:      schema.Assistant,

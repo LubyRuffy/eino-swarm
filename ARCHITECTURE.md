@@ -573,8 +573,13 @@ re-acquire or idle sleep wins the gap. On macOS the hold is AC-only.
 lifecycle started by `Host.StartBackground`; hub registration is not a local
 HTTP readiness condition. A slow or unavailable hub leaves desktop, browser
 and terminal startup available while the phone reports its connection state.
-Stop and Reload cancel pending registration; late results cannot install a
-host after its lifecycle has ended.
+Each registration or dial attempt keeps a fifteen-second budget. When that
+attempt fails, the host retries in the background, starting at one second and
+backing off to fifteen, until a socket exists. Stop, sign-out and Reload
+cancel the wait and a late result cannot install a host after its lifecycle
+has ended. A disabled connection, missing hub, unsigned account, or identity
+or token failure does not spin. Once the socket is up, pairlink reconnects
+that socket itself.
 
 NOSEC is an explicit `remote.auth_mode` alongside compatible `legacy` hubs.
 `internal/remote/login.go` owns the desktop device-authorization lifecycle:

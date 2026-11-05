@@ -607,6 +607,20 @@ weaken coverage/race/GUI gates, or create a VM pool. Parallel-stage timing alone
 cannot establish a speed gain or VM contention; measure comparable candidates
 before changing those policies.
 
+The default offline manager retains collected results across partial waits and
+waits only for workers without a current terminal receipt. Known worker IDs
+must all be covered before it answers; resumed numbered generations invalidate
+older results when a newer numbered tool receipt is observed. Generationless
+legacy receipts retain ID-level compatibility, not proof of the current
+generation after restoration. A runtime roster supplies identities, never
+collection or generation evidence; its System-prefix position is not time order.
+Failed or unknown results are
+reported as errors and cannot complete an open goal. A generationless unknown-ID
+lookup remains an ID-level failure without lowering a known generation or
+pretending to collect it. Provider policy tests cover the receipt rules;
+`TestOfflineManagerCollectsRealRegistryPartialResults` also exercises the
+actual Registry/ADK boundary with a delayed worker and a partial result set.
+
 Create private evidence files with explicit mode `0600` while preserving and
 recording the normal compiler/test subprocess umask; a restrictive logging-only
 mask must not silently change executable-mode fixtures or be reported as a
