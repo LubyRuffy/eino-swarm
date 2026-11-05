@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Mermaid diagrams fit inside the reading column so the whole figure is visible.
+  Zoom in, zoom out, actual size, and fit scroll inside the diagram instead of
+  widening the page. (`F-120`, `C-005`)
+
 - Fixed macOS renderer recovery so the remaining replacement attempt requires
   a new failed foreground paint probe. A successor waiting for its first paint
   reports where its probe stopped. (`F-115`, `C-034`)

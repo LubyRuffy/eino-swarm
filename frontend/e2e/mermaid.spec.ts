@@ -96,10 +96,27 @@ test("renders distinct Mermaid diagrams in Markdown files with original source c
     expect(bounds!.x).toBeGreaterThanOrEqual(outer!.x)
     expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(outer!.x + outer!.width + 1)
   }
-  const scrollport = diagrams.nth(1).getByRole("img", { name: "Mermaid", exact: true }).locator("..")
-  expect(await scrollport.evaluate((element) => element.scrollWidth)).toBeGreaterThan(await scrollport.evaluate((element) => element.clientWidth))
-  await scrollport.evaluate((element) => { element.scrollLeft = element.scrollWidth })
-  expect(await scrollport.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+  const wide = diagrams.nth(1)
+  const wideImage = wide.getByRole("img", { name: "Mermaid", exact: true })
+  const wideView = wide.getByTestId("mermaid-viewport")
+  const fitted = async () => {
+    const image = await wideImage.boundingBox()
+    const view = await wideView.boundingBox()
+    return !!image && !!view && image.x >= view.x - 1 && image.x + image.width <= view.x + view.width + 1
+  }
+  await expect.poll(fitted).toBe(true)
+  const fittedWidth = (await wideImage.boundingBox())!.width
+  await wide.getByRole("button", { name: "Zoom in", exact: true }).click()
+  await expect.poll(async () => (await wideImage.boundingBox())!.width).toBeGreaterThan(fittedWidth + 1)
+  const pageWidth = await page.evaluate(() => window.innerWidth)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(pageWidth)
+  await wide.getByRole("button", { name: "Actual size", exact: true }).click()
+  await expect.poll(() => wideView.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
+  await wideView.evaluate((element) => { element.scrollLeft = element.scrollWidth })
+  expect(await wideView.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(pageWidth)
+  await wide.getByRole("button", { name: "Fit to window", exact: true }).click()
+  await expect.poll(fitted).toBe(true)
   writeFileSync(info.outputPath("mermaid-light.png"), await page.screenshot(), { mode: 0o600 })
   await page.keyboard.press("Escape")
   await page.getByRole("button", { name: "App menu" }).click()
