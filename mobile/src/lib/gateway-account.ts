@@ -196,6 +196,10 @@ export async function startGatewayLogin(origin = getGatewayOrigin(), fetcher: ty
       if (Capacitor.getPlatform() === "android") {
         const opened = await AppLauncher.openUrl({ url: pending.verificationURI })
         if (opened?.completed !== true) throw new GatewayError(0, "browser_unavailable")
+      } else if (Capacitor.getPlatform() === "ios") {
+        // Capacitor 7's fullscreen presenter creates a temporary window without
+        // a UIWindowScene. Popover presents from the existing scene-owned bridge.
+        await Browser.open({ url: pending.verificationURI, presentationStyle: "popover" })
       } else {
         await Browser.open({ url: pending.verificationURI })
       }

@@ -12,6 +12,8 @@ account without API permission can still connect to its PCs.
 The iOS shell uses UIKit's single-window scene lifecycle, including when built
 with the iOS 27 SDK. The scene loads the existing Main storyboard and retains
 Capacitor URL and universal-link delivery on cold launch and while running.
+Its iOS sign-in browser presents from the existing scene so the login sheet
+remains visible after scene adoption.
 For packaged cold-launch/background/relaunch regression, use
 `e2e/ios-scene-lifecycle.swift` with the disposable native fixture described in
 [Testing](../docs/TESTING.md#ios-scene-startup-regression).

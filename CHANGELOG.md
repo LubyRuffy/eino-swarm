@@ -9,7 +9,8 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 - Fixed iOS 27.2 terminating the app during startup because the native shell
   had not adopted UIKit's required scene lifecycle. A single scene loads the
   existing bridge and forwards cold and warm URL/universal-link callbacks to
-  Capacitor.
+  Capacitor. The iOS sign-in browser presents from that scene so its login
+  sheet remains visible after the migration.
 
 - Added Desktop/Web Settings → MCP for local stdio and remote Streamable HTTP/SSE
   tool servers, write-only environment/header credentials, explicit connection

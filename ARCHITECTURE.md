@@ -768,6 +768,9 @@ connection URLs/user activities and later URL/universal-link callbacks through
 Capacitor's `ApplicationDelegateProxy`. It does not create another window or
 synthesize application lifecycle notifications. This is required for apps
 linked with the iOS 27 SDK to launch on iOS 27.
+The iOS account browser uses Capacitor 7's `popover` presentation, which presents
+from that existing bridge. Its default fullscreen helper creates a temporary
+window without a scene and cannot display the login sheet in this lifecycle.
 
 The first bind or a cold launch may resume a live or last PC conversation.
 Explicitly selecting a saved PC instead lands on that PC's inbox, including

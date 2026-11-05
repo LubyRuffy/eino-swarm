@@ -122,8 +122,10 @@ final class BindFlowTests: XCTestCase {
 
     app.buttons["Back"].tap()
     app.buttons["Menu"].tap()
-    let center = app.menuItems["User center"]
+    // WKWebView exposes the account menu action as a native Button.
+    let center = app.buttons["User center"]
     XCTAssertTrue(center.waitForExistence(timeout: 5))
+    XCTAssertTrue(center.isHittable)
     center.tap()
     try control("pc=show&api=off")
     app.buttons["Refresh account"].tap()
@@ -284,7 +286,7 @@ final class BindFlowTests: XCTestCase {
     XCTAssertFalse(app.buttons["Web settings"].exists)
     XCTAssertFalse(pcRoute.exists)
     app.buttons["Menu"].tap()
-    app.menuItems["User center"].tap()
+    app.buttons["User center"].tap()
     XCTAssertTrue(pcRoute.waitForExistence(timeout: 12))
     let pcExecution = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Run on this PC")).firstMatch
     XCTAssertTrue(pcExecution.exists, "Settings must show the anonymous PC's local execution snapshot")

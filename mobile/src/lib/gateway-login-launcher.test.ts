@@ -4,7 +4,7 @@ import { startGatewayLogin } from "./gateway-account"
 const native = vi.hoisted(() => ({
   platform: "android",
   launch: vi.fn<(options: { url: string }) => Promise<{ completed: boolean }>>(),
-  browser: vi.fn<(options: { url: string }) => Promise<void>>(),
+  browser: vi.fn<(options: { url: string; presentationStyle?: "fullscreen" | "popover" }) => Promise<void>>(),
 }))
 vi.mock("@capacitor/core", () => ({
   Capacitor: { getPlatform: () => native.platform, isNativePlatform: () => native.platform !== "web" },
@@ -37,8 +37,18 @@ describe("NOSEC system browser selection", () => {
     expect(native.browser).not.toHaveBeenCalled()
   })
 
-  it.each(["ios", "web"])("preserves the existing Browser on %s", async (platform) => {
-    native.platform = platform
+  it("presents iOS login from the scene-owned bridge instead of a legacy temporary window", async () => {
+    // Capacitor 7's fullscreen presentation creates a window without its scene.
+    // Popover presents from the existing bridge, including on an iPhone.
+    native.platform = "ios"
+    await startGatewayLogin(origin, fetcher())
+    expect(native.browser).toHaveBeenCalledOnce()
+    expect(native.browser).toHaveBeenCalledWith({ url: verification, presentationStyle: "popover" })
+    expect(native.launch).not.toHaveBeenCalled()
+  })
+
+  it("preserves URL-only Browser login on the web", async () => {
+    native.platform = "web"
     await startGatewayLogin(origin, fetcher())
     expect(native.browser).toHaveBeenCalledOnce()
     expect(native.browser).toHaveBeenCalledWith({ url: verification })

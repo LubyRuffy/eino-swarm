@@ -7167,6 +7167,18 @@ iOS 27. `mobile/ios-scene-lifecycle.test.ts` checks the single-scene manifest,
 the existing storyboard's custom bridge, and registration in the actual App
 target. These source checks do not accept native startup.
 
+Scene adoption also needs the actual sign-in browser. Capacitor 7's default
+fullscreen presenter creates a temporary window without a scene; iOS account
+login selects its `popover` presenter to use the existing bridge instead.
+`mobile/src/lib/gateway-login-launcher.test.ts` checks that SDK boundary and
+retains the independent web and Android paths. Run
+`mobile/e2e/ios-gateway-account.swift`'s
+`testNativeAccountReviewModelAndOwnedPCFlow` in the existing loopback account
+fixture with the final IPA public bytes. It must display and operate the real
+Browser sheet, including sign-in, review isolation, authorization and return;
+launching the app or receiving a successful browser-open acknowledgement alone
+does not verify presentation.
+
 Use `mobile/scripts/ios-layout-fixture.py` with
 `IOS_LAYOUT_SCENARIO=ios-scene-lifecycle.swift`,
 `IOS_LAYOUT_PRESERVE_PUBLIC=1`, `IOS_LAYOUT_PUBLIC=<identified public directory>`,
