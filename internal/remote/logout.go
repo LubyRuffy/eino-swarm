@@ -138,6 +138,9 @@ func (h *Host) LogoutContext(parent context.Context) error {
 		return fmt.Errorf("remote: account logout failed: %w", err)
 	}
 	h.login = LoginStatus{State: "signed_out"}
+	// Seal only takes the catalog lock. It waits out a publish that already
+	// observed this credential, then drops that catalog before Logout returns.
+	h.accounts.Seal()
 	h.accounts.Trigger()
 	return nil
 }

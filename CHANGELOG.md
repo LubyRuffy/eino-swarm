@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed account-model publication so a catalog fetched for a credential that
+  has since signed out, or been replaced, is not what login or logout leaves
+  behind. (`F-171`, `C-040`)
+
 - Fixed macOS renderer recovery so the remaining replacement attempt requires
   a new failed foreground paint probe. A successor waiting for its first paint
   reports where its probe stopped. (`F-115`, `C-034`)

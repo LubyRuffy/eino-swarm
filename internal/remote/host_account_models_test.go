@@ -79,7 +79,11 @@ func TestLoginAndLogoutDriveTheAccountModels(t *testing.T) {
 	if err := host.Logout(); err != nil {
 		t.Fatal(err)
 	}
-	waitNOSEC(t, func() bool { return host.AccountModels().State == AccountSignedOut })
+	// Logout itself drops the catalog. Waiting for a later refresh would hide
+	// a return that left the signed-out account's models in place.
+	if st := host.AccountModels(); st.State != AccountSignedOut || e.Providers().AccountSourceID() != "" {
+		t.Fatalf("logout returned while the account catalog was still published: %+v", st)
+	}
 }
 
 func TestReloadRefreshesOnlyWhenTheAccountChanged(t *testing.T) {

@@ -356,6 +356,41 @@ func TestOversizedServerResponsesAreRefused(t *testing.T) {
 
 // Logout can finish while a refresh is waiting on the server. Publishing that
 // late answer would resurrect models for an account that is already gone.
+// The fetch can return after the credential has already changed, and the
+// change can also land in the gap after the fetch observed it. Either way the
+// old catalog must not be what a reader sees, including the caller of logout.
+func TestACredentialThatLeavesBeforePublishIsNotApplied(t *testing.T) {
+	g := newAccountGateway(t)
+	am, pool, cfg := accountModelsFixture(t, g)
+	am.beforePublish = func() { signOutAccount(t, cfg) }
+	st := am.Refresh(context.Background())
+	if st.State != AccountSignedOut || pool.AccountSourceID() != "" {
+		t.Fatalf("published a catalog after its credential was gone: %+v id=%s", st, pool.AccountSourceID())
+	}
+}
+
+func TestSealDropsACatalogWhoseCredentialIsAlreadyGone(t *testing.T) {
+	g := newAccountGateway(t)
+	am, pool, cfg := accountModelsFixture(t, g)
+	if st := am.Refresh(context.Background()); st.State != AccountReady || pool.AccountSourceID() == "" {
+		t.Fatalf("setup: %+v", st)
+	}
+	signOutAccount(t, cfg)
+	if pool.AccountSourceID() == "" {
+		t.Fatal("setup removed the catalog before seal")
+	}
+	am.Seal()
+	if st := am.State(); st.State != AccountSignedOut || pool.AccountSourceID() != "" {
+		t.Fatalf("seal left %+v id=%s", st, pool.AccountSourceID())
+	}
+	// A newer sign-in must not inherit the previous catalog either.
+	signInAccount(t, cfg, g.server.URL)
+	am.Seal()
+	if st := am.State(); st.State != AccountPending || pool.AccountSourceID() != "" {
+		t.Fatalf("a new sign-in kept the previous catalog: %+v id=%s", st, pool.AccountSourceID())
+	}
+}
+
 func TestRefreshFinishingAfterSignOutPublishesNothing(t *testing.T) {
 	g := newAccountGateway(t)
 	entered, release := make(chan struct{}), make(chan struct{})

@@ -313,6 +313,7 @@ func (h *Host) runLogin(attempt *loginAttempt) {
 			h.loginActive = nil
 			connect, launch = h.prepareStartLocked(context.Background())
 			h.mu.Unlock()
+			h.accounts.Seal()
 			h.accounts.Trigger()
 			if h.afterLoginActivation != nil {
 				h.afterLoginActivation()

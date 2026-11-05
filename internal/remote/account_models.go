@@ -77,9 +77,17 @@ type AccountModels struct {
 	mu        sync.RWMutex
 	state     AccountModelsState
 	published bool
+	// publishedToken is the credential the published catalog was fetched with.
+	// Empty means nothing is published. Seal compares it with the credential
+	// that is current after login or logout.
+	publishedToken  string
+	publishedOrigin string
 	// lastKey identifies the credential the latest refresh used, so Reconcile
 	// can tell a changed account from an unrelated settings save.
 	lastKey string
+	// beforePublish yields between the fetch and the publish. Tests use it to
+	// put a credential change in that gap; production leaves it nil.
+	beforePublish func()
 
 	runMu  sync.Mutex
 	cancel context.CancelFunc
@@ -236,17 +244,42 @@ func (a *AccountModels) Refresh(ctx context.Context) AccountModelsState {
 	id, ok := a.identity()
 	a.setLastKey(identityKey(id))
 	if !ok {
-		return a.publish(accountOutcome{state: AccountModelsState{State: AccountSignedOut}})
+		return a.publish(id, accountOutcome{state: AccountModelsState{State: AccountSignedOut}})
 	}
 	outcome := a.fetch(ctx, id)
 	if ctx.Err() != nil {
 		return a.State()
 	}
-	// Sign-out or a new login can complete while the server is answering.
-	if now, ok := a.identity(); !ok || now.token != id.token || now.origin != id.origin {
-		return a.publish(accountOutcome{state: AccountModelsState{State: AccountSignedOut}})
+	// The fetch observed id. Login or logout can commit before we publish,
+	// so publish checks the credential again instead of trusting id.
+	if a.beforePublish != nil {
+		a.beforePublish()
 	}
-	return a.publish(outcome)
+	return a.publish(id, outcome)
+}
+
+// Seal makes the published catalog match the credential that just changed.
+// Login and logout call it before they return: a refresh that already passed
+// its check can still be inside publish, and this waits for that publish, then
+// drops a catalog that belongs to a credential which is no longer current.
+func (a *AccountModels) Seal() {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	now, ok := a.identity()
+	if !ok {
+		a.apply(accountIdentity{}, accountOutcome{state: AccountModelsState{State: AccountSignedOut}})
+		return
+	}
+	if a.publishedToken == now.token && a.publishedOrigin == now.origin {
+		return
+	}
+	a.pool.SetAccountSource(nil)
+	a.published = false
+	a.publishedToken, a.publishedOrigin = "", ""
+	a.state = AccountModelsState{State: AccountPending, Username: now.username, DisplayName: now.displayName}
 }
 
 func (a *AccountModels) setLastKey(key string) {
@@ -255,16 +288,37 @@ func (a *AccountModels) setLastKey(key string) {
 	a.mu.Unlock()
 }
 
-func (a *AccountModels) publish(o accountOutcome) AccountModelsState {
+func (a *AccountModels) publish(fetched accountIdentity, o accountOutcome) AccountModelsState {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if o.transient && a.published {
+	now, ok := a.identity()
+	switch {
+	case !ok:
+		// The credential is gone. Publish that, whatever the fetch observed.
+		o = accountOutcome{state: AccountModelsState{State: AccountSignedOut}}
+		fetched = accountIdentity{}
+	case fetched.token == "" || now.token != fetched.token || now.origin != fetched.origin:
+		// A newer login owns the pool now. Leave its pending or ready catalog
+		// alone; the refresh triggered for it publishes its own models.
+		return a.state
+	case o.transient && a.published:
 		// A brief outage must not take working models away mid-conversation.
 		a.log.Warn("account models refresh failed; keeping the last working catalog", "reason", o.state.Reason)
 		return a.state
 	}
+	return a.apply(fetched, o)
+}
+
+// apply writes the outcome. The caller holds a.mu and has decided that the
+// outcome belongs to the current credential.
+func (a *AccountModels) apply(fetched accountIdentity, o accountOutcome) AccountModelsState {
 	a.pool.SetAccountSource(o.source)
 	a.published = o.source != nil
+	if o.source != nil {
+		a.publishedToken, a.publishedOrigin = fetched.token, fetched.origin
+	} else {
+		a.publishedToken, a.publishedOrigin = "", ""
+	}
 	if o.state != a.state {
 		a.log.Info("account models", "state", o.state.State, "reason", o.state.Reason, "models", o.state.Models)
 	}

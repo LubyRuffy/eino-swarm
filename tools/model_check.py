@@ -13,6 +13,8 @@ models/scheduling/WakeConsentTimeline.tla checks multiple original human
 decisions, asynchronous classification and exact-ID cancellation deduplication.
 models/stream/ManagerCommentary.tla checks the order and privacy of admitted
 manager commentary before it enters the event stream.
+models/account/AccountCatalog.tla checks that a published account catalog
+belongs to the current credential (C-040).
 Every case sets its model's switch constants and states
 the expected outcome: the current design must pass every safety invariant;
 each historical or seeded behaviour must break the named invariant (checked
@@ -63,6 +65,12 @@ class Model:
 MODELS = {
     m.name: m
     for m in (
+        Model(
+            "account", ROOT / "models" / "account" / "AccountCatalog.tla",
+            ("StaleObservation", "UnsealedLogout"),
+            ("TypeOK", "PublishedAgrees"),
+            (),
+        ),
         Model(
             "lifecycle", ROOT / "models" / "lifecycle" / "EngineLifecycle.tla",
             ("DeadlineKillsChild", "RestoreBeforeListen", "StopRacesRestore", "PresenceAfterWindow",
@@ -167,6 +175,17 @@ def _consent(name: str, source: str, switches: tuple[str, ...] = (), violates: s
 
 
 CASES: tuple[Case, ...] = (
+    _case("account-current", "publish rechecks the credential and login or logout seals the catalog",
+          model="account"),
+    _case("account-stale-observation", "a fetch publishes the credential it observed after that credential changed",
+          ("StaleObservation",), "PublishedAgrees", model="account"),
+    _case("account-unsealed-logout", "logout changes the credential and leaves the previous catalog published",
+          ("UnsealedLogout",), "PublishedAgrees", model="account"),
+    *(_case(name, "witness", witness=witness, model="account") for name, witness in (
+        ("account-reach-sign-out", "NeverSignedOut"),
+        ("account-reach-in-flight", "NeverInFlight"),
+        ("account-reach-other-account", "NeverOtherAccount"),
+    )),
     _case("manager-commentary-current", "admit ordinary commentary before its tool",
           model="manager-commentary"),
     _case("manager-commentary-historical-defer", "historical 56ae732: defer ordinary commentary until the run ends",

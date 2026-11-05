@@ -234,7 +234,18 @@ Phone tests (`gateway-auto-connect.test.ts`, `use-gateway-account-fresh-login.te
 auto-connect rule: several online PCs, no online PC, an existing saved
 connection or active fingerprint, a restart with a cached session, a sign-out,
 server change or second sign-in before the first read lands, and a failed first
-read must not connect; offline or disabled siblings are not counted as choices. The real gateway side is covered in the
+read must not connect; offline or disabled siblings are not counted as choices.
+
+`models/account/AccountCatalog.tla` (`make model-check`) checks the publication
+protocol: the published catalog belongs to the current credential.
+`StaleObservation` is a fetch publishing the credential it saw after that
+credential changed, and `UnsealedLogout` is logout leaving the previous catalog
+in place; each violates `PublishedAgrees`. The Go reproduction is
+`TestACredentialThatLeavesBeforePublishIsNotApplied` and
+`TestSealDropsACatalogWhoseCredentialIsAlreadyGone`. Removing the recheck in
+`publish` makes the first test publish a ready catalog after sign-out.
+
+The real gateway side is covered in the
 aigateway repository's own tests. These are offline/browser results; they do
 not accept the packaged desktop app or the iOS/Android shells (see
 `docs/NATIVE_TESTING_FAST_PATH.md` for the `ci-macOS` guest procedure).

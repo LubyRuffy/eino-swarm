@@ -471,9 +471,10 @@ host component that, once a NOSEC device login exists, reads the server's
 desktop bootstrap and model catalog with the private device credential and
 publishes the result to `internal/provider` as an `AccountSource`. The component
 runs in the host lifecycle: it starts and stops with `Host`, refreshes on login,
-logout, `Reload` that changed the account and every ten minutes, drops a result
-that finishes after sign-out, never follows a redirect with the credential and
-bounds the response. Its state (`signed_out`, `pending`, `ready`, `no_access`,
+logout, `Reload` that changed the account and every ten minutes, and seals the
+published catalog to the current credential before login or logout returns.
+A fetch that observed an older credential does not publish it. It never follows
+a redirect with the credential and bounds the response. Its state (`signed_out`, `pending`, `ready`, `no_access`,
 `unavailable` plus a reason) is the only thing the UI sees, through
 `/api/meta.account_models`.
 
