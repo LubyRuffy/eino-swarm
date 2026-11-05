@@ -2,13 +2,14 @@ import { AlertTriangle, X } from "lucide-react"
 import { type ReactNode, useCallback } from "react"
 import { useShallow } from "zustand/react/shallow"
 
+import { AccountSignIn } from "@/components/app/account-sign-in"
 import { Header } from "@/components/app/header"
 import { Palette } from "@/components/app/palette"
 import { SettingsDialog } from "@/components/app/settings-dialog"
 import { Button } from "@/components/ui/button"
-import { api } from "@/lib/api"
 import { useT } from "@/lib/use-t"
 import { useApp } from "@/store/app"
+import { refreshMetaAndModels } from "@/store/app-models"
 import { activeWake } from "@/store/app-schedule"
 import { projectOf, useProjects } from "@/store/projects"
 import { closeSettings, useSettingsSheet } from "@/store/settings-sheet"
@@ -83,12 +84,14 @@ export function ConfiguredBanner({ onConfigure }: { onConfigure: () => void }) {
   const t = useT()
   const meta = useApp((s) => s.meta)
   if (!meta || meta.configured) return null
+  // The server account leads; a model service of your own stays one click away.
   return (
-    <div className="flex items-center gap-2 border-b border-border bg-running/10 px-4 py-2 text-sm">
+    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-running/10 px-4 py-2 text-sm">
       <AlertTriangle className="size-4 shrink-0 text-running" />
       <span className="min-w-0 flex-1">
         {t("banner.unconfigured")}
       </span>
+      <AccountSignIn compact />
       <Button size="sm" variant="outline" onClick={onConfigure}>
         {t("banner.configure")}
       </Button>
@@ -199,9 +202,7 @@ export function AppSettings({
   const refreshAfterSettings = useCallback(() => {
     // boot() reloads the thread list and reapplies chrome. Settings only
     // changed meta and models.
-    void Promise.all([api.meta(), api.models()]).then(([meta, listed]) => {
-      useApp.setState({ meta, models: listed.models })
-    })
+    void refreshMetaAndModels().catch(() => undefined)
   }, [])
   return (
     <SettingsDialog

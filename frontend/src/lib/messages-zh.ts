@@ -145,8 +145,9 @@ export const zh: { [K in keyof typeof en]: string } = {
   "empty.split.hint": "说出目标；它决定需要多少工人。",
   "empty.split.text": "把这个目标拆成可并行的部分，并行处理，再合并结果。",
 
-  "banner.unconfigured": "还没有配置模型接口，所以现在跑不起来。",
-  "banner.configure": "去配置",
+  "banner.unconfigured":
+    "还没有可用的模型。登录后可使用服务器模型、手机连接和云端联网工具，也可以配置自己的模型服务。",
+  "banner.configure": "配置自己的模型",
   "banner.dismiss": "关闭",
 
   "toast.region": "通知",

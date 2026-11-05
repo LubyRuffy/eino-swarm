@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils"
 import { useT, type Translate } from "@/lib/use-t"
 import { errorMessage, toastError, useToasts } from "@/store/toasts"
 
+import { AccountModelsCard } from "./account-models-card"
 import { AuxiliaryModels } from "./auxiliary-models"
 import { SearchSettingsPanel } from "./settings-search"
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog"
@@ -144,6 +145,7 @@ export function ModelsTab({
     onChange({
       ...settings,
       models: {
+        ...settings.models,
         default:
           settings.models.default === target.id
             ? providers[0].id
@@ -158,12 +160,13 @@ export function ModelsTab({
       title={t("settings.models.title")}
       description={t("settings.models.desc")}
     >
+      <AccountModelsCard settings={settings} onChange={onChange} query={query} />
       <AuxiliaryModels settings={settings} onChange={onChange} query={query} />
       <SearchSettingsPanel settings={settings} onChange={onChange} query={query} />
 
       <SettingsSection
-        title={t("settings.models.providers")}
-        description={t("settings.models.providersDesc")}
+        title={t("accountModels.ownTitle")}
+        description={noOwnProvider(settings) ? t("accountModels.ownEmpty") : t("accountModels.ownDesc")}
       >
         {settings.models.providers.map((p, i) => (
           <ProviderRow
@@ -563,4 +566,10 @@ function unique(names: string[]): string[] {
     out.push(s)
   }
   return out
+}
+
+/** Only the untouched placeholder row exists: show the empty state, not a
+ *  form that looks like a configured service. */
+function noOwnProvider(settings: Settings): boolean {
+  return settings.models.providers.every((p) => !p.ready)
 }

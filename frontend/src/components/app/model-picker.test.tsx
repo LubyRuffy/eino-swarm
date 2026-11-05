@@ -113,4 +113,15 @@ describe("ModelPicker", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit providers" }))
     expect(onEdit).toHaveBeenCalled()
   })
+
+  it("lists the signed-in server's models before the user's own services", () => {
+    const mixed: ModelInfo[] = [
+      { id: "g\tserver-a", provider_id: "gateway:x", provider_label: "Server", label: "server-a", model: "server-a", ready: true, default: true, source: "account" },
+      ...models.map((m) => ({ ...m, default: false, source: "provider" as const })),
+    ]
+    render(<ModelPicker models={mixed} providerId="gateway:x" model="server-a" onChange={vi.fn()} />)
+    fireEvent.click(screen.getByRole("button", { name: "Model" }))
+    const headings = Array.from(document.querySelectorAll("[cmdk-group-heading]")).map((n) => n.textContent)
+    expect(headings).toEqual(["Server", "One", "Two"])
+  })
 })

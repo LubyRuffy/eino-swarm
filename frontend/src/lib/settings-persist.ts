@@ -30,6 +30,11 @@ export function persistPayload(
   if (!same(next.models, baseline.models)) {
     patch.models = {
       default: next.models.default,
+      // Sent only when this draft changed it, so a save from a stale sheet
+      // cannot undo a choice made elsewhere.
+      ...(next.models.default_source !== baseline.models.default_source
+        && next.models.default_source !== undefined
+        ? { default_source: next.models.default_source } : {}),
       providers: next.models.providers.map((provider): ProviderSettingsWrite => {
         const previous = baseline.models.providers.find((p) => p.id === provider.id)
         const row: ProviderSettingsWrite = { ...provider }

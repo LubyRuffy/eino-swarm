@@ -148,8 +148,8 @@ export const en = {
     "Break this goal into parallel pieces, work them in parallel, then combine the results.",
 
   "banner.unconfigured":
-    "No model endpoint is configured yet, so nothing can run.",
-  "banner.configure": "Configure",
+    "No models yet. Sign in to use the server's models, phone connection and cloud web tools, or set up your own model service.",
+  "banner.configure": "Set up my own models",
   "banner.dismiss": "Dismiss",
 
   "toast.region": "Notifications",

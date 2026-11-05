@@ -435,6 +435,27 @@ export interface ModelInfo {
   default?: boolean
   /** Token limit for this name. 0 means the endpoint never said. */
   context_window?: number
+  /** `account` is the signed-in server's catalog; `provider` is the user's
+   *  own endpoint. The list already puts the account first. */
+  source?: ModelSource
+}
+
+export type ModelSource = "account" | "provider"
+
+/** Why the signed-in account's models are not usable. Codes are stable; the
+ *  UI owns the wording. */
+export type AccountModelsReason =
+  | "rejected" | "unsupported" | "network" | "gateway" | "unsafe_response" | "no_models"
+
+/** Safe summary of the signed-in server account's model access. The credential
+ *  and the endpoint stay in Go. */
+export interface AccountModels {
+  state: "signed_out" | "pending" | "ready" | "no_access" | "unavailable"
+  reason?: AccountModelsReason
+  label?: string
+  username?: string
+  display_name?: string
+  models: number
 }
 
 export interface ToolDescriptor {
@@ -458,8 +479,11 @@ export interface Meta {
   version: string
   mode: "web" | "desktop" | "engine"
   mock: boolean
+  /** Models can run: an own service is set up, or the account's models are
+   *  ready. */
   configured: boolean
   default_provider: string
+  account_models?: AccountModels
   /** The thinking levels the composer offers, in order. The empty default is
    *  rendered as "Default" and is not in this list. */
   reasoning_levels: string[]
@@ -540,7 +564,12 @@ export interface ProviderSettings {
 
 export interface Settings {
   server: { addr: string; open_browser: boolean }
-  models: { default: string; providers: ProviderSettings[] }
+  models: {
+    default: string
+    /** Whose models a new conversation starts on when both exist. */
+    default_source?: ModelSource
+    providers: ProviderSettings[]
+  }
   swarm: SwarmLimits
   tools: {
     disabled: string[]
@@ -565,8 +594,10 @@ export interface Settings {
 export type ProviderSettingsWrite = Omit<ProviderSettings, "timeout_seconds"> & {
   timeout_seconds?: number
 }
-export type SettingsPatch = Omit<Partial<Settings>, "models" | "swarm"> & {
-  models?: { default: string; providers: ProviderSettingsWrite[] }
+export type SettingsPatch = Omit<Partial<Settings>, "models" | "swarm" | "ui"> & {
+  /** The server keeps every field a patch leaves out. */
+  ui?: Partial<UISettings>
+  models?: { default: string; default_source?: ModelSource; providers: ProviderSettingsWrite[] }
   swarm?: Omit<SwarmLimits, "agent_timeout_seconds"> & { agent_timeout_seconds?: number }
 }
 
@@ -716,6 +747,9 @@ export interface UISettings {
   content_width: string
   transcript_mode: string
   palette: string
+  /** Written by the first-run welcome only. The settings sheet never sends it,
+   *  so a language change cannot bring the welcome back. */
+  welcome_dismissed?: boolean
 }
 
 export interface TokenTotals {

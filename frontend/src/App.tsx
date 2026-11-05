@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 
+import { AccountModelsSync } from "@/components/app/account-models-sync"
 import { EngineStartupBanner } from "@/components/app/engine-startup"
 import { DesktopUpdateBanner } from "@/components/app/desktop-update"
 import {
@@ -26,6 +27,7 @@ import { useVisibleDest } from "@/components/app/dest-rail"
 import { Sidebar } from "@/components/app/sidebar"
 import { ToastStack } from "@/components/app/toast-stack"
 import { TerminalPanel } from "@/components/app/terminal-panel"
+import { WelcomeGate } from "@/components/app/welcome-gate"
 import { Transcript } from "@/components/app/transcript"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { api } from "@/lib/api"
@@ -430,6 +432,8 @@ function AppShell() {
           <EngineStartupBanner />
           <DesktopUpdateBanner />
           <ConfiguredBanner onConfigure={() => openSettings("models")} />
+          <AccountModelsSync />
+          <WelcomeGate />
           <ErrorBanner />
           <TaskBody
             chat={

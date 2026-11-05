@@ -8,7 +8,7 @@ import { useT } from "@/lib/use-t"
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog"
 import { SettingsSection, settingsHintClass, settingsLabelClass } from "./settings-field"
 
-const stateMessage: Record<RemoteLoginStatus["state"], MessageKey> = {
+export const loginStateMessage: Record<RemoteLoginStatus["state"], MessageKey> = {
   signed_out: "settings.remote.login.signedOut",
   signing_out: "desktopAccount.signingOut",
   starting: "settings.remote.login.starting",
@@ -21,7 +21,7 @@ const stateMessage: Record<RemoteLoginStatus["state"], MessageKey> = {
   error: "settings.remote.login.error",
   cancelled: "settings.remote.login.cancelled",
 }
-const errorMessage: Record<string, MessageKey> = {
+export const loginErrorMessage: Record<string, MessageKey> = {
   network_unavailable: "settings.remote.login.networkUnavailable",
   gateway_unavailable: "settings.remote.login.gatewayUnavailable",
   device_conflict: "settings.remote.login.deviceConflict",
@@ -56,10 +56,10 @@ export function RemoteLoginSection({
       : !status ? t("settings.remote.login.saving")
         : !status.login_available ? t("settings.remote.login.desktopRequired")
           : state === "authorized" && !status.online ? t("settings.remote.login.connecting")
-            : t(stateMessage[state] ?? "settings.remote.login.error")
+            : t(loginStateMessage[state] ?? "settings.remote.login.error")
   const details = unavailable ? undefined : login
   const accountName = remoteAccountName(details)
-  const failure = details?.error_code ? errorMessage[details.error_code] : undefined
+  const failure = details?.error_code ? loginErrorMessage[details.error_code] : undefined
   return (
     <SettingsSection title={t("settings.remote.login.title")} description={t("settings.remote.login.hint")}>
       <div className="flex flex-col gap-3 px-4 py-3" data-settings-row="">
