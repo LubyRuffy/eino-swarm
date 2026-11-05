@@ -639,6 +639,70 @@ The catalog the Settings dialog lays out, plus which tools are currently active.
 `screenshot`) need something zwai does not ship and must be switched on
 explicitly.
 
+### `GET /api/mcp`
+
+Read the configured external MCP servers without connecting to them. This is
+separate from the built-in `/api/tools` catalog and `/api/settings` payload.
+
+```json
+{"servers":[{"id":"local-tools","name":"Local tools","transport":"stdio",
+ "command":"/absolute/path/to/mcp-server","args":[],"url":"","enabled":true,
+ "timeout_seconds":60,"env_keys":["ACCESS_TOKEN"],"header_keys":[]}]}
+```
+
+`env_keys` and `header_keys` are sorted names only; `env` and `headers` values are
+never returned. Command, arguments and URL are ordinary visible fields; callers
+must use the private maps for credentials.
+
+### `PUT /api/mcp/:id`
+
+Create or replace one server's ordinary fields. The path supplies its stable ID;
+other servers keep their configuration. To create without replacing an existing
+ID, send `If-None-Match: *` (the UI uses this for Add server). The serialized
+configuration update checks absence before changing anything; an existing ID
+returns `412 mcp_exists`, preserving its ordinary and private fields. Without
+this header, PUT remains an upsert for compatibility. Send `name`, `transport`, `command`,
+`args` (string array), `url`, `enabled` and `timeout_seconds`, plus optional
+`env`/`headers` objects containing string values. Omitted or null private maps
+preserve an existing map; `{}` clears it; a supplied object replaces it.
+
+`stdio` requires a command. `streamable_http` and `sse` require an HTTP(S) URL
+without user info or fragment. IDs contain 1–32 ASCII letters, digits,
+underscores or hyphens. Timeout is 0–3600 seconds, with 0 using the 60-second
+default. The body limit is 1 MiB. Successful save returns `200 {"server": ...}`
+using the same redacted shape as GET, after atomic `config.yaml` persistence.
+Invalid input returns `400 invalid_mcp`; failed persistence returns
+`500 mcp_save_failed` without publishing the candidate configuration.
+
+### `DELETE /api/mcp/:id`
+
+Delete the saved server and return `200 {"deleted":true}`. Missing IDs return
+`404`. Existing tools retain their discovery identity; retiring the deleted
+server's session makes them return `session_expired` rather than reconnect.
+Subsequent toolsets use the changed server list.
+
+### `POST /api/mcp/:id/inspect`
+
+Explicitly open a temporary connection, initialize MCP, list tools and close the
+connection. This works for disabled servers and does not invoke listed tools.
+
+```json
+{"server_id":"local-tools",
+ "tools":[{"name":"lookup","original_name":"lookup","description":"…",
+           "input_schema":{"type":"object","properties":{}}}]}
+```
+
+`name` is the server's remote tool name; `original_name` retains that same name.
+Agent toolsets expose separate namespaced `list_tools`/`call_tool` proxies;
+`call_tool.name` uses the listed remote name. Inspection returns the full catalog,
+while the model's list proxy supports exact-name selection and paging. Inspection
+uses the configured connection/discovery timeout. A missing ID returns `404`; connection or discovery failure returns
+`502 mcp_connection_failed` with a generic configuration hint and a safe typed
+`reason` such as `connection_failed`, `discovery_failed` or `invalid_schema`.
+Raw transport errors, URLs and private values are not returned in this error. Request cancellation cancels inspection.
+Inspection is an observation of that connection, not a retained health status
+or proof that a later tool call will succeed.
+
 ## Phone pairing
 
 These endpoints drive the desktop QR. They are still same-origin loopback HTTP.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	einoexec "github.com/LubyRuffy/eino-tools/exec"
@@ -18,6 +19,13 @@ type resultCap struct {
 	inner tool.InvokableTool
 	limit int
 	exec  bool
+	mcp   bool
+}
+
+// WithResultLimit gives externally discovered tools the same output budget as
+// built-in workspace tools.
+func WithResultLimit(t tool.BaseTool, limit int) tool.BaseTool {
+	return wrapResultCap(t, limit)
 }
 
 func wrapResultCap(t tool.BaseTool, limit int) tool.BaseTool {
@@ -26,7 +34,7 @@ func wrapResultCap(t tool.BaseTool, limit int) tool.BaseTool {
 		return t
 	}
 	info, _ := t.Info(context.Background())
-	return &resultCap{inner: inv, limit: limit, exec: info != nil && info.Name == einoexec.ToolName}
+	return &resultCap{inner: inv, limit: limit, exec: info != nil && info.Name == einoexec.ToolName, mcp: info != nil && strings.HasPrefix(info.Name, "mcp_")}
 }
 
 func (c *resultCap) Info(ctx context.Context) (*schema.ToolInfo, error) {
@@ -37,6 +45,9 @@ func (c *resultCap) InvokableRun(ctx context.Context, args string, opts ...tool.
 	out, err := c.inner.InvokableRun(ctx, args, opts...)
 	if c.exec {
 		return capExecResult(out, c.limit), err
+	}
+	if c.mcp {
+		return capMCPResult(out, c.limit), err
 	}
 	return capToolResult(out, c.limit), err
 }

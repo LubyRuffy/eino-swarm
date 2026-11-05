@@ -107,6 +107,34 @@ describe("viewTool", () => {
     expect(view.body).toBe("ok\nline")
   })
 
+  it("marks MCP protocol failures without guessing from successful text content", () => {
+    const name = "mcp_local_lookup_012345abcdef"
+    const failed = viewTool(name, '{"id":"record"}', JSON.stringify({
+      isError: true, content: [{ type: "text", text: "Record unavailable" }],
+    }))
+    expect(failed.failed).toBe(true)
+    expect(failed.error).toBe("Record unavailable")
+    expect(failed.body).toBe("Record unavailable")
+    const success = viewTool(name, "{}", JSON.stringify({
+      content: [{ type: "text", text: "An earlier request failed" }], structuredContent: { count: 2 },
+    }))
+    expect(success.failed).toBe(false)
+    expect(success.body).toContain("An earlier request failed")
+    expect(success.body).toContain('"count": 2')
+  })
+
+  it("shows MCP connection failures and retains unfamiliar content blocks", () => {
+    const failure = viewTool("mcp_local_lookup_012345abcdef", "{}", JSON.stringify({
+      error: { code: "connection_failed", server_id: "local" },
+    }))
+    expect(failure.failed).toBe(true)
+    expect(failure.error).toBe("connection failed")
+    const raw = JSON.stringify({ content: [{ type: "resource_link", name: "Report", uri: "resource:report" }] })
+    expect(viewTool("mcp_local_lookup_012345abcdef", "{}", raw).body).toContain("resource:report")
+    expect(viewTool("unrelated", "{}", raw).body).toBe(raw)
+    expect(viewTool("mcp_local_lookup_012345abcdef", "{}", "truncated receipt").body).toBe("truncated receipt")
+  })
+
   it("lists search hits instead of dumping JSON", () => {
     const raw = JSON.stringify({
       message: "ok",

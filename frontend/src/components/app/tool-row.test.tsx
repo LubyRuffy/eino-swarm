@@ -29,6 +29,21 @@ const searchHits = JSON.stringify({
 })
 
 describe("ToolRow", () => {
+  it.each([
+    ["en", "The MCP connection has expired. Retry in a new turn."],
+    ["zh", "MCP 连接已失效，请在新轮次重试。"],
+  ] as const)("explains an expired MCP session in %s without suggesting an automatic replay", (locale, message) => {
+    useApp.setState({ locale })
+    render(<ToolRow block={toolBlock({ name: "mcp_local_echo_012345abcdef", args: "{}",
+      result: JSON.stringify({ error: { code: "session_expired", server_id: "local" } }),
+    })} />)
+    const toggle = screen.getByRole("button", { name: /mcp_local_echo/ })
+    expect(toggle).toHaveAttribute("aria-invalid", "true")
+    expect(toggle).toHaveTextContent(message)
+    fireEvent.click(toggle)
+    expect(screen.getByRole("alert")).toHaveTextContent(message)
+  })
+
   it("opens a memory replacement as the recorded change instead of the whole memory", () => {
     render(<ToolRow block={toolBlock({ name: "memory",
       args: JSON.stringify({ action: "replace", old_text: "selector", content: "updated note" }),

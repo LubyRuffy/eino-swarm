@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"github.com/LubyRuffy/eino-swarm/internal/mcpclient"
 	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
@@ -50,6 +51,7 @@ type Engine struct {
 	store          *store.Store
 	pool           *provider.Pool
 	log            *slog.Logger
+	mcp            *mcpclient.Manager
 
 	mu               sync.Mutex
 	runtimes         map[string]*runtime
@@ -130,6 +132,7 @@ func NewWithAnswerRecoveryClock(cfg *config.Config, st *store.Store, pool *provi
 		store:               st,
 		pool:                pool,
 		log:                 log,
+		mcp:                 mcpclient.NewManager(),
 		runtimes:            map[string]*runtime{},
 		subs:                map[string]map[int]*subscriber{},
 		droppedTurns:        map[string]struct{}{},
@@ -491,6 +494,9 @@ func (e *Engine) Waiting() []string {
 // a review that is cut off mid-write would leave a note half stored, and a
 // review that never finishes must not keep the app open.
 func (e *Engine) Shutdown() {
+	if e.mcp != nil {
+		defer e.mcp.Close()
+	}
 	if e.GetRestartStatus().Ready {
 		e.StopScheduler()
 		e.mu.Lock()

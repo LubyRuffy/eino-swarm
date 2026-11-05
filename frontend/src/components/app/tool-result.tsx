@@ -69,7 +69,7 @@ function ParsedBody({
           role="alert"
           className="rounded-md bg-destructive/10 px-2 py-1.5 text-destructive"
         >
-          {view.error}
+          {view.errorKey ? t(view.errorKey) : view.error}
         </p>
       ) : null}
       {view.noticeKey ? <p className="text-muted-foreground">{t(view.noticeKey)}</p> : null}

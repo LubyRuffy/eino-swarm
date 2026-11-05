@@ -1,0 +1,165 @@
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { api } from "@/lib/api"
+import type { MCPServerInput, MCPServerView, MCPToolCatalog } from "@/lib/mcp-settings"
+import { MCPTab } from "./settings-mcp"
+
+vi.mock("@/lib/api", () => ({ api: {
+  mcpServers: vi.fn(), saveMCPServer: vi.fn(), deleteMCPServer: vi.fn(), inspectMCPServer: vi.fn(),
+} }))
+
+const saved: MCPServerView = {
+  id: "local", name: "Local tools", transport: "stdio", command: "runner", args: ["--serve"],
+  url: "", enabled: true, timeout_seconds: 30, env_keys: ["TOKEN"], header_keys: [],
+}
+
+describe("MCP connection settings", () => {
+  beforeEach(() => {
+    vi.mocked(api.mcpServers).mockReset().mockResolvedValue([])
+    vi.mocked(api.saveMCPServer).mockReset().mockImplementation(async (input: MCPServerInput) => ({
+      ...input, env_keys: Object.keys(input.env ?? {}), header_keys: Object.keys(input.headers ?? {}),
+    }))
+    vi.mocked(api.deleteMCPServer).mockReset().mockResolvedValue({})
+    vi.mocked(api.inspectMCPServer).mockReset().mockResolvedValue({ tools: [] })
+  })
+
+  it("adds a local connection with exact argument values and clears the write-only draft after save", async () => {
+    render(<MCPTab />)
+    await screen.findByText(/No MCP servers yet/)
+    fireEvent.click(screen.getByRole("button", { name: "Add server" }))
+    fireEvent.change(screen.getByLabelText("Server ID"), { target: { value: "new-local" } })
+    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "New local" } })
+    fireEvent.change(screen.getByLabelText("Command"), { target: { value: "runner" } })
+    fireEvent.change(screen.getByLabelText("Arguments (JSON array)"), { target: { value: '["--path","a b "]' } })
+    fireEvent.change(screen.getByLabelText("Environment variables (JSON object)"), { target: { value: '{"TOKEN":"private-token"}' } })
+    fireEvent.click(screen.getByRole("button", { name: "Save connection" }))
+    await screen.findByText("New local")
+    expect(api.saveMCPServer).toHaveBeenCalledWith(expect.objectContaining({
+      id: "new-local", args: ["--path", "a b "], env: { TOKEN: "private-token" }, enabled: true,
+    }), true)
+    expect(screen.queryByLabelText("Environment variables (JSON object)")).toBeNull()
+    expect(document.body).not.toHaveTextContent("private-token")
+  })
+
+  it("refuses invalid JSON without discarding the editor and preserves saved secrets by omission", async () => {
+    vi.mocked(api.mcpServers).mockResolvedValue([saved])
+    render(<MCPTab />)
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Local tools" }))
+    expect(screen.getByLabelText("Server ID")).toBeDisabled()
+    expect(screen.getByLabelText("Environment variables (JSON object)")).toHaveValue("")
+    expect(screen.getByText(/Saved keys: TOKEN/)).toBeVisible()
+    fireEvent.change(screen.getByLabelText("Arguments (JSON array)"), { target: { value: "[1]" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save connection" }))
+    expect(screen.getByRole("alert")).toHaveTextContent("Arguments must be a JSON array of strings.")
+    expect(api.saveMCPServer).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText("Arguments (JSON array)"), { target: { value: "[]" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save connection" }))
+    await waitFor(() => expect(api.saveMCPServer).toHaveBeenCalledOnce())
+    expect(vi.mocked(api.saveMCPServer).mock.calls[0][0]).not.toHaveProperty("env")
+    expect(vi.mocked(api.saveMCPServer).mock.calls[0][0]).not.toHaveProperty("headers")
+    expect(vi.mocked(api.saveMCPServer).mock.calls[0][1]).toBe(false)
+  })
+
+  it("configures a remote transport with write-only request headers", async () => {
+    render(<MCPTab />)
+    await screen.findByText(/No MCP servers yet/)
+    fireEvent.click(screen.getByRole("button", { name: "Add server" }))
+    fireEvent.change(screen.getByLabelText("Server ID"), { target: { value: "remote" } })
+    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Remote tools" } })
+    fireEvent.click(screen.getByLabelText("Transport"))
+    fireEvent.click(screen.getByRole("option", { name: "Streamable HTTP" }))
+    expect(screen.queryByLabelText("Command")).toBeNull()
+    fireEvent.change(screen.getByLabelText("Server URL"), { target: { value: "https://tools.invalid/mcp" } })
+    fireEvent.change(screen.getByLabelText("Request headers (JSON object)"), { target: { value: '{"Authorization":"private"}' } })
+    fireEvent.click(screen.getByRole("button", { name: "Save connection" }))
+    await screen.findByText("Remote tools")
+    expect(api.saveMCPServer).toHaveBeenCalledWith(expect.objectContaining({
+      transport: "streamable_http", url: "https://tools.invalid/mcp", headers: { Authorization: "private" },
+    }), true)
+  })
+
+  it("keeps an editor after save failure so the user can retry", async () => {
+    vi.mocked(api.mcpServers).mockResolvedValue([saved])
+    vi.mocked(api.saveMCPServer).mockRejectedValueOnce(new Error("storage unavailable"))
+    render(<MCPTab />)
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Local tools" }))
+    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Revised local" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save connection" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("storage unavailable")
+    expect(screen.getByLabelText("Display name")).toHaveValue("Revised local")
+    fireEvent.click(screen.getByRole("button", { name: "Save connection" }))
+    await screen.findByText("Revised local")
+  })
+
+  it("does not overwrite an existing connection from the new-connection editor", async () => {
+    vi.mocked(api.mcpServers).mockResolvedValue([saved])
+    render(<MCPTab />)
+    fireEvent.click(await screen.findByRole("button", { name: "Add server" }))
+    fireEvent.change(screen.getByLabelText("Server ID"), { target: { value: saved.id } })
+    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Another server" } })
+    fireEvent.change(screen.getByLabelText("Command"), { target: { value: "other-runner" } })
+    expect(screen.getByRole("button", { name: "Edit Local tools" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Remove Local tools" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Save connection" }))
+    expect(screen.getByRole("alert")).toHaveTextContent("That server ID already exists.")
+    expect(api.saveMCPServer).not.toHaveBeenCalled()
+    expect(screen.getByLabelText("Command")).toHaveValue("other-runner")
+  })
+
+  it("tests even disabled connections and shows discovered descriptions and input schemas", async () => {
+    vi.mocked(api.mcpServers).mockResolvedValue([{ ...saved, enabled: false }])
+    vi.mocked(api.inspectMCPServer).mockResolvedValue({
+      server_name: "Fixture server", server_version: "1",
+      tools: [{ name: "lookup", description: "Read a record", input_schema: { type: "object", properties: { id: { type: "string" } } } }],
+    })
+    render(<MCPTab />)
+    fireEvent.click(await screen.findByRole("button", { name: "Test Local tools and list tools" }))
+    await screen.findByText("Connected · 1 tools")
+    const catalog = screen.getByRole("region", { name: "Local tools Tool catalog" })
+    fireEvent.click(within(catalog).getByText("lookup"))
+    expect(within(catalog).getByText("Read a record")).toBeVisible()
+    expect(within(catalog).getByText(/"properties"/)).toHaveTextContent('"id"')
+    expect(api.inspectMCPServer).toHaveBeenCalledWith("local", expect.any(AbortSignal))
+  })
+
+  it("retains a connection error and lets the user retest to an empty catalog", async () => {
+    vi.mocked(api.mcpServers).mockResolvedValue([saved])
+    vi.mocked(api.inspectMCPServer).mockRejectedValueOnce(new Error("connection refused"))
+    render(<MCPTab />)
+    const inspect = await screen.findByRole("button", { name: "Test Local tools and list tools" })
+    fireEvent.click(inspect)
+    expect(await screen.findByRole("alert")).toHaveTextContent("connection refused")
+    await waitFor(() => expect(inspect).toBeEnabled())
+    fireEvent.click(inspect)
+    await screen.findByText("This server has no tools.")
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
+
+  it("requires confirmation before deleting and reloads after a list failure", async () => {
+    vi.mocked(api.mcpServers).mockRejectedValueOnce(new Error("read unavailable")).mockResolvedValue([saved])
+    render(<MCPTab />)
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Remove Local tools" }))
+    expect(api.deleteMCPServer).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(api.deleteMCPServer).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Remove Local tools" }))
+    fireEvent.click(screen.getByRole("button", { name: "Remove server" }))
+    await screen.findByText(/No MCP servers yet/)
+    expect(api.deleteMCPServer).toHaveBeenCalledWith("local")
+  })
+
+  it("cancels discovery on leaving the page and ignores a late result", async () => {
+    vi.mocked(api.mcpServers).mockResolvedValue([saved])
+    let finish!: (catalog: MCPToolCatalog) => void
+    vi.mocked(api.inspectMCPServer).mockReturnValue(new Promise((resolve) => { finish = resolve }))
+    const view = render(<MCPTab />)
+    fireEvent.click(await screen.findByRole("button", { name: "Test Local tools and list tools" }))
+    const signal = vi.mocked(api.inspectMCPServer).mock.calls[0][1]!
+    expect(signal.aborted).toBe(false)
+    view.unmount()
+    expect(signal.aborted).toBe(true)
+    await act(async () => finish({ tools: [{ name: "late" }] }))
+    expect(screen.queryByText("late")).toBeNull()
+  })
+})

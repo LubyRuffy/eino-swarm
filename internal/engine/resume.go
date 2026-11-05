@@ -171,7 +171,7 @@ func (e *Engine) resumeTurn(restoreCtx context.Context, turn *store.Turn, snapsh
 	if err != nil {
 		return err
 	}
-	toolset, err := e.conversationToolsForExecution(restoreCtx, th, e.turnWebExecution(th, turn))
+	toolset, err := e.conversationToolsForExecution(restoreCtx, th, e.turnWebExecution(th, turn), turn.NuwaReadOnly)
 	if err != nil {
 		return err
 	}

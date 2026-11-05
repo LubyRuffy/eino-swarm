@@ -5,6 +5,151 @@ Recorded events remain available for replay and diagnostics. The work-fold
 unit test covers both display modes and streaming into visible content.
 The transcript whitespace browser regression measures the gap after replay.
 
+## External MCP tools (`F-176`, `C-041`)
+
+`internal/config/mcp_test.go` checks valid transports, private map validation,
+unique IDs, timeout bounds and safe configuration snapshots. The MCP-specific
+configuration and HTTP CRUD/inspection functions in `internal/config/mcp.go`
+and `internal/server/mcp.go` reached 100% statement coverage in the focused
+package run; this is file/function coverage, not a new whole-package measurement.
+The focused final MCP race run measured `internal/mcpclient` at 98.1%; the
+corresponding `internal/tools` run measured 94.6%. Every new MCP function in that Darwin
+profile exceeded 90% (`Inspect` 95.5%, `entry.connect` 90.8%;
+the remainder 100%). These are focused current-candidate measurements; final
+full-race results still determine whole-run status. The Windows command/job
+adapter was cross-compiled separately; this is not Windows native acceptance,
+and the full Windows package build remains blocked by existing Unix-only syscall
+usage in upstream `eino-tools` exec/pythonrunner code.
+The 2026-11-05 whole-repository `go test -p 2 -race -cover -count=1 -timeout 25m ./...`
+passed. On the same Darwin host and flags, the fetched `e20562b6` baseline's
+`internal/tools` measured 94.3%, compared with this change's 94.6%; the older
+dated coverage table below remains a historical observation. The default browser
+suite passed 256 tests with 44 opt-in cases not enabled. The final MCP-specific
+browser run also saved/edited the connection at an 820-pixel viewport without
+horizontal overflow.
+`internal/server/mcp_test.go` exercises the real local HTTP routes, private-value
+redaction, omission/empty-map semantics, atomic save failure, disabled-server
+inspection, missing IDs and `If-None-Match: *` create conflicts. A conflict must
+preserve the other saved server and its private configuration, not replace it.
+`internal/mcpclient/manager_test.go` and `proxy_test.go` use actual
+stdio/Streamable HTTP/SSE transports for discovery/calls, pure construction,
+credential/workspace identity, session expiry, paging and concurrent connection
+wait/cancellation. `internal/engine/mcp_test.go` drives manager and worker calls
+through Registry/ADK and the real model HTTP adapter, with mode exclusions,
+snapshots and ordinary tool Trace. `internal/tools/mcp_resultcap_test.go` preserves
+both remote `isError` and adapter error identities below the output-budget floor.
+Toolset construction must not perform external I/O during turn admission,
+restoration or parked-worker setup. The two static proxy tools connect only during
+actual runtime calls. List supports exact-name selection/paging and call uses the
+listed remote name. Connection waiters must respond to cancellation. Proxy tools
+must remain bound to their first session entry: reload, idle eviction or
+connection failure returns `session_expired`, without a silent reconnect or
+replay. A later toolset may reconnect/discover; no test may assume the idle cache
+guarantees continuous state between tool calls.
+
+```bash
+go test -race -timeout 25m ./internal/config ./internal/server ./internal/mcpclient
+go test -race -timeout 25m ./...
+(cd frontend && npm run lint && npm test && npm run build)
+(cd frontend && ZWAI_E2E_PORT="$OWNED_E2E_PORT" ZWAI_E2E_DATA_DIR="$PRIVATE_E2E_DATA" npm run e2e -- e2e/mcp-settings.spec.ts --output "$UNIQUE_E2E_OUTPUT")
+python3 -B -m unittest discover -s tools -p 'test_native_macos_mcp*.py'
+```
+
+The browser suite drives create/edit, private-field preservation, validation,
+connection/catalog expansion and removal. Run the default user-visible E2E suite
+as well, with its own port/data/output and no concurrent rebuild of its served
+`dist`. A transport or browser test does not accept a native desktop window.
+
+`tools/native_macos_mcp.py` reuses `native_macos_case.py`'s isolation/cleanup and
+`native_macos_smoke.py`'s current-call readiness preflight. Prepare/freeze all
+helpers before the timed case: `make native-smoke-prepare` for the strict snapshot
+helper, and the existing `native_generation_interruption_ax.m` and
+`native_macos_resilience_ax.m` binaries for native navigation/buttons and image
+inspection. Bind their binary hashes to the staged source/candidate manifest;
+the scenario refuses a changed helper and never compiles during the case.
+Freeze this development candidate's source receipt and the current handed-off
+trusted controller descriptor before staging (the descriptor hash is explicit;
+its private session nonce is not copied):
+
+```bash
+python3 -B tools/native_macos_mcp.py --prepare-candidate "$SOURCE_RECEIPT" \
+  --candidate "$FROZEN_MCP_INPUTS" --controller-descriptor "$CURRENT_CONTROLLER" \
+  --controller-sha256 "$CURRENT_CONTROLLER_SHA256"
+```
+
+The source receipt binds the baseline, dirty production-input digest, archive
+hash, executable hash and complete App contents/modes. The case `before_launch`
+hook verifies the private copy and writes one fresh launch timestamp. Before any
+QA activation or AX request, `native_macos_mcp_startup.py` waits within the same
+scenario deadline for that case's product `ready` journal: the application's
+nonce-checked WKWebView paint result, not a test-created receipt. Read the writer's
+same-inode shared flock; reject incomplete/duplicate JSON, foreign sessions,
+nonzero generations/attempts, stale timestamps or changed live PID/birth, engine
+lease/meta/mock identity, source or bundle. Preserve each raw sample and rejoin
+the live tuple before continuing. This readiness only admits the unchanged strict
+window and fresh-pixel checks; it neither accepts recovery nor broadens the
+initial AX-read retry classification. The earlier failed rounds remain failed.
+
+Run only in the identified `ci-macOS` guest, with a new evidence directory, after
+its current owner confirms complete cleanup and resource handoff:
+
+```bash
+python3 -B tools/native_macos_mcp.py --case --candidate "$FROZEN_MCP_INPUTS" \
+  --app "$CANDIDATE_APP" --evidence "$NEW_NATIVE_EVIDENCE" \
+  --timeout 60 --budget 75 --ax "$PREPARED_AX" \
+  --controls "$GENERATION_AX" --control-sha256 "$CONTROL_SHA256" \
+  --resilience "$RESILIENCE_AX" --resilience-sha256 "$RESILIENCE_SHA256"
+```
+
+API setup creates one disabled harmless stdio fixture (`tools/mcp_fixture.py`).
+Actual window actions open Settings → MCP, open and save the existing connection,
+inspect it, and expand its tool/schema. Readback checks the exact server fields
+and unchanged private configuration bytes/mode0600; private values must not appear
+in the form. The expanded schema needs native AX text intersecting the actual
+window and decodable nonblank screenshots. Every input first rechecks the strict
+case PID/bundle/origin/window and the unique enabled control; a navigation request
+alone is insufficient. Raw helper streams and the first failure remain durable.
+The separate Go model-adapter check accepts tool invocation; this native scenario
+accepts configuration save/catalog interaction only. It does not replace the
+ordinary offline-turn smoke baseline. For an independent baseline of the same
+identified development package, add `--smoke-baseline` to this case command and
+use `--timeout 50 --budget 60`. That path shares its existing scenario deadline
+between the product-ready prewait and the unchanged `run_smoke` flow; it cannot
+reset the budget after readiness. It produces its own `smoke.json`, actual native
+send/result evidence and complete cleanup receipt in a fresh case directory.
+
+A private development package (including version `0.0.0`) can establish only its
+identified source/dirty-content scope, never acceptance of a future public ZIP.
+Keep `native-mcp.json`, screenshots/helper receipts and runner `cleanup.json`
+outside the disposable case. `passed` requires the scenario assertions; delivery
+also requires `cleanup_complete=true`, no remaining owned PIDs and deleted case
+data. A missing GUI permission, locked/unavailable guest, failed control, unknown
+result or incomplete cleanup stays pending/failed as observed; do not switch to
+the host GUI or claim release acceptance. Freeze and accept the eventual public
+installer separately if a release is allocated.
+
+The private Revision3 `0.0.0` candidate completed its new MCP case on 2026-11-05
+in 8.900 seconds including cleanup (case `62bd6f6fc949493493feb063aed887f0`,
+ZIP SHA-256 `abcf54ec680f0149e4310b744e0483c85b92110dcf0cf8e8eba0e04ba6093671`,
+production-input digest `b6460b76ce94cccdf61d8209ac736ac705d5dab2867264e6ed6c15809a8bc7ef`).
+The fresh product journal preceded all QA helpers and input; the existing initial
+AXRole-only observation reacquisition preserved its first raw refusal. Native
+save retained the configuration and private fields; the disabled fixture's `echo`
+schema was visible in native AX and reviewed pixels. Cleanup removed case data,
+joined owned processes and a separate fresh lock/process observation found no
+live case. This accepts that development package's MCP interaction only. Earlier
+AXWindows failures remain failed observations; neither this result nor those
+failures accept a future public installer or the ordinary offline-turn baseline.
+The private bound source, helper streams, journal, screenshots and cleanup index
+are retained under the task's `native-mcp-revision3-readygate03` evidence directory.
+An independent fresh offline-turn baseline of the same private ZIP also passed:
+case `7e0bbc78a7ec4aa0ae384f88cf475f7e`, 12.722 seconds including cleanup under
+the 60-second whole-round budget. It retained the actual native Send, worker
+output, final AX/pixel result and its own `smoke.json`; cleanup and a separate
+fresh inventory confirmed deleted case data and no owned processes. Its bound
+records are retained separately in `native-smoke-revision3-readygate01` and do
+not change the earlier failed baseline or accept a future public installer.
+
 ## Nuwa project collaboration (`F-136`, `C-037`)
 
 The mode is captured per turn. Test changes across a parked Registry and cold

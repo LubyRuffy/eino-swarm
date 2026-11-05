@@ -677,8 +677,9 @@ def wait_initial_ready(context, deadline):
         pending(context, deadline, "pixels", "ordinary_window_pixels_pending")
 
 
-def run_smoke(context):
-    deadline = Deadline(context["timeout"])
+def run_smoke(context, *, deadline=None):
+    if deadline is None:
+        deadline = Deadline(context["timeout"])
     runner.require_guest()
     context["ax_identity"] = validate_helper(context["ax"])
     runner.save_json(context["evidence"] / "smoke-helper.json", context["ax_identity"])

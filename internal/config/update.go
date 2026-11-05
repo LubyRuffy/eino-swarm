@@ -38,6 +38,13 @@ func (c *Config) clone() *Config {
 	}
 	next.Tools.Disabled = slices.Clone(c.Tools.Disabled)
 	next.Tools.Enabled = slices.Clone(c.Tools.Enabled)
+	next.MCP.Servers = slices.Clone(c.MCP.Servers)
+	for i, server := range next.MCP.Servers {
+		server.Args = slices.Clone(server.Args)
+		server.Env = maps.Clone(server.Env)
+		server.Headers = maps.Clone(server.Headers)
+		next.MCP.Servers[i] = server
+	}
 	return &next
 }
 
@@ -102,6 +109,9 @@ func (c *Config) publish(n *Config) {
 	}
 	if !reflect.DeepEqual(c.Tools, n.Tools) {
 		c.Tools = n.Tools
+	}
+	if !reflect.DeepEqual(c.MCP, n.MCP) {
+		c.MCP = n.MCP
 	}
 	if c.Memory != n.Memory {
 		c.Memory = n.Memory

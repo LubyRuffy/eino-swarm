@@ -1,0 +1,164 @@
+package server_test
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+func TestMCPServersPersistWithoutReturningSecrets(t *testing.T) {
+	h := newHarness(t)
+	path := "/api/mcp/local"
+	input := map[string]any{"name": "Local tools", "transport": "stdio", "command": "test-command", "args": []string{"--stdio"}, "enabled": false, "timeout_seconds": 20, "env": map[string]string{"TOKEN": "private-mcp-secret"}}
+	h.json(http.MethodPut, path, input, http.StatusOK)
+	resp := h.do(http.MethodGet, "/api/mcp", nil)
+	raw, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil || resp.StatusCode != http.StatusOK || strings.Contains(string(raw), "private-mcp-secret") || !strings.Contains(string(raw), "TOKEN") {
+		t.Fatalf("unsafe catalog status=%d err=%v body=%s", resp.StatusCode, err, raw)
+	}
+	delete(input, "env")
+	input["name"] = "Renamed"
+	h.json(http.MethodPut, path, input, http.StatusOK)
+	stored := h.app.Config.Snapshot().MCP.Servers[0]
+	if stored.Env["TOKEN"] != "private-mcp-secret" {
+		t.Fatal("omitted private entry was lost")
+	}
+	input["env"] = map[string]string{}
+	h.json(http.MethodPut, path, input, http.StatusOK)
+	if len(h.app.Config.Snapshot().MCP.Servers[0].Env) != 0 {
+		t.Fatal("explicit clear ignored")
+	}
+	h.json(http.MethodDelete, path, nil, http.StatusOK)
+	h.json(http.MethodDelete, path, nil, http.StatusNotFound)
+}
+
+func TestMCPInspectsTheActualProtocolWithoutExposingCredentials(t *testing.T) {
+	h := newHarness(t)
+	fixture := mcp.NewServer(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
+	fixture.AddTool(&mcp.Tool{Name: "echo", Description: "Echo input", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "fixture result"}}}, nil
+	})
+	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return fixture }, nil)
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer mcp-private-token" {
+			http.Error(w, "no credentials", http.StatusUnauthorized)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(remote.Close)
+	input := map[string]any{"name": "Remote", "transport": "streamable_http", "url": remote.URL, "enabled": false, "headers": map[string]string{"Authorization": "Bearer mcp-private-token"}}
+	h.json(http.MethodPut, "/api/mcp/remote", input, http.StatusOK)
+	delete(input, "headers")
+	h.json(http.MethodPut, "/api/mcp/remote", input, http.StatusOK)
+	h.json(http.MethodPut, "/api/settings", map[string]any{"ui": map[string]any{"locale": "en"}}, http.StatusOK)
+	if h.app.Config.Snapshot().MCP.Servers[0].Headers["Authorization"] != "Bearer mcp-private-token" {
+		t.Fatal("unrelated settings or omitted header fields overwrote private configuration")
+	}
+	got := h.json(http.MethodPost, "/api/mcp/remote/inspect", nil, http.StatusOK)
+	if tools, ok := got["tools"].([]any); !ok || len(tools) != 1 {
+		t.Fatalf("catalog=%v", got)
+	}
+	input["headers"] = map[string]string{}
+	h.json(http.MethodPut, "/api/mcp/remote", input, http.StatusOK)
+	failure := h.json(http.MethodPost, "/api/mcp/remote/inspect", nil, http.StatusBadGateway)
+	if failure["reason"] != "connection_failed" {
+		t.Fatalf("missing safe failure category: %v", failure)
+	}
+	resp := h.do(http.MethodGet, "/api/settings", nil)
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if strings.Contains(string(raw), "mcp-private-token") {
+		t.Fatal("settings leaked MCP headers")
+	}
+}
+
+func TestMCPRefusesMalformedPrivateEntriesAndReportsPersistenceFailure(t *testing.T) {
+	h := newHarness(t)
+	path := "/api/mcp/private"
+	input := map[string]any{"transport": "stdio", "command": "unused", "env": map[string]string{"BAD=KEY": "secret"}}
+	h.json(http.MethodPut, path, input, http.StatusBadRequest)
+	input["env"] = map[string]string{"OK": "secret"}
+	input["headers"] = map[string]string{"X-Key": "bad\r\n"}
+	h.json(http.MethodPut, path, input, http.StatusBadRequest)
+	h.json(http.MethodPut, path, []string{"not an object"}, http.StatusBadRequest)
+	delete(input, "headers")
+	if err := os.Mkdir(filepath.Join(h.app.Config.DataDir(), "config.yaml.tmp"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	h.json(http.MethodPut, path, input, http.StatusInternalServerError)
+	if len(h.app.Config.Snapshot().MCP.Servers) != 0 {
+		t.Fatal("failed save published")
+	}
+}
+
+func TestMCPCancelledInspectionDoesNotWriteAnErrorResponse(t *testing.T) {
+	h := newHarness(t)
+	for _, id := range []string{"other", "cancelled"} {
+		h.json(http.MethodPut, "/api/mcp/"+id, map[string]any{"transport": "stdio", "command": "missing-mcp-fixture-command"}, http.StatusOK)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	req := httptest.NewRequest(http.MethodPost, "/api/mcp/cancelled/inspect", nil).WithContext(ctx)
+	recorder := httptest.NewRecorder()
+	h.app.Server.Handler().ServeHTTP(recorder, req)
+	if recorder.Body.Len() != 0 {
+		t.Fatalf("cancelled request wrote a body: %s", recorder.Body.String())
+	}
+}
+
+func TestMCPCreateCannotOverwriteAnExistingConnectionFromAnotherWindow(t *testing.T) {
+	h := newHarness(t)
+	input := map[string]any{"name": "Original", "transport": "stdio", "command": "original", "env": map[string]string{"TOKEN": "original-secret"}}
+	h.json(http.MethodPut, "/api/mcp/shared", input, http.StatusOK)
+	input["command"] = "replacement"
+	raw, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPut, "/api/mcp/shared", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("If-None-Match", "*")
+	recorder := httptest.NewRecorder()
+	h.app.Server.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusPreconditionFailed {
+		t.Fatalf("status=%d %s", recorder.Code, recorder.Body.String())
+	}
+	stored := h.app.Config.Snapshot().MCP.Servers[0]
+	if stored.Command != "original" || stored.Env["TOKEN"] != "original-secret" {
+		t.Fatal("conditional create overwrote an existing connection")
+	}
+	req = httptest.NewRequest(http.MethodPut, "/api/mcp/new", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("If-None-Match", "*")
+	recorder = httptest.NewRecorder()
+	h.app.Server.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("create=%d %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestMCPRejectsInvalidServersBeforeSaving(t *testing.T) {
+	h := newHarness(t)
+	for _, input := range []map[string]any{
+		{"transport": "stdio"},
+		{"transport": "unknown", "command": "unused"},
+		{"transport": "streamable_http", "url": "file:///private"},
+		{"transport": "sse", "url": "http://name:secret@example.invalid/mcp"},
+		{"transport": "stdio", "command": "unused", "timeout_seconds": -1},
+	} {
+		h.json(http.MethodPut, "/api/mcp/test", input, http.StatusBadRequest)
+	}
+	h.json(http.MethodPost, "/api/mcp/missing/inspect", nil, http.StatusNotFound)
+	h.json(http.MethodPut, "/api/mcp/bad.id", map[string]any{"transport": "stdio", "command": "unused"}, http.StatusBadRequest)
+}

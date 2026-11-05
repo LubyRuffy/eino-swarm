@@ -1468,6 +1468,37 @@ and scheduled checks usable. The phone does not send the optional read
 acknowledgement to those hosts. A supported PC's initial watermark of zero
 still allows the first visible result to be acknowledged.
 
+### External MCP tools
+
+Open **Settings → MCP** on Desktop or Web to add a local stdio command or a
+remote Streamable HTTP/SSE server. Save its connection, then choose **Test
+connection and list tools** to view the available tools and input schemas.
+You can inspect a disabled server before enabling it. A failed inspection stays
+visible and can be retried explicitly.
+
+Enabled servers add two namespaced Agent tools: `list_tools` discovers the remote
+catalog and `call_tool` invokes a listed name with its arguments. They connect
+only when called, so an unavailable server does not hold up starting a turn or
+using built-in tools. Calls and results appear in the conversation and Trace.
+Plan and Nuwa read-only toolsets do not mount MCP tools. Catalogs can be paged
+or filtered by exact tool name; if one schema still exceeds the configured tool
+result limit, increase that limit in Settings.
+
+A toolset keeps its captured configuration and the first session it uses. If
+configuration reload, a connection failure or idle-cache eviction closes that
+session, old tools return `session_expired` without reconnecting or replaying the call;
+continue with a new turn to rebuild the toolset. Each server/configuration retains
+at most eight idle workspace sessions; other servers do not evict them. Session
+state is not guaranteed to survive between calls.
+
+Keep secrets in the write-only environment/header JSON fields. Blank preserves
+the saved map; `{}` clears it. Command arguments and URLs are ordinary visible
+configuration. Local commands run with the conversation workspace as their
+working directory and retain the application's filesystem access. This release
+supports MCP tools; resources, prompts and OAuth login are not included. See
+[configuration](docs/CONFIG.md#external-mcp-servers) and the
+[MCP API](docs/API.md#get-apimcp).
+
 ### Cloud built-in tools
 
 Settings → Models → open a provider, select **Responses**, and configure its cloud

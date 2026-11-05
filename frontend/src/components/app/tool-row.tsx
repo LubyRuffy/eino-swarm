@@ -39,7 +39,10 @@ export function ToolRow({ block, reveal, defaultCollapsed = false }: {
     return viewTool(toolName, toolArgs, toolResult, toolFailed)
   }, [toolName, toolArgs, toolResult, toolFailed])
   if (!tool || !view) return null
-  const summary = toolRowSummary(view.summaryKey ? { ...view, summary: t(view.summaryKey) } : view)
+  const summary = toolRowSummary({ ...view,
+    summary: view.summaryKey ? t(view.summaryKey) : view.summary,
+    error: view.errorKey ? t(view.errorKey) : view.error,
+  })
   const command = tool.name === "exec" ? execCommand(tool.args) : ""
   const liveLine = tool.pending && view.body ? lastLine(applyCarriageReturns(view.body)) : ""
   const watchLive =

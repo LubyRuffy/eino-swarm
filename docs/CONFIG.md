@@ -81,6 +81,8 @@ tools:
         no_proxy: ""
     web_search_max_results: 8
     result_max_chars: 40000
+mcp:
+    servers: []
 memory:
     enabled: true
     auto_review: true
@@ -459,6 +461,62 @@ remove functions and retry, or silently execute locally.
 Tool paths resolve against the conversation's workspace, but the workspace is not
 a boundary: an absolute path or a `..` reaches outside it and `exec` runs as you.
 See the "Full access" note in the [README](../README.md).
+
+## External MCP servers
+
+Desktop and Web **Settings → MCP** manage external tool servers separately from
+built-in tools and provider cloud tools. No MCP server is configured by default.
+Opening Settings reads configuration; **Test connection and list tools** explicitly opens a short
+connection, lists the server's tools and closes it. Inspection does not execute a
+tool and is available even while that server is disabled.
+
+```yaml
+mcp:
+    servers:
+        - id: local-tools
+          name: Local tools
+          transport: stdio
+          command: /absolute/path/to/mcp-server
+          args: []
+          env: {}
+          enabled: true
+          timeout_seconds: 60
+```
+
+Each `id` is unique and contains 1–32 ASCII letters, digits, underscores or
+hyphens. `name` is the display label. `transport` is `stdio`, `streamable_http`
+or `sse`; stdio uses `command` and an argument array without a shell, while
+remote transports use an HTTP(S) `url` and optional `headers`. URLs must have
+no user info or fragment. `timeout_seconds` accepts 0–3600; zero or omission
+uses 60 seconds, independently for connection/discovery and each tool call.
+
+Put credentials in `env` or `headers`, not command arguments or URLs: ordinary
+fields are visible in Settings and its API. These two private maps are saved in
+`config.yaml` with mode `0600`; their values are write-only through HTTP. The
+editor shows existing key names, leaves blank JSON fields unchanged, and uses
+`{}` to clear a map. Supplying a JSON object replaces that complete map.
+Invalid configuration or failed persistence leaves the saved configuration intact.
+MCP uses its own `/api/mcp` endpoints; ordinary Settings saves do not replace it.
+
+Enabled servers add two namespaced Agent proxies, `list_tools` and `call_tool`,
+to subsequent toolsets. Constructing a toolset performs no connection or command
+startup. The first actual list/call connects using the running tool's cancellation
+context; a connection/discovery error is a failed tool result and leaves built-in
+tools available. `list_tools` accepts optional `name` for one exact remote schema,
+or nonnegative `offset` and positive `limit` for paging (default limit 10).
+`call_tool` takes a listed remote `name` and an `arguments` object. Catalog output
+uses the same tool-result budget; narrow a truncated page, or increase
+`tools.result_max_chars` if one schema still exceeds it.
+
+Stdio uses the conversation workspace as cwd, without confining filesystem access.
+A toolset fixes its configuration and the first session it uses. Plan mode and
+Nuwa read-only toolsets do not mount MCP. Configuration reload, connection failure
+or idle-cache eviction can close a session; existing tools return `session_expired`
+without reconnecting or replaying the call. A subsequent turn rebuilds the toolset.
+Each server/configuration retains at most eight idle workspace sessions; other
+servers do not evict them, but survival between calls is not guaranteed. Calls
+and results use the normal tool transcript, result limit and Trace. Only MCP tools
+are supported here; resources, prompts and OAuth login are not.
 
 ## `memory`
 

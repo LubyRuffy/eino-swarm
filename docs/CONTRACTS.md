@@ -2,6 +2,16 @@
 
 Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user entry points and [CHANGELOG.md](../CHANGELOG.md) for history. Contract IDs are stable.
 
+## C-041 Explicit MCP servers keep private configuration and scoped sessions
+
+- 状态：active；类型：security / lifecycle / compatibility；作用范围：`mcp.servers`、独立 MCP CRUD／inspect API、Desktop/Web 设置和会话工具表；关联功能：`F-176`、`F-130`、`F-170`。
+- 配置身份：服务器 ID 唯一，格式为 1–32 ASCII 字母／数字／下划线／连字符；按 ID 保存仅替换该项。UI 新建发送 `If-None-Match: *`，串行配置更新中已存在同 ID 则返回412／mcp_exists且保留普通／私有字段；无此 header 的 PUT 保持 upsert 兼容。无默认外部服务器，打开设置只读，不自动执行命令或连接远端。支持 stdio、Streamable HTTP、SSE；URL 不接受 user info 或 fragment；本机命令按参数数组启动，不经 shell。
+- 私有值：env/headers 保存于 mode0600 的 config.yaml，HTTP 读取仅返回排序的 key。PUT 省略或 null 保留对应 map，空对象清除，非空对象完整替换。普通 command/args/URL 可读，凭据应使用私有 map。普通 Settings 保存不能覆盖 MCP；校验／持久化失败不发布候选。
+- 工具与生命周期：每个启用服务器只挂静态命名空间 `list_tools`／`call_tool` 代理；构造不连接、不启动命令、不做目录发现，不能在turn准入／恢复／停泊建立阶段引入外部等待。实际代理调用才使用该工具的可取消上下文连接，连接等待也可取消；holder固定配置、workspace及首次session entry。list支持精确name或offset/limit（默认10）的目录读取，call按目录远端name和arguments调用。stdio cwd 为该工作区，不提供文件系统隔离。配置Reload、断线或闲置cache淘汰关闭entry后，旧工具明确返回 `session_expired`，不自动重连、换凭据／命令或重放调用；后续turn重建工具表。cache按配置fingerprint和workspace复用，每个server/configuration最多保留8个闲置workspace session，不同server不会互相淘汰，不保证工具调用间一直保留有状态会话。进行中的调用不因闲置淘汰被打断；不同工作区不共享本地命令会话。plan 和 Nuwa read-only 工具表不挂外部 MCP。
+- 超时与效果：0／缺失采用60秒，允许0–3600秒；连接／目录和每次工具调用分别计时并响应取消。连接／目录失败返回代理失败结果，不阻止内置工具。调用失败或结果未知不自动重试外部效果；工具结果沿现有 transcript、Trace 和结果长度限制处理。临时 inspect 只做 initialize/list tools，并在结束／失败／取消时关闭连接，不执行所列工具，也不建立持续健康保证。
+- 边界与失败：无效配置400，找不到服务器404，保存失败500，inspect连接／发现失败502；inspect失败可返回封闭typed reason（connection_failed／discovery_failed／invalid_schema等），HTTP不透传原始transport错误、URL或私有值。仅支持 tools，resources/prompts/OAuth 不在本契约内。服务器目录是外部数据，不是人类授权或任务完成证据。
+- 实现 `internal/config/mcp.go`、`internal/config/mcp_test.go`、`internal/server/mcp.go`、`internal/server/mcp_test.go`、`internal/mcpclient/manager_test.go`、`internal/mcpclient/proxy_test.go`、`internal/engine/mcp_test.go`、`frontend/src/lib/mcp-settings.ts`、`frontend/src/lib/mcp-settings.test.ts`；变更时同步配置、API、UI和真实 transport／runtime 回归。原生窗口验收按最终包单独记录；来源：GitHub Issue #154；Added。
+
 ## C-040 The official server account is a runtime model source, never a stored provider
 
 - 状态：active；类型：identity / compatibility / lifecycle / security；作用范围：PC 的账号模型投影、默认模型来源、首启欢迎，以及 `/api/meta`、`/api/models`、`/api/settings`；关联功能：`F-171`、`F-170`、`F-211`、`F-230`。

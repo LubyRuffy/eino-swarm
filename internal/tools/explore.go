@@ -5,6 +5,7 @@ import (
 	einoexec "github.com/LubyRuffy/eino-tools/exec"
 	"github.com/LubyRuffy/eino-tools/pythonrunner"
 	"github.com/LubyRuffy/eino-tools/write"
+	"strings"
 )
 
 // MutatingCatalogNames are workspace tools that change files or run
@@ -31,7 +32,8 @@ func ExploreOnly(set *Set) *Set {
 	}
 	out := &Set{WorkspaceDir: set.WorkspaceDir}
 	for i, name := range set.Names {
-		if drop[name] {
+		// Remote annotations are hints, not proof that an external tool cannot write.
+		if drop[name] || strings.HasPrefix(name, "mcp_") {
 			continue
 		}
 		out.Names = append(out.Names, name)

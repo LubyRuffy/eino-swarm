@@ -6,6 +6,14 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Added Desktop/Web Settings → MCP for local stdio and remote Streamable HTTP/SSE
+  tool servers, write-only environment/header credentials, explicit connection
+  inspection and tool/schema catalogs. Enabled servers provide namespaced lazy
+  discovery/call proxies to subsequent toolsets, with ordinary results and Trace;
+  plan and Nuwa read-only modes exclude them. Connection failures preserve
+  built-in tools, and uncertain calls are not automatically retried. MCP resources,
+  prompts and OAuth login are not included. (#154, `F-176`, `C-041`)
+
 - Fixed a signed-in PC staying offline after one failed hub registration or
   dial, including when its network address disappears. The desktop retries in
   the background, from one second out to fifteen, until the socket connects.

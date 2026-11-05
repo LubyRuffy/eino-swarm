@@ -19,6 +19,7 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-170` Settings and providers
     - `F-171` Official server first: sign-in, welcome and account models
     - `F-175` Provider cloud built-in tools
+    - `F-176` External MCP tools
     - `F-180` PC text quoting
     - `F-190` Desktop updates
   - `F-200` Phone
@@ -264,6 +265,14 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 目的：让支持 Responses 的 provider 在云端执行自带工具；使用者：PC 用户及 API 配置管理者；入口：Settings → Models 的 provider API 模式和工具 JSON、`PUT /api/settings`、`config.yaml`；输入：`api_mode` 和 `builtin_tools`，工具对象包含唯一非空 `type` 及服务商参数；输出：云端工具与本地函数工具共同供模型选择，流式回答含可点击来源，同 turn 的 `builtin_tool` Trace 回执；前置条件：端点、模型及所配置工具支持 Responses；失败表现：无效配置拒绝且保留草稿，服务端拒绝或流错误沿现有模型错误通道显示；关联契约：`C-030`、`C-009`、`C-012`；实现证据：`internal/config/provider_tools.go`、`internal/provider/responses.go`、`internal/engine/builtin_tools.go`、`frontend/src/components/app/model-settings.tsx`；验证：`internal/config/provider_tools_test.go`、`internal/server/settings_provider_tools_test.go`、`internal/engine/builtin_tools_test.go`、`frontend/e2e/builtin-tools.spec.ts`。
 - 当前支持 `web_search`、`web_search_preview`、`file_search`、`code_interpreter`；参数原样保留，不另行上传文件或调用资源管理接口；自动容器等选项仍可在服务商执行时创建资源。默认仍为 Chat Completions 且工具为空，不能根据服务商名称自动开工具。PC provider 配置也作用于通过 PC 执行的配对手机会话；手机独立直连配置不在此功能范围。
+
+### F-176 External MCP tools
+
+- 目的：接入用户配置的外部 MCP 工具并查看工具目录；使用者：PC Desktop/Web 用户；入口：Settings → MCP、`/api/mcp` 管理／inspect API，以及对话工具记录和 Trace。
+- 输入：唯一服务器 ID、名称、stdio command/args/env 或 Streamable HTTP/SSE URL/headers、启用状态和超时；输出：持久化连接配置、脱敏字段、工具原名、描述／输入 Schema，以及实际调用结果。前置条件：命令或远程服务可用，模型支持函数工具；本机命令使用会话工作区作为 cwd，保留应用访问权限。
+- 配置读取不连接；显式 inspect 建立临时连接，禁用服务器也可检查。启用项在后续工具表中提供命名空间 `list_tools`／`call_tool` 代理，构造不做外部I/O；实际工具调用才按可取消上下文连接，list支持名称筛选／分页，call使用远端工具名和arguments。代理绑定配置快照及首次session；plan 和 Nuwa read-only 不挂 MCP。配置变更、断线或闲置cache淘汰使旧代理返回session_expired，不自动重连／重放；后续turn重建工具表。连接／目录失败为失败工具结果且保留内置工具；每个server/configuration最多保留8个闲置workspace session，不保证调用间保留。
+- env/headers 值通过 HTTP 只写，读取仅返回 key；空编辑保留、`{}` 清除，普通 command/args/URL 可见。仅支持 tools，不含 resources、prompts 或 OAuth 登录。关联契约：`C-041`、`C-009`、`C-012`。
+- 实现证据：`internal/config/mcp.go`、`internal/config/mcp_test.go`、`internal/server/mcp.go`、`internal/server/mcp_test.go`、`internal/mcpclient/manager_test.go`、`internal/mcpclient/proxy_test.go`、`internal/engine/mcp_test.go`、`frontend/src/lib/mcp-settings.ts`、`frontend/src/lib/mcp-settings.test.ts`、`tools/native_macos_mcp.py`、`tools/native_macos_mcp_startup.py`、`tools/test_native_macos_mcp.py`、`tools/test_native_macos_mcp_startup.py`。测试结果与原生验收需按最终候选单独记录；此功能条目不替代运行证据。来源：GitHub Issue #154。
 
 ### F-180 PC text quoting
 

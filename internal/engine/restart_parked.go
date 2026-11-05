@@ -157,7 +157,7 @@ func (e *Engine) parkedRegistry(th *store.Thread, turn *store.Turn) (*swarm.Regi
 	if err != nil {
 		return nil, err
 	}
-	set, err := e.conversationToolsForExecution(context.Background(), th, e.turnWebExecution(th, turn))
+	set, err := e.conversationToolsForExecution(context.Background(), th, e.turnWebExecution(th, turn), turn.NuwaReadOnly)
 	if err != nil {
 		return nil, err
 	}

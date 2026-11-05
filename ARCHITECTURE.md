@@ -797,6 +797,7 @@ test clock and is imported only by tests.
 | `internal/store` | gorm + pure-Go SQLite. Conversations, transcript messages, turns, the event timeline, model-call records, attachments, follow-ups waiting for the current turn, `schedules` / `schedule_runs`, conversation search (`search_docs` + FTS5 `thread_fts`, optional `search_chunks`), and `remote_devices` (phone model + last-seen keyed by pairlink fingerprint). Sidebar lists conversations and projects by `sort_rank` then last activity (`last_active_at` / `updated_at`); unranked rows interleave by activity so they cannot sit above ranked work that just ran. A drop pins ranks. Quiet standalone fires are archived out of Recents, using the kind stored when that fire was claimed. The open conversation lists wakes aimed at that thread and jobs whose fire minted it (`GET /api/threads/:id/schedules`); `origin_thread_id` is not that link. See [docs/DATA_MODEL.md](docs/DATA_MODEL.md). |
 | `internal/provider` | builds eino chat models from config, lists an endpoint's catalog (`GET {base_url}/models`), omits an endpoint switched off in Settings from the composer list, records per-call telemetry, POSTs OpenAI-compatible `/embeddings` when search is on, and provides the scripted offline provider used by `--mock` and the tests (character n-grams stand in for a real embed). The provider `timeout_seconds` bounds silence after the first byte, not the whole streamed body: a thinking model that is still emitting tokens is not cut off. `first_byte_timeout_seconds` independently bounds the wait for response headers (default 30 seconds); one fresh-connection retry retains the same wait, and its error carries the actual duration. |
 | `internal/tools` | assembles the eino-tools toolset anchored at one conversation's workspace; catalog + enable/disable rules feed the Settings UI. `BindExecOutput` is the host binder that tees `exec` stdout/stderr into `NotifyToolDelta` without the swarm library importing eino-tools. A wrapper shortens a remaining-time `sleep` / `Start-Sleep` of five seconds or more to about a third of that duration so a progress poll still runs instead of sitting out the full estimate. Another answers an `exec` whose `cwd` does not exist with a failed result naming the directory, before the shell starts (otherwise the OS reports the shell itself as missing); it is a result rather than a Go error because a tool error ends the turn. Every tool's model-facing result is capped at `tools.result_max_chars`, keeping head and tail around an omission notice; `exec` without its own `max_output_kb` gets a per-stream budget from that cap so its JSON stays whole. The advertised schemas omit the upstream `base_dir` parameter (relative paths resolve in the workspace, absolute paths reach anything else); a call that still sends it keeps working. |
+| `internal/mcpclient` | MCP client sessions, transport adaptation, static lazy discovery/call proxies, timeouts and connection cleanup. |
 | `internal/memory` | a project's memory as files: `MEMORY.md` notes under a character budget, `skills/<name>/SKILL.md` procedures, the manager tools (`memory`, `skill_view`, `skill_manage` including `merge`), in-memory notes drafts with revision-checked commit, the prompt sections they are rendered into, the reviewer's instruction, and the deterministic family fold that keeps one subject as one skill. A copied skill is a separate file with `origin_*` front matter so a later pull can read the source; the prompt and `skill_view` do not include that link. Owns the files; knows nothing about conversations. |
 | `internal/workerstate` | the manager's System-message worker snapshot: `source: "runtime_worker_roster"`, an explicit historical-state note, and every worker's `agent_id`, role and `running` / `done` / `failed` status. Shared by runtime restoration and the offline model; it is neither tool history nor human authorization. |
 | `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, preempts the current manager tool so unread steering lands on this turn, retracts one unread steer, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, keeps a rolling session briefing from the event log, folds earlier replay on `/compact` or automatically when a manager Generate would exceed `swarm.auto_compact_tokens` (microcompact of replayable tool results first, then the session briefing, optional pinned summarizer last; summarizer input is newest-first under a rune cap), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, an ordinary failed turn that is not a recoverable model error, a no-progress continuation (`goal_idle`), a pending thread wake (waiting is the next turn), a clear/interrupt, or `swarm.goal_max_auto_turns` (truncated tool JSON / `429` / a dropped stream / a mid-stream TCP read timeout retry in-turn then auto-continue), converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), runs the post-turn memory review from effective events (successful turns receive a full review regardless of manager writes; failed project turns allow human requirements only; skill families fold only after successful turns), and resolves an in-app terminal's working directory from the conversation or project the client named. A clock + ticker (`StartScheduler`) fires due waits (`schedule_fired`) or skips a busy target (`schedule_skipped`) without bursting missed ticks; event kinds `schedule` / `schedule_fired` / `schedule_skipped` / `schedule_report` / `schedule_cancelled` are the wire contract. |
@@ -822,6 +823,48 @@ errors remain failures. Render errors and challenge pages remain failed tool
 results. The host adds no browser service, challenge handler or prompt override.
 `internal/tools/webfetch_upgrade_test.go` covers the host-facing schema and
 invocation wrappers with local HTTP and a controlled renderer.
+
+## External MCP tool boundary
+
+`internal/config/mcp.go` owns the explicitly configured `mcp.servers` list.
+`internal/server/mcp.go` exposes independent same-origin CRUD and temporary
+inspection endpoints; ordinary Settings JSON excludes this section. HTTP reads
+return only environment/header key names. Serialized candidate updates preserve
+private maps when omitted and publish only after the atomic configuration save.
+Opening Settings does not establish MCP connections.
+
+`internal/mcpclient` adapts stdio, Streamable HTTP and SSE through two static,
+namespaced Eino proxies per enabled server: `list_tools` and `call_tool`.
+Constructing a conversation toolset snapshots configuration/workspace without
+external I/O; it cannot start a command or wait on discovery during turn admission,
+restoration or parked-worker setup. The first actual proxy invocation connects
+under its running tool's cancellation context. The shared holder binds that first
+entry, so later calls cannot silently reset server state. List output carries
+remote names, descriptions and input schemas with optional exact-name filtering
+or paging (default 10). Call accepts a discovered remote name and arguments.
+
+Local commands use the captured workspace as cwd with the application's normal
+access. Plan and Nuwa read-only toolsets exclude MCP before construction. A
+connection/discovery failure returns an MCP tool error while built-in tools remain
+usable. Connection/discovery and actual calls each have their configured timeout;
+waiting for an in-progress connection is cancellable. Calls and JSON results use
+the existing tool transcript, result limit and Trace, preserving error identity
+and `isError` across clipping. No uncertain call is automatically retried.
+
+The inspection path owns a temporary connection and closes it after listing;
+runtime calls use a session cache keyed by configuration fingerprint and
+workspace, retaining at most eight idle workspace sessions per server/configuration.
+Different servers do not evict each other's sessions. Reload retires unused old
+configurations without interrupting calls in flight, and engine shutdown closes
+remaining sessions. Cache eviction or connection failure can also close an entry.
+Existing tools then return `session_expired`: they never silently reconnect a
+stateful server or replay an uncertain call. A later turn rebuilds its toolset;
+there is no promise that a session survives between tool calls. Different
+workspaces do not share local command state. This boundary supports MCP tools
+only, without resource/prompt mounting or an OAuth flow. It neither grants a
+remote server authority over the host nor treats tool descriptions as user
+instructions; model-selected calls still have the same external-effect boundary
+as other configured tools.
 
 ## Model service recovery
 

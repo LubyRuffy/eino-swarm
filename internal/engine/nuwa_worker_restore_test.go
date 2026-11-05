@@ -28,6 +28,7 @@ func TestNuwaParkedWorkerRestoresOriginalModelAndModeAtHTTPBoundary(t *testing.T
 		t.Run(map[bool]string{false: "shared-write", true: "read-only"}[readOnly], func(t *testing.T) {
 			var calls atomic.Int32
 			var e *Engine
+			externalReceipt := filepath.Join(t.TempDir(), "mcp-command-started")
 			const readID = "restored-source-read"
 			endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var request struct {
@@ -45,6 +46,13 @@ func TestNuwaParkedWorkerRestoresOriginalModelAndModeAtHTTPBoundary(t *testing.T
 				available := map[string]bool{}
 				for _, item := range request.Tools {
 					available[item.Function.Name] = true
+				}
+				external := false
+				for name := range available {
+					external = external || strings.HasPrefix(name, "mcp_")
+				}
+				if external == readOnly {
+					t.Errorf("MCP worker schema lost original read-only mode: external=%v readOnly=%v", external, readOnly)
 				}
 				if !available["list_models"] || !available["spawn_agent"] || !available["read_work"] || available["record_work"] == readOnly {
 					t.Errorf("original worker mode lost across recovery: %+v", available)
@@ -77,6 +85,7 @@ func TestNuwaParkedWorkerRestoresOriginalModelAndModeAtHTTPBoundary(t *testing.T
 			}))
 			t.Cleanup(endpoint.Close)
 			e = newTestEngine(t)
+			e.cfg.MCP.Servers = []config.MCPServer{{ID: "external", Transport: "stdio", Command: os.Args[0], Args: []string{"-test.run=^TestPlanningMCPCommandFixture$"}, Env: map[string]string{"ZWAI_MCP_PLANNING_RECEIPT": externalReceipt}, Enabled: true}}
 			e.cfg.Swarm.AutoTitle = false
 			e.cfg.Models.Default = "restore-fixture"
 			e.cfg.Models.Providers = []config.Provider{{ID: "restore-fixture", BaseURL: endpoint.URL,
@@ -126,6 +135,9 @@ func TestNuwaParkedWorkerRestoresOriginalModelAndModeAtHTTPBoundary(t *testing.T
 				t.Fatalf("cold worker recovery=%d err=%v", n, err)
 			}
 			waitRestartState(t, func() bool { return next.ActiveWork() == 0 })
+			if _, err := os.Stat(externalReceipt); !os.IsNotExist(err) {
+				t.Fatalf("restoration eagerly launched an MCP subprocess: %v", err)
+			}
 			_, finished := next.workersFromThread(thread.ID)
 			if len(finished) != 1 || finished[0].ID != "observer-4" || finished[0].Generation != 3 || finished[0].Err != nil || finished[0].ConfigTag != turn.ID || finished[0].ModelBinding == nil || *finished[0].ModelBinding != *binding {
 				t.Fatalf("restored identity/binding=%+v", finished)

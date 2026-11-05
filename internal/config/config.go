@@ -29,6 +29,7 @@ type Config struct {
 	Models      ModelsConfig      `yaml:"models" json:"models"`
 	Swarm       SwarmConfig       `yaml:"swarm" json:"swarm"`
 	Tools       ToolsConfig       `yaml:"tools" json:"tools"`
+	MCP         MCPConfig         `yaml:"mcp" json:"-"`
 	Memory      MemoryConfig      `yaml:"memory" json:"memory"`
 	Personality PersonalityConfig `yaml:"personality" json:"personality"`
 	Log         LogConfig         `yaml:"log" json:"log"`
@@ -602,6 +603,9 @@ func Load(dataDir string) (*Config, error) {
 	if err := cfg.validateWebExecution(); err != nil {
 		return nil, err
 	}
+	if err := cfg.validateMCP(); err != nil {
+		return nil, err
+	}
 	cfg.normalize()
 
 	if os.IsNotExist(err) {
@@ -886,6 +890,9 @@ func (c *Config) save() error {
 		return err
 	}
 	if err := c.validateWebExecution(); err != nil {
+		return err
+	}
+	if err := c.validateMCP(); err != nil {
 		return err
 	}
 	if strings.TrimSpace(c.dataDir) == "" {

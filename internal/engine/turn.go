@@ -406,7 +406,7 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 		return nil, err
 	}
 	webExecution := e.turnWebExecution(th, nil)
-	toolset, err := e.conversationToolsForExecution(context.Background(), th, webExecution)
+	toolset, err := e.conversationToolsForExecution(context.Background(), th, webExecution, false)
 	if err != nil {
 		return nil, err
 	}

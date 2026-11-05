@@ -37,6 +37,7 @@ export type ToolView = {
   summaryKey?: MessageKey
   failed: boolean
   error?: string
+  errorKey?: MessageKey
   body: string
   hits?: SearchHit[]
   noticeKey?: MessageKey
@@ -97,6 +98,10 @@ export function viewTool(name: string, args: string, result?: string, flagged?: 
     return { summary, summaryKey, failed: Boolean(flagged), body: "", diff, noticeKey }
   }
   const prefix = errorPrefix(result)
+  if (name.startsWith("mcp_")) {
+    const mcp = parseMCPResult(result)
+    if (mcp) return { summary, failed: Boolean(flagged || mcp.failed), error: mcp.error, errorKey: mcp.errorKey, body: mcp.body }
+  }
   if (name === "query_history") {
     const obj = parseObject(result)
     const refused = obj?.ok === false
@@ -155,6 +160,21 @@ function summariseMemoryCall(
   }
   const preview = asText(obj.content) || asText(obj.old_text)
   return [action, preview].filter(Boolean).join(" · ")
+}
+
+function parseMCPResult(raw: string): { failed: boolean; error?: string; errorKey?: MessageKey; body: string } | undefined {
+  const obj = parseObject(raw)
+  if (!obj) return undefined
+  if (isRecord(obj.error) && typeof obj.error.code === "string") {
+    return { failed: true, error: obj.error.code.replaceAll("_", " "), body: raw,
+      errorKey: obj.error.code === "session_expired" ? "mcp.sessionExpired" : undefined }
+  }
+  if (!Array.isArray(obj.content)) return undefined
+  const parts = obj.content.map((content) => isRecord(content) && content.type === "text" && typeof content.text === "string"
+    ? content.text : JSON.stringify(content, null, 2))
+  if (obj.structuredContent !== undefined) parts.push(JSON.stringify(obj.structuredContent, null, 2))
+  const body = parts.join("\n")
+  return { failed: obj.isError === true, error: obj.isError === true ? body || "MCP tool failed" : undefined, body }
 }
 
 function parseMemoryResult(raw: string): { success: boolean; error?: string; body: string } | undefined {

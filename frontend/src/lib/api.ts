@@ -38,6 +38,7 @@ import type { ClientCatalog } from "./local-clients"
 import type { SendImage } from "./paste-image"
 import type { ThreadLog } from "./thread-log"
 import type { ComposerDraftRecord } from "./composer-draft"
+import type { MCPServerInput, MCPServerView, MCPToolCatalog } from "./mcp-settings"
 
 /** The fields a project dialog can send. Each is optional so a patch changes
  *  only what the user touched. */
@@ -385,6 +386,18 @@ export const api = {
     ),
   tools: () =>
     request<{ catalog: ToolDescriptor[]; enabled: string[] }>("/api/tools"),
+
+  mcpServers: (signal?: AbortSignal) =>
+    request<{ servers: MCPServerView[] }>("/api/mcp", { signal }).then((r) => r.servers),
+  saveMCPServer: (server: MCPServerInput, createOnly = false) =>
+    request<{ server: MCPServerView }>(`/api/mcp/${encodeURIComponent(server.id)}`, {
+      method: "PUT", body: JSON.stringify(server),
+      ...(createOnly ? { headers: { "If-None-Match": "*" } } : {}),
+    }).then((r) => r.server),
+  deleteMCPServer: (id: string) =>
+    request<unknown>(`/api/mcp/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  inspectMCPServer: (id: string, signal?: AbortSignal) =>
+    request<MCPToolCatalog>(`/api/mcp/${encodeURIComponent(id)}/inspect`, { method: "POST", signal }),
 
   projects: () =>
     request<{ projects: Project[] }>("/api/projects").then((r) => r.projects),
