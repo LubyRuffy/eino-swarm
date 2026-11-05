@@ -86,6 +86,22 @@ export function DirectChatScreen({
     const source = activeSource.current
     if (source && !providers.some((row) => row.id === source.id && row.apiKey === source.key)) stopRef.current?.abort("stop")
   }, [providers])
+  // Hiding an endpoint leaves it in place, so an open chat can stay on it.
+  // Removing it does not: a new chat moves to a remaining endpoint. An open
+  // thread keeps the provider id it already stored.
+  useEffect(() => {
+    setPick((current) => {
+      if (findProvider(providers, current.providerId)) return current
+      const choice = providerChoices(providers)[0]
+      const next = {
+        providerId: choice?.provider_id ?? "",
+        model: choice?.model ?? "",
+        reasoning: "",
+      }
+      if (next.providerId === current.providerId && next.model === current.model) return current
+      return next
+    })
+  }, [providers])
 
   useEffect(() => {
     onOpenChange?.(Boolean(openID))

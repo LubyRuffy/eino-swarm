@@ -1,8 +1,9 @@
 import { Loader2, X } from "lucide-react"
-import { useState, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { installAndroidBack } from "@/lib/android-back"
 import {
   blankProvider,
   isPersonalProvider,
@@ -34,11 +35,35 @@ export function ProviderSheet({
   )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const [confirming, setConfirming] = useState(false)
+  const [pendingRemove, setPendingRemove] = useState<string | null>(null)
 
   const commit = (next: DirectProvider[]) => {
     onChange(saveProviders(next))
   }
+
+  const askRemove = (id: string) => {
+    const row = providers.find((item) => item.id === id)
+    if (!row || !isPersonalProvider(row)) return
+    setPendingRemove(id)
+  }
+
+  const removeNow = (id: string) => {
+    const row = providers.find((item) => item.id === id)
+    if (!row || !isPersonalProvider(row) || pendingRemove !== id) return
+    commit(providers.filter((item) => item.id !== id))
+    setPendingRemove(null)
+    setEditing((current) => (current?.id === id ? null : current))
+  }
+
+  useEffect(
+    () =>
+      installAndroidBack(() => {
+        if (!pendingRemove) return false
+        setPendingRemove(null)
+        return true
+      }),
+    [pendingRemove],
+  )
 
   const save = () => {
     if (!editing || !isPersonalProvider(editing)) return
@@ -53,17 +78,6 @@ export function ProviderSheet({
     }
     const rest = providers.filter((row) => row.id !== nextRow.id)
     commit([...rest, nextRow])
-    onClose()
-  }
-
-  const remove = () => {
-    if (!editing || !isPersonalProvider(editing)) return
-    if (!confirming) {
-      setConfirming(true)
-      return
-    }
-    const next = providers.filter((row) => row.id !== editing.id)
-    commit(next)
     onClose()
   }
 
@@ -241,13 +255,26 @@ export function ProviderSheet({
                 {t("chat.save")}
               </Button>
               {providers.some((row) => row.id === editing.id) ? (
-                <Button type="button" variant="outline" onClick={remove}>
-                  {confirming ? t("chat.removeConfirm") : t("chat.remove")}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    pendingRemove === editing.id ? removeNow(editing.id) : askRemove(editing.id)
+                  }
+                >
+                  {pendingRemove === editing.id ? t("chat.removeConfirm") : t("chat.remove")}
                 </Button>
               ) : null}
             </div>
             {providers.length > 0 ? (
-              <Button type="button" variant="ghost" onClick={() => setEditing(null)}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setPendingRemove(null)
+                  setEditing(null)
+                }}
+              >
                 {t("chat.models")}
               </Button>
             ) : null}
@@ -255,48 +282,93 @@ export function ProviderSheet({
         ) : (
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-5 pb-5">
             <ul className="flex flex-col gap-2">
-              {providers.map((row) => (
-                <li key={row.id} className="flex items-center gap-2 rounded-xl bg-muted px-3 py-2">
-                  <button
-                    type="button"
-                    className="flex min-w-0 flex-1 flex-col text-left"
-                    disabled={!isPersonalProvider(row)}
-                    onClick={() => {
-                      setError("")
-                      setConfirming(false)
-                      setEditing(row)
-                    }}
-                  >
-                    <span
-                      className={cn(
-                        "truncate text-sm font-medium",
-                        row.enabled === false && "text-muted-foreground",
-                      )}
-                    >
-                      {row.label || row.id}
-                    </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {isPersonalProvider(row) ? (row.model || row.baseURL) + " · " + (row.api === "responses" ? t("chat.apiResponses") : t("chat.apiChat")) : t("account.managed")}
-                    </span>
-                  </button>
-                  <input
-                    type="checkbox"
-                    aria-label={t("chat.listedName", { name: row.label || row.id })}
-                    className="size-4 shrink-0"
-                    disabled={!isPersonalProvider(row)}
-                    checked={row.enabled !== false}
-                    onChange={(e) => {
-                      commit(
-                        providers.map((item) =>
-                          item.id === row.id ? { ...item, enabled: e.target.checked } : item,
-                        ),
-                      )
-                    }}
-                  />
-                </li>
-              ))}
+              {providers.map((row) => {
+                const personal = isPersonalProvider(row)
+                const name = row.label || row.id
+                const armed = pendingRemove === row.id
+                return (
+                  <li key={row.id} className="flex flex-col gap-2 rounded-xl bg-muted px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 flex-col text-left"
+                        disabled={!personal}
+                        onClick={() => {
+                          setError("")
+                          setPendingRemove(null)
+                          setEditing(row)
+                        }}
+                      >
+                        <span
+                          className={cn(
+                            "truncate text-sm font-medium",
+                            row.enabled === false && "text-muted-foreground",
+                          )}
+                        >
+                          {name}
+                        </span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {personal ? (row.model || row.baseURL) + " · " + (row.api === "responses" ? t("chat.apiResponses") : t("chat.apiChat")) : t("account.managed")}
+                        </span>
+                      </button>
+                      <input
+                        type="checkbox"
+                        aria-label={t("chat.listedName", { name })}
+                        className="size-4 shrink-0"
+                        disabled={!personal}
+                        checked={row.enabled !== false}
+                        onChange={(e) => {
+                          commit(
+                            providers.map((item) =>
+                              item.id === row.id ? { ...item, enabled: e.target.checked } : item,
+                            ),
+                          )
+                        }}
+                      />
+                      {personal && !armed ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-10 shrink-0 px-3"
+                          aria-label={t("chat.removeName", { name })}
+                          onClick={() => askRemove(row.id)}
+                        >
+                          {t("chat.remove")}
+                        </Button>
+                      ) : null}
+                    </div>
+                    {personal && armed ? (
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-auto min-h-10 flex-1 whitespace-normal px-3"
+                          onClick={() => setPendingRemove(null)}
+                        >
+                          {t("chat.removeCancel")}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          className="h-auto min-h-10 flex-1 whitespace-normal px-3"
+                          onClick={() => removeNow(row.id)}
+                        >
+                          {t("chat.removeConfirm")}
+                        </Button>
+                      </div>
+                    ) : null}
+                  </li>
+                )
+              })}
             </ul>
-            <Button type="button" variant="outline" onClick={() => setEditing(blankProvider())}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setPendingRemove(null)
+                setEditing(blankProvider())
+              }}
+            >
               {t("chat.add")}
             </Button>
           </div>

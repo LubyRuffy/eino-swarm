@@ -39,6 +39,90 @@ function harness(complete: typeof streamCompletion = async (input) => {
 }
 
 describe("DirectChatScreen", () => {
+  it("moves a new chat onto a remaining endpoint when the selected one is removed", () => {
+    setLocale("en")
+    const keep: DirectProvider = {
+      ...provider,
+      id: "p-keep",
+      label: "Keep",
+      model: "two",
+      catalog: ["two"],
+    }
+    const view = render(
+      <DirectChatScreen
+        hosts={[]}
+        activeFingerprint=""
+        path="relay"
+        providers={[provider, keep]}
+        onSelectHost={vi.fn()}
+        onAddHost={vi.fn()}
+        onUnlink={vi.fn()}
+        onModels={vi.fn()}
+      />,
+    )
+    expect(screen.getByLabelText(t("composer.model"))).toHaveTextContent("one")
+    view.rerender(
+      <DirectChatScreen
+        hosts={[]}
+        activeFingerprint=""
+        path="relay"
+        providers={[keep]}
+        onSelectHost={vi.fn()}
+        onAddHost={vi.fn()}
+        onUnlink={vi.fn()}
+        onModels={vi.fn()}
+      />,
+    )
+    expect(screen.getByLabelText(t("composer.model"))).toHaveTextContent("two")
+    expect(screen.queryByText(t("account.sourceUnavailable"))).not.toBeInTheDocument()
+  })
+
+  it("keeps an open chat on a removed endpoint instead of switching it", async () => {
+    setLocale("en")
+    const keep: DirectProvider = {
+      ...provider,
+      id: "p-keep",
+      label: "Keep",
+      model: "two",
+      catalog: ["two"],
+    }
+    const view = render(
+      <DirectChatScreen
+        hosts={[]}
+        activeFingerprint=""
+        path="relay"
+        providers={[provider, keep]}
+        onSelectHost={vi.fn()}
+        onAddHost={vi.fn()}
+        onUnlink={vi.fn()}
+        onModels={vi.fn()}
+        complete={async (input) => {
+          input.onDelta({ text: "pong", reasoning: "" })
+        }}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "start" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    await screen.findByText("pong")
+    view.rerender(
+      <DirectChatScreen
+        hosts={[]}
+        activeFingerprint=""
+        path="relay"
+        providers={[keep]}
+        onSelectHost={vi.fn()}
+        onAddHost={vi.fn()}
+        onUnlink={vi.fn()}
+        onModels={vi.fn()}
+        complete={async (input) => {
+          input.onDelta({ text: "pong", reasoning: "" })
+        }}
+      />,
+    )
+    expect(screen.getByLabelText(t("composer.model"))).toHaveTextContent("one")
+    expect(screen.getByText(t("account.sourceUnavailable"))).toBeInTheDocument()
+  })
+
   it.each([
     ["gateway_login_required", "Sign in to the Gateway to use cloud Web tools, or switch Web tools off for ordinary model chat."],
     ["gateway_access_denied", "Account access could not be confirmed. Refresh or sign in again."],

@@ -6,6 +6,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Added removal of a phone's own model endpoint from Menu → Models. The first
+  tap asks for confirmation, and account models in that list cannot be removed.
+  Existing direct chats stay on the phone. A new chat moves to a remaining
+  endpoint; a chat already open on the removed endpoint keeps that choice.
+  (`F-230`, `C-013`)
+
 - Fixed unpublished scheduling answers retrying indefinitely after invalid
   classifier responses. Each candidate now defers after three consecutive
   request failures, three consecutive invalid responses, or six total attempts,

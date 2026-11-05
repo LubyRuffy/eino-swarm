@@ -908,7 +908,13 @@ For anonymous QR use and connection settings, retain the existing flow:
    workspace. **Menu → Models** (on the scan screen, **Connect a model**) saves
    an OpenAI-compatible endpoint on the phone: base URL, optional API key,
    **Chat completions** or **Responses**, Discover, a timeout, and a switch
-   that hides it from that composer's model list. After one
+   that hides it from that composer's model list. A saved phone endpoint can
+   be removed from that list after confirmation; cancelling or going back
+   leaves it in place. Account models shown in the same list have no remove
+   control.    Removing an endpoint drops it from this phone's saved providers
+   and leaves existing direct chats stored. A new chat moves to a remaining
+   endpoint; a chat already open on the removed endpoint keeps that choice
+   and shows that the source is unavailable. After one
    is saved, a **Chat** tab appears on the top row. That chat uses the same
   composer. An image is vision; a text file is sent as text. A responses
   front that rejects the image part is asked once more as chat completions,
