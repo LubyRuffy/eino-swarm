@@ -108,7 +108,7 @@ func (t *ctlTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 			"fork_context": {Type: schema.Boolean, Desc: "on the first worker for this role, inherit this manager conversation so far. Ignored when a worker with this role already exists"},
 		}
 		if t.modelSelection {
-			params["model_ref"] = &schema.ParameterInfo{Type: schema.String, Desc: "model reference from the host catalog; omit to use the default for a new worker, or preserve an existing worker model. A worker keeps its model across resumption"}
+			params["model_ref"] = &schema.ParameterInfo{Type: schema.String, Desc: "exact model reference from the host catalog. The host may require an explicit choice for a new role; omit only when it permits default selection or to preserve an existing worker model. A worker keeps its model across resumption"}
 		}
 		if t.toolSelection {
 			params["tool_names"] = &schema.ParameterInfo{Type: schema.Array, ElemInfo: &schema.ParameterInfo{Type: schema.String},

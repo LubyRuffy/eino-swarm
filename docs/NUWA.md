@@ -62,10 +62,16 @@ their existing peer/manager semantics.
 label and known context window. Names are resources, not capability ratings.
 Copy its opaque ref into `spawn_agent(..., model_ref: ref)` without constructing
 or decoding it. This tool token is separate from the UI/CLI provider ChoiceID.
-Omitting it for a new
-worker resolves that worker's default. Same-role steering, resume and recovery
+With multiple ready choices, each new role must supply an exact `model_ref`;
+omission returns a correctable error pointing to `list_models` before context
+forking, dispatch or any worker model request. With at most one ready choice,
+omission retains default selection. Same-role steering, resume and recovery
 retain the concrete binding; an explicit conflict refuses before queuing a
 message or changing a generation. Roles remain globally unique in the Registry.
+The schema keeps `model_ref` optional for existing-role reuse. This changes the
+former default fallback for new roles in multi-model Nuwa projects; no stored
+data migration is needed. Ordinary mode and the generic Registry retain their
+existing default behavior. Model choice remains the agent's decision.
 
 A delegating agent can call `list_worker_tools` to discover the available worker
 tool catalog, including configured MCP tools. Discovery does not mount these

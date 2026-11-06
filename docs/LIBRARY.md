@@ -66,6 +66,13 @@ or label. Missing restoration support fails rather than silently switching.
 The host owns ref syntax: consumers copy the opaque token from its catalog
 without decoding or constructing it. zwai's tool token is separate from its
 UI/CLI ChoiceID; a saved `ModelBinding.Ref` remains source provenance.
+The generic Registry adds no explicit-reference requirement; omission keeps its
+existing default or host-selector behavior.
+The zwai Nuwa host instead rejects omission for a new role when multiple ready
+choices exist, before forking or dispatch, and points the caller to `list_models`.
+Its schema stays optional for same-role reuse; single-ready-model and existing
+worker bindings keep their current behavior. This host policy adds no library
+configuration field or stored-data migration.
 
 `EnableDelegation` gives workers the lifecycle tools under their captured
 configuration. Worker callers carry trusted ID/parent/generation; they may only

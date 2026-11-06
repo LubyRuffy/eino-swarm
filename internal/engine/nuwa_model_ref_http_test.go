@@ -22,7 +22,8 @@ func TestNuwaPlainCatalogRefSelectsHTTPWorkerAndKeepsCanonicalBinding(t *testing
 	const providerID, managerModel, workerModel = "catalog-fixture", "planner/default", "executor/selected"
 	canonicalRef := provider.ChoiceID(providerID, workerModel)
 	plainRef := "model:" + base64.RawURLEncoding.EncodeToString([]byte(canonicalRef))
-	var workerCalls atomic.Int32
+	assignment := store.NewID("catalog_assignment_")
+	var workerCalls, defaultFallbackCalls atomic.Int32
 	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
 			scheduleCompletionRequest
@@ -32,6 +33,13 @@ func TestNuwaPlainCatalogRefSelectsHTTPWorkerAndKeepsCanonicalBinding(t *testing
 			t.Error(err)
 			http.Error(w, "invalid fixture input", http.StatusBadRequest)
 			return
+		}
+		for _, message := range request.Messages {
+			if message.Role == "system" && strings.Contains(message.Content, assignment) && request.Model == managerModel {
+				defaultFallbackCalls.Add(1)
+				writeContextFlowReply(w, request.Stream, map[string]any{"content": "The unexpected default worker completed."}, "stop")
+				return
+			}
 		}
 		if request.Model == workerModel {
 			workerCalls.Add(1)
@@ -43,6 +51,33 @@ func TestNuwaPlainCatalogRefSelectsHTTPWorkerAndKeepsCanonicalBinding(t *testing
 		}
 		if len(request.Messages) > 0 && replyNoScheduleClaimsFixture(t, w, request.Messages[0].Content, request.Stream, len(request.Tools)) {
 			return
+		}
+		// A missing choice must be a correctable refusal before a worker, fork
+		// or lifecycle event. Collect any old fallback so RED remains semantic.
+		missing := nuwaValidationReceipt(request.scheduleCompletionRequest, "catalog-ref-missing")
+		if missing == "" {
+			args, _ := json.Marshal(map[string]any{"role": "catalog-reviewer", "task": assignment, "fork_context": true})
+			nuwaValidationTool(w, request.scheduleCompletionRequest, "catalog-ref-missing", "spawn_agent", string(args))
+			return
+		}
+		var rejected struct {
+			Error   string `json:"error"`
+			AgentID string `json:"agent_id"`
+		}
+		if err := json.Unmarshal([]byte(missing), &rejected); err != nil {
+			t.Errorf("decode missing model reference receipt: %v", err)
+		}
+		if rejected.AgentID != "" {
+			t.Error("multi-model Nuwa silently created a default worker without model_ref")
+			if nuwaValidationReceipt(request.scheduleCompletionRequest, "catalog-ref-unexpected-wait") == "" {
+				nuwaValidationTool(w, request.scheduleCompletionRequest, "catalog-ref-unexpected-wait", "wait_agents", fmt.Sprintf(`{"agent_ids":[%q],"timeout_s":5}`, rejected.AgentID))
+				return
+			}
+			writeContextFlowReply(w, request.Stream, map[string]any{"content": "The unexpected fallback result was collected."}, "stop")
+			return
+		}
+		if rejected.Error == "" || !strings.Contains(rejected.Error, "model_ref") || !strings.Contains(rejected.Error, "list_models") {
+			t.Errorf("missing choice did not explain how to select a catalog model: %s", missing)
 		}
 		catalogReceipt := nuwaValidationReceipt(request.scheduleCompletionRequest, "catalog-ref-list")
 		if catalogReceipt == "" {
@@ -69,7 +104,7 @@ func TestNuwaPlainCatalogRefSelectsHTTPWorkerAndKeepsCanonicalBinding(t *testing
 				// implementation rather than stopping at the catalog assertion.
 				copiedRef = plainRef
 			}
-			args, err := json.Marshal(map[string]any{"role": "catalog-reviewer", "task": "Inspect the supplied evidence.", "model_ref": copiedRef})
+			args, err := json.Marshal(map[string]any{"role": "catalog-reviewer", "task": assignment, "model_ref": copiedRef})
 			if err != nil {
 				t.Error(err)
 			}
@@ -109,8 +144,8 @@ func TestNuwaPlainCatalogRefSelectsHTTPWorkerAndKeepsCanonicalBinding(t *testing
 	}
 	got := waitForTurn(t, e, turn.ID)
 	waitSettled(t, e, thread.ID)
-	if got.Status != store.TurnDone || workerCalls.Load() != 1 {
-		t.Fatalf("printable catalog ref did not execute the selected model: turn=%+v worker_calls=%d", got, workerCalls.Load())
+	if got.Status != store.TurnDone || workerCalls.Load() != 1 || defaultFallbackCalls.Load() != 0 {
+		t.Fatalf("printable catalog ref did not execute the selected model: turn=%+v worker_calls=%d default_fallback=%d", got, workerCalls.Load(), defaultFallbackCalls.Load())
 	}
 	events, err := e.store.ListTurnEvents(turn.ID)
 	if err != nil {
@@ -131,7 +166,7 @@ func TestNuwaPlainCatalogRefSelectsHTTPWorkerAndKeepsCanonicalBinding(t *testing
 		t.Fatalf("missing lifecycle receipts: binding=%d finished=%v", bindings, finished)
 	}
 	view, err := e.ProjectNuwaSnapshot(t.Context(), project.ID)
-	if err != nil || len(view.Workers) != 1 || view.Workers[0].Status != "done" || view.Workers[0].ModelBinding == nil || view.Workers[0].ModelBinding.Ref != canonicalRef {
+	if err != nil || len(view.Workers) != 1 || view.Workers[0].AgentID != "catalog-reviewer-1" || view.Workers[0].Status != "done" || view.Workers[0].ModelBinding == nil || view.Workers[0].ModelBinding.Ref != canonicalRef {
 		t.Fatalf("completed worker lost its canonical binding: %+v err=%v", view.Workers, err)
 	}
 }

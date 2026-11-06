@@ -6,6 +6,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Changed Nuwa dispatch with multiple ready models to require an exact catalog
+  `model_ref` for each new role. Omission returns correctable `list_models`
+  guidance before forking or starting a worker, instead of silently using the
+  default model. Single-model, ordinary-mode and existing-worker bindings keep
+  their behavior; the generic Registry API and stored data need no migration.
+  AI still chooses the model. (`F-136`, `C-037`)
+
 - Added task-related recall to Nuwa worker previews. Related titles and summaries
   from the current project can precede recent records within the existing
   character budget; full details remain on demand. Each generation carries its

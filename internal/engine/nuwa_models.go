@@ -64,10 +64,14 @@ func (e *Engine) wireNuwaRegistry(reg *swarm.Registry, set *tools.Set, pc *proje
 	reg.EnableDelegation = true
 	reg.SelectableToolNames = selectableWorkerToolNames(pc.workerTools(set))
 	reg.SelectWorkerModel = func(ctx context.Context, ref string) (swarm.ModelBinding, swarm.ModelBuilder, error) {
+		options := e.nuwaModels(turn)
+		if ref == "" && len(options) > 1 {
+			return swarm.ModelBinding{}, nil, fmt.Errorf("model_ref is required for a new role when multiple models are available; use an exact ref returned by list_models")
+		}
 		id, name := turn.ProviderID, turn.Model
 		if ref != "" {
 			found := false
-			for _, option := range e.nuwaModels(turn) {
+			for _, option := range options {
 				if option.Ref == ref || provider.ChoiceID(option.ProviderID, option.Model) == ref {
 					id, name, found = option.ProviderID, option.Model, true
 					break
@@ -143,7 +147,8 @@ list. A task may need only one executor. A purely conversational response that
 needs no task operation does not require spawning a worker.
 
 Use list_worker_tools to discover execution tools and list_models to select
-configured models. Give each executor a self-contained objective, constraints,
+configured models. When multiple models are available, pass an exact model_ref
+for each new role. Give each executor a self-contained objective, constraints,
 inputs, expected outputs, and evidence requirements. Do not repeat its task.
 Collect results with wait_agents, inspect shared records with read_work, and
 request further inspection or independent verification from executors when
@@ -169,10 +174,12 @@ the current facts, refine the objective into verifiable subgoals, and revise you
 plan as new evidence arrives. Choose useful executor roles and collaboration
 yourself; there is no prescribed domain workflow or predefined executor list.
 
-list_models lists configured resources. Choose a model_ref from that catalog when
-delegating useful work; omitted references inherit the current default. A model
-name alone does not establish its capabilities. Use observed results to evaluate
-your choices. Existing workers retain their resolved model when continued.
+list_models lists configured, ready resources. When multiple models are available,
+each new role requires an exact model_ref from that catalog. With at most one
+ready model, an omitted reference uses the current default. A model name alone
+does not establish its capabilities. Use observed results to evaluate your
+choices. Existing workers retain their resolved model when continued, so their
+model_ref can be omitted.
 
 Share concise results with source evidence and artifact locations. Distinguish
 observations, hypotheses, attempted work and verified outcomes. A peer's report
