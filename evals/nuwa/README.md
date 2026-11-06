@@ -8,6 +8,32 @@ The [retained observations](RESULTS.md) record separate generic and AppWorld dev
 cohorts, their grading, actual model routing and measurement limits. Results
 from different protocols are not pooled.
 
+## Sapper reference and persistent-project evidence
+
+The implementation reference is [Sapper-v2 at c91881dc](https://github.com/N1nEmAn/sapper-v2/tree/c91881dc1629409bbf278577dfdaa6b8f383b438).
+Its generic hook supplies the work frontier and compact history on user
+submission, while dispatch rendering refreshes the graph and recalls related
+prior nodes. Nuwa adapts automatic project-state visibility to each Eino model
+call; the reported graph is untrusted, and details remain on demand. Runtime
+visibility tests establish that mechanism, not a quality or efficiency gain.
+
+The current pair runner gives each execution a fresh engine, data directory
+and workspace. Its results, including the still-unexecuted hard54 cohort, can
+measure collaboration within those tasks. They cannot establish knowledge
+accumulation across tasks, reaction to later corrections or continuity after
+handover in a persistent project. Hard54 remains frozen; it must not be edited
+after observing development results or repurposed as proof of those properties.
+
+Persistent-project evidence requires a separately frozen protocol, with equal
+inputs, corrections and recovery conditions for both modes. The default arm may
+keep and read its normal notes. Reuse the existing recording, usage, grading and
+cleanup paths, report development and held-out evidence separately, and retain
+all failures and unresolved usage. No such completed comparison currently
+supports a persistent-project benefit. Quality takes precedence over time and
+tokens; no positive result is presumed.
+
+## Planner and execution comparison
+
 The current Nuwa contract separates planning from execution: the manager plans,
 delegates, coordinates and accepts worker evidence, while workers perform the
 required operations. The manager does not mount workspace/MCP execution tools;

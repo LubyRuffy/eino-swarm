@@ -229,32 +229,6 @@ func (rt *runtime) close() {
 	}
 }
 
-// newTurnRegistry is the one place a conversation's swarm is wired, so a
-// resumed turn cannot forget WorkerPreamble the way a copy-pasted block would.
-func (e *Engine) newTurnRegistry(builder swarm.ModelBuilder, toolset *tools.Set, pc *projectContext, turns ...*store.Turn) *swarm.Registry {
-	reg := swarm.NewRegistry()
-	reg.ModelBuilder = builder
-	e.bindSwarmLimits(reg)
-	e.wireWorkerSurface(reg, toolset, pc)
-	if len(turns) > 0 {
-		e.wireNuwaRegistry(reg, toolset, pc, turns[0])
-		config := reg.WorkerConfiguration()
-		config.Tag = turns[0].ID
-		ownerTurn := turns[0]
-		config.WorkerContextValues = func(parent, detached context.Context) context.Context {
-			detached = historyWorkerContextValues(parent, detached)
-			owner, _ := detached.Value(historyReadOwnerKey{}).(historyReadOwner)
-			owner.ThreadID, owner.TurnID = ownerTurn.ThreadID, ownerTurn.ID
-			return context.WithValue(detached, historyReadOwnerKey{}, owner)
-		}
-		reg.ConfigureWorkers(config)
-		reg.ResolveWorkerConfig = func(ctx context.Context, tag string) (swarm.WorkerConfig, error) {
-			return e.workerConfigurationForTag(ctx, ownerTurn.ThreadID, tag)
-		}
-	}
-	return reg
-}
-
 // wireWorkerSurface is the worker half of a turn: workspace tools, skill_view
 // when the project has memory, and the host snapshot plus that memory index.
 // Writes stay off this surface. A parked registry is re-wired at the next

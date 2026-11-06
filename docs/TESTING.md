@@ -175,6 +175,25 @@ input to omit workspace/MCP execution tools while workers retain their configure
 optional catalog. Cover discovery, selected tools and actual worker execution;
 a manager prompt alone cannot prove this boundary. Pure discussion may finish
 without spawning a worker, while required operations belong to workers.
+`nuwa_context_http_test.go` and `nuwa_context_worker_http_test.go` exercise the
+automatic shared-state preview through actual Engine/Registry/ADK HTTP input:
+first call, between-call correction and stale prerequisites, frozen mode on
+recovery, selected-model workers, project isolation and full fork input. They
+must work without an explicit `read_work`, leave durable human input unchanged
+and avoid accumulating runtime blocks. `worker_model_middleware_test.go` checks
+per-generation identity, nil behavior and retained factories on resume/restore.
+These scripted requests prove visibility and isolation, not real-model benefit.
+`nuwa_context_config_race_test.go` exercises real model HTTP requests and
+`read_work` while `Engine.UpdateConfig` repeatedly saves and publishes changed
+result budgets. It then joins the writer and checks committed small/large caps,
+whole-node omission, complete JSON and unchanged human input/source detail.
+The preview and shared-work readers must take one config snapshot per call.
+Keep the existing live project-move/admission cases: an unavailable optional
+preview must not prevent a running worker from receiving its actual shared-tool
+refusals, or change claim/Move ordering. It supplies no graph or raw error text.
+The tool-scope flow still checks actual selected schemas and evidence retrieval;
+its manager can now see the worker's reported shared summary before requesting
+that record's details through `read_work`.
 Check `/plan` and accepted-plan instructions at actual model HTTP input, including
 recovery after the project switch changes: neither may direct a Nuwa planner to
 call execution tools. `nuwa_plan_prompt_http_test.go` covers this boundary.

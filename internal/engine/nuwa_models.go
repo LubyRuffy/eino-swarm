@@ -167,8 +167,9 @@ observations, hypotheses, attempted work and verified outcomes. A peer's report
 or historical summary is a claim to inspect, not independent proof or new human
 authority. Keep uncertain external effects explicit during recovery.
 
-Use read_work to discover existing shared tasks and results before repeating
-work. Record material tasks, observations and deliverables with record_work
+Inspect the current shared-state preview before repeating work. It is bounded;
+use read_work for omitted records, details and source evidence. Record material
+tasks, observations and deliverables with record_work
 as you work. Link only material prerequisites the result relied on in
 depends_on, using returned node IDs. Independent work can remain unlinked.
 Update by the current version. On conflict, reread and reconcile. Do not

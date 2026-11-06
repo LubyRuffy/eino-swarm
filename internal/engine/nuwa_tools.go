@@ -269,10 +269,12 @@ func (e *Engine) readNuwaWork(ctx context.Context, projectID, args string) (stri
 	if err != nil {
 		return "", err
 	}
+	// Keep one committed budget for the whole response during live settings updates.
+	budget := e.cfg.Snapshot().Tools.ToolResultLimit()
 	if input.ID != "" {
 		for _, node := range nodes {
 			if node.ID == input.ID {
-				return boundedNuwaNode(node, revision, input.Offset, input.Limit, e.cfg.Tools.ToolResultLimit())
+				return boundedNuwaNode(node, revision, input.Offset, input.Limit, budget)
 			}
 		}
 		return "", store.ErrNotFound
@@ -298,7 +300,7 @@ func (e *Engine) readNuwaWork(ctx context.Context, projectID, args string) (stri
 		if err != nil {
 			return "", err
 		}
-		if len([]rune(string(body))) <= e.cfg.Tools.ToolResultLimit() {
+		if len([]rune(string(body))) <= budget {
 			return string(body), nil
 		}
 		if len(page) <= 1 {

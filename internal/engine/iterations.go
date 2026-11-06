@@ -228,6 +228,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 				return e.admitManagerCommentary(policyCtx, turn, acc.event(note, note.Kind.String()), prefix)
 			}
 			middlewares := append(e.autoCompactHandlers(rt.threadID, turn.ID, th, forceCompact), answer)
+			middlewares = append(middlewares, e.nuwaContextHandlers(turn)...)
 			answerCtx := context.WithValue(ctx, scheduleAnswerBufferContextKey{}, answer)
 			runConfig := swarm.RunConfig{
 				Instruction: instruction, Messages: messages, ManagerTools: managerTools, MaxIterations: budget,

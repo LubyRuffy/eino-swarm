@@ -15,7 +15,9 @@ coordination tools, without local execution tools or provider-hosted builtins.
 The **Collaboration** panel shows shared tasks, reported
 facts, result files, dependency paths and actual worker/model state across the
 project. Mode changes apply to subsequent turns; current workers keep their
-configuration. Connections and tools still need to be configured. See
+configuration. Connections and tools still need to be configured.
+Each Nuwa model call receives a bounded preview of the latest shared project
+state; details and evidence remain available through collaboration tools. See
 [Nuwa](docs/NUWA.md) for evidence, correction and recovery boundaries. No domain
 workflow or real-model efficiency improvement is implied by enabling it.
 

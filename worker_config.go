@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
 )
 
@@ -25,7 +26,10 @@ type WorkerConfig struct {
 	WorkerPreamble      string
 	ToolOutputBinder    func(context.Context, func(string), string, string) context.Context
 	WorkerContextValues func(context.Context, context.Context) context.Context
-	workerToolNames     *[]string
+	// WorkerMiddlewares builds host-owned handlers once for each actual worker
+	// generation. A non-nil factory is retained with its worker's configuration.
+	WorkerMiddlewares func(AgentIdentity) []adk.ChatModelAgentMiddleware
+	workerToolNames   *[]string
 }
 
 func cloneWorkerConfig(config WorkerConfig) WorkerConfig {

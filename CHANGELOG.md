@@ -6,6 +6,19 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed live Settings result-budget updates racing with Nuwa shared-state
+  previews and `read_work`. Each response uses one committed configuration
+  snapshot while preserving complete JSON and whole-node omission.
+  (`F-136`, `C-037`)
+
+- Added a transient, bounded shared-project preview to each Nuwa manager and
+  worker model-call entry, adapting Sapper-v2's automatic graph context. Original
+  ownership and worker configuration survive recovery; unavailable reads are
+  explicit without stopping existing work. Reported facts remain untrusted,
+  full details stay on demand, and previews do not enter transcript,
+  compact input or fork history. Real-model benefit remains unproven.
+  (`F-136`, `C-037`)
+
 - Fixed scheduling answers being withheld when tool receipts, manager guidance
   and verification disagreed. Arming receipts now expose exact persisted kind,
   cadence and next-run fields; `report_schedule(next_in_s)` is a recurring

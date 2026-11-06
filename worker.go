@@ -95,6 +95,10 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 			workerGeneration: identity.Generation, parentID: identity.ParentID, toolReceiptScope: receiptScope}
 		inj := &Injector{handle: h, histCap: r.historyCap(), reg: r, generation: identity.Generation,
 			config: config, configured: true, toolReceiptScope: receiptScope}
+		handlers := []adk.ChatModelAgentMiddleware{inj}
+		if config.WorkerMiddlewares != nil {
+			handlers = append(handlers, config.WorkerMiddlewares(identity)...)
+		}
 		agent, err := adk.NewChatModelAgent(watchCtx, &adk.ChatModelAgentConfig{
 			Name:        id,
 			Description: "spawned sub-agent " + role,
@@ -104,7 +108,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 				ToolsNodeConfig: compose.ToolsNodeConfig{Tools: extraTools},
 			},
 			MaxIterations: r.turnsLimit(),
-			Handlers:      []adk.ChatModelAgentMiddleware{inj},
+			Handlers:      handlers,
 		})
 		if err != nil {
 			h.completeWorker("", fmt.Errorf("swarm: spawn %s: %w", id, err), timeout, watchCtx.Err(), runCtx.Err())

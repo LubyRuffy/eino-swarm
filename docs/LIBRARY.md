@@ -34,6 +34,15 @@ manager-dispatched workers while existing/archived workers retain their own
 configuration. Public Registry fields remain initialization-only settings for
 consumers that have not started work.
 
+`WorkerConfig.WorkerMiddlewares(identity)` optionally builds ADK model handlers
+once per worker generation, after the built-in Injector. The supplied identity
+is the actual worker ID, role, parent and generation. Workers with a non-nil
+factory and their descendants retain it in their configuration snapshot,
+including when resumed; a tagged cold restore uses the host's original
+configuration resolver. Legacy untagged workers created without a factory keep
+their existing resume compatibility path. For transient host context, wrap the
+model's Generate/Stream request without rewriting ADK history or fork seeds.
+
 `WorkerConfig.SelectWorkerModel(ctx, ref)` returns a credential-free
 `ModelBinding`, per-agent `ModelBuilder` and error. When configured, the actual
 `spawn_agent` schema includes optional `model_ref`. Selection errors refuse

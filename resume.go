@@ -238,7 +238,7 @@ func (r *Registry) resumeHandle(ctx context.Context, fromID, task string,
 	if err != nil {
 		return nil, err
 	}
-	if past.workerConfig != nil && (past.workerConfig.Tag != "" || past.workerConfig.EnableDelegation || past.checkpoint.ModelBinding != nil || past.checkpoint.WorkerToolNames != nil) {
+	if past.workerConfig != nil && (past.workerConfig.Tag != "" || past.workerConfig.EnableDelegation || past.workerConfig.WorkerMiddlewares != nil || past.checkpoint.ModelBinding != nil || past.checkpoint.WorkerToolNames != nil) {
 		ctx = withWorkerConfig(ctx, *past.workerConfig)
 	}
 	config, err := r.restoreWorkerConfiguration(ctx, past.checkpoint.ConfigTag, past.checkpoint.DelegationEnabled)

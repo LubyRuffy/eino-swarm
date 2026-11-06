@@ -27,6 +27,18 @@ preserving the shared client, worker factory, call accounting and backoff.
 Ordinary turns keep their existing tool surface. Restored workers retain their
 original model and selected tools; a resumed Nuwa manager uses the planner surface.
 
+Nuwa model wrappers refresh a bounded project-state preview at each Generate or
+Stream entry. They validate the original project/thread/turn owner through
+`Store.NuwaSnapshotForTurn` and add a transient runtime System message to a new
+request slice. ADK state, compact input, durable transcript and fork seeds do not
+receive that preview. The Registry's per-generation `WorkerMiddlewares` factory
+retains the original worker configuration; tagged recovery rebuilds it from the
+original turn. The graph remains reported data. Failed optional reads produce
+an explicit unavailable state without records, revision or raw error; shared
+tools and new claims retain their ownership checks. Cancellation or an invalid
+budget/encoding refuses the model call. The tool-result preview budget does not prove
+that the entire prompt fits a model's context window.
+
 Runtime transcript inputs carry explicit provenance: ADK `Extra["zwai_message_source"]` and persisted `messages.source` distinguish `human`, transient `runtime`, `schedule`, and `plan`. Runtime correction cues remain available during their turn and in diagnostics, but future replay, compact summarizer input and session briefing extraction exclude them. Legacy cue compatibility matches complete constants or a validated worker-ID suffix, then preserves any independently evidenced human input. It never classifies similar prose as a correction.
 
 Goal and plan commands retain their complete argument through one engine

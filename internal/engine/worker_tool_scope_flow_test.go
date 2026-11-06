@@ -385,9 +385,32 @@ func runToolScopeFlow(t *testing.T, names *[]string, writeProbe, failReadReceipt
 				return
 			}
 			if step == 5 {
-				if strings.Contains(joinedContent(request.Messages), value) {
-					fail("manager learned the source value before targeted reuse")
+				preview := nuwaContextHTTPBlock(t, request.scheduleCompletionRequest, true)
+				node := nuwaContextHTTPNode(t, preview, id)
+				if preview.ProjectID != node.ProjectID || preview.Revision <= 0 || node.ID != id || node.Version != version ||
+					node.Kind != "fact" || node.Status != "reported" || node.Summary != value || node.Detail != "" ||
+					node.AgentID != spawn.AgentID || node.Generation != spawn.Generation || len(node.Evidence) != 1 {
+					fail("automatic shared preview lost reported value, collected identity or worker evidence")
 					return
+				}
+				ref := node.Evidence[0]
+				var source store.Event
+				if err := db.WithContext(r.Context()).Where("thread_id = ? AND seq = ?", ref.ThreadID, ref.Seq).First(&source).Error; err != nil ||
+					source.Kind != "tool_result" || source.ToolCallID != "scope-read" || source.AgentID != spawn.AgentID ||
+					source.WorkerGeneration != spawn.Generation || source.TurnID != ref.TurnID ||
+					node.ThreadID != ref.ThreadID || node.TurnID != ref.TurnID || !strings.Contains(source.Text, value) {
+					fail("automatic shared preview did not reference the worker's actual durable source")
+					return
+				}
+				for _, message := range request.Messages {
+					if message.Role == schema.System {
+						continue
+					}
+					raw, err := json.Marshal(message)
+					if err != nil || strings.Contains(string(raw), value) {
+						fail("non-System input leaked the original source value before targeted reuse")
+						return
+					}
 				}
 				call("scope-reuse", "read_work", map[string]string{"id": id})
 				return

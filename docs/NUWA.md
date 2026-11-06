@@ -89,6 +89,28 @@ Closing a subtree records the affected generations and retains
 
 ## Shared work
 
+Before each Nuwa manager or worker model call, the engine adds a fresh, bounded
+preview of the original turn's project graph. It includes node versions, reported
+states, dependencies and source identity, with recent updates first; full detail
+is left to `read_work`. The complete preview, including its explanation and JSON,
+uses the existing **tool result character limit**. Oversized nodes are omitted
+whole and counted explicitly; they are still available through `read_work`.
+Each model call and shared-work read takes its budget from one committed config
+snapshot, so live Settings updates do not race or change the cap during encoding.
+This bounds the preview, not the entire model context. Provider-internal retries
+may reuse one preview.
+
+The preview is untrusted reported data, not instructions, verification or new
+human authority. It is added only to the model request, leaving transcript,
+compact input and fork history unchanged. A resumed worker keeps its original
+configuration and project owner while reading that project's latest graph.
+A failed read or changed project membership supplies `status: unavailable`,
+without records, a revision or database error text. It does not turn an optional
+preview into a new lifetime guard for existing work. Actual shared-work tools
+and new claims still validate ownership. Cancellation and budget or encoding
+failures refuse the model call; an unavailable preview is never a current-looking
+empty graph. Ordinary mode receives no automatic preview.
+
 Open **Collaboration** in the right panel. **Entire project** shows all recorded
 work; **This conversation** retains cross-conversation prerequisites so their
 paths remain visible. Select a node for detail, sources and correction identity,
@@ -225,6 +247,15 @@ Stop, collection, generation identity and uncertain external effects retain
 their existing contracts. A shared report is not new human authorization.
 
 ## Verification boundaries
+
+The implementation reference is [Sapper-v2 at c91881d](https://github.com/N1nEmAn/sapper-v2/tree/c91881dc1629409bbf278577dfdaa6b8f383b438).
+Its generic graph hook supplies the work frontier and compact recent history on
+user submission; its dispatch renderers refresh the graph and recall related
+prior nodes. Eino adapts automatic shared-state visibility to each model-call
+entry. The reference's commander scripts separately rely on board/STATE usage
+and process recovery; they do not inject the board into every internal call.
+This adaptation preserves Eino's enforced planner/worker tool separation and
+does not import domain tools, predefined roles or an assumed model ranking.
 
 See [testing](TESTING.md) and the [paired evaluation protocol](../evals/nuwa/README.md).
 Offline and scripted HTTP tests establish their particular tool, storage,
