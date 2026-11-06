@@ -17,6 +17,26 @@ spec.loader.exec_module(runner)
 
 
 class NativeLogMetadataTest(unittest.TestCase):
+    def test_candidate_round_keeps_existing_budgets_and_requires_native_cap_scope(self):
+        calls = []
+        runner.run_candidate_native_cases(lambda *args, **kwargs: calls.append((args, kwargs)), upgraded=True)
+        self.assertEqual(calls, [
+            (("native-account", "accountLoginReviewModelsPCAndAnonymousPairing", 150), {"upgraded": True}),
+            (("native-web-routing", "independentWebRoutesAndPermissionRecovery", 240), {}),
+            (("native-manager-cap", "managerCapContinueAndStopUseTheOriginalPCTurn", 120), {}),
+        ])
+
+    def test_failed_native_cap_cannot_complete_the_candidate_round(self):
+        calls = []
+        failure = RuntimeError("original cap assertion")
+        def native_case(label, method, budget, **kwargs):
+            calls.append(label)
+            if label == "native-manager-cap": raise failure
+        with self.assertRaises(RuntimeError) as failed:
+            runner.run_candidate_native_cases(native_case, upgraded=False)
+        self.assertIs(failed.exception, failure)
+        self.assertEqual(calls, ["native-account", "native-web-routing", "native-manager-cap"])
+
     def test_native_case_requires_success_and_one_owned_evidence_directory(self):
         good = "INSTRUMENTATION_STATUS: evidence_directory=/sdcard/Android/data/com.lubyruffy.zwai/files/native-account\nOK (1 test)\n"
         self.assertEqual(runner.native_result_directory(good), "/sdcard/Android/data/com.lubyruffy.zwai/files/native-account")

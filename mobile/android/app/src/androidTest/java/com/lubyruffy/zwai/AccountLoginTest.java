@@ -389,6 +389,90 @@ public class AccountLoginTest {
         write("fixture-state.json", snapshot.toString(2));
     }
 
+    @Test
+    public void managerCapContinueAndStopUseTheOriginalPCTurn() throws Exception {
+        beginCase("native-manager-cap");
+        launch();
+        waitFor("User center");
+        if (present("Back")) click("Back");
+        waitFor("Menu");
+        int peersBefore = count("peer_messages");
+        for (boolean proceed : new boolean[] {true, false}) {
+            JSONObject started = request("/api/cap/start", "POST");
+            String turn = started.getString("turn_id"), title = started.getString("title");
+            String thread = started.getString("thread_id");
+            JSONObject paused = waitCapState(turn, "durable pause", value -> value.optBoolean("awaiting_continue") && value.optLong("max_iterations_seq") > 0);
+            assertEquals(thread, paused.getString("thread_id"));
+            long initialCapSeq = paused.getLong("max_iterations_seq");
+            assertEquals("A fresh cap fixture starts one actual PC turn", 1, paused.getInt("turn_count"));
+            click("Open " + title);
+            waitContaining("Reached the manager tool-round limit");
+            waitFor("Continue for more tool rounds");
+            save(proceed ? "01-cap-visible" : "05-second-cap-visible");
+            click("Back");
+            click("Open " + title);
+            waitFor("Continue for more tool rounds");
+            waitFor("Stop at the tool-round limit");
+            save(proceed ? "02-cap-reopened" : "06-second-cap-reopened");
+            boolean stoppedForCleanup = false;
+            if (proceed) {
+                click("Continue for more tool rounds");
+                JSONObject resumed = waitCapState(turn, "same-turn manager generation", value ->
+                    value.optLong("max_iterations_continued_seq") > initialCapSeq &&
+                    value.optBoolean("manager_generation_after_continue") &&
+                    (!value.optBoolean("running") || value.optBoolean("awaiting_continue")));
+                assertEquals("Continue cannot create another turn", 1, resumed.getInt("turn_count"));
+                assertEquals(thread, resumed.getString("thread_id"));
+                assertEquals("One native decision grants one continuation", 1, resumed.getInt("continued_count"));
+                write("continued-pc-state.json", resumed.toString(2));
+                save("03-original-turn-continued");
+                // A cap can be reached again after the granted slice. Stop that
+                // new pause through the UI before creating the independent Stop case.
+                if (resumed.optBoolean("running")) {
+                    click("Stop at the tool-round limit");
+                    stoppedForCleanup = true;
+                }
+            } else {
+                click("Stop at the tool-round limit");
+            }
+            // Engine publishes its terminal event before FinishTurn. A mixed
+            // observer snapshot can still contain the old stored status.
+            JSONObject ended = waitCapState(turn, "terminal original turn", value -> !value.optBoolean("running") && value.optLong("terminal_seq") > 0 &&
+                java.util.Arrays.asList("done", "error", "cancelled").contains(value.optString("turn_status")));
+            assertEquals(thread, ended.getString("thread_id"));
+            assertEquals("A cap decision never sends another user turn", 1, ended.getInt("turn_count"));
+            assertEquals("Only the explicit native Stop may cancel this fixture", !proceed || stoppedForCleanup ? "cancelled" : "done", ended.getString("turn_status"));
+            if (!proceed) {
+                assertEquals("A human decline is cancellation", "cancelled", ended.getString("turn_status"));
+                assertEquals("Stop cannot manufacture a continuation", 0, ended.getInt("continued_count"));
+                waitContaining("The turn stopped at the tool-round limit.");
+            }
+            long uiDeadline = SystemClock.uptimeMillis() + 5000;
+            while (SystemClock.uptimeMillis() < uiDeadline &&
+                (present("Continue for more tool rounds") || present("Stop at the tool-round limit"))) SystemClock.sleep(50);
+            assertFalse("Settled caps cannot retain a live Continue button", present("Continue for more tool rounds"));
+            assertFalse("Settled caps cannot retain a live Stop button", present("Stop at the tool-round limit"));
+            write(proceed ? "continued-terminal-pc-state.json" : "declined-pc-state.json", ended.toString(2));
+            save(proceed ? "04-continued-case-cleaned" : "07-original-turn-cancelled");
+            click("Back");
+        }
+        assertTrue("Native decisions must traverse the real encrypted relay", count("peer_messages") > peersBefore);
+        write("fixture-state.json", state().toString(2));
+    }
+
+    private JSONObject waitCapState(String turn, String phase, java.util.function.Predicate<JSONObject> ready) throws Exception {
+        long until = SystemClock.uptimeMillis() + 15000;
+        JSONObject observed;
+        do {
+            observed = get("/api/cap/state");
+            assertEquals("The observer must stay bound to this original turn", turn, observed.getString("turn_id"));
+            if (ready.test(observed)) return observed;
+            SystemClock.sleep(100);
+        } while (SystemClock.uptimeMillis() < until);
+        write("cap-state-timeout.json", observed.toString(2));
+        throw new AssertionError("Real PC cap did not reach " + phase);
+    }
+
     private void assertNoInlineWebRouting() throws Exception {
         assertFalse("The conversation must not show an inline Web settings shortcut", present("Web settings"));
         assertFalse("Routing summaries belong in settings or the model picker", dom().getBoolean("web_routing_visible"));
@@ -593,7 +677,12 @@ public class AccountLoginTest {
     }
 
     private JSONObject get(String path) throws Exception {
+        return request(path, "GET");
+    }
+
+    private JSONObject request(String path, String method) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) new URL(origin + path).openConnection();
+        connection.setRequestMethod(method);
         connection.setConnectTimeout(5000); connection.setReadTimeout(5000);
         try {
             assertEquals("The loopback fixture must respond", 200, connection.getResponseCode());

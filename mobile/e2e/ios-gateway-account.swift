@@ -313,6 +313,121 @@ final class BindFlowTests: XCTestCase {
     record(app, "web-mobile-cloud-keeps-pc-inherited-local-route")
   }
 
+  func testNativeManagerCapContinueAndStopUseTheOriginalPCTurn() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    try control("review=approved&pc=show&api=on&start=normal&catalog=normal&model=normal&web=normal")
+    app.launch()
+    let login = app.buttons["Sign in with NOSEC"].firstMatch
+    XCTAssertTrue(login.waitForExistence(timeout: 15), "This case requires a fresh private app container")
+    login.tap()
+    XCTAssertTrue(app.staticTexts["User center"].waitForExistence(timeout: 5))
+    app.buttons["Sign in with NOSEC"].tap()
+    try browserLogin(app, authorize: true)
+    XCTAssertTrue(app.staticTexts["native-fixture-model"].waitForExistence(timeout: 15))
+    let connect = app.buttons["Connect Native PC"]
+    try reveal(app, connect)
+    connect.tap()
+    let seed = app.buttons["Open Native PC conversation"]
+    XCTAssertTrue(seed.waitForExistence(timeout: 20), "The actual account PC must answer over encrypted RPC")
+    let peersBefore = try count("peer_messages")
+    for proceed in [true, false] {
+      let started = try capData("/api/cap/start", method: "POST")
+      let turn = try XCTUnwrap(started["turn_id"] as? String)
+      let thread = try XCTUnwrap(started["thread_id"] as? String)
+      let title = try XCTUnwrap(started["title"] as? String)
+      let paused = try waitForCapState(turn, phase: "durable pause") { state in
+        state["awaiting_continue"] as? Bool == true && (state["max_iterations_seq"] as? Int ?? 0) > 0
+      }
+      let initialCapSeq = try XCTUnwrap(paused["max_iterations_seq"] as? Int)
+      XCTAssertEqual(paused["thread_id"] as? String, thread)
+      XCTAssertEqual(paused["turn_count"] as? Int, 1)
+      let open = app.buttons["Open " + title]
+      XCTAssertTrue(open.waitForExistence(timeout: 15))
+      XCTAssertTrue(open.isHittable)
+      open.tap()
+      let prompt = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Reached the manager tool-round limit")).firstMatch
+      XCTAssertTrue(prompt.waitForExistence(timeout: 12))
+      let more = app.buttons["Continue for more tool rounds"]
+      let stop = app.buttons["Stop at the tool-round limit"]
+      try waitForEnabled(more)
+      recordCap(app, proceed ? "cap-visible" : "cap-second-visible", state: paused)
+      app.buttons["Back"].tap()
+      XCTAssertTrue(open.waitForExistence(timeout: 12))
+      open.tap()
+      try waitForEnabled(more)
+      XCTAssertTrue(more.isHittable)
+      XCTAssertTrue(stop.isHittable)
+      recordCap(app, proceed ? "cap-reopened" : "cap-second-reopened", state: try capData("/api/cap/state"))
+      var stoppedForCleanup = false
+      if proceed {
+        more.tap()
+        let resumed = try waitForCapState(turn, phase: "same-turn manager generation") { state in
+          (state["max_iterations_continued_seq"] as? Int ?? 0) > initialCapSeq &&
+          state["manager_generation_after_continue"] as? Bool == true &&
+          (state["running"] as? Bool != true || state["awaiting_continue"] as? Bool == true)
+        }
+        XCTAssertEqual(resumed["turn_count"] as? Int, 1, "Continue must retain the original PC turn")
+        XCTAssertEqual(resumed["thread_id"] as? String, thread)
+        XCTAssertEqual(resumed["continued_count"] as? Int, 1, "One native decision grants one continuation")
+        recordCap(app, "cap-original-turn-continued", state: resumed)
+        if resumed["running"] as? Bool == true {
+          try waitForEnabled(stop)
+          XCTAssertTrue(stop.isHittable)
+          stop.tap()
+          stoppedForCleanup = true
+        }
+      } else { stop.tap() }
+      // Engine publishes its terminal event before FinishTurn. Keep waiting
+      // while the observer still sees the old durable turn status.
+      let ended = try waitForCapState(turn, phase: "terminal original turn") { state in
+        state["running"] as? Bool != true && (state["terminal_seq"] as? Int ?? 0) > 0 &&
+        ["done", "error", "cancelled"].contains(state["turn_status"] as? String ?? "")
+      }
+      XCTAssertEqual(ended["turn_count"] as? Int, 1, "A cap decision must not send another user turn")
+      XCTAssertEqual(ended["thread_id"] as? String, thread)
+      XCTAssertEqual(ended["turn_status"] as? String, !proceed || stoppedForCleanup ? "cancelled" : "done")
+      if !proceed {
+        XCTAssertEqual(ended["turn_status"] as? String, "cancelled")
+        XCTAssertEqual(ended["continued_count"] as? Int, 0)
+        XCTAssertTrue(app.staticTexts["The turn stopped at the tool-round limit."].waitForExistence(timeout: 8))
+      }
+      let settled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: more)
+      XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 8), .completed)
+      XCTAssertFalse(stop.exists)
+      recordCap(app, proceed ? "cap-continued-case-cleaned" : "cap-original-turn-cancelled", state: ended)
+      app.buttons["Back"].tap()
+    }
+    XCTAssertGreaterThan(try count("peer_messages"), peersBefore)
+  }
+
+  private func capData(_ path: String, method: String = "GET") throws -> [String: Any] {
+    let response = try read(path, method: method)
+    return try XCTUnwrap(response["data"] as? [String: Any])
+  }
+
+  private func waitForCapState(_ turn: String, phase: String, ready: ([String: Any]) -> Bool) throws -> [String: Any] {
+    let deadline = Date().addingTimeInterval(15)
+    repeat {
+      let state = try capData("/api/cap/state")
+      XCTAssertEqual(state["turn_id"] as? String, turn, "The observer must stay bound to the original turn")
+      if ready(state) { return state }
+      Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    XCTFail("The actual PC cap did not reach " + phase)
+    throw NSError(domain: "NativeAccountFixture", code: 5)
+  }
+
+  private func recordCap(_ app: XCUIApplication, _ name: String, state: [String: Any]) {
+    record(app, name)
+    if let data = try? JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]), let json = String(data: data, encoding: .utf8) {
+      let receipt = XCTAttachment(string: json)
+      receipt.name = name + "-pc-cap-state"
+      receipt.lifetime = .keepAlways
+      add(receipt)
+    }
+  }
+
   private func waitForPCWebTurn(timeout: TimeInterval) throws -> [String: Any] {
     let deadline = Date().addingTimeInterval(timeout)
     repeat {
@@ -517,12 +632,14 @@ final class BindFlowTests: XCTestCase {
     throw NSError(domain: "NativeAccountFixture", code: 3)
   }
 
-  private func read(_ path: String) throws -> [String: Any] {
+  private func read(_ path: String, method: String = "GET") throws -> [String: Any] {
     let url = try XCTUnwrap(URL(string: fixtureOrigin + path))
+    var request = URLRequest(url: url)
+    request.httpMethod = method
     let done = expectation(description: "fixture response")
     var value: [String: Any]?
     var failure: Error?
-    let task = URLSession.shared.dataTask(with: url) { data, response, error in
+    let task = URLSession.shared.dataTask(with: request) { data, response, error in
       defer { done.fulfill() }
       if let error = error { failure = error; return }
       guard let response = response as? HTTPURLResponse, response.statusCode == 200, let data = data else {

@@ -181,6 +181,13 @@ def native_result_directory(output):
     return directories[0]
 
 
+def run_candidate_native_cases(native_case, *, upgraded):
+    """Keep each scenario's budget separate from the complete owned round."""
+    native_case("native-account", "accountLoginReviewModelsPCAndAnonymousPairing", 150, upgraded=upgraded)
+    native_case("native-web-routing", "independentWebRoutesAndPermissionRecovery", 240)
+    native_case("native-manager-cap", "managerCapContinueAndStopUseTheOriginalPCTurn", 120)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, required=True)
@@ -191,7 +198,7 @@ def main():
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--sdk", type=Path, required=True)
     parser.add_argument("--jdk", type=Path, required=True)
-    parser.add_argument("--timeout", type=int, default=720)
+    parser.add_argument("--timeout", type=int, default=840)
     parser.add_argument("--development", action="store_true", help="Record dirty-source development evidence; never release acceptance")
     parser.add_argument("--version", help="Expected release version; required for formal acceptance")
     parser.add_argument("--previous-apk", type=Path, help="Previous public APK for a real signature-compatible upgrade")
@@ -345,7 +352,7 @@ def main():
                 raise ValueError("APK web assets differ from the exact release build's mobile/dist")
             result["packaged_web_assets"] = expected
         ready = runtime / "fixture-ready.json"
-        fixture = start("fixture", [args.fixture, "--listen", "127.0.0.1:0", "--data-dir", runtime / "fixture-data", "--ready-file", ready])
+        fixture = start("fixture", [args.fixture, "--listen", "127.0.0.1:0", "--data-dir", runtime / "fixture-data", "--ready-file", ready, "--max-duration", str(args.timeout) + "s"])
         until = time.monotonic() + 20
         while not ready.exists():
             if fixture.poll() is not None or time.monotonic() >= until: raise RuntimeError("Owned fixture did not become ready")
@@ -416,10 +423,10 @@ def main():
         if installed_digest != hashes["apk"]:
             raise ValueError("Installed APK bytes differ from the supplied candidate")
         result["installed_apk_sha256"] = installed_digest
-        native_case("native-account", "accountLoginReviewModelsPCAndAnonymousPairing", 150, upgraded=bool(args.previous_apk))
-        native_case("native-web-routing", "independentWebRoutesAndPermissionRecovery", 240)
+        run_candidate_native_cases(native_case, upgraded=bool(args.previous_apk))
         result["upgrade_anonymous_and_personal_preservation_verified"] = bool(args.previous_apk)
         result["native_web_routing_passed"] = True
+        result["native_manager_cap_passed"] = True
         result["native_case_passed"] = True
     except BaseException as error:
         primary = error

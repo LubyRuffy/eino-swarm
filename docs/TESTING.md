@@ -1041,6 +1041,24 @@ Chromium and iPhone-sized WebKit for English/Chinese controls, reopening,
 Continue/Stop and a rejected action followed by retry. These browser fixtures
 do not accept an installed native phone package.
 
+Native phone acceptance uses `account-fixture`'s opt-in `/api/cap/start` input
+and `/api/cap/state` observer. The actual Eino engine creates the cap; these
+controls cannot continue or stop it. Android
+`AccountLoginTest/managerCapContinueAndStopUseTheOriginalPCTurn` and iOS
+`testNativeManagerCapContinueAndStopUseTheOriginalPCTurn` open and reopen that
+PC conversation and press the native Continue/Stop controls through the existing
+paired relay. The read-only fixture observer then verifies the original turn's
+durable continuation, subsequent manager generation and terminal status.
+Each independent cap starts one turn;
+any repeated pause after Continue is stopped through the UI before the next
+case. The Android account runner adds a separate 120-second cap scope and keeps
+the existing scope budgets, with an 840-second complete round default. Final
+APK/IPA public-asset identity and each platform's existing cleanup remain
+separate requirements.
+The iOS fixture preserves the signed IPA's public assets in a private simulator
+wrapper; it does not establish installation of that distribution IPA on a
+physical iPhone.
+
 PC transcript/store and Worker completion E2E regress the persisted decline,
 cleanup, terminal error and late cancelled-finish sequence through live events,
 Reload and older pages. The decline JSON must remain available in Trace while

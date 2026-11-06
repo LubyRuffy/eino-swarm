@@ -12,11 +12,6 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   changing ordinary turns or worker configuration. AI still chooses executor
   roles, models and tool scopes. Earlier self-executing Nuwa measurements do not
   validate this behavior. (`F-136`, `C-037`)
-- Fixed paired phones hiding the manager tool-round limit. The conversation
-  now shows Continue and Stop, restores paused controls when reopened, and
-  retains the prompt with a visible error when the PC refuses the action.
-  Both the phone and PC need this update for the continuation RPC.
-  (#156, `F-220`, `C-006`)
 
 - Fixed iOS 27.2 terminating the app during startup because the native shell
   had not adopted UIKit's required scene lifecycle. A single scene loads the
@@ -4216,6 +4211,14 @@ were left out on purpose, so that what shipped is complete rather than broad:
 - **A native directory picker** for a project's working directory. The field
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
+
+## [0.1.69] - 2026-11-06
+
+- Fixed paired phones hiding the manager tool-round limit. The conversation
+  now shows Continue and Stop, restores paused controls when reopened, and
+  retains the prompt with a visible error when the PC refuses the action.
+  Both the phone and PC need this update for the continuation RPC.
+  (#156, `F-220`, `C-006`)
 
 ## [0.1.56] - 2026-11-02
 
