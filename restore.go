@@ -26,8 +26,9 @@ type RestoredWorker struct {
 	CloseRequested    bool          `json:"close_requested,omitempty"`
 	ID                string
 	Role              string
-	Instruction       string // stored system prompt; empty means workerInstruction(Task)
-	Task              string
+	Instruction       string            // stored system prompt; empty rebuilds from the effective recovery input
+	Task              string            // known assignment; may be absent when ResumeMessage supplies recovery input
+	ResumeMessage     string            // optional recovery input, separate from the assignment and saved Instruction
 	Seed              string            // conversation so far, injected before the first model call
 	TimeoutFailures   int               // consecutive watchdog stops before the process died
 	History           []*schema.Message // structured replay, preferred over a flattened Seed
@@ -60,13 +61,17 @@ func (r *Registry) Restore(ctx context.Context, w RestoredWorker, modelOpt Model
 	id := strings.TrimSpace(w.ID)
 	role := strings.TrimSpace(w.Role)
 	task := strings.TrimSpace(w.Task)
+	message := strings.TrimSpace(w.ResumeMessage)
+	if message == "" {
+		message = task
+	}
 	if id == "" {
 		return nil, fmt.Errorf("restore: agent_id is required")
 	}
 	if role == "" {
 		return nil, fmt.Errorf("restore: role is required")
 	}
-	if task == "" {
+	if message == "" {
 		return nil, fmt.Errorf("restore: task is required")
 	}
 	if err := r.validateRestoredParent(id, w.ParentID); err != nil {
@@ -86,7 +91,7 @@ func (r *Registry) Restore(ctx context.Context, w RestoredWorker, modelOpt Model
 	}
 	instruction := strings.TrimSpace(w.Instruction)
 	if instruction == "" {
-		instruction = workerInstructionWithConfig(config, task)
+		instruction = workerInstructionWithConfig(config, message)
 	}
 	if modelOpt == nil {
 		modelOpt = config.ModelBuilder
@@ -115,7 +120,7 @@ func (r *Registry) Restore(ctx context.Context, w RestoredWorker, modelOpt Model
 	if hook != nil {
 		hook(role, id, instruction)
 	}
-	r.startWorker(ctx, h, task, instruction, modelOpt, w.Seed, extraTools)
+	r.startWorker(ctx, h, task, message, instruction, modelOpt, w.Seed, extraTools)
 	return h, nil
 }
 

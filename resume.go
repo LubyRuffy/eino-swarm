@@ -276,7 +276,7 @@ func (r *Registry) resumeHandle(ctx context.Context, fromID, task string,
 		hook(h.Role, h.ID, instruction)
 	}
 	seed := formatContext("conversation so far", past.History)
-	r.startWorker(ctx, h, task, instruction, modelOpt, seed, extraTools)
+	r.startWorker(ctx, h, task, task, instruction, modelOpt, seed, extraTools)
 	return h, nil
 }
 

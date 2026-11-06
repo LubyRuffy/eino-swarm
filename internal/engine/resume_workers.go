@@ -141,21 +141,21 @@ func appendWorkerRoster(msgs []adk.Message, running []swarm.RestoredWorker, fini
 }
 
 type workerSlot struct {
-	modelBinding                   *swarm.ModelBinding
-	parentID                       string
-	configTag                      string
-	delegationEnabled              *bool
-	workerToolNames                *[]string
-	role, instruction, result, err string
-	running, spawned, inflight     bool
-	seed                           strings.Builder
-	nseed                          int
-	timeoutFailures                int
-	history                        []adk.Message
-	restoredHistory                []*schema.Message
-	inbox                          []string
-	generation                     int
-	collected, closeRequested      bool
+	modelBinding                         *swarm.ModelBinding
+	parentID                             string
+	configTag                            string
+	delegationEnabled                    *bool
+	workerToolNames                      *[]string
+	role, instruction, task, result, err string
+	running, spawned, inflight           bool
+	seed                                 strings.Builder
+	nseed                                int
+	timeoutFailures                      int
+	history                              []adk.Message
+	restoredHistory                      []*schema.Message
+	inbox                                []string
+	generation                           int
+	collected, closeRequested            bool
 }
 
 func orphanedWorkers(events []store.Event) ([]swarm.RestoredWorker, []swarm.FinishedWorker) {
@@ -196,6 +196,11 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 			s.configTag, s.delegationEnabled = w.ConfigTag, w.DelegationEnabled
 			s.workerToolNames = w.WorkerToolNames
 			s.role, s.instruction, s.spawned, s.running = w.Role, w.Instruction, true, !w.Finished
+			s.task = w.Task
+			if s.task == resumeCue {
+				// Older recovery persisted its runtime cue in Task, not the assignment.
+				s.task = ""
+			}
 			s.result, s.err, s.timeoutFailures = w.Result, w.Err, w.TimeoutFailures
 			s.generation, s.collected, s.closeRequested = w.Generation, w.Collected, w.CloseRequested
 			if checkpoint.HumanStopped && !w.Finished {
@@ -253,6 +258,7 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 		}
 		switch ev.Kind {
 		case swarm.NotifySpawned.String():
+			previousGeneration := s.generation
 			s.configTag, s.delegationEnabled = ev.ConfigTag, ev.DelegationEnabled
 			s.parentID = ev.ParentID
 			if ev.WorkerGeneration > 0 {
@@ -275,6 +281,11 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 			s.inflight = false
 			if ev.WorkerGeneration == 0 && s.generation > 0 && calls.startsGeneration(ev) {
 				s.generation++
+			}
+			if ev.WorkerGeneration == 0 || s.generation != previousGeneration {
+				// Unversioned/new executions cannot inherit an older assignment.
+				// Their composed Instruction is not a source for reconstructing it.
+				s.task = ""
 			}
 			s.collected, s.closeRequested = false, false
 		case swarm.NotifyFinished.String():
@@ -339,7 +350,7 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 				ParentID:     s.parentID,
 				ConfigTag:    s.configTag, DelegationEnabled: s.delegationEnabled, WorkerToolNames: s.workerToolNames,
 				Generation: s.generation, Collected: s.collected, CloseRequested: s.closeRequested,
-				ID: id, Role: s.role, Instruction: s.instruction, Task: resumeCue, TimeoutFailures: s.timeoutFailures,
+				ID: id, Role: s.role, Instruction: s.instruction, Task: s.task, ResumeMessage: resumeCue, TimeoutFailures: s.timeoutFailures,
 				History: s.restoredHistory, Inbox: s.inbox,
 			}
 			if s.nseed > 0 {

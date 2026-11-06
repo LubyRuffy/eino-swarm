@@ -5,10 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
-	"strings"
 	"unicode/utf8"
 
+	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
@@ -72,7 +71,8 @@ func (m *nuwaContextModel) input(ctx context.Context, messages []*schema.Message
 			"turn", owner.turnID, "project", owner.projectID, "reason", reason, "err", err)
 		text, err = renderNuwaUnavailableContext(owner.projectID, reason, budget)
 	} else {
-		text, err = renderNuwaContext(owner.projectID, revision, nodes, budget)
+		task, _ := swarm.WorkerTask(ctx)
+		text, err = renderNuwaContext(owner.projectID, revision, nodes, task, budget)
 	}
 	if err != nil {
 		return nil, err
@@ -112,14 +112,8 @@ func (m *nuwaContextModel) Stream(ctx context.Context, messages []*schema.Messag
 // The preview uses the existing tool-result character budget, including its
 // explanation and JSON envelope. Whole omitted nodes remain discoverable by
 // read_work. No text slicing can turn the board into malformed JSON.
-func renderNuwaContext(projectID string, revision int64, nodes []store.NuwaNode, budget int) (string, error) {
-	ordered := slices.Clone(nodes)
-	slices.SortFunc(ordered, func(a, b store.NuwaNode) int {
-		if order := b.UpdatedAt.Compare(a.UpdatedAt); order != 0 {
-			return order
-		}
-		return strings.Compare(a.ID, b.ID)
-	})
+func renderNuwaContext(projectID string, revision int64, nodes []store.NuwaNode, task string, budget int) (string, error) {
+	ordered := orderNuwaContextNodes(nodes, task)
 	payload := struct {
 		ProjectID string           `json:"project_id"`
 		Status    string           `json:"status"`

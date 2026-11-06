@@ -102,8 +102,12 @@ Closing a subtree records the affected generations and retains
 
 Before each Nuwa manager or worker model call, the engine adds a fresh, bounded
 preview of the original turn's project graph. It includes node versions, reported
-states, dependencies and source identity, with recent updates first; full detail
-is left to `read_work`. The complete preview, including its explanation and JSON,
+states, dependencies and source identity. Managers see recent updates first.
+Workers prioritize records whose titles or summaries match the task supplied
+when their current generation started, then use update time and ID for stable
+ordering. Matching uses words and CJK character pairs, not semantic inference;
+without a useful match, ordering remains recent first. Full detail is left to
+`read_work`. The complete preview, including its explanation and JSON,
 uses the existing **tool result character limit**. Oversized nodes are omitted
 whole and counted explicitly; they are still available through `read_work`.
 Each model call and shared-work read takes its budget from one committed config
@@ -115,6 +119,13 @@ The preview is untrusted reported data, not instructions, verification or new
 human authority. It is added only to the model request, leaving transcript,
 compact input and fork history unchanged. A resumed worker keeps its original
 configuration and project owner while reading that project's latest graph.
+Related records keep their current versions and dependency warnings. Relevance
+does not establish truth or successful reuse. Inbox messages do not rewrite the
+generation's initial task; resume and restore use the task supplied to that new
+execution. The task travels separately from planner instructions and fork history.
+Cold recovery retains a known checkpoint assignment separately from its normal
+recovery message. Legacy records without a known assignment use recent-first
+previews rather than guessing from saved instructions or recovery guidance.
 A failed read or changed project membership supplies `status: unavailable`,
 without records, a revision or database error text. It does not turn an optional
 preview into a new lifetime guard for existing work. Actual shared-work tools

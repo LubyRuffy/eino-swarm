@@ -43,6 +43,19 @@ configuration resolver. Legacy untagged workers created without a factory keep
 their existing resume compatibility path. For transient host context, wrap the
 model's Generate/Stream request without rewriting ADK history or fork seeds.
 
+`WorkerTask(ctx)` returns the task supplied when the current worker generation
+started, plus a presence flag. Spawn, resume and restore set it independently of
+the parent's context; ordinary manager contexts do not supply it. It is task
+data, not authority. Later inbox messages do not change this value. Hosts can use
+it for task-related retrieval without parsing a composed System instruction.
+An unknown legacy assignment returns an empty string and a false flag.
+`RestoredWorker.ResumeMessage` optionally supplies recovery input separately
+from `Task`. This preserves the checkpoint's assignment without replaying it as
+a fresh request. When only recovery input is known, `Task` can remain empty;
+nonempty saved instructions are preserved. Empty instructions keep the existing
+configuration fallback from the actual recovery input, independently of any
+known assignment retained for retrieval.
+
 `WorkerConfig.SelectWorkerModel(ctx, ref)` returns a credential-free
 `ModelBinding`, per-agent `ModelBuilder` and error. When configured, the actual
 `spawn_agent` schema includes optional `model_ref`. Selection errors refuse

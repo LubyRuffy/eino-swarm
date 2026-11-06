@@ -6,6 +6,15 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Added task-related recall to Nuwa worker previews. Related titles and summaries
+  from the current project can precede recent records within the existing
+  character budget; full details remain on demand. Each generation carries its
+  starting task separately from manager instructions. Cold recovery preserves
+  known assignments while retaining its recovery message and empty-instruction
+  fallback. This adapts Sapper-v2's
+  delegation-time recall and does not establish a model-quality improvement.
+  (`F-136`, `C-037`)
+
 - Added shared project instructions to Nuwa workers independently of planner
   personality and forked System history, including with memory disabled.
   Ordinary workers keep their existing behavior. Nonempty saved instructions

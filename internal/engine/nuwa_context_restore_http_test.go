@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"unicode/utf8"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/config"
@@ -43,6 +44,19 @@ func TestNuwaSharedContextRestoresOriginalWorkerWithCurrentGraphAtActualHTTP(t *
 			t.Errorf("cold recovery replaced the bound worker with %q", wire.Model)
 		}
 		view := nuwaContextHTTPBlock(t, request, true)
+		var selection struct {
+			Omitted int `json:"omitted"`
+		}
+		for _, message := range request.Messages {
+			if message.Role == schema.System && strings.HasPrefix(message.Content, nuwaContextPrefix) {
+				if err := json.Unmarshal([]byte(strings.TrimPrefix(message.Content, nuwaContextPrefix)), &selection); err != nil {
+					t.Error(err)
+				}
+			}
+		}
+		if len(view.Nodes) == 0 || view.Nodes[0].ID != source.ID || selection.Omitted <= 0 {
+			t.Error("cold worker did not prioritize its related source over a bounded recent-only page")
+		}
 		current := nuwaContextHTTPNode(t, view, source.ID)
 		if view.ProjectID != project.ID || view.Revision < correctedRevision || current.Version != 2 ||
 			current.Summary != corrected.Summary || current.Status != "reported" || current.Detail != "" {
@@ -101,7 +115,7 @@ func TestNuwaSharedContextRestoresOriginalWorkerWithCurrentGraphAtActualHTTP(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	const task = "Inspect the current shared state and report the outcome."
+	task := "Inspect related shared records for " + source.Title
 	original := &store.Turn{ThreadID: thread.ID, ProjectID: project.ID, ProviderID: account, Model: planner, NuwaEnabled: true}
 	if err := e.store.CreateTurn(original); err != nil {
 		t.Fatal(err)
@@ -155,13 +169,31 @@ func TestNuwaSharedContextRestoresOriginalWorkerWithCurrentGraphAtActualHTTP(t *
 	if corrected.Version != 2 {
 		t.Fatal("fixture did not commit the post-checkpoint correction")
 	}
-	correctedRevision, _, err = e.store.NuwaSnapshot(t.Context(), project.ID)
+	// Fresh unrelated records must not hide a cold worker's older task source.
+	for i := 0; i < 12; i++ {
+		nuwaValidationNode(t, e, project, editor, editTurn, store.NewID("unrelated_"), "")
+	}
+	var nodes []store.NuwaNode
+	correctedRevision, nodes, err = e.store.NuwaSnapshot(t.Context(), project.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	recent := append([]store.NuwaNode(nil), nodes[len(nodes)-4:]...)
+	for i := range recent {
+		recent[i].Detail = ""
+	}
+	envelope, err := json.Marshal(map[string]any{
+		"project_id": project.ID, "status": "available", "revision": correctedRevision,
+		"total": len(nodes), "omitted": len(nodes) - len(recent), "nodes": recent,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget := utf8.RuneCountInString(nuwaContextPrefix) + utf8.RuneCount(envelope)
 	foreignProject, foreignThread, foreignTurn := nuwaContextHTTPSource(t, e, "Unrelated recovery state")
 	foreign = nuwaValidationNode(t, e, foreignProject, foreignThread, foreignTurn, store.NewID("foreign_"), "")
 	next := restartedTestEngine(t, e)
+	next.cfg.Tools.ResultMaxChars = budget
 	if count, err := next.ResumeParkedWorkers(); err != nil || count != 1 {
 		t.Fatalf("cold worker recovery=%d err=%v", count, err)
 	}

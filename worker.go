@@ -33,7 +33,7 @@ func (r *Registry) workerContext(parent context.Context) context.Context {
 
 // startWorker runs h's goroutine. Spawn and resume both land here so a
 // continued worker does not mint a second id — the roster row is the identity.
-func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction string,
+func (r *Registry) startWorker(ctx context.Context, h *Handle, task, message, instruction string,
 	modelOpt ModelBuilder, seed string, extraTools []tool.BaseTool) {
 	role, id := h.Role, h.ID
 	config := r.workerConfigurationForContext(ctx)
@@ -45,7 +45,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 	// handoff cancels the manager's context; tying the worker to that context
 	// would kill in-flight work the next turn still needs. Handle.Cancel /
 	// Cleanup / Close still stop them.
-	runCtx, cancel := context.WithCancel(r.workerContext(ctx))
+	runCtx, cancel := context.WithCancel(withWorkerTask(r.workerContext(ctx), task))
 	watchCtx, watchCancel := context.WithTimeout(runCtx, timeout)
 	h.mu.Lock()
 	h.workerConfig = &config
@@ -54,7 +54,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 	h.delegationEnabled = &enabled
 	h.cancel = cancel
 	h.handoff.task, h.handoff.instruction = task, instruction
-	initial := restoredWorkerMessages(task, workerReplayHistory(h.handoff.restoreHistory, instruction))
+	initial := restoredWorkerMessages(message, workerReplayHistory(h.handoff.restoreHistory, instruction))
 	h.handoff.restoreHistory = nil
 	if h.handoff.cancelled || h.closeRequested {
 		cancel()

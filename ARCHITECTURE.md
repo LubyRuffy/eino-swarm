@@ -41,8 +41,15 @@ receive that preview. The Registry's per-generation `WorkerMiddlewares` factory
 retains the original worker configuration; tagged recovery rebuilds it from the
 original turn. The graph remains reported data. Failed optional reads produce
 an explicit unavailable state without records, revision or raw error; shared
-tools and new claims retain their ownership checks. Cancellation or an invalid
-budget/encoding refuses the model call. The tool-result preview budget does not prove
+tools and new claims retain their ownership checks. The Registry carries each
+worker generation's starting task as a separate context value. Nuwa uses it to
+prioritize matching titles and summaries from the same fresh snapshot before
+recent records; full detail remains on demand. Managers retain recent-first
+ordering. Retrieval does not alter the worker instruction, fork seed or graph,
+and related records retain their current versions and dependency warnings.
+Cold recovery retains a known checkpoint task separately from its recovery
+message; an unknown legacy task supplies no recall query. Cancellation or an
+invalid budget/encoding refuses the model call. The tool-result preview budget does not prove
 that the entire prompt fits a model's context window.
 
 Runtime transcript inputs carry explicit provenance: ADK `Extra["zwai_message_source"]` and persisted `messages.source` distinguish `human`, transient `runtime`, `schedule`, and `plan`. Runtime correction cues remain available during their turn and in diagnostics, but future replay, compact summarizer input and session briefing extraction exclude them. Legacy cue compatibility matches complete constants or a validated worker-ID suffix, then preserves any independently evidenced human input. It never classifies similar prose as a correction.

@@ -77,6 +77,6 @@ func (r *Registry) spawnAgentWithModel(ctx context.Context, role, task string,
 	if hook != nil {
 		hook(role, id, instruction)
 	}
-	r.startWorker(ctx, h, task, instruction, modelOpt, seed, extraTools)
+	r.startWorker(ctx, h, task, task, instruction, modelOpt, seed, extraTools)
 	return h, nil
 }

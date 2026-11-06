@@ -251,6 +251,16 @@ actual manager request before releasing the retained worker. The worker cites
 its new result while retaining its original author turn. The parked-worker
 HTTP recovery fixture checks the same provenance after restoring a newer
 checkpoint under the original worker configuration.
+`internal/engine/nuwa_recall_http_test.go` checks task-specific older metadata
+at the actual worker HTTP input, full `read_work` receipts, live correction,
+dependency warnings and project isolation with and without forked history.
+The cold worker HTTP fixture also bounds recent metadata so only a retained
+assignment can prioritize the related older source. `worker_task_test.go`
+checks actual model/tool context across spawn, resume and restore, keeping
+recovery input separate from the task and refusing to infer unknown assignments.
+The focused race run reached 100% statement coverage in the new task-context,
+recall ordering and tokenization helpers; this is not whole-package coverage
+or evidence of real-model benefit.
 `internal/server/nuwa_stream_test.go` uses actual GET/SSE readers across project
 conversations. A revision is a snapshot invalidation, never a transcript seq.
 

@@ -55,7 +55,7 @@ func TestNuwaContextPreviewRespectsCompleteUnicodeBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	full, err := renderNuwaContext("项目😀", 17, nodes, 1<<20)
+	full, err := renderNuwaContext("项目😀", 17, nodes, "", 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestNuwaContextPreviewRespectsCompleteUnicodeBudget(t *testing.T) {
 	if len(full) <= budget {
 		t.Fatal("fixture must distinguish UTF-8 bytes from the configured character budget")
 	}
-	exact, err := renderNuwaContext("项目😀", 17, nodes, budget)
+	exact, err := renderNuwaContext("项目😀", 17, nodes, "", budget)
 	if err != nil || exact != full {
 		t.Fatalf("complete block did not fit its exact character budget: err=%v", err)
 	}
@@ -71,7 +71,7 @@ func TestNuwaContextPreviewRespectsCompleteUnicodeBudget(t *testing.T) {
 	if view.ProjectID != "项目😀" || view.Revision != 17 || view.Total != 1 || view.Omitted != 0 || len(view.Nodes) != 1 || view.Nodes[0].Summary != nodes[0].Summary || view.Nodes[0].Detail != "" || strings.Contains(exact, nodes[0].Detail) {
 		t.Fatalf("preview truncated summary or exposed on-demand detail: %+v", view)
 	}
-	limited, err := renderNuwaContext("项目😀", 17, nodes, budget-1)
+	limited, err := renderNuwaContext("项目😀", 17, nodes, "", budget-1)
 	if err != nil || utf8.RuneCountInString(limited) > budget-1 {
 		t.Fatalf("one-character reduction exceeded the whole-block limit: err=%v", err)
 	}
@@ -88,12 +88,12 @@ func TestNuwaContextPreviewSkipsLargeNodesAndSortsDeterministically(t *testing.T
 	at := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
 	small := store.NuwaNode{ID: "small", Title: "small", UpdatedAt: at}
 	large := store.NuwaNode{ID: "large", Title: "large", Summary: strings.Repeat("大😀", 10000), UpdatedAt: at.Add(time.Second)}
-	text, err := renderNuwaContext("project", 9, []store.NuwaNode{small}, 1<<20)
+	text, err := renderNuwaContext("project", 9, []store.NuwaNode{small}, "", 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
 	budget := utf8.RuneCountInString(text)
-	text, err = renderNuwaContext("project", 9, []store.NuwaNode{large, small}, budget)
+	text, err = renderNuwaContext("project", 9, []store.NuwaNode{large, small}, "", budget)
 	if err != nil || utf8.RuneCountInString(text) > budget {
 		t.Fatalf("skip-large preview failed: err=%v", err)
 	}
@@ -105,11 +105,11 @@ func TestNuwaContextPreviewSkipsLargeNodesAndSortsDeterministically(t *testing.T
 	a.ID, b.ID, c.ID = "a", "b", "c"
 	c.UpdatedAt = at.Add(time.Second)
 	original := []store.NuwaNode{b, c, a}
-	first, err := renderNuwaContext("project", 9, original, 1<<20)
+	first, err := renderNuwaContext("project", 9, original, "", 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := renderNuwaContext("project", 9, []store.NuwaNode{a, b, c}, 1<<20)
+	second, err := renderNuwaContext("project", 9, []store.NuwaNode{a, b, c}, "", 1<<20)
 	if err != nil || first != second {
 		t.Fatalf("equal timestamps changed preview order with source order: err=%v", err)
 	}
@@ -124,7 +124,7 @@ func TestNuwaContextPreviewSkipsLargeNodesAndSortsDeterministically(t *testing.T
 
 func TestNuwaContextPreviewHandlesEmptyAndRefusesInvalidEnvelopes(t *testing.T) {
 	for _, nodes := range [][]store.NuwaNode{nil, {}} {
-		text, err := renderNuwaContext("project", 0, nodes, 1<<20)
+		text, err := renderNuwaContext("project", 0, nodes, "", 1<<20)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -133,17 +133,17 @@ func TestNuwaContextPreviewHandlesEmptyAndRefusesInvalidEnvelopes(t *testing.T) 
 			t.Fatalf("empty project invented work: %+v", view)
 		}
 		budget := utf8.RuneCountInString(text)
-		if exact, err := renderNuwaContext("project", 0, nodes, budget); err != nil || exact != text {
+		if exact, err := renderNuwaContext("project", 0, nodes, "", budget); err != nil || exact != text {
 			t.Fatalf("empty envelope did not fit exactly: err=%v", err)
 		}
 		for _, tooSmall := range []int{-1, 0, budget - 1} {
-			if text, err := renderNuwaContext("project", 0, nodes, tooSmall); err == nil || text != "" {
+			if text, err := renderNuwaContext("project", 0, nodes, "", tooSmall); err == nil || text != "" {
 				t.Fatalf("undersized envelope sent partial state: budget=%d text=%q err=%v", tooSmall, text, err)
 			}
 		}
 	}
 	invalid := store.NuwaNode{ID: "invalid-time", Title: "invalid-time", UpdatedAt: time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)}
-	text, err := renderNuwaContext("project", 0, []store.NuwaNode{invalid}, 1<<20)
+	text, err := renderNuwaContext("project", 0, []store.NuwaNode{invalid}, "", 1<<20)
 	var marshalError *json.MarshalerError
 	if text != "" || !errors.As(err, &marshalError) {
 		t.Fatalf("invalid time JSON error became a current/empty board: text=%q err=%v", text, err)
