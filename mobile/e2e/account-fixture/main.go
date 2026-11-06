@@ -66,6 +66,8 @@ type fixture struct {
 	host                              *remote.Host
 	hostPub                           []byte
 	engine                            *engine.Engine
+	capThreadID, capTurnID, capTitle  string
+	capStarts                         int
 }
 
 func secret(size int) string {
@@ -180,6 +182,9 @@ func (f *fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.capRoute(w, r) {
+		return
+	}
 	path := r.URL.Path
 	if path == "/fixture/forbidden-target" {
 		f.counts["redirect_target"]++
