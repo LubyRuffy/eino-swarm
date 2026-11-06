@@ -92,6 +92,11 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req R
 	case OpStop:
 		err := eng.Interrupt(req.ThreadID)
 		return opErr(req.ID, path, sessionID, err)
+	case OpContinue:
+		if req.Continue == nil {
+			return fail(req.ID, path, sessionID, "bad_request", "continue required")
+		}
+		return opErr(req.ID, path, sessionID, eng.ContinueTurn(req.ThreadID, *req.Continue))
 	case OpAnswer:
 		return handleAnswer(eng, req, path, sessionID)
 	case OpLog:

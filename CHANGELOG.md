@@ -6,6 +6,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed paired phones hiding the manager tool-round limit. The conversation
+  now shows Continue and Stop, restores paused controls when reopened, and
+  retains the prompt with a visible error when the PC refuses the action.
+  Both the phone and PC need this update for the continuation RPC.
+  (#156, `F-220`, `C-006`)
+
 - Fixed iOS 27.2 terminating the app during startup because the native shell
   had not adopted UIKit's required scene lifecycle. A single scene loads the
   existing bridge and forwards cold and warm URL/universal-link callbacks to

@@ -1017,6 +1017,16 @@ make docs-check
 
 ## Ordinary completion collects delegated work (F-130 / C-019 / C-012)
 
+Phone manager-cap regressions (`F-220`, `C-006`) cross the actual RPC pump and
+engine in `internal/remote/iteration_continue_test.go`: Continue starts another
+manager generation on the original turn, Stop cancels it, malformed decisions
+and non-paused targets refuse, and snapshots preserve explicit false status.
+`mobile/src/lib/iteration-limit.test.ts` covers live/history settlement and
+snapshot-only pauses. `mobile/e2e/iteration-limit.spec.ts` checks Android-sized
+Chromium and iPhone-sized WebKit for English/Chinese controls, reopening,
+Continue/Stop and a rejected action followed by retry. These browser fixtures
+do not accept an installed native phone package.
+
 PC transcript/store and Worker completion E2E regress the persisted decline,
 cleanup, terminal error and late cancelled-finish sequence through live events,
 Reload and older pages. The decline JSON must remain available in Trace while

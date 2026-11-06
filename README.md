@@ -136,6 +136,11 @@ workflow or real-model efficiency improvement is implied by enabling it.
   follow-up. On a paired phone, a rejected submission shows the PC error and
   retains the selected option or Other text for retry. Options whose IDs are
   omitted still appear on PC and phone, including after reopening the conversation.
+- **Manager tool-round limit.** A paired phone shows the same limit prompt
+  with **Continue** and **Stop**. Continue extends the existing turn; Stop
+  interrupts it. Reopening restores the paused controls, and a refused action
+  keeps the prompt with its error for retry. Update both the phone and PC
+  to use these controls.
 - **Scheduled waits.** The manager can arm a wake on this conversation
   (`schedule_wake`) or, on a human turn, an independent job (`schedule_task`).
   A successful check with another wake scheduled keeps its unfinished

@@ -10,6 +10,7 @@ export const OpSend = "send"
 export const OpSteer = "steer"
 export const OpStop = "stop"
 export const OpAnswer = "answer"
+export const OpContinue = "continue"
 export const OpWatch = "watch"
 export const OpUnwatch = "unwatch"
 export const OpLog = "log"
@@ -46,6 +47,7 @@ export type RemoteRequest = {
   text?: string
   call_id?: string
   answers?: unknown
+  continue?: boolean
   completed_seq?: number
   since?: number
   include_detail?: boolean
@@ -125,6 +127,7 @@ export type RunningView = {
   turn_id?: string
   action?: string
   ask_user?: boolean
+  awaiting_continue?: boolean
   waiting?: boolean
   last_active_at?: string
   // Which project folder this live row belongs to. list omits it from
@@ -143,6 +146,7 @@ export type WatchStatus = {
   running?: boolean
   turn_id?: string
   awaiting_answer?: boolean
+  awaiting_continue?: boolean
   waiting?: boolean
   wake?: WakeView
   followups?: FollowupView[]

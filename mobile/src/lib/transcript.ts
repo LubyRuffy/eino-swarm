@@ -10,6 +10,7 @@ import {
 } from "./ask"
 import type { RemoteEvent } from "./rpc"
 import { t } from "./i18n"
+import { iterationConfirmationText, parseIterationConfirmation, settleIterationLimits, type IterationConfirmation } from "./iteration-limit"
 import { flatten, jsonPreview, looksPacked } from "./tool-preview"
 import { scheduleToolNotice } from "./inbox-preview"
 import { modelBackoffNotice, scheduleAnswerBackoff, type ScheduleAnswerBackoff } from "../../../frontend/src/lib/transcript-backoff"
@@ -50,6 +51,7 @@ export type CompactBlock = {
   cooldownId?: string
   generation?: GenerationInterruption
   backoff?: ScheduleAnswerBackoff
+  confirm?: IterationConfirmation
 }
 
 export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlock[] {
@@ -128,7 +130,10 @@ function settleWorkerBlock(block: CompactBlock, failed: boolean): CompactBlock {
 function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlock[] {
   const identified = identifiedOutput(blocks, ev)
   if (identified) return identified
-  const next = ev.kind === "spawned" ? recoverLegacyGeneration(blocks, ev).slice() : blocks.slice()
+  const settled = ev.kind === "turn" ? settleIterationLimits(blocks) :
+    ["done", "error", "max_iterations_continued"].includes(ev.kind)
+      ? settleIterationLimits(blocks, ev.turn_id, ev.kind === "max_iterations_continued") : blocks
+  const next = ev.kind === "spawned" ? recoverLegacyGeneration(settled, ev).slice() : settled.slice()
   switch (ev.kind) {
     case "ask_recovered": {
       const card = parseAskRecovery(ev)
@@ -360,6 +365,11 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
       next.push({ id: blockId(ev), kind: "notice", text: t("notice.collectionContinued") })
       return next
     case "max_iterations": {
+      const confirm = parseIterationConfirmation(ev.text)
+      if (confirm) {
+        next.push({ id: blockId(ev), kind: "notice", turnId: ev.turn_id, text: iterationConfirmationText(confirm), confirm })
+        return next
+      }
       try {
         const pause = JSON.parse(ev.text ?? "") as { reason?: unknown; automatic_resume?: unknown }
         if (pause?.reason === "workers_uncollected") {
@@ -370,6 +380,8 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
       if (ev.text && !looksPacked(ev.text)) next.push({ id: blockId(ev), kind: "notice", text: ev.text })
       return next
     }
+    case "max_iterations_continued":
+      return next
     case "goal":
     case "goal_capped":
     case "goal_idle":
@@ -381,7 +393,6 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
     case "plan_updated":
     case "plan_implemented":
     case "plan_cancelled":
-    case "max_iterations_continued":
     case "compacted":
       // Packed JSON here is a pulse/cap/retry envelope. Desktop never
       // paints it into the chat; a notice would be the elapsed_ms wall.

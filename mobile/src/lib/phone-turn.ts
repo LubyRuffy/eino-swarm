@@ -2,7 +2,7 @@ import type { ComposerExtra } from "@/components/composer"
 
 import { LinkFault, linkError, remoteError } from "./client"
 import type { RemoteLink } from "./link"
-import { OpAnswer, OpFollowupSteer, OpPreempt, OpSend, type RemoteRequest } from "./rpc"
+import { OpAnswer, OpContinue, OpFollowupSteer, OpPreempt, OpSend, type RemoteRequest } from "./rpc"
 import type { PhoneView } from "./session"
 import { markRunning } from "./session"
 import { sendComposed } from "./turn-send"
@@ -15,6 +15,14 @@ type TurnDeps = {
   fail: (err: unknown) => void
   setError: (message: string) => void
   setPending: (pending: boolean) => void
+}
+
+export async function continuePhoneTurn(link: RemoteLink | null, threadId: string, proceed: boolean): Promise<void> {
+  if (!link?.alive()) throw new Error(linkError(new LinkFault("offline", "network")))
+  let response
+  try { response = await link.rpc({ op: OpContinue, thread_id: threadId, continue: proceed }) }
+  catch (err) { throw new Error(linkError(err)) }
+  if (!response.ok) throw new Error(remoteError(response.error || response.code || ""))
 }
 
 export async function answerPhoneQuestion(

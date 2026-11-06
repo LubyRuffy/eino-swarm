@@ -1,4 +1,5 @@
 import { applyGoalDetail } from "./goal"
+import { parseIterationConfirmation } from "./iteration-limit"
 import {
   OpEvent,
   OpReady,
@@ -289,6 +290,7 @@ function applyWatchStatus(detail: ThreadDetail, st: WatchStatus, snapshot: boole
           title: detail.title,
           turn_id: st.turn_id,
           ask_user: st.awaiting_answer || Boolean(detail.running?.ask_user),
+          awaiting_continue: st.awaiting_continue,
           waiting: st.waiting,
         }
       : undefined,
@@ -339,6 +341,18 @@ function patchDetail(
   }
   if (ev.kind === "done" || ev.kind === "error") {
     next = { ...next, running: undefined }
+  }
+  if (next.running && (!ev.turn_id || !next.running.turn_id || ev.turn_id === next.running.turn_id)) {
+    if (ev.kind === "max_iterations") {
+      let awaiting = Boolean(parseIterationConfirmation(ev.text))
+      try {
+        const pause = JSON.parse(ev.text) as { reason?: unknown; automatic_resume?: unknown } | null
+        if (pause?.reason === "workers_uncollected") awaiting = pause.automatic_resume !== true
+      } catch { /* Only a recognized pause can change current controls. */ }
+      if (awaiting) next = { ...next, running: { ...next.running, awaiting_continue: true } }
+    } else if (["max_iterations_continued", "workers_collection_resumed", "workers_collection_declined"].includes(ev.kind)) {
+      next = { ...next, running: { ...next.running, awaiting_continue: false } }
+    }
   }
   return askDetail(next, blocks)!
 }

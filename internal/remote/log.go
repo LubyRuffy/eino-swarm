@@ -102,14 +102,19 @@ func hasPhoneContent(events []store.Event) bool {
 			continue
 		}
 		if ev.Kind == "max_iterations" || ev.Kind == "max_iterations_continued" || ev.Kind == "compacted" {
-			// Unlike ordinary packed cap metadata, worker-collection pauses
-			// render a localized explanation on the phone, including in history.
 			if ev.Kind == "max_iterations" {
-				var pause struct {
-					Reason string `json:"reason"`
-				}
-				if json.Unmarshal([]byte(ev.Text), &pause) == nil && pause.Reason == "workers_uncollected" {
-					return true
+				var pause map[string]any
+				if json.Unmarshal([]byte(ev.Text), &pause) == nil {
+					// Match the phone's pause decoder so Earlier stops exactly on
+					// events it can paint, including legacy caps without extend_by.
+					reason, hasReason := pause["reason"]
+					limit, validLimit := pause["limit"].(float64)
+					extend, hasExtend := pause["extend_by"]
+					extension, validExtend := extend.(float64)
+					if reason == "workers_uncollected" ||
+						(!hasReason || reason == "iterations") && validLimit && limit >= 0 && (!hasExtend || validExtend && extension > 0) {
+						return true
+					}
 				}
 			}
 			body := strings.TrimSpace(ev.Text)

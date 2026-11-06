@@ -1432,6 +1432,11 @@ worker before closing SQLite.
    running) and emits `max_iterations`. `POST /api/threads/:id/continue` with
    `continue: true` starts another slice of that size on the same transcript;
    `false` (or interrupt) ends the turn. Steering while paused is also a yes.
+   Paired phones render the same cap and send `continue` with an explicit
+   boolean to that existing engine operation. Remote running/watch snapshots
+   include `awaiting_continue`, including false, so reopening remains operable
+   when the original cap is outside the loaded history window. A refused
+   decision leaves the phone card visible with its error.
    `ask_user` uses the same pause-the-tool pattern (`answerCh` armed before
    the `tool_call` row, so the UI cannot win the race), and a crash resume
    re-arms an unfinished questionnaire instead of closing it as

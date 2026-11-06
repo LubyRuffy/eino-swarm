@@ -82,7 +82,7 @@ import { mergeCompletion, readInbox, useCompletionRead } from "@/lib/completion-
 import { useInboxRefresh } from "@/lib/inbox-refresh"
 import { usePhoneVisibility } from "@/lib/phone-visibility"
 import { openPhoneThread } from "@/lib/open-thread"
-import { answerPhoneQuestion, interruptPhoneFollowup, sendPhoneQueue, sendPhoneTurn } from "@/lib/phone-turn"
+import { answerPhoneQuestion, continuePhoneTurn, interruptPhoneFollowup, sendPhoneQueue, sendPhoneTurn } from "@/lib/phone-turn"
 import { sendComposed } from "@/lib/turn-send"
 import { useModelCatalog } from "@/lib/use-model-catalog"
 
@@ -841,6 +841,7 @@ export function PhoneApp() {
               }
             }}
             onAnswer={(text) => answerPhoneQuestion(turnDeps, detail.id, { text })}
+            onContinue={(proceed) => continuePhoneTurn(link, detail.id, proceed)}
             onAnswerStructured={(callId, answers) =>
               answerPhoneQuestion(turnDeps, detail.id, { call_id: callId, answers })}
             onRunNow={() => void runPhoneAction(turnDeps, OpRunNow, detail.id)}

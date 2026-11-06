@@ -1,5 +1,6 @@
 import { BackoffNotice } from "./backoff-notice"
 import { GenerationNotice } from "./generation-notice"
+import { IterationLimitCard } from "./iteration-limit-card"
 import { useEffect, useState } from "react"
 import { ChevronRight, Loader2 } from "lucide-react"
 
@@ -263,9 +264,15 @@ function localizeNotice(text: string): string {
 export function ThreadLog({
   blocks,
   running = false,
+  onContinue,
+  continueDisabled,
+  activeTurnId,
 }: {
   blocks: CompactBlock[]
   running?: boolean
+  onContinue?: (proceed: boolean) => Promise<void>
+  continueDisabled?: boolean
+  activeTurnId?: string
 }) {
   const items = foldPhoneItems(blocks)
   let lastWork = -1
@@ -292,7 +299,10 @@ export function ThreadLog({
             />
           )
         }
-        const node = renderBlock(item.block)
+        const pause = item.block.confirm
+        const actionable = running && pause?.pending && (!activeTurnId || !item.block.turnId || item.block.turnId === activeTurnId)
+        const node = pause ? <IterationLimitCard pause={pause}
+          onContinue={actionable ? onContinue : undefined} disabled={continueDisabled} /> : renderBlock(item.block)
         if (!node) return null
         return (
           <div key={item.block.id} className="min-w-0 max-w-full">

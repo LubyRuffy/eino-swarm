@@ -3,6 +3,7 @@ import { ArrowDown, ChevronLeft, ChevronRight, FileText, Loader2, MessageSquareP
 
 import { AccountButton } from "@/components/account-button"
 import { AskCard } from "@/components/ask-card"
+import { IterationLimitCard } from "@/components/iteration-limit-card"
 import { Composer, type ComposerExtra } from "@/components/composer"
 import { FileBrowser } from "@/components/file-browser"
 import { GoalBanner, ScheduleBanner } from "@/components/status-banners"
@@ -11,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { agentRosterText } from "@/lib/agent-label"
 import { installAndroidBack } from "@/lib/android-back"
 import { t } from "@/lib/i18n"
+import { pendingIterationLimit } from "@/lib/iteration-limit"
 import { normalizeSelectedText } from "@/lib/quote"
 import type { CompactBlock } from "@/lib/transcript"
 import { managerBlocks, pendingAsk, phoneAgents } from "@/lib/transcript"
@@ -48,6 +50,7 @@ export function ThreadScreen({
   onStop,
   onAnswer,
   onAnswerStructured,
+  onContinue,
   onRunNow,
   onCancelWait,
   onResumeGoal,
@@ -83,6 +86,7 @@ export function ThreadScreen({
     callId: string,
     answers: Record<string, { answers: string[] }>,
   ) => void | Promise<void>
+  onContinue?: (proceed: boolean) => Promise<void>
   onRunNow?: () => void
   onCancelWait?: () => void
   onResumeGoal?: () => void
@@ -104,6 +108,7 @@ export function ThreadScreen({
   const opening = !caughtUp && blocks.length === 0
   const asking = Boolean(detail.running?.ask_user || ask?.pending)
   const running = Boolean(detail.running)
+  const iterationLimit = pendingIterationLimit(manager, detail.running?.turn_id)
   const waiting = Boolean(detail.waiting && !running)
   const scroller = useRef<HTMLDivElement>(null)
   const quoteSource = useRef<HTMLDivElement>(null)
@@ -400,9 +405,14 @@ export function ThreadScreen({
                 </div>
               ) : (
                 <ThreadLog blocks={selectedAgent ? selectedAgent.blocks : manager}
-                  running={selectedAgent ? selectedAgent.status === "running" : running} />
+                  running={selectedAgent ? selectedAgent.status === "running" : running}
+                  onContinue={agentPage === "chat" && detail.running?.awaiting_continue !== false ? onContinue : undefined}
+                  activeTurnId={detail.running?.turn_id} continueDisabled={composerPending || restoring} />
               )}
             </div>
+            {agentPage === "chat" && detail.running?.awaiting_continue && !iterationLimit ? (
+              <IterationLimitCard onContinue={onContinue} disabled={composerPending || restoring} />
+            ) : null}
             {agentPage === "chat" && ask?.pending && (ask.questions?.length ?? 0) > 0 ? (
               <AskCard
                 key={ask.callId}

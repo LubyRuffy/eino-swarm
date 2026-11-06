@@ -21,6 +21,7 @@ const (
 	OpSend           = "send"
 	OpSteer          = "steer"
 	OpStop           = "stop"
+	OpContinue       = "continue"
 	OpAnswer         = "answer"
 	OpWatch          = "watch"
 	OpUnwatch        = "unwatch"
@@ -77,7 +78,9 @@ type Request struct {
 	Text      string          `json:"text,omitempty"`
 	CallID    string          `json:"call_id,omitempty"`
 	Answers   json.RawMessage `json:"answers,omitempty"`
-	Since     int64           `json:"since,omitempty"`
+	// Continue is explicit so a missing decision cannot decline a paused turn.
+	Continue *bool `json:"continue,omitempty"`
+	Since    int64 `json:"since,omitempty"`
 	// IncludeDetail opens a conversation in the watch ready reply. Older hosts
 	// ignore it; the phone can still request open separately.
 	IncludeDetail bool  `json:"include_detail,omitempty"`
@@ -262,12 +265,13 @@ type PutView struct {
 }
 
 type WatchStatus struct {
-	Running        bool            `json:"running,omitempty"`
-	TurnID         string          `json:"turn_id,omitempty"`
-	AwaitingAnswer bool            `json:"awaiting_answer,omitempty"`
-	Waiting        bool            `json:"waiting,omitempty"`
-	Wake           *WakeView       `json:"wake,omitempty"`
-	Followups      *[]FollowupView `json:"followups,omitempty"`
+	Running          bool            `json:"running,omitempty"`
+	TurnID           string          `json:"turn_id,omitempty"`
+	AwaitingAnswer   bool            `json:"awaiting_answer,omitempty"`
+	AwaitingContinue bool            `json:"awaiting_continue"`
+	Waiting          bool            `json:"waiting,omitempty"`
+	Wake             *WakeView       `json:"wake,omitempty"`
+	Followups        *[]FollowupView `json:"followups,omitempty"`
 }
 
 // WakeView is the parked thread wait the phone paints. Prompt is clipped.
@@ -325,9 +329,10 @@ type RunningView struct {
 	// work is bookkeeping (schedule_wake, memory, …) so the phone can
 	// localize Waiting / running. A parked wait has no live turn, so it
 	// carries the thread's own summary instead of nothing at all.
-	Action  string `json:"action,omitempty"`
-	AskUser bool   `json:"ask_user,omitempty"`
-	Waiting bool   `json:"waiting,omitempty"`
+	Action           string `json:"action,omitempty"`
+	AskUser          bool   `json:"ask_user,omitempty"`
+	AwaitingContinue bool   `json:"awaiting_continue"`
+	Waiting          bool   `json:"waiting,omitempty"`
 	// LastActiveAt dates the row. An In progress row is not in the
 	// `threads` list — `list` drops it so Recents does not repeat it and
 	// it does not consume thread_limit — so this is the only place a

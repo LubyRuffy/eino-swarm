@@ -315,6 +315,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-220 Read and control PC conversations
 
+- 手机显示主管工具回合上限与延长轮数，提供「继续／停止」；继续延长原 turn，停止中断原 turn，不另发消息。重开／重连通过 `awaiting_continue` 恢复操作，即使最新历史页不含上限事件；请求失败显示原因并保留提示，重复点击在确认期间禁用。手机和 PC 都需更新。关联 `C-006`；证据：`internal/remote/iteration_continue_test.go`、`mobile/src/lib/iteration-limit.test.ts`、`mobile/src/components/iteration-limit-card.test.tsx`、`mobile/e2e/iteration-limit.spec.ts`。
+
 - 手机主管／子 Agent／直连聊天的纯思考组直接显示每条默认收起的「思考」控件，一次点击可查看原文，不再额外包装活动末行摘要；包含工具时保留过程聚合，展开后每条思考仍以独立的「思考」控件默认收起；用户再次展开才挂载完整原文，显式开合选择在同一条实时追加和完成后保持，关闭外层再打开则从收起开始。回答继续可见，工具保持既有独立折叠。子 Agent 详情与直连聊天复用同一日志，Clients 的 thinking 条目复用同一思考控件。关联 `F-222`、`F-223`、`F-230`／`C-006`；证据：`mobile/src/components/thought.tsx`、`mobile/src/components/thread-blocks-reasoning.test.tsx`、`mobile/src/components/client-groups.test.tsx`、`mobile/e2e/reasoning-fold.spec.ts`；来源：Issue #118、#129。
 
 - 首屏一次 `watch include_detail` 同时取得详情与最新事件；旧 PC 自动补读详情。摘要与轮次在 SQLite 中有界读取，跨隐藏协调记录仍能找到原有可见摘要；重连替换旧订阅，Stop／Reload 收口自有链接。关联契约：`C-006`；实现：`internal/remote/watch_snapshot.go`、`internal/remote/host_links.go`、`internal/store/phone_reads.go`、`mobile/src/lib/open-thread.ts`；验证：`internal/remote/watch_open_test.go`、`internal/remote/host_links_test.go`、`internal/remote/snapshot_reads_test.go`、`mobile/src/lib/open-thread.test.ts`、`mobile/e2e/conversation-open.spec.ts`。

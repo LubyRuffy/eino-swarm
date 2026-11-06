@@ -1,4 +1,5 @@
 import { mockFileChunk, mockOutputFiles } from "./mock-files"
+import { iterationLimitHistory, iterationSnapshotOnly, mockAwaitingContinue, mockContinueIteration } from "./mock-iteration-limit"
 import { restartAskHistory } from "./mock-ask-restart"
 import { generationHistory } from "./mock-generation"
 import { backoffHistory } from "./mock-backoff"
@@ -242,6 +243,8 @@ export class MockHost {
         this.seed(live, backoffHistory(), true)
       } else if (new URLSearchParams(location.search).get("history") === "stopped-workers") {
         this.seed(live, stopReplayStart(), true)
+      } else if (new URLSearchParams(location.search).get("history") === "iteration-limit") {
+        this.seed(live, iterationLimitHistory(), true)
       } else if (new URLSearchParams(location.search).get("history") === "worker-collection") {
         const state = new URLSearchParams(location.search).get("collection")
         this.seed(live, workerCollectionHistory(state, new URLSearchParams(location.search).get("stop_order")), state !== "done" && state !== "stopped")
@@ -566,7 +569,7 @@ export class MockHost {
         ? { id: "w-" + th.id, next_run_at: new Date(Date.now() + 9 * 60_000).toISOString() }
         : undefined,
       running: th.running
-        ? { thread_id: th.id, title: th.title, action: th.action }
+        ? { thread_id: th.id, title: th.title, action: th.action, awaiting_continue: mockAwaitingContinue(th), turn_id: th.events.at(-1)?.turn_id }
         : undefined,
       provider_id: th.providerID,
       model: th.model,
@@ -578,9 +581,9 @@ export class MockHost {
     const hiddenHistory = (new URLSearchParams(location.search).get("history") === "hidden" || workerCollectionPaged()) && th.id === "t-live"
     const streamedAgents = new URLSearchParams(location.search).get("history") === "streamed-agents" && th.id === "t-live"
     return {
-      events: hiddenHistory ? th.events.slice(-2) : streamedAgents ? th.events.slice(1).filter((event) => event.seq > 0) : th.events,
+      events: iterationSnapshotOnly(th) ? [] : hiddenHistory ? th.events.slice(-2) : streamedAgents ? th.events.slice(1).filter((event) => event.seq > 0) : th.events,
       seq: th.events[th.events.length - 1]?.seq ?? 0,
-      status: { running: th.running, waiting: th.waiting, followups: th.followups },
+      status: { running: th.running, waiting: th.waiting, followups: th.followups, awaiting_continue: mockAwaitingContinue(th), turn_id: th.events.at(-1)?.turn_id },
     }
   }
 
@@ -674,7 +677,7 @@ export class MockHost {
         op: OpEvent,
         thread_id: th.id,
         event: ev,
-        status: { running: th.running, waiting: th.waiting, followups: th.followups },
+        status: { running: th.running, waiting: th.waiting, followups: th.followups, awaiting_continue: mockAwaitingContinue(th), turn_id: th.events.at(-1)?.turn_id },
       })
     }
   }
@@ -775,6 +778,8 @@ export class MockLink {
     const id = req.id ?? ""
     const thread = () => this.host.find(req.thread_id ?? "")
     switch (req.op) {
+      case "continue":
+        return mockContinueIteration(this.host, thread(), req, id)
       case OpMeta: {
         const search = new URLSearchParams(location.search)
         const [completed, total] = (search.get("restore") ?? "0,0").split(",").map(Number)

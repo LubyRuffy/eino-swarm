@@ -916,7 +916,7 @@ Drops that phone. Further tickets fail at the hub.
 The slim RPC the phone sends over pairlink is not an HTTP API. Request ops:
 `hello` / `list` / `more` / `open` / `read` / `start` / `send` / `steer` / `stop` /
 `followup_drop` / `followup_steer` / `preempt` /
-`answer` / `watch` / `unwatch` / `log` / `run_now` / `cancel_wait` /
+`answer` / `continue` / `watch` / `unwatch` / `log` / `run_now` / `cancel_wait` /
 `resume_goal` / `catalog` / `refresh_catalog` / `get_timeouts` / `set_timeouts` /
 `tune` / `put` / `clients` / `files` /
 `file_chunk`. `hello` `{text}` is the phone's one-line model; the host
@@ -924,6 +924,16 @@ keys it by the pairlink fingerprint, not a client-supplied id.
 OK replies carry `host` (this PC's `remote.display_name`) so the phone can
 label the chip; an older host omits it and the phone falls back to a short
 fingerprint, never the hub hostname.
+`continue` requires `{thread_id, continue:true|false}`: true extends the
+paused manager's existing turn, false stops it. A missing/null decision is
+`bad_request`; a turn that is not awaiting this decision returns `idle`.
+`open.detail.running`, `list.running` and watch `status` include
+`awaiting_continue` (including false). A phone can therefore restore controls
+even when the cap event is outside its latest history page. Ordinary
+`max_iterations` JSON becomes a localized prompt; continuation and terminal
+events settle its controls. Failed RPCs retain the prompt and display the
+error. Older PCs return `unknown_op` for this operation; both sides must be
+updated, with no automatic resend through `send` or `steer`.
 `ThreadView` and `open.detail` include `unread` and `completed_seq`. `list.attention`
 is a byte-bounded page of the unarchived unread-completion roster, independent
 of `running` and `thread_limit`. `attention_more` and the opaque

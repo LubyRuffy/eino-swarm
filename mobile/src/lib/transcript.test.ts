@@ -335,7 +335,7 @@ describe("compact transcript", () => {
     expect(blocks).toEqual([])
   })
 
-  it("skips packed cap and compact envelopes instead of dumping them", () => {
+  it("shows a structured cap and skips packed compact envelopes instead of dumping them", () => {
     let blocks: CompactBlock[] = []
     blocks = applyEvent(
       blocks,
@@ -346,8 +346,9 @@ describe("compact transcript", () => {
       ev({ seq: 42, kind: "compacted", text: JSON.stringify({ through_seq: 9 }) }),
     )
     blocks = applyEvent(blocks, ev({ seq: 43, kind: "goal", text: "keep going" }))
-    expect(blocks.map((b) => b.kind)).toEqual(["notice"])
-    expect(blocks[0].text).toBe("keep going")
+    expect(blocks.map((b) => b.kind)).toEqual(["notice", "notice"])
+    expect(blocks[0].confirm).toMatchObject({ limit: 8, extendBy: 8, pending: true })
+    expect(blocks[1].text).toBe("keep going")
     expect(blocks.some((b) => b.text.includes("elapsed_ms"))).toBe(false)
     expect(blocks.some((b) => b.text.includes("through_seq"))).toBe(false)
   })

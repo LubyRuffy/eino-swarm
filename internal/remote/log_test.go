@@ -184,10 +184,10 @@ func TestLogFindsEarlierAnswerPastHiddenSubagentBookkeeping(t *testing.T) {
 			}
 		}
 		if i == 35 {
-			// The actual long-running turn also stores packed cap notices
-			// between runs of hidden subagent events.
+			// Unknown packed metadata between hidden subagent events still
+			// must not strand paging on an empty transcript page.
 			if err := e.Store().AppendEvent(&store.Event{
-				ThreadID: th.ID, Kind: "max_iterations", Text: `{"limit":400}`,
+				ThreadID: th.ID, Kind: "compacted", Text: `{"elapsed_ms":400}`,
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -234,9 +234,12 @@ func TestLogKeepsWorkerCollectionPausesInEarlierPages(t *testing.T) {
 	}
 }
 
-func TestPhoneHistoryRecognizesOnlyTheWorkerCollectionPauseReason(t *testing.T) {
+func TestPhoneHistoryRecognizesManagerAndWorkerCollectionPauses(t *testing.T) {
 	for _, body := range []string{
-		`{"limit":400}`, `{"reason":"other"}`, `{"reason":false}`,
+		`{"reason":"other"}`, `{"reason":false}`, `{"reason":"iterations"}`,
+		`{"limit":-1}`, `{"limit":"400"}`, `{"limit":4,"extend_by":0}`,
+		`{"limit":4,"extend_by":-1}`, `{"limit":4,"extend_by":"2"}`,
+		`{"reason":null,"limit":4}`, `{"reason":"","limit":4}`, `{"limit":4,"extend_by":null}`,
 		`{"reason":"workers_uncollected_typo"}`, `{"reason":"workers_uncollected"`,
 		`[{"reason":"workers_uncollected"}]`,
 	} {
@@ -244,8 +247,35 @@ func TestPhoneHistoryRecognizesOnlyTheWorkerCollectionPauseReason(t *testing.T) 
 			t.Fatalf("hidden or malformed pause became visible: %q", body)
 		}
 	}
-	if !hasPhoneContent([]store.Event{{Kind: "max_iterations", Text: `{"reason":"workers_uncollected"}`}}) {
-		t.Fatal("valid worker-collection notice is visible on the phone")
+	for _, body := range []string{`{"reason":"workers_uncollected"}`, `{"limit":400}`, `{"reason":"iterations","limit":9,"extend_by":2000}`, `{"limit":0,"extend_by":1}`, `{"limit":0.5,"extend_by":1.5}`} {
+		if !hasPhoneContent([]store.Event{{Kind: "max_iterations", Text: body}}) {
+			t.Fatalf("valid pause is hidden on the phone: %s", body)
+		}
+	}
+}
+
+func TestLogKeepsTheManagerCapInEarlierPages(t *testing.T) {
+	e := testEngine(t)
+	th, err := e.CreateThread("manager cap history", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const pause = `{"reason":"iterations","limit":9,"extend_by":2000}`
+	for _, event := range []store.Event{
+		{Kind: "agent_message", Text: "earlier answer"},
+		{Kind: "tool_call", Text: "spawn_agent({})"},
+		{Kind: "max_iterations", Text: pause},
+		{Kind: "tool_result", Text: "bookkeeping"},
+		{Kind: "agent_message", Text: "newer answer"},
+	} {
+		event.ThreadID = th.ID
+		if err := e.Store().AppendEvent(&event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	response := Handle(e, config.RemoteConfig{WatchEvents: 2}, Request{Op: OpLog, ThreadID: th.ID, Before: 5}, "relay", "session")
+	if !response.OK || !response.More || len(response.Events) != 2 || response.Events[0].Kind != "max_iterations" || response.Events[0].Text != pause {
+		t.Fatalf("Earlier skipped the actionable manager cap: %+v", response)
 	}
 }
 

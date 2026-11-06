@@ -177,12 +177,13 @@ func runningViews(eng *engine.Engine, cfg config.RemoteConfig) []RunningView {
 func runningView(eng *engine.Engine, th *store.Thread, chars int) RunningView {
 	st := eng.Status(th.ID)
 	v := RunningView{
-		ThreadID:     th.ID,
-		Title:        strings.TrimSpace(th.Title),
-		TurnID:       st.TurnID,
-		AskUser:      st.AwaitingAnswer,
-		LastActiveAt: th.LastActiveAt,
-		ProjectID:    th.ProjectID,
+		ThreadID:         th.ID,
+		Title:            strings.TrimSpace(th.Title),
+		TurnID:           st.TurnID,
+		AskUser:          st.AwaitingAnswer,
+		AwaitingContinue: st.AwaitingContinue,
+		LastActiveAt:     th.LastActiveAt,
+		ProjectID:        th.ProjectID,
 	}
 	if st.AwaitingAnswer {
 		v.Action = "ask_user"
@@ -289,10 +290,11 @@ func wakeView(eng *engine.Engine, threadID string, cfg config.RemoteConfig) *Wak
 func watchStatus(eng *engine.Engine, threadID string, cfg config.RemoteConfig) *WatchStatus {
 	st := eng.Status(threadID)
 	ws := &WatchStatus{
-		Running:        st.Running,
-		TurnID:         st.TurnID,
-		AwaitingAnswer: st.AwaitingAnswer,
-		Waiting:        st.Waiting,
+		Running:          st.Running,
+		TurnID:           st.TurnID,
+		AwaitingAnswer:   st.AwaitingAnswer,
+		AwaitingContinue: st.AwaitingContinue,
+		Waiting:          st.Waiting,
 	}
 	if st.Waiting {
 		ws.Wake = wakeView(eng, threadID, cfg)
