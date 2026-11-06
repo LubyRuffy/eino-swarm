@@ -25,7 +25,7 @@ const (
 	scheduleWakeDesc = "Arm or replace a wait on this conversation. Call this when progress is gated on time or a condition that is not worth polling inside this turn, then end the turn. When remaining time is an estimate, bias delay_s/every_s to about a third of it; extra checks are fine. Do not schedule work that can finish now. Do not use a wait instead of asking the human. A human prohibition on parking this conversation overrides this guidance; only later direct human permission can lift it."
 	scheduleTaskDesc = "Arm an independent job that mints its own conversation when it fires. Only from a human-originated turn — never from a continuation, a scheduled check, or an accepted-plan execute turn."
 	cancelSchedDesc  = "Cancel a wait by id so it stops firing."
-	reportSchedDesc  = "Report the result of a scheduled check. Empty findings mean nothing to surface. Call this only on a scheduled turn. If this wait is on an estimated remaining time and still open, recadence shorter, never stretch. Human prohibitions on parking this conversation forbid next_in_s; reporting without it and ending the wait remain available."
+	reportSchedDesc  = "Report the result of a scheduled check. Empty findings mean nothing to surface. Call this only on a scheduled turn. next_in_s arms a repeating every_s interval; omitting it accepts the report without arming another check. If this wait is on an estimated remaining time and still open, recadence shorter, never stretch. Human prohibitions on parking this conversation forbid next_in_s; reporting without it and ending the wait remain available."
 )
 
 func scheduleCadenceParams() map[string]*schema.ParameterInfo {
@@ -74,7 +74,7 @@ func ReportScheduleTool(run func(args string) (string, error)) tool.BaseTool {
 	return newScheduleTool(ToolReportSchedule, reportSchedDesc, map[string]*schema.ParameterInfo{
 		"findings":  {Type: schema.String, Desc: "what changed; empty means nothing to surface"},
 		"keep":      {Type: schema.Boolean, Desc: "keep firing; false cancels the wait. Default true"},
-		"next_in_s": {Type: schema.Integer, Desc: "optional new interval in seconds for the next fire; for an estimated remaining wait, bias short, never stretch"},
+		"next_in_s": {Type: schema.Integer, Desc: "optional repeating interval in seconds, persisted as every_s, not a one-shot delay; for an estimated remaining wait, bias short, never stretch"},
 	}, run)
 }
 
@@ -496,15 +496,29 @@ func (e *Engine) scheduleForTurn(turn *store.Turn) *store.Schedule {
 	return sch
 }
 
-// scheduleArmedOK quotes the persisted next run for manager prose. Admission
-// still compares current plan rows; neither receipt text field is evidence.
+// scheduleArmedOK quotes the persisted arming facts for manager prose.
+// Admission still checks the current plan, since it may subsequently change.
 func scheduleArmedOK(row *store.Schedule) string {
 	body, _ := json.Marshal(scheduleArmedFields(row))
 	return string(body)
 }
 
 func scheduleArmedFields(row *store.Schedule) map[string]any {
-	out := map[string]any{"ok": true, "id": row.ID, "next_run_at": row.NextRunAt.Format(time.RFC3339Nano)}
+	kind := "thread"
+	if row.Kind == store.ScheduleStandalone {
+		kind = "independent"
+	}
+	cadenceType := "delay"
+	if row.Cron != "" {
+		cadenceType = "cron"
+	} else if row.EveryS > 0 {
+		cadenceType = "every"
+	}
+	out := map[string]any{
+		"ok": true, "id": row.ID, "kind": kind, "cadence_type": cadenceType,
+		"delay_s": row.DelayS, "every_s": row.EveryS, "cron": row.Cron,
+		"next_run_at": row.NextRunAt.Format(time.RFC3339Nano), "armed_this_turn": true,
+	}
 	if note := scheduleCadenceNote(row); note != "" {
 		out["cadence"] = note
 	}

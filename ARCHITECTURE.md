@@ -206,6 +206,9 @@ denials, status-only reports, relayed human prohibitions and ended/cancelled
 historical waits do not assert an armed wait. Quotes retain their contiguous
 semantic context rather than isolating an affirmative fragment. Missing or
 invalid classification fields retry the original candidate as malformed output.
+After that structural validation, an item without any schedule ID, delay,
+interval, cron or next-run time does not enter matching and cannot reject the
+answer by itself. Concrete claims still require persisted evidence.
 Scope has three values: `thread`, `independent` and `unspecified`. The classifier
 must use `unspecified` when the prose does not identify a destination; cron or
 recurrence alone does not identify one. A specific scope needs an exact
@@ -213,7 +216,7 @@ recurrence alone does not identify one. A specific scope needs an exact
 that passage. The policy request remains limited to candidate `messages` and
 `now`, without injecting a schedule inventory. Code checks an explicit ID against
 the persisted object together with any explicitly stated scope. Without an
-ID or explicit scope, the claim must have exactly one object satisfying all
+ID or explicit scope, a concrete claim must have exactly one object satisfying all
 state, cadence, time and ownership requirements. Multiple matches refuse with
 `no_matching_schedule` and `unmatched.mismatched:["ambiguous_identity"]` through
 the existing one-correction path. Its correction requires an existing ID or
@@ -223,7 +226,11 @@ by a thread wake. These checks do not arm, replace or repair a schedule.
 The classifier still interprets prose; these structural checks do not prove
 an external model's semantic accuracy. Code checks eligible claims against
 persisted schedule rows, current state and turn ownership before publishing
-the buffered text. `schedule_answer_pending.go` first stores the candidate's
+the buffered text. `delay_s` specifically asserts a one-shot wait; an equal
+`every_s` interval cannot support that cadence. A stated next-run time must
+remain strictly less than one minute from the current persisted time; omitting
+the time does not invalidate an otherwise supported claim.
+`schedule_answer_pending.go` first stores the candidate's
 original identity, pending events, final answer and transcript in the private
 `pending_schedule_answers` table. Its transaction-assigned per-turn ordinal
 defines candidate order independently of wall time. A newly saved answer
@@ -270,7 +277,13 @@ receipts. The limits are internal config policy constants, not new settings.
 A confirmed unsupported scheduling claim still gets one correction in the
 same turn. Its durable `model_retry` receipt preserves that allowance across
 restart; another unsupported claim fails explicitly. Removing the claim lets
-the corrected answer publish. A `no_matching_schedule` terminal error does not
+the corrected answer publish. Correction includes structured facts from the
+closest eligible current row and current owned schedules supported by this
+turn's successful arming receipts: kind, cadence type, all cadence fields,
+next-run time and whether this turn armed it. Receipt-supported thread facts
+remain visible when the claim incorrectly describes an independent job.
+Corrections do not require another scheduling action merely to justify prose.
+A `no_matching_schedule` terminal error does not
 mark a standing objective externally blocked or overwrite its block reason.
 Automatic goal continuation retains its existing budget and stops after three
 consecutive same-objective ordinary-pursuit failures of this class, with a distinct durable
@@ -296,7 +309,13 @@ event, ordinary history or compaction input.
 `report_admission.go` commits the requested scheduling action and saves its
 private findings plus original tool-call receipt before returning
 `report_pending:true`. Verification then runs outside the global goal/wake
-lock. Restoring that saved receipt settles the original call without executing
+lock. Each report is an independent publication candidate: confirmed schedule
+mismatches reject that report while the remaining reports are still checked.
+Verified findings publish even when another report or the later final answer
+contains an unsupported concrete schedule claim. Findings containing such a
+claim remain private. A committed rearm remains effective in either case,
+and the turn still has only one manager correction.
+Restoring that saved receipt settles the original call without executing
 its scheduling action again. The action and private save are separate commits:
 if saving fails after a change, the tool returns `answer_storage_failed` with
 `action_committed:true` and `report_published:false`, retaining a schedule ID
@@ -1133,15 +1152,19 @@ worker before closing SQLite.
    `schedule_wake` is honored only when it names a live wait on this
    conversation. Any other leftover id is not a name and does not fail the
    arm. An id that names another conversation, or a wait that is no longer
-   active, still fails. The success receipt carries a `cadence` note saying
-   whether the armed wait is one-shot (`delay_s`) or recurring (`every_s`,
-   cron), so the manager does not later describe a single wake as a repeating
-   check; the answer check reads only `ok` and `id` from it.
+   active, still fails. Successful arming receipts retain `cadence` and add
+   `kind` (`thread` or `independent`), `cadence_type` (`delay`, `every` or
+   `cron`), explicit `delay_s` / `every_s` / `cron`, the persisted RFC3339Nano
+   `next_run_at` and `armed_this_turn:true`. The answer check binds actual
+   successful tool receipts and still verifies current persisted rows.
    `schedule_task` fails unless the current turn is
    human-originated (`!GoalContinue && !ScheduleContinue && !ImplementPlan`).
    `report_schedule` fails unless `ScheduleContinue`; empty findings are
    quiet. `next_in_s` rearms an already-active interval, or a delay that
-   claim marked `done`, under the same cap transaction as create/resume.
+   claim marked `done`, as recurring `every_s` under the same cap transaction
+   as create/resume. A report without an actual rearm returns
+   `armed_this_turn:false` without a next-run time; `ok:true` accepts the
+   report action and does not promise a future check.
    Before either thread-wake arming path, the engine resolves durable human
    policy from the original effective `user_message` and `steer` events. A
    dedicated read-only model extracts `deny`, `allow`, or `unchanged`, with an
@@ -1231,7 +1254,12 @@ worker before closing SQLite.
    more to about a third of that duration so a padded wait cannot hide
    inside a blocked tool. Open wakes for this conversation
    are injected in extra (`## Scheduled`) so the
-   model can upsert. Waiting and scheduled-check cues defer to the persisted
+   model can upsert. The list carries exact kind, cadence fields and
+   RFC3339Nano next-run time. Answering guidance
+   requires copying supported scheduling facts without conversion or rounding;
+   only `armed_this_turn:true` permits calling an arrangement new this turn.
+   Automatic goal and scheduled cues do not offer independent task creation.
+   Waiting and scheduled-check cues defer to the persisted
    human prohibition; compaction and restart do not erase it. Its runtime
    System message carries only the source event seq and at most 256 runes of
    the quote, so a long original message is not repeatedly restored after

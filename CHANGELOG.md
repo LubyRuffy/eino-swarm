@@ -6,6 +6,16 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed scheduling answers being withheld when tool receipts, manager guidance
+  and verification disagreed. Arming receipts now expose exact persisted kind,
+  cadence and next-run fields; `report_schedule(next_in_s)` is a recurring
+  interval, while a report alone explicitly does not arm a check. Corrections
+  include structured current facts, and assertions without concrete scheduling
+  fields cannot alone reject an answer. Concrete false claims retain one
+  correction and final-answer refusal. Reports are checked independently so
+  one rejected report cannot hide other verified findings. (`F-150`, `F-160`,
+  `C-009`)
+
 - Changed Nuwa to separate planning from execution: the conversation manager
   plans, delegates and reviews while workers perform workspace and external
   operations. Planner instances also omit provider-hosted builtins without

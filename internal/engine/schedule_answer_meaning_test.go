@@ -25,10 +25,13 @@ func TestScheduleAnswerMeaningExcludesNonCurrentOrReportedAssertions(t *testing.
 		{"human-policy", "affirmed", "current", "reported"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			claim := map[string]any{"quote": "complete assertion", "scope": "unspecified", "new": true,
+			// Keep a concrete cadence so this tests meaning independently of
+			// the rule that ignores assertions with no verifiable fields.
+			const text = "complete assertion every 90 seconds"
+			claim := map[string]any{"quote": text, "scope": "unspecified", "new": true, "every_s": 90,
 				"stance": tc.stance, "temporal": tc.temporal, "attribution": tc.attribution}
 			body, _ := json.Marshal(map[string]any{"claims": []any{claim}})
-			claims, err := decodeScheduleAnswer(schema.AssistantMessage(string(body), nil), []string{"complete assertion"})
+			claims, err := decodeScheduleAnswer(schema.AssistantMessage(string(body), nil), []string{text})
 			want := 0
 			if tc.name == "current" {
 				want = 1

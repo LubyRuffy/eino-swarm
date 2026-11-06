@@ -209,7 +209,7 @@ func TestManagerPromptPrefersProactiveDelegation(t *testing.T) {
 		"The concurrency cap is 6.",
 		"does not start or queue another worker",
 		"A one-shot delay is consumed when it fires",
-		"report_schedule does not arm",
+		"report_schedule arms the next wait only when next_in_s is supplied",
 		"Writing that a wait is planned does not create one",
 		"Two writers on the same path conflict",
 		"schedule_wake",
@@ -324,7 +324,7 @@ func TestManagerPromptWaitingCopyStaysGeneric(t *testing.T) {
 		"schedule_wake",
 		"do not wait for the human to remind",
 		"report_schedule",
-		"schedule_task",
+		"Independent recurring jobs require a human-originated turn",
 		"about a third",
 		"Extra checks",
 		"Do not pad",
@@ -442,10 +442,10 @@ func TestConversationExtraListsOpenWakes(t *testing.T) {
 	if !strings.Contains(extra, sch.ID) {
 		t.Fatalf("missing id:\n%s", extra)
 	}
-	if !strings.Contains(extra, sch.NextRunAt.UTC().Format(time.RFC3339)) {
+	if !strings.Contains(extra, sch.NextRunAt.UTC().Format(time.RFC3339Nano)) {
 		t.Fatalf("missing next:\n%s", extra)
 	}
-	if !strings.Contains(extra, "cadence=every") {
+	if !strings.Contains(extra, "cadence_type=every") {
 		t.Fatalf("missing cadence type:\n%s", extra)
 	}
 	if !strings.Contains(extra, scheduleWaitPrompt) {
@@ -538,10 +538,10 @@ func TestScheduleSectionFormatsCadenceTypes(t *testing.T) {
 	if got == "" {
 		t.Fatal("rows must emit a section")
 	}
-	if !strings.Contains(got, "cadence=delay") || !strings.Contains(got, "cadence=cron") {
+	if !strings.Contains(got, "cadence_type=delay") || !strings.Contains(got, "cadence_type=cron") {
 		t.Fatalf("cadence types missing:\n%s", got)
 	}
-	if !strings.Contains(got, "next=2026-09-18T12:00:00Z") {
+	if !strings.Contains(got, "next_run_at=2026-09-18T12:00:00Z") {
 		t.Fatalf("next missing:\n%s", got)
 	}
 	if !strings.Contains(got, "does not take an id") || !strings.Contains(got, "cancel_schedule") {

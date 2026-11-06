@@ -176,7 +176,7 @@ func (e *Engine) prepareScheduleReport(ctx context.Context, threadID, turnID, ar
 		committedRearm = append(committedRearm, sch.ID)
 	}
 
-	receiptFields := map[string]any{"ok": true, "quiet": quiet}
+	receiptFields := map[string]any{"ok": true, "quiet": quiet, "armed_this_turn": false}
 	if len(committedRearm) > 0 {
 		receiptFields = scheduleArmedFields(sch)
 		receiptFields["quiet"] = quiet

@@ -165,8 +165,12 @@ can finish now. Do not use a wake instead of ask_user.
 schedule_wake does not take an id. It arms or replaces the open wait on this
 conversation. Do not invent an id. To stop a wait, call cancel_schedule with
 an id copied from the Scheduled list. Do not invent that id either.
-A one-shot delay is consumed when it fires. report_schedule does not arm the next wait.
-If the work is still open and the human permits waiting, call schedule_wake again before the turn ends, on a scheduled turn and on a human turn.
+A one-shot delay is consumed when it fires. On a scheduled turn,
+report_schedule arms the next wait only when next_in_s is supplied: it sets a
+recurring every_s interval, not a one-shot delay. Without next_in_s it only reports
+the current check and does not arm another wait; ok: true means the report action
+was accepted. If no active next wait remains and the work is still open, arm one
+before ending the turn when the human permits waiting.
 Writing that a wait is planned does not create one.
 
 A parallel exec may keep working in one call and sleep in another before
@@ -178,9 +182,9 @@ a named clock time the human asked for. Busy ticks are skipped; a missed beat
 only costs one interval. A pending wake pauses /goal auto-continue until it
 fires.
 
-schedule_task only when the human asked for an independent recurring job, or
-after ask_user confirms the spec — never from a scheduled or auto-continued
-turn.
+Independent recurring jobs require a human-originated turn and the human's
+confirmed specification. They cannot be created from a scheduled or automatically
+continued turn.
 
 On a scheduled turn: do the check and return the result as text, or call report_schedule.
 Empty findings in report_schedule archive the run. Cancel when the wait is over. If still open, keep the short
@@ -198,6 +202,12 @@ Write in Markdown. Answer in the language the human is using. Lead with the
 result, then the detail that supports it; do not narrate your process or list
 the tools you used unless asked. When a sub-agent failed or timed out, say so
 and answer with what you do have rather than pretending it succeeded.
+
+Mention an armed automatic check only with a successful receipt from this turn or a matching row in Scheduled.
+Copy its id, cadence_type and next_run_at exactly when stating them. Do not convert or round
+the cadence or timestamp. Only armed_this_turn: true supports saying this turn newly
+armed it. A kind=thread wait continues this conversation; do not describe it as an
+independent job. Without a supporting receipt or Scheduled row, do not promise a later automatic check.
 
 Fenced source must name its language so the host can highlight it. Write
 mathematics as LaTeX ($...$ inline, $$...$$ on its own lines), not inside a code fence.
@@ -378,12 +388,14 @@ func scheduleSection(rows []store.Schedule) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("## Scheduled\n\nOpen waits on this conversation. schedule_wake does not take an id; it replaces the open wait. These ids are for cancel_schedule only. Copy one exactly. Do not invent an id.\n\n")
+	b.WriteString("## Scheduled\n\nOpen waits on this conversation. schedule_wake does not take an id; it replaces the open wait. These ids may be quoted in an answer or passed to cancel_schedule, never to schedule_wake. Copy one exactly. Do not invent an id.\n\n")
 	for _, row := range rows {
-		fmt.Fprintf(&b, "- id=%s next=%s cadence=%s prompt=%s\n",
+		fmt.Fprintf(&b, "- id=%s kind=%s cadence_type=%s delay_s=%d every_s=%d cron=%q next_run_at=%s prompt=%s\n",
 			row.ID,
-			row.NextRunAt.UTC().Format(time.RFC3339),
+			row.Kind,
 			cadenceType(row),
+			row.DelayS, row.EveryS, row.Cron,
+			row.NextRunAt.UTC().Format(time.RFC3339Nano),
 			promptHead(row.Prompt),
 		)
 	}

@@ -26,7 +26,7 @@ func TestRuntimeCueSourcesKeepHumanQuotesThroughTheRealNextTurn(t *testing.T) {
 	if err := e.store.CreateTurn(old); err != nil {
 		t.Fatal(err)
 	}
-	cues := []string{GoalContinueText(), workerCollectionCorrectionCue, workerCollectionCue([]string{"worker-a", "worker-b"}), modelRetryCue, scheduleCompletionCue, scheduleAnswerCorrectionCue, resumeCue, resumeWorkersCue, parkedWorkersCue}
+	cues := []string{GoalContinueText(), legacyGoalContinueCue, workerCollectionCorrectionCue, workerCollectionCue([]string{"worker-a", "worker-b"}), modelRetryCue, scheduleCompletionCue, scheduleAnswerCorrectionCue, resumeCue, resumeWorkersCue, parkedWorkersCue}
 	cues = append(cues, workerCollectionStateCue([]swarm.PendingAgent{{AgentID: "worker-a", Generation: 1, Running: true}, {AgentID: "worker-b", Generation: 2}}))
 	rows := []store.Message{{Role: "user", Content: old.UserText}}
 	for _, cue := range cues {
@@ -107,7 +107,9 @@ func TestRuntimeCueSourcesKeepHumanQuotesThroughTheRealNextTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, cue := range cues {
-		if cue == GoalContinueText() || cue == modelRetryCue {
+		// The previous cue is a prefix of the current human quote, so one
+		// occurrence remains; another would replay the old runtime row.
+		if cue == GoalContinueText() || cue == legacyGoalContinueCue || cue == modelRetryCue {
 			if strings.Count(compactBody, cue) != 1 {
 				t.Errorf("compact lost or duplicated the real human quote %q", cue)
 			}

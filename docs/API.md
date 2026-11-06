@@ -2328,7 +2328,14 @@ and attribution context. Denials, status-only reports, relayed human prohibition
 and ended or cancelled historical waits should yield empty claims; such items
 are excluded when their structured classification identifies them. Missing or
 invalid fields are `classification_invalid`, so only the original candidate
-retries. This is a semantic model boundary, not a deterministic guarantee of
+retries. After structural validation, an item without any concrete
+`schedule_id`, `delay_s`, `every_s`, `cron` or `next_run_at` does not enter
+matching and cannot alone reject the answer. Optional `cadence_type` accepts
+`delay`, `every` or `cron` (or omission/empty); when a concrete field is also
+present, the stated type must match even without numeric seconds. A type alone
+is not a concrete reference. `delay_s` requires a one-shot row, not an equal
+repeating interval; `every_s` and cron require their corresponding recurrence.
+This is a semantic model boundary, not a deterministic guarantee of
 an external model's interpretation. A new-arrangement claim needs this turn's
 successful action;
 a cancelled or failed arrangement cannot support it. A repeated unsupported
@@ -2338,17 +2345,20 @@ and writes must succeed before another corrective manager call. The correction's
 `unmatched`: `{scope, new, stated, candidates, closest?, mismatched?, claimed?, armed?, armed_cron?, armed_next_run_at?}`, where
 `stated` lists the cadence/identity fields the claim named, `candidates` counts
 active rows in its scope, and `mismatched` names the closest row's failed
-requirements (`schedule_id`, `not_armed_this_turn`, `delay_s`, `every_s`,
+requirements (`schedule_id`, `not_armed_this_turn`, `cadence_type`, `delay_s`, `every_s`,
 `cron`, `next_run_at`). `claimed` and `armed` give the compared `delay_s` /
 `every_s` numbers on each side (`armed` is the closest row's). It never
 contains the claim's quote. `armed_cron` and `armed_next_run_at` carry the
-closest active row's cron and RFC3339 next run. Only for `no_matching_schedule`
-with an active in-scope closest row, the corrective manager input includes
-that row's ID, mismatched fields, `delay_s`, `every_s`, `cron` and
-`next_run_at`. It says the wait is already armed, asks for prose corrected to
-those facts, and prohibits calling scheduling tools again merely to make the
-previous answer pass. It contains no withheld quote. With no active in-scope
-row (or another failure code), the existing cue permits scheduling only when
+closest active row's cron and RFC3339 next run. For `no_matching_schedule`,
+the corrective manager input includes the closest active in-scope row when
+available, plus current owned schedules supported by this turn's successful
+arming receipts. These structured facts carry `id`, `kind`, `cadence_type`,
+`delay_s`, `every_s`, `cron`, `next_run_at` and `armed_this_turn`; the closest
+row also carries mismatched fields. A false independent-job assertion can
+therefore still see the actual thread receipt facts. The input asks for prose
+corrected to those facts and prohibits calling scheduling tools again merely
+to make the previous answer pass. It contains no withheld quote. With no
+eligible facts (or another failure code), the existing cue permits scheduling only when
 needed and authorized, otherwise asks for the actual status. A terminal
 `schedule_claim_unverified` ending in `(no_matching_schedule)` keeps the turn
 `error` and `final` empty, but does not write `goal_block_reason` or mark the
@@ -2427,13 +2437,17 @@ commit together, preventing duplicate publication after restart. The policy
 model interprets prose; the schedule database remains the source of facts.
 
 Successful `schedule_wake` and `schedule_task` tool receipts contain
-`{ok:true,id,cadence,next_run_at}`. `next_run_at` is the just-persisted row's
-RFC3339 instant (fractional seconds preserved when present), for the manager
-to quote without estimating now plus a delay. `cadence` continues to describe
-one-shot, interval or cron recurrence. These descriptive fields do not supply
-verification evidence: admission still compares the current plan row and
-turn-bound action receipt, with strictly less than one minute tolerance for
-stated instants. Failure receipts omit `next_run_at`.
+`{ok:true,id,kind,cadence,cadence_type,delay_s,every_s,cron,next_run_at,armed_this_turn:true}`.
+`kind` is `thread` or `independent`; `cadence_type` is `delay`, `every` or
+`cron`. All three cadence-value fields match the persisted row, with unused
+fields explicitly zero or empty. `next_run_at` is the just-persisted row's
+RFC3339Nano instant, for the manager to copy without conversion, rounding or
+estimating now plus a delay. `cadence` retains its human-readable description.
+Only a true `armed_this_turn` supports calling the arrangement new this turn.
+Admission still compares the current plan row and turn-bound successful
+action receipt. A stated instant must differ from the current next run by
+strictly less than one minute; the answer may omit it. Failure receipts omit
+`next_run_at`.
 
 When the turn is in history-report mode, nonempty `report_schedule.findings`
 must contain the same strict source-report JSON as a final answer. The host
@@ -2444,16 +2458,24 @@ findings retain their ordinary classification rules, and recovery uses the
 original action/tool receipt rather than repeating it.
 
 On the real manager-tool path, `report_schedule` returns
-`{"ok":true,"quiet":false,"report_pending":true}` after its scheduling action
+`{"ok":true,"quiet":false,"report_pending":true,"armed_this_turn":false}` after its scheduling action
 and private report intent have been saved (`quiet` reflects the findings).
 When `next_in_s` actually rearms a schedule, this successful receipt also
-contains `id`, `cadence` and the committed row's `next_run_at`, using the same
-fields as the arming tools. A report without rearming or with `keep:false`
-does not add these arming fields. Saved-receipt replay retains the original
-instant. This acknowledges the action and queued verification, not verified findings.
+contains all the arming fields above with `armed_this_turn:true`.
+`next_in_s=N` writes a repeating `every_s=N` interval and returns
+`cadence_type:"every"`, not a one-shot delay. A report without actual rearming
+or with `keep:false` retains `armed_this_turn:false` and does not add arming
+fields or `next_run_at`. Saved-receipt replay retains the original instant.
+`ok:true` acknowledges the report action and queued verification; it does not
+promise a next check or accept the findings.
 The global goal/wake lock is released before classification. A saved receipt
 is bound to the original tool-call ID so recovery does not repeat that action;
-only admitted findings produce the public `schedule_report` event.
+only admitted findings produce the public `schedule_report` event. Each report
+is checked independently: a confirmed schedule mismatch rejects that report
+while remaining reports are still checked. Verified findings publish even if
+another report or a later final answer contains a concrete false claim. The
+false findings remain private, committed scheduling actions remain effective,
+and all refusals retain the turn's single manager correction allowance.
 The scheduling action and private report save are separate commits. If the
 action commits but saving the candidate fails, the real tool returns
 `ok:false`, `code:"answer_storage_failed"`, `action_committed:true` and

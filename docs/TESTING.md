@@ -1161,6 +1161,29 @@ replay: unsupported scheduling prose must not become an answer. Correction
 is bounded to the original turn, and its policy calls remain attributed there.
 The classifier extracts claims only; deterministic schedule checks must reject
 unsupported scope, current state, cadence or new-arrangement attribution.
+`internal/engine/schedule_answer_receipt_http_test.go` drives the actual
+Registry and loopback model adapter from `report_schedule(next_in_s)` through
+final publication. It copies the real receipt's repeating interval and exact
+next-run time, also accepts an omitted time, and checks one-shot, independent
+job and wrong-time counterexamples get exactly one correction with structured
+`kind:thread` / `cadence_type:every` facts. The correction changes prose without
+repeating the rearm. An otherwise valid extracted item without any concrete
+schedule ID, cadence or next-run time does not require a plan; nonexistent ID
+and cron claims still end with an unpublished final after one correction,
+without setting `goal_blocked`.
+`internal/engine/schedule_answer_cadence_type_test.go` checks optional
+`cadence_type` decoding and matching without inventing a numeric duration:
+a concrete reference must match the stated delay/every/cron type even when
+seconds are omitted; a type alone is not a concrete schedule reference, and
+an invalid type retains malformed-classification handling.
+`internal/engine/schedule_receipt_test.go` checks actual manager tool receipts
+for thread and independent delay/every/cron plans against their durable rows,
+including zero or empty unused fields. Report-only and cancellation receipts
+explicitly return `armed_this_turn:false` without arming facts; actual report
+rearm returns `cadence_type:every` and the persisted timestamp.
+`internal/engine/prompt_schedule_facts_test.go` checks the Waiting/Answering
+guidance, exact Scheduled facts and automatic-turn tool restrictions. It also
+preserves the previous runtime continuation cue's provenance compatibility.
 `internal/engine/schedule_answer_meaning_test.go` exercises nonclaim publication
 through Registry/HTTP and decoder filtering/invalid fields. No external model
 is used in regression tests. Structured classification
@@ -1174,7 +1197,7 @@ thread wake can support an assertion that does not specify a destination;
 recurrence alone must not fabricate an independent job. Specific scopes require
 an exact `scope_quote` within the claim's passage, and any extracted ID must
 occur in that passage. An exact ID resolves to its persisted object while an
-explicitly incompatible scope still refuses. A generic claim without an ID or
+explicitly incompatible scope still refuses. A concrete claim without an ID or
 scope must match exactly one eligible object: multiple matches retain
 `no_matching_schedule`, the structural `ambiguous_identity` diagnosis and the
 existing single correction. The actual next manager input must ask for an
@@ -1348,6 +1371,13 @@ Its report-save fault cases distinguish an already committed rearm/cancel from
 findings-only or unchanged actions: storage refusal cannot publish findings or
 invite repeating a change that already committed. This receipt does not accept
 the unobserved crash window before the private save.
+`internal/engine/schedule_report_isolation_http_test.go` checks separate report
+candidate decisions through the real Registry/HTTP boundary. Valid findings
+appear in both live events and durable replay even if the final answer fails.
+Two earlier reports with concrete false claims cannot hide a later valid
+report; the false findings stay private. Durable schedule state and an update
+audit prove each requested rearm committed once, while all refusals share the
+turn's existing single correction allowance.
 `internal/engine/schedule_answer_steer_test.go` injects human steering after
 classification at the final ownership read. The superseded answer stays out
 of subsequent model input, and steering does not consume a previously used

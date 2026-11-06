@@ -82,10 +82,8 @@ func TestScheduleClaimUsesCurrentExactTurnRowAndCadence(t *testing.T) {
 		{"consumed", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) { r.Status = store.ScheduleDone }, false},
 		{"no-next", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) { r.NextRunAt = time.Time{} }, false},
 		{"wrong-interval", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) { c.EveryS = 300 }, false},
-		// "Check again in 90s" is true of an every-90s wait: it fires that far
-		// out. report_schedule next_in_s turns a one-shot into exactly this row,
-		// and refusing the plain statement of it was a false refusal.
-		{"interval-backs-delay-of-its-period", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) { c.EveryS = 0; c.DelayS = 90 }, true},
+		// An explicitly one-shot claim must not relabel a recurring plan.
+		{"interval-does-not-back-one-shot-of-its-period", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) { c.EveryS = 0; c.DelayS = 90 }, false},
 		{"interval-does-not-back-another-delay", func(c *scheduleAnswerClaim, r *store.Schedule, a map[string]bool) { c.EveryS = 0; c.DelayS = 60 }, false},
 		// The reverse stays refused: a single wake does not make a recurring
 		// claim true, however its prompt tells the next turn to re-arm.
@@ -207,6 +205,9 @@ func TestOnlyPairedSuccessfulSchedulingOperationsSupplyReceipts(t *testing.T) {
 		call("valid", ToolScheduleWake, `{"every_s":90}`), result("valid", `{"ok":true,"id":"valid-wake"}`),
 		call("independent", ToolScheduleTask, `{"delay_s":90}`), result("independent", `{"ok":true,"id":"independent"}`),
 		call("refused", ToolScheduleWake, `{}`), result("refused", `{"ok":false,"id":"refused"}`),
+		call("not-armed-wake", ToolScheduleWake, `{"every_s":90}`), result("not-armed-wake", `{"ok":true,"id":"not-armed-wake","armed_this_turn":false}`),
+		call("not-armed-task", ToolScheduleTask, `{"every_s":90}`), result("not-armed-task", `{"ok":true,"id":"not-armed-task","armed_this_turn":false}`),
+		call("not-armed-report", ToolReportSchedule, `{"next_in_s":90}`), result("not-armed-report", `{"ok":true,"id":"not-armed-report","armed_this_turn":false}`),
 		result("unpaired", `{"ok":true,"id":"unpaired"}`),
 		call("bad-json", ToolScheduleWake, `{`), result("bad-json", `{"ok":true,"id":"bad-json"}`),
 		call("not-scheduling", "exec", `{}`), result("not-scheduling", `{"ok":true,"id":"exec"}`),
@@ -278,7 +279,7 @@ func TestScheduleAnswerUnknownAuthorityFailsClosed(t *testing.T) {
 					if err := e.store.DB().Exec("ALTER TABLE " + boundary + " RENAME TO hidden_answer_table").Error; err != nil {
 						t.Error(err)
 					}
-					writeContextFlowReply(w, false, map[string]any{"content": `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureScheduleClaim + `","scope":"thread","scope_quote":"on this conversation","new":true}]}`}, "stop")
+					writeContextFlowReply(w, false, map[string]any{"content": `{"claims":[{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureScheduleClaim + `","scope":"thread","scope_quote":"on this conversation","new":true,"every_s":90}]}`}, "stop")
 				}))
 				t.Cleanup(endpoint.Close)
 				e.cfg.Models.Providers[0].BaseURL = endpoint.URL

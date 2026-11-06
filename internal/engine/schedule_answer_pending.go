@@ -182,6 +182,7 @@ func (rt *runtime) admitPendingScheduleReports(ctx context.Context, turn *store.
 	if err != nil {
 		return &scheduleAnswerError{Code: "answer_storage_failed", Cause: err}
 	}
+	var unsupported *scheduleAnswerError
 	for i := range rows {
 		row := &rows[i]
 		if row.Kind != "report" || row.State != "pending" {
@@ -211,8 +212,17 @@ func (rt *runtime) admitPendingScheduleReports(ctx context.Context, turn *store.
 					return rejected
 				}
 			}
+			if failure.Code == "no_matching_schedule" || failure.Code == "schedule_state_changed" {
+				// A rejected report must not consume another report's right to
+				// publish verified findings. Keep one correction for this turn,
+				// but inspect the remaining independent report candidates first.
+				if unsupported == nil {
+					unsupported = failure
+				}
+				continue
+			}
 			return failure
 		}
 	}
-	return nil
+	return unsupported
 }

@@ -32,6 +32,9 @@ func TestScheduleToolInfoStaysGeneric(t *testing.T) {
 	if !strings.Contains(report.Desc, "never stretch") {
 		t.Fatalf("report desc must not stretch a remaining-time interval:\n%s", report.Desc)
 	}
+	if !strings.Contains(report.Desc, "next_in_s arms a repeating every_s interval") || !strings.Contains(report.Desc, "without arming another check") {
+		t.Fatalf("report acceptance must not imply a new wake:\n%s", report.Desc)
+	}
 	task, err := ScheduleTaskTool(nil).Info(context.Background())
 	if err != nil || task == nil {
 		t.Fatalf("task info: %+v %v", task, err)

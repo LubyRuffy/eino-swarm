@@ -14,8 +14,11 @@ import (
 // turn while a standing objective is still open. Generic on purpose: a
 // sample task leaking in here would become the product's continuation protocol.
 func GoalContinueText() string {
-	return "Continue. The standing objective is still open. Ending this turn does not shrink the objective. Inspect current state, make concrete progress, or poll a live wait that is still running. Call complete_goal only when evidence proves it is satisfied. Call block_goal only when the same genuine blocker has already repeated for at least three consecutive turns and meaningful progress needs the human or an external change. Do not wait for a free-form chat line. To ask a material question, call ask_user."
+	return legacyGoalContinueCue + " schedule_task is unavailable in this turn."
 }
+
+// Keep exact recognition of pre-source-marker runtime rows after cue changes.
+const legacyGoalContinueCue = "Continue. The standing objective is still open. Ending this turn does not shrink the objective. Inspect current state, make concrete progress, or poll a live wait that is still running. Call complete_goal only when evidence proves it is satisfied. Call block_goal only when the same genuine blocker has already repeated for at least three consecutive turns and meaningful progress needs the human or an external change. Do not wait for a free-form chat line. To ask a material question, call ask_user."
 
 // continueGoal starts the next turn when a standing objective is still open.
 // Follow-ups and unread steers already claimed the next turn; this only runs
