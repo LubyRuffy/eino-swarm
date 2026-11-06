@@ -560,7 +560,13 @@ business context. Edit it in **Settings → Personality**.
 
 | key | default | meaning |
 |---|---|---|
-| `instructions` | empty | added to the manager's system prompt of **every** conversation. Empty omits the section entirely, so a blank setting costs no tokens. The text sits before a project's instruction; when the two conflict, the project wins. Sub-agents do not see it — they get a task from the manager, the same way they do not see the project instruction. The shared engine applies the same section, so `zwai tui` sees it too. |
+| `instructions` | empty | added to the manager's system prompt of **every** conversation. Empty omits the section entirely, so a blank setting costs no tokens. The text sits before a project's instruction; when the two conflict, the project wins. Sub-agents do not receive this personality. The shared engine applies the same section, so `zwai tui` sees it too. |
+
+Ordinary workers receive their task from the manager without automatically
+inheriting the project instruction. In [Nuwa mode](NUWA.md), workers also receive
+the project's user instruction as separate shared context for its objectives,
+constraints and acceptance criteria. This does not copy the manager's system
+prompt or personality, change executor roles, or expand tool permissions.
 
 ## `log`
 

@@ -27,6 +27,12 @@ preserving the shared client, worker factory, call accounting and backoff.
 Ordinary turns keep their existing tool surface. Restored workers retain their
 original model and selected tools; a resumed Nuwa manager uses the planner surface.
 
+The Nuwa Registry adds the user's project instruction to the worker preamble as
+independent shared project context, including when memory is off. It does not
+copy the manager's composed system prompt or personality. Forks still exclude
+System history. Nonempty saved worker instructions restore as recorded; legacy
+empty instructions retain the existing configuration-based fallback.
+
 Nuwa model wrappers refresh a bounded project-state preview at each Generate or
 Stream entry. They validate the original project/thread/turn owner through
 `Store.NuwaSnapshotForTurn` and add a transient runtime System message to a new

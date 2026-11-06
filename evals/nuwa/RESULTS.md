@@ -1,5 +1,12 @@
 # Generic Nuwa observation: 2026-11-02
 
+The completed strict-separation/shared-state-preview calibration on source
+`b2f7010c` is recorded separately in
+[the 2026-11-06 observation](OBSERVATIONS_20261106.md): default passed 2/2,
+same-model Nuwa 1/2, and automatic Nuwa 0/2, with all six harnesses and usage
+records complete. No actual DS request occurred. It establishes no Nuwa benefit;
+the historical cohorts below retain their original scope.
+
 This cohort did not demonstrate higher task success or a consistent efficiency
 gain from Nuwa or the offered executor preference. It is a small descriptive
 observation of the configured models and tasks, not a general framework ranking.

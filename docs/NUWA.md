@@ -8,6 +8,17 @@ Enable **Nuwa collaboration** when creating or editing a project, then put the o
 constraints and acceptance criteria in **Instruction**. Existing projects default
 to ordinary mode. No domain workflow or predefined executor role list is required.
 
+Nuwa workers receive **Instruction** directly as shared project context, even
+with project memory disabled. They do not have to rely on the planner's task
+summary to learn the project's constraints and acceptance criteria. Requirements
+addressed to the coordinator do not change an executor's assigned role or tools;
+the manager's system prompt and install-wide personality remain separate.
+This supplies the original requirements, not proof that an agent followed them.
+Nonempty saved worker instructions restore as recorded. Legacy empty instructions
+retain the existing fallback to the resolved worker configuration. These are
+first-restore semantics, not a promise that all later resumed generations freeze
+the same project text.
+
 Connections, credentials and tools remain platform resources configured in
 Settings. An instruction can explain how to use them; it cannot connect an
 absent service, grant permission or supply missing data. The workspace remains

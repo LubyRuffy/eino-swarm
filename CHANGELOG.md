@@ -6,6 +6,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Added shared project instructions to Nuwa workers independently of planner
+  personality and forked System history, including with memory disabled.
+  Ordinary workers keep their existing behavior. Nonempty saved instructions
+  restore as recorded; legacy empty instructions retain their configuration
+  fallback. This supplies project requirements and does not establish a
+  model-quality improvement. (`F-136`, `C-037`)
+
 - Fixed live Settings result-budget updates racing with Nuwa shared-state
   previews and `read_work`. Each response uses one committed configuration
   snapshot while preserving complete JSON and whole-node omission.

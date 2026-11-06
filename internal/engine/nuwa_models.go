@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
@@ -82,6 +83,9 @@ func (e *Engine) wireNuwaRegistry(reg *swarm.Registry, set *tools.Set, pc *proje
 	}
 	reg.SubAgentTools = append(reg.SubAgentTools, e.nuwaModelTool(turn))
 	reg.SubAgentTools = append(reg.SubAgentTools, e.nuwaWorkTools(pc.project.ID, set.WorkspaceDir, turn, turn.NuwaReadOnly)...)
+	if strings.TrimSpace(pc.project.SystemPrompt) != "" {
+		reg.WorkerPreamble = JoinPromptSections(reg.WorkerPreamble, nuwaSharedProjectInstructions+pc.project.SystemPrompt)
+	}
 	reg.WorkerPreamble = JoinPromptSections(reg.WorkerPreamble, nuwaInstruction)
 	if reg.SelectableToolNames != nil {
 		reg.WorkerPreamble = JoinPromptSections(reg.WorkerPreamble, nuwaWorkerToolHint)
@@ -149,6 +153,14 @@ the objective was achieved. Keep permissions and uncertain effects explicit.
 `
 
 const nuwaWorkerToolHint = "When a new worker needs only certain workspace tools, optionally discover names with list_worker_tools and pass them in spawn_agent.tool_names. Omit tool_names to inherit the available scope."
+
+const nuwaSharedProjectInstructions = `## Shared project instructions
+
+This is the human's project context: objectives, constraints and acceptance
+requirements. Apply it to your assigned task. Coordinator-specific instructions
+do not change your executor role, task ownership or available tools.
+
+`
 
 const nuwaInstruction = `## Evidence-driven collaboration
 
