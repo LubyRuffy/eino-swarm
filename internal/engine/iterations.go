@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
+	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/LubyRuffy/eino-swarm/internal/tools"
 	"github.com/LubyRuffy/eino-swarm/internal/workerstate"
@@ -122,13 +123,14 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	} else if report {
 		audience = historyForManagerReport
 	}
-	instruction := ManagerPrompt(toolset, JoinPromptSections(historyPrompt(toolset, audience), taskCoordinationPrompt,
-		managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID)), humanReply, rt.finalGoalWorkerSection(th)))
+	instruction := managerPrompt(toolset, JoinPromptSections(historyPrompt(toolset, audience), taskCoordinationPrompt,
+		managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID), turn.NuwaEnabled), humanReply, rt.finalGoalWorkerSection(th)), turn.NuwaEnabled)
 	// Fresh slice: pc.managerTools may return the workspace toolset's
 	// backing array, and appending complete_goal / block_goal in place
 	// would hand them to every sub-agent.
 	managerTools := append([]tool.BaseTool(nil), pc.managerTools(toolset)...)
 	if turn.NuwaEnabled {
+		managerTools = nuwaPlannerTools(toolset, pc)
 		instruction = JoinPromptSections(instruction, nuwaInstruction)
 		if reg.WorkerConfiguration().SelectableToolNames != nil {
 			instruction = JoinPromptSections(instruction, nuwaWorkerToolHint)
@@ -227,11 +229,17 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 			}
 			middlewares := append(e.autoCompactHandlers(rt.threadID, turn.ID, th, forceCompact), answer)
 			answerCtx := context.WithValue(ctx, scheduleAnswerBufferContextKey{}, answer)
-			res, runErr = reg.RunWith(answerCtx, swarm.RunConfig{
+			runConfig := swarm.RunConfig{
 				Instruction: instruction, Messages: messages, ManagerTools: managerTools, MaxIterations: budget,
 				RestoreWorkers: restore, FinishedWorkers: planted, ManagerMiddlewares: middlewares,
 				ManagerForkContextFilter: withoutPendingManagerProse, OrderManagerCommentary: true,
-			}, swarm.Callback(func(n swarm.Notification) {
+			}
+			if builder := reg.WorkerConfiguration().ModelBuilder; turn.NuwaEnabled && builder != nil {
+				// Hosted provider tools execute upstream, outside ManagerTools.
+				// Restrict only this planner instance; workers retain the factory.
+				runConfig.Model = provider.WithoutBuiltinTools(builder(swarm.DefaultManagerID, swarm.DefaultManagerID))
+			}
+			res, runErr = reg.RunWith(answerCtx, runConfig, swarm.Callback(func(n swarm.Notification) {
 				if n.Kind == swarm.NotifyGenerationStarted && isManagerAgent(n.AgentID) {
 					modelRounds.Add(1)
 				}

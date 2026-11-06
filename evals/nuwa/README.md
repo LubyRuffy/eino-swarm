@@ -8,6 +8,14 @@ The [retained observations](RESULTS.md) record separate generic and AppWorld dev
 cohorts, their grading, actual model routing and measurement limits. Results
 from different protocols are not pooled.
 
+The current Nuwa contract separates planning from execution: the manager plans,
+delegates, coordinates and accepts worker evidence, while workers perform the
+required operations. The manager does not mount workspace/MCP execution tools;
+workers retain the configured optional tool catalog. Pure discussion needs no
+mandatory spawn. Role names, task division and model choices remain model
+decisions, without a fixed domain workflow. Earlier cohorts that allowed manager
+execution remain historical observations and do not validate this contract.
+
 The separate required-assignment AppWorld dev comparison completed all 27
 attempts with complete usage. It observed 4/9 successes for baseline, 4/9 for
 autonomous Nuwa and 7/9 for assigned Nuwa. The assigned arm made actual DS
@@ -32,9 +40,11 @@ catalog/context metadata into a new private engine configuration. It never
 edits the source config. The snapshot is identified as configured data; it is
 not proof that each upstream service currently answers. The planner selection
 is acknowledged by the actual thread API. An executor preference is placed in
-the project's prompt. No role name or code rule forces routing: the manager may
-decline delegation or choose another model. Per-call Trace identities show what
-actually happened, and `routing.executor_preference_realized` records the result.
+the project's prompt. No role name forces a worker model. In Nuwa, operations
+must be delegated, while the manager chooses roles, tasks and available models;
+a discussion that needs no operations can finish without workers. Per-call Trace
+identities show what actually happened, and
+`routing.executor_preference_realized` records the result.
 
 The lightweight config reader accepts the engine's serialized provider shape;
 it is not a general YAML parser. Nonempty structured `builtin_tools` cannot
@@ -61,20 +71,29 @@ the protocol, binary hash, task hashes, model choices and interleaved schedule.
 The actual run freezes its own receipt. Do not run paid evaluations merely to
 validate this harness; use its offline tests or `--mock` for that purpose.
 
-The three example arms separate current behavior, the Nuwa framework change,
+The three example arms separate ordinary behavior, the Nuwa framework change,
 and an offered mixed-model configuration. All arms share the base tool
 configuration, configured model directory, per-task deadline, output cap and
-review allowance. Nuwa adds its mode-specific collaboration and model tools.
+review allowance. Nuwa adds its mode-specific collaboration and model tools,
+with execution tools on workers rather than on its manager.
 
 Each arm may provide an optional `project_instruction` string, empty by default.
 It is appended as the last part of that arm's user project instruction, after
 the task's project prompt and any executor preference. Use it to describe the
 collaboration and resource constraints to evaluate; roles, task division and
-model selection remain model decisions rather than runtime routing rules.
+model selection remain model decisions. Project instructions cannot relax the
+Nuwa manager/worker execution boundary.
 The complete arm text is frozen in the protocol and contributes to its hash.
 It does not modify the common task or fixture fingerprints, so differing arm
 instructions do not invalidate otherwise matching pairs. Inspect actual tool
 calls and model identities to assess whether the instruction was followed.
+
+The retained f3 six-row calibration had official successes A 1/2, B 2/2 and
+C 1/2, with zero worker and DS requests. It does not satisfy the current
+separation requirement. New source-boundary tests, an identified ELF and image,
+and a fresh calibration must precede conclusions about this mode. Formal hard54
+has executed zero rows. Its new source freeze and root admission remain pending;
+offline harness tests and old calibration cannot substitute for that acceptance.
 
 An arm may also freeze `reasoning_effort` as `low`, `medium`, `high` or `""`
 (the model default). Omitting it leaves the thread default untouched and sends

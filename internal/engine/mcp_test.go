@@ -31,8 +31,9 @@ func engineMCPFixture(t *testing.T) (config.MCPServer, *atomic.Int32) {
 	return config.MCPServer{ID: "external-records", Name: "External records", Transport: "streamable_http", URL: h.URL, Enabled: true, TimeoutSeconds: 3}, calls
 }
 
-// Both manager and worker must receive and execute the actual MCP definition
-// through Registry, ADK and the model HTTP adapter, not a manual tool hook.
+// The default manager and its worker execute MCP directly. A Nuwa manager only
+// discovers the selectable definitions and delegates execution to its worker.
+// Both paths cross Registry, ADK and the model HTTP adapter.
 func TestMCPToolsReachManagerAndWorkerAtTheRealModelBoundary(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -94,13 +95,53 @@ func TestMCPToolsReachManagerAndWorkerAtTheRealModelBoundary(t *testing.T) {
 								t.Errorf("worker gained an unselected workspace tool: %s", offered.Function.Name)
 							}
 						}
+					} else {
+						for _, offered := range request.Tools {
+							if strings.HasPrefix(offered.Function.Name, "mcp_") {
+								t.Errorf("Nuwa manager gained a direct MCP tool: %s", offered.Function.Name)
+							}
+						}
 					}
 				}
 
 				answer := func(text string) { writeContextFlowReply(w, request.Stream, map[string]any{"content": text}, "stop") }
+				var managerStep int32
+				if manager {
+					managerStep = managerSteps.Add(1)
+				}
+				if tc.nuwa && manager {
+					if managerStep == 1 {
+						nuwaValidationTool(w, request, "manager-discover", "list_worker_tools", "{}")
+						return
+					}
+					if managerStep == 2 {
+						var discovery struct {
+							Tools []struct{ Name string } `json:"tools"`
+						}
+						if err := json.Unmarshal([]byte(nuwaValidationReceipt(request, "manager-discover")), &discovery); err != nil {
+							t.Errorf("decode actual worker tool catalog: %v", err)
+						}
+						for _, offered := range discovery.Tools {
+							if strings.Contains(offered.Name, "_list_tools_") {
+								list = offered.Name
+							}
+							if strings.Contains(offered.Name, "_call_tool_") {
+								call = offered.Name
+							}
+						}
+					} else {
+						selected, _ := selectedTools.Load().([]string)
+						if len(selected) == 2 {
+							list, call = selected[0], selected[1]
+						}
+					}
+					// Discovery replaces the default manager's list/call pair; both
+					// paths then spawn and collect the same actual worker flow.
+					managerStep++
+				}
 				if list == "" || call == "" {
 					if manager {
-						t.Error("manager has no MCP proxy tools")
+						t.Error("manager could not find the MCP proxy tools")
 					}
 					answer("The available evidence was inspected.")
 					return
@@ -126,14 +167,14 @@ func TestMCPToolsReachManagerAndWorkerAtTheRealModelBoundary(t *testing.T) {
 					}
 					return
 				}
-				switch managerSteps.Add(1) {
+				switch managerStep {
 				case 1:
 					nuwaValidationTool(w, request, "manager-list", list, "{}")
 				case 2:
 					checkCatalog("manager-list")
 					nuwaValidationTool(w, request, "manager-mcp", call, `{"name":"inspect_record","arguments":{"key":"record"}}`)
 				case 3:
-					if !strings.Contains(nuwaValidationReceipt(request, "manager-mcp"), "mcp-protocol-evidence") {
+					if !tc.nuwa && !strings.Contains(nuwaValidationReceipt(request, "manager-mcp"), "mcp-protocol-evidence") {
 						t.Error("manager did not receive real MCP result")
 					}
 					args := map[string]any{"role": "external-reader", "task": "Inspect the external record and report the evidence."}
@@ -193,7 +234,11 @@ func TestMCPToolsReachManagerAndWorkerAtTheRealModelBoundary(t *testing.T) {
 			}
 			finished := waitForTurn(t, e, turn.ID)
 			waitSettled(t, e, thread.ID)
-			if finished.Status != store.TurnDone || calls.Load() != 2 || managerSteps.Load() != 5 || workerSteps.Load() != 3 {
+			wantMCPCalls, wantManagerSteps := int32(2), int32(5)
+			if tc.nuwa {
+				wantMCPCalls, wantManagerSteps = 1, 4
+			}
+			if finished.Status != store.TurnDone || calls.Load() != wantMCPCalls || managerSteps.Load() != wantManagerSteps || workerSteps.Load() != 3 {
 				t.Fatalf("MCP flow: status=%s calls=%d manager=%d worker=%d", finished.Status, calls.Load(), managerSteps.Load(), workerSteps.Load())
 			}
 			if tc.nuwa {

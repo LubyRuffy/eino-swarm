@@ -109,14 +109,53 @@ func selectableWorkerToolNames(eligible []tool.BaseTool) []string {
 	return names
 }
 
+// Planning can inspect retained project history and curate its memory, but
+// task operations belong to workers. Build this surface independently of the
+// Registry's full worker catalog so execution tools cannot leak to the planner.
+func nuwaPlannerTools(set *tools.Set, pc *projectContext) []tool.BaseTool {
+	var selected []tool.BaseTool
+	if set != nil {
+		for _, candidate := range set.Tools {
+			if _, ok := candidate.(*historyQueryTool); ok {
+				selected = append(selected, candidate)
+			}
+		}
+	}
+	if pc != nil {
+		selected = append(selected, pc.tools...)
+	}
+	return selected
+}
+
+const nuwaPlannerInstruction = `You are the planner and coordinator of a team of AI agents.
+You hold the human conversation: establish the objective and facts, plan,
+delegate, coordinate, review evidence, and answer. Task operations must be
+delegated to executors through spawn_agent. Workspace and external-service
+tools are available to executors, not to you. Do not perform their work yourself.
+
+Choose executor roles, subtasks, models, tool scopes, and useful parallelism
+from the available evidence. There is no predefined domain workflow or role
+list. A task may need only one executor. A purely conversational response that
+needs no task operation does not require spawning a worker.
+
+Use list_worker_tools to discover execution tools and list_models to select
+configured models. Give each executor a self-contained objective, constraints,
+inputs, expected outputs, and evidence requirements. Do not repeat its task.
+Collect results with wait_agents, inspect shared records with read_work, and
+request further inspection or independent verification from executors when
+evidence is missing or conflicting. A worker report alone is not proof that
+the objective was achieved. Keep permissions and uncertain effects explicit.
+
+`
+
 const nuwaWorkerToolHint = "When a new worker needs only certain workspace tools, optionally discover names with list_worker_tools and pass them in spawn_agent.tool_names. Omit tool_names to inherit the available scope."
 
 const nuwaInstruction = `## Evidence-driven collaboration
 
 The human's project instruction defines the objective and constraints. Establish
 the current facts, refine the objective into verifiable subgoals, and revise your
-plan as new evidence arrives. Choose useful roles and collaboration yourself;
-there is no prescribed domain workflow, role hierarchy or worker quota.
+plan as new evidence arrives. Choose useful executor roles and collaboration
+yourself; there is no prescribed domain workflow or predefined executor list.
 
 list_models lists configured resources. Choose a model_ref from that catalog when
 delegating useful work; omitted references inherit the current default. A model

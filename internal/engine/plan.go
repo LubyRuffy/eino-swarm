@@ -249,20 +249,26 @@ func dropPlanMutatingManagerTools(ts []tool.BaseTool) []tool.BaseTool {
 // PlanPrompt is the planning section for hosts that are not the conversation
 // engine (the one-shot TUI). Empty when not planning and there is no draft.
 func PlanPrompt(mode bool, markdown string) string {
-	return strings.TrimSpace(planSection(mode, markdown))
+	return strings.TrimSpace(planSection(mode, markdown, false))
 }
 
-func planSection(mode bool, markdown string) string {
+func planSection(mode bool, markdown string, plannerOnly bool) string {
 	markdown = strings.TrimSpace(markdown)
 	if !mode && markdown == "" {
 		return ""
 	}
 	if mode {
 		body := "## Plan\n\nYou are planning. Implementation tools (write, edit, exec, and similar) are not mounted. Explore with read and search, ask material tradeoffs with ask_user, then call propose_plan with a complete markdown plan. Do not start the work. Revise by calling propose_plan again.\n"
+		if plannerOnly {
+			body = "## Plan\n\nYou are planning. Have executors explore with read and search, coordinate their evidence, ask material tradeoffs with ask_user, then call propose_plan with a complete markdown plan. Implementation tools are not mounted on you. Do not start the work. Revise by calling propose_plan again.\n"
+		}
 		if markdown != "" {
 			body += "\nThe current draft:\n\n" + markdown + "\n"
 		}
 		return body
+	}
+	if plannerOnly {
+		return "## Plan\n\nThe human accepted the plan below. Delegate its execution to executors and review the results. Workspace and external-service tools remain available only to executors.\n\n" + markdown + "\n"
 	}
 	return "## Plan\n\nThe human accepted the plan below. Execute it. Implementation tools are mounted.\n\n" + markdown + "\n"
 }

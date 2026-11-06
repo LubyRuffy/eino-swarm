@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
@@ -108,13 +110,22 @@ func TestNuwaSpawnToolFeedbackPreservesWorkerTaskAtModelHTTP(t *testing.T) {
 		{name: "receipt tool unavailable while planning", tool: "record_work", planning: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			const managerModel, workerModel, workerProvider = "feedback-planner", "feedback-executor", "feedback-worker"
+			const managerPath, workerPath = "/manager/v1/chat/completions", "/worker/v1/chat/completions"
 			const task = "Read the source, then use record_work to cite the exact source receipt."
 			const rejectedID = "selection-rejected"
 			const correctedID = "selection-corrected"
 			const waitID = "selection-collected"
 			var workerRequests atomic.Int32
-			e, _ := newScheduleCompletionHTTPEngine(t, func(w http.ResponseWriter, _ *http.Request, _ int, request scheduleCompletionRequest) {
-				manager := len(request.Messages) != 0 && strings.Contains(request.Messages[0].Content, "You are the manager of a team")
+			e, _ := newScheduleCompletionHTTPEngine(t, func(w http.ResponseWriter, r *http.Request, _ int, request scheduleCompletionRequest) {
+				// Distinct model routes identify actors independently of prompt
+				// wording, task preservation and the selected tool surface.
+				if r.URL.Path != managerPath && r.URL.Path != workerPath {
+					t.Errorf("unexpected model route %q", r.URL.Path)
+					http.Error(w, "unknown fixture actor", http.StatusBadRequest)
+					return
+				}
+				manager := r.URL.Path == managerPath
 				if !manager {
 					workerRequests.Add(1)
 					if !strings.Contains(joinedContent(request.Messages), task) {
@@ -134,7 +145,7 @@ func TestNuwaSpawnToolFeedbackPreservesWorkerTaskAtModelHTTP(t *testing.T) {
 
 				rejected := nuwaValidationReceipt(request, rejectedID)
 				if rejected == "" {
-					args := fmt.Sprintf(`{"role":"source-observer","task":%q,"tool_names":["read",%q]}`, task, tc.tool)
+					args := fmt.Sprintf(`{"role":"source-observer","task":%q,"model_ref":%q,"tool_names":["read",%q]}`, task, nuwaModelRef(workerProvider, workerModel), tc.tool)
 					nuwaValidationTool(w, request, rejectedID, "spawn_agent", args)
 					return
 				}
@@ -153,7 +164,7 @@ func TestNuwaSpawnToolFeedbackPreservesWorkerTaskAtModelHTTP(t *testing.T) {
 								t.Errorf("mounted-tool refusal %q must contain %q", refusal.Error, text)
 							}
 						}
-						args := fmt.Sprintf(`{"role":"source-observer","task":%q,"tool_names":["read"]}`, task)
+						args := fmt.Sprintf(`{"role":"source-observer","task":%q,"model_ref":%q,"tool_names":["read"]}`, task, nuwaModelRef(workerProvider, workerModel))
 						nuwaValidationTool(w, request, correctedID, "spawn_agent", args)
 						return
 					}
@@ -172,6 +183,13 @@ func TestNuwaSpawnToolFeedbackPreservesWorkerTaskAtModelHTTP(t *testing.T) {
 				}
 				writeContextFlowReply(w, request.Stream, map[string]any{"content": "The worker selection was handled."}, "stop")
 			})
+			endpointURL := e.cfg.Models.Providers[0].BaseURL
+			e.cfg.Models.Providers[0].BaseURL = endpointURL + "/manager/v1"
+			e.cfg.Models.Providers[0].Model = managerModel
+			e.cfg.Models.Providers = append(e.cfg.Models.Providers, config.Provider{
+				ID: workerProvider, BaseURL: endpointURL + "/worker/v1", Model: workerModel,
+			})
+			e.pool = provider.New(e.cfg)
 			project, err := e.CreateProject("Tool scope feedback", "", t.TempDir(), false, true)
 			if err != nil {
 				t.Fatal(err)

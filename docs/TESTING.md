@@ -170,10 +170,17 @@ The mode is captured per turn. Test changes across a parked Registry and cold
 recovery, not only project JSON. Existing workers must retain their original
 configuration tag, delegation mode, model binding and trusted owner; bad tags,
 model selection conflicts and old generations must refuse before side effects.
-The Nuwa browser suite also drives a direct turn that records no graph nodes
-through the real model adapter and verifies its live status, exact Trace and
-workspace result file in the Collaboration panel.
-It also creates two dependency-free artifacts with different recorded authors in
+The planning/execution separation boundary requires the actual manager model
+input to omit workspace/MCP execution tools while workers retain their configured
+optional catalog. Cover discovery, selected tools and actual worker execution;
+a manager prompt alone cannot prove this boundary. Pure discussion may finish
+without spawning a worker, while required operations belong to workers.
+Check `/plan` and accepted-plan instructions at actual model HTTP input, including
+recovery after the project switch changes: neither may direct a Nuwa planner to
+call execution tools. `nuwa_plan_prompt_http_test.go` covers this boundary.
+The Collaboration panel must retain the live status, exact Trace and worker
+result files even when no graph nodes are recorded.
+The browser suite also creates two dependency-free artifacts with different recorded authors in
 one turn, checks each dashed origin link against the persisted identities before
 and after browser reload, and checks that explicit dependencies remain solid.
 `worker_config_test.go`, `model_binding_http_test.go` and
@@ -231,6 +238,7 @@ conversations. A revision is a snapshot invalidation, never a transcript seq.
 ```bash
 go test -race -timeout 25m . -run 'Test(SelectedHTTPWorkerModel|WorkerCanDelegate|ParkedHTTPWorker|Delegation|Tagged|WorkerConfiguration)'
 go test -race -timeout 25m ./internal/store ./internal/engine ./internal/server -run TestNuwa
+go test -race -timeout 25m ./internal/provider -run 'Test(NuwaPlannerBuiltinRestriction|WithoutBuiltinTools)'
 python3 -m unittest tools.test_agent_eval tools.test_agent_eval_limits tools.test_agent_eval_compare tools.test_agent_eval_prereview tools.test_agent_eval_nuwa tools.test_agent_eval_pair tools.test_agent_eval_proxy tools.test_agent_eval_reconcile
 ```
 
@@ -264,6 +272,12 @@ labels. Actual routing, no delegation, failed attempts and missing usage remain
 observations; unknown usage cannot establish token savings. Fast failures do
 not become successful speedups. Mock comparisons are explicitly marked
 synthetic and do not export real token/time improvements.
+
+The legacy f3 six-row calibration (A 1/2, B 2/2, C 1/2; zero worker/DS requests)
+does not satisfy mandatory planning/execution separation. Retain its original
+results without using them to accept this mode. New source-boundary tests, an
+identified ELF/image and fresh calibration are required. Formal hard54 has
+executed zero rows; its admission remains separate from these historical results.
 
 Task evals retain provisional pre-cleanup evidence and a separate cleanup
 receipt. A failed stop cannot erase the original request or grader error or

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -570,13 +571,32 @@ func nuwaValidationReceipt(request scheduleCompletionRequest, id string) string 
 // These are actual HTTP workers, not model-authored completion claims. The
 // projection must distinguish their success, provider failure and cancellation.
 func TestNuwaValidationSnapshotTracksActualHTTPWorkerOutcomes(t *testing.T) {
+	const account, planner, executor = "outcome-fixture", "planning-model", "execution-model"
+	const task = "Inspect the supplied evidence and report the outcome."
 	for _, outcome := range []string{"done", "failed", "cancelled"} {
 		t.Run(outcome, func(t *testing.T) {
 			workerReady := make(chan struct{})
 			var ready sync.Once
-			e, _ := newScheduleCompletionHTTPEngine(t, func(w http.ResponseWriter, r *http.Request, _ int, request scheduleCompletionRequest) {
-				manager := len(request.Messages) > 0 && strings.Contains(request.Messages[0].Content, "You are the manager of a team")
-				if !manager {
+			endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var wire struct {
+					scheduleCompletionRequest
+					Model string `json:"model"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&wire); err != nil {
+					t.Error(err)
+					http.Error(w, "invalid fixture input", http.StatusBadRequest)
+					return
+				}
+				request := wire.scheduleCompletionRequest
+				if len(request.Messages) > 0 && replyNoScheduleClaimsFixture(t, w, request.Messages[0].Content, request.Stream, len(request.Tools)) {
+					return
+				}
+				// Inject failures only into the explicitly selected worker model;
+				// planner prompt changes must never redirect the manager here.
+				if wire.Model == executor {
+					if !strings.Contains(joinedContent(request.Messages), task) {
+						t.Error("actual HTTP worker lost its assigned task")
+					}
 					ready.Do(func() { close(workerReady) })
 					switch outcome {
 					case "failed":
@@ -588,9 +608,14 @@ func TestNuwaValidationSnapshotTracksActualHTTPWorkerOutcomes(t *testing.T) {
 					}
 					return
 				}
+				if wire.Model != planner {
+					t.Errorf("unexpected HTTP actor model %q", wire.Model)
+					http.Error(w, "unknown fixture actor", http.StatusBadRequest)
+					return
+				}
 				spawned := nuwaValidationReceipt(request, "validation-spawn")
 				if spawned == "" {
-					nuwaValidationTool(w, request, "validation-spawn", "spawn_agent", `{"role":"validation-worker","task":"Inspect the supplied evidence and report the outcome."}`)
+					nuwaValidationTool(w, request, "validation-spawn", "spawn_agent", fmt.Sprintf(`{"role":"validation-worker","task":%q,"model_ref":%q}`, task, nuwaModelRef(account, executor)))
 					return
 				}
 				var identity struct {
@@ -615,7 +640,12 @@ func TestNuwaValidationSnapshotTracksActualHTTPWorkerOutcomes(t *testing.T) {
 					return
 				}
 				writeContextFlowReply(w, request.Stream, map[string]any{"content": "The assigned worker outcome was collected."}, "stop")
-			})
+			}))
+			t.Cleanup(endpoint.Close)
+			e := newTestEngine(t)
+			e.cfg.Swarm.AutoTitle = false
+			e.cfg.Models = config.ModelsConfig{Default: account, Providers: []config.Provider{{ID: account, BaseURL: endpoint.URL, Model: planner, Catalog: []string{planner, executor}}}}
+			e.pool = provider.New(e.cfg)
 			project, err := e.CreateProject("Actual worker outcome", "", "", false, true)
 			if err != nil {
 				t.Fatal(err)
@@ -633,6 +663,11 @@ func TestNuwaValidationSnapshotTracksActualHTTPWorkerOutcomes(t *testing.T) {
 			if got.Status != store.TurnDone {
 				t.Fatalf("manager did not collect worker: %+v", got)
 			}
+			select {
+			case <-workerReady:
+			default:
+				t.Fatal("worker outcome was accepted without an actual HTTP worker request")
+			}
 			var snapshot NuwaProjectView
 			deadline := time.Now().Add(5 * time.Second)
 			for time.Now().Before(deadline) {
@@ -645,7 +680,7 @@ func TestNuwaValidationSnapshotTracksActualHTTPWorkerOutcomes(t *testing.T) {
 				}
 				time.Sleep(time.Millisecond)
 			}
-			if len(snapshot.Workers) != 1 || snapshot.Workers[0].Status != outcome || snapshot.Workers[0].ModelBinding == nil || snapshot.Workers[0].ModelBinding.Model != turn.Model {
+			if len(snapshot.Workers) != 1 || snapshot.Workers[0].Status != outcome || snapshot.Workers[0].ModelBinding == nil || snapshot.Workers[0].ModelBinding.Model != executor || snapshot.Workers[0].ModelBinding.ProviderID != account || snapshot.Workers[0].ModelBinding.Ref != provider.ChoiceID(account, executor) {
 				t.Fatalf("actual outcome %s projected as %+v", outcome, snapshot.Workers)
 			}
 			events, err := e.store.ListTurnEvents(turn.ID)

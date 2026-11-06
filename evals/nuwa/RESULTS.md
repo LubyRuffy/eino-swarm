@@ -4,6 +4,12 @@ This cohort did not demonstrate higher task success or a consistent efficiency
 gain from Nuwa or the offered executor preference. It is a small descriptive
 observation of the configured models and tasks, not a general framework ranking.
 
+The observations retained here predate mandatory Nuwa planning/execution
+separation. They preserve each cohort's original policy and do not validate a
+manager that delegates every required operation. The current boundary requires
+new source tests, an identified ELF/image and fresh calibration; see the
+[legacy f3 calibration](#legacy-f3-calibration-2026-11-06).
+
 The frozen schedule contained three engineering/document tasks, three repeats
 and three arms: 27 task executions. Every arm used `glm-5.3-flash` as planner;
 `nuwa-mixed` additionally preferred `dsv41-flash-1017` for useful delegation.
@@ -590,3 +596,28 @@ The separate strict-case artifacts are under `strict-policy-capability`:
 | `receipt-manifest.json` | `b2cbe2377691bea240950631b9a1df210889f643869af297a56475c26e827596` |
 
 See [development observations dated 2026-11-05](OBSERVATIONS_20261105.md) for the separately scoped larger-budget logistics, Observatory, Drone and workbook results.
+
+## Legacy f3 calibration: 2026-11-06
+
+The six old-dev calibration assignments on the f3 source retained these official
+outcomes. A is ordinary mode, B is Nuwa with the GLM-only catalog, and C is Nuwa
+with the optional two-model catalog.
+
+| Arm | Official success / assigned | Worker requests | DS requests |
+|---|---:|---:|---:|
+| A | 1/2 | 0 | 0 |
+| B | 2/2 | 0 | 0 |
+| C | 1/2 | 0 | 0 |
+
+These are historical results under a policy that allowed manager execution.
+The Nuwa attempts therefore do not satisfy the new mandatory separation of
+planning and execution, and the cohort cannot support quality, efficiency or
+budget conclusions about that new mode. Selecting no DS remains a valid model
+choice; it supplies no evidence about DS execution support. The original
+results and identities remain retained rather than being reclassified as a
+successful separation test.
+
+New source-boundary tests must inspect actual manager/worker model inputs and
+execution. A newly identified ELF and image, followed by fresh calibration, are
+required before accepting the changed mode. No such acceptance is recorded here.
+The formal hard54 cohort has executed **zero rows**.

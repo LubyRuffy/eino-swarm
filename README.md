@@ -9,7 +9,10 @@ uploads, downloads and the live event stream have exactly one implementation.
 
 Projects can opt into **Nuwa collaboration**: describe the objective in
 Instruction and let agents choose useful roles, delegate further and select
-configured models. The **Collaboration** panel shows shared tasks, reported
+configured models. The conversation manager plans, delegates and reviews;
+workers perform workspace and external-service operations. The planner has
+coordination tools, without local execution tools or provider-hosted builtins.
+The **Collaboration** panel shows shared tasks, reported
 facts, result files, dependency paths and actual worker/model state across the
 project. Mode changes apply to subsequent turns; current workers keep their
 configuration. Connections and tools still need to be configured. See
@@ -1485,7 +1488,8 @@ Enabled servers add two namespaced Agent tools: `list_tools` discovers the remot
 catalog and `call_tool` invokes a listed name with its arguments. They connect
 only when called, so an unavailable server does not hold up starting a turn or
 using built-in tools. Calls and results appear in the conversation and Trace.
-Plan and Nuwa read-only toolsets do not mount MCP tools. Catalogs can be paged
+Plan and Nuwa read-only toolsets do not mount MCP tools. Other Nuwa turns make
+them available to workers while keeping the planner's toolset separate. Catalogs can be paged
 or filtered by exact tool name; if one schema still exceeds the configured tool
 result limit, increase that limit in Settings.
 

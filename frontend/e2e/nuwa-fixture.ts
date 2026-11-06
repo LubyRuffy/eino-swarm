@@ -11,7 +11,7 @@ type NodeReceipt = { ok: boolean; node: { id: string; version: number } }
 
 /** Real model HTTP → Registry tool → durable project nodes → snapshot/SSE.
  * This is protocol evidence, not a measurement of autonomous model reasoning. */
-export async function startNuwaFixture(mode?: "direct" | "published") {
+export async function startNuwaFixture(mode?: "discussion" | "published") {
   const errors: string[] = []
   const workerModels: string[] = []
   let taskNode: { id: string; version: number } | undefined
@@ -77,18 +77,22 @@ export async function startNuwaFixture(mode?: "direct" | "published") {
         }
         if (!input.tools?.some((tool) => tool.function.name === "record_work"))
           throw new Error("record_work absent at real model boundary")
-        if (mode === "direct") {
-          if (input.model !== "nuwa-fixture") throw new Error("Direct turn reached a worker model")
-          const written = input.messages.findLast(
-            (message) => message.role === "tool" && message.tool_call_id === "direct-write"
-          )
-          if (!written) {
-            call(response, input, "direct-write", { file_path: "direct-result.txt", content: "Completed.\n" }, "write")
-            return
+        if (input.model === "nuwa-fixture") {
+          const executionTools = new Set([
+            "read", "write", "edit", "ls", "tree", "glob", "grep", "exec",
+            "web_search", "web_fetch", "python_runner", "screenshot",
+          ])
+          for (const tool of input.tools) {
+            if (executionTools.has(tool.function.name) || tool.function.name.startsWith("mcp_"))
+              throw new Error(`Nuwa manager gained an execution tool: ${tool.function.name}`)
           }
-          if (!written.content?.startsWith("Updated file ")) throw new Error("Direct file was not written")
+        } else if (input.model !== "nuwa-worker") {
+          throw new Error(`Unexpected Nuwa fixture model: ${input.model}`)
+        }
+        if (mode === "discussion") {
+          if (input.model !== "nuwa-fixture") throw new Error("Discussion reached a worker model")
           await taskGate
-          reply(response, input, { role: "assistant", content: "Direct turn completed." })
+          reply(response, input, { role: "assistant", content: "The discussion is complete." })
           return
         }
         const result = (id: string) => {
@@ -103,6 +107,22 @@ export async function startNuwaFixture(mode?: "direct" | "published") {
         }
         if (input.model === "nuwa-worker") {
           workerModels.push(input.model)
+          if (!input.tools.some((tool) => tool.function.name === "write"))
+            throw new Error("Worker lost its write tool at the real model boundary")
+          if (!taskNode && mode !== "published")
+            throw new Error("Worker started before its shared task")
+          const reviewWritten = input.messages.findLast(
+            (message) => message.role === "tool" && message.tool_call_id === "nuwa-worker-review-write"
+          )
+          if (!reviewWritten) {
+            call(response, input, "nuwa-worker-review-write", {
+              file_path: "review-notes.md",
+              content: "# Review notes\n\nThe conclusion is limited to the measured input.\n",
+            }, "write")
+            return
+          }
+          if (!reviewWritten.content?.startsWith("Updated file "))
+            throw new Error(`Worker review notes write failed: ${reviewWritten.content}`)
           if (mode === "published") {
             const written = input.messages.findLast(
               (message) => message.role === "tool" && message.tool_call_id === "nuwa-worker-write"
@@ -207,8 +227,8 @@ export async function startNuwaFixture(mode?: "direct" | "published") {
             {
               role: "independent-review",
               task: task
-                ? `Review the supplied evidence for shared task ${task.id}; record the bounded observation and cite its source.`
-                : "Publish your independent field observations as a shared artifact.",
+                ? `Review the supplied evidence for shared task ${task.id}; write review-notes.md, record the bounded observation and cite its source.`
+                : "Write review-notes.md and field-observations.md, then publish the independent field observations as a shared artifact.",
               model_ref: chosen.ref,
             },
             "spawn_agent"
@@ -242,24 +262,6 @@ export async function startNuwaFixture(mode?: "direct" | "published") {
         )
           throw new Error(`Actual worker result was not collected: ${waited.content}`)
         const fact = workerFact
-        const written = input.messages.findLast(
-          (message) => message.role === "tool" && message.tool_call_id === "nuwa-write"
-        )
-        if (!written) {
-          call(
-            response,
-            input,
-            "nuwa-write",
-            {
-              file_path: "review-notes.md",
-              content: "# Review notes\n\nThe conclusion is limited to the measured input.\n",
-            },
-            "write"
-          )
-          return
-        }
-        if (!written.content?.startsWith("Updated file "))
-          throw new Error(`Artifact write failed: ${written.content}`)
         if (!result("nuwa-artifact")) {
           call(response, input, "nuwa-artifact", {
             kind: "artifact",

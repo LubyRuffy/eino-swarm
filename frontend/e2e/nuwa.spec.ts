@@ -229,12 +229,12 @@ test("Nuwa creation shares live evidence paths and preserves them after disablin
     await expect(sourceLink).toContainText("Source unavailable")
     await moveSource(project.id)
     await expect(sourceLink).toBeEnabled()
-    const replacement = await startNuwaFixture("direct")
+    const replacement = await startNuwaFixture("discussion")
     try {
       await configureNuwaFixture(request, replacement.url)
       replacement.releaseTask()
       const resent = await request.post(`/api/threads/${firstThread}/turns`, {
-        data: { text: "Save the replacement result.", from_event_seq: 1 },
+        data: { text: "Discuss the replacement interpretation.", from_event_seq: 1 },
       })
       expect(resent.status()).toBe(202)
       const { turn: replacementTurn } = await resent.json()
@@ -295,7 +295,7 @@ test("Nuwa creation shares live evidence paths and preserves them after disablin
   }
 })
 
-test("published artifacts retain their recorded turn and authors after reload", async ({
+test("published artifacts retain their recorded turn and publishers after reload", async ({
   page,
   request,
 }, info) => {
@@ -379,6 +379,20 @@ test("published artifacts retain their recorded turn and authors after reload", 
       const card = sidebarGraph.getByRole("button", { name: new RegExp(result.title) })
       await expect(card).toBeInViewport({ ratio: 1 })
     }
+    for (const [result, contents] of [
+      [managerResult, "# Review notes\n\nThe conclusion is limited to the measured input.\n"],
+      [workerResult, "# Field observations\n\nObserved facts were recorded.\n"],
+    ] as const) {
+      const card = sidebarGraph.getByRole("button", { name: new RegExp(result.title) })
+      await card.click()
+      const output = await request.get(
+        (await page
+          .getByRole("link", { name: "Open result file", exact: true })
+          .getAttribute("href")) ?? ""
+      )
+      expect(output.ok()).toBe(true)
+      expect(await output.text()).toBe(contents)
+    }
     await page.reload()
     await openThread(page, projectName, thread)
     await page.getByRole("tab", { name: "Collaboration", exact: true }).click()
@@ -400,10 +414,10 @@ test("published artifacts retain their recorded turn and authors after reload", 
   }
 })
 
-test("a direct Nuwa turn stays visible when it records no shared work", async ({ page, request }, info) => {
+test("a Nuwa discussion stays visible when it records no shared work", async ({ page, request }, info) => {
   test.skip(process.env.ZWAI_E2E_NUWA !== "1", "requires the real keyless Nuwa model fixture")
-  const fixture = await startNuwaFixture("direct")
-  const projectName = `Direct work ${Date.now()}`
+  const fixture = await startNuwaFixture("discussion")
+  const projectName = `Discussion ${Date.now()}`
   let thread = ""
   try {
     await configureNuwaFixture(request, fixture.url)
@@ -418,7 +432,7 @@ test("a direct Nuwa turn stays visible when it records no shared work", async ({
     await page.getByRole("tab", { name: "Collaboration", exact: true }).click()
 
     const started = await request.post(`/api/threads/${thread}/turns`, {
-      data: { text: "Complete the task and save its result." },
+      data: { text: "Discuss how the available evidence limits the conclusion." },
     })
     expect(started.status()).toBe(202)
     const { turn } = await started.json()
@@ -427,14 +441,24 @@ test("a direct Nuwa turn stays visible when it records no shared work", async ({
     await expect(page.getByRole("region", { name: collaborationGraph })).toHaveCount(0)
     fixture.releaseTask()
     await expect(activity.getByRole("status")).toHaveText("Done")
-    await writeFile(info.outputPath("nuwa-direct-turn.png"), await page.screenshot({ animations: "disabled" }), { mode: 0o600 })
+    await writeFile(info.outputPath("nuwa-discussion-turn.png"), await page.screenshot({ animations: "disabled" }), { mode: 0o600 })
 
     await activity.getByRole("button", { name: "Open turn Trace" }).click()
     await expect(page.getByRole("tab", { name: "Trace", exact: true })).toHaveAttribute("data-state", "active")
     await expect(page.getByRole("tabpanel")).toContainText(turn.id)
     await page.getByRole("tab", { name: "Collaboration", exact: true }).click()
     await activity.getByRole("button", { name: "Files", exact: true }).click()
-    await expect(page.getByTestId("file-tree")).toContainText("direct-result.txt")
+    await expect(page.getByRole("tab", { name: "Files", exact: true })).toHaveAttribute(
+      "data-state",
+      "active"
+    )
+    await expect(page.getByText(
+      "Nothing here yet. Upload files for the agents to work on, or wait for them to produce some.",
+      { exact: true }
+    )).toBeVisible()
+    await expect(
+      page.getByRole("treeitem", { name: "direct-result.txt", exact: true })
+    ).toHaveCount(0)
     expect(fixture.workerModels).toEqual([])
     expect(fixture.errors).toEqual([])
   } finally {

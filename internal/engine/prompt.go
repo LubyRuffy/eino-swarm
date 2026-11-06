@@ -35,9 +35,16 @@ import (
 // so those are the most recent thing the model read. Empty for a
 // conversation that has none of those.
 func ManagerPrompt(set *tools.Set, extra string) string {
+	return managerPrompt(set, extra, false)
+}
+
+func managerPrompt(set *tools.Set, extra string, plannerOnly bool) string {
 	var b strings.Builder
 
-	b.WriteString(`You are the manager of a team of AI agents, working alongside a human.
+	if plannerOnly {
+		b.WriteString(nuwaPlannerInstruction)
+	} else {
+		b.WriteString(`You are the manager of a team of AI agents, working alongside a human.
 You hold the conversation: plan, steer, and answer. Spawn when a swarm would
 save time or improve quality — do not wait for the human to ask. Otherwise
 do the work yourself.
@@ -87,25 +94,32 @@ When you spawn:
   writer and fan out the reads.
 
 `)
+	}
 
 	b.WriteString(HostEnvironmentPrompt())
 	b.WriteString("\n")
 
 	b.WriteString("## Working files\n\n")
+	fileInspection := "Read those first."
+	artifactInspection := "read it back from there"
+	if plannerOnly {
+		fileInspection = "Have an executor inspect those first."
+		artifactInspection = "have an executor verify the resulting files"
+	}
 	fmt.Fprintf(&b, `This conversation has a workspace directory, named under "Workspace path"
 below. Relative paths in tool calls resolve there, so prefer them over absolute
 paths. Files the human uploads arrive in the workspace's %q directory, and
 anything you or your sub-agents write into the workspace is visible to the
 human in the Files panel and can be downloaded. Your sub-agents share this
-workspace, so tell them where to put their output and read it back from there
+workspace, so tell them where to put their output and %s
 instead of asking them to repeat it in their reply.
 
 When a user message lists attached files, those are the files they just added
-for that request. Read those first. Other files already in the uploads
+for that request. %s Other files already in the uploads
 directory are from earlier in the conversation; open them only when the
 request refers to them.
 
-`, uploadsDir)
+`, uploadsDir, artifactInspection, fileInspection)
 
 	b.WriteString(`Images attached to a message arrive as visual input on that
 message, not as files in the workspace. Look at them there. Do not search the
@@ -119,9 +133,17 @@ present; a message with only <selected_text> is pointing at that snippet.
 `)
 
 	if len(set.Names) > 0 {
-		b.WriteString("## Tools\n\nBesides the delegation tools you have: ")
+		if plannerOnly {
+			b.WriteString("## Executor tools\n\nThe configured workspace tools available for delegation are: ")
+		} else {
+			b.WriteString("## Tools\n\nBesides the delegation tools you have: ")
+		}
 		b.WriteString(strings.Join(set.Names, ", "))
-		b.WriteString(".\nYour sub-agents have the same workspace tools.\n\n")
+		if plannerOnly {
+			b.WriteString(".\nDiscover exact names with list_worker_tools and assign useful scopes to executors. Your coordination tools have their own registered schemas.\n\n")
+		} else {
+			b.WriteString(".\nYour sub-agents have the same workspace tools.\n\n")
+		}
 	}
 
 	b.WriteString(`## Asking the human
@@ -239,14 +261,14 @@ func JoinPromptSections(parts ...string) string {
 // wins when the two conflict. scheduleLines is the open-wake section for
 // this conversation; it is folded into the conversation extra so the model
 // can upsert instead of minting a second wait.
-func managerExtra(cfg *config.Config, th *store.Thread, pc *projectContext, scheduleLines string) string {
+func managerExtra(cfg *config.Config, th *store.Thread, pc *projectContext, scheduleLines string, plannerOnly bool) string {
 	var persona string
 	if cfg != nil {
 		persona = PersonalityPrompt(cfg.Personality.Instructions)
 	}
 	var conv string
 	if th != nil {
-		conv = conversationExtra(th, pc, scheduleLines)
+		conv = conversationExtraForRole(th, pc, scheduleLines, plannerOnly)
 		scheduleLines = ""
 	} else if pc != nil {
 		conv = pc.promptSections()
@@ -258,6 +280,10 @@ func managerExtra(cfg *config.Config, th *store.Thread, pc *projectContext, sche
 // Compact first (old context), then the project, then the goal, then open
 // wakes, then the plan so a live plan is the last thing the model read.
 func conversationExtra(th *store.Thread, pc *projectContext, scheduleLines string) string {
+	return conversationExtraForRole(th, pc, scheduleLines, false)
+}
+
+func conversationExtraForRole(th *store.Thread, pc *projectContext, scheduleLines string, plannerOnly bool) string {
 	var parts []string
 	if th != nil {
 		if s := compactSection(th.CompactSummary); s != "" {
@@ -278,7 +304,7 @@ func conversationExtra(th *store.Thread, pc *projectContext, scheduleLines strin
 		parts = append(parts, s)
 	}
 	if th != nil {
-		if s := planSection(th.PlanMode, th.PlanMarkdown); s != "" {
+		if s := planSection(th.PlanMode, th.PlanMarkdown, plannerOnly); s != "" {
 			parts = append(parts, s)
 		}
 	}

@@ -1,11 +1,12 @@
 # Nuwa project collaboration
 
-Nuwa lets agents choose their plan, division of work and configured models while
-keeping shared tasks, reported facts and results inspectable. Enable **Nuwa
-collaboration** when creating or editing a project, then put the objective,
+Nuwa separates planning from execution: the conversation manager plans,
+delegates, coordinates and accepts results from worker evidence. Workers perform
+the required operations. Agents choose their division of work and configured
+models while keeping shared tasks, reported facts and results inspectable.
+Enable **Nuwa collaboration** when creating or editing a project, then put the objective,
 constraints and acceptance criteria in **Instruction**. Existing projects default
-to ordinary mode. No domain workflow, predefined role list or fixed hierarchy is
-required.
+to ordinary mode. No domain workflow or predefined executor role list is required.
 
 Connections, credentials and tools remain platform resources configured in
 Settings. An instruction can explain how to use them; it cannot connect an
@@ -13,12 +14,14 @@ absent service, grant permission or supply missing data. The workspace remains
 an anchor with the agent's normal access.
 
 Enable the mode, enter your instruction and open a conversation in the project.
-This starter prompt leaves the plan and delegation decisions to the agent.
+This starter prompt leaves worker roles, task division and model choices to the agent.
 
 ```text
 Achieve [objective] using [available inputs].
 Respect [constraints]. The result is acceptable when [observable checks pass].
-Decide from the available evidence whether to work directly or delegate.
+Plan from the available evidence and delegate any required operations to workers.
+Choose worker roles, task scopes and available models to fit the objective.
+Accept the result using the workers' evidence against the acceptance criteria.
 For shared findings and results, record their sources and artifact paths.
 ```
 
@@ -28,7 +31,16 @@ its sources.
 
 ## Planning, models and delegation
 
-The conversation model remains the manager. Nuwa managers and workers receive
+The conversation model remains the manager. It does not mount workspace
+execution tools or MCP tools, and its provider-hosted builtin execution tools
+are disabled. Workers retain their configured provider-hosted tools; ordinary
+mode retains its existing configuration. Reading or changing workspace files, running
+commands and using external execution tools belong to workers; the manager
+coordinates their work and checks their reported evidence. Pure discussion that
+requires no such operations does not require spawning a worker. This boundary
+does not prescribe a domain, role list, workflow or worker model.
+
+Nuwa managers and workers receive
 `list_models`, `read_work` and, outside planning mode, `record_work`. Workers can
 delegate again. All descendants share one Registry, concurrency budget, Stop
 and restart lifecycle. A worker may wait for, resume or close its own
@@ -44,10 +56,13 @@ worker resolves that worker's default. Same-role steering, resume and recovery
 retain the concrete binding; an explicit conflict refuses before queuing a
 message or changing a generation. Roles remain globally unique in the Registry.
 
-A delegating agent can call `list_worker_tools` to discover the workspace tools
-it can pass to a worker. For a new role, `spawn_agent` accepts an optional
-`tool_names` array of exact names. Omit the array to use the caller's available
-workspace tools, or pass `[]` to omit workspace tools for that worker. Worker
+A delegating agent can call `list_worker_tools` to discover the available worker
+tool catalog, including configured MCP tools. Discovery does not mount these
+tools on the manager. Workers retain the full optional catalog allowed by their
+configuration even though the manager's own tool surface excludes execution.
+For a new role, `spawn_agent` accepts an optional `tool_names` array of exact
+names. Omit the array to use the available worker tools, or pass `[]` to omit
+optional workspace tools for that worker. Worker
 lifecycle and shared-work tools remain available as allowed by the current mode.
 Put instructions for using those tools in the task. If a dispatch lists an
 already mounted shared-work tool in `tool_names`, the refusal explains how to
@@ -86,7 +101,8 @@ turn is given, its Trace; results use the existing file API.
 
 When the selected scope has no shared records or workers, Collaboration shows
 the open conversation's latest turn status and links to its Trace and Files.
-A turn can complete directly without recording a graph.
+A discussion turn can complete without workers or a recorded graph. A task that
+requires operations still assigns those operations to workers.
 
 | kind | status | meaning |
 |---|---|---|
@@ -160,6 +176,9 @@ Clients reject old revisions and previous-project responses.
 Changing the switch affects subsequent turns. Current work retains its mode;
 turning it off does not erase recorded work. `/plan` keeps shared writes
 unmounted, including for recovered planning workers.
+The manager delegates read-only exploration to workers before proposing a plan.
+Accepting that plan keeps execution on workers. Fresh and recovered managers
+use the turn's saved Nuwa mode even if the project switch has since changed.
 An actual switch change also advances the project revision. The view remains
 available if the switch is turned off before the first pending result arrives;
 ordinary edits and repeated settings do not advance that revision.
@@ -212,6 +231,14 @@ Offline and scripted HTTP tests establish their particular tool, storage,
 identity, replay and UI boundaries. `--mock` validates the harness/API lifecycle;
 it cannot establish real-model task quality, speed, token savings or billing.
 Unit tests do not establish native macOS acceptance.
+
+Earlier evaluations that allowed the manager to execute operations do not
+validate this separation contract. The retained six-row f3 calibration had
+official results A 1/2, B 2/2 and C 1/2, with no worker or DS requests. It remains
+historical evidence for that source and policy only. New source-boundary tests,
+a new identified ELF and image, and new calibration are required before claims
+about the separated mode; the formal hard54 cohort has executed zero rows.
+See the [calibration boundary](../evals/nuwa/RESULTS.md#legacy-f3-calibration-2026-11-06).
 
 CyberGym execution was stopped by platform safety review. There is no CyberGym
 score or comparative performance result, and that requirement remains incomplete.

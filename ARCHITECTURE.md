@@ -18,6 +18,15 @@ engine exits after the idle grace once no presence connection is held, the
 phone hub socket is down, and no turn is running. A host that is killed
 releases `engine.lock`; the next shell takes it and resumes orphaned turns.
 
+Nuwa separates the conversation planner from task execution. The engine builds
+the planner's history, project-memory and coordination surface independently of
+the Registry's worker tool catalog. Workspace and MCP operations stay on workers;
+model and tool-scope selection still use that complete catalog. For Responses,
+the planner receives a model-instance copy without provider-hosted builtins,
+preserving the shared client, worker factory, call accounting and backoff.
+Ordinary turns keep their existing tool surface. Restored workers retain their
+original model and selected tools; a resumed Nuwa manager uses the planner surface.
+
 Runtime transcript inputs carry explicit provenance: ADK `Extra["zwai_message_source"]` and persisted `messages.source` distinguish `human`, transient `runtime`, `schedule`, and `plan`. Runtime correction cues remain available during their turn and in diagnostics, but future replay, compact summarizer input and session briefing extraction exclude them. Legacy cue compatibility matches complete constants or a validated worker-ID suffix, then preserves any independently evidenced human input. It never classifies similar prose as a correction.
 
 Goal and plan commands retain their complete argument through one engine

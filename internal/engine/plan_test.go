@@ -215,7 +215,7 @@ func TestSetPlanModeWhileRunningIsBusy(t *testing.T) {
 }
 
 func TestPlanSectionIsGenericAndUnmountsWriteInWords(t *testing.T) {
-	open := planSection(true, "")
+	open := planSection(true, "", false)
 	for _, need := range []string{"You are planning", "ask_user", "propose_plan", "not mounted"} {
 		if !strings.Contains(open, need) {
 			t.Fatalf("missing %q:\n%s", need, open)
@@ -226,7 +226,7 @@ func TestPlanSectionIsGenericAndUnmountsWriteInWords(t *testing.T) {
 			t.Fatalf("plan prompt leaked %q", leak)
 		}
 	}
-	exec := planSection(false, "# Plan\n\nDo the work.\n")
+	exec := planSection(false, "# Plan\n\nDo the work.\n", false)
 	if !strings.Contains(exec, "accepted the plan") || !strings.Contains(exec, "Do the work.") {
 		t.Fatalf("execute section:\n%s", exec)
 	}

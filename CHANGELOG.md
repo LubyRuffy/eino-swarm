@@ -6,6 +6,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Changed Nuwa to separate planning from execution: the conversation manager
+  plans, delegates and reviews while workers perform workspace and external
+  operations. Planner instances also omit provider-hosted builtins without
+  changing ordinary turns or worker configuration. AI still chooses executor
+  roles, models and tool scopes. Earlier self-executing Nuwa measurements do not
+  validate this behavior. (`F-136`, `C-037`)
 - Fixed paired phones hiding the manager tool-round limit. The conversation
   now shows Continue and Stop, restores paused controls when reopened, and
   retains the prompt with a visible error when the PC refuses the action.
