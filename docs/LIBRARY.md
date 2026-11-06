@@ -43,6 +43,13 @@ configuration resolver. Legacy untagged workers created without a factory keep
 their existing resume compatibility path. For transient host context, wrap the
 model's Generate/Stream request without rewriting ADK history or fork seeds.
 
+Before each worker model call, the Injector supplies its fixed invocation
+identity in the request context. Model-call recording uses the worker generation
+only when that identity's agent ID matches the actual model caller; manager and
+auxiliary models do not inherit it. This is diagnostic identity, not a new tool
+permission or completion receipt. The ordinary and Nuwa worker paths share it;
+an absent legacy identity remains unknown.
+
 `WorkerTask(ctx)` returns the task supplied when the current worker generation
 started, plus a presence flag. Spawn, resume and restore set it independently of
 the parent's context; ordinary manager contexts do not supply it. It is task

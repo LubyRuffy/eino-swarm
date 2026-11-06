@@ -943,6 +943,9 @@ requests fail closed. Manager and policy requests each occur once in the
 original-turn Trace; full fixture requests and policy results are retained,
 and reloading must not add either request.
 No real model, provider credentials or native desktop launch is involved.
+The native resilience fixture keeps its copied `SCHEDULE_ANSWER_PROMPT` identical
+to the Go constant; `test_native_macos_schedule_answer.py` catches protocol drift
+over actual loopback HTTP while retaining strict request and candidate validation.
 
 ```bash
 go test -race ./internal/provider -run TestChatReasoningFieldsSurviveGenerateAndLiveStream -count=1
@@ -1122,6 +1125,11 @@ Continue 只增加一次尝试；Stop／拒绝取消，重启保持原收取状�
 单次流、错误／取消和退避，辅助摘要／复核继续归原轮。`worker_lifecycle_identity_test.go`
 在实际 session-memory／reviewer 模型输入断言长尾以外的完成身份，独立收取
 状态、同 ID 新 generation、checkpoint、cleanup、legacy unknown 及整条预算省略。
+`internal/server/model_call_generation_test.go` 将两代请求及旧未知／显式 0、
+manager／辅助记录实际落库，再经 `GET /api/trace/:turn` 断言正代次保留、未知
+字段省略，且最新 roster 代次不能回填旧请求；同时覆盖 ordinary／Nuwa。
+该 HTTP 契约测试不替代 provider／engine 对真实请求身份来源、退避准入和
+流结束归属的验证，也不接受按时间推断缺失代次。
 PC `worker-completion.spec.ts` 验证真实 SSE 完成唤醒、候选正文被扣留及刷新重放；
 手机 `worker-collection.spec.ts` 验证 EN／ZH 等待、暂停、恢复、停止收取的文案及
 重开／Reload；`history=worker-collection` 的 `collection=paused`／`stopped` 只扩展

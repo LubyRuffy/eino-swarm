@@ -6,6 +6,17 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed the native resilience HTTP fixture's stale schedule-answer protocol
+  text to match the engine's current cadence and scope extraction contract,
+  preserving exact request and candidate validation. (`C-009`)
+
+- Added worker execution generation to recorded model calls and Trace as
+  optional `generation`, preserving the actual invocation across streams and
+  same-worker resumption. Manager, auxiliary and unknown historical calls omit
+  it; existing request-to-turn accounting and lifecycle ordering stay unchanged.
+  This is diagnostic provenance, not completion or model-quality evidence.
+  (`F-130`, `C-012`)
+
 - Changed Nuwa dispatch with multiple ready models to require an exact catalog
   `model_ref` for each new role. Omission returns correctable `list_models`
   guidance before forking or starting a worker, instead of silently using the

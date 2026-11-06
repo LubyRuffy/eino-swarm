@@ -6,8 +6,8 @@ import (
 	"github.com/cloudwego/eino/adk"
 )
 
-// AgentIdentity is sampled from the actual runtime before a tool executes.
-// A manager has generation zero; workers retain their current generation.
+// AgentIdentity identifies the actual runtime invocation of a model or tool.
+// A manager has generation zero; a worker's generation is fixed for its run.
 type AgentIdentity struct {
 	ParentID   string `json:"parent_id,omitempty"`
 	AgentID    string `json:"agent_id"`
@@ -18,7 +18,8 @@ type AgentIdentity struct {
 type toolCallerKey struct{}
 type toolReceiptScopeKey struct{}
 
-// ToolCaller returns trusted runtime provenance, never model-supplied arguments.
+// ToolCaller returns trusted runtime provenance for a worker model call or a
+// tool invocation, never model-supplied arguments.
 func ToolCaller(ctx context.Context) (AgentIdentity, bool) {
 	identity, ok := ctx.Value(toolCallerKey{}).(AgentIdentity)
 	return identity, ok

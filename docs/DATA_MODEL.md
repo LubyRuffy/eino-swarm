@@ -647,6 +647,7 @@ the shared service failure. See `C-029`.
 | column | notes |
 |---|---|
 | `thread_id`, `turn_id`, `agent_id` | who made the call |
+| `worker_generation` | positive worker execution identity, exposed as optional JSON `generation`; manager, auxiliary and unknown legacy calls keep `0` and omit the JSON field |
 | `provider_id`, `model` | against what |
 | `input_msgs` | how many messages were sent — the number that grows on a long conversation |
 | `input_chars`, `output_chars` | request and response size |
@@ -654,6 +655,14 @@ the shared service failure. See `C-029`.
 | `cached_tokens`, `reasoning_tokens` | prompt-cache hits and thinking tokens, when the endpoint reports them |
 | `duration_ms` | wall clock |
 | `err` | the endpoint's error, when there was one |
+
+The worker generation comes from the fixed invocation identity in model-call
+context, only when its agent ID matches the model's actual caller. The request
+keeps that generation while its accounting turn is selected at the existing
+post-admission boundary. A later resume cannot rewrite an older request's
+generation or bill. Existing rows remain unknown; no migration infers a value
+from time, lifecycle event order or a current worker snapshot. Worker execution
+generation is distinct from the `message_id` of one model output.
 
 ## `attachments` — what the human uploaded
 

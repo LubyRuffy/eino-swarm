@@ -15,7 +15,8 @@ func (e *Engine) callRecorder(threadID, turnID string) provider.Recorder {
 		}
 		rec := &store.LLMCall{
 			ThreadID: threadID, TurnID: turnID, AgentID: r.AgentID,
-			ProviderID: r.ProviderID, Model: r.Model,
+			WorkerGeneration: r.WorkerGeneration,
+			ProviderID:       r.ProviderID, Model: r.Model,
 			InputMsgs: r.InputMsgs, InputChars: r.InputChars, OutputChars: r.OutputChars,
 			PromptTokens: r.PromptTokens, CompletionTokens: r.CompletionTokens,
 			TotalTokens: r.TotalTokens, CachedTokens: r.CachedTokens,

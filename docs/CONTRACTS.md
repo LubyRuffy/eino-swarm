@@ -371,6 +371,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 ## C-012 One-ID troubleshooting
 
 - 跨轮 worker 账单：保留的 Registry 在成功占用新 turn 后更新 worker 归属；每条被记录的模型请求在共享退避准入完成、调用底层模型前冻结当时 turn_id，流结束、错误、取消及 SDK 内部重连均沿用它，不按完成时刻迁移。可选推理档位拒绝后的显式 fallback 保持既有独立请求计数，辅助模型的这些请求仍归原轮。停泊空窗仍归最近关联轮；退避观察按实际发生时的归属记录，不能增加 llm_calls。manager、后台 session-memory／memory-reviewer 等辅助调用仍绑定原轮。历史账单不静默重写。证据：`internal/engine/worker_accounting.go`、`internal/provider/call_recording.go`、`internal/engine/worker_accounting_test.go`；关联 `F-130`、`F-150`；变更类型：Fixed。
+- 请求代次：`llm_calls` 保存可信 worker invocation 的正 `worker_generation`，Trace JSON 以可选 `generation` 返回；只在实际模型 AgentID 匹配时采用该 context 身份。流式完成、失败及后续同 ID resume 不改写已发请求的代次，原 turn 准入冻结语义保持。manager／辅助调用及旧未知行保持 0 并省略 wire 字段，不按时间、事件顺序或最新 roster 猜代次，也不将 worker 执行代次当作模型输出 `message_id`。该字段仅补观测，不改变派工、claim、Stop、事件 seq／持久化／广播顺序或结清规则。证据：`internal/provider/provider.go`、`internal/engine/call_record.go`、`internal/store/models.go`、`internal/server/model_call_generation_test.go`；关联 `F-130`、`F-150`；变更类型：Added。
 
 - 状态：active；类型：compatibility；作用范围：engine、server、CLI、Trace、PC 子代理详情；关联功能：`F-130`, `F-150`, `F-160`, `F-170`, `F-310`, `F-320`, `F-420`。
 - 契约内容：一个 turn id 可在 CLI、API 和 Trace 面板还原输入、事件、模型与工具调用、错误及结果；新增事件类型需进入这一路径。

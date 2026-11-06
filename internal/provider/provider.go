@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/timing"
 	openaimodel "github.com/cloudwego/eino-ext/components/model/openai"
@@ -26,6 +27,7 @@ import (
 type CallRecord struct {
 	Backoff          *BackoffRecord
 	AgentID          string
+	WorkerGeneration int
 	ProviderID       string
 	Model            string
 	InputMsgs        int
@@ -433,7 +435,7 @@ func (r *recordingModel) generateOnce(ctx context.Context, in []*schema.Message,
 	if recorder == nil {
 		return out, modelCallError(err)
 	}
-	rec := r.base(in, start)
+	rec := r.base(ctx, in, start)
 	rec.BuiltinTools = builtin.snapshot()
 	rec.Err = err
 	if out != nil {
@@ -473,7 +475,7 @@ func (r *recordingModel) streamOnce(ctx context.Context, in []*schema.Message, o
 		return stream, modelCallError(err)
 	}
 	if err != nil {
-		rec := r.base(in, start)
+		rec := r.base(ctx, in, start)
 		rec.BuiltinTools = builtin.snapshot()
 		rec.Err = err
 		recorder(rec)
@@ -503,7 +505,7 @@ func (r *recordingModel) streamOnce(ctx context.Context, in []*schema.Message, o
 				} else {
 					finish(recvErr)
 				}
-				rec := r.base(in, start)
+				rec := r.base(ctx, in, start)
 				rec.BuiltinTools = builtin.snapshot()
 				rec.OutputChars = chars
 				applyUsage(&rec, usage)
@@ -531,7 +533,7 @@ func (r *recordingModel) streamOnce(ctx context.Context, in []*schema.Message, o
 				usage = mergeUsage(usage, msg)
 			}
 			if closed := sw.Send(msg, nil); closed {
-				rec := r.base(in, start)
+				rec := r.base(ctx, in, start)
 				rec.BuiltinTools = builtin.snapshot()
 				rec.OutputChars = chars
 				applyUsage(&rec, usage)
@@ -553,14 +555,14 @@ func isStreamEnd(err error) bool {
 	return errors.Is(err, io.EOF)
 }
 
-func (r *recordingModel) base(in []*schema.Message, start time.Time) CallRecord {
+func (r *recordingModel) base(ctx context.Context, in []*schema.Message, start time.Time) CallRecord {
 	chars := 0
 	for _, m := range in {
 		if m != nil {
 			chars += len(m.Content)
 		}
 	}
-	return CallRecord{
+	record := CallRecord{
 		AgentID:    r.agentID,
 		ProviderID: r.providerID,
 		Model:      r.model,
@@ -568,6 +570,10 @@ func (r *recordingModel) base(in []*schema.Message, start time.Time) CallRecord 
 		InputChars: chars,
 		Duration:   time.Since(start),
 	}
+	if identity, ok := swarm.ToolCaller(ctx); ok && identity.AgentID == r.agentID && identity.Generation > 0 {
+		record.WorkerGeneration = identity.Generation
+	}
+	return record
 }
 
 func tokenUsageOf(msg *schema.Message) *schema.TokenUsage {

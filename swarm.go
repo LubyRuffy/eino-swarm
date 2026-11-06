@@ -910,6 +910,8 @@ func (in *Injector) BeforeModelRewriteState(ctx context.Context,
 	}
 	in.handle.injectHandoff(state)
 	in.handle.setHistory(state.Messages, in.histCap)
+	ctx = withToolCaller(ctx, AgentIdentity{AgentID: in.handle.ID, Role: in.handle.Role,
+		Generation: in.generation, ParentID: in.handle.ParentID})
 	return ctx, state, nil
 }
 

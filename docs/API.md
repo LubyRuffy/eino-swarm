@@ -3105,6 +3105,15 @@ Model calls record sizes, billed tokens and durations, not prompts: enough to
 explain why a turn was slow, expensive or failed, without turning the database
 into a transcript archive. Token fields are `0` when the endpoint did not say.
 
+`llm_calls[].generation` optionally identifies the worker execution that made
+the request. It is a positive worker generation, separate from the model-output
+`message_id` lifecycle. The request retains that identity through streaming,
+failure and resumption of the same worker. Manager and auxiliary calls omit it.
+Legacy or otherwise unknown `0` values are also omitted and are not backfilled
+from timestamps, event order or the worker's latest roster entry. This metadata
+is recorded in ordinary mode as well as Nuwa; it does not establish completion
+or collection without the matching lifecycle and tool receipts.
+
 ## Static assets
 
 `GET /` and any unmatched path that looks like a client route serve the SPA

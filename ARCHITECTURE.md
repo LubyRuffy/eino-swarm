@@ -2444,6 +2444,15 @@ stream completion does not move the bill. Parked gaps retain the last owner,
 backoff observations sample their occurrence owner, and auxiliary post-turn
 models retain their original fixed turn. Trace queries use those recorded IDs.
 
+The Injector also binds the worker invocation's fixed identity to each model
+request. Provider call records persist its positive worker generation only for
+the matching actual agent ID. Generate/Stream completion and later resumes do
+not move a request to another worker generation. Trace exposes the optional
+`generation` alongside provider/model and the independently frozen accounting
+turn. Manager, auxiliary and old unknown records omit it; no history is
+backfilled from timing or a latest-generation roster. This adds observation
+metadata without changing worker admission, event ordering or lifecycle state.
+
 A streamed model output has its own identity and lifecycle, independent of
 its manager turn and worker lifetime. Durable generation start/completion
 records let recovery distinguish an interrupted stream from a completed

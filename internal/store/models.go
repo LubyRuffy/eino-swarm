@@ -251,15 +251,18 @@ type Event struct {
 // timings rather than full prompts: enough to explain why a turn was slow,
 // expensive or failed, without turning the database into a transcript archive.
 type LLMCall struct {
-	ID          uint   `gorm:"primaryKey" json:"id"`
-	ThreadID    string `gorm:"index;size:64" json:"thread_id"`
-	TurnID      string `gorm:"index;size:64" json:"turn_id"`
-	AgentID     string `gorm:"size:64" json:"agent_id"`
-	ProviderID  string `gorm:"size:64" json:"provider_id"`
-	Model       string `gorm:"size:128" json:"model"`
-	InputMsgs   int    `json:"input_msgs"`
-	InputChars  int    `json:"input_chars"`
-	OutputChars int    `json:"output_chars"`
+	ID       uint   `gorm:"primaryKey" json:"id"`
+	ThreadID string `gorm:"index;size:64" json:"thread_id"`
+	TurnID   string `gorm:"index;size:64" json:"turn_id"`
+	AgentID  string `gorm:"size:64" json:"agent_id"`
+	// WorkerGeneration comes from the request's immutable runtime identity.
+	// Zero is unknown or a non-worker call; legacy rows are not inferred.
+	WorkerGeneration int    `gorm:"not null;default:0" json:"generation,omitempty"`
+	ProviderID       string `gorm:"size:64" json:"provider_id"`
+	Model            string `gorm:"size:128" json:"model"`
+	InputMsgs        int    `json:"input_msgs"`
+	InputChars       int    `json:"input_chars"`
+	OutputChars      int    `json:"output_chars"`
 	// PromptTokens and friends come from the endpoint's usage block. Zero
 	// means the endpoint did not say; the UI must not invent a tokenizer.
 	PromptTokens     int       `json:"prompt_tokens"`

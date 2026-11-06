@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -128,8 +129,8 @@ func TestSelectedHTTPWorkerModelSurvivesResumeArchiveAndRestore(t *testing.T) {
 			saved = cp
 		}
 	}
-	if saved.ModelBinding == nil || saved.ModelBinding.Model != "worker-one" || saved.ModelBinding.ReasoningEffort != "low" {
-		t.Fatalf("missing concrete binding: %+v", saved.ModelBinding)
+	if saved.Generation != 4 || saved.ModelBinding == nil || saved.ModelBinding.Model != "worker-one" || saved.ModelBinding.ReasoningEffort != "low" {
+		t.Fatalf("missing concrete binding or generation: %+v", saved)
 	}
 	body, err := json.Marshal(saved)
 	if err != nil {
@@ -147,7 +148,7 @@ func TestSelectedHTTPWorkerModelSurvivesResumeArchiveAndRestore(t *testing.T) {
 	restored.SelectWorkerModel = func(context.Context, string) (swarm.ModelBinding, swarm.ModelBuilder, error) {
 		return swarm.ModelBinding{}, nil, fmt.Errorf("catalog entry removed")
 	}
-	worker, err := restored.Restore(context.Background(), swarm.RestoredWorker{ID: checkpoint.ID, Role: checkpoint.Role, Task: "recover assigned work", ModelBinding: checkpoint.ModelBinding, History: checkpoint.History}, nil)
+	worker, err := restored.Restore(context.Background(), swarm.RestoredWorker{ID: checkpoint.ID, Role: checkpoint.Role, Task: "recover assigned work", ModelBinding: checkpoint.ModelBinding, History: checkpoint.History, Generation: checkpoint.Generation}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,8 +163,16 @@ func TestSelectedHTTPWorkerModelSurvivesResumeArchiveAndRestore(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	var got []string
+	generations := map[string][]int{}
 	for _, r := range records {
 		got = append(got, r.AgentID+":"+r.Model)
+		// Reflection keeps this a semantic RED before CallRecord has the new
+		// field: absence is unknown/zero, not a compilation failure.
+		generation := 0
+		if field := reflect.ValueOf(r).FieldByName("WorkerGeneration"); field.IsValid() && field.Kind() == reflect.Int {
+			generation = int(field.Int())
+		}
+		generations[r.AgentID] = append(generations[r.AgentID], generation)
 		if r.ProviderID != "fixture" {
 			t.Errorf("wrong provider attribution %+v", r)
 		}
@@ -175,6 +184,11 @@ func TestSelectedHTTPWorkerModelSurvivesResumeArchiveAndRestore(t *testing.T) {
 	for key, n := range want {
 		if n != 0 {
 			t.Errorf("request attribution %s mismatch=%d; got=%v", key, n, got)
+		}
+	}
+	for id, want := range map[string][]int{"manager": {0}, "first-1": {1, 2, 3, 4, 4}, "second-2": {1}} {
+		if !reflect.DeepEqual(generations[id], want) {
+			t.Errorf("actual HTTP call generations for %s = %v, want %v", id, generations[id], want)
 		}
 	}
 	fixture.mu.Lock()
