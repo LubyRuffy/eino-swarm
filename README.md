@@ -562,8 +562,9 @@ workflow or real-model efficiency improvement is implied by enabling it.
   provider's first-byte budget waits for route recovery in the same model call,
   without spending the turn's two model-error retries or marking its generation
   interrupted. Shared probes keep the 30-second cap and their successful response
-  continues that call directly. This waiting has no additional total deadline;
-  Stop, explicit caller deadlines and worker watchdogs remain effective. Other
+  continues that call directly. Three consecutive refusals fail the turn
+  instead of probing without a limit. Stop, explicit caller deadlines and
+  worker watchdogs remain effective. Other
   errors and accepted requests that hang retain their existing bounded retries.
   Post-turn session briefing and automatic memory review are skipped while that
   origin still has the route failure, without claiming notes were saved. These
@@ -631,7 +632,10 @@ equally supported alternative; either answer is remembered, signing in or
 configuring a model hides the dialog by itself, and a banner keeps both paths
 visible while no model is set up. Signed-in models are a temporary list, never
 written to `config.yaml`, and appear first in the model picker; **Settings →
-Models** shows their state above your own providers. For a new setup, new
+Models** shows their state above your own providers. When those models are
+available, the own-provider list leads with them as a default you can select,
+and an own provider is marked default only when new conversations start on it.
+For a new setup, new
 conversations start on the account's models; an existing setup with a working
 provider keeps starting on it (`models.default_source` in
 [docs/CONFIG.md](docs/CONFIG.md)). Third-party and self-hosted endpoints work

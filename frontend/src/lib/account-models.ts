@@ -1,5 +1,5 @@
 import type { MessageKey } from "./i18n"
-import type { AccountModels, Meta, ModelInfo, RemoteLoginStatus } from "./types"
+import type { AccountModels, Meta, ModelInfo, ModelSource, RemoteLoginStatus } from "./types"
 
 const reasons: Record<string, MessageKey> = {
   rejected: "accountModels.reason.rejected",
@@ -28,6 +28,17 @@ export function showWelcome(meta?: Meta): boolean {
 /** The models the server account supplies, in the order the server sent. */
 export function accountModelRows(models: ModelInfo[]): ModelInfo[] {
   return models.filter((m) => m.source === "account" && m.ready && m.model)
+}
+
+/** New conversations start on the server only when that source is selected
+ *  and its models are actually available. An unset source is the server.
+ *  Otherwise they start on the configured provider, including while the
+ *  account catalog is still missing. */
+export function serverStartsConversations(
+  source: ModelSource | undefined,
+  accountReady: boolean,
+): boolean {
+  return accountReady && source !== "provider"
 }
 
 /** The local account state moves before the model list does: Go refreshes the

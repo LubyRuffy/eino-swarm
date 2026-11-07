@@ -49,6 +49,49 @@ test("choosing the own-model path opens Settings on Models", async ({ page }) =>
   expect(saved).toEqual([{ ui: { welcome_dismissed: true } }])
 })
 
+test("a ready server catalog is a selectable default beside an own provider", async ({ page }) => {
+  let settingsBody: { settings: { models: Record<string, unknown> } } | undefined
+  await page.route("**/api/meta", async (route) => {
+    const response = await route.fetch()
+    const body = await response.json()
+    await route.fulfill({
+      response,
+      json: { ...body, account_models: { state: "ready", models: 2, username: "account", display_name: "Account" } },
+    })
+  })
+  await page.route("**/api/settings", async (route) => {
+    const method = route.request().method()
+    if (method === "GET") {
+      if (!settingsBody) {
+        const response = await route.fetch()
+        settingsBody = await response.json()
+        settingsBody!.settings.models.default_source = "provider"
+      }
+      await route.fulfill({ json: settingsBody })
+      return
+    }
+    if (method !== "PUT" || !settingsBody) return route.fallback()
+    const patch = route.request().postDataJSON() as { models?: Record<string, unknown> }
+    settingsBody = {
+      settings: {
+        ...settingsBody!.settings,
+        ...patch,
+        models: { ...settingsBody!.settings.models, ...patch.models },
+      },
+    }
+    await route.fulfill({ json: settingsBody })
+  })
+  await page.goto("/")
+  await page.getByRole("button", { name: "Settings" }).click()
+  const dialog = page.getByRole("dialog")
+  await dialog.getByRole("tab", { name: "Models" }).click()
+  const row = dialog.getByTestId("server-default-row")
+  await expect(row.getByText("The server's models")).toBeVisible()
+  await row.getByRole("button", { name: "Make the server's models the default" }).click()
+  await expect(row.getByText("default", { exact: true })).toBeVisible()
+  await expect(row.getByRole("button", { name: "Make the server's models the default" })).toHaveCount(0)
+})
+
 test("a signed-in account with ready models needs no welcome even before any provider exists", async ({ page }) => {
   // The server counts a ready account as configured, which is what keeps the welcome away.
   const saved = await firstRun(page, { configured: true, models: { state: "ready", label: "Team", models: 2 } })

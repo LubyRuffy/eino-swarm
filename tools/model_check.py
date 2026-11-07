@@ -15,6 +15,11 @@ models/stream/ManagerCommentary.tla checks the order and privacy of admitted
 manager commentary before it enters the event stream.
 models/account/AccountCatalog.tla checks that a published account catalog
 belongs to the current credential (C-040).
+models/account/DefaultSourceChoice.tla checks that the Settings default badge
+is the source a new conversation starts on, and that a ready server catalog
+is a selectable row (C-040).
+models/provider/RouteRecovery.tla checks that confirmed route refusals stop
+after a consecutive cap instead of waiting forever or buying model retries (C-029).
 Every case sets its model's switch constants and states
 the expected outcome: the current design must pass every safety invariant;
 each historical or seeded behaviour must break the named invariant (checked
@@ -66,9 +71,21 @@ MODELS = {
     m.name: m
     for m in (
         Model(
+            "route", ROOT / "models" / "provider" / "RouteRecovery.tla",
+            ("UnboundedRouteRecovery", "ExhaustionStartsModelRetry"),
+            ("TypeOK", "RouteRefusalStops", "NoRetryAfterExhaustion"),
+            (("Cap", 3), ("MaxProbes", 9)),
+        ),
+        Model(
             "account", ROOT / "models" / "account" / "AccountCatalog.tla",
             ("StaleObservation", "UnsealedLogout"),
             ("TypeOK", "PublishedAgrees"),
+            (),
+        ),
+        Model(
+            "default-source", ROOT / "models" / "account" / "DefaultSourceChoice.tla",
+            ("BadgeIgnoresSource", "ServerChoiceHidden"),
+            ("TypeOK", "BadgeMatchesStart", "ServerChoiceVisible"),
             (),
         ),
         Model(
@@ -175,6 +192,18 @@ def _consent(name: str, source: str, switches: tuple[str, ...] = (), violates: s
 
 
 CASES: tuple[Case, ...] = (
+    _case("route-current", "three confirmed route refusals fail the call without a model retry",
+          model="route"),
+    _case("route-unbounded", "historical, shipped through v0.1.69: a confirmed route refusal kept the same call waiting",
+          ("UnboundedRouteRecovery",), "RouteRefusalStops", model="route"),
+    _case("route-exhaustion-retries", "seeded: a capped route refusal is classified as another model retry",
+          ("ExhaustionStartsModelRetry",), "NoRetryAfterExhaustion", model="route"),
+    *(_case(name, "witness", witness=witness, model="route") for name, witness in (
+        ("route-reach-failed", "NeverFailed"),
+        ("route-reach-recovered", "NeverRecovered"),
+        ("route-reach-cancelled", "NeverCancelled"),
+        ("route-reach-other", "NeverOtherError"),
+    )),
     _case("account-current", "publish rechecks the credential and login or logout seals the catalog",
           model="account"),
     _case("account-stale-observation", "a fetch publishes the credential it observed after that credential changed",
@@ -185,6 +214,17 @@ CASES: tuple[Case, ...] = (
         ("account-reach-sign-out", "NeverSignedOut"),
         ("account-reach-in-flight", "NeverInFlight"),
         ("account-reach-other-account", "NeverOtherAccount"),
+    )),
+    _case("default-source-current", "the settings badge matches the engine starting source and a ready server catalog is selectable",
+          model="default-source"),
+    _case("default-source-badge-ignores-source", "the own-provider list marked models.default while new conversations started on the server",
+          ("BadgeIgnoresSource",), "BadgeMatchesStart", model="default-source"),
+    _case("default-source-choice-hidden", "a ready server catalog had no selectable default row beside the own providers",
+          ("ServerChoiceHidden",), "ServerChoiceVisible", model="default-source"),
+    *(_case(name, "witness", witness=witness, model="default-source") for name, witness in (
+        ("default-source-reach-ready", "NeverReady"),
+        ("default-source-reach-provider", "NeverProvider"),
+        ("default-source-reach-server", "NeverServerStart"),
     )),
     _case("manager-commentary-current", "admit ordinary commentary before its tool",
           model="manager-commentary"),

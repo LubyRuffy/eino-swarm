@@ -212,8 +212,10 @@ model`, fully returned within this provider's first-byte budget, keeps the same
 logical model call waiting through the shared cooldown. These probes do not
 consume the turn's two model-error retries. Each actual HTTP rejection is still
 recorded, and a successful probe's response continues the original call without
-another send. Recovery has no additional total deadline or YAML field: it ends
-on success, a different error, or caller cancellation. Stop interrupts both the
+another send. The same logical call stops after three consecutive confirmed
+refusals (`DefaultRouteRecoveryAttempts`); the turn then fails instead of
+probing forever. That cap is not a YAML field. Success, a different error, or
+caller cancellation still ends the wait earlier. Stop interrupts both the
 wait and active request; an explicit caller deadline and the worker watchdog
 remain effective. The header, stream-idle and gateway body timeouts are separate
 per-request budgets. Other 503s, request hangs and broken streams retain the

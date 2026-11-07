@@ -16,6 +16,16 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
+func TestRouteRecoveryExhaustedDoesNotRetryTheTurn(t *testing.T) {
+	err := errors.Join(errors.New("[NodeRunError]"), &provider.RouteRecoveryExhaustedError{
+		Attempts: 3,
+		Err:      errors.New("error, status code: 503, status: 503 Service Unavailable, message: no healthy provider can serve this model"),
+	})
+	if isRetryableModelError(err) || modelFailureClass(err) != "" {
+		t.Fatal("three route refusals must end the turn instead of starting another model retry")
+	}
+}
+
 func TestIsRetryableModelErrorMatchesATruncatedToolJSON(t *testing.T) {
 	err := errors.New("[NodeRunError] error, status code: 400, status: 400 Bad Request, message: Unterminated string starting at: line 1 column 54 (char 53)\nnode path: [node_1, ChatModel]")
 	if !isRetryableModelError(err) {

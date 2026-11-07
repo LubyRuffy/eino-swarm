@@ -30,7 +30,7 @@ async function routeFixture(recover: boolean) {
           return
         }
         attempts.push({ method: incoming.method, path: incoming.url, hasAuthorization: Boolean(incoming.headers.authorization), receivedAt: Date.now() })
-        if (!recover || attempts.length <= 3) {
+        if (!recover || attempts.length <= 2) {
           response.writeHead(503, { "Content-Type": "application/json" })
           response.end(JSON.stringify({ error: { code: "provider_unavailable", message: "no healthy provider can serve this model", type: "server_error" } }))
           return
@@ -99,7 +99,7 @@ test("routing refusals keep the same turn waiting through reload until the servi
     const transcript = page.getByTestId("transcript")
     const stop = page.getByRole("button", { name: "Stop", exact: true })
     const trace = async () => (await (await request.get(`/api/trace/${turnID}`)).json())
-    for (const seconds of [5, 10, 20]) {
+    for (const seconds of [5, 10]) {
       await expect(transcript.getByText(`Waiting ${seconds}s before retrying the model request.`, { exact: true })).toBeVisible()
       await expect(stop).toBeEnabled()
       await expect(statusBadge(page)).toContainText("Working")
@@ -126,14 +126,14 @@ test("routing refusals keep the same turn waiting through reload until the servi
       expect(saved.events.filter((event: TraceEvent) => event.kind === kind && event.agent_id === "manager")).toHaveLength(1)
     }
     const calls = (saved.llm_calls as TraceCall[]).filter((call) => call.agent_id === "manager")
-    expect(calls).toHaveLength(4)
-    expect(calls.filter((call) => (call.err ?? "").includes("no healthy provider can serve this model"))).toHaveLength(3)
-    expect(calls[3].err ?? "").toBe("")
-    expect(calls[3].output_chars).toBe(completed.length)
+    expect(calls).toHaveLength(3)
+    expect(calls.filter((call) => (call.err ?? "").includes("no healthy provider can serve this model"))).toHaveLength(2)
+    expect(calls[2].err ?? "").toBe("")
+    expect(calls[2].output_chars).toBe(completed.length)
     expect(fixture.policyRequests()).toBe(1)
-    expect(saved.llm_calls).toHaveLength(5) // Four real attempts plus the separate answer policy call.
-    expect(fixture.attempts).toHaveLength(4)
-    for (const [index, seconds] of [5, 10, 20].entries()) {
+    expect(saved.llm_calls).toHaveLength(4) // Three real attempts plus the separate answer policy call.
+    expect(fixture.attempts).toHaveLength(3)
+    for (const [index, seconds] of [5, 10].entries()) {
       expect(fixture.attempts[index + 1].receivedAt - fixture.attempts[index].receivedAt).toBeGreaterThanOrEqual(seconds * 1000 - 100)
     }
     expect(fixture.attempts.every((attempt) => attempt.method === "POST" && attempt.path === "/chat/completions" && !attempt.hasAuthorization)).toBe(true)
@@ -159,6 +159,44 @@ test("routing refusals keep the same turn waiting through reload until the servi
       try { await fixture.close() } catch (error) { artifactFailure ??= error }
     }
     if (artifactFailure && !originalFailure) throw artifactFailure
+  }
+})
+
+test("three routing refusals end the turn instead of waiting again", async ({ page, request }, info) => {
+  test.skip(process.env.ZWAI_E2E_MODEL_API_ERROR !== "1", "requires the opt-in keyless loopback model endpoint")
+  const fixture = await routeFixture(false)
+  let threadID = "", turnID = ""
+  let originalFailure = false
+  try {
+    await configureRouteFixture(request, fixture.url)
+    ;({ threadID, turnID } = await startRouteTurn(page))
+    const transcript = page.getByTestId("transcript")
+    await expect(transcript.getByText("Waiting 5s before retrying the model request.", { exact: true })).toBeVisible()
+    await expect(transcript.getByText("Waiting 10s before retrying the model request.", { exact: true })).toBeVisible()
+    await expect(transcript.getByText(/no healthy provider/)).toBeVisible({ timeout: 20_000 })
+    await expect(transcript.getByText("Waiting 20s before retrying the model request.", { exact: true })).toHaveCount(0)
+    await expect(transcript.getByText("Waiting 30s before retrying the model request.", { exact: true })).toHaveCount(0)
+    await waitForIdle(page)
+    const trace = await (await request.get(`/api/trace/${turnID}`)).json()
+    expect(trace.turn).toMatchObject({ id: turnID, status: "error" })
+    expect(String(trace.turn.error ?? "")).toContain("no healthy provider")
+    expect(trace.events.filter((event: TraceEvent) => ["model_retry", "generation_recovered"].includes(event.kind))).toEqual([])
+    expect(fixture.attempts).toHaveLength(3)
+    await page.waitForTimeout(1000)
+    expect(fixture.attempts).toHaveLength(3)
+    expect(fixture.errors).toEqual([])
+    await page.screenshot({ path: info.outputPath("routing-capped.png"), animations: "disabled" })
+    await writeFile(info.outputPath("routing-capped-trace.json"), JSON.stringify({ trace, attempts: fixture.attempts }, null, 2), { mode: 0o600 })
+  } catch (error) {
+    originalFailure = true
+    await page.screenshot({ path: info.outputPath("first-failure.png"), animations: "disabled" }).catch((failure) => info.annotations.push({ type: "artifact", description: String(failure) }))
+    throw error
+  } finally {
+    if (threadID) await request.post(`/api/threads/${threadID}/interrupt`).catch((error) => info.annotations.push({ type: "cleanup", description: String(error) }))
+    try { await fixture.close() } catch (error) {
+      if (!originalFailure) throw error
+      info.annotations.push({ type: "cleanup", description: String(error) })
+    }
   }
 })
 

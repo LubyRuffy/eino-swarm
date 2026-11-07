@@ -327,6 +327,7 @@ class WithTLC(unittest.TestCase):
         self.addCleanup(shutil.rmtree, out)
         by_name = {c.name: c for c in mc.CASES}
         for name in ("current", "pre-d77e8d4", "pre-f341e05", "stream-current",
+                     "route-current", "route-unbounded", "route-exhaustion-retries",
                      "stream-v0.1.45-lost-marker", "stream-v0.1.45-seq-reuse",
                      "schedule-current", "schedule-pre-cancel-authority",
                      "schedule-claimed-cancel-ignored", "schedule-manager-cancel-masks-human",

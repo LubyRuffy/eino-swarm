@@ -11,6 +11,18 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   the probe's actual dispatch timestamp with its diagnostic age; startup,
   reload and replacement-attempt limits are unchanged. (#155, `C-034`)
 
+- Fixed gateway route recovery so three consecutive confirmed
+  `provider_unavailable` refusals fail the turn instead of probing without a
+  limit. Earlier refusals in that same model call still wait on the shared
+  origin cooldown and do not consume the two model-error retries.
+  `models/provider/RouteRecovery.tla` checks that cap and rejects both an
+  unbounded wait and a later model retry. (`C-029`)
+
+- Fixed Settings → Models so a ready server catalog is a selectable default in
+  the own-provider list. An own provider is marked default only when new
+  conversations actually start on it. `models/account/DefaultSourceChoice.tla`
+  checks that badge against the engine's starting source. (`F-171`, `C-040`)
+
 - Changed Desktop/Mobile account login to bind only to the current Gateway.
   Third-party identity sources stay on the Gateway; the client opens the
   Gateway-returned same-origin `verification_uri` (shared `/login` or a

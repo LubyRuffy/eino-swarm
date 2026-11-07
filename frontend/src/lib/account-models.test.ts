@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
-  accountModelRows, accountModelsProblem, accountModelsStale, showWelcome,
+  accountModelRows, accountModelsProblem, accountModelsStale, serverStartsConversations, showWelcome,
 } from "./account-models"
 import type { AccountModels, Meta, ModelInfo } from "./types"
 
@@ -22,6 +22,18 @@ describe("first-run welcome", () => {
     expect(showWelcome(meta({ ui: { welcome_dismissed: true } as Meta["ui"] }))).toBe(false)
     // A restoring engine has not told us whether models exist yet.
     expect(showWelcome(meta({ startup: "restoring" }))).toBe(false)
+  })
+})
+
+describe("which source a new conversation starts on", () => {
+  it("uses the server when its models are ready and the person has not chosen a provider", () => {
+    expect(serverStartsConversations("account", true)).toBe(true)
+    expect(serverStartsConversations(undefined, true)).toBe(true)
+    // A chosen provider stays the start even while the server is ready.
+    expect(serverStartsConversations("provider", true)).toBe(false)
+    // Until the server can answer, the configured provider is the start.
+    expect(serverStartsConversations("account", false)).toBe(false)
+    expect(serverStartsConversations(undefined, false)).toBe(false)
   })
 })
 

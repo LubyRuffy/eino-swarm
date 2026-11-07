@@ -23,7 +23,7 @@ const routeUnavailableFixture = `{"error":{"code":"provider_unavailable","messag
 // has produced no generation to recover and must survive the two model retries.
 func TestRouteUnavailableKeepsTheSameGenerationUntilGatewayRecovers(t *testing.T) {
 	clock := timingtest.New(time.Now())
-	e, requests, auxiliary, _ := newRouteRecoveryEngine(t, clock, 4, false)
+	e, requests, auxiliary, _ := newRouteRecoveryEngine(t, clock, 2, false)
 	thread, err := e.CreateThread("Wait for gateway routing", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +34,7 @@ func TestRouteUnavailableKeepsTheSameGenerationUntilGatewayRecovers(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	for attempt, delay := range []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second, 30 * time.Second} {
+	for attempt, delay := range []time.Duration{5 * time.Second, 10 * time.Second} {
 		wait := waitLive(t, sub, KindModelBackoff, 5*time.Second)
 		var body struct {
 			Attempt int   `json:"attempt"`
@@ -55,7 +55,7 @@ func TestRouteUnavailableKeepsTheSameGenerationUntilGatewayRecovers(t *testing.T
 		}
 	}
 	got := waitForTurn(t, e, turn.ID)
-	if got.Status != store.TurnDone || got.Final != "The check completed." || requests.Load() != 5 {
+	if got.Status != store.TurnDone || got.Final != "The check completed." || requests.Load() != 3 {
 		t.Fatalf("route recovery lost the original request: turn=%+v manager requests=%d", got, requests.Load())
 	}
 	events, err := e.store.ListTurnEvents(turn.ID)
@@ -93,8 +93,68 @@ func TestRouteUnavailableKeepsTheSameGenerationUntilGatewayRecovers(t *testing.T
 			failed++
 		}
 	}
-	if managerCalls != 5 || failed != 4 {
+	if managerCalls != 3 || failed != 2 {
 		t.Fatalf("actual route attempts were merged or lost: manager calls=%d failures=%d", managerCalls, failed)
+	}
+}
+
+// Three confirmed route refusals end the turn. They must not keep the shared
+// cooldown alive or spend the ordinary two model-error retries.
+func TestRouteUnavailableStopsAfterThreeRefusals(t *testing.T) {
+	clock := timingtest.New(time.Now())
+	e, requests, auxiliary, _ := newRouteRecoveryEngine(t, clock, 9, false)
+	thread, err := e.CreateThread("Stop when routing stays down", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub := e.Subscribe(thread.ID)
+	defer sub.Close()
+	turn, err := e.StartTurn(thread.ID, "Inspect the current state.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for attempt, delay := range []time.Duration{5 * time.Second, 10 * time.Second} {
+		wait := waitLive(t, sub, KindModelBackoff, 5*time.Second)
+		var body struct {
+			Attempt int   `json:"attempt"`
+			WaitMS  int64 `json:"wait_ms"`
+		}
+		if err := json.Unmarshal([]byte(wait.Text), &body); err != nil {
+			t.Fatal(err)
+		}
+		if body.Attempt != attempt+1 || body.WaitMS != delay.Milliseconds() || requests.Load() != int32(attempt+1) {
+			t.Fatalf("route wait=%+v requests=%d", body, requests.Load())
+		}
+		if !clock.AdvanceNext() {
+			t.Fatal("recorded route wait has no active timer")
+		}
+	}
+	got := waitForTurn(t, e, turn.ID)
+	if got.Status != store.TurnError || requests.Load() != 3 || auxiliary.Load() != 0 || !strings.Contains(got.Error, "no healthy provider") {
+		t.Fatalf("route cap did not stop the turn: %+v requests=%d auxiliary=%d", got, requests.Load(), auxiliary.Load())
+	}
+	events, err := e.store.ListTurnEvents(turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waits := 0
+	for _, event := range events {
+		switch event.Kind {
+		case KindModelRetry, "generation_recovered":
+			t.Fatalf("exhausted route recovery became another model retry: %+v", event)
+		case KindModelBackoff:
+			waits++
+			if strings.Contains(event.Text, `"attempt":3`) || strings.Contains(event.Text, `"wait_ms":20000`) || strings.Contains(event.Text, `"wait_ms":30000`) {
+				t.Fatalf("route recovery kept waiting after the cap: %s", event.Text)
+			}
+		}
+	}
+	if waits != 2 {
+		t.Fatalf("route waits=%d, want the two delays before the third refusal", waits)
+	}
+	clock.Advance(time.Hour)
+	if requests.Load() != 3 {
+		t.Fatalf("a finished route refusal sent another probe: %d", requests.Load())
 	}
 }
 

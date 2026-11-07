@@ -2303,8 +2303,10 @@ They do not consume `model_retry` attempts or emit `generation_interrupted` /
 still has its own `llm_calls` record and the next cooldown uses the existing
 `model_backoff` schema. The successful probe is the original model request's
 response and is consumed directly, without a separate health request or resend.
-There is no additional route-recovery total deadline; Stop, an explicit caller
-deadline or the worker watchdog can cancel it. Other failures, including an
+Three consecutive confirmed refusals end that logical call and fail the turn.
+The exhaustion error is not `model_retry` and does not auto-continue a goal.
+Stop, an explicit caller deadline or the worker watchdog can cancel it earlier.
+Other failures, including an
 accepted probe that hangs, retain existing timeout and retry behavior. While
 the origin's route failure remains active, post-turn session briefing and
 automatic memory review do not start on it; skipping does not emit a successful
