@@ -6,6 +6,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Local Claude, Codex, and Cursor rows show the task first and the project
+  directory after it, on desktop and phone. Codex uses the opening request
+  rather than context inserted ahead of it. Cursor recovers the project
+  directory from its encoded folder name, including a hidden path component,
+  and uses the containing git repository when that directory is gone.
+  (`F-223`)
+
 - Added assembly highlighting for fenced source tagged `asm`, `assembly`,
   `nasm`, `gas`, `x86asm` or `yasm` on desktop, web and phone. Mnemonics,
   registers and comments take distinct theme colours; other unknown tags stay

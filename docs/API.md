@@ -431,7 +431,17 @@ enabled and is omitted otherwise. A `PUT /api/settings` request that supplies
 Read-only progress for local Claude, Codex, and Cursor transcripts. `enabled`
 is false until Settings turns it on; then `tools` is three groups
 (`claude`, `codex`, `cursor`). Each task has `id`, `title`, `cwd`,
-`updated_at`, and `status` (`running` or `done`). The first page is at most five tasks from the last `clients.recent_days`
+`updated_at`, and `status` (`running` or `done`). `title` is the opening
+request. Codex ignores client context inserted ahead of that request, and
+still reads a request that sits past the start of a long transcript. With
+no request and no stated objective, `title` is the directory name in `cwd`.
+The desktop list and the phone `clients` task show that directory name after
+the task for Claude, Codex, and Cursor when the two differ. Cursor has no
+working directory in the transcript; its project folder is the encoded
+absolute path. `cwd` is that directory when it still exists. A leading dot
+in a path component is omitted from the folder name. When the leaf is gone,
+`cwd` is the git repository that contains the remaining path. The phone
+task includes `cwd` for the label. The first page is at most five tasks from the last `clients.recent_days`
 (default 3). `more` and `next` mean another page exists, still inside that
 window or older than it. `GET /api/clients?before=<unix ms>` returns the
 next five per tool. `GET /api/clients/task?id=` returns the live tail of that

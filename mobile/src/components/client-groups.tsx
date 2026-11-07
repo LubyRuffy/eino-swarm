@@ -9,7 +9,7 @@ import { installAndroidBack } from "@/lib/android-back"
 import { applyClientPage, type ClientLog } from "@/lib/client-log"
 import { cn } from "@/lib/cn"
 import { t } from "@/lib/i18n"
-import { clientToolTitle } from "@/lib/local-clients"
+import { clientTaskProject, clientToolTitle } from "@/lib/local-clients"
 import type { ClientEntry, ClientTool, ClientView } from "@/lib/rpc"
 
 /** Same cadence as the desktop client tail. */
@@ -145,7 +145,9 @@ export function ClientGroups({
             {tool.tasks.length === 0 ? (
               <li className="px-3 py-2 text-xs text-muted-foreground">{t("home.clientEmpty")}</li>
             ) : (
-              tool.tasks.map((task) => (
+              tool.tasks.map((task) => {
+                const project = clientTaskProject(task)
+                return (
                 <li
                   key={task.id}
                   data-testid="client-task"
@@ -199,9 +201,11 @@ export function ClientGroups({
                     }}
                   >
                     {task.title}
+                    {project ? <span className="text-muted-foreground"> · {project}</span> : null}
                   </button>
                 </li>
-              ))
+                )
+              })
             )}
             {tool.more ? (
               <li>

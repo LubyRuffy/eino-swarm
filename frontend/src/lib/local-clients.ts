@@ -35,6 +35,16 @@ export type ClientCatalog = {
   tools: ClientTool[]
 }
 
+/** The directory name follows the task for every local client. A title that
+ *  is already that directory is not repeated. */
+export function clientTaskProject(task: { title: string; cwd?: string }): string {
+  const trimmed = task.cwd?.trim() ?? ""
+  if (!trimmed) return ""
+  const project = trimmed.split(/[/\\]/).filter(Boolean).pop() ?? ""
+  if (!project || project === task.title) return ""
+  return project
+}
+
 export function toolLabelKey(
   id: string,
 ): "sidebar.clientClaude" | "sidebar.clientCodex" | "sidebar.clientCursor" | "sidebar.clients" {

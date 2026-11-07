@@ -31,6 +31,15 @@ export function mergeClientTools(
   })
 }
 
+/** The directory name follows the task for every local client. */
+export function clientTaskProject(task: { title: string; cwd?: string }): string {
+  const trimmed = task.cwd?.trim() ?? ""
+  if (!trimmed) return ""
+  const project = trimmed.split(/[/\\]/).filter(Boolean).pop() ?? ""
+  if (!project || project === task.title) return ""
+  return project
+}
+
 export function clientToolTitle(id: string): "home.clientClaude" | "home.clientCodex" | "home.clientCursor" | "home.clients" {
   if (id === "claude") return "home.clientClaude"
   if (id === "codex") return "home.clientCodex"

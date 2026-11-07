@@ -227,6 +227,7 @@ type ClientEntry struct {
 type ClientTask struct {
 	ID        string    `json:"id"`
 	Title     string    `json:"title"`
+	CWD       string    `json:"cwd,omitempty"`
 	Status    string    `json:"status"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

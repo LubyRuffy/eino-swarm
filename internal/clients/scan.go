@@ -37,6 +37,11 @@ const (
 	// A new walk every poll filled the browser's connection cap, so the
 	// open session never got a turn and the chat stayed on skeletons.
 	scanFresh = 2 * time.Second
+	// Codex writes the request after AGENTS.md and desktop context. That
+	// prefix is often past the shared head, so the title walk continues
+	// through a bounded slice of the file and ignores one oversized line.
+	codexTitleScanBytes = 2 << 20
+	codexTitleLineBytes = 256 << 10
 )
 
 // Task is one foreign session row. Status is running or done.
@@ -367,39 +372,187 @@ func claudeTitle(head []byte) (string, string) {
 }
 
 func codexMeta(head []byte) (title, cwd, id string) {
-	for _, raw := range linesOf(head) {
-		var row struct {
-			Type    string `json:"type"`
-			Payload struct {
-				CWD       string          `json:"cwd"`
-				SessionID string          `json:"session_id"`
-				Type      string          `json:"type"`
-				Role      string          `json:"role"`
-				Content   json.RawMessage `json:"content"`
-			} `json:"payload"`
-		}
-		if json.Unmarshal(raw, &row) != nil {
-			continue
-		}
-		if row.Type == "session_meta" {
-			if cwd == "" {
-				cwd = row.Payload.CWD
+	return codexSession("", head)
+}
+
+// codexSession names the task from the first real request. The shared head
+// often ends inside AGENTS.md, and the directory name is only the fallback
+// after the bounded scan also finds no request and no stated objective.
+func codexSession(path string, head []byte) (title, cwd, id string) {
+	title, cwd, id, goal := codexOpening(bytes.NewReader(head), int64(len(head)))
+	if title == "" && path != "" {
+		f, err := os.Open(path)
+		if err == nil {
+			fileTitle, _, fileID, fileGoal := codexOpening(f, codexTitleScanBytes)
+			f.Close()
+			if fileTitle != "" {
+				title = fileTitle
 			}
 			if id == "" {
-				id = row.Payload.SessionID
+				id = fileID
+			}
+			if goal == "" {
+				goal = fileGoal
 			}
 		}
-		if title == "" && row.Payload.Role == "user" {
-			title = textOf(row.Payload.Content)
-		}
-		if title != "" && id != "" {
-			break
-		}
+	}
+	if title == "" {
+		title = goal
 	}
 	if title == "" {
 		title = baseName(cwd)
 	}
 	return clip(title), cwd, id
+}
+
+func codexOpening(r io.Reader, limit int64) (title, cwd, id, goal string) {
+	br := bufio.NewReaderSize(r, 64*1024)
+	budget := limit
+	for budget > 0 {
+		line, err := readBudgetLine(br, &budget, codexTitleLineBytes)
+		if len(bytes.TrimSpace(line)) > 0 {
+			title, cwd, id, goal = applyCodexLine(line, title, cwd, id, goal)
+			if title != "" && id != "" {
+				return title, cwd, id, goal
+			}
+		}
+		if err != nil {
+			return title, cwd, id, goal
+		}
+	}
+	return title, cwd, id, goal
+}
+
+func applyCodexLine(line []byte, title, cwd, id, goal string) (string, string, string, string) {
+	var row struct {
+		Type    string `json:"type"`
+		Payload struct {
+			CWD       string          `json:"cwd"`
+			SessionID string          `json:"session_id"`
+			ID        string          `json:"id"`
+			Type      string          `json:"type"`
+			Role      string          `json:"role"`
+			Content   json.RawMessage `json:"content"`
+			Goal      struct {
+				Objective string `json:"objective"`
+			} `json:"goal"`
+		} `json:"payload"`
+	}
+	if json.Unmarshal(line, &row) != nil {
+		return title, cwd, id, goal
+	}
+	if row.Type == "session_meta" {
+		if cwd == "" {
+			cwd = strings.TrimSpace(row.Payload.CWD)
+		}
+		if id == "" {
+			id = strings.TrimSpace(row.Payload.SessionID)
+			if id == "" {
+				id = strings.TrimSpace(row.Payload.ID)
+			}
+		}
+	}
+	if goal == "" && row.Type == "event_msg" && row.Payload.Type == "thread_goal_updated" {
+		goal = strings.TrimSpace(row.Payload.Goal.Objective)
+	}
+	if title == "" && row.Payload.Role == "user" {
+		title = codexUserText(row.Payload.Content)
+	}
+	return title, cwd, id, goal
+}
+
+// readBudgetLine returns one line, or nil when the line is too large to be
+// a title. A nil line with a nil error means the caller should keep going.
+func readBudgetLine(r *bufio.Reader, budget *int64, lineCap int) ([]byte, error) {
+	var buf []byte
+	skip := false
+	for {
+		if *budget <= 0 {
+			return nil, io.EOF
+		}
+		chunk, err := r.ReadSlice('\n')
+		if int64(len(chunk)) > *budget {
+			*budget = 0
+			return nil, io.EOF
+		}
+		*budget -= int64(len(chunk))
+		if !skip {
+			if len(buf)+len(chunk) > lineCap {
+				skip = true
+				buf = nil
+			} else {
+				buf = append(buf, chunk...)
+			}
+		}
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		if skip {
+			if err != nil {
+				return nil, err
+			}
+			return nil, nil
+		}
+		if err != nil {
+			if err == io.EOF && len(buf) > 0 {
+				return buf, io.EOF
+			}
+			return nil, err
+		}
+		return buf, nil
+	}
+}
+
+func codexUserText(raw json.RawMessage) string {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	if raw[0] == '"' {
+		var s string
+		if json.Unmarshal(raw, &s) == nil {
+			return taskText(s)
+		}
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &blocks) != nil {
+		return ""
+	}
+	for _, b := range blocks {
+		if b.Type != "" && b.Type != "text" && b.Type != "input_text" {
+			continue
+		}
+		if text := taskText(b.Text); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func taskText(s string) string {
+	s = visibleText(s)
+	if s == "" || injectedCodexTitle(s) {
+		return ""
+	}
+	return s
+}
+
+func injectedCodexTitle(s string) bool {
+	s = strings.TrimSpace(s)
+	switch {
+	case strings.HasPrefix(s, "<codex_internal_context"),
+		strings.HasPrefix(s, "<recommended_plugins"),
+		strings.HasPrefix(s, "<heartbeat"),
+		strings.HasPrefix(s, "<external_codex_apps_"),
+		strings.HasPrefix(s, "<send_user_message_question_reply"),
+		strings.HasPrefix(s, "<skill"):
+		return true
+	default:
+		return false
+	}
 }
 
 func cursorTitle(head []byte) string {

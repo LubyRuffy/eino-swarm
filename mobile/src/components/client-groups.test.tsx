@@ -41,6 +41,34 @@ describe("ClientGroups", () => {
     expect(onMore).not.toHaveBeenCalled()
   })
 
+  it("shows the project after the task name for every client", () => {
+    render(
+      <ClientGroups
+        tools={[
+          {
+            id: "codex",
+            more: false,
+            tasks: [{ id: "c1", title: "later request", cwd: "/work/demo/", status: "done", updated_at: "2026-09-25T00:00:00Z" }],
+          },
+          {
+            id: "claude",
+            more: false,
+            tasks: [{ id: "c2", title: "claude task", cwd: "/work/other", status: "done", updated_at: "2026-09-25T00:00:00Z" }],
+          },
+          {
+            id: "cursor",
+            more: false,
+            tasks: [{ id: "c3", title: "cursor task", cwd: "/work/cursor-app", status: "done", updated_at: "2026-09-25T00:00:00Z" }],
+          },
+        ]}
+        onMore={() => undefined}
+      />,
+    )
+    expect(screen.getByRole("button", { name: "later request · demo" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "claude task · other" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "cursor task · cursor-app" })).toBeTruthy()
+  })
+
   it("shows a running light and does not open the task", () => {
     const onMore = vi.fn()
     render(

@@ -284,6 +284,7 @@ export type ClientView = {
 export type ClientTask = {
   id: string
   title: string
+  cwd?: string
   status: "running" | "done" | string
   updated_at: string
   older?: boolean

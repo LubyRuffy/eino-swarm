@@ -212,7 +212,7 @@ func titleOf(tool string, h hit) string {
 		title, _ := claudeTitle(h.head)
 		return title
 	case ToolCodex:
-		title, _, _ := codexMeta(h.head)
+		title, _, _ := codexSession(h.path, h.head)
 		return title
 	default:
 		return cursorTitle(h.head)

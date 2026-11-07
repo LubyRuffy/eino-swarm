@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { DestRail, useVisibleDest } from "./dest-rail"
 import { useApp } from "@/store/app"
-import { LocalClientsSection } from "./local-clients"
+import { LocalClientsSection, resetClientCatalog } from "./local-clients"
 import { ScheduleListPane } from "./schedule-inbox"
 import type { ClientTool } from "@/lib/local-clients"
 
@@ -64,6 +64,33 @@ describe("destination rail", () => {
 
     fireEvent.click(screen.getByTestId("dest-projects"))
     await waitFor(() => expect(screen.getByTestId("pane")).toHaveTextContent("projects"))
+  })
+
+  it("shows the project after the task name for every client", async () => {
+    fake.enabled = true
+    fake.tools = [
+      {
+        id: "codex",
+        more: false,
+        tasks: [{ id: "c1", title: "later request", cwd: "/work/demo/", status: "done", updated_at: "2026-09-25T00:00:00Z" }],
+      },
+      {
+        id: "claude",
+        more: false,
+        tasks: [{ id: "c2", title: "claude task", cwd: "/work/other", status: "done", updated_at: "2026-09-25T00:00:00Z" }],
+      },
+      {
+        id: "cursor",
+        more: false,
+        tasks: [{ id: "c3", title: "cursor task", cwd: "/work/cursor-app", status: "done", updated_at: "2026-09-25T00:00:00Z" }],
+      },
+    ]
+    resetClientCatalog()
+    render(<Probe />)
+    fireEvent.click(await screen.findByTestId("dest-clients"))
+    expect(await screen.findByRole("button", { name: /later request · demo/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /claude task · other/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /cursor task · cursor-app/ })).toBeInTheDocument()
   })
 
   it("does not paint an unread count on the rail", () => {

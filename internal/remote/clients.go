@@ -80,6 +80,7 @@ func clientCatalog(cfg config.ClientsConfig, before int64, includePending bool) 
 			tool.Tasks = append(tool.Tasks, ClientTask{
 				ID:        task.ID,
 				Title:     task.Title,
+				CWD:       task.CWD,
 				Status:    task.Status,
 				UpdatedAt: task.UpdatedAt,
 			})

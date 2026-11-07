@@ -6,6 +6,7 @@ import { api } from "@/lib/api"
 import { openClient, useOpenClient } from "@/lib/client-open"
 import { chromeTypeClass } from "@/lib/chrome-type"
 import {
+  clientTaskProject,
   mergeClientTools,
   toolLabelKey,
   type ClientTool,
@@ -133,7 +134,9 @@ export function LocalClientsSection({ bare = false }: { bare?: boolean }) {
         </p>
       ) : (
         <ul>
-          {tool.tasks.map((task) => (
+          {tool.tasks.map((task) => {
+            const project = clientTaskProject(task)
+            return (
             <li key={task.id} data-testid="client-task">
               <button
                 type="button"
@@ -159,10 +162,14 @@ export function LocalClientsSection({ bare = false }: { bare?: boolean }) {
                 />
                 <span className={cn(chromeTypeClass, "min-w-0 flex-1 truncate text-sidebar-foreground")}>
                   {task.title}
+                  {project ? (
+                    <span className="text-sidebar-foreground/60"> · {project}</span>
+                  ) : null}
                 </span>
               </button>
             </li>
-          ))}
+            )
+          })}
         </ul>
       )}
       {tool.more ? (

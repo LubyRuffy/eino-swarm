@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { mergeClientTools, type ClientTool } from "./local-clients"
+import { clientTaskProject, mergeClientTools, type ClientTool } from "./local-clients"
 
 const recent: ClientTool = {
   id: "claude",
@@ -39,6 +39,13 @@ describe("mergeClientTools", () => {
     expect(refreshed[0].tasks.map((task) => task.id)).toEqual(["a", "b"])
     expect(refreshed[0].more).toBe(true)
     expect(refreshed[0].next).toBe("4")
+  })
+
+  it("puts the project directory after the task for every client", () => {
+    expect(clientTaskProject({ title: "later request", cwd: "/work/demo/" })).toBe("demo")
+    expect(clientTaskProject({ title: "later request", cwd: "C:\\work\\demo" })).toBe("demo")
+    expect(clientTaskProject({ title: "demo", cwd: "/work/demo" })).toBe("")
+    expect(clientTaskProject({ title: "later request" })).toBe("")
   })
 
   it("does not invent a title the page never sent", () => {

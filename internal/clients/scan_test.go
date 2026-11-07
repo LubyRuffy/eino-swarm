@@ -148,6 +148,113 @@ func TestSessionWithNoRequestIsNotListed(t *testing.T) {
 	}
 }
 
+func TestCodexListUsesTheRequestNotTheProjectDirectory(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now()
+	// The opening context is larger than the catalog prefix, which is why a
+	// directory name used to replace the request.
+	var late strings.Builder
+	late.WriteString(`{"type":"session_meta","payload":{"cwd":"/work/demo","session_id":"late"}}` + "\n")
+	late.WriteString(`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md ` + strings.Repeat("a", 140*1024) + `"},{"type":"input_text","text":"<environment_context>inside</environment_context>"}]}}` + "\n")
+	late.WriteString(`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<external_codex_apps_open_page>page</external_codex_apps_open_page>"}]}}` + "\n")
+	late.WriteString(`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"later request"}]}}` + "\n")
+	late.WriteString(`{"type":"event_msg","payload":{"type":"task_started"}}` + "\n")
+	writeFileTime(t, filepath.Join(root, "sessions", "rollout-late.jsonl"), late.String(), now)
+
+	wrapped := `{"type":"session_meta","payload":{"cwd":"/work/demo","session_id":"wrapped"}}` + "\n" +
+		"{not-json\n" +
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":null}}` + "\n" +
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<codex_internal_context source=\"goal\">meta</codex_internal_context>"}]}}` + "\n" +
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<heartbeat></heartbeat>"}]}}` + "\n" +
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"image"},{"type":"input_text","text":"visible request"}]}}` + "\n"
+	writeFileTime(t, filepath.Join(root, "sessions", "rollout-wrapped.jsonl"), wrapped, now.Add(-time.Minute))
+	stringy := `{"type":"session_meta","payload":{"cwd":"/work/demo","session_id":"stringy"}}` + "\n" +
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":"string request"}}` + "\n"
+	writeFileTime(t, filepath.Join(root, "sessions", "rollout-stringy.jsonl"), stringy, now.Add(-90*time.Second))
+
+	goal := `{"type":"session_meta","payload":{"cwd":"/work/demo","session_id":"goal"}}` + "\n" +
+		`{"type":"event_msg","payload":{"type":"thread_goal_updated","goal":{"objective":"stated objective"}}}` + "\n" +
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<codex_internal_context source=\"user_goal\">meta</codex_internal_context>"}]}}` + "\n" +
+		`{"type":"response_item","payload":{"role":"assistant","type":"message","content":[{"type":"text","text":"ack"}]}}` + "\n"
+	writeFileTime(t, filepath.Join(root, "sessions", "rollout-goal.jsonl"), goal, now.Add(-2*time.Minute))
+
+	var huge strings.Builder
+	huge.WriteString(`{"type":"session_meta","payload":{"cwd":"/work/demo","session_id":"huge"}}` + "\n")
+	huge.WriteString(`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md ` + strings.Repeat("b", 300*1024) + `"}]}}` + "\n")
+	huge.WriteString(`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"after the long line"}]}}` + "\n")
+	writeFileTime(t, filepath.Join(root, "sessions", "rollout-huge.jsonl"), huge.String(), now.Add(-150*time.Second))
+
+	quiet := `{"type":"session_meta","payload":{"cwd":"/work/demo","session_id":"quiet"}}` + "\n" +
+		`{"type":"response_item","payload":{"role":"assistant","type":"message","content":[{"type":"text","text":"ack"}]}}` + "\n"
+	writeFileTime(t, filepath.Join(root, "sessions", "rollout-quiet.jsonl"), quiet, now.Add(-3*time.Minute))
+
+	cfg := config.ClientsConfig{
+		Enabled: true, ClaudeDir: filepath.Join(root, "no-claude"),
+		CodexDir: root, CursorDir: filepath.Join(root, "no-cursor"),
+		RecentDays: 3, RunningStaleSeconds: 90,
+	}
+	got := map[string]string{}
+	var before int64
+	for pages := 0; pages < 4; pages++ {
+		cat := List(cfg, now, before)
+		group := cat.Tools[1]
+		for _, task := range group.Tasks {
+			got[strings.TrimPrefix(task.ID, "codex:")] = task.Title
+			if task.CWD != "/work/demo" {
+				t.Fatalf("cwd = %s", task.CWD)
+			}
+		}
+		if !group.More {
+			break
+		}
+		next, err := strconv.ParseInt(group.Next, 10, 64)
+		if err != nil || next == before {
+			t.Fatalf("codex page cursor = %q", group.Next)
+		}
+		before = next
+	}
+	if got["late"] != "later request" || got["wrapped"] != "visible request" || got["goal"] != "stated objective" || got["huge"] != "after the long line" || got["stringy"] != "string request" {
+		t.Fatalf("titles = %v", got)
+	}
+	if got["quiet"] != "demo" {
+		t.Fatalf("request-less session = %q", got["quiet"])
+	}
+	doc, ok := Read(cfg, "codex:late", now)
+	if !ok || doc.Title != "later request" {
+		t.Fatalf("opened title = %+v ok=%v", doc.Title, ok)
+	}
+	missing, cwd, id := codexSession(filepath.Join(root, "missing.jsonl"), []byte(`{"type":"session_meta","payload":{"cwd":"/work/demo","session_id":"x"}}`+"\n"))
+	if missing != "demo" || cwd != "/work/demo" || id != "x" {
+		t.Fatalf("missing file = %q %q %q", missing, cwd, id)
+	}
+	legacy, _, legacyID := codexMeta([]byte(`{"type":"session_meta","payload":{"id":"only-id","cwd":"/work/demo"}}`))
+	if legacy != "demo" || legacyID != "only-id" {
+		t.Fatalf("legacy id = %q %q", legacy, legacyID)
+	}
+}
+
+func TestCodexTitleScanStopsBeforeAnUnboundedTranscript(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now()
+	var body strings.Builder
+	body.WriteString(`{"type":"session_meta","payload":{"cwd":"/work/other","session_id":"bound"}}` + "\n")
+	body.WriteString(`{"type":"response_item","payload":{"role":"assistant","type":"message","content":[{"type":"text","text":"ack"}]}}` + "\n")
+	for body.Len() < codexTitleScanBytes {
+		body.WriteString(`{"type":"event_msg","payload":{"type":"token_count"}}` + "\n")
+	}
+	body.WriteString(`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"beyond the scan"}]}}` + "\n")
+	writeFileTime(t, filepath.Join(root, "sessions", "rollout-bound.jsonl"), body.String(), now)
+	cfg := config.ClientsConfig{
+		Enabled: true, ClaudeDir: filepath.Join(root, "no-claude"),
+		CodexDir: root, CursorDir: filepath.Join(root, "no-cursor"),
+		RecentDays: 3, RunningStaleSeconds: 90,
+	}
+	cat := List(cfg, now, 0)
+	if len(cat.Tools[1].Tasks) != 1 || cat.Tools[1].Tasks[0].Title != "other" {
+		t.Fatalf("title past the scan = %+v", cat.Tools[1].Tasks)
+	}
+}
+
 func TestTitleSkipsToolWrappers(t *testing.T) {
 	root := t.TempDir()
 	now := time.Now()

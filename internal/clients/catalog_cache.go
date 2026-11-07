@@ -80,12 +80,13 @@ func parseCatalogTask(tool string, h hit) Task {
 		task.Title, task.CWD = claudeTitle(h.head)
 	case ToolCodex:
 		var sessionID string
-		task.Title, task.CWD, sessionID = codexMeta(h.head)
+		task.Title, task.CWD, sessionID = codexSession(h.path, h.head)
 		if sessionID != "" {
 			id = sessionID
 		}
 	case ToolCursor:
 		task.Title = cursorTitle(h.head)
+		task.CWD = cursorCWD(h.path)
 	}
 	task.ID = tool + ":" + id
 	if task.Title == "" {
