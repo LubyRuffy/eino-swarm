@@ -77,6 +77,21 @@ describe("ModelPicker", () => {
     expect(screen.getByRole("option", { name: /alpha/ })).toBeTruthy()
   })
 
+  it("keeps the stored name when that model left but its provider is still listed", () => {
+    render(
+      <ModelPicker
+        models={models}
+        providerId="a"
+        model="removed"
+        onChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent("removed")
+    fireEvent.click(screen.getByLabelText("Model"))
+    expect(screen.queryByRole("option", { name: /removed/ })).toBeNull()
+    expect(screen.getByRole("option", { name: /alpha/ })).toBeTruthy()
+  })
+
   it("stays a switcher when only one model is ready so refresh and edit remain reachable", () => {
     render(
       <ModelPicker

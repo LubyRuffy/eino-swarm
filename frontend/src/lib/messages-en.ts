@@ -745,13 +745,13 @@ export const en = {
 
   "settings.searchEmbed.title": "Conversation search",
   "settings.searchEmbed.desc":
-    "Keyword search is always on. Turn on embeddings to also rank by meaning, using a model you name.",
+    "Keyword search is always on. Turn on embeddings to also rank by meaning. The embedding model comes from the server's embedding list.",
   "settings.searchEmbed.embedding": "Semantic search",
   "settings.searchEmbed.embeddingHint":
-    "Off by default. When on, ⌘K ranks conversations by meaning as well as words. Needs an embedding model on one of your endpoints.",
+    "Off by default. When on, ⌘K ranks conversations by meaning as well as words. Pick an embedding model the server classified.",
   "settings.searchEmbed.model": "Embedding model",
   "settings.searchEmbed.modelHint":
-    "The name your endpoint expects for embeddings. Not assumed from the chat catalog.",
+    "Only models the server classified as embedding.",
   "settings.searchEmbed.modelAria": "Embedding model",
   "settings.searchEmbed.badge": "search",
   "settings.searchEmbed.pick": "Select a model",

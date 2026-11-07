@@ -58,6 +58,9 @@ type AccountModelsState struct {
 	Username    string `json:"username,omitempty"`
 	DisplayName string `json:"display_name,omitempty"`
 	Models      int    `json:"models"`
+	// SourceID is the runtime provider id (gateway:<hex>). It is not an endpoint.
+	SourceID string               `json:"source_id,omitempty"`
+	Kinds    *provider.ModelKinds `json:"kinds,omitempty"`
 }
 
 // AccountModels projects the signed-in server account's models into the
@@ -366,6 +369,9 @@ func (a *AccountModels) fetch(ctx context.Context, id accountIdentity) accountOu
 	}
 	s := who
 	s.State, s.Label, s.Models = AccountReady, boot.label, len(cat.Names)
+	s.SourceID = source.ID()
+	kinds := source.Kinds()
+	s.Kinds = &kinds
 	return accountOutcome{state: s, source: source}
 }
 
@@ -409,6 +415,12 @@ func boundCatalog(cat provider.Catalog) provider.Catalog {
 				out.Windows = map[string]int{}
 			}
 			out.Windows[name] = n
+		}
+		if kind := strings.TrimSpace(cat.Types[name]); kind != "" {
+			if out.Types == nil {
+				out.Types = map[string]string{}
+			}
+			out.Types[name] = kind
 		}
 	}
 	return out

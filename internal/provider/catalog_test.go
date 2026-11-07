@@ -35,6 +35,41 @@ func TestParseModelCatalogKeepsOrderAndDropsJunk(t *testing.T) {
 	}
 }
 
+func TestParseModelCatalogKeepsTypesAndConversationFilterDropsTheRest(t *testing.T) {
+	raw := []byte(`{"data":[
+		{"id":"embed-model","model_type":"embedding","context_window":8192},
+		{"id":"chat-model","model_type":"chat","context_window":128000},
+		{"id":"legacy-model","max_model_len":4096},
+		{"id":"ocr-model","model_type":"ocr"},
+		{"id":"decision-model","model_type":"decisions"},
+		{"id":"other-model","model_type":"rerank"},
+		{"id":"chat-model","model_type":"embedding"}
+	]}`)
+	got, err := parseModelCatalog(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got.Names, ",") != "embed-model,chat-model,legacy-model,ocr-model,decision-model,other-model" {
+		t.Fatalf("names=%v", got.Names)
+	}
+	if got.Types["chat-model"] != "chat" || got.Types["embed-model"] != "embedding" || got.Types["other-model"] != "rerank" {
+		t.Fatalf("types=%v", got.Types)
+	}
+	if _, ok := got.Types["legacy-model"]; ok {
+		t.Fatalf("an unclassified row grew a type: %v", got.Types)
+	}
+	chat := got.Conversational()
+	if strings.Join(chat.Names, ",") != "chat-model,legacy-model" {
+		t.Fatalf("conversation=%v", chat.Names)
+	}
+	if chat.Windows["chat-model"] != 128000 || chat.Windows["legacy-model"] != 4096 {
+		t.Fatalf("windows=%v", chat.Windows)
+	}
+	if _, ok := chat.Windows["embed-model"]; ok {
+		t.Fatalf("a non-conversation model must not keep a window: %v", chat.Windows)
+	}
+}
+
 func TestParseModelCatalogReadsContextWindowsWithoutInventingThem(t *testing.T) {
 	raw := []byte(`{"data":[
 		{"id":"alpha","context_length":128000},

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest"
 
 import {
-  accountModelRows, accountModelsProblem, accountModelsStale, serverStartsConversations, showWelcome,
+  accountKindTally, accountModelRows, accountModelsProblem, accountModelsStale,
+  effectiveAccountModel, embeddingModelChoices, serverStartsConversations, showWelcome,
 } from "./account-models"
 import type { AccountModels, Meta, ModelInfo } from "./types"
 
@@ -63,6 +64,24 @@ describe("account model rows", () => {
       row("gateway:a", "m3", { source: "account", ready: false }),
     ])
     expect(rows.map((r) => r.model)).toEqual(["m1", "m2"])
+  })
+
+  it("counts only the types the server reported and keeps a saved conversation default", () => {
+    expect(accountKindTally(undefined)).toEqual([])
+    expect(accountKindTally({
+      chat: 1, unclassified: 2, embedding: 1, ocr: 0, decisions: 0, other: 0,
+    }).map((part) => part.key)).toEqual(["chat", "unclassified", "embedding"])
+    const row = (model: string, selected = false): ModelInfo =>
+      ({ id: model, provider_id: "gateway:a", provider_label: "Server", label: model, model, ready: true, source: "account", default: selected })
+    const models = [row("first", true), row("second")]
+    expect(effectiveAccountModel(models, "")).toBe("first")
+    expect(effectiveAccountModel(models, "second")).toBe("second")
+    expect(effectiveAccountModel(models, "missing")).toBe("first")
+    expect(embeddingModelChoices({
+      state: "ready", models: 1, source_id: "gateway:a", label: "Server",
+      kinds: { chat: 0, embedding: 1, ocr: 0, decisions: 0, other: 0, unclassified: 0, embedding_models: ["embed-a", "embed-a"] },
+    })).toEqual([{ providerId: "gateway:a", model: "embed-a", label: "embed-a", providerLabel: "Server" }])
+    expect(embeddingModelChoices({ state: "ready", models: 1 })).toEqual([])
   })
 })
 

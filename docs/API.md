@@ -266,7 +266,7 @@ endpoint:
 |---|---|
 | `signed_out` | no device login on this machine |
 | `pending` | signed in; the model catalog has not been read yet |
-| `ready` | models are available (`models` is their count) and listed first in `GET /api/models` |
+| `ready` | the catalog was read (`models` is the total count). `kinds` counts `chat`, `unclassified`, `embedding`, `ocr`, `decisions` and `other`, and `embedding_models` lists the embedding names. `source_id` is the runtime `gateway:<32 hex>` id. Conversation rows in `GET /api/models` are the `chat` and unclassified names |
 | `no_access` | signed in but the account may not use the model API |
 | `unavailable` | signed in but the catalog could not be used; `reason` is one of `rejected`, `unsupported`, `network`, `gateway`, `unsafe_response`, `no_models` |
 
@@ -572,6 +572,17 @@ returned). A conversation that stored such an id and finds the account gone
 fails with the stable `account_login_required` error instead of falling back to
 a provider with a same-named model.
 
+A catalog row may carry `model_type`. `chat` and a missing type stay in this
+list. `embedding`, `ocr` and `decisions` are omitted, and so is any other
+non-empty type. The model name is not used to guess. A catalog that does not
+send the field is unchanged. An empty account catalog is `no_models`. A catalog
+that only contains non-conversation types stays `ready` and contributes no
+rows here; its counts and embedding names are on `account_models.kinds`.
+`default` on an account row follows `models.account_model` when that name is
+still a conversation model, otherwise the first conversation name. The stored
+conversation name stays selectable for a turn that already chose a hidden
+model; the picker does not switch the button to a different row.
+
 `id` is the composer's opaque selection key (`provider_id`, tab, `model`).
 `default` on a row is that provider's configured default name. `default` at the
 top level is still the default **provider** id (the account's `gateway:<hex>`
@@ -619,7 +630,9 @@ none. Responds `{"models": ["alpha", "beta"], "context_windows": {"alpha": 12800
 `top_provider` / `meta` / `limits` / `parameters`). Output caps
 (`max_tokens`, `max_completion_tokens`) are ignored. Most OpenAI-compatible
 `/models` bodies have none; those leave the map empty rather
-than inventing a number from the name. Offline (`--mock`) fills the scripted
+than inventing a number from the name. A row with `model_type` follows the
+same conversation rule as `GET /api/models`: `chat` and a missing type stay,
+and any other type is omitted. Offline (`--mock`) fills the scripted
 window so Settings still has something to save. A blank URL is `400`. An unknown
 `provider_id` is `400` only when no `base_url` is sent — a URL still lists,
 so Settings can Discover on a row that has not been saved yet.

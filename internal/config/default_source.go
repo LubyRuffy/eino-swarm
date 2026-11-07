@@ -30,12 +30,18 @@ func ParseDefaultSource(raw string) (string, error) {
 	}
 }
 
+const maxAccountModelLen = 256
+
 func (c *Config) validateDefaultSource() error {
 	source, err := ParseDefaultSource(c.Models.DefaultSource)
 	if err != nil {
 		return err
 	}
 	c.Models.DefaultSource = source
+	c.Models.AccountModel = strings.TrimSpace(c.Models.AccountModel)
+	if len(c.Models.AccountModel) > maxAccountModelLen {
+		return errors.New("account_model is too long")
+	}
 	return nil
 }
 

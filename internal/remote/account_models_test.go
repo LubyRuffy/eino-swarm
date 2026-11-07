@@ -508,3 +508,53 @@ func TestAccountStatusErrorNamesTheHTTPStatus(t *testing.T) {
 		t.Fatalf("message %q hides the status", msg)
 	}
 }
+
+// Settings counts every server type, the embedding picker reads the embedding
+// names, and the composer only receives models a conversation can start on.
+func TestTypedCatalogPublishesKindsAndHidesThemFromTheComposer(t *testing.T) {
+	g := newAccountGateway(t)
+	g.catalog = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[
+			{"id":"embed-a","model_type":"embedding"},
+			{"id":"chat-a","model_type":"chat"},
+			{"id":"ocr-a","model_type":"ocr"},
+			{"id":"dec-a","model_type":"decisions"},
+			{"id":"other-a","model_type":"rerank"},
+			{"id":"chat-b"}
+		]}`)
+	}
+	am, pool, cfg := accountModelsFixture(t, g)
+	if err := cfg.Update(func(next *config.Config) error {
+		next.Models.AccountModel = "chat-b"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	st := am.Refresh(context.Background())
+	if st.State != AccountReady || st.Models != 6 || st.SourceID != accountModelsSourceID || st.Kinds == nil {
+		t.Fatalf("state %+v", st)
+	}
+	k := st.Kinds
+	if k.Chat != 1 || k.Embedding != 1 || k.OCR != 1 || k.Decisions != 1 || k.Other != 1 || k.Unclassified != 1 || strings.Join(k.EmbeddingModels, ",") != "embed-a" {
+		t.Fatalf("kinds %+v", k)
+	}
+	var listed []string
+	var chosen string
+	for _, row := range pool.List() {
+		if row.Source != provider.SourceAccount {
+			continue
+		}
+		listed = append(listed, row.Model)
+		if row.Default {
+			chosen = row.Model
+		}
+	}
+	if strings.Join(listed, ",") != "chat-a,chat-b" || chosen != "chat-b" {
+		t.Fatalf("composer listed %v chosen %q", listed, chosen)
+	}
+	raw, _ := json.Marshal(st)
+	if strings.Contains(string(raw), g.server.URL) || strings.Contains(string(raw), accountModelsToken) {
+		t.Fatalf("kinds leaked the endpoint or credential: %s", raw)
+	}
+}

@@ -255,6 +255,54 @@ func TestParseCatalogReadsTheServerModelList(t *testing.T) {
 	}
 }
 
+// The first catalog name becomes the model a new conversation starts on, so a
+// leading embedding, OCR or decisions row must not take that place.
+func TestAccountCatalogDropsNonChatModelsBeforeTheDefault(t *testing.T) {
+	cat, err := ParseCatalog([]byte(`{"data":[
+		{"id":"embed-model","model_type":"embedding"},
+		{"id":"ocr-model","model_type":"ocr"},
+		{"id":"decision-model","model_type":"decisions"},
+		{"id":"chat-model","model_type":"chat"},
+		{"id":"legacy-model"}
+	]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := NewAccountSource(accountTestID, "Server", "https://gateway.invalid/client/desktop/v1", "secret-host-token", cat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prov := src.provider("")
+	if prov.Model != "chat-model" || strings.Join(prov.Catalog, ",") != "chat-model,legacy-model" {
+		t.Fatalf("model %q catalog %v", prov.Model, prov.Catalog)
+	}
+	kinds := src.Kinds()
+	if kinds.Chat != 1 || kinds.Embedding != 1 || kinds.OCR != 1 || kinds.Decisions != 1 || kinds.Unclassified != 1 || strings.Join(kinds.EmbeddingModels, ",") != "embed-model" {
+		t.Fatalf("kinds %+v", kinds)
+	}
+	if pinned := src.provider("legacy-model"); pinned.Model != "legacy-model" {
+		t.Fatalf("chosen model %q", pinned.Model)
+	}
+	if ignored := src.provider("embed-model"); ignored.Model != "chat-model" {
+		t.Fatalf("an embedding pin became the conversation default: %q", ignored.Model)
+	}
+	p := New(configFor(t, true))
+	p.SetAccountSource(src)
+	var listed []string
+	for _, row := range p.List() {
+		if row.Source != SourceAccount {
+			continue
+		}
+		listed = append(listed, row.Model)
+		if strings.Contains(row.Label, "secret-host-token") || strings.Contains(row.ID, "secret-host-token") {
+			t.Fatal("the model list included the account credential")
+		}
+	}
+	if strings.Join(listed, ",") != "chat-model,legacy-model" {
+		t.Fatalf("listed %v", listed)
+	}
+}
+
 // Callers decide whether the account is the active source from this id, so it
 // must follow publication and disappear on sign-out.
 func TestAccountSourceIDFollowsPublication(t *testing.T) {

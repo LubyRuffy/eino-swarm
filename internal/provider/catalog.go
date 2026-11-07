@@ -21,10 +21,36 @@ const (
 // Catalog is what an endpoint listed: names in the order they arrived, plus
 // any context windows the body happened to include. Most OpenAI-compatible
 // /models responses have no window; those leave Windows empty rather than
-// inventing one from the name.
+// inventing one from the name. Types holds a non-empty model_type when the
+// server sent one. A missing entry is unclassified, not a guess from the name.
 type Catalog struct {
 	Names   []string
 	Windows map[string]int
+	Types   map[string]string
+}
+
+// Conversational keeps chat rows and rows the server never classified.
+// Embedding, OCR, decisions and any other non-empty type stay out of a
+// conversation picker. The original catalog keeps them for the surfaces
+// that ask for a type.
+func (c Catalog) Conversational() Catalog {
+	out := Catalog{}
+	for _, name := range c.Names {
+		if !conversationalModelType(c.Types[name]) {
+			continue
+		}
+		out.Names = append(out.Names, name)
+		if n := c.Windows[name]; n > 0 {
+			if out.Windows == nil {
+				out.Windows = map[string]int{}
+			}
+			out.Windows[name] = n
+		}
+	}
+	if out.Names == nil {
+		out.Names = []string{}
+	}
+	return out
 }
 
 // Discover lists the models an endpoint serves. The result is not saved:
@@ -82,6 +108,10 @@ func fetchOpenAICatalog(ctx context.Context, p config.Provider) (Catalog, error)
 	if err != nil {
 		return Catalog{}, err
 	}
+	// A provider's saved catalog is the conversation list. Typed embedding,
+	// OCR and decisions rows stay out of that picker. The account projection
+	// keeps the full parse so Settings can count types and pin an embedding.
+	cat = cat.Conversational()
 	if len(cat.Names) == 0 {
 		return Catalog{}, fmt.Errorf("provider: the endpoint listed no models")
 	}
@@ -98,8 +128,9 @@ func discoverTimeout(p config.Provider) time.Duration {
 
 // parseModelCatalog reads an OpenAI-compatible /models body. The id is the
 // name; a handful of common window keys are copied when present, including
-// one level of nested objects some vendors wrap them in. Extra keys are
-// ignored so a vendor's extra metadata cannot break discovery.
+// one level of nested objects some vendors wrap them in. model_type, when
+// present, decides whether the name can be offered for a conversation.
+// Other extra keys are ignored so a vendor's metadata cannot break discovery.
 func parseModelCatalog(raw []byte) (Catalog, error) {
 	var list struct {
 		Data []json.RawMessage `json:"data"`
@@ -110,12 +141,19 @@ func parseModelCatalog(raw []byte) (Catalog, error) {
 	cat := Catalog{Names: make([]string, 0, len(list.Data))}
 	seen := map[string]bool{}
 	for _, row := range list.Data {
-		id, window := catalogRow(row)
+		id, window, kind := catalogRow(row)
 		if id == "" || seen[id] {
 			continue
 		}
 		seen[id] = true
 		cat.Names = append(cat.Names, id)
+		// The first classification wins. A repeated id does not change it.
+		if kind != "" {
+			if cat.Types == nil {
+				cat.Types = map[string]string{}
+			}
+			cat.Types[id] = kind
+		}
 		if window > 0 {
 			if cat.Windows == nil {
 				cat.Windows = map[string]int{}
@@ -126,22 +164,35 @@ func parseModelCatalog(raw []byte) (Catalog, error) {
 	return cat, nil
 }
 
-func catalogRow(raw json.RawMessage) (string, int) {
+func catalogRow(raw json.RawMessage) (string, int, string) {
 	var head struct {
-		ID string `json:"id"`
+		ID        string `json:"id"`
+		ModelType string `json:"model_type"`
 	}
 	if err := json.Unmarshal(raw, &head); err != nil {
-		return "", 0
+		return "", 0, ""
 	}
 	id := strings.TrimSpace(head.ID)
 	if id == "" {
-		return "", 0
+		return "", 0, ""
 	}
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &obj); err != nil {
-		return id, 0
+		return id, 0, strings.TrimSpace(head.ModelType)
 	}
-	return id, windowFromObject(obj, 0)
+	return id, windowFromObject(obj, 0), strings.TrimSpace(head.ModelType)
+}
+
+// conversationalModelType is the server's admin classification for a catalog
+// row. chat and an omitted type can be selected for a conversation. Any other
+// value, including embedding, ocr and decisions, cannot.
+func conversationalModelType(kind string) bool {
+	switch strings.TrimSpace(kind) {
+	case "", "chat":
+		return true
+	default:
+		return false
+	}
 }
 
 // Keys we will copy as a context window. max_tokens / max_completion_tokens

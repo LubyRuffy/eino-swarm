@@ -57,8 +57,13 @@ type ModelsConfig struct {
 	Default string `yaml:"default" json:"default"`
 	// DefaultSource is account or provider: whose models a new conversation
 	// starts on when both are available. See settleDefaultSource.
-	DefaultSource string     `yaml:"default_source" json:"default_source"`
-	Providers     []Provider `yaml:"providers" json:"providers"`
+	DefaultSource string `yaml:"default_source" json:"default_source"`
+	// AccountModel is the conversation model a new chat uses on the server
+	// account. Empty keeps the first conversational name. It is a name, not
+	// the gateway: provider id, and it is ignored when that name is no longer
+	// a conversation model.
+	AccountModel string     `yaml:"account_model,omitempty" json:"account_model,omitempty"`
+	Providers    []Provider `yaml:"providers" json:"providers"`
 }
 
 // SwarmConfig bounds the agent swarm.

@@ -2,7 +2,8 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { SearchSettingsPanel } from "./settings-search"
-import type { Settings } from "@/lib/types"
+import type { Meta, Settings } from "@/lib/types"
+import { useApp } from "@/store/app"
 
 const base: Settings = {
   server: { addr: "127.0.0.1:1", open_browser: false },
@@ -64,7 +65,17 @@ describe("SearchSettingsPanel", () => {
     expect(next.search?.embedding_model).toBe("")
   })
 
-  it("pins the named embedding model once the switch is on", () => {
+  it("pins a server embedding model and hides the chat catalog", () => {
+    useApp.setState({
+      meta: {
+        version: "test", mode: "desktop", mock: false, configured: true, default_provider: "default",
+        reasoning_levels: [], data_dir: "", capabilities: {}, swarm: {} as Meta["swarm"],
+        account_models: {
+          state: "ready", models: 2, source_id: "gateway:abc", label: "Server",
+          kinds: { chat: 0, embedding: 1, ocr: 0, decisions: 0, other: 0, unclassified: 1, embedding_models: ["named-embed"] },
+        },
+      },
+    })
     const onChange = vi.fn()
     render(
       <SearchSettingsPanel
@@ -73,13 +84,15 @@ describe("SearchSettingsPanel", () => {
       />,
     )
     fireEvent.click(screen.getByLabelText("Embedding model"))
+    expect(screen.queryByRole("option", { name: "alpha" })).toBeNull()
     fireEvent.click(screen.getByRole("option", { name: "named-embed" }))
     const next = onChange.mock.calls[0][0] as Settings
     expect(next.search?.embedding_model).toBe("named-embed")
-    expect(next.search?.embedding_provider).toBe("default")
+    expect(next.search?.embedding_provider).toBe("gateway:abc")
   })
 
-  it("lets the user type a model name when the catalog is empty", () => {
+  it("lets the user type a model name when the server listed no embedding model", () => {
+    useApp.setState({ meta: undefined })
     const onChange = vi.fn()
     render(
       <SearchSettingsPanel

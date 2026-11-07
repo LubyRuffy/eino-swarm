@@ -13,11 +13,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { api } from "@/lib/api"
-import { serverStartsConversations } from "@/lib/account-models"
+import { accountModelRows, effectiveAccountModel, serverStartsConversations } from "@/lib/account-models"
 import { chromeTypeClass } from "@/lib/chrome-type"
 import { firstByteTimeoutSettingsKey } from "@/lib/first-byte-timeout"
 import { mergeModelContext } from "@/lib/usage"
-import type { Settings } from "@/lib/types"
+import type { ModelInfo, Settings } from "@/lib/types"
 import type { MessageKey } from "@/lib/i18n"
 import type { ProviderToolsDrafts } from "@/lib/provider-tools"
 import { cn } from "@/lib/utils"
@@ -63,6 +63,7 @@ export function ModelsTab({
 }) {
   const t = useT()
   const account = useApp((s) => s.meta?.account_models)
+  const listed = useApp((s) => s.models)
   const accountReady = account?.state === "ready" && account.models > 0
   const serverStarts = serverStartsConversations(settings.models.default_source, accountReady)
   const [busy, setBusy] = useState<string>()
@@ -176,11 +177,19 @@ export function ModelsTab({
         {accountReady ? (
           <ServerDefaultRow
             query={query}
+            models={listed}
+            accountModel={settings.models.account_model}
             isDefault={serverStarts}
             onMakeDefault={() =>
               onChange({
                 ...settings,
                 models: { ...settings.models, default_source: "account" },
+              })
+            }
+            onModel={(model) =>
+              onChange({
+                ...settings,
+                models: { ...settings.models, account_model: model },
               })
             }
           />
@@ -275,49 +284,93 @@ export function ModelsTab({
  *  looking at their own service never saw the server as a choice. */
 function ServerDefaultRow({
   query,
+  models,
+  accountModel,
   isDefault,
   onMakeDefault,
+  onModel,
 }: {
   query: string
+  models: ModelInfo[]
+  accountModel?: string
   isDefault: boolean
   onMakeDefault: () => void
+  onModel: (model: string) => void
 }) {
   const t = useT()
+  const rows = accountModelRows(models)
+  const current = effectiveAccountModel(models, accountModel)
+  const [open, setOpen] = useState(false)
+  const shown = open || (query.trim() !== "" && rows.some((row) => settingsMatch(query, row.model)))
   if (!settingsMatch(
     query,
     t("accountModels.defaultAccount"),
     t("accountModels.defaultRowHint"),
+    t("accountModels.defaultModel"),
     t("accountModels.defaultTitle"),
+    current,
+    ...rows.map((row) => row.model),
     "server",
   )) return null
   return (
-    <div
-      className="flex items-center gap-2 px-4 py-3"
-      data-settings-row=""
-      data-testid="server-default-row"
-    >
-      <span className="size-3.5 shrink-0" aria-hidden />
-      <span className="min-w-0 flex-1">
-        <span className={cn("block truncate", settingsLabelClass)}>
-          {t("accountModels.defaultAccount")}
-        </span>
-        <span className={cn("block truncate", settingsHintClass)}>
-          {t("accountModels.defaultRowHint")}
-        </span>
-      </span>
-      {isDefault ? (
-        <Badge variant="success">{t("settings.models.default")}</Badge>
-      ) : (
-        <Button
+    <div data-testid="server-default-row">
+      <div className="flex items-center gap-2 px-4 py-3" data-settings-row="">
+        <button
           type="button"
-          variant="ghost"
-          size="sm"
-          aria-label={t("accountModels.makeServerDefault")}
-          onClick={onMakeDefault}
+          aria-expanded={shown}
+          aria-label={t("accountModels.serverDetails")}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() => setOpen((value) => !value)}
         >
-          {t("settings.models.makeDefault")}
-        </Button>
-      )}
+          <ChevronRight
+            aria-hidden
+            className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", shown && "rotate-90")}
+          />
+          <span className="min-w-0 flex-1">
+            <span className={cn("block truncate", settingsLabelClass)}>
+              {t("accountModels.defaultAccount")}
+            </span>
+            <span className={cn("block truncate", settingsHintClass)}>
+              {current || t("accountModels.defaultRowHint")}
+            </span>
+          </span>
+        </button>
+        {isDefault ? (
+          <Badge variant="success">{t("settings.models.default")}</Badge>
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={t("accountModels.makeServerDefault")}
+            onClick={onMakeDefault}
+          >
+            {t("settings.models.makeDefault")}
+          </Button>
+        )}
+      </div>
+      {shown && rows.length > 0 ? (
+        <div className="border-t border-border px-4 py-3">
+          <p className={settingsLabelClass}>{t("accountModels.defaultModel")}</p>
+          <ul aria-label={t("accountModels.listLabel")} className="mt-2 flex flex-wrap gap-1.5">
+            {rows.map((row) => {
+              const selected = row.model === current
+              return (
+                <li key={row.id || row.model}>
+                  <button
+                    type="button"
+                    aria-pressed={selected}
+                    className="rounded-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => onModel(row.model)}
+                  >
+                    <Badge variant={selected ? "success" : "outline"}>{row.label || row.model}</Badge>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      ) : null}
     </div>
   )
 }

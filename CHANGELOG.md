@@ -11,6 +11,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   registers and comments take distinct theme colours; other unknown tags stay
   plain text. (`F-120`, `F-220`)
 
+- Settings → Models counts the signed-in server catalog by `model_type`,
+  the embedding picker lists only models classified `embedding`, and the
+  server row in “your own model services” shows the conversation models and
+  stores the chosen default as `models.account_model`. The conversation
+  picker still keeps `chat` and unclassified rows. A catalog without
+  `model_type` stays unchanged. (`F-171`, `C-040`)
+
 - Fixed a queued timer tick shortening the fresh renderer probe's health
   interval after a failed desktop replacement. The retry deadline now shares
   the probe's actual dispatch timestamp with its diagnostic age; startup,

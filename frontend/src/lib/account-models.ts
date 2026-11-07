@@ -25,9 +25,53 @@ export function showWelcome(meta?: Meta): boolean {
   return !meta.configured && !meta.ui?.welcome_dismissed
 }
 
-/** The models the server account supplies, in the order the server sent. */
+/** The models the server account supplies, in the order the server sent.
+ *  The composer list is already limited to conversation models. */
 export function accountModelRows(models: ModelInfo[]): ModelInfo[] {
   return models.filter((m) => m.source === "account" && m.ready && m.model)
+}
+
+const kindOrder = ["chat", "unclassified", "embedding", "ocr", "decisions", "other"] as const
+export type AccountKindKey = (typeof kindOrder)[number]
+
+/** Non-zero classification counts, in a stable order. Missing kinds means the
+ *  server has not reported them yet. */
+export function accountKindTally(kinds?: AccountModels["kinds"]): Array<{ key: AccountKindKey; count: number }> {
+  if (!kinds) return []
+  return kindOrder.flatMap((key) => {
+    const count = kinds[key] ?? 0
+    return count > 0 ? [{ key, count }] : []
+  })
+}
+
+/** The conversation model a new server chat starts on. A saved name that is
+ *  no longer in the conversation list falls back to the listed default. */
+export function effectiveAccountModel(models: ModelInfo[], chosen?: string): string {
+  const rows = accountModelRows(models)
+  const want = chosen?.trim()
+  if (want && rows.some((row) => row.model === want)) return want
+  return rows.find((row) => row.default)?.model || rows[0]?.model || ""
+}
+
+/** Embedding models the signed-in server classified. Other catalogs stay out. */
+export function embeddingModelChoices(account?: AccountModels): Array<{
+  providerId: string
+  model: string
+  label: string
+  providerLabel: string
+}> {
+  const providerId = account?.source_id?.trim() ?? ""
+  if (!providerId) return []
+  const providerLabel = account?.label?.trim() || providerId
+  const seen = new Set<string>()
+  const out: Array<{ providerId: string; model: string; label: string; providerLabel: string }> = []
+  for (const raw of account?.kinds?.embedding_models ?? []) {
+    const model = raw.trim()
+    if (!model || seen.has(model)) continue
+    seen.add(model)
+    out.push({ providerId, model, label: model, providerLabel })
+  }
+  return out
 }
 
 /** New conversations start on the server only when that source is selected

@@ -11,12 +11,13 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { chromeTypeClass } from "@/lib/chrome-type"
+import { embeddingModelChoices } from "@/lib/account-models"
 import {
-  auxiliaryModelChoices,
   groupModels,
   modelChoiceId,
   parseModelChoiceId,
 } from "@/lib/models"
+import { useApp } from "@/store/app"
 import { defaultSearchSettings, type SearchSettings, type Settings } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
@@ -39,18 +40,14 @@ export function SearchSettingsPanel({
   query?: string
 }) {
   const t = useT()
+  const account = useApp((s) => s.meta?.account_models)
   const search = defaultSearchSettings(settings.search)
   const update = (patch: Partial<SearchSettings>) =>
     onChange({
       ...settings,
       search: { ...search, ...patch },
     })
-  const choices = extraChoice(
-    auxiliaryModelChoices(settings.models.providers),
-    search.embedding_provider,
-    search.embedding_model,
-    settings.models.default,
-  )
+  const choices = embeddingModelChoices(account)
   const groups = groupModels(
     choices.map((c) => ({
       provider_id: c.providerId,
@@ -90,17 +87,14 @@ export function SearchSettingsPanel({
             "embedding",
           ]}
           label={t("settings.searchEmbed.model")}
-          hint={pinned ? pinned.label : t("settings.searchEmbed.modelHint")}
+          hint={pinned ? pinned.label : search.embedding_model || t("settings.searchEmbed.modelHint")}
           badge={<Badge variant="default">{t("settings.searchEmbed.badge")}</Badge>}
         >
           {choices.length > 0 ? (
             <Select
               value={
-                search.embedding_model
-                  ? modelChoiceId(
-                      search.embedding_provider || settings.models.default,
-                      search.embedding_model,
-                    )
+                pinned
+                  ? modelChoiceId(pinned.providerId, pinned.model)
                   : undefined
               }
               onValueChange={(id) => {
@@ -146,26 +140,4 @@ export function SearchSettingsPanel({
       ) : null}
     </SettingsSection>
   )
-}
-
-function extraChoice(
-  choices: ReturnType<typeof auxiliaryModelChoices>,
-  provider?: string,
-  model?: string,
-  fallbackProvider?: string,
-) {
-  const p = provider?.trim() ?? ""
-  const m = model?.trim() ?? ""
-  if (!m || choices.some((c) => (!p || c.providerId === p) && c.model === m)) {
-    return choices
-  }
-  return [
-    ...choices,
-    {
-      providerId: p || fallbackProvider || "",
-      model: m,
-      label: m,
-      providerLabel: p || fallbackProvider || "",
-    },
-  ]
 }

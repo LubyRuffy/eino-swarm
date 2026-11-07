@@ -35,6 +35,17 @@ describe("default model source in a settings save", () => {
       { ...base, models: { ...base.models, default_source: "provider" } }, undefined, base,
     )
     expect(chosen.models?.default_source).toBe("provider")
+
+    const named = persistPayload(
+      { ...base, models: { ...base.models, account_model: "second" } }, undefined, base,
+    )
+    expect(named.models?.account_model).toBe("second")
+    const editedAgain = persistPayload(
+      { ...base, models: { ...base.models, account_model: "second", providers: [{ ...provider, model: "other" }] } },
+      undefined,
+      { ...base, models: { ...base.models, account_model: "second" } },
+    )
+    expect(editedAgain.models && "account_model" in editedAgain.models).toBe(false)
   })
 
   it("is never invented for an older server that does not report it", () => {

@@ -544,7 +544,12 @@ a redirect with the credential and bounds the response. Its state (`signed_out`,
 `/api/meta.account_models`.
 
 `provider.Pool` lists the projection first (`source:account`, id
-`gateway:<hex>`) ahead of the configured providers, resolves a conversation's
+`gateway:<hex>`) ahead of the configured providers. A catalog `model_type` of
+`embedding`, `ocr` or `decisions` is not a conversation choice and is omitted
+from that list; `chat` and a missing type stay. The full classification is
+published on `account_models.kinds` for the settings summary and the embedding
+picker. `models.account_model` selects which conversation name a new server
+chat starts on. The pool resolves a conversation's
 stored id against both, and returns `ErrAccountLoginRequired` instead of falling
 back when a stored `gateway:` id has no source. The projection exists only in
 memory: `internal/config` rejects the reserved prefix in `models.providers`, and

@@ -449,6 +449,16 @@ export type AccountModelsReason =
 
 /** Safe summary of the signed-in server account's model access. The credential
  *  and the endpoint stay in Go. */
+export interface AccountModelKinds {
+  chat: number
+  embedding: number
+  ocr: number
+  decisions: number
+  other: number
+  unclassified: number
+  embedding_models?: string[]
+}
+
 export interface AccountModels {
   state: "signed_out" | "pending" | "ready" | "no_access" | "unavailable"
   reason?: AccountModelsReason
@@ -456,6 +466,9 @@ export interface AccountModels {
   username?: string
   display_name?: string
   models: number
+  /** Runtime provider id for this account. Not an endpoint. */
+  source_id?: string
+  kinds?: AccountModelKinds
 }
 
 export interface ToolDescriptor {
@@ -568,6 +581,8 @@ export interface Settings {
     default: string
     /** Whose models a new conversation starts on when both exist. */
     default_source?: ModelSource
+    /** Conversation model used when new chats start on the server account. */
+    account_model?: string
     providers: ProviderSettings[]
   }
   swarm: SwarmLimits
@@ -597,7 +612,7 @@ export type ProviderSettingsWrite = Omit<ProviderSettings, "timeout_seconds"> & 
 export type SettingsPatch = Omit<Partial<Settings>, "models" | "swarm" | "ui"> & {
   /** The server keeps every field a patch leaves out. */
   ui?: Partial<UISettings>
-  models?: { default: string; default_source?: ModelSource; providers: ProviderSettingsWrite[] }
+  models?: { default: string; default_source?: ModelSource; account_model?: string; providers: ProviderSettingsWrite[] }
   swarm?: Omit<SwarmLimits, "agent_timeout_seconds"> & { agent_timeout_seconds?: number }
 }
 

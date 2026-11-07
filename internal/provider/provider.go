@@ -145,7 +145,7 @@ func (p *Pool) Resolve(id string) (config.Provider, error) {
 		id = p.DefaultProviderID()
 	}
 	if src := p.account.Load(); src != nil && id == src.ID() {
-		return src.provider(), nil
+		return src.provider(p.accountModel()), nil
 	}
 	if strings.HasPrefix(id, config.AccountSourcePrefix) {
 		return config.Provider{}, ErrAccountLoginRequired
@@ -227,7 +227,14 @@ func (p *Pool) List() []Info {
 			rows[i].Default = false
 		}
 	}
-	return append(src.rows(accountDefault), rows...)
+	return append(src.rows(accountDefault, p.accountModel()), rows...)
+}
+
+func (p *Pool) accountModel() string {
+	if p == nil || p.cfg == nil {
+		return ""
+	}
+	return strings.TrimSpace(p.cfg.ModelsSnapshot().AccountModel)
 }
 
 func listModels(cfg *config.Config, mock bool) []Info {

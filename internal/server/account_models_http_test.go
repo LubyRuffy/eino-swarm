@@ -222,6 +222,56 @@ func TestSettingsKeepTheChosenDefaultSource(t *testing.T) {
 	}}, http.StatusBadRequest)
 }
 
+// The server row remembers which conversation model a new chat starts on.
+// A later save that does not mention it keeps the name. Embedding names are
+// not a conversation default.
+func TestSettingsChooseTheAccountConversationModel(t *testing.T) {
+	ah := newAccountHarness(t, true)
+	ah.waitAccount(remote.AccountReady)
+	provider := map[string]any{"id": "default", "label": "Main", "base_url": "http://endpoint.invalid/v1", "model": "m", "api_key": "k", "timeout_seconds": 60}
+	save := func(extra map[string]any) map[string]any {
+		models := map[string]any{"default": "default", "providers": []map[string]any{provider}}
+		for k, v := range extra {
+			models[k] = v
+		}
+		return ah.json(http.MethodPut, "/api/settings", map[string]any{"models": models}, http.StatusOK)
+	}
+	accountModel := func(settings map[string]any) any {
+		return settings["settings"].(map[string]any)["models"].(map[string]any)["account_model"]
+	}
+	if got := accountModel(save(map[string]any{"account_model": "server-model-2"})); got != "server-model-2" {
+		t.Fatalf("stored account model %v", got)
+	}
+	if got := accountModel(save(nil)); got != "server-model-2" {
+		t.Fatalf("a later save cleared the account model: %v", got)
+	}
+	body := ah.json(http.MethodGet, "/api/models", nil, http.StatusOK)
+	var chosen, other bool
+	for _, row := range body["models"].([]any) {
+		item := row.(map[string]any)
+		if item["source"] != "account" {
+			continue
+		}
+		switch item["model"] {
+		case "server-model-2":
+			chosen = item["default"] == true
+		case "server-model":
+			other = item["default"] == true
+		}
+	}
+	if !chosen || other {
+		t.Fatalf("composer default did not follow the saved name: %v", body["models"])
+	}
+	meta := ah.json(http.MethodGet, "/api/meta", nil, http.StatusOK)
+	kinds := meta["account_models"].(map[string]any)["kinds"].(map[string]any)
+	if kinds["unclassified"] != float64(2) || kinds["embedding"] != float64(0) {
+		t.Fatalf("kinds %v", kinds)
+	}
+	ah.json(http.MethodPut, "/api/settings", map[string]any{"models": map[string]any{
+		"default": "default", "account_model": strings.Repeat("m", 257), "providers": []map[string]any{provider},
+	}}, http.StatusBadRequest)
+}
+
 // A language change must not bring the welcome back, and dismissing it must
 // not reset the language.
 func TestWelcomeDismissalIsIndependentOfOtherUISettings(t *testing.T) {

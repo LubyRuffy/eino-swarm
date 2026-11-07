@@ -85,6 +85,7 @@ type settingsView struct {
 	Models struct {
 		Default       string         `json:"default"`
 		DefaultSource string         `json:"default_source"`
+		AccountModel  string         `json:"account_model,omitempty"`
 		Providers     []providerView `json:"providers"`
 	} `json:"models"`
 	Swarm       config.SwarmConfig       `json:"swarm"`
@@ -129,6 +130,7 @@ func toSettingsView(cfg *config.Config) settingsView {
 	v.Clients = cfg.Clients
 	v.Models.Default = cfg.Models.Default
 	v.Models.DefaultSource = cfg.Models.DefaultSource
+	v.Models.AccountModel = cfg.Models.AccountModel
 	for _, p := range cfg.Models.Providers {
 		catalog := p.Catalog
 		if catalog == nil {
@@ -194,7 +196,9 @@ type putSettingsRequest struct {
 		// Absent keeps the stored source: the model list is saved from many
 		// places and most of them do not know the field.
 		DefaultSource *string `json:"default_source"`
-		Providers     []struct {
+		// Absent keeps the stored conversation model. Empty clears it.
+		AccountModel *string `json:"account_model"`
+		Providers    []struct {
 			APIMode                 *string           `json:"api_mode"`
 			BuiltinTools            *[]map[string]any `json:"builtin_tools"`
 			ID                      string            `json:"id"`
@@ -358,7 +362,11 @@ func (s *Server) putSettings(c *gin.Context) {
 			if req.Models.DefaultSource != nil {
 				source = *req.Models.DefaultSource
 			}
-			next.Models = config.ModelsConfig{Default: req.Models.Default, DefaultSource: source, Providers: providers}
+			accountModel := cfg.Models.AccountModel
+			if req.Models.AccountModel != nil {
+				accountModel = *req.Models.AccountModel
+			}
+			next.Models = config.ModelsConfig{Default: req.Models.Default, DefaultSource: source, AccountModel: accountModel, Providers: providers}
 		}
 
 		*cfg = next

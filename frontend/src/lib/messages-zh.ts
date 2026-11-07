@@ -714,12 +714,12 @@ export const zh: { [K in keyof typeof en]: string } = {
 
   "settings.searchEmbed.title": "会话搜索",
   "settings.searchEmbed.desc":
-    "关键字搜索一直开着。打开嵌入后，⌘K 还会按意思排会话，模型名你自己填。",
+    "关键字搜索一直开着。打开嵌入后，⌘K 还会按意思排会话。嵌入模型从服务器标成嵌入的列表里选。",
   "settings.searchEmbed.embedding": "语义搜索",
   "settings.searchEmbed.embeddingHint":
-    "默认关。打开后 ⌘K 除了字面匹配还会按意思排。需要你在某个接口上指定嵌入模型。",
+    "默认关。打开后 ⌘K 除了字面匹配还会按意思排。需要选一个服务器标成嵌入的模型。",
   "settings.searchEmbed.model": "嵌入模型",
-  "settings.searchEmbed.modelHint": "接口认的嵌入模型名。不会从聊天目录瞎猜。",
+  "settings.searchEmbed.modelHint": "只列出服务器标成嵌入的模型。",
   "settings.searchEmbed.modelAria": "嵌入模型",
   "settings.searchEmbed.badge": "搜索",
   "settings.searchEmbed.pick": "选择模型",

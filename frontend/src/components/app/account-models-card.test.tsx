@@ -87,12 +87,14 @@ describe("server models on the Models page", () => {
     render(<ModelsTab settings={settings()} onChange={onChange} />)
     const card = screen.getByTestId("account-models-card")
     expect(within(card).getByText("2 models available · signed in as Account Name")).toBeTruthy()
-    const names = within(screen.getByRole("list", { name: "Models from the server" })).getAllByRole("listitem")
-    // The server's models only: the own provider's model must not show here.
-    expect(names.map((n) => n.textContent)).toEqual(["server-a", "server-b"])
+    expect(within(card).queryByText("server-a")).toBeNull()
     expect(within(card).queryByRole("button", { name: "Sign in to the official server" })).toBeNull()
 
     const server = screen.getByTestId("server-default-row")
+    fireEvent.click(within(server).getByRole("button", { name: "Server model details" }))
+    const names = within(screen.getByRole("list", { name: "Models from the server" })).getAllByRole("listitem")
+    // The server's conversation models only: the own provider's model stays on its own row.
+    expect(names.map((n) => n.textContent)).toEqual(["server-a", "server-b"])
     expect(within(server).getByText("The server's models")).toBeTruthy()
     expect(within(server).getByText("default")).toBeTruthy()
     const endpoint = screen.getByRole("button", { name: "Endpoint details" }).parentElement
@@ -104,6 +106,37 @@ describe("server models on the Models page", () => {
     expect(onChange.mock.calls[0][0].models.default_source).toBe("provider")
     // Everything else in the models block survives the choice.
     expect(onChange.mock.calls[0][0].models.providers).toHaveLength(1)
+  })
+
+  it("counts models by type and lets the server row pick the conversation default", () => {
+    fake.status = signedIn
+    useApp.setState({
+      meta: meta({
+        state: "ready", models: 4, username: "account", source_id: "gateway:x",
+        kinds: { chat: 1, unclassified: 1, embedding: 1, ocr: 1, decisions: 0, other: 0, embedding_models: ["embed-a"] },
+      }),
+      models: [
+        row("gateway:x", "server-a", "account"),
+        row("gateway:x", "server-b", "account"),
+        row("default", "alpha", "provider"),
+      ],
+    })
+    const onChange = vi.fn()
+    render(<ModelsTab settings={settings()} onChange={onChange} />)
+    const card = screen.getByTestId("account-models-card")
+    expect(within(card).getByText(/Chat 1/)).toBeTruthy()
+    expect(within(card).getByText(/Unclassified 1/)).toBeTruthy()
+    expect(within(card).getByText(/Embedding 1/)).toBeTruthy()
+    expect(within(card).getByText(/OCR 1/)).toBeTruthy()
+    expect(within(card).queryByText("server-a")).toBeNull()
+    expect(within(card).queryByText("embed-a")).toBeNull()
+
+    const server = screen.getByTestId("server-default-row")
+    expect(within(server).getByText("server-a")).toBeTruthy()
+    fireEvent.click(within(server).getByRole("button", { name: "Server model details" }))
+    fireEvent.click(within(server).getByRole("button", { name: "server-b" }))
+    expect(onChange.mock.calls[0][0].models.account_model).toBe("server-b")
+    expect(onChange.mock.calls[0][0].models.default_source).toBe("account")
   })
 
   it("lets the server row take the default back from an own provider", () => {

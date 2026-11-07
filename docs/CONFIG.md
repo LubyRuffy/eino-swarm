@@ -316,11 +316,12 @@ Signing in to the official server (Settings → Models, the first-run welcome, o
 Settings → Phone) gives this app the account's models without any provider row.
 They are a runtime projection: fetched from the server after sign-in, kept in
 memory, and **never written to `config.yaml`**. The account credential stays in
-Go (the private remote credential); the UI sees only counts and state.
+Go (the private remote credential); the UI sees counts, classification and state.
 
 | key | default | meaning |
 |---|---|---|
-| `default_source` | `account` for a new setup, `provider` for an existing one | `account` or `provider`: whose models a new conversation starts on when both exist. `account` falls back to `models.default` while the account has no ready models. A file or first run (`OPENAI_*`) that already has a working default provider migrates to `provider`, so an upgrade changes nothing for its owner. Absent from a settings save keeps the stored value; junk is rejected. |
+| `default_source` | `account` for a new setup, `provider` for an existing one | `account` or `provider`: whose models a new conversation starts on when both exist. `account` falls back to `models.default` while the account has no conversation model. A file or first run (`OPENAI_*`) that already has a working default provider migrates to `provider`, so an upgrade changes nothing for its owner. Absent from a settings save keeps the stored value; junk is rejected. |
+| `account_model` | empty | the server conversation model a new chat uses when the source is `account`. Empty uses the first `chat` or unclassified name. A saved name that is no longer in that list is ignored. The name is not the `gateway:` id and is not inferred from the catalog. Absent from a settings save keeps the stored value; longer than 256 bytes is rejected. |
 
 Provider ids starting with `gateway:` are reserved for the projection and are
 rejected in `models.providers`. A conversation that stored such an id keeps it:
