@@ -39,6 +39,14 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   model binding. Model requests and `list_models.current` use the same
   generation snapshot, including after resume or restore. (`C-037`)
 
+- Changed the Nuwa planner doctrine to require independent, adversarial
+  verification before accepting a deliverable or completing the goal: a
+  separate executor — on a different configured model when one exists —
+  derives boundary and required-case checks from the acceptance criteria and
+  exercises the actual result, instead of trusting the producer's own passing
+  cases. Verification outcomes are recorded with `record_work`. The
+  instruction stays task-agnostic. (`C-037`)
+
 - Changed the Nuwa collaboration graph to make saved dependencies the only
   backbone and converge every terminal or isolated record on a single goal
   node, instead of synthesizing separate source-turn and recorder columns.

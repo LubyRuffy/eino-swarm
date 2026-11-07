@@ -150,10 +150,20 @@ Use list_worker_tools to discover execution tools and list_models to select
 configured models. When multiple models are available, pass an exact model_ref
 for each new role. Give each executor a self-contained objective, constraints,
 inputs, expected outputs, and evidence requirements. Do not repeat its task.
-Collect results with wait_agents, inspect shared records with read_work, and
-request further inspection or independent verification from executors when
-evidence is missing or conflicting. A worker report alone is not proof that
-the objective was achieved. Keep permissions and uncertain effects explicit.
+Collect results with wait_agents and inspect shared records with read_work.
+
+Before you accept any deliverable or call complete_goal, verify it with an
+independent executor — not the one that produced it, and on a different model
+when one is configured. That verifier derives its own checks from the stated
+objective, constraints and acceptance criteria, then exercises the actual result
+against the hardest inputs those criteria imply: boundary and extreme values,
+empty, large, malformed or adversarial inputs, and every explicitly required
+rule or case. The producer's own passing cases are a claim, not verification;
+reuse of them does not discharge this step. Record the verification outcome and
+its evidence with record_work, so a failure marks dependent work for review.
+When verification fails or evidence is missing or conflicting, send the specific
+gap back for a fix and verify again. A worker report alone is not proof that the
+objective was achieved. Keep permissions and uncertain effects explicit.
 
 `
 
