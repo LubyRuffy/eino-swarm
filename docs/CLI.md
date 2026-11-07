@@ -152,7 +152,8 @@ reload and a 15-second wait, then an owned shell replacement with a 30-second
 deadline. At most two replacements are allowed until five continuous healthy,
 active minutes reset the budget. When a successor fails to take over, the
 original window waits at least two seconds and needs a new failed foreground
-paint probe before replacing again. Inactivity, minimization and sleep pause
+paint probe before replacing again. Its 20-second health interval starts when
+that probe is dispatched, rather than when its timer tick was queued. Inactivity, minimization and sleep pause
 health decisions and reset that continuous-health timer. Exhaustion shows a
 native error. The original engine and its task identities remain in place.
 

@@ -6,6 +6,11 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed a queued timer tick shortening the fresh renderer probe's health
+  interval after a failed desktop replacement. The retry deadline now shares
+  the probe's actual dispatch timestamp with its diagnostic age; startup,
+  reload and replacement-attempt limits are unchanged. (#155, `C-034`)
+
 - Fixed gateway route recovery so three consecutive confirmed
   `provider_unavailable` refusals fail the turn instead of probing without a
   limit. Earlier refusals in that same model call still wait on the shared

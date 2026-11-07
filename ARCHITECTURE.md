@@ -463,7 +463,9 @@ engine, turn and worker identities; it cannot perform engine handoff or restart
 task work. Sleep/focus changes reset observation grace, not the failure budget.
 If a successor fails while an attempt remains, the original window resumes
 probing after the retry delay with fresh observation grace. Only a new failed
-foreground probe can justify the next replacement. Activity changes discard
+foreground probe can justify the next replacement. That probe's health deadline
+and diagnostic age start at its actual dispatch, so a queued tick cannot shorten
+the interval. Startup grace and the reload deadline remain fixed. Activity changes discard
 stale probe evidence, and ticks accumulated during launch cannot spend an
 attempt. A final failure ends recovery and shows the native error once.
 Normal exit does not restart the shell. Local diagnostic journals are bounded;

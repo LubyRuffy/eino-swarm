@@ -114,6 +114,8 @@ A successor waiting for its first paint sends bounded `probe_failed` records
 for unresolved probes during the existing wait. These use the successor's own
 PID and generation in the shared journal. A retry from the original window
 reports the new probe's boundary as its `replacing` reason.
+That retry probe's health deadline shares its dispatch timestamp with
+`duration_ms`; a queued timer delivery cannot shorten the health interval.
 Replacement errors distinguish `parent prelaunch`, `successor attach` and
 `post-ready precommit`. An unreachable lease retains its error category and
 reports only `transport` / `status` / `read` / `decode`, HTTP status and elapsed
