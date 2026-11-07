@@ -16,7 +16,7 @@ import { api } from "@/lib/api"
 import { accountModelRows, effectiveAccountModel, serverStartsConversations } from "@/lib/account-models"
 import { chromeTypeClass } from "@/lib/chrome-type"
 import { firstByteTimeoutSettingsKey } from "@/lib/first-byte-timeout"
-import { mergeModelContext } from "@/lib/usage"
+import { formatTokens, mergeModelContext } from "@/lib/usage"
 import type { ModelInfo, Settings } from "@/lib/types"
 import type { MessageKey } from "@/lib/i18n"
 import type { ProviderToolsDrafts } from "@/lib/provider-tools"
@@ -360,10 +360,16 @@ function ServerDefaultRow({
                   <button
                     type="button"
                     aria-pressed={selected}
+                    aria-label={row.model}
                     className="rounded-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                     onClick={() => onModel(row.model)}
                   >
-                    <Badge variant={selected ? "success" : "outline"}>{row.label || row.model}</Badge>
+                    <Badge variant={selected ? "success" : "outline"}>
+                      <span>{row.label || row.model}</span>
+                      {row.context_window ? (
+                        <span className="font-normal opacity-70">{formatTokens(row.context_window)}</span>
+                      ) : null}
+                    </Badge>
                   </button>
                 </li>
               )

@@ -116,7 +116,7 @@ describe("server models on the Models page", () => {
         kinds: { chat: 1, unclassified: 1, embedding: 1, ocr: 1, decisions: 0, other: 0, embedding_models: ["embed-a"] },
       }),
       models: [
-        row("gateway:x", "server-a", "account"),
+        { ...row("gateway:x", "server-a", "account"), context_window: 1048576 },
         row("gateway:x", "server-b", "account"),
         row("default", "alpha", "provider"),
       ],
@@ -134,6 +134,7 @@ describe("server models on the Models page", () => {
     const server = screen.getByTestId("server-default-row")
     expect(within(server).getByText("server-a")).toBeTruthy()
     fireEvent.click(within(server).getByRole("button", { name: "Server model details" }))
+    expect(within(server).getByText("1M")).toBeTruthy()
     fireEvent.click(within(server).getByRole("button", { name: "server-b" }))
     expect(onChange.mock.calls[0][0].models.account_model).toBe("server-b")
     expect(onChange.mock.calls[0][0].models.default_source).toBe("account")

@@ -30,7 +30,8 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 - Settings → Models counts the signed-in server catalog by `model_type`,
   the embedding picker lists only models classified `embedding`, and the
   server row in “your own model services” shows the conversation models and
-  stores the chosen default as `models.account_model`. The conversation
+  stores the chosen default as `models.account_model`. Each of those models
+  shows the context length the catalog reported. The conversation
   picker still keeps `chat` and unclassified rows. A catalog without
   `model_type` stays unchanged. (`F-171`, `C-040`)
 
