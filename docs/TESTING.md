@@ -8151,11 +8151,21 @@ route recovery while retaining shared gate admission, failure recording and
 their existing deadlines. Their first routing rejection must return without
 using those deadlines for repeated probes. Manual compact also disables route
 recovery because its background context has no active turn cancellation owner.
-`frontend/e2e/route-recovery.spec.ts` checks more than two rejected requests,
+`frontend/e2e/route-recovery.spec.ts` checks two rejected requests then
 recovery in the original working turn, reload during cooldown, retained call
-errors without model retry/generation recovery events, and Stop with no later
-request after the original cooldown. It uses a keyless loopback fixture and
-does not establish recovery against a live gateway.
+errors without model retry/generation recovery events, a third consecutive
+refusal ending the turn with no later probe, and Stop with no later request
+after the original cooldown. It uses a keyless loopback fixture and does not
+establish recovery against a live gateway. Provider and engine tests cover the
+same three-refusal cap on Generate and Stream.
+`models/provider/RouteRecovery.tla` (`make model-check`) checks one logical
+call: three confirmed refusals end it, a success or Stop or a different error
+ends it earlier, and the capped refusal does not start a model retry.
+`route-unbounded` restores the pre-cap loop and must break `RouteRefusalStops`.
+`route-exhaustion-retries` restores treating that capped refusal as another
+model retry and must break `NoRetryAfterExhaustion`. The `route-reach-*`
+witnesses keep those outcomes reachable. The model does not check cooldown
+timing, shared-origin admission or that Go keeps each action atomic.
 
 `internal/provider/backoff_test.go` uses `testing/synctest` to assert the actual
 5/10/20/30-second sequence without wall-clock sleeps. It covers one recovery

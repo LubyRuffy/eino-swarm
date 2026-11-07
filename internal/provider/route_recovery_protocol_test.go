@@ -37,7 +37,7 @@ func TestResponsesRouteRecoveryRetainsItsOriginalRequestAndSuccessfulResponse(t 
 				if r.URL.Path != "/v1/responses" || body.Model != "route-model" || body.Stream != streaming || body.MaxOutputTokens != 321 {
 					t.Errorf("recovery changed request protocol/options: path=%s body=%+v", r.URL.Path, body)
 				}
-				if requests.Add(1) <= 4 {
+				if requests.Add(1) <= 2 {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusServiceUnavailable)
 					_, _ = io.WriteString(w, routeUnavailableJSON)
@@ -68,7 +68,7 @@ func TestResponsesRouteRecoveryRetainsItsOriginalRequestAndSuccessfulResponse(t 
 			done := make(chan protocolRouteResult, 1)
 			go func() { done <- callProtocolRoute(ctx, build("manager", "response-manager"), streaming) }()
 			failedCalls := 0
-			for attempt, delay := range []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second, 30 * time.Second} {
+			for attempt, delay := range []time.Duration{5 * time.Second, 10 * time.Second} {
 				for {
 					record := nextProtocolRouteRecord(t, records)
 					if record.Backoff == nil {
@@ -89,7 +89,7 @@ func TestResponsesRouteRecoveryRetainsItsOriginalRequestAndSuccessfulResponse(t 
 			}
 			select {
 			case result := <-done:
-				if result.err != nil || result.text != "ready" || requests.Load() != 5 || failedCalls != 4 || pool.RouteUnavailable("") {
+				if result.err != nil || result.text != "ready" || requests.Load() != 3 || failedCalls != 2 || pool.RouteUnavailable("") {
 					t.Fatalf("Responses lost successful probe or re-sent it: result=%+v requests=%d failed=%d", result, requests.Load(), failedCalls)
 				}
 			case <-time.After(3 * time.Second):

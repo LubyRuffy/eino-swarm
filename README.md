@@ -562,8 +562,9 @@ workflow or real-model efficiency improvement is implied by enabling it.
   provider's first-byte budget waits for route recovery in the same model call,
   without spending the turn's two model-error retries or marking its generation
   interrupted. Shared probes keep the 30-second cap and their successful response
-  continues that call directly. This waiting has no additional total deadline;
-  Stop, explicit caller deadlines and worker watchdogs remain effective. Other
+  continues that call directly. Three consecutive refusals fail the turn
+  instead of probing without a limit. Stop, explicit caller deadlines and
+  worker watchdogs remain effective. Other
   errors and accepted requests that hang retain their existing bounded retries.
   Post-turn session briefing and automatic memory review are skipped while that
   origin still has the route failure, without claiming notes were saved. These

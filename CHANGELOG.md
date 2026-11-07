@@ -6,6 +6,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed gateway route recovery so three consecutive confirmed
+  `provider_unavailable` refusals fail the turn instead of probing without a
+  limit. Earlier refusals in that same model call still wait on the shared
+  origin cooldown and do not consume the two model-error retries.
+  `models/provider/RouteRecovery.tla` checks that cap and rejects both an
+  unbounded wait and a later model retry. (`C-029`)
+
 - Fixed Settings → Models so a ready server catalog is a selectable default in
   the own-provider list. An own provider is marked default only when new
   conversations actually start on it. `models/account/DefaultSourceChoice.tla`

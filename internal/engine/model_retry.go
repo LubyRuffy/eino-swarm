@@ -90,6 +90,12 @@ func modelFailureClass(err error) string {
 	if err == nil {
 		return ""
 	}
+	// The route-refusal budget already probed this call. A 503 inside it must
+	// not buy another pair of manager retries or another goal continuation.
+	var exhausted *provider.RouteRecoveryExhaustedError
+	if errors.As(err, &exhausted) {
+		return ""
+	}
 	// Admission has its own bounded correction. Its diagnostic provider cause
 	// must not grant a fresh manager/goal retry budget after that limit.
 	var admission *scheduleAnswerError

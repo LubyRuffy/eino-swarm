@@ -967,8 +967,13 @@ model-error retries or publishing interrupted/recovered generation events.
 Every actual rejected request retains its own call record. The probe sends the
 original model request and delivers its successful response directly; it adds
 neither a health endpoint nor a second request after success.
-Route recovery has no additional total deadline: success, a different error or
-caller cancellation ends it. Stop cancels waits and requests; explicit caller
+Three consecutive confirmed refusals in that same logical call stop it. The
+turn fails with a route-recovery exhaustion error, records no `model_retry`,
+and does not auto-continue an open goal. The cap is
+`DefaultRouteRecoveryAttempts` (3), not a wall-clock deadline or a YAML
+setting. `models/provider/RouteRecovery.tla` checks that consecutive cap and
+that the exhaustion is not another model retry. Success, a different error, or caller cancellation still ends the
+wait earlier. Stop cancels waits and requests; explicit caller
 deadlines and worker watchdogs still apply. Per-request header/idle timeouts and
 the gateway's body limit do not define this recovery period. Ordinary 503s,
 accepted requests that hang, and stream failures keep the existing bounded

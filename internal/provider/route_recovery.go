@@ -4,14 +4,32 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"sync/atomic"
 	"time"
 
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )
+
+// RouteRecoveryExhaustedError ends one logical model call after the confirmed
+// route-refusal budget. The turn must stop; this is not another model retry.
+type RouteRecoveryExhaustedError struct {
+	Attempts int
+	Err      error
+}
+
+func (e *RouteRecoveryExhaustedError) Error() string {
+	if e == nil || e.Err == nil {
+		return "no healthy provider can serve this model"
+	}
+	return fmt.Sprintf("no healthy provider after %d consecutive route refusals: %v", e.Attempts, e.Err)
+}
+
+func (e *RouteRecoveryExhaustedError) Unwrap() error { return e.Err }
 
 // A routing refusal is observed at the HTTP boundary, not inferred from error
 // prose or a duration that includes origin cooldown. Keep only this fixed,
@@ -87,27 +105,37 @@ func observeRouteResponse(req *http.Request, resp *http.Response, started time.T
 	}
 }
 
-// There is no additional recovery deadline: explicit Stop or the caller's
-// existing context ends this wait. Request header/idle budgets remain per send.
+// Stop, the caller's context, a different error, or the consecutive refusal
+// budget ends this wait. Request header/idle budgets remain per send.
 // A probe that returns any other failure goes back to normal bounded retries.
 func (r *recordingModel) retryRoute(ctx context.Context, err error) bool {
 	return r.gate != nil && ctx.Value(isolatedRecoveryKey{}) != true && ctx.Value(routeRecoveryDisabledKey{}) != true && ctx.Err() == nil && isRouteUnavailable(err)
 }
 
 func (r *recordingModel) generate(ctx context.Context, in []*schema.Message, opts []model.Option) (*schema.Message, error) {
+	refusals := 0
 	for {
 		out, err := r.generateOnce(ctx, in, opts)
 		if !r.retryRoute(ctx, err) {
 			return out, err
 		}
+		refusals++
+		if refusals >= config.DefaultRouteRecoveryAttempts {
+			return out, &RouteRecoveryExhaustedError{Attempts: refusals, Err: err}
+		}
 	}
 }
 
 func (r *recordingModel) stream(ctx context.Context, in []*schema.Message, opts []model.Option) (*schema.StreamReader[*schema.Message], error) {
+	refusals := 0
 	for {
 		out, err := r.streamOnce(ctx, in, opts)
 		if !r.retryRoute(ctx, err) {
 			return out, err
+		}
+		refusals++
+		if refusals >= config.DefaultRouteRecoveryAttempts {
+			return nil, &RouteRecoveryExhaustedError{Attempts: refusals, Err: err}
 		}
 	}
 }

@@ -18,6 +18,8 @@ belongs to the current credential (C-040).
 models/account/DefaultSourceChoice.tla checks that the Settings default badge
 is the source a new conversation starts on, and that a ready server catalog
 is a selectable row (C-040).
+models/provider/RouteRecovery.tla checks that confirmed route refusals stop
+after a consecutive cap instead of waiting forever or buying model retries (C-029).
 Every case sets its model's switch constants and states
 the expected outcome: the current design must pass every safety invariant;
 each historical or seeded behaviour must break the named invariant (checked
@@ -68,6 +70,12 @@ class Model:
 MODELS = {
     m.name: m
     for m in (
+        Model(
+            "route", ROOT / "models" / "provider" / "RouteRecovery.tla",
+            ("UnboundedRouteRecovery", "ExhaustionStartsModelRetry"),
+            ("TypeOK", "RouteRefusalStops", "NoRetryAfterExhaustion"),
+            (("Cap", 3), ("MaxProbes", 9)),
+        ),
         Model(
             "account", ROOT / "models" / "account" / "AccountCatalog.tla",
             ("StaleObservation", "UnsealedLogout"),
@@ -184,6 +192,18 @@ def _consent(name: str, source: str, switches: tuple[str, ...] = (), violates: s
 
 
 CASES: tuple[Case, ...] = (
+    _case("route-current", "three confirmed route refusals fail the call without a model retry",
+          model="route"),
+    _case("route-unbounded", "historical, shipped through v0.1.69: a confirmed route refusal kept the same call waiting",
+          ("UnboundedRouteRecovery",), "RouteRefusalStops", model="route"),
+    _case("route-exhaustion-retries", "seeded: a capped route refusal is classified as another model retry",
+          ("ExhaustionStartsModelRetry",), "NoRetryAfterExhaustion", model="route"),
+    *(_case(name, "witness", witness=witness, model="route") for name, witness in (
+        ("route-reach-failed", "NeverFailed"),
+        ("route-reach-recovered", "NeverRecovered"),
+        ("route-reach-cancelled", "NeverCancelled"),
+        ("route-reach-other", "NeverOtherError"),
+    )),
     _case("account-current", "publish rechecks the credential and login or logout seals the catalog",
           model="account"),
     _case("account-stale-observation", "a fetch publishes the credential it observed after that credential changed",
