@@ -5,7 +5,7 @@ test("sign-in leads, and scan and paste use the same URI from Other ways", async
 }) => {
   await page.goto("/")
   await expect(page.getByRole("heading", { name: "登录 zwai 账号" })).toBeVisible()
-  await expect(page.getByRole("button", { name: "使用 NOSEC 登录" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "登录" })).toBeVisible()
   await expect(page.getByRole("button", { name: "扫描二维码" })).toHaveCount(0)
   await expect(page.getByLabel("配对 URI")).toHaveCount(0)
   await page.getByRole("button", { name: "其他方式", exact: true }).click()

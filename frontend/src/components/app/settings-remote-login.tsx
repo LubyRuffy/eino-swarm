@@ -42,7 +42,7 @@ export function RemoteLoginSection({
   busy: boolean
   onStart: (newDevice: boolean) => void
   onCancel: () => void
-  /** Explicit account entry may enable NOSEC in the same server-side action. */
+  /** Explicit account entry may enable account mode in the same server-side action. */
   accountEntry?: boolean
 }) {
   const t = useT()
@@ -90,7 +90,7 @@ export function RemoteLoginSection({
               {t("settings.remote.login.start")}
             </Button>
           ) : null}
-          {(status?.auth_mode === "nosec" && status.has_token) || state === "error" || state === "access_denied" ? (
+          {(status?.auth_mode === "account" && status.has_token) || state === "error" || state === "access_denied" ? (
             <Button type="button" variant="outline" size="sm" disabled={!ready || active} onClick={() => setConfirm(true)}>
               {t("settings.remote.login.reconnect")}
             </Button>

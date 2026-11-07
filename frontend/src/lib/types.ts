@@ -659,7 +659,7 @@ export interface SearchResult {
 export interface RemoteSettings {
   enabled: boolean
   hub_url: string
-  auth_mode?: "legacy" | "nosec"
+  auth_mode?: "independent" | "account"
   thread_limit: number
   summary_chars: number
   open_turns: number
@@ -675,7 +675,7 @@ export function defaultRemoteSettings(
   return {
     enabled: remote?.enabled ?? false,
     hub_url: remote?.hub_url ?? "",
-    auth_mode: remote?.auth_mode ?? "legacy",
+    auth_mode: remote?.auth_mode ?? "independent",
     thread_limit: remote?.thread_limit && remote.thread_limit > 0 ? remote.thread_limit : 5,
     summary_chars:
       remote?.summary_chars && remote.summary_chars > 0 ? remote.summary_chars : 280,
@@ -696,7 +696,7 @@ export interface RemoteStatus {
   awake?: boolean
   fingerprint?: string
   error?: string
-  auth_mode?: "legacy" | "nosec"
+  auth_mode?: "independent" | "account"
   login_available?: boolean
   login?: RemoteLoginStatus
 }

@@ -4,7 +4,7 @@ import type { RemoteSettings, RemoteStatus } from "../src/lib/types"
 let original: RemoteSettings
 const hub = "https://hub.example"
 const initial: RemoteStatus = {
-  enabled: true, hub_url: hub, auth_mode: "nosec", online: false,
+  enabled: true, hub_url: hub, auth_mode: "account", online: false,
   has_token: false, login_available: true, login: { state: "signed_out" },
 }
 async function openPhone(page: Page) {
@@ -21,11 +21,11 @@ async function configure(request: APIRequestContext, remote: RemoteSettings) {
 test.beforeEach(async ({ request }) => {
   const { settings } = await (await request.get("/api/settings")).json()
   original = settings.remote
-  await configure(request, { ...original, enabled: true, hub_url: hub, auth_mode: "nosec" })
+  await configure(request, { ...original, enabled: true, hub_url: hub, auth_mode: "account" })
 })
 test.afterEach(async ({ request }) => { await configure(request, original) })
 
-test("NOSEC device sign-in distinguishes review, authorization and a live PC", async ({ page }) => {
+test("Device sign-in distinguishes review, authorization and a live PC", async ({ page }) => {
   let current = { ...initial }
   const starts: unknown[] = []
   let cancelled = 0
@@ -48,7 +48,7 @@ test("NOSEC device sign-in distinguishes review, authorization and a live PC", a
   })
   const dialog = await openPhone(page)
   await expect(dialog.getByLabel("Connection sign-in")).toHaveCount(0)
-  const login = dialog.getByRole("button", { name: "Sign in with NOSEC" })
+  const login = dialog.getByRole("button", { name: "Sign in" })
   const qr = dialog.getByRole("button", { name: "Show pairing QR" })
   await expect(login).toBeEnabled()
   expect(starts).toHaveLength(0)
@@ -113,14 +113,14 @@ test("new-device recovery confirms intent and protects edits until login start s
   const saved = page.waitForResponse((response) => response.url().endsWith("/api/settings") && response.request().method() === "PUT")
   await dialog.getByLabel("Hub URL").fill(current.hub_url)
   await saved
-  await expect(dialog.getByRole("button", { name: "Sign in with NOSEC" })).toBeEnabled()
+  await expect(dialog.getByRole("button", { name: "Sign in" })).toBeEnabled()
   await expect(dialog.getByText("OLD1-0000-0000-0000", { exact: true })).toHaveCount(0)
   expect(starts).toHaveLength(1)
 })
 
-test("NOSEC saved configuration uses real local status and legacy remains an explicit advanced choice", async ({ page, request }) => {
+test("Account saved configuration uses real local status and independent mode remains an explicit advanced choice", async ({ page, request }) => {
   const status = await (await request.get("/api/remote/status")).json()
-  expect(status).toMatchObject({ enabled: true, hub_url: hub, auth_mode: "nosec", online: false, login: { state: "signed_out" } })
+  expect(status).toMatchObject({ enabled: true, hub_url: hub, auth_mode: "account", online: false, login: { state: "signed_out" } })
   expect(status).not.toHaveProperty("device_code")
   expect(status).not.toHaveProperty("token")
   const dialog = await openPhone(page)
@@ -130,7 +130,7 @@ test("NOSEC saved configuration uses real local status and legacy remains an exp
   await dialog.getByLabel("Accept phone pairing").click()
   await expect.poll(async () => (await (await request.get("/api/remote/status")).json()).enabled).toBe(false)
   await dialog.getByLabel("Connection sign-in").click()
-  await page.getByRole("option", { name: "Independent hub (legacy)" }).click()
-  await expect(dialog.getByRole("button", { name: "Sign in with NOSEC" })).toBeVisible()
-  await expect.poll(async () => (await (await request.get("/api/remote/status")).json()).auth_mode).toBe("legacy")
+  await page.getByRole("option", { name: "Independent hub" }).click()
+  await expect(dialog.getByRole("button", { name: "Sign in" })).toBeVisible()
+  await expect.poll(async () => (await (await request.get("/api/remote/status")).json()).auth_mode).toBe("independent")
 })

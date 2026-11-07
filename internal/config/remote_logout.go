@@ -17,7 +17,7 @@ func (c *Config) ClearRemoteAccountTokens(origin, publicKey string, tokens []str
 	mu.Lock()
 	defer mu.Unlock()
 	current, err := RemoteOrigin(c.Remote.HubURL)
-	if err != nil || current != origin || c.Remote.AuthMode != RemoteAuthNOSEC {
+	if err != nil || current != origin || c.Remote.AuthMode != RemoteAuthAccount {
 		return errors.New("remote: account configuration changed")
 	}
 	credential, err := c.ReadRemoteCredential()

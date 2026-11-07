@@ -5,7 +5,7 @@ import { freshConversation, send, waitForIdle } from "./session"
 
 const hub = "https://account.example"
 const anonymous: RemoteStatus = {
-  enabled: false, hub_url: hub, auth_mode: "legacy", online: false,
+  enabled: false, hub_url: hub, auth_mode: "independent", online: false,
   has_token: false, login_available: true,
 }
 
@@ -34,7 +34,7 @@ async function fixture(page: Page, request: APIRequestContext, initial = anonymo
       current = { ...current, login: { state: "cancelled" } }
     } else {
       starts.push(route.request().postDataJSON())
-      current = { ...current, enabled: true, auth_mode: "nosec", login: {
+      current = { ...current, enabled: true, auth_mode: "account", login: {
         state: "authorization_pending", user_code: "ABCD-1234-EF56-7890", host_fp: "1122334455667788",
       } }
     }
@@ -72,7 +72,7 @@ test("account entry stays in the rail, preserves local use and restores keyboard
   await expect(trigger).toBeVisible()
   await trigger.focus()
   await page.keyboard.press("Enter")
-  await expect(page.getByRole("menuitem", { name: "Sign in with NOSEC", exact: true })).toBeVisible()
+  await expect(page.getByRole("menuitem", { name: "Sign in", exact: true })).toBeVisible()
   await page.keyboard.press("Escape")
   await expect(trigger).toBeFocused()
   expect(account.starts).toEqual([])
@@ -91,11 +91,11 @@ test("account entry stays in the rail, preserves local use and restores keyboard
   expect(account.logouts).toEqual([])
 })
 
-test("sidebar NOSEC login shows review and account identity and shares Phone status", async ({ page, request }, testInfo) => {
+test("sidebar account login shows review and account identity and shares Phone status", async ({ page, request }, testInfo) => {
   const account = await fixture(page, request)
   await page.goto("/")
   const menu = await accountMenu(page)
-  await menu.getByRole("menuitem", { name: "Sign in with NOSEC", exact: true }).click()
+  await menu.getByRole("menuitem", { name: "Sign in", exact: true }).click()
   const panel = page.getByTestId("desktop-account-dialog")
   await expect(panel).toBeVisible()
   await expect(panel.getByText("ABCD-1234-EF56-7890", { exact: true })).toBeVisible()
@@ -142,7 +142,7 @@ test("sidebar NOSEC login shows review and account identity and shares Phone sta
 })
 
 test("logout failure retains identity and successful logout keeps local conversations", async ({ page, request }) => {
-  const account = await fixture(page, request, { ...anonymous, enabled: true, auth_mode: "nosec", has_token: true, online: true, login: { state: "authorized", username: "fixture-account" } })
+  const account = await fixture(page, request, { ...anonymous, enabled: true, auth_mode: "account", has_token: true, online: true, login: { state: "authorized", username: "fixture-account" } })
   await freshConversation(page)
   await send(page, "Keep this local conversation while signing out of the server")
   await waitForIdle(page)
@@ -160,7 +160,7 @@ test("logout failure retains identity and successful logout keeps local conversa
   await expect(panel.getByText("Sign in to associate this PC with your account.", { exact: true })).toBeVisible()
   await panel.getByRole("button", { name: "Close", exact: true }).click()
   const signedOut = await accountMenu(page)
-  await expect(signedOut.getByRole("menuitem", { name: "Sign in with NOSEC", exact: true })).toBeVisible()
+  await expect(signedOut.getByRole("menuitem", { name: "Sign in", exact: true })).toBeVisible()
   await expect(signedOut.getByText("fixture-account", { exact: true })).toHaveCount(0)
   await page.keyboard.press("Escape")
   expect(account.logouts).toEqual([{}, {}])

@@ -38,7 +38,7 @@ describe("Gateway account authority", () => {
       expect(submitted.candidate_token).toMatch(/^agm_[a-f0-9]{64}$/)
       expect(submitted.code_challenge).toMatch(/^[A-Za-z0-9_-]{43}$/)
       expect(submitted.platform).toBe("ios")
-      return ok({ device_code: "D".repeat(43), user_code: code, interval: 5, expires_at: new Date(Date.now() + 600_000).toISOString(), verification_uri: origin + "/client/api/v1/auth/sso/nosec/start?mobile_code=" + code })
+      return ok({ device_code: "D".repeat(43), user_code: code, interval: 5, expires_at: new Date(Date.now() + 600_000).toISOString(), verification_uri: origin + "/client/api/v1/auth/sso/corporate/start?mobile_code=" + code })
     }) as typeof fetch
     const pending = await startGatewayLogin(origin, fetcher)
     expect(pending.verifier).toMatch(/^[A-Za-z0-9_-]{43}$/)
@@ -57,7 +57,7 @@ describe("Gateway account authority", () => {
 
   it("refuses a forged verification URL before opening a browser", async () => {
     const { Browser } = await import("@capacitor/browser")
-    for (const verification_uri of ["https://foreign.example.test/", origin + "/untrusted", origin + "/client/api/v1/auth/sso/nosec/start?mobile_code=wrong"]) {
+    for (const verification_uri of ["https://foreign.example.test/", origin + "/untrusted", origin + "/client/api/v1/auth/sso/corporate/start?mobile_code=wrong"]) {
       const fetcher = vi.fn(async () => ok({ device_code: "D".repeat(43), user_code: "abcd-1234-abcd-1234", interval: 5, expires_at: new Date(Date.now() + 600_000).toISOString(), verification_uri })) as typeof fetch
       await expect(startGatewayLogin(origin, fetcher)).rejects.toThrow()
     }

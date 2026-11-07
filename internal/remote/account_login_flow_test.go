@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-func TestNOSECModeNeverRegistersAnAnonymousHost(t *testing.T) {
+func TestAccountLoginModeNeverRegistersAnAnonymousHost(t *testing.T) {
 	var registrations atomic.Int32
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/pairlink/v1/hosts" {
@@ -25,7 +25,7 @@ func TestNOSECModeNeverRegistersAnAnonymousHost(t *testing.T) {
 	defer gateway.Close()
 	e := testEngine(t)
 	cfg := e.Config()
-	raw, _ := json.Marshal(map[string]any{"enabled": true, "hub_url": gateway.URL, "auth_mode": "nosec"})
+	raw, _ := json.Marshal(map[string]any{"enabled": true, "hub_url": gateway.URL, "auth_mode": "account"})
 	if err := json.Unmarshal(raw, &cfg.Remote); err != nil {
 		t.Fatal(err)
 	}
@@ -33,14 +33,14 @@ func TestNOSECModeNeverRegistersAnAnonymousHost(t *testing.T) {
 	defer host.Stop()
 	host.Start()
 	if registrations.Load() != 0 || cfg.HasHostToken() {
-		t.Fatal("NOSEC mode anonymously minted/registered a host before approved device authorization")
+		t.Fatal("account mode anonymously minted/registered a host before approved device authorization")
 	}
 	if host.Status().Online {
-		t.Fatal("unapproved NOSEC host became online")
+		t.Fatal("unapproved account host became online")
 	}
 }
 
-func TestNOSECDeviceAuthorizationUsesRealWireAndConnectsOnlyAfterApproval(t *testing.T) {
+func TestAccountLoginDeviceAuthorizationUsesRealWireAndConnectsOnlyAfterApproval(t *testing.T) {
 	memory := pstore.NewMemory()
 	relayHandler := relay.New(memory).Handler()
 	requests := make(chan loginStartRequest, 1)
@@ -62,7 +62,7 @@ func TestNOSECDeviceAuthorizationUsesRealWireAndConnectsOnlyAfterApproval(t *tes
 			}
 			requests <- active
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "ABCD-EFGH", VerificationURI: origin + desktopVerificationPath + "?desktop_code=ABCD-EFGH", ExpiresAt: time.Now().Add(9 * time.Minute), Interval: 5}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "ABCD-EFGH", VerificationURI: origin + desktopVerificationFixturePath + "?desktop_code=ABCD-EFGH", ExpiresAt: time.Now().Add(9 * time.Minute), Interval: 5}})
 		case desktopAuthPrefix + "poll":
 			var proof map[string]string
 			_ = json.NewDecoder(r.Body).Decode(&proof)
@@ -93,7 +93,7 @@ func TestNOSECDeviceAuthorizationUsesRealWireAndConnectsOnlyAfterApproval(t *tes
 	e := testEngine(t)
 	cfg := e.Config()
 	cfg.Remote.Enabled = true
-	cfg.Remote.AuthMode = "nosec"
+	cfg.Remote.AuthMode = "account"
 	cfg.Remote.HubURL = origin
 	host := New(e, cfg, nil)
 	host.loginWait = func(ctx context.Context, _ time.Duration) error {
@@ -130,7 +130,7 @@ func TestNOSECDeviceAuthorizationUsesRealWireAndConnectsOnlyAfterApproval(t *tes
 	for _, state := range []string{"authorization_pending", "account_pending", "account_rejected"} {
 		statuses <- state
 		polls <- struct{}{}
-		waitNOSEC(t, func() bool { return host.Status().Login.State == state })
+		waitAccountLogin(t, func() bool { return host.Status().Login.State == state })
 		if registrations.Load() != 0 || host.Status().Online || cfg.HasHostToken() {
 			t.Fatal("unapproved device acquired a relay credential")
 		}
@@ -150,7 +150,7 @@ func TestNOSECDeviceAuthorizationUsesRealWireAndConnectsOnlyAfterApproval(t *tes
 	}
 	statuses <- "authorized"
 	polls <- struct{}{}
-	waitNOSEC(t, func() bool { return host.Status().Online })
+	waitAccountLogin(t, func() bool { return host.Status().Online })
 	saved, err := cfg.ReadRemoteCredential()
 	if err != nil || !saved.Authorized || saved.Token != start.Candidate || saved.Origin != origin || saved.HostID != strings.Repeat("a", 32) {
 		t.Fatal("authorized receipt was not activated")
@@ -188,7 +188,7 @@ func TestNOSECDeviceAuthorizationUsesRealWireAndConnectsOnlyAfterApproval(t *tes
 		t.Fatal("authorization completion deadlocked with Stop")
 	}
 }
-func waitNOSEC(t *testing.T, predicate func() bool) {
+func waitAccountLogin(t *testing.T, predicate func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
@@ -197,5 +197,5 @@ func waitNOSEC(t *testing.T, predicate func() bool) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatal("NOSEC state transition timed out")
+	t.Fatal("account login state transition timed out")
 }

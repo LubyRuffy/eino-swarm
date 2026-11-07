@@ -17,7 +17,7 @@ import (
 	pstore "github.com/LubyRuffy/pairlink/store"
 )
 
-func TestNOSECRetryRecoversNewDeviceCandidateBeforeOldActiveCredential(t *testing.T) {
+func TestAccountLoginRetryRecoversNewDeviceCandidateBeforeOldActiveCredential(t *testing.T) {
 	requestCh := make(chan loginStartRequest, 1)
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req loginStartRequest
@@ -29,7 +29,7 @@ func TestNOSECRetryRecoversNewDeviceCandidateBeforeOldActiveCredential(t *testin
 	e := testEngine(t)
 	cfg := e.Config()
 	cfg.Remote.Enabled = true
-	cfg.Remote.AuthMode = "nosec"
+	cfg.Remote.AuthMode = "account"
 	cfg.Remote.HubURL = gateway.URL
 	oldToken := strings.Repeat("a", 64)
 	newToken := strings.Repeat("b", 64)
@@ -63,7 +63,7 @@ func TestNOSECRetryRecoversNewDeviceCandidateBeforeOldActiveCredential(t *testin
 	}
 }
 
-func TestNOSECUncertainCandidateCannotBeShadowedByAnotherNewDevice(t *testing.T) {
+func TestAccountLoginUncertainCandidateCannotBeShadowedByAnotherNewDevice(t *testing.T) {
 	var requests atomic.Int32
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
@@ -73,7 +73,7 @@ func TestNOSECUncertainCandidateCannotBeShadowedByAnotherNewDevice(t *testing.T)
 	e := testEngine(t)
 	cfg := e.Config()
 	cfg.Remote.Enabled = true
-	cfg.Remote.AuthMode = "nosec"
+	cfg.Remote.AuthMode = "account"
 	cfg.Remote.HubURL = gateway.URL
 	id, err := loadIdentity(cfg)
 	if err != nil {
@@ -94,7 +94,7 @@ func TestNOSECUncertainCandidateCannotBeShadowedByAnotherNewDevice(t *testing.T)
 	}
 }
 
-func TestNOSECSuccessCannotDeleteConcurrentRetryPrivateProof(t *testing.T) {
+func TestAccountLoginSuccessCannotDeleteConcurrentRetryPrivateProof(t *testing.T) {
 	memory := pstore.NewMemory()
 	relayHandler := relay.New(memory).Handler()
 	afterActivation := make(chan struct{})
@@ -114,7 +114,7 @@ func TestNOSECSuccessCannotDeleteConcurrentRetryPrivateProof(t *testing.T) {
 			currentMu.Unlock()
 			started <- starts.Add(1)
 			w.WriteHeader(201)
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "PUBLIC", VerificationURI: origin + desktopVerificationPath + "?desktop_code=PUBLIC", ExpiresAt: time.Now().Add(time.Minute), Interval: 5}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "PUBLIC", VerificationURI: origin + desktopVerificationFixturePath + "?desktop_code=PUBLIC", ExpiresAt: time.Now().Add(time.Minute), Interval: 5}})
 		case desktopAuthPrefix + "poll":
 			currentMu.Lock()
 			request := current
@@ -131,7 +131,7 @@ func TestNOSECSuccessCannotDeleteConcurrentRetryPrivateProof(t *testing.T) {
 	e := testEngine(t)
 	cfg := e.Config()
 	cfg.Remote.Enabled = true
-	cfg.Remote.AuthMode = "nosec"
+	cfg.Remote.AuthMode = "account"
 	cfg.Remote.HubURL = origin
 	host := New(e, cfg, nil)
 	defer host.Stop()
@@ -176,13 +176,13 @@ func TestNOSECSuccessCannotDeleteConcurrentRetryPrivateProof(t *testing.T) {
 		t.Fatal(err)
 	}
 	polls <- struct{}{}
-	waitNOSEC(t, func() bool { st := host.Status(); return st.Online || st.Login.State == "error" })
+	waitAccountLogin(t, func() bool { st := host.Status(); return st.Online || st.Login.State == "error" })
 	if !host.Status().Online {
 		t.Fatal("earlier success removed concurrent retry's reused private proof")
 	}
 }
 
-func TestNOSECRejectedCandidateBecomesUncertainBeforeRetryRequest(t *testing.T) {
+func TestAccountLoginRejectedCandidateBecomesUncertainBeforeRetryRequest(t *testing.T) {
 	var origin string
 	var requests atomic.Int32
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -191,14 +191,14 @@ func TestNOSECRejectedCandidateBecomesUncertainBeforeRetryRequest(t *testing.T) 
 			return
 		}
 		w.WriteHeader(201)
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "PUBLIC", VerificationURI: origin + desktopVerificationPath + "?desktop_code=PUBLIC", ExpiresAt: time.Now().Add(time.Minute), Interval: 5}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "PUBLIC", VerificationURI: origin + desktopVerificationFixturePath + "?desktop_code=PUBLIC", ExpiresAt: time.Now().Add(time.Minute), Interval: 5}})
 	}))
 	origin = gateway.URL
 	defer gateway.Close()
 	e := testEngine(t)
 	cfg := e.Config()
 	cfg.Remote.Enabled = true
-	cfg.Remote.AuthMode = "nosec"
+	cfg.Remote.AuthMode = "account"
 	cfg.Remote.HubURL = origin
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
@@ -210,7 +210,7 @@ func TestNOSECRejectedCandidateBecomesUncertainBeforeRetryRequest(t *testing.T) 
 	if err := host.StartLogin(open, false); err != nil {
 		t.Fatal(err)
 	}
-	waitNOSEC(t, func() bool { return host.Status().Login.ErrorCode == "device_conflict" })
+	waitAccountLogin(t, func() bool { return host.Status().Login.ErrorCode == "device_conflict" })
 	id, err := loadIdentity(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -227,7 +227,7 @@ func TestNOSECRejectedCandidateBecomesUncertainBeforeRetryRequest(t *testing.T) 
 	if err := host.StartLogin(open, false); err != nil {
 		t.Fatal(err)
 	}
-	waitNOSEC(t, func() bool { return host.Status().Login.State == "authorization_pending" })
+	waitAccountLogin(t, func() bool { return host.Status().Login.State == "authorization_pending" })
 	persisted, err = config.Load(cfg.DataDir())
 	if err != nil {
 		t.Fatal(err)
@@ -244,7 +244,7 @@ func TestNOSECRejectedCandidateBecomesUncertainBeforeRetryRequest(t *testing.T) 
 	}
 }
 
-func TestNOSECLateStartConflictCannotRejectReplacementFlowProof(t *testing.T) {
+func TestAccountLoginLateStartConflictCannotRejectReplacementFlowProof(t *testing.T) {
 	var origin string
 	var requests atomic.Int32
 	firstEntered := make(chan struct{})
@@ -257,7 +257,7 @@ func TestNOSECLateStartConflictCannotRejectReplacementFlowProof(t *testing.T) {
 			return
 		}
 		w.WriteHeader(201)
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "PUBLIC", VerificationURI: origin + desktopVerificationPath + "?desktop_code=PUBLIC", ExpiresAt: time.Now().Add(time.Minute), Interval: 5}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "PUBLIC", VerificationURI: origin + desktopVerificationFixturePath + "?desktop_code=PUBLIC", ExpiresAt: time.Now().Add(time.Minute), Interval: 5}})
 	}))
 	origin = gateway.URL
 	defer gateway.Close()
@@ -265,7 +265,7 @@ func TestNOSECLateStartConflictCannotRejectReplacementFlowProof(t *testing.T) {
 	e := testEngine(t)
 	cfg := e.Config()
 	cfg.Remote.Enabled = true
-	cfg.Remote.AuthMode = "nosec"
+	cfg.Remote.AuthMode = "account"
 	cfg.Remote.HubURL = origin
 	host := New(e, cfg, nil)
 	host.loginWait = func(ctx context.Context, _ time.Duration) error { <-ctx.Done(); return ctx.Err() }
@@ -282,7 +282,7 @@ func TestNOSECLateStartConflictCannotRejectReplacementFlowProof(t *testing.T) {
 	if err := host.StartLogin(open, false); err != nil {
 		t.Fatal(err)
 	}
-	waitNOSEC(t, func() bool { return host.Status().Login.State == "authorization_pending" })
+	waitAccountLogin(t, func() bool { return host.Status().Login.State == "authorization_pending" })
 	id, err := loadIdentity(cfg)
 	if err != nil {
 		t.Fatal(err)

@@ -703,7 +703,7 @@ end-to-end tests run on and the fastest way to see the UI work.
 ### Sign in on a phone or scan this PC
 
 Official clients have a default Gateway address. A phone with no computer yet
-opens on **Sign in to zwai**; choose **Sign in with NOSEC** there, with
+opens on **Sign in to zwai**; choose **Sign in** there, with
 no server address, API Key or Pairlink configuration. Scanning a QR code,
 pasting a pairing link and using your own model service sit under **Other
 ways**. Finish the browser confirmation. If this phone has no saved computer and
@@ -730,7 +730,7 @@ server** is available for a self-hosted Gateway.
 
 Signed-in accounts use the server's **Web Search** and **Web Fetch** by default.
 On Desktop, **Settings → Tools → Web tools run on** selects **Automatic**,
-**This device**, or **Server cloud**. Automatic uses the account after NOSEC
+**This device**, or **Server cloud**. Automatic uses the account after Gateway
 authorization and stays local while anonymous; a cloud failure remains visible.
 The server checks current review, API and tool permissions on every request.
 Older Desktop authorizations may require signing in again to enable these tools.
@@ -744,7 +744,7 @@ next turn:
 | Conversation | Choices and default |
 |---|---|
 | Phone calls a server model or personal endpoint directly | **Automatic**, **Cloud server**, or **Off**. Automatic adds cloud Search/Fetch with an approved, enabled, unexpired account session; otherwise it sends ordinary model chat. Cloud server requires that session before sending a model request. Off sends ordinary chat without these functions. |
-| Phone uses a PC conversation | **Follow PC**, **This PC**, or **Server cloud**. Follow PC always inherits that PC's Tools setting, regardless of phone sign-in. Explicit choices override only the target conversation. Cloud uses the PC's own NOSEC authorization. |
+| Phone uses a PC conversation | **Follow PC**, **This PC**, or **Server cloud**. Follow PC always inherits that PC's Tools setting, regardless of phone sign-in. Explicit choices override only the target conversation. Cloud uses the PC's own Gateway authorization. |
 
 Model sources remain separate from tool execution. A custom Chat/Responses model
 must support standard function calling to use cloud Web tools. Model/tool errors
@@ -766,14 +766,14 @@ sign out the Gateway account.
 
 On the PC, the circular **Account** button at the bottom of the left rail opens
 the account menu, even when the conversation list is hidden. Choose **Sign in
-with NOSEC** to open its own account dialog and the system browser. Opening the
-menu does not start sign-in or change settings. Explicit sign-in enables NOSEC
+with Gateway** to open its own account dialog and the system browser. Opening the
+menu does not start sign-in or change settings. Explicit sign-in enables Gateway
 and phone connections while preserving your configured Hub and other settings;
 the default Gateway address comes from configuration. Compare the public code
 and PC fingerprint in the dialog before authorizing the device. The existing
 Settings button and **Settings → Phone** controls remain available.
 
-**Settings → Phone** also shows account status and **Sign in with NOSEC**
+**Settings → Phone** also shows account status and **Sign in**
 directly. For the default service, no Hub address, Host Token or authentication
 mode needs to be entered first. **Configured server** shows the address supplied
 by this PC's Go configuration, including an existing self-hosted address; the
@@ -804,7 +804,7 @@ attempt fails. Successful sign-out preserves local conversations, model
 configuration, device identity and unrelated Hub credentials; it does not sign
 out every device or the browser account. **Cancel sign-in** only stops the
 current flow and keeps recovery proof, so it is a different action. To sign in
-again, explicitly choose **Sign in with NOSEC**.
+again, explicitly choose **Sign in**.
 
 For anonymous QR use and connection settings, retain the existing flow:
 
@@ -815,7 +815,7 @@ For anonymous QR use and connection settings, retain the existing flow:
    Host Token locally, separate from a Gateway API Key. Existing legacy
    connections keep their mode until you explicitly change it or choose account
    sign-in. For a managed Gateway, use the main Phone page's **Sign in with
-   NOSEC** button; no manual address, token or mode selection is required. Compare
+   Gateway** button; no manual address, token or mode selection is required. Compare
    the confirmation code and PC fingerprint in the browser flow, sign in, then
    explicitly authorize this PC there.
    A new account waits for administrator approval; rejected or pending accounts
@@ -831,7 +831,7 @@ For anonymous QR use and connection settings, retain the existing flow:
    model the phone reports after it connects, not only the fingerprint. The
    phone also sends that model line when it redeems the QR, so a gateway
    list can show it without reading the sealed session.
-2. Once the PC is online, **Show pairing QR**. In NOSEC mode this stays
+2. Once the PC is online, **Show pairing QR**. In Gateway mode this stays
    unavailable until the device is authorized and its hub WebSocket is online.
    The plate is large and high-contrast. The same URI can
    be pasted if the camera is missing. While that plate is up, **Bound phones**
@@ -842,7 +842,7 @@ For anonymous QR use and connection settings, retain the existing flow:
    the browser again. A revoked credential stays revoked. The existing local
    credential is replaced only after the new authorization succeeds. This
    action cannot claim a device that belongs to another account. If it asks you
-   to retry the previous login first, use **Sign in with NOSEC** to recover that
+   to retry the previous login first, use **Sign in** to recover that
    result; do not create another device while the earlier result is uncertain.
 3. On the phone, open the **zwai** iOS or Android app. The Android sideload
    APK is on the newest [GitHub Release containing an Android APK](https://github.com/LubyRuffy/eino-swarm/releases)

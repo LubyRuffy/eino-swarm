@@ -81,7 +81,7 @@ it("waits for review without PC/model requests, then activates the approved acco
     requested.push(url)
     if (url.endsWith("/auth/mobile/start")) {
       candidate = (JSON.parse(String(init?.body)) as { candidate_token: string }).candidate_token
-      return response({ device_code: "D".repeat(43), user_code: "abcd-1234-abcd-1234", verification_uri: origin + "/client/api/v1/auth/sso/nosec/start?mobile_code=abcd-1234-abcd-1234", interval: 5, expires_at: new Date(Date.now() + 600_000).toISOString() })
+      return response({ device_code: "D".repeat(43), user_code: "abcd-1234-abcd-1234", verification_uri: origin + "/client/api/v1/auth/sso/corporate/start?mobile_code=abcd-1234-abcd-1234", interval: 5, expires_at: new Date(Date.now() + 600_000).toISOString() })
     }
     if (url.endsWith("/auth/mobile/poll")) return response(++polled === 1 ? { status: "account_pending" } : { status: "authorized", mobile_id: "m1", user: session.user })
     expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer " + candidate)
@@ -130,7 +130,7 @@ it("drops managed tickets on account downgrade and retains independent anonymous
 it("does not restore credentials when an old poll completes after signout", async () => {
   let release!: (value: Response) => void
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-    if (url.endsWith("/auth/mobile/start")) return response({ device_code: "D".repeat(43), user_code: "abcd-1234-abcd-1234", verification_uri: origin + "/client/api/v1/auth/sso/nosec/start?mobile_code=abcd-1234-abcd-1234", interval: 5, expires_at: new Date(Date.now() + 600_000).toISOString() })
+    if (url.endsWith("/auth/mobile/start")) return response({ device_code: "D".repeat(43), user_code: "abcd-1234-abcd-1234", verification_uri: origin + "/client/api/v1/auth/sso/corporate/start?mobile_code=abcd-1234-abcd-1234", interval: 5, expires_at: new Date(Date.now() + 600_000).toISOString() })
     return new Promise<Response>((resolve) => { release = resolve })
   }))
   const { result, unmount } = renderHook(useGatewayAccount)

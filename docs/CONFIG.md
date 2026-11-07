@@ -413,7 +413,7 @@ system prompt, so the model does not plan around a tool it cannot call.
 | key | default | meaning |
 |---|---|---|
 | `web_search_max_results` | `8` | results per search. More context per call, more tokens. |
-| `web_execution` | `auto` | `auto` uses the current NOSEC account for Web Search/Fetch after authorization and this device while anonymous; `local` keeps both tools local; `cloud` requires a signed-in server account. Editable as **Tools → Web tools run on**. New turns capture the choice; cloud failures never fall back to local execution. |
+| `web_execution` | `auto` | `auto` uses the current Gateway account for Web Search/Fetch after authorization and this device while anonymous; `local` keeps both tools local; `cloud` requires a signed-in server account. Editable as **Tools → Web tools run on**. New turns capture the choice; cloud failures never fall back to local execution. |
 | `result_max_chars` | `40000` | most characters one workspace tool call (read, ls, tree, glob, grep, exec, web tools, …) puts in the model's context. A longer text result keeps its first two thirds and last third around a notice that names how many characters were omitted and asks the agent to narrow the path or pattern, filter the output, or read a range. A result stays in the conversation and is resent on every later call of the turn, so this is a per-call cost. `exec` without its own `max_output_kb` gets a per-stream capture budget of half this cap. The result cap then measures the complete JSON encoding, shortening stream text at Unicode boundaries while keeping both ends and setting `truncated`; it never cuts the JSON document. An explicit `max_output_kb` still limits capture, but does not bypass the final context cap. If metadata alone exceeds the cap, the result's `full_command` copy can also be shortened; the call arguments retain the actual command. Status, error and path metadata remain intact and form a soft minimum for an extremely small cap. Zero or negative is repaired to the default. Editable as **Tools → Tool result limit**. |
 | `proxy.http` / `proxy.https` | empty | outbound proxy for locally executed network tools (`web_search`, `web_fetch`). Cloud execution uses the Gateway's own network configuration. |
 | `proxy.no_proxy` | empty | comma-separated hosts that bypass the proxy. |
@@ -448,7 +448,7 @@ approved, enabled, unexpired account session and ordinary chat otherwise;
 functions. Standard function calling is required from the selected model.
 PC-conversation `inherit` always clears the conversation override and follows
 the PC global setting, whether or not the phone is signed in; `local`/`cloud`
-are explicit overrides. Cloud on the PC requires its own NOSEC receipt. The
+are explicit overrides. Cloud on the PC requires its own Gateway receipt. The
 phone's two choices do not change each other, personal endpoints or PC global
 settings. Previous shared `local` reads as phone `off` and PC `local`; previous
 `cloud` remains explicit for both until each preference is changed.
@@ -605,8 +605,8 @@ in Settings → Phone.
 | key | default | meaning |
 |---|---|---|
 | `enabled` | `false` | register this PC with the hub and accept sealed RPC from bound phones |
-| `hub_url` | `https://ai.fofa.info:2440` | Gateway / pairlink hub origin. Blank uses the official default, so normal sign-in requires no server configuration; an explicit self-hosted origin is preserved and remains editable in Settings. NOSEC accepts an HTTPS origin with no path/query/fragment or user info; HTTP is allowed only on loopback for local testing |
-| `auth_mode` | `legacy` | `legacy` keeps independent pairlink registration; `nosec` requires browser sign-in, administrator account approval and explicit device authorization before registration. Editable in Settings → Phone → Connection sign-in |
+| `hub_url` | `https://ai.fofa.info:2440` | Gateway / pairlink hub origin. Blank uses the official default, so normal sign-in requires no server configuration; an explicit self-hosted origin is preserved and remains editable in Settings. Account mode accepts an HTTPS origin with no path/query/fragment or user info; HTTP is allowed only on loopback for local testing |
+| `auth_mode` | `independent` | `independent` keeps independent pairlink registration; `account` requires browser sign-in, administrator account approval and explicit device authorization before registration. Editable in Settings → Phone → Connection sign-in |
 | `display_name` | this machine's hostname | name a bound phone paints on its host chip. Blank seeds `os.Hostname()` (or stays empty if that fails). Editable in Settings → Phone. Clipped to 40 runes. Not a compiled label |
 | `thread_limit` | `5` | how many idle recents the phone lists below In progress before More. Live rows (`list.running`) are a separate roster and do not count |
 | `summary_chars` | `280` | truncate assistant/summary text on the phone. Inbox `action` / `summary` are human one-liners (findings, a command, prose), not raw `tool_call` JSON |
@@ -624,8 +624,8 @@ $ZWAI_HOME/remote/identity     0600
 
 `GET /api/settings` never echoes the token. In `legacy` mode, enabling pairing
 with a hub URL mints `host_token` if missing; `PUT /api/remote/token` can replace
-it. In `nosec` mode, enabling pairing does not register anonymously. Use
-**Sign in with NOSEC** in the desktop app, compare the public browser code and
+it. In `account` mode, enabling pairing does not register anonymously. Use
+**Sign in** in the desktop app, compare the public browser code and
 fingerprint, then confirm device authorization after an administrator approves
 the account. The renderer never receives a token, device code or proof verifier.
 Manual token writes return `403 remote_login_required` in this mode.
@@ -655,10 +655,10 @@ foreign origin/public-key records are retained. Cleanup/storage failure reports
 `credential_unavailable` rather than claiming connection success.
 Changing Hub or mode, disabling pairing, and Stop cancel/join current login work.
 Changing the configured Hub does not reuse a credential bound to the previous
-configured origin. NOSEC private REST rejects redirects; legacy redirect
+configured origin. Gateway private REST rejects redirects; legacy redirect
 handling is unchanged. Deleted/revoked PC recovery requires the explicit **Reconnect as a new device** confirmation;
 the old active credential is retained until a new authorized receipt is saved.
-Foreign active device ownership remains a Gateway rejection. NOSEC pairing QR
+Foreign active device ownership remains a Gateway rejection. Gateway pairing QR
 requires both authorized state and an actual online socket.
 
 Downgrade compatibility is one-way: this client can read an older raw

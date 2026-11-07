@@ -210,10 +210,10 @@ type accountIdentity struct {
 }
 
 // identity is the credential this device may use for model access: an
-// authorized NOSEC login issued by the configured server.
+// authorized gateway account login issued by the configured server.
 func (a *AccountModels) identity() (accountIdentity, bool) {
 	cfg := a.cfg.Snapshot()
-	if cfg.Remote.AuthMode != config.RemoteAuthNOSEC {
+	if cfg.Remote.AuthMode != config.RemoteAuthAccount {
 		return accountIdentity{}, false
 	}
 	origin, err := config.RemoteOrigin(cfg.Remote.HubURL)

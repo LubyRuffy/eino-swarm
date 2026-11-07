@@ -14,7 +14,7 @@ func TestRemoteLogoutTokenSnapshotIsScopedAndCannotClearReplacement(t *testing.T
 			if err != nil {
 				t.Fatal(err)
 			}
-			cfg.Remote.AuthMode = RemoteAuthNOSEC
+			cfg.Remote.AuthMode = RemoteAuthAccount
 			origin, public := cfg.Remote.HubURL, "public"
 			old, err := cfg.StageRemoteToken("old", origin, public)
 			if err != nil {
@@ -60,7 +60,7 @@ func TestRemoteLogoutTokenSnapshotRejectsUnsafeStateAndAcknowledgesExactScope(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.Remote.AuthMode = RemoteAuthNOSEC
+	cfg.Remote.AuthMode = RemoteAuthAccount
 	origin := cfg.Remote.HubURL
 	if _, err := cfg.RemoteAccountLogoutTokens("https://changed.example", "public"); err == nil {
 		t.Fatal("stale origin accepted")

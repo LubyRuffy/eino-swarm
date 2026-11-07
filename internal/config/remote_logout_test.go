@@ -15,7 +15,7 @@ func TestRemoteLogoutClearsOnlyCurrentAccountOriginAndDeviceProof(t *testing.T) 
 				t.Fatal(err)
 			}
 			origin, public := cfg.Remote.HubURL, "current-public"
-			cfg.Remote.AuthMode = RemoteAuthNOSEC
+			cfg.Remote.AuthMode = RemoteAuthAccount
 			activeOrigin := origin
 			if !current {
 				activeOrigin = "https://other.example"
@@ -63,7 +63,7 @@ func TestRemoteLogoutPrivateStorageFailureRetainsActiveCredential(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.Remote.AuthMode = RemoteAuthNOSEC
+	cfg.Remote.AuthMode = RemoteAuthAccount
 	origin := cfg.Remote.HubURL
 	path, err := cfg.StageRemoteToken("active", origin, "public")
 	if err != nil {
@@ -95,7 +95,7 @@ func TestRemoteLogoutRetainsProofsWhenPrivateDeletionFails(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			cfg.Remote.AuthMode = RemoteAuthNOSEC
+			cfg.Remote.AuthMode = RemoteAuthAccount
 			origin := cfg.Remote.HubURL
 			path, err := cfg.StageRemoteToken("private", origin, "public")
 			if err != nil {
@@ -135,7 +135,7 @@ func TestRemoteLogoutRejectsCorruptActiveCredentialAndAllowsEmptyScope(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.Remote.AuthMode = RemoteAuthNOSEC
+	cfg.Remote.AuthMode = RemoteAuthAccount
 	if err := clearLogoutScope(cfg, cfg.Remote.HubURL, "public"); err != nil {
 		t.Fatal(err)
 	}

@@ -135,9 +135,18 @@ async function request<T>(origin: string, path: string, fetcher: typeof fetch, t
   }
 }
 
+function safeGatewayVerificationPath(path: string): boolean {
+  if (path === "/login") return true
+  const prefix = CLIENT_PATH + "/auth/sso/"
+  if (!path.startsWith(prefix) || !path.endsWith("/start")) return false
+  const id = path.slice(prefix.length, -"/start".length)
+  if (!id || id.length > 32 || id[0] < "a" || id[0] > "z" || id.endsWith("-")) return false
+  return /^[a-z][a-z0-9-]*[a-z0-9]$|^[a-z]$/.test(id)
+}
+
 function validateVerification(origin: string, raw: string, publicCode: string) {
   const url = new URL(raw)
-  if (url.origin !== origin || url.username || url.password || url.hash || url.pathname !== CLIENT_PATH + "/auth/sso/nosec/start" || [...url.searchParams.keys()].length !== 1 || url.searchParams.get("mobile_code") !== publicCode || !/^[a-fA-F0-9]{4}(?:-[a-fA-F0-9]{4}){3}$/.test(publicCode)) {
+  if (url.origin !== origin || url.username || url.password || url.hash || !safeGatewayVerificationPath(url.pathname) || [...url.searchParams.keys()].length !== 1 || url.searchParams.get("mobile_code") !== publicCode || !/^[a-fA-F0-9]{4}(?:-[a-fA-F0-9]{4}){3}$/.test(publicCode)) {
     throw new GatewayError(0, "invalid_verification_url")
   }
 }

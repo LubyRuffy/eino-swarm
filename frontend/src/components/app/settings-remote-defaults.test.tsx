@@ -12,7 +12,7 @@ const { api } = await import("@/lib/api")
 // The Go settings response supplies its effective default origin. The renderer
 // must not need a compiled-in official hostname to offer the account entry.
 const origin = "https://configured-gateway.example"
-const initial: RemoteStatus = { enabled: false, hub_url: origin, auth_mode: "legacy",
+const initial: RemoteStatus = { enabled: false, hub_url: origin, auth_mode: "independent",
   online: false, has_token: false, login_available: true }
 const settings = { remote: defaultRemoteSettings({ hub_url: origin }) } as Settings
 
@@ -20,7 +20,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(api.remoteStatus).mockResolvedValue(initial)
   vi.mocked(api.remoteBindings).mockResolvedValue([])
-  vi.mocked(api.startRemoteLogin).mockResolvedValue({ ...initial, enabled: true, auth_mode: "nosec",
+  vi.mocked(api.startRemoteLogin).mockResolvedValue({ ...initial, enabled: true, auth_mode: "account",
     login: { state: "authorization_pending", user_code: "CONFIRM-THIS-PC" } })
 })
 
@@ -29,7 +29,7 @@ describe("Phone account defaults", () => {
     const change = vi.fn()
     render(<RemoteTab settings={settings} onChange={change}
       onAccountLogin={(newDevice) => api.startRemoteLogin(newDevice, true)} />)
-    await waitFor(() => expect(screen.getByRole("button", { name: "Sign in with NOSEC" })).toBeEnabled())
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled())
     expect(screen.getByText("Sign in to link this PC to your account. No server address or token needs to be entered.")).toBeVisible()
     expect(screen.getByText(origin)).toBeVisible()
     expect(screen.queryByLabelText("Hub URL")).not.toBeInTheDocument()
@@ -38,7 +38,7 @@ describe("Phone account defaults", () => {
     expect(screen.getByText("Bound phones")).toBeVisible()
     expect(api.startRemoteLogin).not.toHaveBeenCalled()
     expect(change).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole("button", { name: "Sign in with NOSEC" }))
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }))
     await waitFor(() => expect(api.startRemoteLogin).toHaveBeenCalledWith(false, true))
   })
 
@@ -51,9 +51,9 @@ describe("Phone account defaults", () => {
     expect(screen.queryByLabelText("Hub URL")).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Advanced / self-hosted server" }))
     expect(screen.getByLabelText("Hub URL")).toHaveValue(custom.remote.hub_url)
-    expect(screen.getByLabelText("Connection sign-in")).toHaveTextContent("Independent hub (legacy)")
+    expect(screen.getByLabelText("Connection sign-in")).toHaveTextContent("Independent hub")
     fireEvent.change(screen.getByLabelText("Hub URL"), { target: { value: "https://replacement.example" } })
-    expect(change.mock.calls[0][0].remote).toMatchObject({ enabled: true, auth_mode: "legacy", hub_url: "https://replacement.example", display_name: "my-pc" })
+    expect(change.mock.calls[0][0].remote).toMatchObject({ enabled: true, auth_mode: "independent", hub_url: "https://replacement.example", display_name: "my-pc" })
     expect(api.startRemoteLogin).not.toHaveBeenCalled()
   })
 
@@ -81,12 +81,12 @@ describe("Phone account defaults", () => {
     const change = vi.fn()
     const view = render(<RemoteTab settings={settings} onChange={change} />)
     fireEvent.click(screen.getByRole("button", { name: "Advanced / self-hosted server" }))
-    const updated = { ...settings, remote: { ...settings.remote!, hub_url: "https://saved-server.example", auth_mode: "nosec" as const } }
+    const updated = { ...settings, remote: { ...settings.remote!, hub_url: "https://saved-server.example", auth_mode: "account" as const } }
     vi.mocked(api.remoteStatus).mockResolvedValue({ ...initial, ...updated.remote! })
     await act(async () => { view.rerender(<RemoteTab settings={updated} onChange={change} />) })
     expect(screen.getByRole("button", { name: "Advanced / self-hosted server" })).toHaveAttribute("aria-expanded", "true")
     expect(screen.getByLabelText("Hub URL")).toHaveValue("https://saved-server.example")
-    expect(screen.getByLabelText("Connection sign-in")).toHaveTextContent("NOSEC account")
+    expect(screen.getByLabelText("Connection sign-in")).toHaveTextContent("Gateway account")
     expect(api.startRemoteLogin).not.toHaveBeenCalled()
   })
 })

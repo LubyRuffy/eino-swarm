@@ -819,7 +819,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.remote.hub": "中转",
   "settings.remote.enabled": "接受手机配对",
   "settings.remote.enabledHint":
-    "打开这台电脑的手机连接。NOSEC 模式还需要登录并授权设备。",
+    "打开这台电脑的手机连接。账号模式还需要登录并授权设备。",
   "settings.remote.hubUrl": "中转地址",
   "settings.remote.hubUrlHint": "默认已配置官方 Gateway，仅在使用其他服务器时修改。",
   "settings.remote.displayName": "这台电脑的名称",

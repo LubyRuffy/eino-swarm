@@ -3,7 +3,7 @@ import type { RemoteStatus } from "./types"
 export const REMOTE_STATUS_WATCH_MS = 1000
 
 export function remoteAuthorityKey(remote: { enabled: boolean; hub_url: string; auth_mode?: string }) {
-  return JSON.stringify([remote.enabled, remote.hub_url.trim().replace(/\/+$/, ""), remote.auth_mode ?? "legacy"])
+  return JSON.stringify([remote.enabled, remote.hub_url.trim().replace(/\/+$/, ""), remote.auth_mode ?? "independent"])
 }
 
 export type RemoteStatusSnapshot = {

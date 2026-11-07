@@ -108,7 +108,7 @@ func webExecutionEngineWithGate(t *testing.T, beforeTool func(context.Context)) 
 	cfg.Models.Default = "fixture"
 	cfg.Models.Providers = []config.Provider{{ID: "fixture", BaseURL: origin, Model: "fixture"}}
 	cfg.Swarm.AutoTitle, cfg.Memory.AutoReview = false, false
-	cfg.Remote.AuthMode, cfg.Remote.HubURL = config.RemoteAuthNOSEC, origin
+	cfg.Remote.AuthMode, cfg.Remote.HubURL = config.RemoteAuthAccount, origin
 	path, err := cfg.StageRemoteToken(hostToken, origin, "public-test-device")
 	if err != nil {
 		t.Fatal(err)
@@ -200,7 +200,7 @@ func TestRunningAutomaticTurnUsesTheNewlySignedInAccount(t *testing.T) {
 		case <-ctx.Done():
 		}
 	})
-	if err := e.cfg.Update(func(next *config.Config) error { next.Remote.AuthMode = config.RemoteAuthLegacy; return nil }); err != nil {
+	if err := e.cfg.Update(func(next *config.Config) error { next.Remote.AuthMode = config.RemoteAuthIndependent; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	thread, err := e.CreateThread("Sign in during an automatic turn", "", "")
@@ -216,7 +216,7 @@ func TestRunningAutomaticTurnUsesTheNewlySignedInAccount(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("model request never reached the account transition barrier")
 	}
-	if err := e.cfg.Update(func(next *config.Config) error { next.Remote.AuthMode = config.RemoteAuthNOSEC; return nil }); err != nil {
+	if err := e.cfg.Update(func(next *config.Config) error { next.Remote.AuthMode = config.RemoteAuthAccount; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	close(release)

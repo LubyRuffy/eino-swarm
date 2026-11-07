@@ -53,7 +53,7 @@ const row = (provider: string, name: string, source: ModelInfo["source"]): Model
   id: `${provider}\t${name}`, provider_id: provider, provider_label: provider, label: name, model: name, ready: true, source,
 })
 const signedIn: RemoteStatus = {
-  enabled: true, hub_url: "https://server.example", auth_mode: "nosec", has_token: true, online: true,
+  enabled: true, hub_url: "https://server.example", auth_mode: "account", has_token: true, online: true,
   login_available: true, login: { state: "authorized", username: "account" },
 }
 const signedOut: RemoteStatus = { ...signedIn, has_token: false, login: { state: "signed_out" } }

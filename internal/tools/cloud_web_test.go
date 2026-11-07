@@ -17,7 +17,7 @@ import (
 
 func signInWebAccount(t *testing.T, cfg *config.Config, origin string) string {
 	t.Helper()
-	cfg.Remote.AuthMode = config.RemoteAuthNOSEC
+	cfg.Remote.AuthMode = config.RemoteAuthAccount
 	cfg.Remote.HubURL = origin
 	token := strings.Repeat("a", 64)
 	path, err := cfg.StageRemoteToken(token, origin, "test-public-key")

@@ -17,7 +17,7 @@ import (
 
 func installLogoutAccount(t *testing.T, cfg *config.Config, origin string) string {
 	t.Helper()
-	cfg.Remote.AuthMode, cfg.Remote.HubURL = config.RemoteAuthNOSEC, origin
+	cfg.Remote.AuthMode, cfg.Remote.HubURL = config.RemoteAuthAccount, origin
 	id, err := loadIdentity(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -33,7 +33,7 @@ func installLogoutAccount(t *testing.T, cfg *config.Config, origin string) strin
 	return token
 }
 
-func TestNOSECLogoutRemoteAcknowledgementKeepsStatusResponsive(t *testing.T) {
+func TestAccountLogoutRemoteAcknowledgementKeepsStatusResponsive(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	var calls atomic.Int32
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +91,7 @@ func TestNOSECLogoutRemoteAcknowledgementKeepsStatusResponsive(t *testing.T) {
 	}
 }
 
-func TestNOSECLogoutUnsupportedGatewayRetainsSecretForRetry(t *testing.T) {
+func TestAccountLogoutUnsupportedGatewayRetainsSecretForRetry(t *testing.T) {
 	var calls atomic.Int32
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if calls.Add(1) == 1 {
@@ -121,7 +121,7 @@ func TestNOSECLogoutUnsupportedGatewayRetainsSecretForRetry(t *testing.T) {
 	}
 }
 
-func TestNOSECLogoutRefusalRedirectAndUnsafeReplyRetainPrivateState(t *testing.T) {
+func TestAccountLogoutRefusalRedirectAndUnsafeReplyRetainPrivateState(t *testing.T) {
 	var leaked atomic.Int32
 	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { leaked.Add(1); w.WriteHeader(http.StatusOK) }))
 	defer other.Close()
@@ -155,7 +155,7 @@ func TestNOSECLogoutRefusalRedirectAndUnsafeReplyRetainPrivateState(t *testing.T
 	}
 }
 
-func TestNOSECLogoutLateAcknowledgementCannotClearSameOriginReplacement(t *testing.T) {
+func TestAccountLogoutLateAcknowledgementCannotClearSameOriginReplacement(t *testing.T) {
 	for _, replacement := range []string{"receipt", "proof"} {
 		t.Run(replacement, func(t *testing.T) {
 			entered, release := make(chan struct{}), make(chan struct{})
@@ -216,7 +216,7 @@ func TestNOSECLogoutLateAcknowledgementCannotClearSameOriginReplacement(t *testi
 	}
 }
 
-func TestNOSECLogoutReloadCancelsAndJoinsBeforePublishingNewHubAccount(t *testing.T) {
+func TestAccountLogoutReloadCancelsAndJoinsBeforePublishingNewHubAccount(t *testing.T) {
 	entered := make(chan struct{})
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
@@ -266,7 +266,7 @@ func TestNOSECLogoutReloadCancelsAndJoinsBeforePublishingNewHubAccount(t *testin
 	}
 }
 
-func TestNOSECLogoutPartialRemoteSuccessAndLostAcknowledgementRemainRetryable(t *testing.T) {
+func TestAccountLogoutPartialRemoteSuccessAndLostAcknowledgementRemainRetryable(t *testing.T) {
 	for _, failure := range []string{"gateway-error", "lost-receipt"} {
 		t.Run(failure, func(t *testing.T) {
 			var calls atomic.Int32

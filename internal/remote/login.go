@@ -49,9 +49,9 @@ func (h *Host) startLogin(open func(string) error, newDevice bool) error {
 		return ErrAccountLogoutInProgress
 	}
 	cfg := h.cfg.Snapshot()
-	if !cfg.Remote.Enabled || cfg.Remote.AuthMode != config.RemoteAuthNOSEC {
+	if !cfg.Remote.Enabled || cfg.Remote.AuthMode != config.RemoteAuthAccount {
 		h.mu.Unlock()
-		return errors.New("remote: enable NOSEC mode before signing in")
+		return errors.New("remote: enable account mode before signing in")
 	}
 	origin, err := config.RemoteOrigin(cfg.Remote.HubURL)
 	if err != nil {
@@ -165,7 +165,7 @@ func (h *Host) CancelLogin() {
 func (h *Host) loginMatchesLocked(attempt *loginAttempt) bool {
 	cfg := h.cfg.Snapshot()
 	origin, err := config.RemoteOrigin(cfg.Remote.HubURL)
-	return h.loginActive == attempt && attempt.ctx.Err() == nil && err == nil && origin == attempt.origin && cfg.Remote.Enabled && cfg.Remote.AuthMode == config.RemoteAuthNOSEC
+	return h.loginActive == attempt && attempt.ctx.Err() == nil && err == nil && origin == attempt.origin && cfg.Remote.Enabled && cfg.Remote.AuthMode == config.RemoteAuthAccount
 }
 
 func (h *Host) publishLogin(attempt *loginAttempt, status LoginStatus) bool {
@@ -344,7 +344,7 @@ func (h *Host) loginFailure(attempt *loginAttempt, err error) {
 }
 
 func (h *Host) loginStatusLocked(cfg *config.Config) *LoginStatus {
-	if cfg.Remote.AuthMode != config.RemoteAuthNOSEC {
+	if cfg.Remote.AuthMode != config.RemoteAuthAccount {
 		return nil
 	}
 	current := h.login

@@ -48,7 +48,7 @@ func TestWebExecutionSelectionRespectsAccountAndExplicitLocalChoice(t *testing.T
 			}
 			cfg.Tools.WebExecution = tc.mode
 			if tc.legacy {
-				cfg.Remote.AuthMode = config.RemoteAuthLegacy
+				cfg.Remote.AuthMode = config.RemoteAuthIndependent
 			}
 			if tc.foreign {
 				cfg.Remote.HubURL = "https://another-gateway.invalid"
@@ -99,14 +99,14 @@ func TestCloudRoutingRefusesMissingOrUnreadableAuthority(t *testing.T) {
 		want    string
 	}{
 		{name: "signed out cloud", want: "sign in to the server again"},
-		{name: "unapproved receipt", prepare: func(_ *testing.T, cfg *config.Config) { cfg.Remote.AuthMode = config.RemoteAuthNOSEC }, want: "sign in to the server again"},
+		{name: "unapproved receipt", prepare: func(_ *testing.T, cfg *config.Config) { cfg.Remote.AuthMode = config.RemoteAuthAccount }, want: "sign in to the server again"},
 		{name: "invalid setting", prepare: func(_ *testing.T, cfg *config.Config) { cfg.Tools.WebExecution = "unknown" }, want: "invalid execution setting"},
 		{name: "invalid origin", prepare: func(_ *testing.T, cfg *config.Config) {
-			cfg.Remote.AuthMode = config.RemoteAuthNOSEC
+			cfg.Remote.AuthMode = config.RemoteAuthAccount
 			cfg.Remote.HubURL = "https://gateway.invalid/path"
 		}, want: "invalid server origin"},
 		{name: "corrupt private receipt", prepare: func(t *testing.T, cfg *config.Config) {
-			cfg.Remote.AuthMode = config.RemoteAuthNOSEC
+			cfg.Remote.AuthMode = config.RemoteAuthAccount
 			if err := os.WriteFile(filepath.Join(cfg.RemoteDir(), "host_token"), []byte(`{"schema":9,"token":"private-value"}`), 0o600); err != nil {
 				t.Fatal(err)
 			}

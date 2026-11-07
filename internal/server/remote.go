@@ -31,8 +31,8 @@ func (s *Server) getRemoteStatus(c *gin.Context) {
 }
 
 func (s *Server) putRemoteToken(c *gin.Context) {
-	if s.engine.Config().Snapshot().Remote.AuthMode == config.RemoteAuthNOSEC {
-		c.JSON(http.StatusForbidden, gin.H{"error": "NOSEC login and account approval are required", "code": "remote_login_required"})
+	if s.engine.Config().Snapshot().Remote.AuthMode == config.RemoteAuthAccount {
+		c.JSON(http.StatusForbidden, gin.H{"error": "gateway account login and approval are required", "code": "remote_login_required"})
 		return
 	}
 	var req struct {

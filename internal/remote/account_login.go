@@ -15,7 +15,7 @@ var (
 	ErrAccountEnableUnavailable = errors.New("remote: account connection settings could not be saved")
 )
 
-// StartLogin requires an already-enabled NOSEC connection.
+// StartLogin requires an already-enabled account connection.
 func (h *Host) StartLogin(open func(string) error, newDevice bool) error {
 	return h.startAccountLogin(open, newDevice, false)
 }
@@ -35,13 +35,13 @@ func (h *Host) startAccountLogin(open func(string) error, newDevice, enable bool
 		return errors.New("remote: system browser is unavailable")
 	}
 	current := h.cfg.Snapshot().Remote
-	if enable && (!current.Enabled || current.AuthMode != config.RemoteAuthNOSEC) {
+	if enable && (!current.Enabled || current.AuthMode != config.RemoteAuthAccount) {
 		if h.eng == nil {
 			return ErrAccountEnableUnavailable
 		}
 		if err := h.eng.UpdateConfig(func(next *config.Config) error {
 			next.Remote.Enabled = true
-			next.Remote.AuthMode = config.RemoteAuthNOSEC
+			next.Remote.AuthMode = config.RemoteAuthAccount
 			return nil
 		}); err != nil {
 			return fmt.Errorf("%w: %v", ErrAccountEnableUnavailable, err)

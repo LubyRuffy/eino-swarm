@@ -23,7 +23,7 @@ const bootstrap = {
 function stubGateway() {
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     if (url.endsWith("/auth/mobile/start")) {
-      return response({ device_code: "D".repeat(43), user_code: "abcd-1234-abcd-1234", verification_uri: origin + "/client/api/v1/auth/sso/nosec/start?mobile_code=abcd-1234-abcd-1234", interval: 5, expires_at: new Date(Date.now() + 600_000).toISOString() })
+      return response({ device_code: "D".repeat(43), user_code: "abcd-1234-abcd-1234", verification_uri: origin + "/client/api/v1/auth/sso/corporate/start?mobile_code=abcd-1234-abcd-1234", interval: 5, expires_at: new Date(Date.now() + 600_000).toISOString() })
     }
     if (url.endsWith("/auth/mobile/poll")) return response({ status: "authorized", mobile_id: "m1", user: session.user })
     if (url.endsWith("/auth/me")) return response({ user: session.user, device: session.device })
@@ -100,7 +100,7 @@ it("forgets a pending fresh sign-in when another sign-in starts", async () => {
 it("does not call a sign-in fresh when its first account read fails, even if a later read succeeds", async () => {
   let failing = true
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-    if (url.endsWith("/auth/mobile/start")) return response({ device_code: "D".repeat(43), user_code: "abcd-1234-abcd-1234", verification_uri: origin + "/client/api/v1/auth/sso/nosec/start?mobile_code=abcd-1234-abcd-1234", interval: 5, expires_at: new Date(Date.now() + 600_000).toISOString() })
+    if (url.endsWith("/auth/mobile/start")) return response({ device_code: "D".repeat(43), user_code: "abcd-1234-abcd-1234", verification_uri: origin + "/client/api/v1/auth/sso/corporate/start?mobile_code=abcd-1234-abcd-1234", interval: 5, expires_at: new Date(Date.now() + 600_000).toISOString() })
     if (url.endsWith("/auth/mobile/poll")) return response({ status: "authorized", mobile_id: "m1", user: session.user })
     if (url.endsWith("/auth/me")) return response({ user: session.user, device: session.device })
     if (url.endsWith("/bootstrap")) return failing ? new Response("{}", { status: 503 }) : response(bootstrap)

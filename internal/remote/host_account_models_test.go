@@ -25,7 +25,7 @@ func TestLoginAndLogoutDriveTheAccountModels(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&start)
 			challenge = start.Challenge
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "ABCD-EFGH", VerificationURI: origin + desktopVerificationPath + "?desktop_code=ABCD-EFGH", ExpiresAt: time.Now().Add(9 * time.Minute), Interval: 5}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "ABCD-EFGH", VerificationURI: origin + desktopVerificationFixturePath + "?desktop_code=ABCD-EFGH", ExpiresAt: time.Now().Add(9 * time.Minute), Interval: 5}})
 		case desktopAuthPrefix + "poll":
 			var proof map[string]string
 			_ = json.NewDecoder(r.Body).Decode(&proof)
@@ -57,7 +57,7 @@ func TestLoginAndLogoutDriveTheAccountModels(t *testing.T) {
 	e := testEngineWithPool(t, false)
 	cfg := e.Config()
 	cfg.Remote.Enabled = true
-	cfg.Remote.AuthMode = "nosec"
+	cfg.Remote.AuthMode = "account"
 	cfg.Remote.HubURL = origin
 	host := New(e, cfg, nil)
 	host.loginWait = func(ctx context.Context, _ time.Duration) error { return ctx.Err() }
@@ -71,7 +71,7 @@ func TestLoginAndLogoutDriveTheAccountModels(t *testing.T) {
 		t.Fatal(err)
 	}
 	// loginWait returns at once, so the poll that authorizes runs immediately.
-	waitNOSEC(t, func() bool { return host.AccountModels().State == AccountReady })
+	waitAccountLogin(t, func() bool { return host.AccountModels().State == AccountReady })
 	if st := host.AccountModels(); st.Models != 1 || st.Username != "account" {
 		t.Fatalf("after login: %+v", st)
 	}
@@ -95,16 +95,16 @@ func TestReloadRefreshesOnlyWhenTheAccountChanged(t *testing.T) {
 	}
 	e := testEngineWithPool(t, false)
 	cfg := e.Config()
-	cfg.Remote.AuthMode = "nosec"
+	cfg.Remote.AuthMode = "account"
 	cfg.Remote.HubURL = g.server.URL
 	host := New(e, cfg, nil)
 	defer host.Stop()
 	host.Start()
-	waitNOSEC(t, func() bool { return host.AccountModels().State == AccountSignedOut })
+	waitAccountLogin(t, func() bool { return host.AccountModels().State == AccountSignedOut })
 
 	signInAccount(t, cfg, g.server.URL)
 	host.Reload()
-	waitNOSEC(t, func() bool { return host.AccountModels().State == AccountReady })
+	waitAccountLogin(t, func() bool { return host.AccountModels().State == AccountReady })
 	seen := bootstraps.Load()
 	// Every settings save reloads the host; none of those may re-contact the
 	// server for an account that has not changed.
@@ -117,7 +117,7 @@ func TestReloadRefreshesOnlyWhenTheAccountChanged(t *testing.T) {
 	}
 	signOutAccount(t, cfg)
 	host.Reload()
-	waitNOSEC(t, func() bool { return host.AccountModels().State == AccountSignedOut })
+	waitAccountLogin(t, func() bool { return host.AccountModels().State == AccountSignedOut })
 }
 
 func TestStoppedHostStopsRefreshingAccountModels(t *testing.T) {
@@ -129,13 +129,13 @@ func TestStoppedHostStopsRefreshingAccountModels(t *testing.T) {
 	}
 	e := testEngineWithPool(t, false)
 	cfg := e.Config()
-	cfg.Remote.AuthMode = "nosec"
+	cfg.Remote.AuthMode = "account"
 	cfg.Remote.HubURL = g.server.URL
 	signInAccount(t, cfg, g.server.URL)
 	host := New(e, cfg, nil)
 	host.accounts.interval = 10 * time.Millisecond
 	host.Start()
-	waitNOSEC(t, func() bool { return bootstraps.Load() >= 2 })
+	waitAccountLogin(t, func() bool { return bootstraps.Load() >= 2 })
 	host.Stop()
 	seen := bootstraps.Load()
 	time.Sleep(100 * time.Millisecond)
@@ -161,7 +161,7 @@ func TestOfflineProviderNeverContactsTheAccountServer(t *testing.T) {
 	e := testEngine(t)
 	cfg := e.Config()
 	cfg.Remote.Enabled = true
-	cfg.Remote.AuthMode = "nosec"
+	cfg.Remote.AuthMode = "account"
 	cfg.Remote.HubURL = gateway.URL
 	signInAccount(t, cfg, gateway.URL)
 	host := New(e, cfg, nil)

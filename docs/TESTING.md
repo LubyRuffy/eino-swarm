@@ -510,7 +510,7 @@ characters, including real loopback HTTP and URLSession delegate callbacks;
 source-pattern checks alone cannot catch a native bounds trap.
 The packaged iOS account fixture's
 `testNativeAccountCloudStreamSurvivesSplitUTF8AndSecondSend` signs in through the
-loopback NOSEC flow and receives deliberately flushed short, Chinese and emoji
+loopback Gateway flow and receives deliberately flushed short, Chinese and emoji
 fragments twice in the same conversation. Run it through the disposable
 `ios-layout-fixture.py` project with `IOS_LAYOUT_SCENARIO=ios-gateway-account.swift`,
 `IOS_LAYOUT_PRESERVE_PUBLIC=1`, packaged `IOS_LAYOUT_PUBLIC` and a loopback
@@ -538,12 +538,12 @@ and leaves the PC online. The fixture's
 `TestFixtureAnonymousUpgradeUsesSameIdentityAndRetiresOnlyThatPhone` also checks
 another phone's binding survives. Gateway tests independently exercise the real
 account/ownership mutation and selective HTTP/WebSocket revocation. These local
-tests do not prove production NOSEC, native browser or physical-device behavior.
+tests do not prove production Gateway, native browser or physical-device behavior.
 Run the normal complete mobile unit/E2E suites and production build; isolate E2E
 ports and output directories. Native iOS/Android acceptance and publication
 remain separate required delivery stages.
 
-## NOSEC desktop device login (`F-210`, `C-006`)
+## Gateway desktop device login (`F-210`, `C-006`)
 
 The config tests cover legacy raw-token reads, origin-bound receipts, private
 permissions, atomic activation, pending-candidate reuse and the 128/129 capacity
@@ -558,7 +558,7 @@ reset before a retry, lost responses/restart, and cleanup concurrent with retry.
 `internal/config/remote_auth_test.go` covers scoped cleanup and proven-rejection
 persistence. Server
 contracts cover strict start bodies, missing system-browser capability and
-manual-token denial in NOSEC mode. `internal/server/remote_account_test.go`
+manual-token denial in Gateway mode. `internal/server/remote_account_test.go`
 also covers explicit sidebar `enable_account` intent, preserving unrelated
 configuration, strict logout bodies, live status during `signing_out`,
 concurrent-owner refusal (including an enable-account login that would otherwise
@@ -569,14 +569,14 @@ replacement proof. `internal/remote/logout_test.go` and
 cancel/join, remote acknowledgement before local deletion, unsupported or
 denied logout, redirects/unsafe replies, partial success/lost responses, late
 receipts and Reload isolation. These tests use isolated local state and require
-no real NOSEC account or production writes.
+no real Gateway account or production writes.
 
 ```bash
-go test -race ./internal/config ./internal/remote ./internal/server -run 'TestRemote|TestNOSEC|TestDesktopLogin'
+go test -race ./internal/config ./internal/remote ./internal/server -run 'TestRemote|TestGateway|TestDesktopLogin'
 cd frontend
 npm run lint
 npm test
-ZWAI_E2E_PORT=18879 ZWAI_E2E_DATA_DIR=.e2e-nosec-login npm run e2e -- desktop-account.spec.ts remote-nosec.spec.ts remote.spec.ts --output=output/playwright/nosec-login
+ZWAI_E2E_PORT=18879 ZWAI_E2E_DATA_DIR=.e2e-account-login npm run e2e -- desktop-account.spec.ts remote-account.spec.ts remote.spec.ts --output=output/playwright/account-login
 npm run build
 ```
 
@@ -595,7 +595,7 @@ across saved Hub/mode changes without automatic login or saves.
 `settings-dialog.test.tsx` and `settings-persist.test.ts` cover draining an older
 write before account login, the short edit/leave guard, remote-only adoption
 without a second PUT, failure read-back, and a fresh load after an older account
-operation. These boundaries prevent a stale legacy draft from undoing NOSEC
+operation. These boundaries prevent a stale legacy draft from undoing Gateway
 enablement or causing another Reload while authorization starts.
 Recovery also drains pending and in-flight edits from other settings pages
 before adopting the authoritative remote state; a failed independent save must
@@ -604,7 +604,7 @@ not block the read or discard its draft, and later saves must omit remote.
 configuration form, explicit login intent, and editing/saving/reopening an
 existing legacy self-hosted address without starting account authorization. Its
 pending-draft case asserts settings-save-before-login order and that a later
-remote edit retains the enabled NOSEC account and custom server.
+remote edit retains the enabled Gateway account and custom server.
 `settings-dialog.test.tsx` also checks the pending-write/login barrier,
 remote-only adoption, reopening across a late reply, and explicit recovery when
 both login acknowledgement and configuration read-back fail.
@@ -617,7 +617,7 @@ Phone status and logout failure/success. Browser cases drive the real built page
 and isolated local web server; controlled local status/login responses exercise the UI, while saved-configuration
 checks use the actual Go status route. Browserless capability refusal is covered
 by component and server contract tests. They do not prove a native system-browser launch,
-real NOSEC service allowlisting, production deployment, or physical-phone
+real Gateway service allowlisting, production deployment, or physical-phone
 pairing. Those require candidate-specific integration/native acceptance.
 
 The jsdom setup intercepts only the literal `Element.matches(":modal")` and
@@ -8382,7 +8382,7 @@ an observation fallback, then uses native touch and keyboard events. It never
 changes application storage, injects a session or invokes business JavaScript.
 `mobile/e2e/account-fixture` supplies a loopback-only synthetic CAS with actual
 HTTP, PKCE, Browser consent, a real Pairlink relay and an Eino PC host. It never
-uses a production NOSEC identity or model. Its default PC is hidden so the test
+uses a production Gateway identity or model. Its default PC is hidden so the test
 must first complete a server-model answer without a PC connection. The same case
 then selects the account PC without QR, checks an encrypted conversation-list RPC,
 logs out and redeems an anonymous QR on a distinct loopback origin backed by
@@ -8405,7 +8405,7 @@ the native case proves reversed loopback HTTP and a WebSocket upgrade still
 work before opening the account UI. Its optional server form then selects the
 fixture origin through real native input. The fresh default-screen assertion
 proves no URL/Key is required; the later fixture flow uses that explicit QA
-override and does not establish production NOSEC connectivity.
+override and does not establish production Gateway connectivity.
 On failure the runner retains final fixture counters and only allowlisted
 native bridge metadata, never raw plugin options/results. The app may also
 record the pending-login entry's existence as one Boolean; its content is never
@@ -8428,7 +8428,7 @@ account POST and model discovery refuse redirects, the account deadline aborts
 the server request, and native model streaming refuses redirects and disconnects
 on Stop. These assertions complement the installed-SDK fetch-patch unit tests;
 neither fixture evidence nor a successful local APK build proves production
-NOSEC reachability or a public installer upload.
+Gateway reachability or a public installer upload.
 
 The Android runner also prepares an anonymous PC pairing and a personal model
 through the previous public app's UI before upgrading it in place. The original

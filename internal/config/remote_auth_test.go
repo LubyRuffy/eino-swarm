@@ -23,7 +23,7 @@ func TestRemoteCredentialReceiptIsPrivateAtomicAndOriginBound(t *testing.T) {
 	if err := cfg.BindRemoteOrigin(old, cfg.Remote.HubURL); err != nil {
 		t.Fatal(err)
 	}
-	cfg.Remote.AuthMode = RemoteAuthNOSEC
+	cfg.Remote.AuthMode = RemoteAuthAccount
 	if _, err := cfg.EnsureHostToken(); !errors.Is(err, ErrRemoteApprovalRequired) {
 		t.Fatal("legacy proof alone became account authorization")
 	}
@@ -66,9 +66,9 @@ func TestRemoteCredentialReceiptIsPrivateAtomicAndOriginBound(t *testing.T) {
 	}
 	cfg.Remote.HubURL = "https://another.example.invalid"
 	if _, err := cfg.HostToken(); !errors.Is(err, ErrRemoteApprovalRequired) {
-		t.Fatal("NOSEC credential crossed origin")
+		t.Fatal("account credential crossed origin")
 	}
-	cfg.Remote.AuthMode = RemoteAuthLegacy
+	cfg.Remote.AuthMode = RemoteAuthIndependent
 	if _, err := cfg.HostToken(); err == nil {
 		t.Fatal("mode change released credential to another origin")
 	}
@@ -146,15 +146,15 @@ func TestRemoteAuthModeValidationPersistsAndRejectsUnknownMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Remote.AuthMode != RemoteAuthLegacy {
+	if cfg.Remote.AuthMode != RemoteAuthIndependent {
 		t.Fatal("legacy mode default changed")
 	}
-	if err := cfg.Update(func(next *Config) error { next.Remote.AuthMode = RemoteAuthNOSEC; return nil }); err != nil {
+	if err := cfg.Update(func(next *Config) error { next.Remote.AuthMode = RemoteAuthAccount; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	reloaded, err := Load(cfg.DataDir())
-	if err != nil || reloaded.Remote.AuthMode != RemoteAuthNOSEC {
-		t.Fatal("NOSEC mode not persisted")
+	if err != nil || reloaded.Remote.AuthMode != RemoteAuthAccount {
+		t.Fatal("account mode not persisted")
 	}
 	if err := cfg.Update(func(next *Config) error { next.Remote.AuthMode = "unknown"; return nil }); err == nil {
 		t.Fatal("unknown auth mode accepted")
@@ -207,7 +207,7 @@ func TestRemoteActivationRejectsChangedSettings(t *testing.T) {
 	}
 	if err := cfg.Update(func(next *Config) error {
 		next.Remote.Enabled = true
-		next.Remote.AuthMode = RemoteAuthNOSEC
+		next.Remote.AuthMode = RemoteAuthAccount
 		next.Remote.HubURL = "https://other.example.invalid"
 		return nil
 	}); err != nil {

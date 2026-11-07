@@ -10,26 +10,26 @@ import (
 	"testing"
 )
 
-func TestNOSECLoginRoutesRequireLocalBrowserAndRefuseManualCredential(t *testing.T) {
+func TestAccountLoginLoginRoutesRequireLocalBrowserAndRefuseManualCredential(t *testing.T) {
 	h := newHarness(t)
-	h.app.Config.Remote.AuthMode = "nosec"
+	h.app.Config.Remote.AuthMode = "account"
 	h.app.Config.Remote.Enabled = true
 	h.app.Config.Remote.HubURL = "https://gateway.example.invalid"
 	h.json(http.MethodPost, "/api/remote/login", map[string]any{}, http.StatusNotImplemented)
 	h.json(http.MethodPut, "/api/remote/token", map[string]any{"token": "cannot-bypass-account-approval"}, http.StatusForbidden)
 	if h.app.Config.HasHostToken() {
-		t.Fatal("manual token bypassed NOSEC authorization")
+		t.Fatal("manual token bypassed account authorization")
 	}
 	h.json(http.MethodDelete, "/api/remote/login", nil, http.StatusOK)
 	status := h.json(http.MethodGet, "/api/remote/status", nil, http.StatusOK)
-	if status["auth_mode"] != "nosec" || status["login_available"] != false {
+	if status["auth_mode"] != "account" || status["login_available"] != false {
 		t.Fatalf("unsafe capabilities: %v", status)
 	}
 }
 
-func TestNOSECLocalLoginUsesStrictIntentAndSafeStatus(t *testing.T) {
+func TestAccountLoginLocalLoginUsesStrictIntentAndSafeStatus(t *testing.T) {
 	h := newHarness(t)
-	h.app.Config.Remote.AuthMode = "nosec"
+	h.app.Config.Remote.AuthMode = "account"
 	h.app.Config.Remote.Enabled = true
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "not approved", http.StatusConflict) }))
 	defer gateway.Close()
@@ -53,7 +53,7 @@ func TestNOSECLocalLoginUsesStrictIntentAndSafeStatus(t *testing.T) {
 			t.Fatalf("unsafe login intent accepted with %d", response.StatusCode)
 		}
 	}
-	h.app.Config.Remote.AuthMode = "legacy"
+	h.app.Config.Remote.AuthMode = "independent"
 	response, err := local.Client().Post(local.URL+"/api/remote/login", "application/json", strings.NewReader(`{}`))
 	if err != nil {
 		t.Fatal(err)
@@ -62,7 +62,7 @@ func TestNOSECLocalLoginUsesStrictIntentAndSafeStatus(t *testing.T) {
 	if response.StatusCode != http.StatusConflict {
 		t.Fatal("legacy mode accepted account login")
 	}
-	h.app.Config.Remote.AuthMode = "nosec"
+	h.app.Config.Remote.AuthMode = "account"
 	response, err = local.Client().Post(local.URL+"/api/remote/login", "application/json", strings.NewReader(`{}`))
 	if err != nil {
 		t.Fatal(err)

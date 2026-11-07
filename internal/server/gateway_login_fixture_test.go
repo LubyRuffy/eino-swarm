@@ -31,13 +31,13 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
-// TestNOSECGatewayFixture is an opt-in, five-minute cross-project fixture, not
+// TestGatewayLoginFixture is an opt-in, five-minute cross-project fixture, not
 // native acceptance. It serves the real client REST and embedded UI against an
 // explicitly supplied loopback Gateway. OpenURL records a public verification
 // link and never launches a process or touches the user's application data.
-func TestNOSECGatewayFixture(t *testing.T) {
-	metadataPath := os.Getenv("ZWAI_NOSEC_GATEWAY_FIXTURE")
-	gateway := os.Getenv("ZWAI_NOSEC_GATEWAY_ORIGIN")
+func TestGatewayLoginFixture(t *testing.T) {
+	metadataPath := os.Getenv("ZWAI_GATEWAY_LOGIN_FIXTURE")
+	gateway := os.Getenv("ZWAI_GATEWAY_LOGIN_ORIGIN")
 	if metadataPath == "" && gateway == "" {
 		t.Skip("set both private fixture metadata path and loopback Gateway origin")
 	}
@@ -64,7 +64,7 @@ func TestNOSECGatewayFixture(t *testing.T) {
 	}
 	if err := cfg.Update(func(next *config.Config) error {
 		next.Remote.Enabled = true
-		next.Remote.AuthMode = config.RemoteAuthNOSEC
+		next.Remote.AuthMode = config.RemoteAuthAccount
 		next.Remote.HubURL = origin
 		next.Remote.KeepAwake = false
 		return nil
@@ -78,7 +78,7 @@ func TestNOSECGatewayFixture(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	eng := engine.New(cfg, st, provider.NewMock(cfg), log)
 	host := remote.New(eng, cfg, log)
-	host.SetVersion("nosec-gateway-fixture")
+	host.SetVersion("gateway-login-fixture")
 	metadata := fixtureMetadata{
 		State: "preparing", GatewayOrigin: origin, StopPath: metadataPath + ".stop",
 		ExpiresAt: time.Now().Add(5 * time.Minute).UTC(),
@@ -112,10 +112,10 @@ func TestNOSECGatewayFixture(t *testing.T) {
 		}
 	}()
 	srv, err := New(Options{
-		Engine: eng, Logger: log, Assets: assets, Mode: ModeWeb, Version: "nosec-gateway-fixture",
+		Engine: eng, Logger: log, Assets: assets, Mode: ModeWeb, Version: "gateway-login-fixture",
 		OpenURL: func(raw string) error {
 			u, err := url.Parse(raw)
-			if err != nil || u.Scheme+"://"+u.Host != origin || u.User != nil || u.Fragment != "" || u.RawPath != "" || u.Path != "/admin/api/v1/auth/sso/nosec/start" || len(u.Query()) != 1 || len(u.Query()["desktop_code"]) != 1 || u.Query().Get("desktop_code") == "" {
+			if err != nil || u.Scheme+"://"+u.Host != origin || u.User != nil || u.Fragment != "" || u.RawPath != "" || u.Path != "/admin/api/v1/auth/sso/corporate/start" || len(u.Query()) != 1 || len(u.Query()["desktop_code"]) != 1 || u.Query().Get("desktop_code") == "" {
 				return errors.New("fixture refused unsafe public verification URL")
 			}
 			metadataMu.Lock()
@@ -209,7 +209,7 @@ func fixtureWriteMetadata(path string, metadata fixtureMetadata) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".nosec-fixture-*")
+	f, err := os.CreateTemp(filepath.Dir(path), ".gateway-fixture-*")
 	if err != nil {
 		return err
 	}

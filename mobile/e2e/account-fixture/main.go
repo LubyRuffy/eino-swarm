@@ -1,5 +1,5 @@
 // account-fixture is a loopback-only native-client contract fixture. Its CAS
-// pages are synthetic; it does not authenticate a production NOSEC account.
+// pages are synthetic; it does not authenticate a production gateway account.
 package main
 
 import (
@@ -107,7 +107,7 @@ func (f *fixture) observe(w http.ResponseWriter) {
 	f.observeBindings(value)
 	f.observeWebRouting(value)
 	if f.flow != nil {
-		value["verification_uri"] = f.origin + clientPrefix + "/auth/sso/nosec/start?mobile_code=" + f.flow.PublicCode
+		value["verification_uri"] = f.origin + clientPrefix + "/auth/sso/corporate/start?mobile_code=" + f.flow.PublicCode
 		value["device_confirm_url"] = f.origin + "/mobile-login?code=" + f.flow.PublicCode
 	}
 	data(w, value)
@@ -268,7 +268,7 @@ func (f *fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.counts["start"]++
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		data(w, map[string]any{"device_code": f.flow.DeviceCode, "user_code": f.flow.PublicCode, "verification_uri": f.origin + clientPrefix + "/auth/sso/nosec/start?mobile_code=" + f.flow.PublicCode, "expires_at": time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339), "interval": 5})
+		data(w, map[string]any{"device_code": f.flow.DeviceCode, "user_code": f.flow.PublicCode, "verification_uri": f.origin + clientPrefix + "/auth/sso/corporate/start?mobile_code=" + f.flow.PublicCode, "expires_at": time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339), "interval": 5})
 		return
 	}
 	if path == clientPrefix+"/auth/mobile/poll" && r.Method == http.MethodPost {
@@ -413,7 +413,7 @@ func (f *fixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (f *fixture) browser(w http.ResponseWriter, r *http.Request) bool {
 	path := r.URL.Path
-	if path != clientPrefix+"/auth/sso/nosec/start" && path != "/fixture/cas/login" && path != "/fixture/cas/confirm" && path != "/auth/cas/callback" && path != "/mobile-login" && path != "/fixture/authorize" {
+	if path != clientPrefix+"/auth/sso/corporate/start" && path != "/fixture/cas/login" && path != "/fixture/cas/confirm" && path != "/auth/cas/callback" && path != "/mobile-login" && path != "/fixture/authorize" {
 		return false
 	}
 	if f.flow == nil {
@@ -424,7 +424,7 @@ func (f *fixture) browser(w http.ResponseWriter, r *http.Request) bool {
 	service := f.origin + "/auth/cas/callback?" + q.Encode()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	switch path {
-	case clientPrefix + "/auth/sso/nosec/start":
+	case clientPrefix + "/auth/sso/corporate/start":
 		if r.URL.Query().Get("mobile_code") != f.flow.PublicCode {
 			http.Error(w, "wrong public code", 400)
 			return true
@@ -437,7 +437,7 @@ func (f *fixture) browser(w http.ResponseWriter, r *http.Request) bool {
 			http.Error(w, "wrong service", 400)
 			return true
 		}
-		_, _ = fmt.Fprintf(w, `<meta name="viewport" content="width=device-width"><h1>Fixture NOSEC sign in</h1><form action="/fixture/cas/confirm" method="post"><input type="hidden" name="state" value="%s"><button>Sign in to test NOSEC</button></form>`, html.EscapeString(f.flow.State))
+		_, _ = fmt.Fprintf(w, `<meta name="viewport" content="width=device-width"><h1>Fixture Gateway sign in</h1><form action="/fixture/cas/confirm" method="post"><input type="hidden" name="state" value="%s"><button>Sign in to test gateway</button></form>`, html.EscapeString(f.flow.State))
 	case "/fixture/cas/confirm":
 		if r.Method != http.MethodPost || r.FormValue("state") != f.flow.State {
 			http.Error(w, "wrong state", 400)

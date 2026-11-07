@@ -133,7 +133,7 @@ describe("server-owned account settings", () => {
     const write = vi.fn().mockResolvedValue(undefined)
     const loaded = copy(); loaded.remote = defaultRemoteSettings({ hub_url: "https://gateway.example", enabled: false })
     const persist = new SettingsPersist(write, 400, loaded)
-    const remote = { ...loaded.remote, enabled: true, auth_mode: "nosec" as const }
+    const remote = { ...loaded.remote, enabled: true, auth_mode: "account" as const }
     persist.acceptRemote(remote)
     const draft = { ...loaded, remote, log: { level: "debug" } }
     persist.schedule(draft); await persist.flush()

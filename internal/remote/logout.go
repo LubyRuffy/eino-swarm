@@ -13,7 +13,7 @@ import (
 
 var (
 	// ErrAccountLogoutUnavailable distinguishes anonymous connection authority.
-	ErrAccountLogoutUnavailable = errors.New("remote: account logout requires NOSEC mode")
+	ErrAccountLogoutUnavailable = errors.New("remote: account logout requires account mode")
 	// ErrAccountLogoutInProgress prevents new login ownership crossing logout.
 	ErrAccountLogoutInProgress = ErrAccountOperationInProgress
 	// ErrGatewayLogoutUnsupported preserves the only recovery credential on old servers.
@@ -53,7 +53,7 @@ func (h *Host) LogoutContext(parent context.Context) error {
 	defer h.accountMu.Unlock()
 	h.mu.Lock()
 	cfg := h.cfg.Snapshot()
-	if cfg.Remote.AuthMode != config.RemoteAuthNOSEC {
+	if cfg.Remote.AuthMode != config.RemoteAuthAccount {
 		h.mu.Unlock()
 		return ErrAccountLogoutUnavailable
 	}
@@ -150,7 +150,7 @@ func (h *Host) LogoutContext(parent context.Context) error {
 // late failure from relabelling a replacement receipt with the previous user.
 func retainedLogoutIdentity(cfg *config.Config, origin string, receipt config.RemoteCredential) LoginStatus {
 	currentOrigin, err := config.RemoteOrigin(cfg.Remote.HubURL)
-	if err != nil || currentOrigin != origin || cfg.Remote.AuthMode != config.RemoteAuthNOSEC || !receipt.Authorized || receipt.Token == "" || receipt.HostID == "" || receipt.UserID == "" {
+	if err != nil || currentOrigin != origin || cfg.Remote.AuthMode != config.RemoteAuthAccount || !receipt.Authorized || receipt.Token == "" || receipt.HostID == "" || receipt.UserID == "" {
 		return LoginStatus{}
 	}
 	current, err := cfg.ReadRemoteCredential()

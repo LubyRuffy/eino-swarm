@@ -14,10 +14,10 @@ vi.mock("@/lib/api", () => ({
 }))
 const { api } = await import("@/lib/api")
 const settings = {
-  remote: { ...defaultRemoteSettings(), enabled: true, hub_url: "https://hub.example", auth_mode: "nosec" },
+  remote: { ...defaultRemoteSettings(), enabled: true, hub_url: "https://hub.example", auth_mode: "account" },
 } as Settings
 const signedOut: RemoteStatus = {
-  enabled: true, hub_url: "https://hub.example", auth_mode: "nosec", online: false,
+  enabled: true, hub_url: "https://hub.example", auth_mode: "account", online: false,
   has_token: false, login_available: true, login: { state: "signed_out" },
 }
 const pending: RemoteStatus = {
@@ -38,7 +38,7 @@ beforeEach(() => {
 })
 afterEach(() => { vi.useRealTimers() })
 
-describe("NOSEC phone connection", () => {
+describe("Account phone connection", () => {
   it("hides cached account and authorization details while status is unavailable", () => {
     render(<RemoteLoginSection accountEntry enabled status={{ ...pending,
       login: { ...pending.login!, username: "previous-account" } }} unavailable busy={false}
@@ -52,7 +52,7 @@ describe("NOSEC phone connection", () => {
 
   it("updates the rail avatar from Phone login through the same status owner", async () => {
     render(<><DesktopAccountMenu /><RemoteTab settings={settings} onChange={vi.fn()} /></>)
-    const login = await screen.findByRole("button", { name: "Sign in with NOSEC" })
+    const login = await screen.findByRole("button", { name: "Sign in" })
     await waitFor(() => expect(login).toBeEnabled())
     const avatar = screen.getByRole("button", { name: "Account" })
     expect(avatar).toHaveAttribute("title", "Account: Local use · Not signed in")
@@ -66,7 +66,7 @@ describe("NOSEC phone connection", () => {
     render(<RemoteLoginSection accountEntry enabled status={{ ...signedOut, has_token: true,
       login: { state: "authorized", username: "alice" } }} unavailable={false} busy={false}
       onStart={vi.fn()} onCancel={vi.fn()} />)
-    expect(screen.queryByRole("button", { name: "Sign in with NOSEC" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Reconnect as a new device" })).toBeInTheDocument()
   })
 
@@ -74,7 +74,7 @@ describe("NOSEC phone connection", () => {
     const login = deferred<RemoteStatus>()
     vi.mocked(api.startRemoteLogin).mockReturnValue(login.promise)
     render(<><RemoteTab settings={settings} onChange={vi.fn()} /><RemoteTab settings={settings} onChange={vi.fn()} /></>)
-    const buttons = await screen.findAllByRole("button", { name: "Sign in with NOSEC" })
+    const buttons = await screen.findAllByRole("button", { name: "Sign in" })
     await waitFor(() => expect(buttons[0]).toBeEnabled())
     expect(api.remoteStatus).toHaveBeenCalledTimes(1)
     fireEvent.click(buttons[0])
@@ -86,7 +86,7 @@ describe("NOSEC phone connection", () => {
 
   it("requires an explicit login and keeps QR unavailable before a real online connection", async () => {
     render(<RemoteTab settings={settings} onChange={vi.fn()} />)
-    const login = await screen.findByRole("button", { name: "Sign in with NOSEC" })
+    const login = await screen.findByRole("button", { name: "Sign in" })
     await waitFor(() => expect(login).toBeEnabled())
     expect(api.startRemoteLogin).not.toHaveBeenCalled()
     expect(screen.getByRole("button", { name: "Show pairing QR" })).toBeDisabled()
@@ -141,7 +141,7 @@ describe("NOSEC phone connection", () => {
   it("waits for saved Hub and mode to be reflected in local status", async () => {
     vi.mocked(api.remoteStatus).mockResolvedValue({ ...signedOut, hub_url: "https://old-hub.example" })
     render(<RemoteTab settings={settings} onChange={vi.fn()} />)
-    expect(await screen.findByRole("button", { name: "Sign in with NOSEC" })).toBeDisabled()
+    expect(await screen.findByRole("button", { name: "Sign in" })).toBeDisabled()
     expect(api.startRemoteLogin).not.toHaveBeenCalled()
   })
 
@@ -149,7 +149,7 @@ describe("NOSEC phone connection", () => {
     const late = deferred<RemoteStatus>()
     vi.mocked(api.startRemoteLogin).mockReturnValue(late.promise)
     const view = render(<RemoteTab settings={settings} onChange={vi.fn()} />)
-    const login = await screen.findByRole("button", { name: "Sign in with NOSEC" })
+    const login = await screen.findByRole("button", { name: "Sign in" })
     await waitFor(() => expect(login).toBeEnabled())
     fireEvent.click(login)
     const changed = { ...settings, remote: { ...settings.remote!, hub_url: "https://new-hub.example" } }
@@ -167,7 +167,7 @@ describe("NOSEC phone connection", () => {
     render(<RemoteTab settings={settings} onChange={vi.fn()} />)
     await act(async () => { await Promise.resolve() })
     await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
-    fireEvent.click(screen.getByRole("button", { name: "Sign in with NOSEC" }))
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }))
     await act(async () => { await Promise.resolve() })
     await act(async () => { old.resolve({ ...signedOut, online: true, login: { state: "authorized" } }); await old.promise })
     expect(screen.getByText("ABCD-1234-EF56-7890")).toBeInTheDocument()
