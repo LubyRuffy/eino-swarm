@@ -103,7 +103,7 @@ function sections(t: Translate) {
       id: "remote",
       label: t("settings.nav.remote"),
       icon: Smartphone,
-      keys: "phone remote pair qr hub token pairing scan awake sleep model device account sign in nosec gateway self-hosted advanced 手机 扫码 远程 配对 唤醒 休眠 型号 账号 登录 网关 自建 高级",
+      keys: "phone remote pair qr hub token pairing scan awake sleep model device account sign in account gateway self-hosted advanced 手机 扫码 远程 配对 唤醒 休眠 型号 账号 登录 网关 自建 高级",
     },
     {
       id: "clients",
@@ -334,7 +334,7 @@ export function SettingsDialog({
           const status = await api.startRemoteLogin(newDevice, true)
           const previous = defaultRemoteSettings(settingsRef.current?.remote)
           adoptRemote({ ...previous, enabled: status.enabled,
-            hub_url: status.hub_url, auth_mode: status.auth_mode ?? "legacy" })
+            hub_url: status.hub_url, auth_mode: status.auth_mode ?? "independent" })
           return status
         } catch (error) {
           // Enabling may have committed before start failed or its reply was

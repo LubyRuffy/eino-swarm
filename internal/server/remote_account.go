@@ -29,7 +29,7 @@ func (s *Server) postRemoteLogout(c *gin.Context) {
 	}
 	if err := s.remote.LogoutContext(c.Request.Context()); err != nil {
 		if errors.Is(err, remote.ErrAccountLogoutUnavailable) {
-			c.JSON(http.StatusConflict, gin.H{"error": "account logout requires NOSEC mode", "code": "remote_logout_unavailable"})
+			c.JSON(http.StatusConflict, gin.H{"error": "account logout requires account mode", "code": "remote_logout_unavailable"})
 			return
 		}
 		if errors.Is(err, remote.ErrAccountLogoutInProgress) {

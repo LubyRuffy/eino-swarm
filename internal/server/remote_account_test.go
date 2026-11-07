@@ -17,7 +17,7 @@ import (
 	"github.com/LubyRuffy/pairlink/crypto"
 )
 
-func TestNOSECSidebarLoginEnablesOnlyAccountConnectionAfterValidIntent(t *testing.T) {
+func TestAccountSidebarLoginEnablesOnlyAccountConnectionAfterValidIntent(t *testing.T) {
 	h := newHarness(t)
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "not approved", http.StatusConflict) }))
 	defer gateway.Close()
@@ -67,7 +67,7 @@ func TestNOSECSidebarLoginEnablesOnlyAccountConnectionAfterValidIntent(t *testin
 		t.Fatalf("sidebar login status %d", response.StatusCode)
 	}
 	want := before
-	want.Enabled, want.AuthMode = true, config.RemoteAuthNOSEC
+	want.Enabled, want.AuthMode = true, config.RemoteAuthAccount
 	if h.app.Config.Snapshot().Remote != want {
 		t.Fatal("account enable overwrote unrelated remote settings")
 	}
@@ -77,7 +77,7 @@ func TestNOSECSidebarLoginEnablesOnlyAccountConnectionAfterValidIntent(t *testin
 	}
 }
 
-func TestNOSECSidebarLoginCannotChangeConfigWithoutBrowserOrPersistence(t *testing.T) {
+func TestAccountSidebarLoginCannotChangeConfigWithoutBrowserOrPersistence(t *testing.T) {
 	h := newHarness(t)
 	before := h.app.Config.Snapshot().Remote
 	h.json(http.MethodPost, "/api/remote/login", map[string]any{"enable_account": true}, http.StatusNotImplemented)
@@ -107,12 +107,12 @@ func TestNOSECSidebarLoginCannotChangeConfigWithoutBrowserOrPersistence(t *testi
 	}
 }
 
-func TestNOSECLogoutUsesStrictIntentAndRemovesCloudAuthority(t *testing.T) {
+func TestAccountLogoutUsesStrictIntentAndRemovesCloudAuthority(t *testing.T) {
 	h := newHarness(t)
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, `{"data":{"logged_out":true}}`) }))
 	defer gateway.Close()
 	if err := h.app.Config.Update(func(next *config.Config) error {
-		next.Remote.AuthMode = config.RemoteAuthNOSEC
+		next.Remote.AuthMode = config.RemoteAuthAccount
 		next.Remote.Enabled = true
 		next.Remote.KeepAwake = false
 		next.Remote.HubURL = gateway.URL
@@ -167,7 +167,7 @@ func TestNOSECLogoutUsesStrictIntentAndRemovesCloudAuthority(t *testing.T) {
 	}
 }
 
-func TestNOSECLogoutRefusesLegacyAndReportsCredentialFailure(t *testing.T) {
+func TestAccountLogoutRefusesIndependentAndReportsCredentialFailure(t *testing.T) {
 	h := newHarness(t)
 	if err := h.app.Config.WriteHostToken("anonymous-private-token"); err != nil {
 		t.Fatal(err)
@@ -176,7 +176,7 @@ func TestNOSECLogoutRefusesLegacyAndReportsCredentialFailure(t *testing.T) {
 	if !h.app.Config.HasHostToken() {
 		t.Fatal("account logout destroyed anonymous token")
 	}
-	if err := h.app.Config.Update(func(next *config.Config) error { next.Remote.AuthMode = config.RemoteAuthNOSEC; return nil }); err != nil {
+	if err := h.app.Config.Update(func(next *config.Config) error { next.Remote.AuthMode = config.RemoteAuthAccount; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(h.app.Config.RemoteDir()+"/host_token", []byte("{"), 0600); err != nil {
@@ -195,7 +195,7 @@ func TestNOSECLogoutRefusesLegacyAndReportsCredentialFailure(t *testing.T) {
 func installHTTPLogoutAccount(t *testing.T, cfg *config.Config, origin string) {
 	t.Helper()
 	if err := cfg.Update(func(next *config.Config) error {
-		next.Remote.AuthMode, next.Remote.HubURL, next.Remote.Enabled, next.Remote.KeepAwake = config.RemoteAuthNOSEC, origin, true, false
+		next.Remote.AuthMode, next.Remote.HubURL, next.Remote.Enabled, next.Remote.KeepAwake = config.RemoteAuthAccount, origin, true, false
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -217,7 +217,7 @@ func installHTTPLogoutAccount(t *testing.T, cfg *config.Config, origin string) {
 	}
 }
 
-func TestNOSECLogoutHTTPKeepsStatusResponsiveAndRefusesAnotherOwner(t *testing.T) {
+func TestAccountLogoutHTTPKeepsStatusResponsiveAndRefusesAnotherOwner(t *testing.T) {
 	h := newHarness(t)
 	entered, release := make(chan struct{}), make(chan struct{})
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -263,7 +263,7 @@ func TestNOSECLogoutHTTPKeepsStatusResponsiveAndRefusesAnotherOwner(t *testing.T
 	}
 }
 
-func TestNOSECLogoutHTTPReportsUpgradeWithoutDiscardingCredential(t *testing.T) {
+func TestAccountLogoutHTTPReportsUpgradeWithoutDiscardingCredential(t *testing.T) {
 	h := newHarness(t)
 	gateway := httptest.NewServer(http.NotFoundHandler())
 	defer gateway.Close()
@@ -293,7 +293,7 @@ func TestNOSECLogoutHTTPReportsUpgradeWithoutDiscardingCredential(t *testing.T) 
 	}
 }
 
-func TestNOSECExplicitAccountEnableCannotCancelAnOwnedLogout(t *testing.T) {
+func TestAccountExplicitAccountEnableCannotCancelAnOwnedLogout(t *testing.T) {
 	h := newHarness(t)
 	entered, release := make(chan struct{}), make(chan struct{})
 	var starts atomic.Int32

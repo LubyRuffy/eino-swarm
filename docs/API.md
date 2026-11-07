@@ -717,8 +717,8 @@ seeds the machine hostname. A PUT of `remote` reloads the pairlink host. `keep_a
 holds a system sleep assertion while pairing is on; it is not tied to the hub
 socket. The Host Token is **not** in
 settings JSON; it lives under `$ZWAI_HOME/remote/`. `auth_mode` defaults to
-`legacy`, which mints a missing token on registration and permits manual token
-replacement. `nosec` requires the browser account/device flow below and never
+`independent`, which mints a missing token on registration and permits manual token
+replacement. `account` requires the browser account/device flow below and never
 falls back to anonymous registration or manual-token admission.
 
 ### `GET /api/remote/status`
@@ -726,7 +726,7 @@ falls back to anonymous registration or manual-token admission.
 ```json
 {"enabled": false, "hub_url": "https://ai.fofa.info:2440", "has_token": false, "online": false,
  "keep_awake": true, "awake": false, "fingerprint": "", "error": "",
- "auth_mode": "legacy", "login_available": false}
+ "auth_mode": "independent", "login_available": false}
 ```
 
 `has_token` is a boolean. The Host Token is never returned. `keep_awake` is
@@ -741,11 +741,11 @@ keepalives and reconnects so a new QR can redeem. The phone ticket socket does t
 frames, not WebSocket control pings). A drop is a reconnect banner on the
 inbox or transcript; Retry uses the saved ticket and does not unlink.
 
-In NOSEC mode, optional `login` contains `state` and public metadata only:
+In account mode, optional `login` contains `state` and public metadata only:
 `user_code`, `host_fp`, `host_id`, `user_id`, `username`, `display_name`, `error_code`.
 The optional `login.display_name` is saved with the authorized device receipt.
 Desktop shows this account name in its menu and Phone settings. A receipt from
-an older Gateway uses the readable portion of a generated NOSEC username until
+an older Gateway uses the readable portion of a generated account username until
 another verified login provides a name. Ordinary usernames remain readable.
 `state` is `signed_out`, `signing_out`, `starting`, `authorization_pending`,
 `account_pending`, `account_rejected`, `authorized`, `access_denied`, `expired`, `error` or
@@ -767,8 +767,8 @@ details until recovery.
 
 ### `POST /api/remote/login`
 
-Body `{}` starts or retries a NOSEC login. Go stages a private candidate, opens
-the validated Gateway verification URL in the system browser, and owns polling
+Body `{}` starts or retries a Gateway account login. Go stages a private candidate, opens
+the Gateway-returned same-origin verification URL in the system browser, and owns polling
 with S256 proof. It returns `202` with the same safe status; a later status read
 shows the public confirmation code and PC fingerprint. No verification URL,
 Host Token, secret device code or verifier is returned to the renderer.
@@ -779,12 +779,12 @@ token or mode entry, and shows the configured server read-only; manual fields
 remain under Advanced / self-hosted server. For an initial blank configuration,
 Go supplies the effective `DefaultGatewayOrigin` in settings; an existing custom
 Hub is preserved. When account mode needs enabling, Go saves
-`remote.enabled=true` and `remote.auth_mode="nosec"` against the latest
+`remote.enabled=true` and `remote.auth_mode="account"` against the latest
 configuration, preserves the Hub and all other fields, and reloads the host
 before starting the same flow. A failed save returns
 `500 remote_login_config_unavailable` and does not start login. Opening the
 account menu, Phone page or advanced section does not call this route. Existing
-`{}` callers retain the requirement to enable and save NOSEC settings first.
+`{}` callers retain the requirement to enable and save account settings first.
 `enable_account` may also accompany an explicitly confirmed `new_device`
 request; it does not replace `confirmed:true`. Unknown fields, invalid types
 and trailing JSON are rejected.
@@ -836,9 +836,9 @@ While logout owns the host, cancel leaves its `signing_out` status intact.
 
 ### `POST /api/remote/logout`
 
-Body `{}` explicitly signs this PC out of its current NOSEC Gateway. The strict
+Body `{}` explicitly signs this PC out of its current Gateway account. The strict
 body is limited to 1 KiB; null, unknown fields, malformed or trailing JSON return
-`400`. This is separate from cancelling a login and is unavailable in legacy
+`400`. This is separate from cancelling a login and is unavailable in independent
 mode. Go fences new login/logout work, publishes `signing_out`, cancels and
 joins the current login, and closes owned remote connections. Status remains
 readable while it confirms revocation outside the Host lock.
@@ -863,7 +863,7 @@ success or lost acknowledgement is not local success.
 
 | Condition | Local HTTP result | Safe status error code |
 |---|---|---|
-| Legacy mode / another logout owns the host | `409 remote_logout_unavailable` / `409 remote_logout_in_progress` | Existing state is retained |
+| Independent mode / another logout owns the host | `409 remote_logout_unavailable` / `409 remote_logout_in_progress` | Existing state is retained |
 | Gateway `404` or `405` | `409 remote_logout_unsupported` | `logout_unsupported`; upgrade Gateway before retrying |
 | Gateway `401` or `403` | `500 remote_logout_failed` | `logout_denied`; private credentials are retained |
 | Network, Gateway, unsafe receipt or local credential failure | `500 remote_logout_failed` | `network_unavailable`, `gateway_unavailable`, `unsafe_response` or `credential_unavailable` |
@@ -874,14 +874,14 @@ joins logout; a late acknowledgement cannot clear a new configuration's proof.
 
 ### `PUT /api/remote/token`
 
-Legacy mode only. Body `{"token": "…"}`; an empty string deletes the stored
-token. Reloads the pairlink host and returns safe status. NOSEC mode rejects
+Independent mode only. Body `{"token": "…"}`; an empty string deletes the stored
+token. Reloads the pairlink host and returns safe status. Account mode rejects
 this endpoint with `403 remote_login_required`, including empty-token writes.
 
 ### `POST /api/remote/offer`
 
 Mints a short-lived pairing code and a PNG. `409` `remote_offline` when the
-hub URL is missing or the host cannot register. In NOSEC mode a current
+hub URL is missing or the host cannot register. In account mode a current
 origin-bound authorized receipt and an actual online WebSocket are required;
 waiting for account approval or browser confirmation cannot create a QR.
 

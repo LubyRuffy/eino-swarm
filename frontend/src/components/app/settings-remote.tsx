@@ -78,8 +78,8 @@ function RemoteTabBody({
   const [busy, setBusy] = useState(false)
   const [now, setNow] = useState(() => Date.now())
   const alive = useRef(true)
-  const nosec = remote.auth_mode === "nosec"
-  const canPair = !nosec || (!!status?.online && status.login?.state === "authorized" && !connection.unavailable)
+  const accountMode = remote.auth_mode === "account"
+  const canPair = !accountMode || (!!status?.online && status.login?.state === "authorized" && !connection.unavailable)
   const pairingEpoch = useRef(0)
   const pairingAllowed = useRef(canPair)
   pairingAllowed.current = canPair
@@ -341,11 +341,11 @@ function RemoteTabBody({
                 query={query}
                 label={t("settings.remote.authMode")}
                 hint={t("settings.remote.authModeHint")}
-                value={remote.auth_mode ?? "legacy"}
-                onValueChange={(value) => update({ auth_mode: value as "legacy" | "nosec" })}
+                value={remote.auth_mode ?? "independent"}
+                onValueChange={(value) => update({ auth_mode: value as "independent" | "account" })}
               >
-                <SelectItem value="legacy">{t("settings.remote.authLegacy")}</SelectItem>
-                <SelectItem value="nosec">{t("settings.remote.authNOSEC")}</SelectItem>
+                <SelectItem value="independent">{t("settings.remote.authIndependent")}</SelectItem>
+                <SelectItem value="account">{t("settings.remote.authAccount")}</SelectItem>
               </SettingsChoice>
               <Field
                 query={query}

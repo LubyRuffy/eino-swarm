@@ -33,7 +33,7 @@ const summaries: Record<RemoteLoginStatus["state"], MessageKey> = {
 function summaryKey(status: RemoteStatus | undefined, unavailable: boolean): MessageKey {
   if (unavailable) return "desktopAccount.unavailable"
   if (!status) return "desktopAccount.loading"
-  if (status.auth_mode !== "nosec") return "desktopAccount.local"
+  if (status.auth_mode !== "account") return "desktopAccount.local"
   const state = status.login?.state ?? "signed_out"
   if (state === "authorized") return status.online ? "desktopAccount.online" : "desktopAccount.offline"
   return summaries[state] ?? "desktopAccount.error"
@@ -50,7 +50,7 @@ export function DesktopAccountMenu() {
   const [failed, setFailed] = useState(false)
   const trigger = useRef<HTMLButtonElement>(null)
   const handoff = useRef(false)
-  const managed = status?.auth_mode === "nosec"
+  const managed = status?.auth_mode === "account"
   const login = managed ? status.login : undefined
   const authorized = !unavailable && login?.state === "authorized"
   const accountName = remoteAccountName(unavailable ? undefined : login)

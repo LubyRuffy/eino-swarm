@@ -63,7 +63,7 @@ func newAccountHarness(t *testing.T, signedIn bool) *accountHarness {
 	}
 	a.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	if err := a.Config.Update(func(c *config.Config) error {
-		c.Remote.AuthMode = config.RemoteAuthNOSEC
+		c.Remote.AuthMode = config.RemoteAuthAccount
 		c.Remote.HubURL = origin
 		return nil
 	}); err != nil {

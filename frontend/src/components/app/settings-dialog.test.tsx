@@ -128,9 +128,9 @@ describe("Settings dialog", () => {
 
   it("drains an earlier save before account login and does not rewrite enabled account settings", async () => {
     const loaded = structuredClone(base)
-    loaded.remote = defaultRemoteSettings({ enabled: false, auth_mode: "legacy", hub_url: "https://gateway.example" })
+    loaded.remote = defaultRemoteSettings({ enabled: false, auth_mode: "independent", hub_url: "https://gateway.example" })
     const status: RemoteStatus = { ...loaded.remote, online: false, has_token: false, login_available: true }
-    const pending: RemoteStatus = { ...status, enabled: true, auth_mode: "nosec", login: { state: "authorization_pending", user_code: "NEW1-0000-0000-0000" } }
+    const pending: RemoteStatus = { ...status, enabled: true, auth_mode: "account", login: { state: "authorization_pending", user_code: "NEW1-0000-0000-0000" } }
     vi.mocked(api.settings).mockResolvedValue(loaded)
     vi.mocked(api.remoteStatus).mockResolvedValue(status)
     vi.mocked(api.startRemoteLogin).mockResolvedValue(pending)
@@ -140,7 +140,7 @@ describe("Settings dialog", () => {
     renderDialog({ initialSection: "personality", onOpenChange })
     fireEvent.change(await screen.findByLabelText("Personal preferences"), { target: { value: "Keep this pending edit" } })
     fireEvent.click(screen.getByRole("tab", { name: "Phone" }))
-    const login = await screen.findByRole("button", { name: "Sign in with NOSEC" })
+    const login = await screen.findByRole("button", { name: "Sign in" })
     await waitFor(() => expect(login).toBeEnabled())
     fireEvent.click(login)
     await waitFor(() => expect(api.saveSettings).toHaveBeenCalledOnce())
@@ -161,7 +161,7 @@ describe("Settings dialog", () => {
 
   it("waits for an account operation before a new open loads and never applies its old-scope reply", async () => {
     const loaded = structuredClone(base)
-    loaded.remote = defaultRemoteSettings({ enabled: false, hub_url: "https://first.example", auth_mode: "legacy" })
+    loaded.remote = defaultRemoteSettings({ enabled: false, hub_url: "https://first.example", auth_mode: "independent" })
     const newer = { ...loaded, remote: { ...loaded.remote, hub_url: "https://next.example" } }
     const initial: RemoteStatus = { ...loaded.remote, online: false, has_token: false, login_available: true }
     vi.mocked(api.settings).mockResolvedValueOnce(loaded).mockResolvedValue(newer)
@@ -169,7 +169,7 @@ describe("Settings dialog", () => {
     let finish!: (value: RemoteStatus) => void
     vi.mocked(api.startRemoteLogin).mockReturnValue(new Promise<RemoteStatus>((done) => { finish = done }))
     const ui = renderDialog({ initialSection: "remote" })
-    const login = await screen.findByRole("button", { name: "Sign in with NOSEC" })
+    const login = await screen.findByRole("button", { name: "Sign in" })
     await waitFor(() => expect(login).toBeEnabled())
     fireEvent.click(login)
     await waitFor(() => expect(api.startRemoteLogin).toHaveBeenCalledOnce())
@@ -177,7 +177,7 @@ describe("Settings dialog", () => {
     ui.rerender(dialogNode({ open: true, initialSection: "personality" }))
     expect(api.settings).toHaveBeenCalledTimes(1)
     await act(async () => {
-      finish({ ...initial, enabled: true, auth_mode: "nosec", login: { state: "authorization_pending", user_code: "OLD-SCOPE-REPLY" } })
+      finish({ ...initial, enabled: true, auth_mode: "account", login: { state: "authorization_pending", user_code: "OLD-SCOPE-REPLY" } })
     })
     await screen.findByLabelText("Personal preferences")
     expect(api.settings).toHaveBeenCalledTimes(2)
@@ -190,20 +190,20 @@ describe("Settings dialog", () => {
 
   it("offers remote-only recovery when start and its settings acknowledgement both fail", async () => {
     const loaded = structuredClone(base)
-    loaded.remote = defaultRemoteSettings({ enabled: false, auth_mode: "legacy", hub_url: "https://gateway.example" })
-    const enabled = { ...loaded, remote: { ...loaded.remote, enabled: true, auth_mode: "nosec" as const } }
+    loaded.remote = defaultRemoteSettings({ enabled: false, auth_mode: "independent", hub_url: "https://gateway.example" })
+    const enabled = { ...loaded, remote: { ...loaded.remote, enabled: true, auth_mode: "account" as const } }
     vi.mocked(api.settings).mockResolvedValueOnce(loaded).mockRejectedValueOnce(new Error("fixture status unavailable")).mockResolvedValue(enabled)
     vi.mocked(api.remoteStatus).mockResolvedValue({ ...loaded.remote, online: false, has_token: false, login_available: true })
     vi.mocked(api.startRemoteLogin).mockRejectedValue(new Error("fixture start acknowledgement lost"))
     renderDialog({ initialSection: "remote" })
-    const login = await screen.findByRole("button", { name: "Sign in with NOSEC" })
+    const login = await screen.findByRole("button", { name: "Sign in" })
     await waitFor(() => expect(login).toBeEnabled())
     fireEvent.click(login)
     const retry = await screen.findByRole("button", { name: "Reload account settings" })
-    expect(screen.queryByRole("button", { name: "Sign in with NOSEC" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument()
     vi.mocked(api.remoteStatus).mockResolvedValue({ ...enabled.remote, online: false, has_token: false, login_available: true, login: { state: "signed_out" } })
     fireEvent.click(retry)
-    await waitFor(() => expect(screen.getByRole("button", { name: "Sign in with NOSEC" })).toBeEnabled())
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled())
     expect(api.settings).toHaveBeenCalledTimes(3)
     expect(api.startRemoteLogin).toHaveBeenCalledOnce()
     expect(api.saveSettings).not.toHaveBeenCalled()
@@ -211,8 +211,8 @@ describe("Settings dialog", () => {
 
   it.each(["pending", "in-flight", "failed"])("drains %s recovery edits before adopting the saved account", async (phase) => {
     const loaded = structuredClone(base)
-    loaded.remote = defaultRemoteSettings({ enabled: false, auth_mode: "legacy", hub_url: "https://gateway.example" })
-    const enabled = { ...loaded, remote: { ...loaded.remote, enabled: true, auth_mode: "nosec" as const } }
+    loaded.remote = defaultRemoteSettings({ enabled: false, auth_mode: "independent", hub_url: "https://gateway.example" })
+    const enabled = { ...loaded, remote: { ...loaded.remote, enabled: true, auth_mode: "account" as const } }
     vi.mocked(api.settings).mockResolvedValueOnce(loaded).mockRejectedValueOnce(new Error("fixture settings unavailable")).mockResolvedValue(enabled)
     vi.mocked(api.remoteStatus).mockResolvedValue({ ...loaded.remote, online: false, has_token: false, login_available: true })
     vi.mocked(api.startRemoteLogin).mockRejectedValue(new Error("fixture start acknowledgement lost"))
@@ -220,7 +220,7 @@ describe("Settings dialog", () => {
     let fail!: (reason: Error) => void
     vi.mocked(api.saveSettings).mockReturnValueOnce(new Promise<Settings>((done, reject) => { finish = done; fail = reject }))
     renderDialog({ initialSection: "remote" })
-    const login = await screen.findByRole("button", { name: "Sign in with NOSEC" })
+    const login = await screen.findByRole("button", { name: "Sign in" })
     await waitFor(() => expect(login).toBeEnabled())
     fireEvent.click(login)
     await screen.findByRole("button", { name: "Reload account settings" })
@@ -238,10 +238,10 @@ describe("Settings dialog", () => {
       else finish(loaded)
     })
     await waitFor(() => expect(api.settings).toHaveBeenCalledTimes(3))
-    await waitFor(() => expect(screen.getByRole("button", { name: "Sign in with NOSEC" })).toBeEnabled())
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled())
     fireEvent.click(screen.getByRole("tab", { name: "Personality" }))
     expect(await screen.findByLabelText("Personal preferences")).toHaveValue("Keep this independent edit")
-    fireEvent.change(await screen.findByLabelText("Personal preferences"), { target: { value: "Next edit retains NOSEC" } })
+    fireEvent.change(await screen.findByLabelText("Personal preferences"), { target: { value: "Next edit retains account" } })
     await waitFor(() => expect(api.saveSettings).toHaveBeenCalledTimes(2))
     expect(vi.mocked(api.saveSettings).mock.calls[1][0]).not.toHaveProperty("remote")
     expect(api.startRemoteLogin).toHaveBeenCalledOnce()
@@ -249,8 +249,8 @@ describe("Settings dialog", () => {
 
   it("adopts saved remote state when account enabling succeeded but login start failed", async () => {
     const loaded = structuredClone(base)
-    loaded.remote = defaultRemoteSettings({ enabled: false, auth_mode: "legacy", hub_url: "https://gateway.example" })
-    const enabled = { ...loaded, remote: { ...loaded.remote, enabled: true, auth_mode: "nosec" as const } }
+    loaded.remote = defaultRemoteSettings({ enabled: false, auth_mode: "independent", hub_url: "https://gateway.example" })
+    const enabled = { ...loaded, remote: { ...loaded.remote, enabled: true, auth_mode: "account" as const } }
     vi.mocked(api.settings).mockResolvedValueOnce(loaded).mockResolvedValue(enabled)
     vi.mocked(api.remoteStatus).mockResolvedValue({ ...loaded.remote, online: false, has_token: false, login_available: true })
     vi.mocked(api.startRemoteLogin).mockImplementation(async () => {
@@ -258,7 +258,7 @@ describe("Settings dialog", () => {
       throw new Error("fixture login start refused")
     })
     renderDialog({ initialSection: "remote" })
-    const login = await screen.findByRole("button", { name: "Sign in with NOSEC" })
+    const login = await screen.findByRole("button", { name: "Sign in" })
     await waitFor(() => expect(login).toBeEnabled())
     fireEvent.click(login)
     await waitFor(() => expect(api.settings).toHaveBeenCalledTimes(2))

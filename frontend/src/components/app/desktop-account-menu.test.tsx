@@ -32,7 +32,7 @@ vi.mock("@/lib/api", () => ({
 }))
 
 const anonymous: RemoteStatus = {
-  enabled: false, hub_url: "https://configured.example", auth_mode: "legacy",
+  enabled: false, hub_url: "https://configured.example", auth_mode: "independent",
   has_token: false, online: false, login_available: true,
 }
 const props = { onSettings: vi.fn(), onToggleTheme: vi.fn(), onToggleLocale: vi.fn() }
@@ -46,7 +46,7 @@ function openMenu() {
 
 function openAccount() {
   const menu = openMenu()
-  fireEvent.click(within(menu).getByRole("menuitem", { name: /Sign in with NOSEC|Account details/ }))
+  fireEvent.click(within(menu).getByRole("menuitem", { name: /Sign in|Account details/ }))
   return screen.getByRole("dialog", { name: "Account" })
 }
 
@@ -72,9 +72,9 @@ beforeEach(() => {
   fake.status = anonymous
   fake.unavailable = false
   fake.busy = false
-  fake.start.mockResolvedValue({ ...anonymous, auth_mode: "nosec", enabled: true, login: { state: "authorization_pending" } })
+  fake.start.mockResolvedValue({ ...anonymous, auth_mode: "account", enabled: true, login: { state: "authorization_pending" } })
   fake.cancel.mockResolvedValue({ ...anonymous, login: { state: "cancelled" } })
-  fake.logout.mockResolvedValue({ ...anonymous, auth_mode: "nosec", login: { state: "signed_out" } })
+  fake.logout.mockResolvedValue({ ...anonymous, auth_mode: "account", login: { state: "signed_out" } })
   useSettingsSheet.setState({ open: false, section: "general" })
 })
 
@@ -87,7 +87,7 @@ describe("desktop account entry", () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
     useSettingsSheet.setState({ open: false, section: "general" })
     const menu = openMenu()
-    within(menu).getByRole("menuitem", { name: "Sign in with NOSEC" }).focus()
+    within(menu).getByRole("menuitem", { name: "Sign in" }).focus()
     await act(async () => {
       fireEvent.keyDown(menu, { key: "Escape" })
       await new Promise((resolve) => setTimeout(resolve, 0))
@@ -118,7 +118,7 @@ describe("desktop account entry", () => {
     try {
       render(<DestRail {...props} />)
       const menu = openMenu()
-      const item = within(menu).getByRole("menuitem", { name: "Sign in with NOSEC" })
+      const item = within(menu).getByRole("menuitem", { name: "Sign in" })
       fireEvent.click(item)
       const dialog = screen.getByRole("dialog", { name: "Account" })
       await act(async () => { await Promise.resolve() })
@@ -139,7 +139,7 @@ describe("desktop account entry", () => {
   })
 
   it("disables account mutations while another client is signing out", () => {
-    fake.status = { ...anonymous, enabled: true, auth_mode: "nosec", has_token: true,
+    fake.status = { ...anonymous, enabled: true, auth_mode: "account", has_token: true,
       login: { state: "signing_out" as NonNullable<RemoteStatus["login"]>["state"] } }
     render(<DestRail {...props} />)
     const menu = openMenu()
@@ -148,7 +148,7 @@ describe("desktop account entry", () => {
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Account details" }))
     const panel = screen.getByRole("dialog", { name: "Account" })
     expect(within(panel).getByRole("button", { name: "Sign out" })).toBeDisabled()
-    for (const button of within(panel).getAllByRole("button", { name: /Sign in with NOSEC|Reconnect as a new device/ })) {
+    for (const button of within(panel).getAllByRole("button", { name: /Sign in|Reconnect as a new device/ })) {
       expect(button).toBeDisabled()
     }
     expect(fake.start).not.toHaveBeenCalled()
@@ -156,7 +156,7 @@ describe("desktop account entry", () => {
   })
 
   it("explains an unsupported Gateway logout without reporting that local credentials were cleared", () => {
-    fake.status = { ...anonymous, enabled: true, auth_mode: "nosec", has_token: true,
+    fake.status = { ...anonymous, enabled: true, auth_mode: "account", has_token: true,
       login: { state: "error", error_code: "logout_unsupported" } }
     render(<DestRail {...props} />)
     const panel = openAccount()
@@ -181,7 +181,7 @@ describe("desktop account entry", () => {
     render(<DestRail {...props} />)
     const menu = openMenu()
     expect(fake.start).not.toHaveBeenCalled()
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Sign in with NOSEC" }))
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Sign in" }))
     const dialog = screen.getByRole("dialog", { name: "Account" })
     expect(within(dialog).getByText("You can keep using local conversations without signing in.")).toBeVisible()
     expect(useSettingsSheet.getState().open).toBe(false)
@@ -196,7 +196,7 @@ describe("desktop account entry", () => {
     ["álvaro", undefined, "álvaro", "Á"],
   ] as const)("shows the account label for %s without claiming PC connectivity", (username, display_name, name, initial) => {
     const login = { state: "authorized" as const, username, display_name }
-    fake.status = { ...anonymous, enabled: true, auth_mode: "nosec", has_token: true, login }
+    fake.status = { ...anonymous, enabled: true, auth_mode: "account", has_token: true, login }
     render(<DestRail {...props} />)
     const trigger = screen.getByRole("button", { name: "Account" })
     expect(trigger).toHaveTextContent(initial)
@@ -218,7 +218,7 @@ describe("desktop account entry", () => {
     ["account_rejected", "Account rejected", "This account was rejected. Ask an administrator to review it."],
     ["access_denied", "Access denied", "This account cannot connect devices. Contact an administrator."],
   ] as const)("keeps %s truthful and preserves public approval details", async (state, summary, detail) => {
-    fake.status = { ...anonymous, enabled: true, auth_mode: "nosec", login: { state, username: "pending-user", user_code: "ABCD-1234", host_fp: "public-fingerprint" } }
+    fake.status = { ...anonymous, enabled: true, auth_mode: "account", login: { state, username: "pending-user", user_code: "ABCD-1234", host_fp: "public-fingerprint" } }
     render(<DestRail {...props} />)
     const menu = openMenu()
     expect(within(menu).getByText(summary)).toBeVisible()
@@ -232,7 +232,7 @@ describe("desktop account entry", () => {
 
   it("reports unreadable status as unknown and offers a read retry instead of a false signed-out state", async () => {
     fake.unavailable = true
-    fake.status = { ...anonymous, auth_mode: "nosec", has_token: true, login: { state: "authorized", username: "alice" } }
+    fake.status = { ...anonymous, auth_mode: "account", has_token: true, login: { state: "authorized", username: "alice" } }
     render(<DestRail {...props} />)
     const menu = openMenu()
     expect(within(menu).getByText("Account status unavailable")).toBeVisible()
@@ -243,7 +243,7 @@ describe("desktop account entry", () => {
   })
 
   it("uses real logout, keeps errors visible, and does not clear the confirmed account locally", async () => {
-    fake.status = { ...anonymous, enabled: true, auth_mode: "nosec", has_token: true, login: { state: "authorized", username: "alice" } }
+    fake.status = { ...anonymous, enabled: true, auth_mode: "account", has_token: true, login: { state: "authorized", username: "alice" } }
     fake.logout.mockRejectedValue(new Error("private-credential-must-not-render"))
     render(<DestRail {...props} />)
     const dialog = openAccount()
@@ -256,7 +256,7 @@ describe("desktop account entry", () => {
   })
 
   it("preserves explicit new-device confirmation and enables account mode only after confirmation", async () => {
-    fake.status = { ...anonymous, enabled: true, auth_mode: "nosec", login: { state: "error", error_code: "device_conflict" } }
+    fake.status = { ...anonymous, enabled: true, auth_mode: "account", login: { state: "error", error_code: "device_conflict" } }
     render(<DestRail {...props} />)
     const dialog = openAccount()
     fireEvent.click(within(dialog).getByRole("button", { name: "Reconnect as a new device" }))

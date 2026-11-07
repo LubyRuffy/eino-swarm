@@ -44,7 +44,7 @@ import org.junit.runner.Description;
 import org.junit.runner.RunWith;
 
 /** Native actions against the unchanged packaged web assets and a loopback fixture.
- * The fixture's synthetic CAS is not a production NOSEC identity or live model. */
+ * The fixture's synthetic CAS is not a production Gateway identity or live model. */
 @RunWith(AndroidJUnit4.class)
 public class AccountLoginTest {
     private final Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
@@ -69,7 +69,7 @@ public class AccountLoginTest {
     public void preparePreviousAnonymousAndPersonalData() throws Exception {
         beginCase("native-upgrade-prepare");
         launch();
-        waitFor("Sign in with NOSEC");
+        waitFor("Sign in");
         assertFalse("Previous public launch needs no Gateway URL", present("Server address"));
         click("Connect a model");
         addPersonalModel();
@@ -108,11 +108,11 @@ public class AccountLoginTest {
                 save("01-upgrade-preserved-personal-provider");
                 click("Close"); click("Menu"); click("User center");
             } else {
-                waitFor("Sign in with NOSEC");
+                waitFor("Sign in");
                 assertFalse("Fresh launch must not require a server URL", present("Server address"));
                 assertFalse("Fresh launch must not require a Key", present("API Key"));
                 save("01-default-no-configuration");
-                click("Sign in with NOSEC");
+                click("Sign in");
             }
             waitFor("User center");
             assertFalse("Server setup stays optional", present("Server address"));
@@ -121,7 +121,7 @@ public class AccountLoginTest {
             save("01a-native-server-form-roundtrip");
             click("Use this server");
             control("start=redirect");
-            click("Sign in with NOSEC");
+            click("Sign in");
             waitFor("The endpoint rejected the request.");
             assertEquals("Gateway POST redirects must not reach another origin", 0, state().getJSONObject("counts").optInt("redirect_target"));
             assertEquals(1, state().getJSONObject("counts").optInt("redirect_sent"));
@@ -129,7 +129,7 @@ public class AccountLoginTest {
             save("01b-native-auth-redirect-refused");
             control("start=delay");
             long delayedAt = SystemClock.uptimeMillis();
-            click("Sign in with NOSEC");
+            click("Sign in");
             waitFor("Checking account…");
             waitFor("The account operation timed out. Try again.");
             long elapsed = SystemClock.uptimeMillis() - delayedAt;
@@ -138,10 +138,10 @@ public class AccountLoginTest {
             assertEquals("A cancelled request cannot accept its late result", 0, state().getJSONObject("counts").optInt("delay_completed"));
             save("01c-native-auth-timeout");
             control("start=normal");
-            click("Sign in with NOSEC");
-            waitBrowser("Sign in to test NOSEC");
+            click("Sign in");
+            waitBrowser("Sign in to test gateway");
             save("02-system-browser");
-            click("Sign in to test NOSEC");
+            click("Sign in to test gateway");
             waitFor("Waiting for administrator approval");
             assertEquals(1, state().getJSONObject("counts").optInt("cas_callback"));
             foreground();
@@ -275,8 +275,8 @@ public class AccountLoginTest {
         waitContaining("Native PC conversation");
         control("review=approved&model=tools&web=normal&pc=hide");
         click("Menu"); click("User center");
-        click("Sign in with NOSEC");
-        waitBrowser("Sign in to test NOSEC"); click("Sign in to test NOSEC");
+        click("Sign in");
+        waitBrowser("Sign in to test gateway"); click("Sign in to test gateway");
         waitBrowser("Authorize test device"); click("Authorize test device");
         waitFor("Device authorized. Return to zwai."); foreground();
         waitFor("Phone chat Web tools");

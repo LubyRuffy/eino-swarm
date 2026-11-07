@@ -28,7 +28,7 @@ const fetcher = vi.fn<typeof fetch>(async (_url, init) => {
   if (init?.signal?.aborted) throw new DOMException("Aborted", "AbortError")
   return new Response(JSON.stringify({ data: {
     device_code: "D".repeat(43), user_code: "abcd-1234-abcd-1234", interval: 5,
-    verification_uri: origin + "/client/api/v1/auth/sso/nosec/start?mobile_code=abcd-1234-abcd-1234",
+    verification_uri: origin + "/client/api/v1/auth/sso/corporate/start?mobile_code=abcd-1234-abcd-1234",
     expires_at: new Date(Date.now() + 600_000).toISOString(),
   } }))
 })

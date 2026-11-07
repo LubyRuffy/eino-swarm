@@ -11,7 +11,7 @@ Phone pairing keys are not in this database. `$ZWAI_HOME/remote/host_token` and
 `$ZWAI_HOME/remote/identity` are 0600 files under the private remote directory.
 `host_token` accepts a legacy raw token or a schema-1 JSON record containing
 `token`, `origin`, `authorized`, optional `host_id`, `user_id` and `username`.
-NOSEC requires a complete origin/account/host-bound authorized receipt; mode
+Account mode requires a complete origin/account/host-bound authorized receipt; mode
 selection itself is not authorization. The X25519 identity remains stable.
 Reading legacy raw files is backward compatible in this client; downgrading to
 an older client that only reads raw text cannot consume an activated schema-1

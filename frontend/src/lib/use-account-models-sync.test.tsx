@@ -25,7 +25,7 @@ const meta = (account: AccountModels): Meta => ({
   reasoning_levels: [], data_dir: "", capabilities: {}, swarm: {} as Meta["swarm"], account_models: account,
 })
 const signedIn = (state: NonNullable<RemoteStatus["login"]>["state"]): RemoteStatus => ({
-  enabled: true, hub_url: "https://server.example", auth_mode: "nosec", has_token: true, online: false,
+  enabled: true, hub_url: "https://server.example", auth_mode: "account", has_token: true, online: false,
   login_available: true, login: { state },
 })
 

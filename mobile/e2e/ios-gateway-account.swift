@@ -2,7 +2,7 @@ import XCTest
 
 // Selected by ios-layout-fixture.py in a fresh, private simulator app. The
 // packaged web files are unchanged; only the QA native wrapper selects this
-// shared loopback fixture. This does not accept production NOSEC or a signed IPA.
+// shared loopback fixture. This does not accept production gateway or a signed IPA.
 final class BindFlowTests: XCTestCase {
   private let fixtureOrigin = "__ZWAI_GATEWAY_FIXTURE_ORIGIN__"
 
@@ -12,7 +12,7 @@ final class BindFlowTests: XCTestCase {
     try control("review=pending&pc=hide&api=on&start=normal&catalog=normal&model=normal")
     app.launch()
 
-    let login = app.buttons["Sign in with NOSEC"]
+    let login = app.buttons["Sign in"]
     XCTAssertTrue(login.waitForExistence(timeout: 15))
     XCTAssertFalse(app.textFields["Server address"].exists)
     XCTAssertFalse(app.textFields["Hub URL"].exists)
@@ -25,7 +25,7 @@ final class BindFlowTests: XCTestCase {
     // These requests go through the shipping WKWebView fetch bridge. Neither
     // an error message alone nor a source mock proves redirect/abort behavior.
     try control("start=redirect")
-    app.buttons["Sign in with NOSEC"].tap()
+    app.buttons["Sign in"].tap()
     try waitForCount("redirect_sent", atLeast: 1, timeout: 8)
     XCTAssertTrue(app.staticTexts["The endpoint rejected the request."].waitForExistence(timeout: 8))
     XCTAssertEqual(try count("redirect_target"), 0)
@@ -34,7 +34,7 @@ final class BindFlowTests: XCTestCase {
 
     try control("start=delay")
     let delayedAt = Date()
-    app.buttons["Sign in with NOSEC"].tap()
+    app.buttons["Sign in"].tap()
     try waitForCount("delay_started", atLeast: 1, timeout: 5)
     try waitForCount("delay_cancelled", atLeast: 1, timeout: 18)
     let elapsed = Date().timeIntervalSince(delayedAt)
@@ -43,7 +43,7 @@ final class BindFlowTests: XCTestCase {
     XCTAssertEqual(try count("delay_completed"), 0)
     XCTAssertEqual(try count("browser_start"), 0)
     XCTAssertTrue(app.staticTexts["The account operation timed out. Try again."].waitForExistence(timeout: 3))
-    try waitForEnabled(app.buttons["Sign in with NOSEC"])
+    try waitForEnabled(app.buttons["Sign in"])
     let timing = XCTAttachment(string: "control_request_cancelled_after_seconds=\(elapsed)")
     timing.name = "account-native-control-timeout-timing"
     timing.lifetime = .keepAlways
@@ -51,7 +51,7 @@ final class BindFlowTests: XCTestCase {
     record(app, "account-native-control-timeout-cancelled")
 
     try control("start=normal")
-    app.buttons["Sign in with NOSEC"].tap()
+    app.buttons["Sign in"].tap()
     try browserLogin(app, authorize: false)
     XCTAssertTrue(app.staticTexts["Waiting for administrator approval"].waitForExistence(timeout: 15))
     try assertReviewOnly(app)
@@ -75,7 +75,7 @@ final class BindFlowTests: XCTestCase {
     login.tap()
     let userCenter = app.staticTexts["User center"]
     XCTAssertTrue(userCenter.waitForExistence(timeout: 5))
-    if app.buttons["Sign in with NOSEC"].exists { app.buttons["Sign in with NOSEC"].tap() }
+    if app.buttons["Sign in"].exists { app.buttons["Sign in"].tap() }
     try browserLogin(app, authorize: true)
 
     XCTAssertTrue(app.staticTexts["Could not load server models. Refresh to try again."].waitForExistence(timeout: 20))
@@ -154,11 +154,11 @@ final class BindFlowTests: XCTestCase {
     let app = XCUIApplication()
     try control("review=approved&pc=hide&api=on&start=normal&catalog=normal&model=chunked&web=normal")
     app.launch()
-    let login = app.buttons["Sign in with NOSEC"].firstMatch
+    let login = app.buttons["Sign in"].firstMatch
     XCTAssertTrue(login.waitForExistence(timeout: 15), "This case requires a fresh private app container")
     login.tap()
     XCTAssertTrue(app.staticTexts["User center"].waitForExistence(timeout: 5))
-    app.buttons["Sign in with NOSEC"].tap()
+    app.buttons["Sign in"].tap()
     try browserLogin(app, authorize: true)
     XCTAssertTrue(app.staticTexts["native-fixture-model"].waitForExistence(timeout: 15))
     app.buttons["Chat history"].tap()
@@ -192,11 +192,11 @@ final class BindFlowTests: XCTestCase {
     let app = XCUIApplication()
     try control("review=approved&pc=show&api=on&start=normal&catalog=normal&model=tools&web=normal")
     app.launch()
-    let login = app.buttons["Sign in with NOSEC"].firstMatch
+    let login = app.buttons["Sign in"].firstMatch
     XCTAssertTrue(login.waitForExistence(timeout: 15), "This case requires a fresh private app container")
     login.tap()
     XCTAssertTrue(app.staticTexts["User center"].waitForExistence(timeout: 5))
-    app.buttons["Sign in with NOSEC"].tap()
+    app.buttons["Sign in"].tap()
     try browserLogin(app, authorize: true)
     XCTAssertTrue(app.staticTexts["native-fixture-model"].waitForExistence(timeout: 15))
 
@@ -318,11 +318,11 @@ final class BindFlowTests: XCTestCase {
     let app = XCUIApplication()
     try control("review=approved&pc=show&api=on&start=normal&catalog=normal&model=normal&web=normal")
     app.launch()
-    let login = app.buttons["Sign in with NOSEC"].firstMatch
+    let login = app.buttons["Sign in"].firstMatch
     XCTAssertTrue(login.waitForExistence(timeout: 15), "This case requires a fresh private app container")
     login.tap()
     XCTAssertTrue(app.staticTexts["User center"].waitForExistence(timeout: 5))
-    app.buttons["Sign in with NOSEC"].tap()
+    app.buttons["Sign in"].tap()
     try browserLogin(app, authorize: true)
     XCTAssertTrue(app.staticTexts["native-fixture-model"].waitForExistence(timeout: 15))
     let connect = app.buttons["Connect Native PC"]
@@ -553,7 +553,7 @@ final class BindFlowTests: XCTestCase {
   }
 
   private func browserLogin(_ app: XCUIApplication, authorize: Bool) throws {
-    let signIn = app.buttons["Sign in to test NOSEC"]
+    let signIn = app.buttons["Sign in to test gateway"]
     XCTAssertTrue(signIn.waitForExistence(timeout: 15), "The actual Capacitor Browser must display the loopback CAS fixture")
     signIn.tap()
     if authorize {

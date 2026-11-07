@@ -4,7 +4,7 @@ import { RemoteStatusOwner, remoteAuthorityKey } from "./remote-status-owner"
 import type { RemoteStatus } from "./types"
 
 const signedOut: RemoteStatus = {
-  enabled: true, hub_url: "https://hub.example", auth_mode: "nosec",
+  enabled: true, hub_url: "https://hub.example", auth_mode: "account",
   online: false, has_token: false, login_available: true, login: { state: "signed_out" },
 }
 const authorized: RemoteStatus = {
@@ -53,7 +53,7 @@ describe("shared desktop remote status owner", () => {
   })
 
   it("accepts an explicit account-enable mutation as the new authority", async () => {
-    const anonymous = { ...signedOut, enabled: false, auth_mode: "legacy" as const, login: undefined }
+    const anonymous = { ...signedOut, enabled: false, auth_mode: "independent" as const, login: undefined }
     const pending = { ...signedOut, login: { state: "authorization_pending" as const } }
     const owner = new RemoteStatusOwner(async () => anonymous)
     const leave = owner.subscribe(vi.fn())

@@ -246,7 +246,7 @@ def main():
     result = {"source_sha": head, "dirty_development": dirty, "formal_acceptance": False,
               "fixture_scope": "synthetic CAS; actual native Browser, HTTP, PKCE and encrypted Pairlink/Eino RPC",
               "artifacts": hashes, "serial": serial, "private_adb_port": adb_port,
-              "normal_child_umask": "0022", "production_NOSEC_acceptance": False}
+              "normal_child_umask": "0022", "production_gateway_acceptance": False}
     if args.previous_apk:
         result["previous_public_apk_sha256"] = sha(args.previous_apk)
     fixture_ports = []

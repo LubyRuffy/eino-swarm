@@ -62,7 +62,7 @@ func (c *Config) remoteTokenPath() string {
 
 func (c *Config) normalizeRemote() {
 	if c.Remote.AuthMode == "" {
-		c.Remote.AuthMode = RemoteAuthLegacy
+		c.Remote.AuthMode = RemoteAuthIndependent
 	}
 	c.Remote.HubURL = strings.TrimSpace(c.Remote.HubURL)
 	if c.Remote.HubURL == "" {
@@ -131,7 +131,7 @@ func (c *Config) WriteHostToken(token string) error {
 
 // HostToken reads the stored token. Missing file is empty, not an error.
 func (c *Config) HostToken() (string, error) {
-	if c.Remote.AuthMode == RemoteAuthNOSEC {
+	if c.Remote.AuthMode == RemoteAuthAccount {
 		return c.AuthorizedHostToken()
 	}
 	credential, err := c.ReadRemoteCredential()
@@ -156,10 +156,10 @@ func (c *Config) HasHostToken() bool {
 // file is missing. The hub admits that token when open registration is on.
 // This is not a Gateway Key and never goes in config.yaml.
 func (c *Config) EnsureHostToken() (string, error) {
-	if c.Remote.AuthMode == RemoteAuthNOSEC {
+	if c.Remote.AuthMode == RemoteAuthAccount {
 		return c.AuthorizedHostToken()
 	}
-	if c.Remote.AuthMode != "" && c.Remote.AuthMode != RemoteAuthLegacy {
+	if c.Remote.AuthMode != "" && c.Remote.AuthMode != RemoteAuthIndependent {
 		return "", errors.New("remote: invalid authentication mode")
 	}
 	tok, err := c.HostToken()

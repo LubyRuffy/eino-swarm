@@ -201,7 +201,7 @@ func (h *Host) Offer(ctx context.Context) (*Offer, error) {
 	// cancellation must not wait for its network deadline while holding mu.
 	uri, pairingID, err := conn.CreateOffer(ctx)
 	if err != nil {
-		if remoteConfig.AuthMode == config.RemoteAuthNOSEC {
+		if remoteConfig.AuthMode == config.RemoteAuthAccount {
 			return nil, errors.New("remote: pairing offer unavailable")
 		}
 		return nil, err
@@ -271,7 +271,7 @@ func (h *Host) ListBindings(ctx context.Context) ([]Binding, error) {
 		return []Binding{}, nil
 	}
 	var raw []client.BindingView
-	if cfg.Remote.AuthMode == config.RemoteAuthNOSEC {
+	if cfg.Remote.AuthMode == config.RemoteAuthAccount {
 		raw, err = privateBindings(ctx, cfg.Remote.HubURL, token)
 	} else {
 		raw, err = client.ListBindings(ctx, cfg.Remote.HubURL, token)
@@ -292,7 +292,7 @@ func (h *Host) RevokeBinding(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	if cfg.Remote.AuthMode == config.RemoteAuthNOSEC {
+	if cfg.Remote.AuthMode == config.RemoteAuthAccount {
 		return privateRevokeBinding(ctx, cfg.Remote.HubURL, token, id)
 	}
 	return client.RevokeBinding(ctx, cfg.Remote.HubURL, token, id)

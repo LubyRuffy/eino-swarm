@@ -21,7 +21,7 @@ func TestPhoneMetadataReportsThePCWebRouteWithoutExposingAccountAuthority(t *tes
 		t.Helper()
 		if err := cfg.Update(func(next *config.Config) error {
 			next.Tools.WebExecution = mode
-			next.Remote.AuthMode = config.RemoteAuthNOSEC
+			next.Remote.AuthMode = config.RemoteAuthAccount
 			next.Remote.HubURL = origin
 			return nil
 		}); err != nil {

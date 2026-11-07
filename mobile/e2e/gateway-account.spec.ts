@@ -23,7 +23,7 @@ async function fixture(page: Page, options: { apiEnabled?: boolean; hosts?: unkn
     const body = request.postData() ? request.postDataJSON() : undefined
     calls.push({ path, authorization: request.headers().authorization || "", body })
     let data: unknown = {}
-    if (path === "/client/api/v1/auth/mobile/start") data = { device_code: "d".repeat(43), user_code: "1234-5678-abcd-ef01", verification_uri: origin + "/client/api/v1/auth/sso/nosec/start?mobile_code=1234-5678-abcd-ef01", expires_at: new Date(Date.now() + 600_000).toISOString(), interval: 5 }
+    if (path === "/client/api/v1/auth/mobile/start") data = { device_code: "d".repeat(43), user_code: "1234-5678-abcd-ef01", verification_uri: origin + "/client/api/v1/auth/sso/corporate/start?mobile_code=1234-5678-abcd-ef01", expires_at: new Date(Date.now() + 600_000).toISOString(), interval: 5 }
     else if (path === "/client/api/v1/auth/mobile/poll") data = options.review === "authorized" ? { status: "authorized", mobile_id: device.id, user } : { status: options.review || "account_pending" }
     else if (path === "/client/api/v1/auth/me") data = { user: connectionRefused ? { ...user, approval_status: "rejected" } : user, device }
     else if (path === "/client/api/v1/bootstrap" && options.denyBootstrap) { await route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: { code: "permission_denied" } }) }); return }
@@ -37,7 +37,7 @@ async function fixture(page: Page, options: { apiEnabled?: boolean; hosts?: unkn
       expect(body.model).toBe("shared-model")
       await route.fulfill({ contentType: "text/event-stream", body: 'data: {"choices":[{"delta":{"content":"SERVER ANSWER"}}]}\n\ndata: [DONE]\n\n' })
       return
-    } else if (path === "/client/api/v1/auth/sso/nosec/start") {
+    } else if (path === "/client/api/v1/auth/sso/corporate/start") {
       await route.fulfill({ contentType: "text/html", body: "<p>Private test authorization fixture</p>" }); return
     } else if (!["/client/api/v1/heartbeat", "/client/api/v1/auth/logout"].includes(path)) {
       await route.abort(); return
@@ -83,7 +83,7 @@ test("account overlays keep the title and close control inside the safe area", a
     await expect(dialog).toHaveCount(0)
   }
 
-  await page.getByRole("button", { name: "使用 NOSEC 登录" }).click()
+  await page.getByRole("button", { name: "登录" }).click()
   await checkOverlay("signed-out-safe-area")
   await expect(page.getByRole("button", { name: "其他方式", exact: true })).toBeVisible()
 
@@ -96,17 +96,17 @@ test("account overlays keep the title and close control inside the safe area", a
   await expect(page.getByRole("tab", { name: "对话" })).toBeVisible()
 })
 
-test("default NOSEC sign-in requires no server configuration and review hides all other resources", async ({ page }, testInfo) => {
+test("default account sign-in requires no server configuration and review hides all other resources", async ({ page }, testInfo) => {
   const calls = await fixture(page)
   await page.goto("/")
-  await page.getByRole("button", { name: "使用 NOSEC 登录" }).click()
+  await page.getByRole("button", { name: "登录" }).click()
   await expect(page.getByLabel("服务器地址")).toHaveCount(0)
-  await page.getByRole("button", { name: "使用 NOSEC 登录" }).click()
+  await page.getByRole("button", { name: "登录" }).click()
   await expect(page.getByText("等待管理员审核")).toBeVisible({ timeout: 12_000 })
   await expect(page.getByRole("button", { name: "扫描二维码" })).toHaveCount(0)
   await expect(page.getByLabel("消息")).toHaveCount(0)
   await expect(page.getByRole("heading", { name: "我的电脑" })).toHaveCount(0)
-  expect(calls.filter((c) => !["/client/api/v1/auth/mobile/start", "/client/api/v1/auth/mobile/poll", "/client/api/v1/auth/sso/nosec/start"].includes(c.path))).toEqual([])
+  expect(calls.filter((c) => !["/client/api/v1/auth/mobile/start", "/client/api/v1/auth/mobile/poll", "/client/api/v1/auth/sso/corporate/start"].includes(c.path))).toEqual([])
   const start = calls.find((c) => c.path.endsWith("/start") && c.path.includes("/mobile/"))!
   expect(start.body).toMatchObject({ candidate_token: expect.stringMatching(/^agm_[a-f0-9]{64}$/), code_challenge: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) })
   await noOverflow(page)
@@ -189,8 +189,8 @@ const connectCalls = (calls: { path: string }[]) => calls.filter((call) => call.
 test("a fresh sign-in opens the account's only online PC without scanning", async ({ page }) => {
   const calls = await fixture(page, { apiEnabled: false, review: "authorized", hosts: [workPC] })
   await page.goto("/")
-  await page.getByRole("button", { name: "使用 NOSEC 登录" }).click()
-  await page.getByRole("button", { name: "使用 NOSEC 登录" }).click()
+  await page.getByRole("button", { name: "登录" }).click()
+  await page.getByRole("button", { name: "登录" }).click()
   await expect(page.getByRole("tab", { name: "办公电脑" })).toHaveAttribute("aria-selected", "true", { timeout: 20_000 })
   expect(connectCalls(calls)).toHaveLength(1)
   expect(calls.filter((call) => call.path.includes("pairings"))).toEqual([])
@@ -212,8 +212,8 @@ test("a returning session with an online PC still waits for the person to choose
 test("a fresh sign-in with several online PCs lets the person pick one", async ({ page }) => {
   const calls = await fixture(page, { apiEnabled: false, review: "authorized", hosts: [workPC, { ...workPC, id: "pc-lab", name: "实验室电脑", hostname: "lab" }] })
   await page.goto("/")
-  await page.getByRole("button", { name: "使用 NOSEC 登录" }).click()
-  await page.getByRole("button", { name: "使用 NOSEC 登录" }).click()
+  await page.getByRole("button", { name: "登录" }).click()
+  await page.getByRole("button", { name: "登录" }).click()
   await expect(page.getByRole("button", { name: "连接 办公电脑" })).toBeEnabled({ timeout: 20_000 })
   await expect(page.getByRole("button", { name: "连接 实验室电脑" })).toBeEnabled()
   await page.waitForTimeout(1_000)
@@ -288,9 +288,9 @@ test("real anonymous QR becomes one account connection and the replacement ticke
     await page.getByRole("button", { name: "菜单", exact: true }).click()
     await page.getByRole("menuitem", { name: "用户中心", exact: true }).click()
     const popup = page.waitForEvent("popup")
-    await page.getByRole("button", { name: "使用 NOSEC 登录", exact: true }).click()
+    await page.getByRole("button", { name: "登录", exact: true }).click()
     const browser = await popup
-    await browser.getByRole("button", { name: "Sign in to test NOSEC", exact: true }).click()
+    await browser.getByRole("button", { name: "Sign in to test gateway", exact: true }).click()
     await browser.getByRole("button", { name: "Authorize test device", exact: true }).click()
     await expect(browser.getByRole("heading", { name: "Device authorized. Return to zwai.", exact: true })).toBeVisible()
     await browser.close()

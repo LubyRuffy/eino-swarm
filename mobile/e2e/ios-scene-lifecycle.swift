@@ -50,7 +50,7 @@ final class BindFlowTests: XCTestCase {
   func testNativeSceneFreshAccountPageSurvivesBackgroundReturnAndRelaunch() throws {
     continueAfterFailure = false
     try exerciseLifecycle { app, stage in
-      let login = app.buttons["Sign in with NOSEC"].firstMatch
+      let login = app.buttons["Sign in"].firstMatch
       XCTAssertTrue(login.waitForExistence(timeout: 15),
         "A fresh current bundle must paint its signed-out account entry")
       XCTAssertTrue(login.isHittable)

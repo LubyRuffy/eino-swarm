@@ -94,7 +94,7 @@ describe("gateway account shell", () => {
 
   it.each([
     ["nosec_旧用户名_0123456789abcdef", "旧用户名"],
-    ["nosec___0123456789abcdef", "NOSEC account"],
+    ["nosec___0123456789abcdef", "Account"],
     ["nosec_user_123", "nosec_user_123"],
   ])("formats only known synthetic legacy usernames (%s)", (username, expected) => {
     mocks.account = { ...mocks.account, status: "account_pending", session: { ...session, user: { ...session.user, username } } }
@@ -132,12 +132,12 @@ describe("gateway account shell", () => {
 
   it("opens default-server sign-in without asking for server configuration and Android Back closes its overlay", async () => {
     render(<App />)
-    fireEvent.click(screen.getByRole("button", { name: "Sign in with NOSEC" }))
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }))
     expect(screen.getByTestId("gateway-account")).toBeVisible()
     expect(screen.queryByLabelText("Server address")).not.toBeInTheDocument()
     expect(screen.getByLabelText("Phone chat Web tools")).toHaveValue("auto")
     expect(screen.getByLabelText("PC conversation Web tools")).toHaveValue("inherit")
-    fireEvent.click(screen.getByRole("button", { name: "Sign in with NOSEC" }))
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }))
     expect(mocks.account.login).toHaveBeenCalledOnce()
     await act(async () => { expect(window.__zwaiAndroidBack?.()).toBe(true) })
     expect(screen.queryByTestId("gateway-account")).not.toBeInTheDocument()

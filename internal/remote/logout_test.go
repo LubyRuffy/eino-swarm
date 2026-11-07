@@ -16,7 +16,7 @@ import (
 	"github.com/LubyRuffy/pairlink/crypto"
 )
 
-func TestNOSECLogoutJoinsRelayAndLinksAndCannotRestoreAfterReload(t *testing.T) {
+func TestAccountLogoutJoinsRelayAndLinksAndCannotRestoreAfterReload(t *testing.T) {
 	e := testEngine(t)
 	r := newHostLinkRelay(t, e)
 	phone := r.phone(t)
@@ -35,7 +35,7 @@ func TestNOSECLogoutJoinsRelayAndLinksAndCannotRestoreAfterReload(t *testing.T) 
 	if err := cfg.ActivateRemoteToken(path, config.RemoteCredential{Token: credential.Token, Origin: r.url, Authorized: true, HostID: strings.Repeat("a", 32), UserID: strings.Repeat("b", 32), Username: "account"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := cfg.Update(func(next *config.Config) error { next.Remote.AuthMode = config.RemoteAuthNOSEC; return nil }); err != nil {
+	if err := cfg.Update(func(next *config.Config) error { next.Remote.AuthMode = config.RemoteAuthAccount; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	before := cfg.Snapshot().Remote
@@ -68,7 +68,7 @@ func TestNOSECLogoutJoinsRelayAndLinksAndCannotRestoreAfterReload(t *testing.T) 
 	assertSignedOut(t, restarted)
 }
 
-func TestNOSECLogoutFencesLateApprovedPollAndRemovesOnlyCurrentProof(t *testing.T) {
+func TestAccountLogoutFencesLateApprovedPollAndRemovesOnlyCurrentProof(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	var origin string
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +78,7 @@ func TestNOSECLogoutFencesLateApprovedPollAndRemovesOnlyCurrentProof(t *testing.
 		}
 		if strings.HasSuffix(r.URL.Path, "/start") {
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "PUBLIC", VerificationURI: origin + desktopVerificationPath + "?desktop_code=PUBLIC", ExpiresAt: time.Now().Add(time.Minute), Interval: 5}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "PUBLIC", VerificationURI: origin + desktopVerificationFixturePath + "?desktop_code=PUBLIC", ExpiresAt: time.Now().Add(time.Minute), Interval: 5}})
 			return
 		}
 		close(entered)
@@ -89,7 +89,7 @@ func TestNOSECLogoutFencesLateApprovedPollAndRemovesOnlyCurrentProof(t *testing.
 	defer gateway.Close()
 	e := testEngine(t)
 	cfg := e.Config()
-	cfg.Remote.Enabled, cfg.Remote.AuthMode, cfg.Remote.HubURL = true, config.RemoteAuthNOSEC, origin
+	cfg.Remote.Enabled, cfg.Remote.AuthMode, cfg.Remote.HubURL = true, config.RemoteAuthAccount, origin
 	id, err := loadIdentity(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -130,7 +130,7 @@ func TestNOSECLogoutFencesLateApprovedPollAndRemovesOnlyCurrentProof(t *testing.
 	}
 }
 
-func TestNOSECLogoutFailureDoesNotClaimSuccessAndLegacyIsUntouched(t *testing.T) {
+func TestAccountLogoutFailureDoesNotClaimSuccessAndIndependentIsUntouched(t *testing.T) {
 	e := testEngine(t)
 	cfg := e.Config()
 	if err := cfg.WriteHostToken("anonymous"); err != nil {
@@ -144,7 +144,7 @@ func TestNOSECLogoutFailureDoesNotClaimSuccessAndLegacyIsUntouched(t *testing.T)
 	if token, _ := cfg.HostToken(); token != "anonymous" {
 		t.Fatal("legacy logout destroyed anonymous credential")
 	}
-	cfg.Remote.AuthMode = config.RemoteAuthNOSEC
+	cfg.Remote.AuthMode = config.RemoteAuthAccount
 	if err := os.WriteFile(filepath.Join(cfg.RemoteDir(), "host_token"), []byte("{"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -156,10 +156,10 @@ func TestNOSECLogoutFailureDoesNotClaimSuccessAndLegacyIsUntouched(t *testing.T)
 	}
 }
 
-func TestNOSECLogoutReadsExistingDiskIdentityWithoutMintingAnother(t *testing.T) {
+func TestAccountLogoutReadsExistingDiskIdentityWithoutMintingAnother(t *testing.T) {
 	e := testEngine(t)
 	cfg := e.Config()
-	cfg.Remote.AuthMode = config.RemoteAuthNOSEC
+	cfg.Remote.AuthMode = config.RemoteAuthAccount
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"data":{"logged_out":true}}`)) }))
 	defer gateway.Close()
 	cfg.Remote.HubURL = gateway.URL

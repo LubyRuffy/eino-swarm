@@ -135,7 +135,7 @@ func TestFixtureHTTPProofAndTransportFailureBoundaries(t *testing.T) {
 	raw, _ = json.Marshal(input)
 	request(native, "POST", clientPrefix+"/auth/mobile/start", string(raw), "", 201)
 	request(native, "POST", clientPrefix+"/auth/mobile/poll", `{}`, "", 401)
-	request(native, "GET", clientPrefix+"/auth/sso/nosec/start?mobile_code=wrong", "", "", 400)
+	request(native, "GET", clientPrefix+"/auth/sso/corporate/start?mobile_code=wrong", "", "", 400)
 	request(native, "GET", "/fixture/cas/login?service=wrong", "", "", 400)
 	request(native, "GET", "/fixture/cas/confirm", "", "", 400)
 	request(native, "GET", "/auth/cas/callback?state=wrong", "", "", 401)
@@ -143,7 +143,7 @@ func TestFixtureHTTPProofAndTransportFailureBoundaries(t *testing.T) {
 	request(native, "GET", "/fixture/authorize", "", "", 403)
 	jar, _ := cookiejar.New(nil)
 	browser := &http.Client{Jar: jar}
-	request(browser, "GET", clientPrefix+"/auth/sso/nosec/start?mobile_code="+f.flow.PublicCode, "", "", 200)
+	request(browser, "GET", clientPrefix+"/auth/sso/corporate/start?mobile_code="+f.flow.PublicCode, "", "", 200)
 	page, err := browser.PostForm(server.URL+"/fixture/cas/confirm", url.Values{"state": {f.flow.State}})
 	if err != nil {
 		t.Fatal(err)

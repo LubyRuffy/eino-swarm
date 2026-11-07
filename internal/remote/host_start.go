@@ -73,8 +73,8 @@ func (h *Host) prepareStartLocked(parent context.Context) (*hostStart, bool) {
 		h.err = "remote needs hub_url"
 		return nil, false
 	}
-	if cfg.Remote.AuthMode == config.RemoteAuthNOSEC && (h.loginActive != nil || h.login.State != "" && h.login.State != "authorized") {
-		h.err = "remote: NOSEC login and account approval are required"
+	if cfg.Remote.AuthMode == config.RemoteAuthAccount && (h.loginActive != nil || h.login.State != "" && h.login.State != "authorized") {
+		h.err = "remote: gateway account login and approval are required"
 		return nil, false
 	}
 	token, err := cfg.EnsureHostToken()
@@ -89,7 +89,7 @@ func (h *Host) prepareStartLocked(parent context.Context) (*hostStart, bool) {
 	}
 	ctx, cancel := context.WithTimeout(parent, hostConnectTimeout)
 	attempt := &hostStart{
-		ctx: ctx, cancel: cancel, done: make(chan struct{}), private: cfg.Remote.AuthMode == config.RemoteAuthNOSEC,
+		ctx: ctx, cancel: cancel, done: make(chan struct{}), private: cfg.Remote.AuthMode == config.RemoteAuthAccount,
 		config: client.Config{
 			HubURL: cfg.Remote.HubURL, Identity: id, Token: token,
 			KeepAlive: h.keepAlive,

@@ -14,13 +14,13 @@ import (
 	"time"
 )
 
-func TestNOSECStartRejectsUnsafeConfigurationAndPrivateFiles(t *testing.T) {
-	for _, scenario := range []string{"no-browser", "disabled", "legacy", "unsafe-origin", "identity-directory", "unsafe-token", "corrupt-pending", "unsafe-directory"} {
+func TestAccountLoginStartRejectsUnsafeConfigurationAndPrivateFiles(t *testing.T) {
+	for _, scenario := range []string{"no-browser", "disabled", "independent", "unsafe-origin", "identity-directory", "unsafe-token", "corrupt-pending", "unsafe-directory"} {
 		t.Run(scenario, func(t *testing.T) {
 			e := testEngine(t)
 			cfg := e.Config()
 			cfg.Remote.Enabled = true
-			cfg.Remote.AuthMode = "nosec"
+			cfg.Remote.AuthMode = "account"
 			cfg.Remote.HubURL = "https://gateway.example.invalid"
 			open := func(string) error { return nil }
 			switch scenario {
@@ -28,8 +28,8 @@ func TestNOSECStartRejectsUnsafeConfigurationAndPrivateFiles(t *testing.T) {
 				open = nil
 			case "disabled":
 				cfg.Remote.Enabled = false
-			case "legacy":
-				cfg.Remote.AuthMode = "legacy"
+			case "independent":
+				cfg.Remote.AuthMode = "independent"
 			case "unsafe-origin":
 				cfg.Remote.HubURL = "http://gateway.example.invalid"
 			case "identity-directory":
@@ -51,7 +51,7 @@ func TestNOSECStartRejectsUnsafeConfigurationAndPrivateFiles(t *testing.T) {
 	}
 }
 
-func TestNOSECLoginFailuresAndTerminalStatuses(t *testing.T) {
+func TestAccountLoginLoginFailuresAndTerminalStatuses(t *testing.T) {
 	for _, scenario := range []string{"unsafe-verification", "browser-unavailable", "unknown-status", "malformed-authorization", "denied", "expired", "deadline", "credential-failure", "poll-expiry", "poll-client-error"} {
 		t.Run(scenario, func(t *testing.T) {
 			var origin string
@@ -62,9 +62,9 @@ func TestNOSECLoginFailuresAndTerminalStatuses(t *testing.T) {
 					if scenario == "poll-expiry" {
 						expiry = time.Now().Add(10 * time.Millisecond)
 					}
-					uri := origin + desktopVerificationPath + "?desktop_code=PUBLIC"
+					uri := origin + desktopVerificationFixturePath + "?desktop_code=PUBLIC"
 					if scenario == "unsafe-verification" {
-						uri = "https://foreign.example.invalid" + desktopVerificationPath + "?desktop_code=PUBLIC"
+						uri = "https://foreign.example.invalid" + desktopVerificationFixturePath + "?desktop_code=PUBLIC"
 					}
 					w.WriteHeader(http.StatusCreated)
 					_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "PUBLIC", VerificationURI: uri, ExpiresAt: expiry, Interval: 5}})
@@ -88,7 +88,7 @@ func TestNOSECLoginFailuresAndTerminalStatuses(t *testing.T) {
 			e := testEngine(t)
 			cfg := e.Config()
 			cfg.Remote.Enabled = true
-			cfg.Remote.AuthMode = "nosec"
+			cfg.Remote.AuthMode = "account"
 			cfg.Remote.HubURL = origin
 			host := New(e, cfg, nil)
 			defer host.Stop()
@@ -143,7 +143,7 @@ func TestNOSECLoginFailuresAndTerminalStatuses(t *testing.T) {
 			if scenario == "expired" || scenario == "deadline" || scenario == "poll-expiry" {
 				want = "expired"
 			}
-			waitNOSEC(t, func() bool { return host.Status().Login.State == want })
+			waitAccountLogin(t, func() bool { return host.Status().Login.State == want })
 			if cfg.HasHostToken() {
 				t.Fatal("failed device authorization activated token")
 			}
@@ -151,14 +151,14 @@ func TestNOSECLoginFailuresAndTerminalStatuses(t *testing.T) {
 	}
 }
 
-func TestNOSECNetworkAndRateLimitRetryRemainBounded(t *testing.T) {
+func TestAccountLoginNetworkAndRateLimitRetryRemainBounded(t *testing.T) {
 	var origin string
 	var polls atomic.Int32
 	var delays []time.Duration
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/start") {
 			w.WriteHeader(201)
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "PUBLIC", VerificationURI: origin + desktopVerificationPath + "?desktop_code=PUBLIC", ExpiresAt: time.Now().Add(time.Minute), Interval: 5}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "PUBLIC", VerificationURI: origin + desktopVerificationFixturePath + "?desktop_code=PUBLIC", ExpiresAt: time.Now().Add(time.Minute), Interval: 5}})
 			return
 		}
 		switch polls.Add(1) {
@@ -176,7 +176,7 @@ func TestNOSECNetworkAndRateLimitRetryRemainBounded(t *testing.T) {
 	e := testEngine(t)
 	cfg := e.Config()
 	cfg.Remote.Enabled = true
-	cfg.Remote.AuthMode = "nosec"
+	cfg.Remote.AuthMode = "account"
 	cfg.Remote.HubURL = origin
 	host := New(e, cfg, nil)
 	defer host.Stop()
@@ -184,7 +184,7 @@ func TestNOSECNetworkAndRateLimitRetryRemainBounded(t *testing.T) {
 	if err := host.StartLogin(func(string) error { return nil }, false); err != nil {
 		t.Fatal(err)
 	}
-	waitNOSEC(t, func() bool { return host.Status().Login.State == "access_denied" })
+	waitAccountLogin(t, func() bool { return host.Status().Login.State == "access_denied" })
 	host.mu.Lock()
 	attempt := host.loginActive
 	host.mu.Unlock()

@@ -530,7 +530,7 @@ overwriting or re-signing an executable already used by an engine/window.
 
 The official server is the primary model source and the user's own providers are
 the second; they meet in one place. `internal/remote/account_models.go` owns a
-host component that, once a NOSEC device login exists, reads the server's
+host component that, once a Gateway device login exists, reads the server's
 desktop bootstrap and model catalog with the private device credential and
 publishes the result to `internal/provider` as an `AccountSource`. The component
 runs in the host lifecycle: it starts and stops with `Host`, refreshes on login,
@@ -634,24 +634,24 @@ has ended. A disabled connection, missing hub, unsigned account, or identity
 or token failure does not spin. Once the socket is up, pairlink reconnects
 that socket itself.
 
-NOSEC is an explicit `remote.auth_mode` alongside compatible `legacy` hubs.
+Gateway is an explicit `remote.auth_mode` alongside compatible `legacy` hubs.
 `internal/remote/login.go` owns the desktop device-authorization lifecycle:
 Go stages a private candidate credential before starting a Gateway flow,
-opens only the validated same-origin NOSEC verification URL in the system
+opens the Gateway-returned same-origin verification URL in the system
 browser, and polls with its secret device code and S256 proof. The browser
 receives only the public user code; the renderer receives only safe status,
 code, fingerprint and account metadata. Pending/rejected accounts do not
 register a host. Only a complete authorized receipt atomically replaces the
 private credential with its origin/account/host binding, after which the usual
 pairlink registration and WebSocket lifecycle starts. Authorization is distinct
-from `online`; NOSEC QR creation requires both. Device flows last at most ten
+from `online`; 账号模式 QR creation requires both. Device flows last at most ten
 minutes, with five-second polling and bounded retries; server rate-limit delays
 are respected. Cancel, Stop and configuration Reload cancel and join owned work,
 so late replies cannot activate a credential for a changed origin. Phone drafts
 still require a matching saved enabled/Hub/mode status echo. Both the rail and
 the Phone page's explicit account sign-in send `enable_account:true` to the same
 local route: when needed, Go atomically saves only `remote.enabled=true` and
-`remote.auth_mode=nosec`, preserves the configured Hub and other fields, reloads
+`remote.auth_mode=account`, preserves the configured Hub and other fields, reloads
 the host, then starts the existing flow. The Phone page always presents account
 status/sign-in and device connections first; its configured-server summary is
 read-only. Manual Hub, authentication and pairing controls sit in the explicit
@@ -673,9 +673,9 @@ and writes before a fresh load; open epochs reject stale-scope adoption.
 
 `internal/config/remote_auth.go` keeps credentials outside YAML and SQLite.
 Legacy raw tokens remain readable. After a successful legacy connection the
-record binds to that hub; NOSEC authorization additionally binds the account and
+record binds to that hub; Gateway authorization additionally binds the account and
 host. Changing the configured Hub does not reuse a credential already bound
-to the previous configured origin. NOSEC private REST requests also reject
+to the previous configured origin. Gateway private REST requests also reject
 redirects; legacy redirect handling is unchanged. Clients released before this
 schema cannot read its JSON receipt, so downgrade requires reconfiguration or
 the original private raw-token backup rather than using the JSON as a token.
@@ -709,7 +709,7 @@ device-code exchange owner. A declared configuration must first be observed in
 a matching status receipt; an old-origin echo cannot repopulate the account.
 After confirmation, polling can discover later external configuration changes.
 
-`internal/remote/logout.go` owns explicit NOSEC device logout. It publishes
+`internal/remote/logout.go` owns explicit Gateway device logout. It publishes
 `signing_out`, reserves a non-blocking account operation across enable/save/
 reload/start and logout, cancels and joins the login flow,
 and stops its relay and RPC links before remote confirmation outside the Host
@@ -2514,7 +2514,7 @@ the same commit.
 Account Web execution is selected separately from provider-hosted tools.
 `tools.web_execution` controls the existing `web_search` and `web_fetch`
 function executors. `internal/tools/cloud_web.go` uses the current private
-NOSEC Host receipt only for the Gateway's two dedicated Desktop Web routes;
+Gateway Host receipt only for the Gateway's two dedicated Desktop Web routes;
 it preserves function schemas and ordinary tool Trace, rejects redirects,
 propagates cancellation and never falls back locally after a cloud failure.
 The server owns current account/Key/tool authorization. Neither renderer nor
@@ -2538,7 +2538,7 @@ switches the selected source, strips functions and retries, or runs locally.
 
 The separate PC preference uses `inherit`, `local`, or `cloud`. Inherit always
 sends an empty conversation override, so phone sign-in cannot override PC global
-Tools policy. Explicit cloud requires the PC's own NOSEC receipt; Mobile
+Tools policy. Explicit cloud requires the PC's own Gateway receipt; Mobile
 credentials never cross Pairlink. Legacy shared local preferences read as
 direct off and PC local; legacy cloud remains explicit in both scopes. Saving
 either new preference does not modify the other.

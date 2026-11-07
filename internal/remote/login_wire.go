@@ -18,7 +18,9 @@ import (
 )
 
 const desktopAuthPrefix = "/admin/api/v1/auth/desktop/"
-const desktopVerificationPath = "/admin/api/v1/auth/sso/nosec/start"
+const desktopAuthAPIBase = "/admin/api/v1"
+// Fixture path for offline Gateway replies when a single identity source is configured.
+const desktopVerificationFixturePath = desktopAuthAPIBase + "/auth/sso/corporate/start"
 const loginLifetime = 10 * time.Minute
 const loginInterval = 5 * time.Second
 
@@ -126,9 +128,33 @@ func resourceID(id string) bool {
 	return err == nil && len(raw) == 16
 }
 
+// safeGatewayVerificationPath accepts only the Gateway-owned browser entry
+// points: the shared login page, or one configured identity-source start URL.
+// Which third-party IdP that source uses stays on the Gateway.
+func safeGatewayVerificationPath(apiBase, path string) bool {
+	if path == "/login" {
+		return true
+	}
+	prefix := apiBase + "/auth/sso/"
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, "/start") {
+		return false
+	}
+	id := strings.TrimSuffix(strings.TrimPrefix(path, prefix), "/start")
+	if len(id) == 0 || len(id) > 32 || id[0] < 'a' || id[0] > 'z' || id[len(id)-1] == '-' {
+		return false
+	}
+	for i := 1; i < len(id); i++ {
+		c := id[i]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
 func verifyLoginResponse(origin string, response loginStartResponse) error {
 	u, err := url.Parse(response.VerificationURI)
-	if err != nil || u.User != nil || u.Fragment != "" || u.Path != desktopVerificationPath || u.RawPath != "" {
+	if err != nil || u.User != nil || u.Fragment != "" || u.RawPath != "" || !safeGatewayVerificationPath(desktopAuthAPIBase, u.Path) {
 		return errors.New("remote: unsafe gateway verification URL")
 	}
 	if u.Scheme+"://"+u.Host != origin || len(u.Query()) != 1 || u.Query().Get("desktop_code") != response.UserCode || len(u.Query()["desktop_code"]) != 1 {

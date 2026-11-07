@@ -21,7 +21,7 @@ vi.mock("@/lib/use-remote-status", () => ({
 vi.mock("@/lib/api", () => ({ api: { startRemoteLogin: fake.start, cancelRemoteLogin: vi.fn() } }))
 
 const signedOut: RemoteStatus = {
-  enabled: false, hub_url: "https://server.example", auth_mode: "nosec", has_token: false,
+  enabled: false, hub_url: "https://server.example", auth_mode: "account", has_token: false,
   online: false, login_available: true, login: { state: "signed_out" },
 }
 const meta = (configured: boolean): Meta => ({

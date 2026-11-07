@@ -72,7 +72,7 @@ func accountWebRoute(cfg *config.Config) (origin, token string, cloud bool, err 
 }
 
 func cloudWebAccount(cfg *config.Config) (origin, token string, err error) {
-	if cfg.Remote.AuthMode != config.RemoteAuthNOSEC {
+	if cfg.Remote.AuthMode != config.RemoteAuthAccount {
 		return "", "", cloudLoginRequired()
 	}
 	credential, readErr := cfg.ReadRemoteCredential()

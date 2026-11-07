@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { api } from "./api"
 
-const publicStatus = { enabled: true, online: false, hub_url: "https://hub.example", has_token: false, auth_mode: "nosec", login_available: true, login: { state: "authorization_pending", user_code: "ABCD-1234-EF56-7890" } }
+const publicStatus = { enabled: true, online: false, hub_url: "https://hub.example", has_token: false, auth_mode: "account", login_available: true, login: { state: "authorization_pending", user_code: "ABCD-1234-EF56-7890" } }
 afterEach(() => { vi.unstubAllGlobals() })
-describe("local NOSEC login API", () => {
+describe("local account login API", () => {
   it("sends only explicit start/reconnect flags to the local Go service", async () => {
     const fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify(publicStatus), { status: 202 }))
     vi.stubGlobal("fetch", fetch)

@@ -11,11 +11,11 @@ func TestRemoteDefaultGatewayPreservesAuthenticationAndCustomOrigins(t *testing.
 		name, yaml, origin, mode string
 		enabled                  bool
 	}{
-		{"first run", "", "https://ai.fofa.info:2440", RemoteAuthLegacy, false},
-		{"legacy blank", "remote:\n  enabled: false\n  hub_url: ''\n", "https://ai.fofa.info:2440", RemoteAuthLegacy, false},
-		{"account blank", "remote:\n  enabled: true\n  auth_mode: nosec\n  hub_url: '  '\n", "https://ai.fofa.info:2440", RemoteAuthNOSEC, true},
-		{"custom anonymous", "remote:\n  enabled: true\n  auth_mode: legacy\n  hub_url: https://relay.example\n", "https://relay.example", RemoteAuthLegacy, true},
-		{"custom account", "remote:\n  enabled: true\n  auth_mode: nosec\n  hub_url: https://gateway.example:2440\n", "https://gateway.example:2440", RemoteAuthNOSEC, true},
+		{"first run", "", "https://ai.fofa.info:2440", RemoteAuthIndependent, false},
+		{"legacy blank", "remote:\n  enabled: false\n  hub_url: ''\n", "https://ai.fofa.info:2440", RemoteAuthIndependent, false},
+		{"account blank", "remote:\n  enabled: true\n  auth_mode: account\n  hub_url: '  '\n", "https://ai.fofa.info:2440", RemoteAuthAccount, true},
+		{"custom anonymous", "remote:\n  enabled: true\n  auth_mode: independent\n  hub_url: https://relay.example\n", "https://relay.example", RemoteAuthIndependent, true},
+		{"custom account", "remote:\n  enabled: true\n  auth_mode: account\n  hub_url: https://gateway.example:2440\n", "https://gateway.example:2440", RemoteAuthAccount, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()

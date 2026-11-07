@@ -6,7 +6,7 @@ test("phone settings keeps manual connection settings behind an explicit advance
   await page.getByRole("button", { name: "Settings" }).click()
   const dialog = page.getByRole("dialog")
   await dialog.getByRole("tab", { name: "Phone" }).click()
-  await expect(dialog.getByRole("button", { name: "Sign in with NOSEC", exact: true })).toBeVisible()
+  await expect(dialog.getByRole("button", { name: "Sign in", exact: true })).toBeVisible()
   await expect(dialog.getByText(settings.remote.hub_url, { exact: true })).toBeVisible()
   await expect(dialog.getByLabel("Hub URL")).toHaveCount(0)
   await dialog.getByRole("button", { name: "Advanced / self-hosted server", exact: true }).click()

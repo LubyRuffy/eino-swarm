@@ -857,7 +857,7 @@ export const en = {
   "settings.remote.hub": "Hub",
   "settings.remote.enabled": "Accept phone pairing",
   "settings.remote.enabledHint":
-    "Enable this PC’s phone connection. NOSEC mode also requires sign-in and device authorization.",
+    "Enable this PC’s phone connection. Account mode also requires sign-in and device authorization.",
   "settings.remote.hubUrl": "Hub URL",
   "settings.remote.hubUrlHint":
     "The official Gateway is set by default. Change this address only for another server.",

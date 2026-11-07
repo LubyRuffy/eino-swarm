@@ -16,7 +16,7 @@ import (
 	pstore "github.com/LubyRuffy/pairlink/store"
 )
 
-func TestNOSECLoginDoesNotSendOtherOriginCredentialAndRecoversExplicitly(t *testing.T) {
+func TestAccountLoginLoginDoesNotSendOtherOriginCredentialAndRecoversExplicitly(t *testing.T) {
 	for _, sameOrigin := range []bool{false, true} {
 		t.Run(map[bool]string{true: "same-origin", false: "changed-origin"}[sameOrigin], func(t *testing.T) {
 			incoming := make(chan loginStartRequest, 4)
@@ -37,7 +37,7 @@ func TestNOSECLoginDoesNotSendOtherOriginCredentialAndRecoversExplicitly(t *test
 			e := testEngine(t)
 			cfg := e.Config()
 			cfg.Remote.Enabled = true
-			cfg.Remote.AuthMode = "nosec"
+			cfg.Remote.AuthMode = "account"
 			cfg.Remote.HubURL = gateway.URL
 			oldOrigin := "https://previous.example.invalid"
 			if sameOrigin {
@@ -65,7 +65,7 @@ func TestNOSECLoginDoesNotSendOtherOriginCredentialAndRecoversExplicitly(t *test
 				case <-time.After(time.Second):
 					t.Fatal("missing device start")
 				}
-				waitNOSEC(t, func() bool { return host.Status().Login.State == "error" })
+				waitAccountLogin(t, func() bool { return host.Status().Login.State == "error" })
 				if host.Status().Login.ErrorCode != "device_conflict" {
 					t.Fatal("device conflict not exposed safely")
 				}
@@ -97,7 +97,7 @@ func TestNOSECLoginDoesNotSendOtherOriginCredentialAndRecoversExplicitly(t *test
 	}
 }
 
-func TestNOSECCancelAndConfigurationChangeJoinBlockedLogin(t *testing.T) {
+func TestAccountLoginCancelAndConfigurationChangeJoinBlockedLogin(t *testing.T) {
 	for _, action := range []string{"cancel", "stop", "reload"} {
 		t.Run(action, func(t *testing.T) {
 			entered := make(chan struct{})
@@ -110,7 +110,7 @@ func TestNOSECCancelAndConfigurationChangeJoinBlockedLogin(t *testing.T) {
 			e := testEngine(t)
 			cfg := e.Config()
 			cfg.Remote.Enabled = true
-			cfg.Remote.AuthMode = "nosec"
+			cfg.Remote.AuthMode = "account"
 			cfg.Remote.HubURL = gateway.URL
 			host := New(e, cfg, nil)
 			defer host.Stop()
@@ -147,14 +147,14 @@ func TestNOSECCancelAndConfigurationChangeJoinBlockedLogin(t *testing.T) {
 	}
 }
 
-func TestNOSECLateAuthorizedPollCannotActivateAfterCancel(t *testing.T) {
+func TestAccountLoginLateAuthorizedPollCannotActivateAfterCancel(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	var origin string
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/start") {
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "PUBLIC", VerificationURI: origin + desktopVerificationPath + "?desktop_code=PUBLIC", ExpiresAt: time.Now().Add(time.Minute), Interval: 5}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "PUBLIC", VerificationURI: origin + desktopVerificationFixturePath + "?desktop_code=PUBLIC", ExpiresAt: time.Now().Add(time.Minute), Interval: 5}})
 			return
 		}
 		close(entered)
@@ -166,7 +166,7 @@ func TestNOSECLateAuthorizedPollCannotActivateAfterCancel(t *testing.T) {
 	e := testEngine(t)
 	cfg := e.Config()
 	cfg.Remote.Enabled = true
-	cfg.Remote.AuthMode = "nosec"
+	cfg.Remote.AuthMode = "account"
 	cfg.Remote.HubURL = origin
 	host := New(e, cfg, nil)
 	host.loginWait = func(context.Context, time.Duration) error { return nil }
@@ -186,7 +186,7 @@ func TestNOSECLateAuthorizedPollCannotActivateAfterCancel(t *testing.T) {
 	}
 }
 
-func TestNOSECPrivatePairlinkRequestsNeverFollowRedirectsOrEchoSecrets(t *testing.T) {
+func TestAccountLoginPrivatePairlinkRequestsNeverFollowRedirectsOrEchoSecrets(t *testing.T) {
 	var forwarded atomic.Int32
 	external := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { forwarded.Add(1); http.Error(w, "untrusted", 403) }))
 	defer external.Close()
@@ -204,7 +204,7 @@ func TestNOSECPrivatePairlinkRequestsNeverFollowRedirectsOrEchoSecrets(t *testin
 	e := testEngine(t)
 	cfg := e.Config()
 	cfg.Remote.Enabled = true
-	cfg.Remote.AuthMode = "nosec"
+	cfg.Remote.AuthMode = "account"
 	cfg.Remote.HubURL = gateway.URL
 	path, err := cfg.StageRemoteToken(secret, gateway.URL, "public")
 	if err != nil {
@@ -230,13 +230,13 @@ func TestNOSECPrivatePairlinkRequestsNeverFollowRedirectsOrEchoSecrets(t *testin
 	}
 }
 
-func TestNOSECPollProofDenialIsTerminal(t *testing.T) {
+func TestAccountLoginPollProofDenialIsTerminal(t *testing.T) {
 	var origin string
 	var polls atomic.Int32
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/start") {
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "PUBLIC", VerificationURI: origin + desktopVerificationPath + "?desktop_code=PUBLIC", ExpiresAt: time.Now().Add(time.Minute), Interval: 5}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": loginStartResponse{DeviceCode: strings.Repeat("d", 64), UserCode: "PUBLIC", VerificationURI: origin + desktopVerificationFixturePath + "?desktop_code=PUBLIC", ExpiresAt: time.Now().Add(time.Minute), Interval: 5}})
 			return
 		}
 		polls.Add(1)
@@ -247,7 +247,7 @@ func TestNOSECPollProofDenialIsTerminal(t *testing.T) {
 	e := testEngine(t)
 	cfg := e.Config()
 	cfg.Remote.Enabled = true
-	cfg.Remote.AuthMode = "nosec"
+	cfg.Remote.AuthMode = "account"
 	cfg.Remote.HubURL = origin
 	host := New(e, cfg, nil)
 	var waits atomic.Int32
@@ -262,13 +262,13 @@ func TestNOSECPollProofDenialIsTerminal(t *testing.T) {
 	if err := host.StartLogin(func(string) error { return nil }, false); err != nil {
 		t.Fatal(err)
 	}
-	waitNOSEC(t, func() bool { return host.Status().Login.State == "access_denied" })
+	waitAccountLogin(t, func() bool { return host.Status().Login.State == "access_denied" })
 	if polls.Load() != 1 || cfg.HasHostToken() {
 		t.Fatal("proof denial retried or activated credential")
 	}
 }
 
-func TestNOSECStopDoesNotWaitBehindBlockedOffer(t *testing.T) {
+func TestAccountLoginStopDoesNotWaitBehindBlockedOffer(t *testing.T) {
 	memory := pstore.NewMemory()
 	handler := relay.New(memory).Handler()
 	entered := make(chan struct{})
@@ -289,7 +289,7 @@ func TestNOSECStopDoesNotWaitBehindBlockedOffer(t *testing.T) {
 	e := testEngine(t)
 	cfg := e.Config()
 	cfg.Remote.Enabled = true
-	cfg.Remote.AuthMode = "nosec"
+	cfg.Remote.AuthMode = "account"
 	cfg.Remote.HubURL = gateway.URL
 	id, err := loadIdentity(cfg)
 	if err != nil {

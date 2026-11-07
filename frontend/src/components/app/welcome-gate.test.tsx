@@ -28,7 +28,7 @@ vi.mock("@/lib/api", () => ({
 }))
 
 const signedOut: RemoteStatus = {
-  enabled: false, hub_url: "https://server.example", auth_mode: "nosec", has_token: false,
+  enabled: false, hub_url: "https://server.example", auth_mode: "account", has_token: false,
   online: false, login_available: true, login: { state: "signed_out" },
 }
 const meta = (patch: Partial<Meta> = {}): Meta => ({

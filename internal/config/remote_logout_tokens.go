@@ -12,7 +12,7 @@ func (c *Config) RemoteAccountLogoutTokens(origin, publicKey string) ([]string, 
 	mu.RLock()
 	defer mu.RUnlock()
 	current, err := RemoteOrigin(c.Remote.HubURL)
-	if err != nil || current != origin || c.Remote.AuthMode != RemoteAuthNOSEC {
+	if err != nil || current != origin || c.Remote.AuthMode != RemoteAuthAccount {
 		return nil, errors.New("remote: account configuration changed")
 	}
 	credential, err := c.ReadRemoteCredential()

@@ -15,7 +15,7 @@ vi.mock("@capacitor/app-launcher", () => ({ AppLauncher: { openUrl: native.launc
 vi.mock("@capacitor/browser", () => ({ Browser: { open: native.browser } }))
 
 const origin = "https://gateway.example.test"
-const verification = origin + "/client/api/v1/auth/sso/nosec/start?mobile_code=abcd-1234-abcd-1234"
+const verification = origin + "/client/api/v1/auth/sso/corporate/start?mobile_code=abcd-1234-abcd-1234"
 const fetcher = (uri = verification) => vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ data: {
   device_code: "D".repeat(43), user_code: "abcd-1234-abcd-1234", interval: 5,
   verification_uri: uri, expires_at: new Date(Date.now() + 600_000).toISOString(),
@@ -29,7 +29,7 @@ beforeEach(() => {
 })
 afterEach(() => { vi.useRealTimers(); localStorage.clear() })
 
-describe("NOSEC system browser selection", () => {
+describe("Gateway system browser selection", () => {
   it("opens the validated Android verification URL with the default external browser", async () => {
     await startGatewayLogin(origin, fetcher())
     expect(native.launch).toHaveBeenCalledOnce()

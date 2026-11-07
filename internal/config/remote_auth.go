@@ -13,10 +13,10 @@ import (
 	"time"
 )
 
-const RemoteAuthLegacy = "legacy"
-const RemoteAuthNOSEC = "nosec"
+const RemoteAuthIndependent = "independent"
+const RemoteAuthAccount = "account"
 
-var ErrRemoteApprovalRequired = errors.New("remote: NOSEC login and account approval are required")
+var ErrRemoteApprovalRequired = errors.New("remote: gateway account login and approval are required")
 
 // RemoteCredential lives only in the private host_token file. The atomic record
 // binds a token to its origin and, after device authorization, its account.
@@ -91,8 +91,8 @@ func (c *Config) AuthorizedHostToken() (string, error) {
 	return credential.Token, nil
 }
 
-// BindRemoteOrigin upgrades a legacy token only after a real socket connected.
-// It records proof of its origin without granting NOSEC account authorization.
+// BindRemoteOrigin upgrades an independent-hub token only after a real socket connected.
+// It records proof of its origin without granting gateway account authorization.
 func (c *Config) BindRemoteOrigin(token, origin string) error {
 	credential, err := c.ReadRemoteCredential()
 	if err != nil {
@@ -356,7 +356,7 @@ func syncRemoteDirectory(path string) error {
 }
 
 func (c *Config) validateRemoteAuth() error {
-	if c.Remote.AuthMode != "" && c.Remote.AuthMode != RemoteAuthLegacy && c.Remote.AuthMode != RemoteAuthNOSEC {
+	if c.Remote.AuthMode != "" && c.Remote.AuthMode != RemoteAuthIndependent && c.Remote.AuthMode != RemoteAuthAccount {
 		return fmt.Errorf("remote: invalid authentication mode")
 	}
 	return nil
@@ -370,7 +370,7 @@ func (c *Config) ActivateRemoteTokenIfCurrent(path string, credential RemoteCred
 	mu.Lock()
 	defer mu.Unlock()
 	origin, err := RemoteOrigin(c.Remote.HubURL)
-	if err != nil || origin != credential.Origin || !c.Remote.Enabled || c.Remote.AuthMode != RemoteAuthNOSEC {
+	if err != nil || origin != credential.Origin || !c.Remote.Enabled || c.Remote.AuthMode != RemoteAuthAccount {
 		return errors.New("remote: login configuration changed")
 	}
 	return c.ActivateRemoteToken(path, credential)

@@ -1,6 +1,6 @@
 # zwai phone
 
-iOS and Android apps. **Sign in with NOSEC** uses the built-in default Gateway
+iOS and Android apps. **Sign in** uses the built-in default Gateway
 (`https://ai.fofa.info:2440`). No manual address, Key or Pairlink setup is
 required. Finish device authorization in the system browser. Pending/rejected
 accounts show only review status. Approved accounts list their online PCs in
@@ -29,8 +29,8 @@ online PCs, or any existing connection, you choose from the list (nothing is
 guessed). A signed-in phone with no connected PC lists its computers on the home
 page, with the same **Other ways**, and Add a PC lists them above the QR options.
 
-User center shows the NOSEC and PC display names provided by the Gateway.
-For older Gateways, it uses the readable part of a generated NOSEC username
+User center shows the Gateway and PC display names provided by the Gateway.
+For older Gateways, it uses the readable part of a generated Gateway username
 and the PC name or hostname when available. The PC name selected from the
 account list is also shown after connecting.
 
@@ -80,7 +80,7 @@ Gateway/account has two independent preferences:
 - **PC conversations**: Follow PC, This PC, or Server cloud. Follow PC always
   clears the conversation override and uses that PC's global setting. Phone
   sign-in does not change it. Explicit choices affect only the target PC
-  conversation; Cloud uses the PC's own NOSEC authorization.
+  conversation; Cloud uses the PC's own Gateway authorization.
 
 Changing one preference does not change the other. Earlier shared Local choices
 read as phone Off plus PC This PC, while earlier Cloud choices remain explicit
@@ -625,7 +625,7 @@ observe zero requests at the redirect target and real HTTP cancellation before
 its delayed response; each stage attaches only the fixture's counters alongside
 the UI evidence. It shares the loopback Go service in
 `e2e/account-fixture` with Android. This is synthetic CAS and model data, not
-production NOSEC acceptance or a real-model probe.
+production Gateway acceptance or a real-model probe.
 
 After freezing a candidate, use a fresh private fixture and simulator under the
 existing native admission/cleanup rules. Set `IOS_LAYOUT_PUBLIC` to that

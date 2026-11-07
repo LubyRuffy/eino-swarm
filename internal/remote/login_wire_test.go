@@ -13,26 +13,40 @@ import (
 
 func TestDesktopLoginVerificationRejectsOtherOriginsPathsAndUnboundedLifetime(t *testing.T) {
 	origin := "https://gateway.example.invalid"
-	baseline := loginStartResponse{DeviceCode: strings.Repeat("a", 64), UserCode: "PUBLIC", VerificationURI: origin + desktopVerificationPath + "?desktop_code=PUBLIC", ExpiresAt: time.Now().Add(time.Minute), Interval: 5}
+	baseline := loginStartResponse{DeviceCode: strings.Repeat("a", 64), UserCode: "PUBLIC", VerificationURI: origin + desktopVerificationFixturePath + "?desktop_code=PUBLIC", ExpiresAt: time.Now().Add(time.Minute), Interval: 5}
 	if err := verifyLoginResponse(origin, baseline); err != nil {
 		t.Fatal(err)
 	}
+	loginPage := baseline
+	loginPage.VerificationURI = origin + "/login?desktop_code=PUBLIC"
+	if err := verifyLoginResponse(origin, loginPage); err != nil {
+		t.Fatal("gateway shared login page rejected")
+	}
 	mutations := []func(*loginStartResponse){
 		func(r *loginStartResponse) {
-			r.VerificationURI = "https://other.example.invalid" + desktopVerificationPath + "?desktop_code=PUBLIC"
+			r.VerificationURI = "https://other.example.invalid" + desktopVerificationFixturePath + "?desktop_code=PUBLIC"
 		},
 		func(r *loginStartResponse) { r.VerificationURI = origin + "/unexpected?desktop_code=PUBLIC" },
 		func(r *loginStartResponse) {
-			r.VerificationURI = origin + desktopVerificationPath + "?desktop_code=PUBLIC&desktop_code=PUBLIC"
+			r.VerificationURI = origin + desktopAuthAPIBase + "/auth/sso/Corporate/start?desktop_code=PUBLIC"
 		},
 		func(r *loginStartResponse) {
-			r.VerificationURI = origin + desktopVerificationPath + "?desktop_code=OTHER"
+			r.VerificationURI = origin + desktopAuthAPIBase + "/auth/sso/bad_id/start?desktop_code=PUBLIC"
 		},
 		func(r *loginStartResponse) {
-			r.VerificationURI = origin + desktopVerificationPath + "?desktop_code=PUBLIC&token=private"
+			r.VerificationURI = origin + "/client/api/v1/auth/sso/corporate/start?desktop_code=PUBLIC"
 		},
 		func(r *loginStartResponse) {
-			r.VerificationURI = origin + desktopVerificationPath + "?desktop_code=PUBLIC#fragment"
+			r.VerificationURI = origin + desktopVerificationFixturePath + "?desktop_code=PUBLIC&desktop_code=PUBLIC"
+		},
+		func(r *loginStartResponse) {
+			r.VerificationURI = origin + desktopVerificationFixturePath + "?desktop_code=OTHER"
+		},
+		func(r *loginStartResponse) {
+			r.VerificationURI = origin + desktopVerificationFixturePath + "?desktop_code=PUBLIC&token=private"
+		},
+		func(r *loginStartResponse) {
+			r.VerificationURI = origin + desktopVerificationFixturePath + "?desktop_code=PUBLIC#fragment"
 		},
 		func(r *loginStartResponse) { r.Interval = 1 },
 		func(r *loginStartResponse) { r.DeviceCode = "short" },

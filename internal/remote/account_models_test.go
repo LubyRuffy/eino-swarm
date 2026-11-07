@@ -86,7 +86,7 @@ func accountModelsFixture(t *testing.T, g *accountGateway) (*AccountModels, *pro
 		t.Fatal(err)
 	}
 	if err := cfg.Update(func(next *config.Config) error {
-		next.Remote.AuthMode = config.RemoteAuthNOSEC
+		next.Remote.AuthMode = config.RemoteAuthAccount
 		next.Remote.HubURL = g.server.URL
 		return nil
 	}); err != nil {

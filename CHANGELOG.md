@@ -6,6 +6,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Changed Desktop/Mobile account login to bind only to the current Gateway.
+  Third-party identity sources stay on the Gateway; the client opens the
+  Gateway-returned same-origin `verification_uri` (shared `/login` or a
+  configured source start URL) and no longer hardcodes a provider path or
+  brand. `remote.auth_mode` is now `independent` / `account` (no old-value
+  compatibility). UI copy uses Sign in / Device sign-in. (`F-210`, `F-211`, `C-006`)
+
 - Fixed the native resilience HTTP fixture's stale schedule-answer protocol
   text to match the engine's current cadence and scope extraction contract,
   preserving exact request and candidate validation. (`C-009`)
