@@ -57,7 +57,7 @@ public class FilePreviewControlsTest {
             .put("test_class", getClass().getName())
             .put("installed_test_apk_sha256", sha256(instrumentation.getContext().getPackageCodePath()))
             .put("installed_target_apk_sha256", sha256(instrumentation.getTargetContext().getPackageCodePath()))
-            .put("scope", "offline file RPC input; actual native taps, swipes and packaged WebView")
+            .put("scope", "offline file RPC input; native touch and packaged WebView")
             .toString());
         instrumentation.sendStatus(2, identity);
         Intent launch = instrumentation.getTargetContext().getPackageManager()
@@ -143,11 +143,12 @@ public class FilePreviewControlsTest {
             waitState(s -> s.getJSONObject("image").optInt("natural_width") == 1200
                 && s.getJSONObject("image").optInt("natural_height") == 800
                 && s.getJSONObject("image").optBoolean("decoded"));
-            JSONObject fitted = dom().getJSONObject("image");
-            assertTrue(fitted.getDouble("width") <= fitted.getDouble("client_width") + 1);
-            assertTrue(fitted.getDouble("height") <= fitted.getDouble("client_height") + 1);
-            assertTrue(button(dom(), "Fit to window").getBoolean("pressed"));
-            capture("image-fit");
+            JSONObject fitWidth = dom();
+            JSONObject fitted = fitWidth.getJSONObject("image");
+            assertEquals(fitted.getDouble("client_width"), fitted.getDouble("width"), 1);
+            assertTrue(button(fitWidth, "Fit to width").getBoolean("pressed"));
+            assertFalse(button(fitWidth, "Fit to window").getBoolean("pressed"));
+            capture("image-fit-width");
             click("Zoom in");
             waitState(s -> s.getJSONObject("image").optDouble("width") > fitted.getDouble("width") + 1);
             capture("image-zoomed");
@@ -167,16 +168,27 @@ public class FilePreviewControlsTest {
             click("Zoom out");
             waitState(s -> s.getJSONObject("image").optDouble("width") == 900);
             click("Fit to window");
-            waitState(s -> Math.abs(s.getJSONObject("image").optDouble("width") - fitted.getDouble("width")) < 1);
-            capture("image-refitted");
-            click("Actual size (100%)");
-            waitState(s -> s.getJSONObject("image").optDouble("width") == 1200);
+            waitState(s -> button(s, "Fit to window").getBoolean("pressed"));
+            JSONObject fitWindow = dom();
+            JSONObject windowImage = fitWindow.getJSONObject("image");
+            assertTrue(windowImage.getDouble("width") <= windowImage.getDouble("client_width") + 1);
+            assertTrue(windowImage.getDouble("height") <= windowImage.getDouble("client_height") + 1);
+            assertFalse(button(fitWindow, "Fit to width").getBoolean("pressed"));
+            capture("image-fit-window");
+            click("Fit to width");
+            waitState(s -> button(s, "Fit to width").getBoolean("pressed"));
+            assertFalse(button(dom(), "Fit to window").getBoolean("pressed"));
+            capture("image-refitted-width");
+            click("Fit to window");
+            waitState(s -> button(s, "Fit to window").getBoolean("pressed"));
             click("Back to list");
             waitButton("landscape.png"); click("landscape.png");
             waitState(s -> s.getJSONObject("image").optBoolean("decoded")
                 && Math.abs(s.getJSONObject("image").optDouble("width") - fitted.getDouble("width")) < 1);
-            assertTrue(button(dom(), "Fit to window").getBoolean("pressed"));
-            capture("image-reopened-fit");
+            JSONObject reopened = dom();
+            assertTrue(button(reopened, "Fit to width").getBoolean("pressed"));
+            assertFalse(button(reopened, "Fit to window").getBoolean("pressed"));
+            capture("image-reopened-width");
             write("result.json", new JSONObject().put("passed", true)
                 .put("text_min_px", 12).put("text_max_px", 28).put("text_default_px", 14)
                 .put("image_original_width", 1200).put("image_original_height", 800)
@@ -185,14 +197,137 @@ public class FilePreviewControlsTest {
     }
 
     @Test
+    public void nativePinchResizesOnlyThePreviewImage() throws Exception {
+        runPreviewCase("image-pinch", "&file-preview=tall-image", () -> {
+            waitButton("tall.png"); click("tall.png");
+            waitState(s -> s.getJSONObject("image").optBoolean("decoded")
+                && button(s, "Fit to width").getBoolean("pressed"));
+            JSONObject initial = dom(), image = initial.getJSONObject("image");
+            assertEquals(512, image.getInt("natural_width"));
+            assertEquals(4096, image.getInt("natural_height"));
+            assertEquals(image.getDouble("client_width"), image.getDouble("width"), 1);
+            assertEquals(0, image.getDouble("scroll_top"), 1);
+            capture("pinch-initial-width");
+
+            pinch("image", true, 0.09, 0.25);
+            waitState(s -> s.getJSONObject("image").getDouble("width") > image.getDouble("width") * 1.5);
+            JSONObject enlarged = dom();
+            assertPinchKeepsPageStill(initial, enlarged);
+            assertFalse(button(enlarged, "Fit to width").getBoolean("pressed"));
+            assertFalse(button(enlarged, "Fit to window").getBoolean("pressed"));
+            capture("pinch-open");
+
+            JSONObject beforeSwipe = enlarged.getJSONObject("image");
+            swipe(beforeSwipe, false);
+            waitState(s -> s.getJSONObject("image").getDouble("scroll_top") > beforeSwipe.getDouble("scroll_top") + 5);
+            assertPinchKeepsPageStill(initial, dom());
+            capture("pinch-then-swipe");
+
+            pinch("image", false, 0.09, 0.25);
+            waitState(s -> s.getJSONObject("image").getDouble("width") < beforeSwipe.getDouble("width") * 0.75);
+            assertPinchKeepsPageStill(initial, dom());
+            capture("pinch-close");
+
+            click("Fit to width");
+            waitState(s -> button(s, "Fit to width").getBoolean("pressed")
+                && Math.abs(s.getJSONObject("image").getDouble("width") - image.getDouble("width")) <= 1
+                && s.getJSONObject("image").getDouble("scroll_top") <= 1);
+            assertPinchKeepsPageStill(initial, dom());
+            capture("pinch-refitted-width");
+            write("result.json", new JSONObject().put("passed", true).put("native_actions", actions).toString(2));
+        });
+    }
+
+    private void assertPinchKeepsPageStill(JSONObject initial, JSONObject current) throws Exception {
+        assertVisualViewportStill(initial, current);
+        for (String label : new String[] {"Back to list", "Fit to width", "Fit to window", "Download"}) {
+            assertTrue("Preview control stays reachable: " + label, button(current, label).getBoolean("hit"));
+        }
+        for (String label : new String[] {"Back to list", "Download"}) {
+            JSONObject before = button(initial, label), after = button(current, label);
+            for (String metric : new String[] {"x", "y", "width", "height"}) {
+                assertEquals("Preview control keeps its geometry: " + label + " " + metric,
+                    before.getDouble(metric), after.getDouble(metric), 0.1);
+            }
+        }
+        JSONObject originalImage = initial.getJSONObject("image"), image = current.getJSONObject("image");
+        for (String metric : new String[] {"x", "y", "viewport_width", "viewport_height"}) {
+            assertEquals("The image scrollport keeps its geometry: " + metric,
+                originalImage.getDouble(metric), image.getDouble(metric), 0.1);
+        }
+        assertEquals(originalImage.getString("src"), image.getString("src"));
+        assertEquals(8, image.getDouble("height") / image.getDouble("width"), 0.01);
+    }
+
+    private void assertVisualViewportStill(JSONObject initial, JSONObject current) throws Exception {
+        assertEquals(initial.getInt("document_width"), current.getInt("document_width"));
+        for (String metric : new String[] {"width", "height", "scale", "page_left", "page_top"}) {
+            assertEquals("The page's visual viewport stays fixed: " + metric,
+                initial.getJSONObject("visual_viewport").getDouble(metric),
+                current.getJSONObject("visual_viewport").getDouble(metric), 0.1);
+        }
+    }
+
+    @Test
+    public void nativeMarkdownPinchChangesTextSize() throws Exception {
+        runPreviewCase("markdown-font-pinch", "", () -> {
+            waitButton("inspection.md"); click("inspection.md");
+            waitState(s -> s.getJSONObject("text").optDouble("font") == 14);
+            JSONObject initial = dom(), text = initial.getJSONObject("text");
+            assertTrue(text.getString("content").contains("Inspection document"));
+            assertTrue(text.getString("content").contains("Paragraph 40:"));
+            capture("markdown-pinch-default");
+
+            pinch("text", true, 0.13, 0.18);
+            waitState(s -> s.getJSONObject("text").getDouble("font") > 14);
+            JSONObject larger = dom(), largerText = larger.getJSONObject("text");
+            assertVisualViewportStill(initial, larger);
+            assertMarkdownFontChange(text, largerText, true);
+            capture("markdown-pinch-larger");
+
+            JSONObject beforeSwipe = dom().getJSONObject("text");
+            swipe(beforeSwipe, false);
+            waitState(s -> s.getJSONObject("text").getDouble("scroll_top") > beforeSwipe.getDouble("scroll_top") + 5);
+            assertTrue(button(dom(), "Download").getBoolean("hit"));
+
+            pinch("text", false, 0.13, 0.18);
+            waitState(s -> s.getJSONObject("text").getDouble("font") < largerText.getDouble("font"));
+            JSONObject smaller = dom(), smallerText = smaller.getJSONObject("text");
+            assertVisualViewportStill(initial, smaller);
+            assertMarkdownFontChange(largerText, smallerText, false);
+            capture("markdown-pinch-smaller");
+
+            double smallerSize = smallerText.getDouble("font");
+            click("Increase text size");
+            waitState(s -> s.getJSONObject("text").getDouble("font") > smallerSize);
+            click("Reset text size");
+            waitState(s -> s.getJSONObject("text").getDouble("font") == 14);
+            assertEquals(text.getString("content"), dom().getJSONObject("text").getString("content"));
+            capture("markdown-pinch-reset");
+            write("result.json", new JSONObject().put("passed", true).put("native_actions", actions).toString(2));
+        });
+    }
+
+    private void assertMarkdownFontChange(JSONObject from, JSONObject to, boolean larger) throws Exception {
+        assertEquals(from.getString("content"), to.getString("content"));
+        for (String metric : new String[] {"body_font", "heading_font", "code_font", "table_font"}) {
+            double original = from.getDouble(metric), changed = to.getDouble(metric);
+            assertTrue("Pinch must resize Markdown " + metric,
+                original > 0 && changed > 0 && (larger ? changed > original : changed < original));
+        }
+    }
+
+    @Test
     public void nativeEpubPreviewUsesFullReadingAreaAndTapNavigation() throws Exception {
         runPreviewCase("epub-preview", "&file-preview=epub", () -> {
             waitButton("reading-test.epub");
             click("reading-test.epub");
-            waitState(s -> s.getJSONObject("epub").optBoolean("heading_in_view"));
+            waitState(s -> s.getJSONObject("epub").optBoolean("ready")
+                && s.getJSONObject("epub").optBoolean("heading_in_view"));
             JSONObject first = dom().getJSONObject("epub");
             assertEquals("The arrival", first.getString("title"));
             assertEquals("reading-test.epub", first.getString("header"));
+            assertEquals(18, first.getDouble("font"), 0.1);
             assertFalse("No second filename in the reading area", first.getBoolean("repeated_filename"));
             assertTrue("Body fills the preview", first.getDouble("viewport_height") >= first.getDouble("preview_height") * 0.9);
             assertFalse(first.getBoolean("last_passage_in_view"));
@@ -243,8 +378,69 @@ public class FilePreviewControlsTest {
             waitState(s -> "The arrival".equals(s.getJSONObject("epub").optString("title"))
                 && s.getJSONObject("epub").optBoolean("heading_in_view"));
             assertEpubControls(false);
+
+            tapEpub(0.88);
+            waitState(s -> !s.getJSONObject("epub").getBoolean("heading_in_view")
+                && s.getJSONObject("epub").getJSONArray("visible_passages").length() > 0);
+            JSONObject beforePinch = dom(), beforeReading = beforePinch.getJSONObject("epub");
+            assertEquals(18, beforeReading.getDouble("font"), 0.1);
+            pinch("epub", true, 0.13, 0.18);
+            waitState(s -> s.getJSONObject("epub").getDouble("font") > 18);
+            JSONObject larger = dom();
+            assertEpubPinchPreservesReading(beforePinch, larger);
+            capture("reading-pinch-larger");
+
+            double enlargedFont = larger.getJSONObject("epub").getDouble("font");
+            pinch("epub", false, 0.13, 0.18);
+            waitState(s -> s.getJSONObject("epub").getDouble("font") < enlargedFont);
+            JSONObject smaller = dom();
+            assertEpubPinchPreservesReading(larger, smaller);
+            capture("reading-pinch-smaller");
+
+            tapEpub(0.5);
+            waitButton("Contents");
+            waitButton("Download");
+            assertEpubControls(true);
+            assertEquals(smaller.getJSONObject("epub").getJSONArray("visible_passages").toString(),
+                dom().getJSONObject("epub").getJSONArray("visible_passages").toString());
+            double smallerFont = smaller.getJSONObject("epub").getDouble("font");
+            click("Increase text size");
+            waitState(s -> s.getJSONObject("epub").getDouble("font") > smallerFont);
+            click("Reset text size");
+            waitState(s -> s.getJSONObject("epub").getDouble("font") == 18);
+            tapEpub(0.5);
+            waitState(s -> !s.getJSONObject("epub").getBoolean("contents_visible"));
+            assertEpubControls(false);
+            String beforeTurn = dom().getJSONObject("epub").getJSONArray("visible_passages").toString();
+            tapEpub(0.88);
+            waitState(s -> !s.getJSONObject("epub").getJSONArray("visible_passages").toString()
+                .equals(beforeTurn));
+
+            click("Back to list");
+            waitButton("reading-test.epub"); click("reading-test.epub");
+            waitState(s -> s.getJSONObject("epub").optBoolean("heading_in_view")
+                && s.getJSONObject("epub").getDouble("font") == 18);
+            assertEpubControls(false);
             write("result.json", new JSONObject().put("passed", true).put("native_actions", actions).toString(2));
         });
+    }
+
+    private void assertEpubPinchPreservesReading(JSONObject from, JSONObject to) throws Exception {
+        assertVisualViewportStill(from, to);
+        JSONObject before = from.getJSONObject("epub"), after = to.getJSONObject("epub");
+        assertEquals(before.getString("title"), after.getString("title"));
+        for (String metric : new String[] {"x", "y", "viewport_width", "viewport_height"}) {
+            assertEquals("The reading area stays fixed: " + metric, before.getDouble(metric), after.getDouble(metric), 0.1);
+        }
+        JSONArray earlier = before.getJSONArray("visible_passages"), current = after.getJSONArray("visible_passages");
+        boolean retained = false;
+        for (int i = 0; i < earlier.length(); i++) {
+            for (int j = 0; j < current.length(); j++) {
+                if (earlier.getString(i).equals(current.getString(j))) retained = true;
+            }
+        }
+        assertTrue("Font reflow must retain visible reading content: " + earlier + " → " + current, retained);
+        assertEpubControls(false);
     }
 
     private void assertEpubControls(boolean visible) throws Exception {
@@ -252,6 +448,11 @@ public class FilePreviewControlsTest {
         assertEquals("Contents visibility", visible, state.getJSONObject("epub").getBoolean("contents_visible"));
         JSONObject download = button(state, "Download");
         assertEquals("Download hittability", visible, download != null && download.getBoolean("hit"));
+        for (String label : new String[] {"Increase text size", "Decrease text size", "Reset text size"}) {
+            JSONObject control = button(state, label);
+            assertEquals("Reader font control visibility: " + label, visible,
+                control != null && control.getDouble("width") > 0 && control.getDouble("height") > 0);
+        }
         for (String label : new String[] {"Previous", "Next"})
             assertNull("No on-screen page buttons", button(state, label));
     }
@@ -360,6 +561,57 @@ public class FilePreviewControlsTest {
             .put("horizontal", horizontal).put("before", rect));
     }
 
+    private void pinch(String surface, boolean opening, double narrowFraction, double wideFraction) throws Exception {
+        JSONObject snapshot = dom(), rect = snapshot.getJSONObject(surface);
+        JSONObject viewport = snapshot.getJSONObject("viewport");
+        int[] g = geometry();
+        double xScale = g[2] / viewport.getDouble("width"), yScale = g[3] / viewport.getDouble("height");
+        float cx = (float) (g[0] + (rect.getDouble("x") + rect.getDouble("viewport_width") * 0.5) * xScale);
+        float cy = (float) (g[1] + (rect.getDouble("y") + rect.getDouble("viewport_height") * 0.4) * yScale);
+        float narrow = (float) (rect.getDouble("viewport_width") * narrowFraction * xScale);
+        float wide = (float) (rect.getDouble("viewport_width") * wideFraction * xScale);
+        float from = opening ? narrow : wide, to = opening ? wide : narrow;
+        long down = SystemClock.uptimeMillis();
+        injectPinchEvent(down, MotionEvent.ACTION_DOWN, 1, cx, cy, from);
+        SystemClock.sleep(30);
+        injectPinchEvent(down, MotionEvent.ACTION_POINTER_DOWN | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT), 2, cx, cy, from);
+        for (int step = 1; step <= 10; step++) {
+            SystemClock.sleep(25);
+            injectPinchEvent(down, MotionEvent.ACTION_MOVE, 2, cx, cy, from + (to - from) * step / 10);
+        }
+        SystemClock.sleep(25);
+        injectPinchEvent(down, MotionEvent.ACTION_POINTER_UP | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT), 2, cx, cy, to);
+        injectPinchEvent(down, MotionEvent.ACTION_UP, 1, cx, cy, to);
+        actions.put(new JSONObject().put("action", "native_two_pointer_pinch")
+            .put("surface", surface).put("opening", opening).put("initial_span_px", from * 2)
+            .put("final_span_px", to * 2).put("before", rect));
+    }
+
+    private void injectPinchEvent(long down, int action, int count, float cx, float cy, float halfSpan) {
+        assertTrue("No pinch input after the original case deadline", SystemClock.uptimeMillis() < deadline);
+        MotionEvent.PointerProperties[] properties = new MotionEvent.PointerProperties[count];
+        MotionEvent.PointerCoords[] coordinates = new MotionEvent.PointerCoords[count];
+        for (int i = 0; i < count; i++) {
+            MotionEvent.PointerProperties pointer = new MotionEvent.PointerProperties();
+            pointer.id = i;
+            pointer.toolType = MotionEvent.TOOL_TYPE_FINGER;
+            properties[i] = pointer;
+            MotionEvent.PointerCoords point = new MotionEvent.PointerCoords();
+            point.x = cx + (i == 0 ? -halfSpan : halfSpan);
+            point.y = cy;
+            point.pressure = 1;
+            point.size = 1;
+            coordinates[i] = point;
+        }
+        MotionEvent event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, count, properties,
+            coordinates, 0, 0, 1, 1, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
+        try {
+            assertTrue("Native pinch event must reach the packaged WebView", ui.injectInputEvent(event, true));
+        } finally {
+            event.recycle();
+        }
+    }
+
     private int[] geometry() {
         int[] g = new int[4];
         instrumentation.runOnMainSync(() -> { WebView view = activity.getBridge().getWebView();
@@ -397,8 +649,10 @@ public class FilePreviewControlsTest {
             + "const button=b=>{const r=b.getBoundingClientRect(),s=getComputedStyle(b),cx=r.x+r.width/2,cy=r.y+r.height/2;return{label:b.getAttribute('aria-label')||readable(b),enabled:!b.disabled,pressed:b.getAttribute('aria-pressed')==='true',hit:r.width>0&&r.height>0&&s.visibility==='visible'&&Number(s.opacity)>0&&cx>0&&cy>0&&cx<innerWidth&&cy<innerHeight&&b.contains(document.elementFromPoint(cx,cy)),x:r.x,y:r.y,width:r.width,height:r.height};};"
             + "const preview=document.querySelector('[data-testid=phone-file-preview]'),frame=preview?.querySelector('iframe'),chapter=frame?.contentDocument;"
             + "const visibleInChapter=e=>!!e&&[...e.getClientRects()].some(r=>r.right>0&&r.left<frame.clientWidth&&r.bottom>0&&r.top<frame.clientHeight);"
-            + "const epub={...rect(frame),ready:!!chapter&&getComputedStyle(frame).visibility==='visible',title:frame?.title,header:document.querySelector('header h1')?.textContent,preview_height:preview?.clientHeight,repeated_filename:!!preview?.innerText.includes('reading-test.epub'),contents_visible:!!preview?.querySelector('select[aria-label=Contents]')?.getBoundingClientRect().height,heading_in_view:visibleInChapter(chapter?.querySelector('h1')),last_passage_in_view:visibleInChapter([...chapter?.querySelectorAll('p')||[]].find(p=>p.textContent.startsWith('Passage 35.')))};"
-            + "return{url:location.href,viewport:{width:innerWidth,height:innerHeight},document_width:document.documentElement.scrollWidth,text:{...rect(text),font:font(text),body_font:font(body),body_line_height:line(body),heading_font:font(text?.querySelector('h1')),heading_line_height:line(text?.querySelector('h1')),code_font:font(text?.querySelector('pre code')),code_line_height:line(text?.querySelector('pre code')),table_font:font(text?.querySelector('table')),table_line_height:line(text?.querySelector('table')),content:text?.textContent||''},image,epub,buttons:[...document.querySelectorAll('button,a,select')].map(button)};})())";
+            + "const passages=[...chapter?.querySelectorAll('p')||[]].filter(p=>p.textContent.startsWith('Passage '));"
+            + "const epub={...rect(frame),ready:!!chapter&&getComputedStyle(frame).visibility==='visible',title:frame?.title,header:document.querySelector('header h1')?.textContent,preview_height:preview?.clientHeight,repeated_filename:!!preview?.innerText.includes('reading-test.epub'),contents_visible:!!preview?.querySelector('select[aria-label=Contents]')?.getBoundingClientRect().height,font:font(chapter?.body),heading_in_view:visibleInChapter(chapter?.querySelector('h1')),last_passage_in_view:visibleInChapter(passages.find(p=>p.textContent.startsWith('Passage 35.'))),visible_passages:passages.filter(visibleInChapter).map(p=>p.textContent.split('.',1)[0])};"
+            + "const v=visualViewport;const visual_viewport={width:v.width,height:v.height,scale:v.scale,page_left:v.pageLeft,page_top:v.pageTop};"
+            + "return{url:location.href,viewport:{width:innerWidth,height:innerHeight},visual_viewport,document_width:document.documentElement.scrollWidth,text:{...rect(text),font:font(text),body_font:font(body),body_line_height:line(body),heading_font:font(text?.querySelector('h1')),heading_line_height:line(text?.querySelector('h1')),code_font:font(text?.querySelector('pre code')),code_line_height:line(text?.querySelector('pre code')),table_font:font(text?.querySelector('table')),table_line_height:line(text?.querySelector('table')),content:text?.textContent||''},image,epub,buttons:[...document.querySelectorAll('button,a,select')].map(button)};})())";
         CountDownLatch ready = new CountDownLatch(1); AtomicReference<String> value = new AtomicReference<>();
         instrumentation.runOnMainSync(() -> activity.getBridge().getWebView().evaluateJavascript(script,
             result -> { value.set(result); ready.countDown(); }));

@@ -893,7 +893,11 @@ For anonymous QR use and connection settings, retain the existing flow:
    use the app origin, and the download address is not loaded as a page.
    On a phone, an open EPUB shows the filename once above the reading area.
    Tap the left or right side of the page to go back or forward, or tap the
-   middle to show or hide the chapter list and Download.
+   middle to show or hide the chapter list, font controls, and Download.
+   Spread or pinch two fingers in EPUB and Markdown previews to change the
+   text size. EPUB reflows around the reading position.
+   Images open in **Fit to width** at the top. Spread or pinch to zoom the
+   image, scroll with one finger, or choose **Fit to window** to see it all.
    Phone previews show the received bytes and percentage while reading.
    Delays show a waiting message. PNG, JPEG, GIF and WebP can be previewed up
    to 32 MiB. Selecting Download while loading uses the active transfer and

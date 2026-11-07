@@ -52,6 +52,22 @@ const landscapeBase64 = [
 ].join("")
 const landscapeBytes = Uint8Array.from(atob(landscapeBase64), (char) => char.charCodeAt(0))
 
+// Decodable 512×4096 PNG with alternating bands for the long-image scroll case.
+const tallImageBase64 = [
+  "iVBORw0KGgoAAAANSUhEUgAAAgAAABAAAQMAAAA+98teAAAABlBMVEUML19Um9qdXDDiAAADBElEQVR42u3aQQ0AMAwDsfInvUHY",
+  "49TPZAM4AFFmAAAAAAAAAAAAAAAAlp1IQEBAQEBAQEBAQEBAQEDg/wAAAADAiw1FQEBAQEBAQEBAQEBAQEDA/wAAAACobCgCAgIC",
+  "AgICAgICAgICAgL+BwAAAEBlQxEQEBAQEBAQEBAQEBAQEPA/AAAAACobioCAgICAgICAgICAgICAgP8BAAAAUNlQBAQEBAQEBAQE",
+  "BAQEBAQE/A8AAACAyoYiICAgICAgICAgICAgICDgfwAAAABUNhQBAQEBAQEBAQEBAQEBAQH/AwAAAKCyoQgICAgICAgICAgICAgI",
+  "CPgfAAAAAJUNRUBAQEBAQEBAQEBAQEBAwP8AAAAAqGwoAgICAgICAgICAgICAgIC/gcAAABAZUMREBAQEBAQEBAQEBAQEBDwPwAA",
+  "AAAqG4qAgICAgICAgICAgICAgID/AQAAAFDZUAQEBAQEBAQEBAQEBAQEBPwPAAAAgMqGIiAgICAgICAgICAgICAg4H8AAAAAVDYU",
+  "AQEBAQEBAQEBAQEBAQEB/wMAAACgsqEICAgICAgICAgICAgICAj4HwAAAACVDUVAQEBAQEBAQEBAQEBAQMD/AAAAAKhsKAICAgIC",
+  "AgICAgICAgICAv4HAAAAQGVDERAQEBAQEBAQEBAQEBAQ8D8AAAAAKhuKgICAgICAgICAgICAgICA/wEAAABQ2VAEBAQEBAQEBAQE",
+  "BAQEBAT8DwAAAIDKhiIgICAgICAgICAgICAgIOB/AAAAAFQ2FAEBAQEBAQEBAQEBAQEBAf8DAAAAoLKhCAgICAgICAgICAgICAgI",
+  "+B8AAAAAlQ1FQEBAQEBAQEBAQEBAQEDA/wAAAACobCgCAgICAgICAgICAgICAgL+BwAAAEBlQxEQEBAQEBAQEBAQEBAQEPA/AAAA",
+  "ACobioCAgICAgICAgICAgICAgP8BAAAAUNlQBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBASW",
+  "Axfzcx3jJP7QngAAAABJRU5ErkJggg==",
+].join("")
+
 const inspection = [
   "# Inspection document",
   "",
@@ -91,7 +107,7 @@ function mockEpub() {
     },
     ...titles.map((title, i) => ({
       name: `chapter${i}.xhtml`,
-      data: `<html><head><title>${title}</title></head><body><h1>${title}</h1>${i === 0
+      data: `<html><head><title>${title}</title><style>p { font-size: 18px; line-height: 29.7px }</style></head><body><h1>${title}</h1>${i === 0
         ? Array.from({ length: 35 }, (_, n) => `<p>Passage ${n + 1}. The train followed the river into the valley while the afternoon light faded from the fields.</p>`).join("")
         : `<p>From the window, they could see the old road.</p>`}</body></html>`,
     })),
@@ -101,6 +117,10 @@ function mockEpub() {
 export function mockOutputFiles(search = location.search) {
   const scenario = new URLSearchParams(search).get("file-preview")
   if (scenario === "epub") return { ...outputFiles, [epubPath]: { bytes: mockEpub(), mime: "application/epub+zip" } }
+  if (scenario === "tall-image") {
+    const bytes = Uint8Array.from(atob(tallImageBase64), (char) => char.charCodeAt(0))
+    return { ...outputFiles, "outputs/tall.png": { bytes, mime: "image/png" } }
+  }
   if (scenario !== "large-image") return outputFiles
 
   // Insert a valid private ancillary PNG chunk before IEND. This crosses the

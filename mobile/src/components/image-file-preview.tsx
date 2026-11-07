@@ -1,21 +1,45 @@
-import { Loader2, Maximize, ZoomIn, ZoomOut } from "lucide-react"
+import { Loader2, Maximize, MoveHorizontal, ZoomIn, ZoomOut } from "lucide-react"
+import { useRef } from "react"
 
 import { Button } from "@/components/ui/button"
 import { t } from "@/lib/i18n"
+import { usePinch } from "@/lib/use-pinch"
 import { useImagePreview } from "../../../frontend/src/lib/use-image-preview"
 
 export function ImageFilePreview({ src, name }: { src: string; name: string }) {
-  const view = useImagePreview()
+  const view = useImagePreview("width")
+  const { ready, viewport, zoomAt } = view
+  const picture = useRef<HTMLImageElement>(null)
+
+  usePinch(viewport, ({ x, y, distance }) => {
+    const element = viewport.current
+    const image = picture.current
+    if (!element || !image) return
+    const bounds = image.getBoundingClientRect()
+    if (!bounds.width || !bounds.height) return
+    const scale = bounds.width / image.naturalWidth
+    const imageX = (x - bounds.left) / bounds.width
+    const imageY = (y - bounds.top) / bounds.height
+    return (point) => {
+      const bounds = element.getBoundingClientRect()
+      zoomAt(scale * point.distance / distance, scale, {
+        imageX, imageY,
+        viewportX: point.x - bounds.left,
+        viewportY: point.y - bounds.top,
+      })
+    }
+  }, ready)
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div ref={view.viewport} data-testid="phone-image-viewport" tabIndex={0} role="region" aria-label={t("files.imageViewport")}
         aria-busy={!view.ready && !view.failed}
-        className="min-h-0 min-w-0 flex-1 overflow-auto rounded-md bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+        className="min-h-0 min-w-0 flex-1 overflow-auto rounded-md bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [touch-action:pan-x_pan-y]">
         {view.failed ? <p role="alert" className="p-3 text-sm text-destructive">{t("files.invalidImage")}</p> : (
           <>
             {!view.ready ? <p role="status" className="flex items-center gap-2 p-3 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />{t("files.imageLoading")}</p> : null}
             <div className="flex min-h-full w-max min-w-full items-center justify-center">
-              <img src={src} alt={name} onLoad={(event) => view.onLoad(event.currentTarget)} onError={view.onError}
+              <img ref={picture} src={src} alt={name} onLoad={(event) => view.onLoad(event.currentTarget)} onError={view.onError}
                 draggable={false} style={{ width: view.width, height: view.height }}
                 className={`block max-w-none shrink-0 ${view.ready ? "" : "invisible absolute"}`} />
             </div>
@@ -32,6 +56,8 @@ export function ImageFilePreview({ src, name }: { src: string; name: string }) {
           title={t("files.zoomIn")} disabled={!view.ready || !view.canZoomIn} onClick={view.zoomIn}><ZoomIn className="size-5" /></Button>
         <Button type="button" variant="ghost" className="h-11 min-w-11 px-2" aria-label={t("files.actualSize")}
           title={t("files.actualSize")} disabled={!view.ready} onClick={view.actualSize}>100%</Button>
+        <Button type="button" variant={view.fittingWidth ? "outline" : "ghost"} className="h-11 min-w-11 gap-1 px-2"
+          aria-pressed={view.fittingWidth} disabled={!view.ready} onClick={view.fitWidth}><MoveHorizontal className="size-4" />{t("files.fitWidth")}</Button>
         <Button type="button" variant={view.fitting ? "outline" : "ghost"} className="h-11 min-w-11 gap-1 px-2"
           aria-pressed={view.fitting} disabled={!view.ready} onClick={view.fit}><Maximize className="size-4" />{t("files.fit")}</Button>
       </div>

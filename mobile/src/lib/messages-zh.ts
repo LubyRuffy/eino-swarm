@@ -168,6 +168,7 @@ export const zh: Record<MessageKey, string> = {
   "files.zoomLevel": "图片缩放比例",
   "files.actualSize": "原始大小（100%）",
   "files.fit": "适应窗口",
+  "files.fitWidth": "适应宽度",
   "files.textControls": "文字操作",
   "files.textSmaller": "缩小文字",
   "files.textLarger": "放大文字",

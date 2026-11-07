@@ -7593,12 +7593,19 @@ line alone does not accept a hung or cancelled parent command.
 
 `mobile/src/components/image-file-preview.test.tsx` checks fitted/manual image
 sizes, loading and decode failures, zoom limits, resize and reopening.
+It also checks the default width fit and top position for a long image.
+The pinch test checks the image anchor, touch cancellation and one-finger input.
 Text-preview and file-browser unit tests cover text-size limits/reset, complete
 large text and unchanged native save bytes after zoom. The Chromium and iPhone
 WebKit cases in `mobile/e2e/file-preview-controls.spec.ts` measure real paragraph,
 heading, table and code sizes, keep controls reachable after long-content
 scrolling, decode a 1200×800 PNG, scroll both image axes and compare downloaded
-source/image bytes. The large PNG case observes byte progress before decoding,
+source/image bytes. The long PNG case measures the default width fit, scrolls
+from top to bottom and switches between width and window fit. Pinch coverage
+uses browser touch input in Chromium and dispatched TouchEvents in WebKit.
+The packaged iOS and Android cases drive two native touch points and verify
+image scaling and stable controls. The large PNG
+case observes byte progress before decoding,
 queues the download before decoding, then verifies decoded dimensions, MIME
 and the original downloaded bytes for a file larger than 8 MiB. Packaged native acceptance is separate.
 For packaged iOS coverage, `mobile/e2e/ios-wait-layout.swift` uses
@@ -7616,20 +7623,27 @@ AX trees, exact web/app/test-package identity and owned-device cleanup receipts.
 
 `mobile/src/components/file-browser.test.tsx` exercises the real read/preview path, including an HTML artifact whose sandbox excludes same-origin access. `document-preview.test.tsx` renders CSV, TSV, DOCX, XLSX, PPTX and EPUB. `text-file-preview.test.tsx` checks suffix selection, unknown/large/empty text, exact source preservation and inert SVG/MDX source. `mobile/e2e/walkthrough.spec.ts` checks Markdown structure and syntax colors in light/dark; the packaged `mobile/e2e/ios-wait-layout.swift` `testPhoneOutputPreview` reaches both documents through Outputs. Reuse `scripts/ios-layout-fixture.py` and select only that XCTest. Android uses a disposable offline package and isolated emulator, inspecting the same reached screens; a browser pass or native launch alone does not accept the changed flow.
 
-The EPUB case in `mobile/e2e/file-preview-controls.spec.ts` opens a packaged
-book through Outputs and uses actual taps to turn pages within and across
-chapters. It checks that showing Contents and Download keeps the page in place
-and compares the downloaded file with the original EPUB bytes. In the private
+The EPUB cases in `mobile/e2e/file-preview-controls.spec.ts` open a packaged
+book through Outputs and turn pages within and across chapters using taps.
+They check that showing the controls keeps the page in place and compare the
+downloaded file with the original EPUB bytes. The pinch regression scales an
+authored fixed font, keeps a visible text anchor through reflow, leaves the
+controls hidden and carries the chosen size across chapters. The Markdown case
+uses the same gesture and checks the actual paragraph size and fixed controls.
+In the private
 iOS layout fixture, set `IOS_LAYOUT_QUERY='/?mock=1&tick=0&file-preview=epub'`
 and `IOS_LAYOUT_SCENARIO=ios-epub-preview.swift`, then select
 `AppUITests/BindFlowTests/testPhoneEpubUsesReadingSpaceAndTapNavigation`.
 Set `IOS_LAYOUT_PRESERVE_PUBLIC=1` and point `IOS_LAYOUT_PUBLIC` at the frozen
 production build to preserve the web assets. Inspect the XCTest screenshots
-and accessibility trees for reading and controls.
+and accessibility trees. XCTest measures EPUB text in the screenshots with
+Vision and uses accessibility elements for the phone controls and touch surface.
 On a private Android emulator, select
 `FilePreviewControlsTest#nativeEpubPreviewUsesFullReadingAreaAndTapNavigation`.
-It uses native taps and read-only WebView layout observations. Keep its
-screenshots, accessibility trees and installed app and test APK identities.
+The packaged cases use native two-finger input, taps and read-only layout
+observations. Keep screenshots, accessibility trees and installed app and test
+package identities. Android also exercises Markdown pinch through the
+preview-control case.
 
 ### Phone file saving (Issue #122)
 

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises"
+import { readFile, writeFile } from "node:fs/promises"
 import { expect, test, type Download, type Locator, type Page } from "@playwright/test"
 import { epubPath, largeLandscapePath, mockOutputFiles } from "../src/lib/mock-files"
 
@@ -21,6 +21,50 @@ async function downloadBytes(page: Page) {
 
 async function fontSize(element: Locator) {
   return element.evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize))
+}
+
+async function pinchDriver(page: Page, browserName: string, viewport: Locator, localPoint?: { x: number; y: number }) {
+  const bounds = await viewport.boundingBox()
+  if (!bounds) throw new Error("Reading surface has no visible bounds")
+  const center = { x: bounds.x + (localPoint?.x ?? bounds.width / 2), y: bounds.y + (localPoint?.y ?? bounds.height / 2) }
+  const cdp = browserName === "chromium" ? await page.context().newCDPSession(page) : undefined
+  const pinch = async (from: number, to: number) => {
+    const frames = [from, (from + to) / 2, to].map((halfWidth) => [
+      { id: 1, x: center.x - halfWidth, y: center.y },
+      { id: 2, x: center.x + halfWidth, y: center.y },
+    ])
+    if (cdp) {
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: frames[0] })
+      for (const touchPoints of frames.slice(1)) {
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints })
+      }
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+      return
+    }
+    // Playwright WebKit exposes a single touchscreen tap. Dispatch two-contact
+    // DOM events here to check its handler and layout. XCTest drives real pinches.
+    await viewport.evaluate((element, frames) => {
+      const webkit = document as Document & {
+        createTouch(view: Window, target: Element, id: number, pageX: number, pageY: number, screenX: number, screenY: number): Touch
+        createTouchList(...touches: Touch[]): TouchList
+      }
+      const points = frames.map((frame) => frame.map(({ id, x, y }) => webkit.createTouch(window, element, id, x, y, x, y)))
+      const send = (type: string, touches: Touch[], changedTouches: Touch[]) => {
+        // This WebKit requires TouchList objects in the constructor.
+        const list = (items: Touch[]) => webkit.createTouchList(...items) as unknown as Touch[]
+        element.dispatchEvent(new TouchEvent(type, {
+          bubbles: true, cancelable: true,
+          touches: list(touches), changedTouches: list(changedTouches), targetTouches: list(touches),
+        }))
+      }
+      send("touchstart", points[0].slice(0, 1), points[0].slice(0, 1))
+      send("touchstart", points[0], points[0].slice(1))
+      for (const frame of points.slice(1)) send("touchmove", frame, frame)
+      send("touchend", points[2].slice(0, 1), points[2].slice(1))
+      send("touchend", [], points[2].slice(0, 1))
+    }, frames)
+  }
+  return { cdp, center, pinch }
 }
 
 test("EPUB gives the screen to reading and opens navigation only on a center tap", async ({ page }, info) => {
@@ -99,6 +143,100 @@ test("EPUB gives the screen to reading and opens navigation only on a center tap
   await page.getByRole("button", { name, exact: true }).click()
   await expect(arrival).toBeInViewport()
   await expect(download).toBeHidden()
+})
+
+test("EPUB pinching reflows authored text around the reading position", async ({ page, browserName }, info) => {
+  await page.setViewportSize({ width: 320, height: 700 })
+  const preview = await openOutput(page, "reading-test.epub", "/?mock=1&tick=0&file-preview=epub")
+  const frame = preview.locator("iframe")
+  const chapter = frame.contentFrame()
+  const navigation = preview.getByRole("group", { name: "电子书导航" })
+  const controls = preview.getByRole("group", { name: "文字操作" })
+  const centerButton = navigation.getByRole("button", { name: "阅读工具" })
+  const text = chapter.getByText(/^Passage 7\./)
+  await expect(chapter.getByRole("heading", { name: "The arrival" })).toBeInViewport()
+  await navigation.getByRole("button", { name: "下一页" }).tap()
+  await expect(text).toBeInViewport()
+  const frameBounds = await frame.boundingBox()
+  const initialScale = await page.evaluate(() => visualViewport!.scale)
+  const anchor = await text.evaluateHandle((paragraph) => {
+    const doc = paragraph.ownerDocument
+    const root = doc.documentElement
+    const node = paragraph.firstChild as Text
+    const range = doc.createRange()
+    for (let index = 0; index < node.length; index++) {
+      range.setStart(node, index)
+      range.setEnd(node, index + 1)
+      const rect = range.getBoundingClientRect()
+      if (rect.width && Math.abs(rect.left - root.clientWidth / 2) < 12 && rect.top >= 0 && rect.bottom < root.clientHeight) return range
+    }
+    throw new Error("No visible line in the middle of the EPUB page")
+  })
+  const localPoint = await anchor.evaluate((range) => {
+    const rect = range.getBoundingClientRect()
+    return { x: (rect.left + rect.right) / 2, y: (rect.top + rect.bottom) / 2 }
+  })
+  const isAnchorVisible = () => anchor.evaluate((range) => {
+    const { left, top, bottom } = range.getBoundingClientRect()
+    const root = range.startContainer.ownerDocument!.documentElement
+    return left >= 0 && left <= root.clientWidth && bottom > 0 && top < root.clientHeight
+  })
+  const { cdp, pinch } = await pinchDriver(page, browserName, navigation, localPoint)
+  try {
+    expect(await isAnchorVisible()).toBe(true)
+    await expect(controls).toBeHidden()
+    await pinch(40, 60)
+    await expect.poll(() => fontSize(text)).toBe(27)
+    expect(await isAnchorVisible()).toBe(true)
+    expect(await frame.boundingBox()).toEqual(frameBounds)
+    expect(await page.evaluate(() => visualViewport!.scale)).toBe(initialScale)
+    await expect(controls).toBeHidden()
+    await writeFile(info.outputPath("epub-font-pinched.png"), await page.screenshot(), { mode: 0o600 })
+
+    await pinch(60, 40)
+    await expect.poll(() => fontSize(text)).toBe(18)
+    await centerButton.tap()
+    await expect(controls).toBeVisible()
+    await controls.getByRole("button", { name: "放大文字" }).tap()
+    await expect.poll(() => fontSize(text)).toBe(20)
+    await preview.getByRole("combobox", { name: "目录" }).selectOption({ label: "The garden" })
+    const garden = chapter.getByText("From the window, they could see the old road.")
+    await expect(garden).toBeInViewport()
+    await expect.poll(() => fontSize(garden)).toBe(20)
+    await expect(controls).toBeHidden()
+    await centerButton.tap()
+    await controls.getByRole("button", { name: "重置字号" }).tap()
+    await expect.poll(() => fontSize(garden)).toBe(18)
+    expect(await frame.boundingBox()).toEqual(frameBounds)
+  } finally {
+    await anchor.dispose()
+    await cdp?.detach()
+  }
+})
+
+test("Markdown pinch changes the reading font while the page stays fixed", async ({ page, browserName }, info) => {
+  await page.setViewportSize({ width: 320, height: 700 })
+  const preview = await openOutput(page, "inspection.md")
+  const content = preview.getByTestId("phone-text-content")
+  const paragraph = content.locator("p").first()
+  await expect(paragraph).toBeVisible()
+  const initialScale = await page.evaluate(() => visualViewport!.scale)
+  const controls = preview.getByRole("group", { name: "文字操作" })
+  const controlsBounds = await controls.boundingBox()
+  const { cdp, pinch } = await pinchDriver(page, browserName, content)
+  try {
+    await pinch(40, 60)
+    await expect.poll(() => fontSize(paragraph)).toBe(21)
+    await expect(content).toHaveCSS("font-size", "21px")
+    expect(await controls.boundingBox()).toEqual(controlsBounds)
+    expect(await page.evaluate(() => visualViewport!.scale)).toBe(initialScale)
+    await writeFile(info.outputPath("markdown-font-pinched.png"), await page.screenshot(), { mode: 0o600 })
+    await pinch(60, 40)
+    await expect.poll(() => fontSize(paragraph)).toBe(14)
+    await expect(controls.getByRole("button", { name: "重置字号" })).toBeDisabled()
+  } finally {
+    await cdp?.detach()
+  }
 })
 
 test("document text, headings, tables and code enlarge together while controls remain reachable", async ({ page }, info) => {
@@ -220,7 +358,135 @@ test("decoded image zoom keeps every edge scrollable and downloading preserves i
   await page.getByRole("button", { name: "landscape.png", exact: true }).click()
   await expect(fit).toBeEnabled()
   await expect.poll(() => image.evaluate((element: HTMLImageElement) => [element.naturalWidth, element.naturalHeight])).toEqual([1200, 800])
-  await expect(page.getByRole("button", { name: "适应窗口", exact: true })).toHaveAttribute("aria-pressed", "true")
+  await expect(page.getByRole("button", { name: "适应宽度", exact: true })).toHaveAttribute("aria-pressed", "true")
+  await expect(fit).toHaveAttribute("aria-pressed", "false")
+})
+
+test("a long image opens at the top at readable width and scrolls to the bottom", async ({ page }, info) => {
+  await page.setViewportSize({ width: 320, height: 700 })
+  const name = "tall.png"
+  const preview = await openOutput(page, name, "/?mock=1&tick=0&file-preview=tall-image")
+  const viewport = preview.getByTestId("phone-image-viewport")
+  const image = viewport.getByRole("img", { name })
+  const fitWidth = preview.getByRole("button", { name: "适应宽度", exact: true })
+  const fitWindow = preview.getByRole("button", { name: "适应窗口", exact: true })
+  const measure = () => image.evaluate((element: HTMLImageElement) => {
+    const viewport = element.closest<HTMLElement>('[data-testid="phone-image-viewport"]')!
+    const bounds = element.getBoundingClientRect()
+    return {
+      width: bounds.width,
+      height: bounds.height,
+      imageTop: bounds.top - viewport.getBoundingClientRect().top,
+      viewportWidth: viewport.clientWidth,
+      viewportHeight: viewport.clientHeight,
+      scrollWidth: viewport.scrollWidth,
+      scrollHeight: viewport.scrollHeight,
+      scrollTop: viewport.scrollTop,
+      pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
+    }
+  })
+  await expect.poll(() => image.evaluate((element: HTMLImageElement) => [element.naturalWidth, element.naturalHeight])).toEqual([512, 4096])
+  await expect(fitWidth).toBeEnabled()
+  await expect(fitWidth).toHaveAttribute("aria-pressed", "true")
+  await expect(fitWindow).toHaveAttribute("aria-pressed", "false")
+  const initial = await measure()
+  expect(Math.abs(initial.width - initial.viewportWidth)).toBeLessThanOrEqual(1)
+  expect(initial.height / initial.width).toBeCloseTo(8, 2)
+  expect(initial.imageTop).toBeCloseTo(0)
+  expect(initial.scrollTop).toBe(0)
+  expect(initial.scrollHeight).toBeGreaterThan(initial.viewportHeight * 2)
+  expect(initial.scrollWidth).toBe(initial.viewportWidth)
+  expect(initial.pageOverflow).toBeLessThanOrEqual(0)
+  await writeFile(info.outputPath("long-image-fit-width.png"), await page.screenshot(), { mode: 0o600 })
+
+  await viewport.press("End")
+  await expect.poll(async () => {
+    const current = await measure()
+    return Math.abs(current.scrollHeight - current.viewportHeight - current.scrollTop)
+  }).toBeLessThanOrEqual(1)
+  await expect(fitWidth).toBeInViewport()
+  await expect(fitWindow).toBeInViewport()
+
+  await fitWindow.click()
+  await expect(fitWindow).toHaveAttribute("aria-pressed", "true")
+  await expect(fitWidth).toHaveAttribute("aria-pressed", "false")
+  const fitted = await measure()
+  expect(fitted.height).toBeLessThanOrEqual(fitted.viewportHeight)
+  expect(fitted.width).toBeLessThan(fitted.viewportWidth / 2)
+  expect(fitted.scrollHeight).toBe(fitted.viewportHeight)
+  await writeFile(info.outputPath("long-image-fit-window.png"), await page.screenshot(), { mode: 0o600 })
+
+  await fitWidth.click()
+  await expect(fitWidth).toHaveAttribute("aria-pressed", "true")
+  await expect(fitWindow).toHaveAttribute("aria-pressed", "false")
+  const restored = await measure()
+  expect(Math.abs(restored.width - restored.viewportWidth)).toBeLessThanOrEqual(1)
+  expect(restored.scrollTop).toBe(0)
+  expect(restored.imageTop).toBeCloseTo(0)
+})
+
+test("two fingers resize the image without zooming the phone page", async ({ page, browserName }, info) => {
+  await page.setViewportSize({ width: 320, height: 700 })
+  const preview = await openOutput(page, "tall.png", "/?mock=1&tick=0&file-preview=tall-image")
+  const viewport = preview.getByTestId("phone-image-viewport")
+  const image = viewport.getByRole("img", { name: "tall.png" })
+  const fitWidth = preview.getByRole("button", { name: "适应宽度", exact: true })
+  const fitWindow = preview.getByRole("button", { name: "适应窗口", exact: true })
+  const zoom = preview.getByLabel("图片缩放比例", { exact: true })
+  const imageWidth = () => image.evaluate((element) => element.getBoundingClientRect().width)
+  const pageScale = () => page.evaluate(() => window.visualViewport!.scale)
+  await expect(fitWidth).toBeEnabled()
+  await expect(fitWidth).toHaveAttribute("aria-pressed", "true")
+  await expect(viewport).toHaveCSS("touch-action", "pan-x pan-y")
+  const initialWidth = await imageWidth()
+  const initialScale = await pageScale()
+  const { cdp, center, pinch } = await pinchDriver(page, browserName, viewport)
+
+  try {
+    const initialZoom = await zoom.textContent()
+    await pinch(36, 72)
+    await expect.poll(imageWidth).toBeCloseTo(initialWidth * 2, 0)
+    await expect(zoom).not.toHaveText(initialZoom!)
+    await expect(fitWidth).toHaveAttribute("aria-pressed", "false")
+    await expect(fitWindow).toHaveAttribute("aria-pressed", "false")
+    expect(await pageScale()).toBeCloseTo(initialScale, 5)
+    await expect(fitWidth).toBeInViewport()
+    await expect(fitWindow).toBeInViewport()
+    await writeFile(info.outputPath("long-image-pinched.png"), await page.screenshot(), { mode: 0o600 })
+
+    await pinch(72, 54)
+    await expect.poll(imageWidth).toBeCloseTo(initialWidth * 1.5, 0)
+    expect(await pageScale()).toBeCloseTo(initialScale, 5)
+
+    if (cdp) {
+      const top = await viewport.evaluate((element) => element.scrollTop)
+      await viewport.evaluate((element, previousTop) => {
+        const settled = () => {
+          if (element.scrollTop <= previousTop + 10) return
+          element.setAttribute("data-test-swipe-ended", "true")
+          element.removeEventListener("scrollend", settled)
+        }
+        element.addEventListener("scrollend", settled)
+      }, top)
+      const finger = (y: number) => [{ id: 1, x: center.x, y }]
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: finger(center.y + 60) })
+      for (const offset of [30, 0, -30, -60]) {
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: finger(center.y + offset) })
+      }
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+      await expect.poll(() => viewport.evaluate((element) => element.scrollTop)).toBeGreaterThan(top + 10)
+      await expect(viewport).toHaveAttribute("data-test-swipe-ended", "true")
+      await expect.poll(imageWidth).toBeCloseTo(initialWidth * 1.5, 0)
+    }
+
+    await fitWidth.click()
+    await expect(fitWidth).toHaveAttribute("aria-pressed", "true")
+    await expect(fitWindow).toHaveAttribute("aria-pressed", "false")
+    await expect.poll(imageWidth).toBeCloseTo(initialWidth, 0)
+    expect(await viewport.evaluate((element) => element.scrollTop)).toBe(0)
+  } finally {
+    await cdp?.detach()
+  }
 })
 
 test("large images show byte progress and let users request the original download early", async ({ page }, info) => {

@@ -545,16 +545,21 @@ final class BindFlowTests: XCTestCase {
     let app = XCUIApplication()
     app.launch()
     defer { app.terminate() }
-    func press(_ name: String) {
+    let fitWidth = "Fit to width"
+    let fitWindow = "Fit to window"
+    func press(_ name: String, timeout: TimeInterval = 8) {
       // WebKit exposes aria-pressed as a native Switch, including when false.
-      let query = name == "Fit to window" ? app.switches.matching(identifier: name) : app.buttons.matching(identifier: name)
-      XCTAssertTrue(query.firstMatch.waitForExistence(timeout: 8))
+      let query = [fitWidth, fitWindow].contains(name) ? app.switches.matching(identifier: name) : app.buttons.matching(identifier: name)
+      XCTAssertTrue(query.firstMatch.waitForExistence(timeout: timeout))
       XCTAssertEqual(query.count, 1, "Preview controls must identify one native action")
       let button = query.element(boundBy: 0)
       XCTAssertTrue(button.isEnabled && button.isHittable, name)
       XCTAssertGreaterThanOrEqual(button.frame.minX, app.frame.minX)
       XCTAssertLessThanOrEqual(button.frame.maxX, app.frame.maxX)
       button.tap()
+    }
+    func fitSelected(_ selected: String, _ other: String) -> Bool {
+      (app.switches[selected].value as? String) == "1" && (app.switches[other].value as? String) == "0"
     }
     func observe(_ name: String, _ predicate: @escaping () -> Bool) {
       let end = ProcessInfo.processInfo.systemUptime + 5
@@ -565,7 +570,8 @@ final class BindFlowTests: XCTestCase {
       XCTAssertTrue(predicate(), name)
     }
     do {
-      press("Back")
+      // A fresh simulator can finish its first WKWebView navigation after app launch.
+      press("Back", timeout: 30)
       let thread = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sweep the unused exports'"))
       XCTAssertTrue(thread.firstMatch.waitForExistence(timeout: 8))
       XCTAssertEqual(thread.count, 1)
@@ -606,9 +612,31 @@ final class BindFlowTests: XCTestCase {
       press("landscape.png")
       let image = app.images["landscape.png"]
       XCTAssertTrue(image.waitForExistence(timeout: 8))
-      observe("preview-controls-image-fit") { image.isHittable && app.buttons["Zoom in"].isEnabled }
+      observe("preview-controls-image-fit-width") {
+        image.isHittable && app.buttons["Zoom in"].isEnabled && fitSelected(fitWidth, fitWindow)
+      }
       let initialImageWidth = image.frame.width
       XCTAssertGreaterThan(initialImageWidth, 0)
+      let viewport = app.otherElements["Image preview, region"]
+      let chrome = [app.buttons["Back to list"], app.otherElements["Image controls"], app.buttons["Download"]]
+      XCTAssertTrue(viewport.isHittable)
+      XCTAssertTrue(chrome.allSatisfy(\.exists))
+      let initialChromeFrames = chrome.map(\.frame)
+      viewport.pinch(withScale: 1.6, velocity: 1)
+      observe("preview-controls-image-pinch-out") {
+        image.frame.width > initialImageWidth + 10
+          && (app.switches[fitWidth].value as? String) == "0"
+          && (app.switches[fitWindow].value as? String) == "0"
+      }
+      XCTAssertEqual(chrome.map(\.frame), initialChromeFrames, "Pinching the image must leave the surrounding controls in place")
+      let pinchedImageWidth = image.frame.width
+      viewport.pinch(withScale: 0.7, velocity: -1)
+      observe("preview-controls-image-pinch-in") { image.frame.width < pinchedImageWidth - 10 }
+      XCTAssertEqual(chrome.map(\.frame), initialChromeFrames, "The page itself must stay at its original scale")
+      press(fitWidth)
+      observe("preview-controls-image-pinch-reset") {
+        abs(image.frame.width - initialImageWidth) < 1 && fitSelected(fitWidth, fitWindow)
+      }
       press("Actual size (100%)")
       observe("preview-controls-image-actual-size") { image.frame.width > initialImageWidth * 2 }
       let actualImageWidth = image.frame.width
@@ -617,10 +645,18 @@ final class BindFlowTests: XCTestCase {
       let enlargedImageWidth = image.frame.width
       press("Zoom out")
       observe("preview-controls-image-smaller") { image.frame.width < enlargedImageWidth }
-      press("Fit to window")
-      observe("preview-controls-image-refitted") { abs(image.frame.width - initialImageWidth) < 1 }
+      press(fitWindow)
+      observe("preview-controls-image-fit-window") {
+        abs(image.frame.width - initialImageWidth) < 1 && fitSelected(fitWindow, fitWidth)
+      }
+      press(fitWidth)
+      observe("preview-controls-image-refitted-width") { fitSelected(fitWidth, fitWindow) }
+      press(fitWindow)
       press("Back to list")
-      XCTAssertTrue(app.buttons["landscape.png"].waitForExistence(timeout: 5))
+      press("landscape.png")
+      observe("preview-controls-image-reopened-width") {
+        image.isHittable && abs(image.frame.width - initialImageWidth) < 1 && fitSelected(fitWidth, fitWindow)
+      }
     }
   }
 

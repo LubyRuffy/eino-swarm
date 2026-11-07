@@ -362,11 +362,11 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 手机文本产出物按后缀选择 Markdown 文档或现有源码语言高亮；未知文本与超过 256 Ki 字符的文本完整显示为纯文本。HTML 使用与桌面相同的沙箱预览并可切回源码，CSV/TSV 显示表格，DOCX、XLSX、PPTX 和 EPUB 解析包内容；SVG 与 MDX 组件不执行，原文件下载保持不变。证据：`mobile/src/components/text-file-preview.tsx`、`mobile/src/components/document-preview.tsx`、`mobile/src/components/document-preview.test.tsx`、`mobile/src/components/text-file-preview.test.tsx`、`mobile/src/components/file-browser.test.tsx`。
 
-- 手机 EPUB 阅读只在顶部显示一次文件名。点击正文左侧或右侧翻一页，读到章节边界时继续相邻章节；点击中央显示或收起目录与下载。目录和下载默认隐藏，展开时浮于正文上方，当前页位置保持不变。关联契约：`C-020`。证据：`mobile/src/components/file-browser.tsx`、`mobile/src/components/epub-preview.tsx`、`mobile/e2e/file-preview-controls.spec.ts`、`mobile/e2e/ios-epub-preview.swift`。
+- 手机 EPUB 阅读只在顶部显示一次文件名。点击正文左侧或右侧翻一页，读到章节边界时继续相邻章节；点击中央显示或收起目录、字号和下载。浮层默认隐藏，展开时浮于正文上方，当前页位置保持不变。双指调整字号后，书页按新字号重排并尽量保留当前阅读文字。关联契约：`C-020`。证据：`mobile/src/components/file-browser.tsx`、`mobile/src/components/epub-preview.tsx`、`mobile/e2e/file-preview-controls.spec.ts`、`mobile/e2e/ios-epub-preview.swift`。
 
 - 手机打开产出物后，按已校验的分块显示已接收字节、文件总大小与百分比。持续收到数据时等待窗口随之续期，暂时无数据时显示等待提示并继续读取。PNG、JPEG、GIF、WebP 在手机 32 MiB 读取上限内可直接预览。返回列表时取消当前读取。关联 `C-020`。见 `mobile/src/components/file-browser.tsx`、`mobile/src/lib/remote-files.ts`、`mobile/e2e/file-preview-controls.spec.ts`。
 
-- 手机预览工具：图片提供放大／缩小、比例、100% 原始大小及适应窗口，默认按比例适配且不放大小图；手动缩放 10%—400%，超大图初始适配可低于 10%，内容可横纵滚动，加载或解码失败禁用操作。Markdown、源码和纯文本提供 12—28 px 字号调整及重置，默认 14 px，标题／表格／代码同步缩放。工具栏及下载保留在内容滚动区外，重新打开恢复默认，下载保留原字节。关联契约：`C-020`；证据：`mobile/src/components/image-file-preview.tsx`, `mobile/src/components/image-file-preview.test.tsx`, `mobile/src/components/text-file-preview.test.tsx`, `mobile/e2e/file-preview-controls.spec.ts`。
+- 手机预览工具：图片提供放大／缩小、比例、100% 原始大小、适应宽度和适应窗口。默认按宽度等比适配，从图片顶部开始阅读，长图可向下滚动。适应窗口可查看整张图，两种模式均不放大小图。双指捏合以两指中点缩放图片，工具栏保持原尺寸，单指可横纵滚动。按钮缩放范围为 10%—400%，双指可从低于 10% 的适配比例平滑放大。加载或解码失败时禁用缩放。Markdown、源码、纯文本和 EPUB 共用双指字号调整、放大／缩小和重置。字号范围为 12—28 px，普通文本默认 14 px，标题、表格和代码同步缩放。EPUB 默认基准字号为 18 px，保留书内字号层级。工具栏及下载保留在内容滚动区外，重新打开恢复默认，下载保留原字节。关联契约：`C-020`；证据：`mobile/src/components/image-file-preview.tsx`, `mobile/src/components/image-file-preview.test.tsx`, `mobile/src/components/text-file-preview.test.tsx`, `mobile/e2e/file-preview-controls.spec.ts`。
 
 - 手机预览加载中即可点击下载，等同一份传输完成后自动开始下载。返回列表取消等待。原生手机的下载打开系统保存／导出面板，选择位置后写出原文件；取消不显示成功，保存失败在预览中提示并允许重试。浏览器保留下载链接。证据：`mobile/src/components/file-download.tsx`, `mobile/src/lib/file-save.ts`, `mobile/src/components/file-browser.test.tsx`, `mobile/android/app/src/main/java/com/lubyruffy/zwai/FileSavePlugin.java`, `mobile/ios/App/App/FileSavePlugin.swift`；关联契约：`C-020`。
 

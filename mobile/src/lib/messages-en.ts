@@ -160,6 +160,7 @@ export const en = {
   "files.zoomLevel": "Image zoom",
   "files.actualSize": "Actual size (100%)",
   "files.fit": "Fit to window",
+  "files.fitWidth": "Fit to width",
   "files.textControls": "Text controls",
   "files.textSmaller": "Decrease text size",
   "files.textLarger": "Increase text size",

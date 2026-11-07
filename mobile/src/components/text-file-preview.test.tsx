@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { createEvent, fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
 import { TextFilePreview } from "./text-file-preview"
@@ -25,6 +25,53 @@ describe("text output preview", () => {
     expect(content).toHaveStyle({ fontSize: "14px" })
     if (path !== "reading.md") expect(content.querySelector("pre")?.textContent).toBe(text)
     else expect(screen.getByRole("heading", { name: "Heading" })).toBeInTheDocument()
+  })
+
+  it("pinches Wiki Markdown through the same bounded font controls", () => {
+    render(<TextFilePreview path="wiki/reading.md" text={"# Heading\n\nReadable text"} />)
+    const content = screen.getByTestId("phone-text-content")
+    const heading = screen.getByRole("heading", { name: "Heading" })
+    const larger = screen.getByRole("button", { name: t("files.textLarger") })
+    const smaller = screen.getByRole("button", { name: t("files.textSmaller") })
+    const reset = screen.getByRole("button", { name: t("files.textReset") })
+    const points = (distance: number) => [50, 50 + distance].map((clientX) => ({
+      target: heading, clientX, clientY: 80,
+    }))
+    const one = createEvent.touchStart(content, { touches: points(100).slice(0, 1) })
+    fireEvent(content, one)
+    expect(one.defaultPrevented).toBe(false)
+    const outside = createEvent.touchStart(content, { touches: [points(100)[0], { ...points(100)[1], target: larger }] })
+    fireEvent(content, outside)
+    expect(outside.defaultPrevented).toBe(false)
+
+    const start = createEvent.touchStart(content, { touches: points(100) })
+    fireEvent(content, start)
+    expect(start.defaultPrevented).toBe(true)
+    const spread = createEvent.touchMove(content, { touches: points(150) })
+    fireEvent(content, spread)
+    expect(spread.defaultPrevented).toBe(true)
+    expect(content).toHaveStyle({ fontSize: "21px" })
+    fireEvent.touchMove(content, { touches: points(300) })
+    expect(content).toHaveStyle({ fontSize: "28px" })
+    expect(larger).toBeDisabled()
+    fireEvent.touchMove(content, { touches: points(50) })
+    expect(content).toHaveStyle({ fontSize: "12px" })
+    expect(smaller).toBeDisabled()
+
+    const lift = createEvent.touchEnd(content, { touches: points(50).slice(0, 1) })
+    const finish = createEvent.touchEnd(content, { touches: [] })
+    fireEvent(content, lift)
+    fireEvent(content, finish)
+    expect(lift.defaultPrevented).toBe(true)
+    expect(finish.defaultPrevented).toBe(true)
+    const after = createEvent.touchMove(content, { touches: points(100).slice(0, 1) })
+    fireEvent(content, after)
+    expect(after.defaultPrevented).toBe(false)
+    expect(content).toHaveStyle({ fontSize: "12px" })
+
+    fireEvent.click(reset)
+    expect(content).toHaveStyle({ fontSize: "14px" })
+    expect(heading).toBeInTheDocument()
   })
 
   it.each(["summary.md", "SUMMARY.MARKDOWN", "notes.mdx"])("renders %s without evaluating HTML or MDX", (path) => {

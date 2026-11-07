@@ -6,6 +6,15 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Mobile image previews open at the top in Fit to width. Fit to window
+  remains available for viewing the entire image. Pinching scales the
+  image around the touch midpoint while the preview controls stay fixed.
+  (`C-020`)
+
+- Phone EPUB and Markdown previews use the same pinch and font-size controls.
+  EPUB repaginates around the reading position and keeps its controls in the
+  center-tap overlay. (`C-020`)
+
 - Local Claude, Codex, and Cursor rows show the task first and the project
   directory after it, on desktop and phone. Codex uses the opening request
   rather than context inserted ahead of it. Cursor recovers the project
