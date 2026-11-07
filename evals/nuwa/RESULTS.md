@@ -1,3 +1,38 @@
+# Nuwa takeover re-test: 2026-11-07
+
+Clean paired run on the executor-binding candidate (`fe064364`, Nuwa workers
+carry their current role, generation and resolved model binding) against the
+real `ai.fofa.info:2440` account gateway. Frozen protocol
+[`protocol.example.json`](protocol.example.json): tasks `multi-module-bugfix`,
+`nuwa-source-reconcile`, `spec-edges`; three repeats; three arms; 27 executions;
+`glm-5.3-flash` planner everywhere, `nuwa-mixed` preferring `dsv41-flash-1017`
+for delegation. Budget 16,384 output tokens/request, 30 s review. Schedule
+completed with zero harness errors; delegation was real
+(`executor_preference_realized: true`, actual `dsv41-flash-1017` worker calls).
+
+| Arm | Passed / 9 | Total tokens | Median tok/task | Median task s |
+|---|---|---|---|---|
+| default-glm (baseline) | 6 | 1,621,330 | 81,558 | 60.2 |
+| nuwa-glm (same GLM) | 6 | 8,837,378 | 901,776 | 190.6 |
+| nuwa-mixed (GLM plan + DS exec) | 6 | 9,249,633 | 1,097,894 | 118.3 |
+
+Every arm passed the identical six runs (`multi-module-bugfix` 3/3,
+`nuwa-source-reconcile` 3/3) and failed the identical three (`spec-edges` 0/3,
+a shared model-capability ceiling on the arbitrary-digit integer rule, not a
+mode difference). Correctness-first gate: **no success difference** from Nuwa or
+the executor preference. On the time/token gate Nuwa was strictly worse: **5.5×
+(nuwa-glm) and 5.7× (nuwa-mixed) total tokens**, ~11–13× median tokens per task,
+and 2–3× median wall time. The paired summary's own token column reported
+"unavailable" because its stricter whole-pair usage-completeness criterion was
+not met; the per-run `metrics.total_tokens` above are complete for all 27 runs.
+
+This establishes no Nuwa benefit and a large cost overhead on this protocol. It
+is a small descriptive measurement: the two solvable tasks were already solvable
+by the single-model baseline, leaving Nuwa no correctness headroom, and
+`spec-edges` bounded all arms. It measures these flash models on these tasks, not
+a general framework ranking. Evidence (outside the repo):
+`~/.codex/nuwa-evidence/takeover-retest-run-20261107-162900/`.
+
 # Generic Nuwa observation: 2026-11-02
 
 The completed strict-separation/shared-state-preview calibration on source
