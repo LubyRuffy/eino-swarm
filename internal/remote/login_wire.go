@@ -19,6 +19,7 @@ import (
 
 const desktopAuthPrefix = "/admin/api/v1/auth/desktop/"
 const desktopAuthAPIBase = "/admin/api/v1"
+
 // Fixture path for offline Gateway replies when a single identity source is configured.
 const desktopVerificationFixturePath = desktopAuthAPIBase + "/auth/sso/corporate/start"
 const loginLifetime = 10 * time.Minute
