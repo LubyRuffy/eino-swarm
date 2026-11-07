@@ -69,7 +69,7 @@ async function configureRouteFixture(request: APIRequestContext, url: string) {
       id: "route-fixture", label: "Offline routing recovery", base_url: url, model: "fixture-model", api_key: "", context_window: 128000,
       first_byte_timeout_seconds: 2, timeout_seconds: 3,
     }] },
-    swarm: { ...settings.swarm, auto_title: false },
+    swarm: { ...settings.swarm, auto_title: false, composer_predictions: false },
     memory: { ...settings.memory, auto_review: false },
   } })).ok()).toBe(true)
 }
@@ -173,7 +173,7 @@ test("three routing refusals end the turn instead of waiting again", async ({ pa
     const transcript = page.getByTestId("transcript")
     await expect(transcript.getByText("Waiting 5s before retrying the model request.", { exact: true })).toBeVisible()
     await expect(transcript.getByText("Waiting 10s before retrying the model request.", { exact: true })).toBeVisible()
-    await expect(transcript.getByText(/no healthy provider/)).toBeVisible({ timeout: 20_000 })
+    await expect(transcript.getByTestId("generation-notice").getByText(/no healthy provider/)).toBeVisible({ timeout: 20_000 })
     await expect(transcript.getByText("Waiting 20s before retrying the model request.", { exact: true })).toHaveCount(0)
     await expect(transcript.getByText("Waiting 30s before retrying the model request.", { exact: true })).toHaveCount(0)
     await waitForIdle(page)

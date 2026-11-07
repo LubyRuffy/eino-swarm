@@ -8163,6 +8163,8 @@ refusal ending the turn with no later probe, and Stop with no later request
 after the original cooldown. It uses a keyless loopback fixture and does not
 establish recovery against a live gateway. Provider and engine tests cover the
 same three-refusal cap on Generate and Stream.
+The fixture disables composer predictions so auxiliary calls cannot change its
+attempt counts, and binds the terminal error assertion to the generation notice.
 `models/provider/RouteRecovery.tla` (`make model-check`) checks one logical
 call: three confirmed refusals end it, a success or Stop or a different error
 ends it earlier, and the capped refusal does not start a model retry.
