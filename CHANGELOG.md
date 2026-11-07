@@ -35,6 +35,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   picker still keeps `chat` and unclassified rows. A catalog without
   `model_type` stays unchanged. (`F-171`, `C-040`)
 
+- Fixed Nuwa workers missing their current role, generation and resolved
+  model binding. Model requests and `list_models.current` use the same
+  generation snapshot, including after resume or restore. (`C-037`)
+
 - Fixed a queued timer tick shortening the fresh renderer probe's health
   interval after a failed desktop replacement. The retry deadline now shares
   the probe's actual dispatch timestamp with its diagnostic age; startup,

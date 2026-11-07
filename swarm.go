@@ -890,7 +890,7 @@ func WithManagerHandler(hs ...adk.ChatModelAgentMiddleware) ManagerOption {
 type Injector struct {
 	adk.BaseChatModelAgentMiddleware
 	handle           *Handle
-	generation       int
+	caller           toolInvocation
 	config           WorkerConfig
 	configured       bool
 	histCap          int
@@ -910,8 +910,7 @@ func (in *Injector) BeforeModelRewriteState(ctx context.Context,
 	}
 	in.handle.injectHandoff(state)
 	in.handle.setHistory(state.Messages, in.histCap)
-	ctx = withToolCaller(ctx, AgentIdentity{AgentID: in.handle.ID, Role: in.handle.Role,
-		Generation: in.generation, ParentID: in.handle.ParentID})
+	ctx = in.caller.context(ctx)
 	return ctx, state, nil
 }
 
@@ -939,8 +938,7 @@ func (in *Injector) WrapInvokableToolCall(ctx context.Context,
 				config = in.reg.WorkerConfiguration()
 			}
 			ctx = withWorkerConfig(ctx, config)
-			ctx = withToolCaller(ctx, AgentIdentity{AgentID: in.handle.ID, Role: in.handle.Role,
-				Generation: in.generation, ParentID: in.handle.ParentID})
+			ctx = in.caller.context(ctx)
 			ctx = context.WithValue(ctx, toolReceiptScopeKey{}, in.toolReceiptScope)
 			ctx = in.reg.bindToolOutput(ctx, in.handle.ID, in.handle.Role, tc)
 		}

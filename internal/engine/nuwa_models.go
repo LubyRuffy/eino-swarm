@@ -216,12 +216,16 @@ func (t *nuwaTool) InvokableRun(ctx context.Context, args string, _ ...tool.Opti
 }
 
 func (e *Engine) nuwaModelTool(turn *store.Turn) tool.BaseTool {
-	return &nuwaTool{name: "list_models", description: "List the configured models available for delegation. Copy an exact ref into spawn_agent model_ref; capabilities not listed here are unknown.",
+	return &nuwaTool{name: "list_models", description: "List the configured models available for delegation and the current worker assignment, when called by a worker. Catalog default is the owning conversation turn's model. Copy an exact models[].ref into spawn_agent model_ref; capabilities not listed here are unknown.",
 		params: map[string]*schema.ParameterInfo{}, run: func(ctx context.Context, _ string) (string, error) {
 			if err := context.Cause(ctx); err != nil {
 				return "", err
 			}
-			body, err := json.Marshal(map[string]any{"models": e.nuwaModels(turn)})
+			body, err := json.Marshal(struct {
+				Models       []nuwaModel           `json:"models"`
+				DefaultScope string                `json:"default_scope"`
+				Current      *nuwaWorkerAssignment `json:"current,omitempty"`
+			}{Models: e.nuwaModels(turn), DefaultScope: "conversation", Current: nuwaCurrentWorkerAssignment(ctx)})
 			return string(body), err
 		}}
 }

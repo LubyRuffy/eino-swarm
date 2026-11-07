@@ -60,6 +60,8 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, message, in
 		cancel()
 	}
 	done := h.done
+	identity := AgentIdentity{AgentID: id, Role: role, ParentID: h.ParentID, Generation: h.gen}
+	caller := toolInvocation{identity: identity, modelBinding: cloneModelBinding(h.modelBinding)}
 	h.mu.Unlock()
 	if seed != "" {
 		// Seed before the goroutine runs. Pushing after Spawn returned is how
@@ -68,7 +70,6 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, message, in
 	}
 	extraTools = r.workerTools(config, r.bindSendCaller(extraTools, id, role))
 
-	identity := AgentIdentity{AgentID: id, Role: role, ParentID: h.ParentID, Generation: h.generation()}
 	receiptScope := rand.Text()
 	go func() {
 		defer close(done)
@@ -93,7 +94,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, message, in
 
 		acc := &streamAcc{reg: r, agentID: id, role: role, handle: h, rawEvents: true,
 			workerGeneration: identity.Generation, parentID: identity.ParentID, toolReceiptScope: receiptScope}
-		inj := &Injector{handle: h, histCap: r.historyCap(), reg: r, generation: identity.Generation,
+		inj := &Injector{handle: h, histCap: r.historyCap(), reg: r, caller: caller,
 			config: config, configured: true, toolReceiptScope: receiptScope}
 		handlers := []adk.ChatModelAgentMiddleware{inj}
 		if config.WorkerMiddlewares != nil {

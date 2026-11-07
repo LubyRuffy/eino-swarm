@@ -62,6 +62,11 @@ their existing peer/manager semantics.
 label and known context window. Names are resources, not capability ratings.
 Copy its opaque ref into `spawn_agent(..., model_ref: ref)` without constructing
 or decoding it. This tool token is separate from the UI/CLI provider ChoiceID.
+`default_scope: "conversation"` means the catalog's `default` identifies the
+model chosen for the owning conversation turn. It does not identify the model
+running a worker. When a worker calls `list_models`, `current` separately
+reports its ID, role, parent if any, generation and recorded model binding.
+Choose a new worker using `models[].ref`, not the current binding's provenance.
 With multiple ready choices, each new role must supply an exact `model_ref`;
 omission returns a correctable error pointing to `list_models` before context
 forking, dispatch or any worker model request. With at most one ready choice,
@@ -72,6 +77,17 @@ The schema keeps `model_ref` optional for existing-role reuse. This changes the
 former default fallback for new roles in multi-model Nuwa projects; no stored
 data migration is needed. Ordinary mode and the generic Registry retain their
 existing default behavior. Model choice remains the agent's decision.
+
+Every Nuwa worker model call also receives that same current assignment as a
+separate runtime System message. It describes the binding already in effect
+for that generation, independently of the catalog and shared project data.
+Resume and cold recovery use the saved resolved binding, even when the default
+or catalog changes. A legacy worker without a recorded binding reports
+`model_binding_status: "unknown"`, with no inferred model. The assignment
+message does not become history or a fork seed. A tool receipt can still keep
+the `current` field from its own call; that historical result does not identify
+a later invocation. The assignment leaves project instructions, delegation and
+ordinary worker prompts as before.
 
 A delegating agent can call `list_worker_tools` to discover the available worker
 tool catalog, including configured MCP tools. Discovery does not mount these

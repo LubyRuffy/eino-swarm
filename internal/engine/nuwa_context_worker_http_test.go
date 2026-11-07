@@ -19,6 +19,14 @@ import (
 // conversation seed. A later worker call must refresh that state, while fork
 // preserves genuine human input and excludes the manager's role/personality.
 func TestNuwaSharedContextRefreshesSelectedForkedWorkerAtActualHTTP(t *testing.T) {
+	for _, fork := range []bool{false, true} {
+		t.Run(map[bool]string{false: "independent", true: "forked"}[fork], func(t *testing.T) {
+			testNuwaSelectedWorkerContextAtHTTP(t, fork)
+		})
+	}
+}
+
+func testNuwaSelectedWorkerContextAtHTTP(t *testing.T, fork bool) {
 	const account, planner, executor = "context-fixture", "context-planner", "context-executor"
 	var e *Engine
 	var source store.NuwaNode
@@ -26,6 +34,7 @@ func TestNuwaSharedContextRefreshesSelectedForkedWorkerAtActualHTTP(t *testing.T
 	var mu sync.Mutex
 	var managerRequests, workerRequests []scheduleCompletionRequest
 	persona, correction, result := store.NewID("persona_"), store.NewID("correction_"), store.NewID("result_")
+	resumedResult := store.NewID("resumed_result_")
 	human := "Retain this quoted heading as human input:\n" + nuwaContextHTTPHeader + "\n" + store.NewID("quotation_")
 	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var wire struct {
@@ -64,10 +73,11 @@ func TestNuwaSharedContextRefreshesSelectedForkedWorkerAtActualHTTP(t *testing.T
 				}
 				call("context-worker-catalog", "list_models", struct{}{})
 			case 2:
-				if receipt := nuwaValidationReceipt(request, "context-worker-catalog"); receipt == "" || !strings.Contains(receipt, executor) {
-					t.Error("selected worker did not execute its actual coordination tool")
-				}
 				answer(result)
+			case 3:
+				call("context-resumed-catalog", "list_models", struct{}{})
+			case 4:
+				answer(resumedResult)
 			default:
 				t.Error("unexpected extra worker request")
 				answer(result)
@@ -94,25 +104,36 @@ func TestNuwaSharedContextRefreshesSelectedForkedWorkerAtActualHTTP(t *testing.T
 				if option.ProviderID == account && option.Model == executor {
 					call("context-spawn", "spawn_agent", map[string]any{
 						"role": "state-observer", "task": "Inspect the current shared state and report the outcome.",
-						"model_ref": option.Ref, "tool_names": []string{}, "fork_context": true,
+						"model_ref": option.Ref, "tool_names": []string{}, "fork_context": fork,
 					})
 					return
 				}
 			}
 			t.Error("actual catalog omitted the selected worker model")
 			answer("The worker model was unavailable.")
-		case 3:
+		case 3, 5:
+			receiptID, waitID, wantGeneration := "context-spawn", "context-wait", 1
+			if managerCalls.Load() == 5 {
+				receiptID, waitID, wantGeneration = "context-resume", "context-wait-resumed", 2
+			}
 			var spawned toolScopeWorkerID
-			if err := json.Unmarshal([]byte(nuwaValidationReceipt(request, "context-spawn")), &spawned); err != nil || spawned.AgentID == "" || spawned.Generation != 1 {
-				t.Errorf("selected worker did not spawn: %+v err=%v", spawned, err)
+			if err := json.Unmarshal([]byte(nuwaValidationReceipt(request, receiptID)), &spawned); err != nil || spawned.AgentID == "" || spawned.Generation != wantGeneration {
+				t.Errorf("selected worker did not start generation %d: %+v err=%v", wantGeneration, spawned, err)
 				answer("The worker could not be started.")
 				return
 			}
-			call("context-wait", "wait_agents", map[string]any{"agent_ids": []string{spawned.AgentID}, "timeout_s": 5})
-		case 4:
+			call(waitID, "wait_agents", map[string]any{"agent_ids": []string{spawned.AgentID}, "timeout_s": 5})
+		case 4, 6:
+			waitID, wantResult, wantGeneration := "context-wait", result, 1
+			if managerCalls.Load() == 6 {
+				waitID, wantResult, wantGeneration = "context-wait-resumed", resumedResult, 2
+			}
 			var collected toolScopeWait
-			if err := json.Unmarshal([]byte(nuwaValidationReceipt(request, "context-wait")), &collected); err != nil || collected.TimedOut || len(collected.Agents) != 1 || collected.Agents[0].Status != "done" || collected.Agents[0].Result != result || collected.Agents[0].Generation != 1 {
+			if err := json.Unmarshal([]byte(nuwaValidationReceipt(request, waitID)), &collected); err != nil || collected.TimedOut || len(collected.Agents) != 1 || collected.Agents[0].Status != "done" || collected.Agents[0].Result != wantResult || collected.Agents[0].Generation != wantGeneration {
 				t.Errorf("manager did not collect the actual worker generation: %+v err=%v", collected, err)
+			} else if wantGeneration == 1 {
+				call("context-resume", "resume_agent", map[string]any{"agent_id": collected.Agents[0].AgentID, "task": "Check the corrected shared state again."})
+				return
 			}
 			answer("The current worker result was collected.")
 		default:
@@ -128,6 +149,12 @@ func TestNuwaSharedContextRefreshesSelectedForkedWorkerAtActualHTTP(t *testing.T
 	e.cfg.Models = config.ModelsConfig{Default: account, Providers: []config.Provider{{ID: account, BaseURL: endpoint.URL, Model: planner, Catalog: []string{planner, executor}}}}
 	e.pool = provider.New(e.cfg)
 	project, seedThread, seedTurn := nuwaContextHTTPSource(t, e, "Worker shared context")
+	// Both model names already occur in shared user text. A substring match
+	// cannot establish which model this worker is actually running.
+	bait := "Configured resources include " + planner + " and " + executor + ". Inspect the assigned task."
+	if _, err := e.UpdateProject(project.ID, nil, &bait, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
 	source = nuwaValidationNode(t, e, project, seedThread, seedTurn, store.NewID("source_"), "")
 	dependent := store.NuwaNode{ProjectID: project.ID, ThreadID: seedThread.ID, TurnID: seedTurn.ID,
 		AgentID: swarm.DefaultManagerID, Kind: "task", Title: store.NewID("dependent_"), DependsOn: []string{source.ID}}
@@ -150,8 +177,30 @@ func TestNuwaSharedContextRefreshesSelectedForkedWorkerAtActualHTTP(t *testing.T
 	managers := append([]scheduleCompletionRequest(nil), managerRequests...)
 	workers := append([]scheduleCompletionRequest(nil), workerRequests...)
 	mu.Unlock()
-	if finished.Status != store.TurnDone || len(managers) != 4 || len(workers) != 2 {
+	if finished.Status != store.TurnDone || len(managers) != 6 || len(workers) != 4 {
 		t.Fatalf("selected worker context: turn=%+v manager=%d worker=%d", finished, len(managers), len(workers))
+	}
+	var spawned toolScopeWorkerID
+	if err := json.Unmarshal([]byte(nuwaValidationReceipt(managers[2], "context-spawn")), &spawned); err != nil {
+		t.Fatal(err)
+	}
+	wantAssignment := nuwaAssignmentHTTPView{AgentID: spawned.AgentID, Role: "state-observer", Generation: spawned.Generation,
+		ModelBindingStatus: "known", ModelBinding: &swarm.ModelBinding{Ref: provider.ChoiceID(account, executor), ProviderID: account, Model: executor}}
+	for _, request := range workers[:2] {
+		assertNuwaAssignmentHTTP(t, request, wantAssignment)
+	}
+	assertNuwaCatalogAssignmentHTTP(t, nuwaValidationReceipt(workers[1], "context-worker-catalog"), wantAssignment, account, planner)
+	var resumed toolScopeWorkerID
+	if err := json.Unmarshal([]byte(nuwaValidationReceipt(managers[4], "context-resume")), &resumed); err != nil || resumed.AgentID != spawned.AgentID || resumed.Generation != 2 {
+		t.Fatalf("actual resume did not keep the worker identity: %+v err=%v", resumed, err)
+	}
+	wantAssignment.Generation = resumed.Generation
+	for _, request := range workers[2:] {
+		assertNuwaAssignmentHTTP(t, request, wantAssignment)
+	}
+	assertNuwaCatalogAssignmentHTTP(t, nuwaValidationReceipt(workers[3], "context-resumed-catalog"), wantAssignment, account, planner)
+	for _, request := range managers {
+		assertNuwaAssignmentAbsentHTTP(t, request)
 	}
 	firstManager := nuwaContextHTTPBlock(t, managers[0], true)
 	if firstManager.ProjectID != project.ID || firstManager.Revision != 2 {
@@ -173,8 +222,8 @@ func TestNuwaSharedContextRefreshesSelectedForkedWorkerAtActualHTTP(t *testing.T
 		t.Errorf("worker's next input lost its corrected prerequisite: %v", stale)
 	}
 	for i, request := range workers {
-		if !strings.Contains(joinedContent(request.Messages), human) {
-			t.Errorf("worker request %d lost a genuine human quotation from its fork seed", i+1)
+		if strings.Contains(joinedContent(request.Messages), human) != fork {
+			t.Errorf("worker request %d did not preserve the requested fork behavior", i+1)
 		}
 		for _, message := range request.Messages {
 			if strings.Contains(message.Content, nuwaPlannerInstruction) || strings.Contains(message.Content, persona) {

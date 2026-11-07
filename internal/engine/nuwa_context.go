@@ -86,8 +86,14 @@ func (m *nuwaContextModel) input(ctx context.Context, messages []*schema.Message
 	for at < len(messages) && messages[at] != nil && messages[at].Role == schema.System {
 		at++
 	}
-	next := make([]*schema.Message, 0, len(messages)+1)
+	next := make([]*schema.Message, 0, len(messages)+2)
 	next = append(next, messages[:at]...)
+	if current := nuwaCurrentWorkerAssignment(ctx); current != nil {
+		// Only strings and the generation number are encoded here. Keep these
+		// trusted facts separate from the untrusted board below.
+		body, _ := json.Marshal(current)
+		next = append(next, withMessageSource(schema.SystemMessage(nuwaAssignmentPrefix+string(body)), store.MessageSourceRuntime))
+	}
 	next = append(next, withMessageSource(schema.SystemMessage(text), store.MessageSourceRuntime))
 	next = append(next, messages[at:]...)
 	return next, nil

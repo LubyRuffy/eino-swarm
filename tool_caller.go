@@ -18,11 +18,32 @@ type AgentIdentity struct {
 type toolCallerKey struct{}
 type toolReceiptScopeKey struct{}
 
+// A worker captures this value when its generation starts. Its binding is a
+// private clone and does not follow subsequent roster or provider changes.
+type toolInvocation struct {
+	identity     AgentIdentity
+	modelBinding *ModelBinding
+}
+
+func (caller toolInvocation) context(ctx context.Context) context.Context {
+	return context.WithValue(ctx, toolCallerKey{}, caller)
+}
+
 // ToolCaller returns trusted runtime provenance for a worker model call or a
 // tool invocation, never model-supplied arguments.
 func ToolCaller(ctx context.Context) (AgentIdentity, bool) {
-	identity, ok := ctx.Value(toolCallerKey{}).(AgentIdentity)
-	return identity, ok
+	caller, ok := ctx.Value(toolCallerKey{}).(toolInvocation)
+	return caller.identity, ok
+}
+
+// ToolCallerModelBinding returns a value copy of the current worker invocation's
+// resolved model. An unbound worker or manager has no recorded worker binding.
+func ToolCallerModelBinding(ctx context.Context) (ModelBinding, bool) {
+	caller, _ := ctx.Value(toolCallerKey{}).(toolInvocation)
+	if caller.modelBinding == nil {
+		return ModelBinding{}, false
+	}
+	return *caller.modelBinding, true
 }
 
 // ToolReceiptScope returns the runtime's receipt scope for a worker tool call.
@@ -33,7 +54,7 @@ func ToolReceiptScope(ctx context.Context) string {
 }
 
 func withToolCaller(ctx context.Context, identity AgentIdentity) context.Context {
-	return context.WithValue(ctx, toolCallerKey{}, identity)
+	return (toolInvocation{identity: identity}).context(ctx)
 }
 
 func (r *Registry) workerIdentity(id string) AgentIdentity {
