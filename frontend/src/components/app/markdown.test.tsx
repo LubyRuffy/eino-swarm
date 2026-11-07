@@ -135,6 +135,37 @@ describe("MemoMarkdown", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(src))
   }, 20000)
 
+  it.each(["asm", "assembly", "nasm", "gas", "x86asm", "yasm"])(
+    "highlights an %s fence with distinct mnemonic, register and comment colours",
+    async (lang) => {
+      const src = "0x2c108: movaps [rsp], xmm0 ; 前 16 字节清零\nlea rdi, [rip+0x10]\ncall target\nmov rsi, r12"
+      render(<MemoMarkdown text={"```" + lang + "\n" + src + "\n```"} />)
+      const code = screen.getByTestId("markdown-code").querySelector("code")!
+      expect(code.textContent).toBe(src)
+      await waitFor(() => {
+        const styled = [...code.querySelectorAll("span")].filter((node) =>
+          node.getAttribute("style")?.includes("--shiki-light"),
+        )
+        const styleOf = (text: string) =>
+          styled.find((node) => node.textContent === text)?.getAttribute("style") ?? ""
+        const mnemonic = styleOf("movaps")
+        const register = styleOf("xmm0")
+        const comment =
+          styled.find((node) => node.textContent?.includes("字节清零"))?.getAttribute("style") ?? ""
+        expect(mnemonic).toContain("--shiki-light")
+        expect(register).toContain("--shiki-light")
+        expect(comment).toContain("--shiki-light")
+        expect(mnemonic).not.toBe(register)
+        expect(mnemonic).not.toBe(comment)
+        expect(styleOf("lea")).toContain("--shiki-light")
+        expect(styleOf("call")).toContain("--shiki-light")
+        expect(styleOf("r12")).toContain("--shiki-light")
+      })
+      expect(screen.getByText(lang)).toBeInTheDocument()
+    },
+    20000,
+  )
+
   it("highlights a cpp fence with its own grammar", async () => {
     render(<MemoMarkdown text={"```cpp\nint x = 1;\n```"} />)
     await waitFor(

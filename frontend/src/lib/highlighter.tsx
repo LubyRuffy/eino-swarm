@@ -12,6 +12,7 @@ export const shikiTokenClass = "text-(--shiki-light) dark:text-(--shiki-dark)"
 // Each language loads the first time a fence asks for it. Names match Shiki's
 // grammar ids. A tag that is not listed stays plain text.
 const languages = {
+  asm: () => import("shiki/langs/asm.mjs"),
   bash: () => import("shiki/langs/shellscript.mjs"),
   c: () => import("shiki/langs/c.mjs"),
   cpp: () => import("shiki/langs/cpp.mjs"),
@@ -42,6 +43,7 @@ const languages = {
 type LangName = keyof typeof languages
 
 const aliases: Record<string, LangName> = {
+  assembly: "asm",
   "c#": "csharp",
   "c++": "cpp",
   cc: "cpp",
@@ -49,6 +51,7 @@ const aliases: Record<string, LangName> = {
   cs: "csharp",
   cxx: "cpp",
   docker: "dockerfile",
+  gas: "asm",
   golang: "go",
   h: "c",
   hpp: "cpp",
@@ -56,6 +59,7 @@ const aliases: Record<string, LangName> = {
   kt: "kotlin",
   kts: "kotlin",
   md: "markdown",
+  nasm: "asm",
   py: "python",
   python3: "python",
   rb: "ruby",
@@ -64,6 +68,8 @@ const aliases: Record<string, LangName> = {
   shell: "bash",
   shellscript: "bash",
   ts: "typescript",
+  x86asm: "asm",
+  yasm: "asm",
   yml: "yaml",
   zsh: "bash",
 }
