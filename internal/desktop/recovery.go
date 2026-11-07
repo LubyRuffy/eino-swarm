@@ -376,6 +376,12 @@ func (c *recoveryController) run(ctx context.Context) {
 				}
 				challenge = hex.EncodeToString(random[:])
 				probeStarted, probeStage = c.now(), "callback_missing"
+				if retrying {
+					// A queued tick predates dispatch. Give this new retry probe
+					// its full health interval without moving outer deadlines.
+					state.pendingUntil = probeStarted.Add(recoveryHealthTimeout)
+					state.graceUntil = state.pendingUntil
+				}
 				if awaitingLocation {
 					probeStage = "location_pending"
 				}

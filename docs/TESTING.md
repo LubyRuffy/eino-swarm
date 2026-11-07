@@ -2471,7 +2471,12 @@ origin, inactivity, sleep-sized tick gaps, retry exhaustion and cancellation.
 The retry regressions check that a timed-out successor leaves the second
 attempt available until a new foreground probe fails. Exercise both focus
 changes and ticks queued during the blocked launch, and require the next
-replacement to report its own probe boundary. The blocked-launch test uses a
+replacement to report its own probe boundary. `recovery_dispatch_clock_test.go`
+delivers retry ticks one and three seconds before their actual probe dispatch.
+It refuses another replacement both at the old tick-based deadline and one
+nanosecond before the actual dispatch-based deadline, then permits it at the
+full 20-second boundary. Same-value tick barriers stabilize observation without
+removing the controlled dispatch delay. The blocked-launch test uses a
 launcher fixture that waits for a real 30-second context deadline. The final
 failed attempt shows one native error. Before its first paint, a successor
 reports unresolved probe boundaries during the wait while the original shell
