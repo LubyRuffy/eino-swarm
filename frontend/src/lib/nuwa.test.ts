@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { layoutNuwa, scopeNuwaNodes, type NuwaNode } from "./nuwa"
+import { layoutNuwa, layoutNuwaCollaboration, NUWA_GOAL_ID, scopeNuwaNodes, type NuwaNode } from "./nuwa"
 
 const node = (id: string, depends_on: string[] = [], thread_id = "a"): NuwaNode => ({
   id, kind: "task", title: id, summary: "", status: "pending", depends_on,
@@ -29,5 +29,22 @@ describe("Shared work paths", () => {
   it("retains cross-conversation prerequisites in a conversation's dependency path", () => {
     const result = scopeNuwaNodes([node("a", [], "other"), node("b", ["a"]), node("c", [], "other")], "a")
     expect(result.map((n) => n.id)).toEqual(["a", "b"])
+  })
+
+  it("converges every record nothing else depends on onto a single goal node", () => {
+    const result = layoutNuwaCollaboration([node("task"), node("fact", ["task"]), node("aside")])
+    const goal = result.positions.find(({ node }) => node.type === "goal")
+    expect(goal).toBeTruthy()
+    // "fact" and "aside" are terminal; "task" is a prerequisite of "fact".
+    const toGoal = result.edges.filter(({ to }) => to === NUWA_GOAL_ID).map(({ from }) => from).sort()
+    expect(toGoal).toEqual(["aside", "fact"])
+    // Real dependencies stay as their own edges, not routed through the goal.
+    expect(result.edges).toContainEqual({ from: "task", to: "fact" })
+  })
+
+  it("adds no goal node for an empty collaboration graph", () => {
+    const result = layoutNuwaCollaboration([])
+    expect(result.positions).toHaveLength(0)
+    expect(result.edges).toHaveLength(0)
   })
 })

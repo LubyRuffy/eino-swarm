@@ -159,10 +159,12 @@ Open **Collaboration** in the right panel. **Entire project** shows all recorded
 work; **This conversation** retains cross-conversation prerequisites so their
 paths remain visible. Select a node for detail, sources and correction identity,
 or expand the collaboration graph. Solid arrows show recorded work dependencies.
-For a record without a visible work edge, dashed arrows show its original turn
-and author. These arrows use the saved identity and do not assert that one
-result relied on another. Worker rows show durable lifecycle status and
-recorded model bindings. Source links open the source conversation and, when a
+A single goal node collects the records nothing else depends on, so a dashed
+arrow converges each terminal or isolated record on the shared goal instead of
+leaving it floating; these arrows do not assert that one result relied on
+another. Who recorded a result, in which turn, and with which model is
+provenance shown on the record's own card, not a separate graph node. Worker
+rows show durable lifecycle status and recorded model bindings. Source links open the source conversation and, when a
 turn is given, its Trace; results use the existing file API.
 
 When the selected scope has no shared records or workers, Collaboration shows

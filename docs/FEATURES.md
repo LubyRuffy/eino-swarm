@@ -175,7 +175,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 规划者可查询 worker 的完整可选工具目录，并在派工时为新角色选择所需的 workspace／MCP 工具；manager 不挂执行工具不会缩减 worker 的可选目录。省略选择时使用 worker 可用范围，显式选择随身份恢复，后代可继承或缩小。见 `C-037` 和 [Nuwa](NUWA.md)。既有工具选择验证：`internal/engine/worker_tool_scope_flow_test.go`、`internal/engine/worker_tool_scope_restore_test.go`；规划／执行分离验证：`internal/engine/nuwa_planner_separation_http_test.go`、`internal/engine/nuwa_planner_responses_http_test.go`、`internal/provider/nuwa_planner_builtin_test.go`。
 
 - 当前范围没有共享节点或 Worker 时，Collaboration 显示已打开会话的最新轮次状态，并可进入对应 Trace 和会话文件。验证见 `frontend/e2e/nuwa.spec.ts`。
-- 协作路径图用实线显示已登记的工作依赖。孤立记录通过虚线展示原始轮次和记录者，已有记录在重载后也能显示其来源。验证见 `frontend/e2e/nuwa.spec.ts`。
+- 协作路径图用实线显示已登记的工作依赖，并用单一目标节点收敛：没有后继依赖的终端记录（含孤立记录）通过虚线汇向目标，不再悬空；记录者、来源轮次与模型作为该记录卡片上的出处元数据显示，而非独立的图节点，已有记录在重载后也保留这些出处。验证见 `frontend/e2e/nuwa.spec.ts`。
 - 移动会话时，打开的 Collaboration 视图会更新来源链接状态。移回源会话后可重新打开仍然存在的证据。关联契约 `C-037`，验证见 `internal/server/nuwa_stream_test.go`、`frontend/e2e/nuwa.spec.ts`。
 - 编辑重发移除来源事件后，已打开的 Collaboration 视图会将原引用标记为不可用。删除迁移过的会话会清理它在历史项目中创建的共享工作和版本，其他会话的引用保留。关联契约 `C-037`，验证见 `internal/server/nuwa_source_lifecycle_test.go`、`frontend/e2e/nuwa.spec.ts`。
 - Agent 可用已见的工具调用 ID 将自己的持久回执关联到共享记录。活跃 worker 跨轮保留时可引用当前执行的回执，冷恢复后可引用新执行产生的回执。事实保留原始作者，链接指向实际记录结果的轮次。持久化失败时写入会明确拒绝。验证见 `internal/engine/nuwa_adopted_evidence_test.go`、`internal/engine/nuwa_worker_restore_test.go` 和 `internal/store/nuwa_own_tool_evidence_test.go`。

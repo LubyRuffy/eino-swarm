@@ -140,50 +140,37 @@ export function layoutNuwa<T extends NuwaPathNode>(input: T[]): {
   return { positions, edges, missing: [...missing].sort(), cyclic }
 }
 
-type CollaborationNode = NuwaPathNode & { depends_on: string[] } & (
+export type CollaborationNode = NuwaPathNode & { depends_on: string[] } & (
   | { type: "work"; record: NuwaNode }
-  | { type: "turn"; turnId: string }
-  | { type: "author"; agentId: string; worker?: NuwaWorker }
+  | { type: "goal" }
 )
 
-/** Isolated records still have a durable author and turn. Keep these display
- * relationships separate from the saved dependencies between work records. */
-export function layoutNuwaCollaboration(nodes: NuwaNode[], workers: NuwaWorker[]) {
+/** Stored work IDs use the nw_ prefix, so this view-only sink never collides. */
+export const NUWA_GOAL_ID = "__nuwa_goal__"
+
+/** Work records are the backbone, connected only by their saved dependencies.
+ * A single goal node collects the records nothing else depends on, so an
+ * isolated record converges toward the goal instead of floating alone. Who
+ * recorded a result and in which turn is provenance carried on the record, not
+ * a structural graph node. This mirrors Sapper's fact-intent graph, where
+ * intents converge on a terminal goal fact and the author is a field. */
+export function layoutNuwaCollaboration(nodes: NuwaNode[]) {
   const known = new Set(nodes.map(({ id }) => id))
-  const connected = new Set<string>()
-  for (const node of nodes) {
-    for (const dependency of node.depends_on ?? []) {
-      if (!known.has(dependency)) continue
-      connected.add(dependency)
-      connected.add(node.id)
-    }
+  const dependedUpon = new Set<string>()
+  for (const node of nodes)
+    for (const dependency of node.depends_on ?? [])
+      if (known.has(dependency)) dependedUpon.add(dependency)
+
+  const entries = [...nodes].sort(compareNuwaCreation).map((record): CollaborationNode => ({
+    type: "work", id: record.id, record, created_at: record.created_at,
+    depends_on: record.depends_on ?? [],
+  }))
+  const graph: CollaborationNode[] = [...entries]
+  if (entries.length) {
+    const terminals = entries.filter(({ id }) => !dependedUpon.has(id)).map(({ id }) => id)
+    const created = entries.reduce((latest, node) =>
+      node.created_at > latest ? node.created_at : latest, entries[0].created_at)
+    graph.push({ type: "goal", id: NUWA_GOAL_ID, created_at: created, depends_on: terminals })
   }
-
-  // Stored work IDs use the nw_ prefix. Origin keys live only in this view.
-  const authorKey = (thread: string, turn: string, agent: string, generation?: number) =>
-    `author:${JSON.stringify([thread, turn, agent, generation])}`
-  const roster = new Map(workers.map((worker) => [
-    authorKey(worker.thread_id, worker.turn_id, worker.agent_id, worker.generation), worker,
-  ]))
-  const origins = new Map<string, CollaborationNode>()
-  const entries = [...nodes].sort(compareNuwaCreation).map((record): CollaborationNode => {
-    const { id, thread_id, turn_id, agent_id, generation, created_at } = record
-    const entry: CollaborationNode = { type: "work", id, record, created_at, depends_on: record.depends_on ?? [] }
-    if (connected.has(id) || !thread_id || !turn_id || !agent_id) return entry
-
-    const turnKey = `turn:${JSON.stringify([thread_id, turn_id])}`
-    const author = authorKey(thread_id, turn_id, agent_id, generation)
-    if (!origins.has(turnKey)) {
-      origins.set(turnKey, { type: "turn", id: turnKey, turnId: turn_id, created_at, depends_on: [] })
-    }
-    if (!origins.has(author)) {
-      origins.set(author, {
-        type: "author", id: author, agentId: agent_id, worker: roster.get(author),
-        created_at, depends_on: [turnKey],
-      })
-    }
-    entry.depends_on = [...entry.depends_on, author]
-    return entry
-  })
-  return layoutNuwa([...origins.values(), ...entries])
+  return layoutNuwa(graph)
 }

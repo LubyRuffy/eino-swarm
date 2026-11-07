@@ -1,15 +1,21 @@
 import { useId, useMemo } from "react"
-import { Maximize2 } from "lucide-react"
+import { Maximize2, Target } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { layoutNuwaCollaboration, type NuwaNode, type NuwaWorker } from "@/lib/nuwa"
+import { layoutNuwaCollaboration, NUWA_GOAL_ID, type NuwaNode, type NuwaWorker } from "@/lib/nuwa"
 import { MANAGER_ID } from "@/lib/transcript-blocks"
 import { useT } from "@/lib/use-t"
 import { cn } from "@/lib/utils"
 import { NuwaStatus, NuwaStale, nuwaKind } from "./nuwa-status"
 
-const CARD_HEIGHT = 80
-const ROW = 108
+const CARD_HEIGHT = 88
+const ROW = 116
 const PAD = 16
+
+/** Resolve a record's recorder role and model from the live roster using the
+ * same identity the engine binds: conversation, turn, agent and generation. */
+function authorKey(w: { thread_id: string; turn_id: string; agent_id: string; generation?: number }) {
+  return JSON.stringify([w.thread_id, w.turn_id, w.agent_id, w.generation])
+}
 
 /** Buttons overlay the SVG paths so work records remain keyboard accessible. */
 export function NuwaGraph({
@@ -29,18 +35,20 @@ export function NuwaGraph({
 }) {
   const t = useT()
   const marker = useId().replace(/:/g, "")
-  const layout = useMemo(() => layoutNuwaCollaboration(nodes, workers), [nodes, workers])
+  const layout = useMemo(() => layoutNuwaCollaboration(nodes), [nodes])
   const positions = new Map(layout.positions.map((position) => [position.node.id, position]))
-  const hasOrigins = layout.positions.some(({ node }) => node.type !== "work")
-  const hasDependencies = layout.edges.some(({ from }) => positions.get(from)?.node.type === "work")
-  const compact = hasOrigins && !expanded
-  const cardWidth = compact ? 132 : 176
-  const columnWidth = compact ? 160 : 216
+  const roster = useMemo(
+    () => new Map(workers.map((worker) => [authorKey(worker), worker])),
+    [workers]
+  )
+  const hasDependencies = layout.edges.some(({ to }) => to !== NUWA_GOAL_ID)
+  const compact = !expanded
+  const cardWidth = compact ? 148 : 192
+  const columnWidth = compact ? 176 : 232
   const columns = 1 + Math.max(0, ...layout.positions.map(({ column }) => column))
   const width = Math.max(280, PAD * 2 + (columns - 1) * columnWidth + cardWidth)
-  // In the sidebar, keep the three source columns in view at normal widths.
   // Paths and cards share the same horizontal scale. Deeper graphs can scroll.
-  const minWidth = Math.min(width, columns * 84 + 20)
+  const minWidth = Math.min(width, columns * 96 + 20)
   const height = Math.max(
     112,
     ...layout.positions.map(({ row }) => PAD * 2 + row * ROW + CARD_HEIGHT)
@@ -58,20 +66,18 @@ export function NuwaGraph({
           </Button>
         ) : null}
       </div>
-      {hasOrigins ? (
-        <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+      <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+        {hasDependencies ? (
           <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="w-4 border-t-2 border-dashed border-primary/70" />
-            {t("nuwa.originEdge")}
+            <span aria-hidden className="w-4 border-t-2 border-muted-foreground" />
+            {t("nuwa.dependencyEdge")}
           </span>
-          {hasDependencies ? (
-            <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden className="w-4 border-t-2 border-muted-foreground" />
-              {t("nuwa.dependencyEdge")}
-            </span>
-          ) : <span>{t("nuwa.noDependencies")}</span>}
-        </div>
-      ) : null}
+        ) : null}
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden className="w-4 border-t-2 border-dashed border-primary/70" />
+          {t("nuwa.goalEdge")}
+        </span>
+      </div>
       <div
         role="region"
         aria-label={t("nuwa.graph")}
@@ -106,7 +112,7 @@ export function NuwaGraph({
             {layout.edges.map(({ from, to }) => {
               const a = positions.get(from)!,
                 b = positions.get(to)!
-              const origin = a.node.type !== "work"
+              const goal = b.node.type === "goal"
               const x1 = PAD + a.column * columnWidth + cardWidth,
                 y1 = PAD + a.row * ROW + CARD_HEIGHT / 2
               const x2 = PAD + b.column * columnWidth,
@@ -114,7 +120,7 @@ export function NuwaGraph({
               return (
                 <path
                   key={`${from}:${to}`}
-                  data-testid={origin ? "nuwa-origin-edge" : "nuwa-edge"}
+                  data-testid={goal ? "nuwa-goal-edge" : "nuwa-edge"}
                   data-from={from}
                   data-to={to}
                   d={`M ${x1} ${y1} C ${x1 + 24} ${y1}, ${x2 - 24} ${y2}, ${x2} ${y2}`}
@@ -122,8 +128,8 @@ export function NuwaGraph({
                   stroke="currentColor"
                   strokeWidth="1.5"
                   vectorEffect="non-scaling-stroke"
-                  strokeDasharray={origin ? "4 3" : undefined}
-                  className={origin ? "text-primary/70" : undefined}
+                  strokeDasharray={goal ? "4 3" : undefined}
+                  className={goal ? "text-primary/70" : undefined}
                   markerEnd={`url(#${marker})`}
                 />
               )
@@ -136,34 +142,33 @@ export function NuwaGraph({
               left: `${100 * (PAD + column * columnWidth) / width}%`,
               top: PAD + row * ROW,
             }
-            if (node.type !== "work") {
-              const turn = node.type === "turn"
-              const label = turn
-                ? node.turnId
-                : node.worker?.role || (node.agentId === MANAGER_ID ? t("nuwa.originManager") : node.agentId)
+            if (node.type === "goal") {
               return (
                 <div
                   key={node.id}
-                  data-testid="nuwa-origin"
+                  data-testid="nuwa-goal"
                   data-node-id={node.id}
-                  data-origin-kind={node.type}
-                  data-turn-id={turn ? node.turnId : undefined}
-                  data-agent-id={turn ? undefined : node.agentId}
-                  className="absolute flex flex-col justify-center gap-1 rounded-lg border border-dashed border-primary/40 bg-card px-3 py-2"
+                  className="absolute flex flex-col justify-center gap-1 rounded-lg border border-dashed border-primary/50 bg-primary/5 px-3 py-2"
                   style={style}
                 >
-                  <span className="text-[10px] text-muted-foreground">{t(turn ? "nuwa.originTurn" : "nuwa.originAuthor")}</span>
-                  <span className="truncate text-xs font-medium" title={label}>{label}</span>
-                  {!turn && node.worker?.model_binding?.model ? (
-                    <span className="truncate text-[10px] text-muted-foreground" title={node.worker.model_binding.model}>
-                      {node.worker.model_binding.model}
-                    </span>
-                  ) : null}
+                  <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                    <Target className="size-3" aria-hidden />
+                    {t("nuwa.goalNode")}
+                  </span>
+                  <span className="truncate text-xs font-medium">{t("nuwa.goal")}</span>
                 </div>
               )
             }
             const record = node.record
-            const author = record.agent_id === MANAGER_ID ? t("nuwa.originManager") : record.agent_id
+            const worker = record.agent_id && record.turn_id
+              ? roster.get(authorKey({
+                  thread_id: record.thread_id, turn_id: record.turn_id,
+                  agent_id: record.agent_id, generation: record.generation,
+                }))
+              : undefined
+            const manager = record.agent_id === MANAGER_ID
+            const author = manager ? t("nuwa.originManager") : (worker?.role || record.agent_id)
+            const model = record.model_binding?.model || record.model || worker?.model_binding?.model
             return (
               <button
                 key={record.id}
@@ -171,11 +176,11 @@ export function NuwaGraph({
                 data-node-id={record.id}
                 onClick={() => onSelect(record.id)}
                 aria-pressed={selected === record.id}
-                aria-description={author && record.turn_id
-                  ? t("nuwa.originDescription", { agent: author, turn: record.turn_id })
+                aria-description={record.agent_id && record.turn_id
+                  ? t("nuwa.originDescription", { agent: author ?? record.agent_id, turn: record.turn_id })
                   : undefined}
                 className={cn(
-                  "absolute flex flex-col items-start gap-1 overflow-hidden rounded-lg border bg-card px-3 py-2 text-left shadow-xs transition-colors hover:border-primary/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                  "absolute flex flex-col items-start gap-0.5 overflow-hidden rounded-lg border bg-card px-3 py-2 text-left shadow-xs transition-colors hover:border-primary/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                   selected === record.id ? "border-primary ring-1 ring-primary/30" : "border-border"
                 )}
                 style={style}
@@ -188,6 +193,11 @@ export function NuwaGraph({
                   <NuwaStatus status={record.status} />
                   <NuwaStale node={record} />
                 </span>
+                {author ? (
+                  <span className="w-full truncate text-[10px] text-muted-foreground" title={model ? `${author} · ${model}` : author}>
+                    {author}{model ? ` · ${model}` : ""}
+                  </span>
+                ) : null}
               </button>
             )
           })}
