@@ -51,6 +51,15 @@ by arm and was isolated with two follow-up probes:
   capable model in the loop and wasted it: its evidence is self-attested against
   the worker's own cases, never an adversarial boundary, so it spent 5.5× the
   tokens reaching the same confident-but-wrong `done`.
+- **Fair arena: no coordination win once budget is equal.** To test whether Nuwa
+  adds anything when a cap no longer separates the arms, a budget-controlled run
+  (`exp2-fair-arena`, both arms at 64,000 output tokens) on the breadth-heavy,
+  naturally decomposable `multi-dir-survey-large` task — not in the main protocol
+  — had **both arms pass 2/2**. Nuwa (GLM plan + DS exec) was **~1.8× slower**
+  (median 108 s vs 61 s) and used roughly the same tokens (slightly fewer on
+  average, but inside the baseline's own 0.92M↔2.02M run-to-run spread). With
+  budget held fair, the single-model baseline matched Nuwa on correctness at
+  lower wall time; the fan-out bought neither accuracy nor a token saving.
 
 Conclusion: no Nuwa benefit and a large cost overhead on this protocol. The one
 observed "advantage" was a budget artifact, and the one place heterogeneous
@@ -61,7 +70,8 @@ the current fan-out machinery. This measures these flash models on these tasks,
 not a general framework ranking; the A/B direction remains a human decision.
 Evidence (outside the repo):
 `~/.codex/nuwa-evidence/takeover-retest-run-20261107-162900/`,
-`~/.codex/nuwa-evidence/exp1-budget-probe/`.
+`~/.codex/nuwa-evidence/exp1-budget-probe/`,
+`~/.codex/nuwa-evidence/exp2-fair-arena-20261107-202956/`.
 
 # Generic Nuwa observation: 2026-11-02
 
