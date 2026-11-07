@@ -92,10 +92,50 @@ describe("server models on the Models page", () => {
     expect(names.map((n) => n.textContent)).toEqual(["server-a", "server-b"])
     expect(within(card).queryByRole("button", { name: "Sign in to the official server" })).toBeNull()
 
+    const server = screen.getByTestId("server-default-row")
+    expect(within(server).getByText("The server's models")).toBeTruthy()
+    expect(within(server).getByText("default")).toBeTruthy()
+    const endpoint = screen.getByRole("button", { name: "Endpoint details" }).parentElement
+    expect(endpoint).toBeTruthy()
+    expect(within(endpoint!).queryByText("default")).toBeNull()
+
     fireEvent.click(screen.getByRole("combobox", { name: "New conversations start with" }))
     fireEvent.click(await screen.findByRole("option", { name: "My own model service" }))
     expect(onChange.mock.calls[0][0].models.default_source).toBe("provider")
     // Everything else in the models block survives the choice.
+    expect(onChange.mock.calls[0][0].models.providers).toHaveLength(1)
+  })
+
+  it("lets the server row take the default back from an own provider", () => {
+    fake.status = signedIn
+    useApp.setState({
+      meta: meta({ state: "ready", models: 1, username: "account" }),
+      models: [row("gateway:x", "server-a", "account"), row("default", "alpha", "provider")],
+    })
+    const onChange = vi.fn()
+    render(<ModelsTab settings={settings({ default_source: "provider" })} onChange={onChange} />)
+    const server = screen.getByTestId("server-default-row")
+    expect(within(server).queryByText("default")).toBeNull()
+    const endpoint = screen.getByRole("button", { name: "Endpoint details" }).parentElement!
+    expect(within(endpoint).getByText("default")).toBeTruthy()
+
+    fireEvent.click(within(server).getByRole("button", { name: "Make the server's models the default" }))
+    expect(onChange.mock.calls[0][0].models.default_source).toBe("account")
+    expect(onChange.mock.calls[0][0].models.default).toBe("default")
+  })
+
+  it("makes the clicked own provider the starting source", () => {
+    fake.status = signedIn
+    useApp.setState({
+      meta: meta({ state: "ready", models: 1, username: "account" }),
+      models: [row("gateway:x", "server-a", "account"), row("default", "alpha", "provider")],
+    })
+    const onChange = vi.fn()
+    render(<ModelsTab settings={settings()} onChange={onChange} />)
+    const endpoint = screen.getByRole("button", { name: "Endpoint details" }).parentElement!
+    fireEvent.click(within(endpoint).getByRole("button", { name: "Make default" }))
+    expect(onChange.mock.calls[0][0].models.default_source).toBe("provider")
+    expect(onChange.mock.calls[0][0].models.default).toBe("default")
     expect(onChange.mock.calls[0][0].models.providers).toHaveLength(1)
   })
 

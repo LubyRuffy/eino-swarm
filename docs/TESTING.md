@@ -455,6 +455,15 @@ in place; each violates `PublishedAgrees`. The Go reproduction is
 `TestSealDropsACatalogWhoseCredentialIsAlreadyGone`. Removing the recheck in
 `publish` makes the first test publish a ready catalog after sign-out.
 
+`models/account/DefaultSourceChoice.tla` checks the Settings badge against
+`Pool.DefaultProviderID`. `BadgeMatchesStart` requires the marked row to be
+the server when its catalog is ready and the source is not `provider`
+(an omitted source included), and the configured provider otherwise.
+`ServerChoiceVisible` requires that ready catalog to be a row in the list.
+`BadgeIgnoresSource` is the old list, which marked `models.default` anyway,
+and violates `BadgeMatchesStart`. `ServerChoiceHidden` omits the server row
+and violates `ServerChoiceVisible`.
+
 The real gateway side is covered in the
 aigateway repository's own tests. These are offline/browser results; they do
 not accept the packaged desktop app or the iOS/Android shells (see

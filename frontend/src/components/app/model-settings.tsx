@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { api } from "@/lib/api"
+import { serverStartsConversations } from "@/lib/account-models"
 import { chromeTypeClass } from "@/lib/chrome-type"
 import { firstByteTimeoutSettingsKey } from "@/lib/first-byte-timeout"
 import { mergeModelContext } from "@/lib/usage"
@@ -21,6 +22,7 @@ import type { MessageKey } from "@/lib/i18n"
 import type { ProviderToolsDrafts } from "@/lib/provider-tools"
 import { cn } from "@/lib/utils"
 import { useT, type Translate } from "@/lib/use-t"
+import { useApp } from "@/store/app"
 import { errorMessage, toastError, useToasts } from "@/store/toasts"
 
 import { AccountModelsCard } from "./account-models-card"
@@ -60,6 +62,9 @@ export function ModelsTab({
   focusKey?: string
 }) {
   const t = useT()
+  const account = useApp((s) => s.meta?.account_models)
+  const accountReady = account?.state === "ready" && account.models > 0
+  const serverStarts = serverStartsConversations(settings.models.default_source, accountReady)
   const [busy, setBusy] = useState<string>()
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set([
     ...Object.keys(toolsErrors),
@@ -168,12 +173,24 @@ export function ModelsTab({
         title={t("accountModels.ownTitle")}
         description={noOwnProvider(settings) ? t("accountModels.ownEmpty") : t("accountModels.ownDesc")}
       >
+        {accountReady ? (
+          <ServerDefaultRow
+            query={query}
+            isDefault={serverStarts}
+            onMakeDefault={() =>
+              onChange({
+                ...settings,
+                models: { ...settings.models, default_source: "account" },
+              })
+            }
+          />
+        ) : null}
         {settings.models.providers.map((p, i) => (
           <ProviderRow
             key={p.id}
             provider={p}
             query={query}
-            isDefault={settings.models.default === p.id}
+            isDefault={settings.models.default === p.id && !serverStarts}
             canRemove={settings.models.providers.length > 1}
             lockOn={p.enabled !== false && listedCount(settings) < 2}
             open={open.has(p.id) || Boolean(toolsErrors[p.id]) || providerFieldsMatch(query, p, t)}
@@ -184,7 +201,7 @@ export function ModelsTab({
             onMakeDefault={() =>
               onChange({
                 ...settings,
-                models: { ...settings.models, default: p.id },
+                models: { ...settings.models, default: p.id, default_source: "provider" },
               })
             }
             onRemove={() => setDoomed(p)}
@@ -250,6 +267,58 @@ export function ModelsTab({
         }}
       />
     </SettingsPage>
+  )
+}
+
+/** Sits in the own-provider list because that is where the default badge is.
+ *  The source menu on the official card is above other settings, so a person
+ *  looking at their own service never saw the server as a choice. */
+function ServerDefaultRow({
+  query,
+  isDefault,
+  onMakeDefault,
+}: {
+  query: string
+  isDefault: boolean
+  onMakeDefault: () => void
+}) {
+  const t = useT()
+  if (!settingsMatch(
+    query,
+    t("accountModels.defaultAccount"),
+    t("accountModels.defaultRowHint"),
+    t("accountModels.defaultTitle"),
+    "server",
+  )) return null
+  return (
+    <div
+      className="flex items-center gap-2 px-4 py-3"
+      data-settings-row=""
+      data-testid="server-default-row"
+    >
+      <span className="size-3.5 shrink-0" aria-hidden />
+      <span className="min-w-0 flex-1">
+        <span className={cn("block truncate", settingsLabelClass)}>
+          {t("accountModels.defaultAccount")}
+        </span>
+        <span className={cn("block truncate", settingsHintClass)}>
+          {t("accountModels.defaultRowHint")}
+        </span>
+      </span>
+      {isDefault ? (
+        <Badge variant="success">{t("settings.models.default")}</Badge>
+      ) : (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={t("accountModels.makeServerDefault")}
+          onClick={onMakeDefault}
+        >
+          {t("settings.models.makeDefault")}
+        </Button>
+      )}
+    </div>
   )
 }
 

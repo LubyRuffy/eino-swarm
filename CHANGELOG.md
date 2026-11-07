@@ -6,6 +6,11 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Fixed Settings → Models so a ready server catalog is a selectable default in
+  the own-provider list. An own provider is marked default only when new
+  conversations actually start on it. `models/account/DefaultSourceChoice.tla`
+  checks that badge against the engine's starting source. (`F-171`, `C-040`)
+
 - Fixed the native resilience HTTP fixture's stale schedule-answer protocol
   text to match the engine's current cadence and scope extraction contract,
   preserving exact request and candidate validation. (`C-009`)
