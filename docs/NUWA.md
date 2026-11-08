@@ -62,6 +62,11 @@ their existing peer/manager semantics.
 label and known context window. Names are resources, not capability ratings.
 Copy its opaque ref into `spawn_agent(..., model_ref: ref)` without constructing
 or decoding it. This tool token is separate from the UI/CLI provider ChoiceID.
+`default_scope: "conversation"` means the catalog's `default` identifies the
+model chosen for the owning conversation turn. It does not identify the model
+running a worker. When a worker calls `list_models`, `current` separately
+reports its ID, role, parent if any, generation and recorded model binding.
+Choose a new worker using `models[].ref`, not the current binding's provenance.
 With multiple ready choices, each new role must supply an exact `model_ref`;
 omission returns a correctable error pointing to `list_models` before context
 forking, dispatch or any worker model request. With at most one ready choice,
@@ -72,6 +77,17 @@ The schema keeps `model_ref` optional for existing-role reuse. This changes the
 former default fallback for new roles in multi-model Nuwa projects; no stored
 data migration is needed. Ordinary mode and the generic Registry retain their
 existing default behavior. Model choice remains the agent's decision.
+
+Every Nuwa worker model call also receives that same current assignment as a
+separate runtime System message. It describes the binding already in effect
+for that generation, independently of the catalog and shared project data.
+Resume and cold recovery use the saved resolved binding, even when the default
+or catalog changes. A legacy worker without a recorded binding reports
+`model_binding_status: "unknown"`, with no inferred model. The assignment
+message does not become history or a fork seed. A tool receipt can still keep
+the `current` field from its own call; that historical result does not identify
+a later invocation. The assignment leaves project instructions, delegation and
+ordinary worker prompts as before.
 
 A delegating agent can call `list_worker_tools` to discover the available worker
 tool catalog, including configured MCP tools. Discovery does not mount these
@@ -143,10 +159,12 @@ Open **Collaboration** in the right panel. **Entire project** shows all recorded
 work; **This conversation** retains cross-conversation prerequisites so their
 paths remain visible. Select a node for detail, sources and correction identity,
 or expand the collaboration graph. Solid arrows show recorded work dependencies.
-For a record without a visible work edge, dashed arrows show its original turn
-and author. These arrows use the saved identity and do not assert that one
-result relied on another. Worker rows show durable lifecycle status and
-recorded model bindings. Source links open the source conversation and, when a
+A single goal node collects the records nothing else depends on, so a dashed
+arrow converges each terminal or isolated record on the shared goal instead of
+leaving it floating; these arrows do not assert that one result relied on
+another. Who recorded a result, in which turn, and with which model is
+provenance shown on the record's own card, not a separate graph node. Worker
+rows show durable lifecycle status and recorded model bindings. Source links open the source conversation and, when a
 turn is given, its Trace; results use the existing file API.
 
 When the selected scope has no shared records or workers, Collaboration shows

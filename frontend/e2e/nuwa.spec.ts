@@ -102,7 +102,7 @@ test("Nuwa creation shares live evidence paths and preserves them after disablin
     fixture.releaseTask()
     await expect(graph.getByRole("button", { name: /Review notes/ })).toBeVisible()
     await expect(graph.getByTestId("nuwa-edge")).toHaveCount(2)
-    await expect(graph.getByTestId("nuwa-origin-edge")).toHaveCount(0)
+    await expect(graph.getByTestId("nuwa-goal-edge")).toHaveCount(1)
     const resultRow = page
       .getByRole("list", { name: "Shared work nodes", exact: true })
       .getByRole("button")
@@ -340,37 +340,30 @@ test("published artifacts retain their recorded turn and publishers after reload
     }
 
     const assertOrigins = async (graph: Locator) => {
+      // Two independently published results share no dependency, so neither is
+      // a prerequisite of the other and both converge on the single goal node.
       await expect(graph.getByTestId("nuwa-edge")).toHaveCount(0)
-      const origins = graph.getByTestId("nuwa-origin")
-      await expect(origins).toHaveCount(3)
-      const turnCard = origins.and(graph.locator('[data-origin-kind="turn"]'))
-      await expect(turnCard).toHaveAttribute("data-turn-id", turn.id)
-      await expect(turnCard).toHaveAttribute("data-node-id", /.+/)
-      const turnNodeID = await turnCard.getAttribute("data-node-id")
-      const links = []
-      for (const [node, author, agentID] of [
-        [managerResult, "Manager", "manager"],
-        [workerResult, worker.role, worker.agent_id],
+      await expect(graph.getByTestId("nuwa-origin")).toHaveCount(0)
+      await expect(graph.getByTestId("nuwa-goal")).toHaveCount(1)
+      for (const [node, author] of [
+        [managerResult, "Manager"],
+        [workerResult, worker.role],
       ] as const) {
-        const authorCard = origins.and(graph.locator('[data-origin-kind="author"]')).filter({
-          hasText: author,
-        })
-        await expect(authorCard).toHaveAttribute("data-agent-id", agentID)
-        await expect(authorCard).toHaveAttribute("data-node-id", /.+/)
-        const authorNodeID = await authorCard.getAttribute("data-node-id")
-        await expect(graph.getByRole("button", { name: new RegExp(node.title) })).toHaveAttribute(
-          "data-node-id",
-          node.id
-        )
-        links.push([turnNodeID, authorNodeID, true], [authorNodeID, node.id, true])
+        const card = graph.getByRole("button", { name: new RegExp(node.title) })
+        await expect(card).toHaveAttribute("data-node-id", node.id)
+        await expect(card).toContainText(author)
+        await expect(card).toHaveAccessibleDescription(new RegExp(`in turn ${turn.id}`))
       }
-      const edges = graph.getByTestId("nuwa-origin-edge")
-      await expect(edges).toHaveCount(links.length)
-      expect(await edges.evaluateAll((paths) => paths.map((path) => [
+      const edges = graph.getByTestId("nuwa-goal-edge")
+      await expect(edges).toHaveCount(2)
+      const routed = await edges.evaluateAll((paths) => paths.map((path) => [
         path.getAttribute("data-from"),
         path.getAttribute("data-to"),
         getComputedStyle(path).strokeDasharray !== "none",
-      ]))).toEqual(expect.arrayContaining(links))
+      ]))
+      const sink = routed[0][1]
+      expect(routed.map((edge) => edge[0]).sort()).toEqual([managerResult.id, workerResult.id].sort())
+      expect(routed.every((edge) => edge[1] === sink && edge[2] === true)).toBe(true)
     }
 
     const sidebarGraph = page.getByRole("region", { name: collaborationGraph, exact: true })
@@ -399,7 +392,7 @@ test("published artifacts retain their recorded turn and publishers after reload
     await page.getByRole("button", { name: "Expand graph", exact: true }).click()
     const dialog = page.getByRole("dialog", { name: collaborationPaths, exact: true })
     await assertOrigins(dialog.getByRole("region", { name: collaborationGraph, exact: true }))
-    await expect(dialog.getByText("Recorded origin", { exact: true })).toBeVisible()
+    await expect(dialog.getByText("Converges to goal", { exact: true })).toBeVisible()
     await writeFile(
       info.outputPath("nuwa-published-artifact-origins.png"),
       await page.screenshot({ animations: "disabled" }),

@@ -20,9 +20,19 @@ import (
 // must come from current project state rather than the checkpoint's age or
 // the latest ordinary manager turn. No model call elects to read shared work.
 func TestNuwaSharedContextRestoresOriginalWorkerWithCurrentGraphAtActualHTTP(t *testing.T) {
+	t.Run("bound", func(t *testing.T) { testNuwaRestoredWorkerContextAtHTTP(t, true) })
+	t.Run("legacy-unbound", func(t *testing.T) { testNuwaRestoredWorkerContextAtHTTP(t, false) })
+}
+
+func testNuwaRestoredWorkerContextAtHTTP(t *testing.T, bound bool) {
 	const account, planner, replacement, executor = "context-restore", "planner/original", "planner/current", "executor/original"
 	const workerID, workerGeneration = "context-observer-4", 3
 	const catalogCall = "context-restored-catalog"
+	wantAssignment := nuwaAssignmentHTTPView{AgentID: workerID, Role: "context-observer", Generation: workerGeneration, ModelBindingStatus: "unknown"}
+	if bound {
+		wantAssignment.ModelBindingStatus = "known"
+		wantAssignment.ModelBinding = &swarm.ModelBinding{Ref: provider.ChoiceID(account, executor), ProviderID: account, Model: executor}
+	}
 	var calls atomic.Int32
 	var source, corrected, foreign store.NuwaNode
 	var project *store.Project
@@ -40,9 +50,10 @@ func TestNuwaSharedContextRestoresOriginalWorkerWithCurrentGraphAtActualHTTP(t *
 			return
 		}
 		request := wire.scheduleCompletionRequest
-		if wire.Model != executor {
+		if bound && wire.Model != executor {
 			t.Errorf("cold recovery replaced the bound worker with %q", wire.Model)
 		}
+		assertNuwaAssignmentHTTP(t, request, wantAssignment)
 		view := nuwaContextHTTPBlock(t, request, true)
 		var selection struct {
 			Omitted int `json:"omitted"`
@@ -91,8 +102,10 @@ func TestNuwaSharedContextRestoresOriginalWorkerWithCurrentGraphAtActualHTTP(t *
 			nuwaValidationTool(w, request, catalogCall, "list_models", `{}`)
 			return
 		case 2:
-			if receipt := nuwaValidationReceipt(request, catalogCall); receipt == "" || !strings.Contains(receipt, executor) {
-				t.Error("restored worker did not execute its actual coordination tool")
+			for _, option := range assertNuwaCatalogAssignmentHTTP(t, nuwaValidationReceipt(request, catalogCall), wantAssignment, account, planner) {
+				if option.Model == executor {
+					t.Error("fixture did not remove the original worker model from the current catalog")
+				}
 			}
 		default:
 			t.Error("unexpected extra cold-recovery model request")
@@ -137,16 +150,16 @@ func TestNuwaSharedContextRestoresOriginalWorkerWithCurrentGraphAtActualHTTP(t *
 		t.Fatal(err)
 	}
 	enabled := true
-	binding := &swarm.ModelBinding{Ref: provider.ChoiceID(account, executor), ProviderID: account, Model: executor}
 	appendParkedCheckpoint(t, e, thread.ID, latest.ID, restartCheckpoint{Version: 1, Workers: []swarm.WorkerCheckpoint{{
 		ID: workerID, Role: "context-observer", Generation: workerGeneration, ConfigTag: original.ID,
-		DelegationEnabled: &enabled, ModelBinding: binding, Task: task, History: []*schema.Message{schema.UserMessage(task)},
+		DelegationEnabled: &enabled, ModelBinding: wantAssignment.ModelBinding, Task: task, History: []*schema.Message{schema.UserMessage(task)},
 	}}})
 	disabled := false
 	if _, err := e.UpdateProject(project.ID, nil, nil, nil, nil, &disabled); err != nil {
 		t.Fatal(err)
 	}
 	e.cfg.Models.Providers[0].Model = replacement
+	e.cfg.Models.Providers[0].Catalog = []string{planner, replacement}
 	e.pool = provider.New(e.cfg)
 	// Commit after the checkpoint, under a different trusted writer. Restoring
 	// a serialized board or using the latest ordinary turn loses this change.
@@ -200,8 +213,16 @@ func TestNuwaSharedContextRestoresOriginalWorkerWithCurrentGraphAtActualHTTP(t *
 	waitRestartState(t, func() bool { return next.ActiveWork() == 0 })
 	_, finished := next.workersFromThread(thread.ID)
 	if calls.Load() != 2 || len(finished) != 1 || finished[0].ID != workerID || finished[0].Generation != workerGeneration ||
-		finished[0].Err != nil || finished[0].ConfigTag != original.ID || finished[0].ModelBinding == nil || *finished[0].ModelBinding != *binding {
+		finished[0].Err != nil || finished[0].ConfigTag != original.ID {
 		t.Fatalf("recovered graph lost worker identity or selected model: calls=%d workers=%+v", calls.Load(), finished)
+	}
+	if (finished[0].ModelBinding != nil) != bound || (bound && *finished[0].ModelBinding != *wantAssignment.ModelBinding) {
+		t.Fatalf("recovery changed the persisted binding: %+v", finished[0].ModelBinding)
+	}
+	for _, message := range finished[0].History {
+		if message.Role == schema.System && strings.HasPrefix(message.Content, nuwaAssignmentHTTPHeader) {
+			t.Error("transient assignment entered worker checkpoint history")
+		}
 	}
 	assertNuwaContextNotDurable(t, next, thread.ID, task)
 }

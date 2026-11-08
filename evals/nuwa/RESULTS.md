@@ -1,3 +1,78 @@
+# Nuwa takeover re-test: 2026-11-07
+
+Clean paired run on the executor-binding candidate (`fe064364`, Nuwa workers
+carry their current role, generation and resolved model binding) against the
+real `ai.fofa.info:2440` account gateway. Frozen protocol
+[`protocol.example.json`](protocol.example.json): tasks `multi-module-bugfix`,
+`nuwa-source-reconcile`, `spec-edges`; three repeats; three arms; 27 executions;
+`glm-5.3-flash` planner everywhere, `nuwa-mixed` preferring `dsv41-flash-1017`
+for delegation. Budget 16,384 output tokens/request, 30 s review. Schedule
+completed with zero harness errors; delegation was real
+(`executor_preference_realized: true`, actual `dsv41-flash-1017` worker calls).
+
+| Arm | Passed / 9 | Total tokens | Median tok/task | Median task s |
+|---|---|---|---|---|
+| default-glm (baseline) | 6 | 1,621,330 | 81,558 | 60.2 |
+| nuwa-glm (same GLM) | 6 | 8,837,378 | 901,776 | 190.6 |
+| nuwa-mixed (GLM plan + DS exec) | 6 | 9,249,633 | 1,097,894 | 118.3 |
+
+Every arm passed the identical six runs (`multi-module-bugfix` 3/3,
+`nuwa-source-reconcile` 3/3) and failed the identical three (`spec-edges` 0/3).
+Correctness-first gate: **no success difference** from Nuwa or the executor
+preference. On the time/token gate Nuwa was strictly worse: **5.5× (nuwa-glm)
+and 5.7× (nuwa-mixed) total tokens**, ~11–13× median tokens per task, and 2–3×
+median wall time. The paired summary's own token column reported "unavailable"
+because its stricter whole-pair usage-completeness criterion was not met; the
+per-run `metrics.total_tokens` above are complete for all 27 runs.
+
+The three `spec-edges` failures are one task repeated. Their root cause differs
+by arm and was isolated with two follow-up probes:
+
+- **Budget, not coordination.** The baseline's `spec-edges` runs ended
+  `turn_error` ("used its whole output budget before it produced an answer")
+  and wrote **zero** implementation files — a per-request output-cap artifact
+  (16,384 was too small to write three modules in one context), not a capability
+  gap. Re-running the baseline at a 64,000 cap (`exp1-budget-probe`) reaches
+  `done`, delivers all three modules, and lands the **identical** result to
+  Nuwa — `slug`/`headers` pass, `money` fails only `test_rule1_any_number_of_digits`
+  — at **~332K tokens/run vs Nuwa's ~1.84M (≈5.5× less)**. So Nuwa's apparent
+  advantage (delivering where the 16K baseline could not) was fan-out giving each
+  module its own output budget, reproducible far cheaper by one cap bump.
+- **A verification-scope gap the heterogeneous model did not close.** The blocking
+  rule feeds a 5000-digit number; the implementation must raise Python's default
+  4300-digit int↔str limit (`sys.set_int_max_str_digits`). A direct probe shows
+  `dsv41-flash-1017` **emits that guard** (with or without a hint) while
+  `glm-5.3-flash` **does not, even when told**. Yet in `nuwa-mixed` the DS worker
+  actually authored `money.py` (`tools_manager` has no `write`; DS workers
+  `module-impl-1`/`rule-audit-2` did all writes) and still shipped a bare
+  `str(whole)` with no guard — because execution never turned the abstract
+  "any number of digits" into a concrete 5000-digit test, and the self-audit
+  (`exec`×26) checked the model's own reading with modest inputs. Nuwa had the
+  capable model in the loop and wasted it: its evidence is self-attested against
+  the worker's own cases, never an adversarial boundary, so it spent 5.5× the
+  tokens reaching the same confident-but-wrong `done`.
+- **Fair arena: no coordination win once budget is equal.** To test whether Nuwa
+  adds anything when a cap no longer separates the arms, a budget-controlled run
+  (`exp2-fair-arena`, both arms at 64,000 output tokens) on the breadth-heavy,
+  naturally decomposable `multi-dir-survey-large` task — not in the main protocol
+  — had **both arms pass 2/2**. Nuwa (GLM plan + DS exec) was **~1.8× slower**
+  (median 108 s vs 61 s) and used roughly the same tokens (slightly fewer on
+  average, but inside the baseline's own 0.92M↔2.02M run-to-run spread). With
+  budget held fair, the single-model baseline matched Nuwa on correctness at
+  lower wall time; the fan-out bought neither accuracy nor a token saving.
+
+Conclusion: no Nuwa benefit and a large cost overhead on this protocol. The one
+observed "advantage" was a budget artifact, and the one place heterogeneous
+models could have helped was lost to self-referential verification. The high-
+leverage lever for tasks like this is adversarial/spec-derived boundary
+verification, not more coordination or more models — a far cheaper change than
+the current fan-out machinery. This measures these flash models on these tasks,
+not a general framework ranking; the A/B direction remains a human decision.
+Evidence (outside the repo):
+`~/.codex/nuwa-evidence/takeover-retest-run-20261107-162900/`,
+`~/.codex/nuwa-evidence/exp1-budget-probe/`,
+`~/.codex/nuwa-evidence/exp2-fair-arena-20261107-202956/`.
+
 # Generic Nuwa observation: 2026-11-02
 
 The completed strict-separation/shared-state-preview calibration on source

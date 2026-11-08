@@ -99,8 +99,8 @@ func assertNuwaContextNotDurable(t *testing.T, e *Engine, threadID, human string
 			found = true
 			continue
 		}
-		if strings.Contains(message.Content, nuwaContextHTTPHeader) {
-			t.Errorf("transient shared-state block entered durable %s history", message.Role)
+		if strings.Contains(message.Content, nuwaContextHTTPHeader) || strings.Contains(message.Content, nuwaAssignmentHTTPHeader) {
+			t.Errorf("transient Nuwa runtime block entered durable %s history", message.Role)
 		}
 	}
 	if !found {

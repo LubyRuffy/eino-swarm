@@ -5,7 +5,7 @@ import { NuwaGraph } from "./nuwa-graph"
 import { useApp } from "@/store/app"
 import { useTraceFocus } from "@/store/trace-focus"
 import { nuwaAPI, subscribeNuwa } from "@/lib/nuwa-api"
-import type { NuwaNode, NuwaSnapshot } from "@/lib/nuwa"
+import { NUWA_GOAL_ID, type NuwaNode, type NuwaSnapshot } from "@/lib/nuwa"
 import type { Project } from "@/lib/types"
 
 vi.mock("@/lib/nuwa-api", () => ({ nuwaAPI: { snapshot: vi.fn() }, subscribeNuwa: vi.fn() }))
@@ -36,7 +36,7 @@ beforeEach(() => {
 })
 
 describe("Nuwa shared work", () => {
-  it("shows recorded authors in the same turn without inventing dependencies between their results", async () => {
+  it("shows recorder and model on each record and converges isolated records to the goal", async () => {
     vi.mocked(nuwaAPI.snapshot).mockResolvedValue({
       ...snapshot,
       nodes: [
@@ -49,17 +49,18 @@ describe("Nuwa shared work", () => {
     })
     render(<NuwaPanel project={project} threadId="a" onSelectAgent={vi.fn()} />)
     const graph = await screen.findByRole("region", { name: "Shared work collaboration graph" })
+    // No synthetic turn/author columns; provenance rides on each record instead.
+    expect(within(graph).queryByTestId("nuwa-origin")).toBeNull()
     expect(within(graph).queryByTestId("nuwa-edge")).toBeNull()
-    expect(within(graph).getByRole("button", { name: /Node right/ })).toHaveAccessibleDescription("Recorded by researcher-1 in turn turn1")
-    const origins = within(graph).getAllByTestId("nuwa-origin")
-    const turns = origins.filter((card) => card.dataset.originKind === "turn")
-    const authors = origins.filter((card) => card.dataset.originKind === "author")
-    expect(turns.map((card) => card.dataset.turnId)).toEqual(["turn1", "other-turn"])
-    expect(authors.map((card) => card.dataset.agentId).sort()).toEqual(["manager", "researcher-1", "researcher-1"])
-    expect(authors.filter((card) => card.textContent?.includes("chosen-model"))).toHaveLength(1)
-    const originEdges = within(graph).getAllByTestId("nuwa-origin-edge")
-    expect(originEdges.map((edge) => edge.getAttribute("data-to")).filter((id) => id === "left" || id === "right" || id === "prior").sort()).toEqual(["left", "prior", "right"])
-    expect(originEdges.some((edge) => edge.getAttribute("data-to") === "legacy")).toBe(false)
+    const rightCard = within(graph).getByRole("button", { name: /Node right/ })
+    expect(rightCard).toHaveAccessibleDescription("Recorded by researcher in turn turn1")
+    expect(rightCard).toHaveTextContent("chosen-model")
+    expect(within(graph).getByRole("button", { name: /Node left/ })).toHaveTextContent("Manager")
+    // Every record, even an isolated one, converges on a single goal node.
+    expect(within(graph).getByTestId("nuwa-goal")).toBeInTheDocument()
+    const goalEdges = within(graph).getAllByTestId("nuwa-goal-edge")
+    expect(goalEdges.map((edge) => edge.getAttribute("data-from")).sort()).toEqual(["left", "legacy", "prior", "right"])
+    expect(goalEdges.every((edge) => edge.getAttribute("data-to") === NUWA_GOAL_ID)).toBe(true)
   })
 
   it("keeps a direct turn visible when the collaboration graph is empty", async () => {

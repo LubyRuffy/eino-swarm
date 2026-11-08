@@ -53,6 +53,7 @@ func TestOrdinaryTurnCollectsItsRealWorkerBeforePublishingCompletion(t *testing.
 			writeContextFlowReply(w, false, map[string]any{"content": `{"claims":[]}`}, "stop")
 			return
 		}
+		assertNuwaAssignmentAbsentHTTP(t, scheduleCompletionRequest{Messages: input.Messages})
 		manager := false
 		for _, tool := range input.Tools {
 			manager = manager || tool.Function.Name == "spawn_agent"
