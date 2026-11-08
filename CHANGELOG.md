@@ -6,6 +6,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Added project-scoped installation of external Agent Skills ZIPs from the PC
+  project menu. New turns discover package summaries and load instructions through
+  `load_skill`; package resources stay with the original manifest. Learned
+  project skills have their own catalog and keep using `skill_view`.
+  (#160, `F-421`, `C-042`)
+
 - Composer file attachments save and send from the desktop window. A filename
   WebKit leaves raw in the multipart header no longer rejects the whole draft,
   and the file is read when it is chosen so a later save still has the bytes.

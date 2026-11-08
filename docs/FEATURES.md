@@ -39,6 +39,7 @@ This is the current user-facing capability map. The code and tests named below a
   - `F-400` Persistence and operations
     - `F-410` Local conversation storage and search
     - `F-420` Configuration and project memory
+    - `F-421` External Agent Skills packages
     - `F-430` Build and release paths
 
 ### F-110 Desktop, browser, and terminal shells
@@ -445,6 +446,11 @@ This is the current user-facing capability map. The code and tests named below a
 - 失败时 transcript 与 Memory 面板显示停止原因、提案次数、拒绝类别及可用容量数字，区分未提交 notes 与已落盘 skills；Trace 记录有界 attempts 安全元数据，不保存被拒提案正文、原文引句或旧条目。容量反馈向模型保留 usage/over_by/current_entries/matched，原容量、来源、数字、revision 校验不变，只能在原预算内先有依据地缩短或替换相关条目再新增，不能清理无关记忆；无法安全提交时明确失败，旧事件缺新增字段仍兼容。失败 Trace 按钮会打开侧栏并加载原回合，历史聚焦不冒用最新 token 用量；切换后返回原会话时恢复手动复盘结果，结果落在已加载 tail 之外时只读一次已知 turn 的 Trace，并校验点击代次、线程、回合和事件起点，不轮询。入口：回合自动复盘、Memory 的 Review now、同 turn Trace；关联契约：`C-025`、`C-012`；实现证据：`internal/engine/review_diagnostics.go`、`internal/engine/review_diagnostics_test.go`、`internal/engine/review_finalize_test.go`、`internal/server/review_diagnostics_test.go`、`frontend/src/lib/review-diagnostics.ts`、`frontend/src/lib/review-diagnostics.test.ts`、`frontend/e2e/memory-review.spec.ts`、`frontend/src/lib/transcript-review.ts`。
 
 - 记忆写入提示与 Memory 面板的复盘状态提供默认折叠的“查看详情”，展开已保存的新增／删除内容；notes 净变更和支持的 skill create/patch/delete 以事件内完整 before/after 为依据，后续文件编辑不改写历史。旧事件和无快照动作只显示明确标注的预览，失败复盘仍可查看已实际保存的部分变更。关联契约：`C-025`、`C-012`；实现证据：`frontend/src/components/app/review-status.tsx`、`frontend/src/components/app/review-changes.tsx`、`internal/engine/review_batch.go`；测试证据：`frontend/src/components/app/review-status.test.tsx`、`frontend/e2e/memory-review.spec.ts`、`internal/engine/review_change_details_test.go`。
+
+### F-421 External Agent Skills packages
+
+- 入口：PC 项目菜单的外部技能面板。用户选择包含一个 `SKILL.md` 和配套资源的 ZIP，安装完成后可查看或移除。每个新回合向经理与 worker 提供当前项目的外部技能摘要，`load_skill` 按名称读取正文及资源基址。项目关闭记忆时外部技能仍可用，同名沉淀技能继续走 `skill_view`。
+- 安装以可信来源的 ZIP、有效清单和可写项目数据目录为前置条件。同名外部包、无效 ZIP 和不安全条目会被拒绝。关联契约：`C-042`。实现证据：`internal/skills/store.go`、`internal/engine/external_skills.go`、`frontend/src/components/app/external-skills-dialog.tsx`。测试证据：`internal/skills/store_test.go`、`internal/server/installed_skills_test.go`、`internal/engine/installed_skills_http_test.go` 和 `frontend/e2e/installed-skills.spec.ts`。
 
 ### F-430 Build and release paths
 

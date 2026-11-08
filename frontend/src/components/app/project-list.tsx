@@ -5,6 +5,7 @@ import {
   FolderPlus,
   MessageSquarePlus,
   MoreHorizontal,
+  Package,
   Pencil,
   Trash2,
 } from "lucide-react"
@@ -60,6 +61,7 @@ export function ProjectList({
   onEdit,
   onDelete,
   onOpenSkill,
+  onOpenExternalSkills,
   onReorder,
   onOpenThread,
   onRenameThread,
@@ -86,6 +88,7 @@ export function ProjectList({
   onEdit: (project: Project) => void
   onDelete: (project: Project) => void
   onOpenSkill: (project: Project, skill?: SkillInfo) => void
+  onOpenExternalSkills?: (project: Project) => void
   onReorder: (ids: string[]) => void
   onOpenThread: (id: string) => void
   onRenameThread: (id: string, title: string) => void
@@ -134,6 +137,7 @@ export function ProjectList({
             onEdit={onEdit}
             onDelete={onDelete}
             onOpenSkill={onOpenSkill}
+            onOpenExternalSkills={onOpenExternalSkills}
             onOpenThread={onOpenThread}
             onRenameThread={onRenameThread}
             onDeleteThread={onDeleteThread}
@@ -168,6 +172,7 @@ function ProjectRow({
   onEdit,
   onDelete,
   onOpenSkill,
+  onOpenExternalSkills,
   onOpenThread,
   onRenameThread,
   onDeleteThread,
@@ -189,6 +194,7 @@ function ProjectRow({
   onEdit: (project: Project) => void
   onDelete: (project: Project) => void
   onOpenSkill: (project: Project, skill?: SkillInfo) => void
+  onOpenExternalSkills?: (project: Project) => void
   onOpenThread: (id: string) => void
   onRenameThread: (id: string, title: string) => void
   onDeleteThread: (id: string) => void
@@ -295,6 +301,12 @@ function ProjectRow({
               <BookOpen />
               {t("projects.viewSkills")}
             </DropdownMenuItem>
+            {onOpenExternalSkills ? (
+              <DropdownMenuItem onSelect={() => onOpenExternalSkills(project)}>
+                <Package />
+                {t("skill.external")}
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem onSelect={() => onEdit(project)}>
               <Pencil />
               {t("projects.edit")}

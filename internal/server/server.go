@@ -140,6 +140,10 @@ func New(opts Options) (*Server, error) {
 		api.GET("/projects/:id/skills/:name", s.getSkill)
 		api.DELETE("/projects/:id/skills/:name", s.deleteSkill)
 		api.POST("/projects/:id/skills/:name/pull", s.pullSkill)
+		api.GET("/projects/:id/installed-skills", s.listInstalledSkills)
+		api.POST("/projects/:id/installed-skills", s.installSkill)
+		api.GET("/projects/:id/installed-skills/:name", s.getInstalledSkill)
+		api.DELETE("/projects/:id/installed-skills/:name", s.removeInstalledSkill)
 
 		api.GET("/library", s.getLibrary)
 		api.POST("/library/skills/copy", s.copyLibrarySkills)

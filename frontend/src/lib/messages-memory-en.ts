@@ -11,7 +11,7 @@ export const memoryEn = {
   "memory.reload": "Reload memory",
   "memory.reviewing": "Reading the last finished turn…",
   "memory.off":
-    "Memory is switched off for this project. What is already stored stays here and is not used.",
+    "Memory is switched off for this project. Recorded notes and skills stay here. Installed skills are still available.",
   "memory.notes": "Notes",
   "memory.notesHint":
     "Without these preferences, facts, constraints or skill pointers, the agent would go off track. Carried into every turn. One note per paragraph.",
@@ -67,7 +67,7 @@ export const memoryEn = {
   "settings.memory.when": "When it runs",
   "settings.memory.enabled": "Remember anything at all",
   "settings.memory.enabledHint":
-    "Off means no project carries notes or skills, and a conversation outside a project does not add to the shared skill library. What is already stored stays.",
+    "Off disables recorded notes and skills, including the shared skill library. Installed project skills are still available.",
   "settings.memory.autoReview": "Review a conversation when it finishes",
   "settings.memory.autoReviewHint":
     "A finished turn is read back so durable facts and reusable procedures are kept. A conversation outside a project keeps procedures in the shared skill library. Off means memory only changes when an agent or you write to it.",
@@ -98,6 +98,23 @@ export const memoryEn = {
   "settings.memory.skillsIndex": "Skills listed in the prompt",
   "settings.memory.skillsIndexHint":
     "Only names and one-line descriptions are listed; an agent opens the one it needs.",
+  "skill.external": "External skills",
+  "skill.externalDesc": "Packages installed for {project}. Agents can load them even when project memory is off.",
+  "skill.install": "Install external skill",
+  "skill.installTrust": "Choose a ZIP containing one Agent Skill and its supporting files. Only install skills from sources you trust. The project's agents can open the instructions and may use the included scripts.",
+  "skill.installFile": "Skill ZIP file",
+  "skill.installConfirm": "Install",
+  "skill.installBusy": "Installing…",
+  "skill.installSuccess": "Installed {name}.",
+  "skill.installedEmpty": "No external skills installed.",
+  "skill.installedLoadError": "Could not list external skills. {error}",
+  "skill.remove": "Remove external skill {name}",
+  "skill.removeTitle": "Remove external skill {name}?",
+  "skill.removeDesc": "This removes the package and its supporting files from the project.",
+  "skill.removeConfirm": "Remove skill",
+  "skill.removeBusy": "Removing {name}…",
+  "skill.removeSuccess": "Removed {name}.",
+  "skill.removeError": "Could not remove {name}. {error}",
   "skill.copyNamed": "Copy skill {name}",
   "skill.copyAll": "Copy all skills",
   "skill.copyTitle": "Copy {name}",

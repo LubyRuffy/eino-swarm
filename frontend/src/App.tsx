@@ -18,6 +18,7 @@ import { ClientsStage } from "@/components/app/local-clients"
 import { Composer } from "@/components/app/composer"
 import { DeleteProjectDialog } from "@/components/app/delete-project-dialog"
 import { EmptyState } from "@/components/app/empty-state"
+import { ExternalSkillsDialog } from "@/components/app/external-skills-dialog"
 import { FindBar, useFindController } from "@/components/app/find-bar"
 import { RightPanel, type PanelTab } from "@/components/app/panel"
 import { ProjectDialog } from "@/components/app/project-dialog"
@@ -157,6 +158,7 @@ function AppShell() {
     }
   }
   const [doomedProject, setDoomedProject] = useState<Project>()
+  const [externalSkillsProject, setExternalSkillsProject] = useState<Project>()
   const [prefill, setPrefill] = useState("")
   const [prefillToken, setPrefillToken] = useState(0)
   const [focusSignal, setFocusSignal] = useState(0)
@@ -416,6 +418,7 @@ function AppShell() {
               projectLoad.current?.abort()
               setDoomedProject(project)
             }}
+            onOpenExternalSkills={setExternalSkillsProject}
             onOpenSkill={(project, skill) => {
               // The list is the directory; the Memory tab is the document.
               // Selecting the project loads its notes so the panel is not
@@ -516,6 +519,14 @@ function AppShell() {
         }
       />
 
+      {externalSkillsProject ? (
+        <ExternalSkillsDialog
+          key={externalSkillsProject.id}
+          project={externalSkillsProject}
+          onClose={() => setExternalSkillsProject(undefined)}
+        />
+      ) : null}
+
       <AppDeleteProject
         project={doomedProject}
         onOpenChange={(open) => {
@@ -597,6 +608,7 @@ function AppSidebar({
   onEditProject,
   onDeleteProject,
   onOpenSkill,
+  onOpenExternalSkills,
 }: {
   listOpen: boolean
   onNew: () => void
@@ -610,6 +622,7 @@ function AppSidebar({
   onEditProject: (project: Project) => void
   onDeleteProject: (project: Project) => void
   onOpenSkill: (project: Project, skill?: SkillInfo) => void
+  onOpenExternalSkills: (project: Project) => void
 }) {
   const threads = useApp((s) => s.threads)
   const activeId = useApp((s) => s.activeId)
@@ -663,6 +676,7 @@ function AppSidebar({
       onEditProject={onEditProject}
       onDeleteProject={onDeleteProject}
       onOpenSkill={onOpenSkill}
+      onOpenExternalSkills={onOpenExternalSkills}
       onReorderProjects={(ids) => void reorderProjects(ids)}
       onPin={(id, pinned) => void pinThread(id, pinned)}
     />

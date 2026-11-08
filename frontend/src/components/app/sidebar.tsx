@@ -113,6 +113,7 @@ export function Sidebar({
   onEditProject,
   onDeleteProject,
   onOpenSkill,
+  onOpenExternalSkills,
   onReorder,
   onReorderProjects,
   onPin,
@@ -140,6 +141,7 @@ export function Sidebar({
   onEditProject: (project: Project) => void
   onDeleteProject: (project: Project) => void
   onOpenSkill: (project: Project, skill?: SkillInfo) => void
+  onOpenExternalSkills?: (project: Project) => void
   onReorder: (ids: string[]) => void
   onReorderProjects: (ids: string[]) => void
   onPin: (id: string, pinned: boolean) => void
@@ -264,6 +266,7 @@ export function Sidebar({
                 onEdit={onEditProject}
                 onDelete={onDeleteProject}
                 onOpenSkill={onOpenSkill}
+                onOpenExternalSkills={onOpenExternalSkills}
                 onReorder={onReorderProjects}
                 onOpenThread={onOpen}
                 onRenameThread={onRename}

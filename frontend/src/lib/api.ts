@@ -5,6 +5,8 @@ import { readLocalePref, resolveLocale, t } from "./i18n"
 import type {
   Attachment,
   FileEntry,
+  ExternalSkill,
+  ExternalSkillInfo,
   MemoryEntries,
   MemoryChange,
   Meta,
@@ -439,6 +441,21 @@ export const api = {
       `/api/projects/${projectId}/skills/${encodeURIComponent(name)}`,
       { method: "DELETE" },
     ),
+  externalSkills: (projectId: string, signal?: AbortSignal) =>
+    request<{ skills: ExternalSkillInfo[] }>(`/api/projects/${projectId}/installed-skills`, { signal })
+      .then((r) => r.skills ?? []),
+  installExternalSkill: (projectId: string, file: File) =>
+    request<ExternalSkillInfo>(`/api/projects/${projectId}/installed-skills`, {
+      method: "POST",
+      headers: { "Content-Type": "application/zip" },
+      body: file,
+    }),
+  externalSkill: (projectId: string, name: string) =>
+    request<ExternalSkill>(`/api/projects/${projectId}/installed-skills/${encodeURIComponent(name)}`),
+  removeExternalSkill: (projectId: string, name: string) =>
+    request<void>(`/api/projects/${projectId}/installed-skills/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    }),
   copySkills: (
     projectId: string,
     body: { to_project: string; names?: string[]; as?: string },

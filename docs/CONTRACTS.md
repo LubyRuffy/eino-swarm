@@ -2,6 +2,14 @@
 
 Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user entry points and [CHANGELOG.md](../CHANGELOG.md) for history. Contract IDs are stable.
 
+## C-042 External skill packages have an independent catalog
+
+- 状态 active。范围是项目级第三方技能安装、读取、卸载和模型发现，关联 `F-421`。
+- ZIP 由用户显式选择，包含一个 Agent Skills 技能。安装校验清单与有界的常规文件集合，拒绝路径逃逸、链接、冲突条目和重复的外部包名。完整文件先暂存，再按清单名称原子发布。卸载先摘除可见名称再清理目录。包内资源与原清单保留字节。删除项目会撤销外部技能目录的访问与发布资格，仍在读取或解包的上传无法重新创建项目或发布技能。
+- 项目间各有独立外部技能目录。项目记忆开关只影响沉淀技能，两个目录、命名空间、模型工具和整理流程分别管理。外部包与同名沉淀技能可共存。`load_skill` 调用和对应回执留在 Trace，排除于自动复盘的提示与写入证据。
+- 新回合在外部目录内按名称提供最多 32 个摘要。经理和 worker 可调用 `load_skill` 读取包正文及资源基址，HTTP 详情仅返回正文与元数据。安装和加载不会执行脚本。模型后续读取资源或运行脚本使用已有工具权限。
+- 实现 `internal/skills` 和 `internal/engine/external_skills.go`。验证见 `internal/engine/installed_skills_http_test.go`、`internal/engine/external_skills_worker_http_test.go`、`internal/server/installed_skills_test.go` 及 `models/skills`。
+
 ## C-041 Explicit MCP servers keep private configuration and scoped sessions
 
 - 状态：active；类型：security / lifecycle / compatibility；作用范围：`mcp.servers`、独立 MCP CRUD／inspect API、Desktop/Web 设置和会话工具表；关联功能：`F-176`、`F-130`、`F-170`。

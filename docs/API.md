@@ -1383,7 +1383,8 @@ Body `{"ids": ["pj_a", "pj_b"]}`. Pins that order in the sidebar. Unknown ids ar
 ```
 
 `enabled` is false when either the project or `memory.enabled` has it off: what
-is stored stays readable, and nothing is carried into a prompt. `entries` are
+is stored stays readable, and learned memory is omitted from the prompt.
+External packages use the separate installed-skills endpoints. `entries` are
 the notes as the prompt sees them, split on blank lines. `skills` carries names
 and one-line descriptions only — the body is fetched per skill, exactly as an
 agent fetches it with `skill_view`. A copied skill also carries `origin`
@@ -1403,6 +1404,29 @@ in the prompt's skill index and `body_chars` the length of the body a
 index lines and `unviewed_chars` the part from skills no agent has viewed.
 Catalog tidy shows the reviewer the same index/body sizes for each stale
 candidate.
+
+### External skill packages
+
+- `GET /api/projects/:id/installed-skills` → `200` with
+  `{"skills":[{"name":"review-source","description":"…","updated_at":"…"}]}`.
+  The list contains external package metadata and may be empty.
+- `POST /api/projects/:id/installed-skills` accepts a raw `application/zip`
+  body up to 16 MiB and returns the installed metadata as `201`. A malformed
+  ZIP or skill package returns `400`, an installed name collision returns
+  `409` with `code: "exists"`, an oversized upload returns `413` and
+  an unsupported media type returns `415`. A valid upload that finishes
+  after its project is deleted returns `404`.
+- `GET /api/projects/:id/installed-skills/:name` → `200` with the metadata
+  plus `body`. The response carries no engine-local path.
+- `DELETE /api/projects/:id/installed-skills/:name` → `204`. Unknown projects
+  and missing packages return `404`. The learned skill catalog has its own
+  endpoints and can contain the same name.
+
+These same-origin routes work when project memory is disabled. One ZIP contains
+one package, at the root or in one wrapper folder. The manifest requires
+`name`, `description` and a nonempty Markdown body. Install bounds include
+512 ZIP entries, 32 MiB inflated and a 256 KiB manifest. Paths with traversal,
+symlinks, special files and colliding entries are refused.
 
 ### `PUT /api/projects/:id/memory`
 

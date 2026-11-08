@@ -157,6 +157,16 @@ export interface SkillInfo {
   origin?: SkillOrigin
 }
 
+export interface ExternalSkillInfo {
+  name: string
+  description: string
+  updated_at: string
+}
+
+export interface ExternalSkill extends ExternalSkillInfo {
+  body: string
+}
+
 export interface SkillCopyHit {
   from: string
   name: string

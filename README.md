@@ -1217,6 +1217,28 @@ is saved before deleting the source, so failure may leave duplicates. Retry
 reuses an identical target and never overwrites different content. Post-turn
 review and workers cannot move memory; the shared library has no notes.
 
+### External skills
+
+From the project menu, open **External skills** and choose **Install external skill**. Select a
+ZIP with one [Agent Skills](https://agentskills.io/specification) package. Put
+`SKILL.md` and its resources at the ZIP root or in one enclosing directory.
+Packages from Codex, Hermes or Claude can use the same layout. zwai reads the
+standard `name` and `description` fields and preserves the full package,
+including files such as `references/`, `scripts/` and `assets/`.
+
+After installation, a new turn in that project can select an external skill by
+its summary or by the name you give it. `load_skill` opens the instructions
+and supplies the package directory for resolving relative resources. Install
+packages from sources you trust. Installation and loading read or copy files.
+Any later script execution uses the agent's existing tools and access.
+
+External skills work with project memory disabled and may share a name with
+a learned skill. The external list supports viewing and removing the installed
+package. To replace one, remove that external package before installing its
+replacement. A downloaded package stays in the selected project.
+
+### Learned project skills
+
 The Memory panel shows agent view counts and the last view time, what each
 skill costs (its index line in every prompt, its body per view) and how much of
 the index comes from skills no agent has opened. Settings →
