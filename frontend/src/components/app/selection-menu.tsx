@@ -1,5 +1,5 @@
-import { MessageSquarePlus } from "lucide-react"
-import { useEffect, useState } from "react"
+import { MessageSquare, MessageSquarePlus } from "lucide-react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -12,13 +12,19 @@ import {
 import { useT } from "@/lib/use-t"
 import { TERMINAL_SELECTION_EVENT, type TerminalSelection } from "@/lib/terminal"
 
-/** Floating "Add to chat" pill. Shown after a selection inside a quote
- *  source settles (pointer up, or a Shift+arrow). Clicking stores the
- *  snippet on the composer instead of dumping it into the textarea. */
-export function SelectionMenu({ onAdd }: { onAdd: (text: string) => void }) {
+/** Offers quote actions after a selection inside a quote source settles. */
+export function SelectionMenu({
+  onAdd,
+  onAsk,
+}: {
+  onAdd: (text: string) => void
+  onAsk?: (text: string) => void
+}) {
   const t = useT()
   const [active, setActive] = useState<PageSelection | null>(null)
   const [clearSelection, setClearSelection] = useState<(() => void) | null>(null)
+  const menu = useRef<HTMLDivElement>(null)
+  const canAsk = Boolean(onAsk && !clearSelection)
 
   useEffect(() => {
     let pressed = false
@@ -58,7 +64,7 @@ export function SelectionMenu({ onAdd }: { onAdd: (text: string) => void }) {
         hide()
         return
       }
-      apply(true, true)
+      if (!fromEventTarget(event.target)) apply(true, true)
     }
     const hide = () => {
       terminal = null
@@ -109,14 +115,25 @@ export function SelectionMenu({ onAdd }: { onAdd: (text: string) => void }) {
     }
   }, [])
 
+  useLayoutEffect(() => {
+    const el = menu.current
+    if (!active || !el) return
+    const { left } = menuPosition(active.rect, windowViewport(), el.offsetWidth)
+    el.style.left = `${left}px`
+  }, [active, canAsk, t.locale])
+
   if (!active) return null
-  const pos = menuPosition(active.rect, {
-    width: window.innerWidth,
-    height: window.innerHeight,
-  })
+  const pos = menuPosition(active.rect, windowViewport())
+  const choose = (action: (text: string) => void) => {
+    clearSelection?.()
+    window.getSelection()?.removeAllRanges()
+    setActive(null)
+    action(active.text)
+  }
 
   return (
     <div
+      ref={menu}
       data-testid="selection-menu"
       role="menu"
       aria-label={t("selection.menu")}
@@ -132,16 +149,27 @@ export function SelectionMenu({ onAdd }: { onAdd: (text: string) => void }) {
         variant="ghost"
         size="sm"
         onMouseDown={(event) => event.preventDefault()}
-        onClick={() => {
-          onAdd(active.text)
-          clearSelection?.()
-          window.getSelection()?.removeAllRanges()
-          setActive(null)
-        }}
+        onClick={() => choose(onAdd)}
       >
         <MessageSquarePlus />
         {t("selection.add")}
       </Button>
+      {onAsk && canAsk ? (
+        <Button
+          role="menuitem"
+          variant="ghost"
+          size="sm"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => choose(onAsk)}
+        >
+          <MessageSquare />
+          {t("selection.sideChat")}
+        </Button>
+      ) : null}
     </div>
   )
+}
+
+function windowViewport() {
+  return { width: window.innerWidth, height: window.innerHeight }
 }

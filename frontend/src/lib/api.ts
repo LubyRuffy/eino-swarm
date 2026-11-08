@@ -50,6 +50,11 @@ export interface ProjectPatch {
   nuwa_enabled?: boolean
 }
 
+export interface SideChatExchange {
+  question: string
+  answer: string
+}
+
 /** Errors from the API carry the server's message, because it is written for
  *  the person reading it — "the conversation is already running a turn" is
  *  more use than "409". */
@@ -542,6 +547,16 @@ export const api = {
     ).then((r) => r.threads)
   },
 
+  askSideChat: (
+    id: string,
+    body: { question: string; quote?: string; history?: SideChatExchange[] },
+    signal: AbortSignal,
+  ) =>
+    request<{ answer: string }>(`/api/threads/${id}/side-chat`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal,
+    }),
   startTurn: (
     id: string,
     text: string,

@@ -413,6 +413,13 @@ workflow or real-model efficiency improvement is implied by enabling it.
   plot when the JSON is a comparison and does not flicker while later tokens
   arrive, and typing in the composer
   does not rebuild the conversation.
+- **Ask about work in progress.** Open **Side chat** from the conversation
+  header, enter `/side` or `/side <question>`, or select text in the transcript
+  and choose **Ask in side chat**. Send the question in the side panel and ask
+  follow-ups there while the main task continues. The panel uses the task's
+  recent context and your selection. Closing it, switching conversations or
+  reloading clears its temporary history.
+
 - **Steering, not restarting.** Enter while a turn is running **queues** a
   follow-up for after this one finishes (refresh-safe; a post-turn session
   briefing or memory review does not hold that start), except the live turn's

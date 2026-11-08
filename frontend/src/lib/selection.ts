@@ -85,6 +85,7 @@ export function nextMenuSelection(
 export function menuPosition(
   rect: SelectionRect,
   viewport: { width: number; height: number },
+  menuWidth = 0,
 ): { top: number; left: number; place: "above" | "below" } {
   const gap = 8
   const menuH = 40
@@ -94,10 +95,11 @@ export function menuPosition(
   if (viewport.height > 0) {
     top = Math.min(Math.max(top, gap), Math.max(gap, viewport.height - gap))
   }
+  const edge = Math.min(gap + menuWidth / 2, viewport.width / 2)
   const left =
     viewport.width > 0
-      ? Math.min(Math.max(center, 8), Math.max(8, viewport.width - 8))
-      : Math.max(center, 8)
+      ? Math.min(Math.max(center, edge), viewport.width - edge)
+      : Math.max(center, gap)
   return { top, left, place }
 }
 

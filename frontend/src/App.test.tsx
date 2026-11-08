@@ -6,6 +6,7 @@ import { App } from "./App"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { api } from "@/lib/api"
 import { useApp } from "@/store/app"
+import { useTraceFocus } from "@/store/trace-focus"
 
 vi.mock("@/components/app/terminal-panel", () => ({ TerminalPanel: () => null }))
 
@@ -103,5 +104,49 @@ describe("App Escape handling", () => {
       fireEvent.keyDown(screen.getByRole("dialog"), { key: "n", ctrlKey: true })
     })
     expect(newThread).toHaveBeenCalledOnce()
+  })
+
+  it("discards an old side reply on navigation and closes the new panel without stopping the task", async () => {
+    useApp.setState({ activeId: "side-a", locale: "en" })
+    vi.spyOn(api, "composerDraft").mockImplementation(async (key) => ({
+      key, revision: 1, text: "", files: [], quotes: [], state: "editing",
+    }))
+    vi.spyOn(api, "library").mockResolvedValue({
+      dir: "", enabled: false, memory: { text: "", entries: [], chars: 0, limit: 0, rev: "" }, skills: [],
+    })
+    let complete!: (answer: { answer: string }) => void
+    const response = new Promise<{ answer: string }>((resolve) => { complete = resolve })
+    const ask = vi.spyOn(api, "askSideChat").mockReturnValue(response)
+    await act(async () => { render(<App />) })
+
+    fireEvent.click(screen.getByRole("button", { name: "Open side chat" }))
+    const question = screen.getByRole("textbox", { name: "Side chat question" })
+    expect(question).toHaveFocus()
+    fireEvent.change(question, { target: { value: "Check the current evidence" } })
+    fireEvent.keyDown(question, { key: "Enter" })
+    const [owner, body, signal] = ask.mock.calls[0]
+    expect(owner).toBe("side-a")
+    expect(body.question).toBe("Check the current evidence")
+    expect(signal.aborted).toBe(false)
+
+    await act(async () => { useApp.setState({ activeId: "side-b" }) })
+    expect(signal.aborted).toBe(true)
+    expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull()
+    const trigger = screen.getByRole("button", { name: "Open side chat" })
+    fireEvent.click(trigger)
+    await act(async () => { complete({ answer: "Old task reply" }); await response })
+    expect(screen.queryByText("Old task reply")).toBeNull()
+    const newQuestion = screen.getByRole("textbox", { name: "Side chat question" })
+    expect(newQuestion).toHaveValue("")
+
+    fireEvent.keyDown(newQuestion, { key: "Escape" })
+    expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull()
+    expect(trigger).toHaveFocus()
+    fireEvent.click(trigger)
+    await act(async () => { useTraceFocus.getState().open("turn-b") })
+    expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull()
+    expect(screen.getByRole("tab", { name: "Trace" })).toHaveAttribute("aria-selected", "true")
+    expect(useApp.getState().interrupt).not.toHaveBeenCalled()
+    expect(useApp.getState().status.running).toBe(true)
   })
 })

@@ -63,6 +63,14 @@ queued prose. Goals use the existing steer endpoint; plan entry uses start-turn
 admission so a newly busy target refuses it. Busy goal updates and bare planning
 keep their existing metadata operations.
 
+PC side chat uses a separate HTTP request and a browser-memory panel owned by
+the selected conversation. The server reads a bounded textual snapshot of
+that conversation and makes an independently cancelable, tool-free model call.
+There is no side-chat write path into the turn runtime, durable transcript,
+event bus, follow-up queue or schedule controls. Isolated provider recovery
+keeps the side call out of the main task's service-health state. A panel
+cancellation or selection change invalidates its in-flight response locally.
+
 Explicitly queued human follow-ups start in FIFO order after a turn completes
 or fails, independently of automatic goal continuation. A failed scheduled check
 keeps its failed turn/run and future wake; no queue means no new error-triggered

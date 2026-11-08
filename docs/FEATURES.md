@@ -14,6 +14,7 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-140` Files and attachments
     - `F-145` Durable composer drafts
     - `F-146` Next-step composer suggestions
+    - `F-147` Temporary task side chat
     - `F-150` Goals and scheduled waits
     - `F-160` Trace and diagnostics
     - `F-170` Settings and providers
@@ -203,6 +204,12 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 目的：一次可见回复结束后，给空的 PC 输入框一条基于当前会话的下一步；使用者：PC 桌面和 Web 用户；入口：空输入框占位符，设置 → 集群 → 建议下一步；输入：最近的人类消息和可见回复；输出：一条不超过 240 字、可直接发送的下一步，或没有建议；前置条件：功能开启（默认开，旧配置缺键仍开），本轮正常结束、最终回复非空、不是安静完成，且会话已经空闲；失败表现：无建议、超时、模型出错、或下一次对话已经开始时不显示占位符；Tab 只填入，回车才发送；手机不显示该占位符；关联契约：`C-039`、`C-009`、`C-012`；实现证据：`internal/engine/composer_prediction.go`、`internal/engine/composer_prediction_test.go`、`frontend/src/lib/composer-prediction.ts`、`frontend/src/components/app/composer.tsx`、`frontend/e2e/composer-prediction.spec.ts`。
 - 建议是 Trace 事件，不是对话消息。下一次模型请求不会把它当成已经发送的人类输入。关闭开关后不再发起这次调用；省略该字段的设置保存保留原值。
+
+### F-147 Temporary task side chat
+
+- 入口：桌面／Web 会话标题栏的侧聊按钮、在主输入框提交 `/side [问题]`，或在对话记录中选中文字后点击「在侧聊中提问」。带问题的命令预填侧聊输入框，由用户单独发送。
+- 输入与输出：侧聊参考当前会话的任务上下文和选中引用，支持连续问答。面板关闭、切换会话或重新加载后清除临时记录。发送失败可在面板内重试，取消等待不会停止主任务。
+- 前置条件：需要已有会话和可用的会话模型。关联契约 `C-042`。实现证据： `frontend/e2e/side-chat.spec.ts`，HTTP 并发与隔离见 `internal/server/side_chat_http_test.go`。
 
 ### F-150 Goals and scheduled waits
 

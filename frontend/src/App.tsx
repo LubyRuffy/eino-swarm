@@ -22,6 +22,7 @@ import { FindBar, useFindController } from "@/components/app/find-bar"
 import { RightPanel, type PanelTab } from "@/components/app/panel"
 import { ProjectDialog } from "@/components/app/project-dialog"
 import { SelectionMenu } from "@/components/app/selection-menu"
+import { SideChat } from "@/components/app/side-chat"
 import { ScheduleDetail } from "@/components/app/schedule-inbox"
 import { useVisibleDest } from "@/components/app/dest-rail"
 import { Sidebar } from "@/components/app/sidebar"
@@ -46,11 +47,13 @@ import type { Project, SkillInfo } from "@/lib/types"
 import { startSidebarSync } from "@/lib/sidebar-sync"
 import { observeSystemTheme } from "@/lib/system-theme"
 import { askingThreadIds } from "@/lib/thread-title"
+import { useSideChatScope } from "@/lib/use-side-chat"
 import { toggleLocalePref, useT } from "@/lib/use-t"
 import { isMac, readSidebarOpen, writeSidebarOpen } from "@/lib/utils"
 import { desktopShell, openLinksNatively } from "@/lib/shell"
 import { applyTheme, useApp } from "@/store/app"
 import { waitingThreadIds } from "@/store/app-schedule"
+import { useSideChat } from "@/store/app-side-chat"
 import { useTraceFocus } from "@/store/trace-focus"
 import { projectOf, useProjects } from "@/store/projects"
 import { useTerminal } from "@/store/terminal"
@@ -187,15 +190,25 @@ function AppShell() {
   const setAppearance = useApp((s) => s.setAppearance)
   const selectAgent = useApp((s) => s.selectAgent)
   const activeId = useApp((s) => s.activeId)
+  const showInspector = useCallback((tab: PanelTab) => {
+    useSideChat.getState().close()
+    setPanelOpen(true)
+    setPanelTab(tab)
+  }, [])
   const traceRequest = useTraceFocus((s) => s.request)
   useEffect(() => useTraceFocus.getState().clear(), [activeId])
   useEffect(() => {
-    if (!useTraceFocus.getState().turnId) return
-    setPanelOpen(true)
-    setPanelTab("trace")
-  }, [traceRequest])
+    if (useTraceFocus.getState().turnId) showInspector("trace")
+  }, [traceRequest, showInspector])
   const trafficLights = desktopShell() && isMac()
   const client = useOpenClient()
+  const side = useSideChatScope(activeId, Boolean(client))
+
+  const togglePanel = useCallback(() => {
+    const chat = useSideChat.getState()
+    if (chat.session) chat.close()
+    setPanelOpen((open) => Boolean(chat.session) || !open)
+  }, [])
 
   const toggleSidebar = useCallback(() => {
     setSidebarOpen((open) => {
@@ -277,10 +290,9 @@ function AppShell() {
   const openAgent = useCallback(
     (id: string) => {
       selectAgent(id)
-      setPanelTab("agents")
-      setPanelOpen(true)
+      showInspector("agents")
     },
-    [selectAgent],
+    [selectAgent, showInspector],
   )
 
   const pickIdea = useCallback(
@@ -322,10 +334,11 @@ function AppShell() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // A local dialog owns Escape before Find can consume it.
+      // A local dialog or the focused side chat owns Escape.
       if (
         e.key === "Escape" &&
-        document.querySelector('[role="dialog"][data-state="open"]')
+        (document.querySelector('[role="dialog"][data-state="open"]') ||
+          (e.target instanceof Element && e.target.closest("#side-chat")))
       ) return
       const dialogOpen =
         paletteOpen ||
@@ -355,7 +368,7 @@ function AppShell() {
         toggleSidebar()
       } else if (e.key === "\\") {
         e.preventDefault()
-        setPanelOpen((open) => !open)
+        togglePanel()
       } else if (terminalShortcut(e)) {
         e.preventDefault()
         toggleTerminal()
@@ -377,6 +390,7 @@ function AppShell() {
     projectDialog,
     selectFindQuery,
     startThread,
+    togglePanel,
     toggleSidebar,
     toggleTerminal,
   ])
@@ -385,12 +399,13 @@ function AppShell() {
     <>
       <SettingsIdleChrome>
       <AppHeader
-        panelOpen={panelOpen}
+        panelOpen={panelOpen && !side.shown}
         sidebarOpen={sidebarOpen}
         trafficInset={trafficLights}
-        onTogglePanel={() => setPanelOpen((open) => !open)}
+        onTogglePanel={togglePanel}
         onToggleSidebar={toggleSidebar}
         onOpenTerminal={spawnTerminal}
+        sideChat={side.toggle}
       />
       <ShellColumns>
         <AppSidebar
@@ -422,12 +437,12 @@ function AppShell() {
               // still showing whatever conversation happened to be open.
               void useApp.getState().selectProject(project.id)
               useProjects.getState().seeMemory()
-              setPanelOpen(true)
-              setPanelTab("memory")
+              showInspector("memory")
               setFocusSkill({ projectId: project.id, name: skill?.name })
             }}
           />
 
+        <div className="flex min-w-0 flex-1">
         <main className="flex min-w-0 flex-1 flex-col">
           <EngineStartupBanner />
           <DesktopUpdateBanner />
@@ -463,6 +478,7 @@ function AppShell() {
               focusSignal={focusSignal}
               onEditFollowup={editQueuedFollowup}
               onEditProviders={() => openSettings("models")}
+              onOpenSideChat={side.fromComposer}
             />
             {findOpen ? (
               <FindBar
@@ -481,7 +497,12 @@ function AppShell() {
           <TerminalPanel onNew={spawnTerminal} />
         </main>
 
-        {panelOpen ? (
+          {side.shown && side.owner ? (
+            <SideChat key={side.owner} threadId={side.owner} onClose={side.close} />
+          ) : null}
+        </div>
+
+        {panelOpen && !side.shown ? (
           <AppPanel
             tab={panelTab}
             onTabChange={(tab) => {
@@ -493,7 +514,7 @@ function AppShell() {
         ) : null}
       </ShellColumns>
 
-      <SelectionMenu onAdd={addQuote} />
+      <SelectionMenu key={`${activeId ?? ""}:${side.owner ?? ""}`} onAdd={addQuote} onAsk={side.fromQuote} />
 
       <AppPalette
         open={paletteOpen}
@@ -735,6 +756,7 @@ function AppComposer({
   focusSignal,
   onEditFollowup,
   onEditProviders,
+  onOpenSideChat,
   locked,
 }: {
   prefill: string
@@ -742,6 +764,7 @@ function AppComposer({
   focusSignal: number
   onEditFollowup: (id: string, text: string) => void
   onEditProviders: () => void
+  onOpenSideChat: (question: string) => boolean
   locked?: boolean
 }) {
   // Do not select `usage` here. That pulse is one object per model call and
@@ -803,6 +826,7 @@ function AppComposer({
       onUpload={upload}
       onRefreshModels={() => refreshCatalogs()}
       onEditProviders={onEditProviders}
+      onOpenSideChat={onOpenSideChat}
       restoring={meta?.startup === "restoring"}
       canStopWhileRestoring={Boolean(activeId) && !locked}
       disabled={locked || creatingThread}

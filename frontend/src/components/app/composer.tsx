@@ -43,15 +43,14 @@ import {
 import { afterImeSettles, enterSendsMessage } from "@/lib/ime"
 import {
   clearSlashCommand,
+  commandNeedsArgument,
   compactHint,
   completeSlashCommand,
   filterSlashCommands,
   localizedSlashCommands,
   nextSlashIndex,
   parseSlashSubmit,
-  slashAwaitingArg,
   slashDraft,
-  slashSubmitReady,
   stripSlashToken,
   normalizeSlashPrefix,
   withSlashHints,
@@ -126,6 +125,7 @@ export function Composer({
   onEditGoal,
   onResumeGoal,
   onCompact,
+  onOpenSideChat,
   planMode,
   planMarkdown,
   awaitingAnswer,
@@ -187,6 +187,7 @@ export function Composer({
   onEditGoal?: (text: string) => boolean | Promise<boolean>
   onResumeGoal?: () => void
   onCompact?: () => void
+  onOpenSideChat?: (question: string) => boolean
   planMode?: boolean
   planMarkdown?: string
   awaitingAnswer?: boolean
@@ -224,7 +225,7 @@ export function Composer({
     durable.session.replaceFiles(images.map((image) => image.file), "image", images)
   }
   const [submitting, setSubmitting] = useState(false)
-  const [slashRejected, setSlashRejected] = useState(false)
+  const [slashRejected, setSlashRejected] = useState<"attachments" | "side">()
   const submittingRef = useRef(false)
   const draftNeedsAttention = Boolean(durable.snapshot && (durable.snapshot.error || durable.snapshot.conflict || durable.snapshot.draft.state === "uncertain"))
   const disabled = readOnly || restoring || submitting || Boolean(durable.snapshot && (!durable.snapshot.loaded || durable.snapshot.busy || durable.snapshot.conflict || durable.snapshot.draft.state !== "editing"))
@@ -323,18 +324,20 @@ export function Composer({
   }, [focusSignal, disabled])
 
   const quoted = durable.snapshot?.draft.quotes ?? quotes ?? []
-  useEffect(() => { setSlashRejected(false) }, [draftKey, text, pending.length, pasted.length, quoted.length])
+  useEffect(() => { setSlashRejected(undefined) }, [draftKey, text, pending.length, pasted.length, quoted.length])
   const changeQuotes = (next: Quote[]) => durable.session ? durable.session.update({ quotes: next }) : onQuotesChange?.(next)
   const meterWindow = windowForSelection(models, provider, model)
   const draft = slashDraft(text)
+  const commands = localizedSlashCommands(t.locale, Boolean(onOpenSideChat))
+  const slash = parseSlashSubmit(text, commands)
   // Hints (the compact %) live in ComposerSlashMenu so a usage pulse cannot
   // re-render this textarea mid-IME. Keyboard handling only needs the ids.
   const slashItems = draft
-    ? filterSlashCommands(draft.query, localizedSlashCommands(t.locale), draft.afterText)
+    ? filterSlashCommands(draft.query, commands, draft.afterText)
     : []
   const slashOpen = slashItems.length > 0
-  const awaitingArg = slashAwaitingArg(text)
-  const sendReady = slashSubmitReady(text)
+  const awaitingArg = slash && commandNeedsArgument(slash.id) && !slash.arg ? slash.id : undefined
+  const sendReady = Boolean(slash && !awaitingArg)
   const awaitingArgument = Boolean(awaitingArg)
   // Same predicate as the corner swap. A quote, file, or image with an
   // empty box is still a submit; whitespace and a half-typed /goal are not.
@@ -359,8 +362,22 @@ export function Composer({
     setSlashIndex(0)
   }, [draft?.query])
 
+  const openSideQuestion = (question: string) => {
+    if (disabled) return
+    if (onOpenSideChat?.(question)) {
+      echoRef.current = text.trim()
+      setText("")
+    } else {
+      setSlashRejected("side")
+    }
+  }
+
   const pickCommand = (cmd: SlashCommand) => {
     if (!draft) return
+    if (cmd.id === "side") {
+      openSideQuestion("")
+      return
+    }
     if (cmd.id === "compact") {
       setText(stripSlashToken(text, draft).trimEnd())
       onCompact?.()
@@ -373,7 +390,10 @@ export function Composer({
 
   const submit = async (opts?: { steer?: boolean }) => {
     if (submittingRef.current || disabled) return
-    const slash = parseSlashSubmit(text)
+    if (slash?.id === "side") {
+      openSideQuestion(slash.arg)
+      return
+    }
     // A glued `/goal…` argument must not be eaten as a menu pick. Codex
     // dispatches inline args the same way: the rest is the objective, not
     // another keystroke of command name.
@@ -390,7 +410,7 @@ export function Composer({
       }
       if (!slash.arg) return
       if (pending.length || pasted.length || quoted.length) {
-        setSlashRejected(true)
+        setSlashRejected("attachments")
         return
       }
     }
@@ -593,8 +613,7 @@ export function Composer({
           <div className="relative">
             {draft && slashOpen ? (
               <ComposerSlashMenu
-                query={draft.query}
-                afterText={draft.afterText}
+                commands={slashItems}
                 activeIndex={Math.min(slashIndex, slashItems.length - 1)}
                 usage={usage}
                 window={meterWindow}
@@ -613,7 +632,11 @@ export function Composer({
           >
           {armed || adding ? <ComposerDropOverlay busy={adding} /> : null}
           {durable.session && durable.snapshot ? <ComposerDraftStatus session={durable.session} snapshot={durable.snapshot} disabled={readOnly} /> : null}
-          {slashRejected ? <p role="alert" className="pointer-events-auto px-4 py-1 text-xs text-destructive">{t("draft.slashTextOnly")}</p> : null}
+          {slashRejected ? (
+            <p role="alert" className="pointer-events-auto px-4 py-1 text-xs text-destructive">
+              {t(slashRejected === "side" ? "sideChat.openUnavailable" : "draft.slashTextOnly")}
+            </p>
+          ) : null}
           <ComposerQuotes quotes={quoted} onChange={changeQuotes} />
           <ComposerImages
             images={pasted}
@@ -898,8 +921,7 @@ function ComposerContextMeter({
 }
 
 function ComposerSlashMenu({
-  query,
-  afterText,
+  commands,
   activeIndex,
   usage,
   window,
@@ -908,8 +930,7 @@ function ComposerSlashMenu({
   onHover,
   onSelect,
 }: {
-  query: string
-  afterText: boolean
+  commands: SlashCommand[]
   activeIndex: number
   usage?: UsageSnapshot | null
   window: number
@@ -922,7 +943,7 @@ function ComposerSlashMenu({
   const live = useApp((s) => s.usage)
   const snap = usage ?? live
   const items = withSlashHints(
-    filterSlashCommands(query, localizedSlashCommands(t.locale), afterText),
+    commands,
     {
       compact: compactHint(
         snap?.context_tokens,

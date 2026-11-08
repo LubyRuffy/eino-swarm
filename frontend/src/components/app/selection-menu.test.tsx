@@ -93,6 +93,30 @@ describe("SelectionMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Add to chat" })).toBeNull()
   })
 
+  it("passes the settled transcript selection only to side chat", () => {
+    const onAdd = vi.fn()
+    const onAsk = vi.fn()
+    render(
+      <>
+        <div data-quote-source="">progress note</div>
+        <div data-testid="terminal" />
+        <SelectionMenu onAdd={onAdd} onAsk={onAsk} />
+      </>,
+    )
+    terminalSelection(screen.getByTestId("terminal"), "terminal output")
+    expect(screen.queryByRole("menuitem", { name: "Ask in side chat" })).toBeNull()
+    const note = screen.getByText("progress note")
+    fireEvent.mouseDown(note)
+    selectAll(note)
+    fireEvent.mouseUp(note)
+    window.getSelection()?.removeAllRanges()
+    fireEvent(document, new Event("selectionchange"))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Ask in side chat" }))
+    expect(onAsk.mock.calls).toEqual([["progress note"]])
+    expect(onAdd).not.toHaveBeenCalled()
+    expect(screen.queryByRole("menu")).toBeNull()
+  })
+
   // Streaming tokens replace text nodes and auto-follow scrolls. Both used
   // to look like "the selection is gone" and flash Add to chat then hide it.
   it("keeps Add to chat when a stream collapses the native selection", () => {

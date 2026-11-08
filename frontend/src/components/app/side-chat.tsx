@@ -1,0 +1,132 @@
+import { ArrowUp, Square, X } from "lucide-react"
+import { useEffect, useRef } from "react"
+
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import { afterImeSettles, enterSendsMessage } from "@/lib/ime"
+import { useT } from "@/lib/use-t"
+import { SIDE_CHAT_QUESTION_BYTES, sideChatQuestionTooLong, useSideChat } from "@/store/app-side-chat"
+
+export function SideChat({ threadId, onClose }: { threadId: string; onClose: () => void }) {
+  const t = useT()
+  const session = useSideChat((s) => s.session?.threadId === threadId ? s.session : undefined)
+  const input = useRef<HTMLTextAreaElement>(null)
+  const log = useRef<HTMLDivElement>(null)
+  const composing = useRef(false)
+  const settle = useRef<(() => void) | null>(null)
+  useEffect(() => () => settle.current?.(), [])
+
+  const focus = session?.focus
+  useEffect(() => {
+    if (focus) input.current?.focus()
+  }, [focus])
+  const count = session?.exchanges.length
+  useEffect(() => {
+    if (log.current) log.current.scrollTop = log.current.scrollHeight
+  }, [count])
+
+  if (!session) return null
+  const pending = Boolean(session.request)
+  const tooLong = sideChatQuestionTooLong(session.question)
+  const canSend = !pending && !tooLong && session.question.trim() !== ""
+  const ask = () => {
+    if (!canSend) return
+    input.current?.focus()
+    void useSideChat.getState().ask()
+  }
+
+  return (
+    <aside
+      id="side-chat"
+      aria-labelledby="side-chat-title"
+      className="flex h-full w-96 max-w-[55%] min-w-0 shrink-0 flex-col border-l border-border bg-card"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || event.nativeEvent.isComposing || composing.current) return
+        event.stopPropagation()
+        onClose()
+      }}
+    >
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <h2 id="side-chat-title" className="text-sm font-medium">{t("sideChat.title")}</h2>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={t("sideChat.close")} onClick={onClose}>
+          <X />
+        </Button>
+      </div>
+      <div ref={log} role="log" aria-label={t("sideChat.messages")} className="min-h-0 flex-1 space-y-4 overflow-auto p-3 text-sm">
+        {session.exchanges.length === 0 ? (
+          <p className="text-muted-foreground">{t("sideChat.intro")}</p>
+        ) : session.exchanges.map(({ question, answer }, index) => (
+          <div key={index} className="space-y-2">
+            <p className="ml-5 rounded-lg bg-muted px-3 py-2 wrap-anywhere whitespace-pre-wrap">
+              <span className="sr-only">{t("sideChat.you")} </span>
+              {question}
+            </p>
+            <p className="wrap-anywhere whitespace-pre-wrap">
+              <span className="sr-only">{t("sideChat.title")} </span>
+              {answer}
+            </p>
+          </div>
+        ))}
+      </div>
+      <form
+        className="shrink-0 space-y-2 border-t border-border p-3"
+        onSubmit={(event) => {
+          event.preventDefault()
+          ask()
+        }}
+      >
+        {session.quote ? (
+          <div className="flex items-start gap-1 rounded-md bg-muted px-2 py-1">
+            <blockquote data-testid="side-chat-quote" className="max-h-24 min-w-0 flex-1 overflow-auto wrap-anywhere whitespace-pre-wrap text-xs text-muted-foreground">
+              {session.quote}
+            </blockquote>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={t("sideChat.removeQuote")} onClick={useSideChat.getState().clearQuote}>
+              <X />
+            </Button>
+          </div>
+        ) : null}
+        <Textarea
+          ref={input}
+          value={session.question}
+          aria-label={t("sideChat.question")}
+          aria-invalid={tooLong || undefined}
+          aria-describedby={tooLong ? "side-chat-question-length" : undefined}
+          placeholder={t("sideChat.placeholder")}
+          maxLength={SIDE_CHAT_QUESTION_BYTES}
+          rows={3}
+          readOnly={pending}
+          onChange={(event) => useSideChat.getState().edit(event.target.value)}
+          onCompositionStart={() => {
+            settle.current?.()
+            composing.current = true
+          }}
+          onCompositionEnd={() => {
+            settle.current?.()
+            settle.current = afterImeSettles(() => { composing.current = false })
+          }}
+          onKeyDown={(event) => {
+            if (!enterSendsMessage(event.nativeEvent, composing.current)) return
+            event.preventDefault()
+            ask()
+          }}
+        />
+        {tooLong ? <p id="side-chat-question-length" className="text-xs text-destructive">{t("sideChat.questionTooLong")}</p> : null}
+        {session.error ? <p role="alert" className="wrap-anywhere text-xs text-destructive">{session.error}</p> : null}
+        <div className="flex items-center justify-end gap-2">
+          {pending ? (
+            <>
+              <span role="status" className="text-xs text-muted-foreground">{t("sideChat.thinking")}</span>
+              <Button type="button" variant="outline" size="icon-sm" aria-label={t("sideChat.cancel")} onClick={useSideChat.getState().cancel}>
+                <Square />
+              </Button>
+            </>
+          ) : (
+            <Button type="submit" size="icon-sm" aria-label={t("sideChat.send")} disabled={!canSend}>
+              <ArrowUp />
+            </Button>
+          )}
+        </div>
+      </form>
+    </aside>
+  )
+}
