@@ -12,143 +12,6 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   project skills have their own catalog and keep using `skill_view`.
   (#160, `F-421`, `C-043`)
 
-- Added temporary task side chat on desktop and Web. Open it from the
-  conversation header, with `/side`, or from selected transcript text. Ask
-  follow-up questions about the task while it continues. (`F-147`, `C-042`)
-
-- Composer file attachments save and send from the desktop window. A filename
-  WebKit leaves raw in the multipart header no longer rejects the whole draft,
-  and the file is read when it is chosen so a later save still has the bytes.
-  (`F-145`, `C-033`)
-
-- Mobile image previews open at the top in Fit to width. Fit to window
-  remains available for viewing the entire image. Pinching scales the
-  image around the touch midpoint while the preview controls stay fixed.
-  (`C-020`)
-
-- Phone EPUB and Markdown previews use the same pinch and font-size controls.
-  EPUB repaginates around the reading position and keeps its controls in the
-  center-tap overlay. (`C-020`)
-
-- Local Claude, Codex, and Cursor rows show the task first and the project
-  directory after it, on desktop and phone. Codex uses the opening request
-  rather than context inserted ahead of it. Cursor recovers the project
-  directory from its encoded folder name, including a hidden path component,
-  and uses the containing git repository when that directory is gone.
-  (`F-223`)
-
-- Added assembly highlighting for fenced source tagged `asm`, `assembly`,
-  `nasm`, `gas`, `x86asm` or `yasm` on desktop, web and phone. Mnemonics,
-  registers and comments take distinct theme colours; other unknown tags stay
-  plain text. (`F-120`, `F-220`)
-
-- Settings → Models counts the signed-in server catalog by `model_type`,
-  the embedding picker lists only models classified `embedding`, and the
-  server row in “your own model services” shows the conversation models and
-  stores the chosen default as `models.account_model`. Each of those models
-  shows the context length the catalog reported. The conversation
-  picker still keeps `chat` and unclassified rows. A catalog without
-  `model_type` stays unchanged. (`F-171`, `C-040`)
-
-- Fixed Nuwa workers missing their current role, generation and resolved
-  model binding. Model requests and `list_models.current` use the same
-  generation snapshot, including after resume or restore. (`C-037`)
-
-- Changed the Nuwa collaboration graph to make saved dependencies the only
-  backbone and converge every terminal or isolated record on a single goal
-  node, instead of synthesizing separate source-turn and recorder columns.
-  Who recorded a result, in which turn and with which model is now provenance
-  shown on the record's own card. This mirrors Sapper-v2's fact-intent graph,
-  where intents converge on a terminal goal fact and the author is a field.
-
-- Fixed a queued timer tick shortening the fresh renderer probe's health
-  interval after a failed desktop replacement. The retry deadline now shares
-  the probe's actual dispatch timestamp with its diagnostic age; startup,
-  reload and replacement-attempt limits are unchanged. (#155, `C-034`)
-
-- Fixed gateway route recovery so three consecutive confirmed
-  `provider_unavailable` refusals fail the turn instead of probing without a
-  limit. Earlier refusals in that same model call still wait on the shared
-  origin cooldown and do not consume the two model-error retries.
-  `models/provider/RouteRecovery.tla` checks that cap and rejects both an
-  unbounded wait and a later model retry. (`C-029`)
-
-- Fixed Settings → Models so a ready server catalog is a selectable default in
-  the own-provider list. An own provider is marked default only when new
-  conversations actually start on it. `models/account/DefaultSourceChoice.tla`
-  checks that badge against the engine's starting source. (`F-171`, `C-040`)
-
-- Changed Desktop/Mobile account login to bind only to the current Gateway.
-  Third-party identity sources stay on the Gateway; the client opens the
-  Gateway-returned same-origin `verification_uri` (shared `/login` or a
-  configured source start URL) and no longer hardcodes a provider path or
-  brand. `remote.auth_mode` is now `independent` / `account` (no old-value
-  compatibility). UI copy uses Sign in / Device sign-in. (`F-210`, `F-211`, `C-006`)
-
-- Fixed the native resilience HTTP fixture's stale schedule-answer protocol
-  text to match the engine's current cadence and scope extraction contract,
-  preserving exact request and candidate validation. (`C-009`)
-
-- Added worker execution generation to recorded model calls and Trace as
-  optional `generation`, preserving the actual invocation across streams and
-  same-worker resumption. Manager, auxiliary and unknown historical calls omit
-  it; existing request-to-turn accounting and lifecycle ordering stay unchanged.
-  This is diagnostic provenance, not completion or model-quality evidence.
-  (`F-130`, `C-012`)
-
-- Changed Nuwa dispatch with multiple ready models to require an exact catalog
-  `model_ref` for each new role. Omission returns correctable `list_models`
-  guidance before forking or starting a worker, instead of silently using the
-  default model. Single-model, ordinary-mode and existing-worker bindings keep
-  their behavior; the generic Registry API and stored data need no migration.
-  AI still chooses the model. (`F-136`, `C-037`)
-
-- Added task-related recall to Nuwa worker previews. Related titles and summaries
-  from the current project can precede recent records within the existing
-  character budget; full details remain on demand. Each generation carries its
-  starting task separately from manager instructions. Cold recovery preserves
-  known assignments while retaining its recovery message and empty-instruction
-  fallback. This adapts Sapper-v2's
-  delegation-time recall and does not establish a model-quality improvement.
-  (`F-136`, `C-037`)
-
-- Added shared project instructions to Nuwa workers independently of planner
-  personality and forked System history, including with memory disabled.
-  Ordinary workers keep their existing behavior. Nonempty saved instructions
-  restore as recorded; legacy empty instructions retain their configuration
-  fallback. This supplies project requirements and does not establish a
-  model-quality improvement. (`F-136`, `C-037`)
-
-- Fixed live Settings result-budget updates racing with Nuwa shared-state
-  previews and `read_work`. Each response uses one committed configuration
-  snapshot while preserving complete JSON and whole-node omission.
-  (`F-136`, `C-037`)
-
-- Added a transient, bounded shared-project preview to each Nuwa manager and
-  worker model-call entry, adapting Sapper-v2's automatic graph context. Original
-  ownership and worker configuration survive recovery; unavailable reads are
-  explicit without stopping existing work. Reported facts remain untrusted,
-  full details stay on demand, and previews do not enter transcript,
-  compact input or fork history. Real-model benefit remains unproven.
-  (`F-136`, `C-037`)
-
-- Fixed scheduling answers being withheld when tool receipts, manager guidance
-  and verification disagreed. Arming receipts now expose exact persisted kind,
-  cadence and next-run fields; `report_schedule(next_in_s)` is a recurring
-  interval, while a report alone explicitly does not arm a check. Corrections
-  include structured current facts, and assertions without concrete scheduling
-  fields cannot alone reject an answer. Concrete false claims retain one
-  correction and final-answer refusal. Reports are checked independently so
-  one rejected report cannot hide other verified findings. (`F-150`, `F-160`,
-  `C-009`)
-
-- Changed Nuwa to separate planning from execution: the conversation manager
-  plans, delegates and reviews while workers perform workspace and external
-  operations. Planner instances also omit provider-hosted builtins without
-  changing ordinary turns or worker configuration. AI still chooses executor
-  roles, models and tool scopes. Earlier self-executing Nuwa measurements do not
-  validate this behavior. (`F-136`, `C-037`)
-
 - Fixed iOS 27.2 terminating the app during startup because the native shell
   had not adopted UIKit's required scene lifecycle. A single scene loads the
   existing bridge and forwards cold and warm URL/universal-link callbacks to
@@ -4347,6 +4210,145 @@ were left out on purpose, so that what shipped is complete rather than broad:
 - **A native directory picker** for a project's working directory. The field
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
+
+## [0.1.70] - 2026-11-08
+
+- Added temporary task side chat on desktop and Web. Open it from the
+  conversation header, with `/side`, or from selected transcript text. Ask
+  follow-up questions about the task while it continues. (`F-147`, `C-042`)
+
+- Composer file attachments save and send from the desktop window. A filename
+  WebKit leaves raw in the multipart header no longer rejects the whole draft,
+  and the file is read when it is chosen so a later save still has the bytes.
+  (`F-145`, `C-033`)
+
+- Mobile image previews open at the top in Fit to width. Fit to window
+  remains available for viewing the entire image. Pinching scales the
+  image around the touch midpoint while the preview controls stay fixed.
+  (`C-020`)
+
+- Phone EPUB and Markdown previews use the same pinch and font-size controls.
+  EPUB repaginates around the reading position and keeps its controls in the
+  center-tap overlay. (`C-020`)
+
+- Local Claude, Codex, and Cursor rows show the task first and the project
+  directory after it, on desktop and phone. Codex uses the opening request
+  rather than context inserted ahead of it. Cursor recovers the project
+  directory from its encoded folder name, including a hidden path component,
+  and uses the containing git repository when that directory is gone.
+  (`F-223`)
+
+- Added assembly highlighting for fenced source tagged `asm`, `assembly`,
+  `nasm`, `gas`, `x86asm` or `yasm` on desktop, web and phone. Mnemonics,
+  registers and comments take distinct theme colours; other unknown tags stay
+  plain text. (`F-120`, `F-220`)
+
+- Settings → Models counts the signed-in server catalog by `model_type`,
+  the embedding picker lists only models classified `embedding`, and the
+  server row in “your own model services” shows the conversation models and
+  stores the chosen default as `models.account_model`. Each of those models
+  shows the context length the catalog reported. The conversation
+  picker still keeps `chat` and unclassified rows. A catalog without
+  `model_type` stays unchanged. (`F-171`, `C-040`)
+
+- Fixed Nuwa workers missing their current role, generation and resolved
+  model binding. Model requests and `list_models.current` use the same
+  generation snapshot, including after resume or restore. (`C-037`)
+
+- Changed the Nuwa collaboration graph to make saved dependencies the only
+  backbone and converge every terminal or isolated record on a single goal
+  node, instead of synthesizing separate source-turn and recorder columns.
+  Who recorded a result, in which turn and with which model is now provenance
+  shown on the record's own card. This mirrors Sapper-v2's fact-intent graph,
+  where intents converge on a terminal goal fact and the author is a field.
+
+- Fixed a queued timer tick shortening the fresh renderer probe's health
+  interval after a failed desktop replacement. The retry deadline now shares
+  the probe's actual dispatch timestamp with its diagnostic age; startup,
+  reload and replacement-attempt limits are unchanged. (#155, `C-034`)
+
+- Fixed gateway route recovery so three consecutive confirmed
+  `provider_unavailable` refusals fail the turn instead of probing without a
+  limit. Earlier refusals in that same model call still wait on the shared
+  origin cooldown and do not consume the two model-error retries.
+  `models/provider/RouteRecovery.tla` checks that cap and rejects both an
+  unbounded wait and a later model retry. (`C-029`)
+
+- Fixed Settings → Models so a ready server catalog is a selectable default in
+  the own-provider list. An own provider is marked default only when new
+  conversations actually start on it. `models/account/DefaultSourceChoice.tla`
+  checks that badge against the engine's starting source. (`F-171`, `C-040`)
+
+- Changed Desktop/Mobile account login to bind only to the current Gateway.
+  Third-party identity sources stay on the Gateway; the client opens the
+  Gateway-returned same-origin `verification_uri` (shared `/login` or a
+  configured source start URL) and no longer hardcodes a provider path or
+  brand. `remote.auth_mode` is now `independent` / `account` (no old-value
+  compatibility). UI copy uses Sign in / Device sign-in. (`F-210`, `F-211`, `C-006`)
+
+- Fixed the native resilience HTTP fixture's stale schedule-answer protocol
+  text to match the engine's current cadence and scope extraction contract,
+  preserving exact request and candidate validation. (`C-009`)
+
+- Added worker execution generation to recorded model calls and Trace as
+  optional `generation`, preserving the actual invocation across streams and
+  same-worker resumption. Manager, auxiliary and unknown historical calls omit
+  it; existing request-to-turn accounting and lifecycle ordering stay unchanged.
+  This is diagnostic provenance, not completion or model-quality evidence.
+  (`F-130`, `C-012`)
+
+- Changed Nuwa dispatch with multiple ready models to require an exact catalog
+  `model_ref` for each new role. Omission returns correctable `list_models`
+  guidance before forking or starting a worker, instead of silently using the
+  default model. Single-model, ordinary-mode and existing-worker bindings keep
+  their behavior; the generic Registry API and stored data need no migration.
+  AI still chooses the model. (`F-136`, `C-037`)
+
+- Added task-related recall to Nuwa worker previews. Related titles and summaries
+  from the current project can precede recent records within the existing
+  character budget; full details remain on demand. Each generation carries its
+  starting task separately from manager instructions. Cold recovery preserves
+  known assignments while retaining its recovery message and empty-instruction
+  fallback. This adapts Sapper-v2's
+  delegation-time recall and does not establish a model-quality improvement.
+  (`F-136`, `C-037`)
+
+- Added shared project instructions to Nuwa workers independently of planner
+  personality and forked System history, including with memory disabled.
+  Ordinary workers keep their existing behavior. Nonempty saved instructions
+  restore as recorded; legacy empty instructions retain their configuration
+  fallback. This supplies project requirements and does not establish a
+  model-quality improvement. (`F-136`, `C-037`)
+
+- Fixed live Settings result-budget updates racing with Nuwa shared-state
+  previews and `read_work`. Each response uses one committed configuration
+  snapshot while preserving complete JSON and whole-node omission.
+  (`F-136`, `C-037`)
+
+- Added a transient, bounded shared-project preview to each Nuwa manager and
+  worker model-call entry, adapting Sapper-v2's automatic graph context. Original
+  ownership and worker configuration survive recovery; unavailable reads are
+  explicit without stopping existing work. Reported facts remain untrusted,
+  full details stay on demand, and previews do not enter transcript,
+  compact input or fork history. Real-model benefit remains unproven.
+  (`F-136`, `C-037`)
+
+- Fixed scheduling answers being withheld when tool receipts, manager guidance
+  and verification disagreed. Arming receipts now expose exact persisted kind,
+  cadence and next-run fields; `report_schedule(next_in_s)` is a recurring
+  interval, while a report alone explicitly does not arm a check. Corrections
+  include structured current facts, and assertions without concrete scheduling
+  fields cannot alone reject an answer. Concrete false claims retain one
+  correction and final-answer refusal. Reports are checked independently so
+  one rejected report cannot hide other verified findings. (`F-150`, `F-160`,
+  `C-009`)
+
+- Changed Nuwa to separate planning from execution: the conversation manager
+  plans, delegates and reviews while workers perform workspace and external
+  operations. Planner instances also omit provider-hosted builtins without
+  changing ordinary turns or worker configuration. AI still chooses executor
+  roles, models and tool scopes. Earlier self-executing Nuwa measurements do not
+  validate this behavior. (`F-136`, `C-037`)
 
 ## [0.1.69] - 2026-11-06
 
