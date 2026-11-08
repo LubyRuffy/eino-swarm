@@ -226,4 +226,53 @@ describe("Durable composer snapshots", () => {
     expect(f.stored()).toMatchObject({ text: "queued input", state: "uncertain" })
     expect(session.getSnapshot()).toMatchObject({ draft: { text: "queued input", state: "uncertain" }, error: expect.stringContaining("queue") })
   })
+
+  it("saves a file whose name contains header bytes and keeps the original name", async () => {
+    const f = fixture()
+    const session = new ComposerDraftSession("thread:a", f.transport)
+    await session.load()
+    session.update({ text: "分析文档" })
+    const payload = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x7f])
+    session.addFiles([new File([payload], "FOFA_\u007fname.xlsx", { type: "application/octet-stream", lastModified: 9 })], "file")
+    await session.flush()
+    expect(f.stored().text).toBe("分析文档")
+    expect(f.stored().files[0].name).toBe("FOFA_\u007fname.xlsx")
+    const uploaded = [...f.blobs.values()][0]
+    expect(uploaded.name).toBe("FOFA__name.xlsx")
+    expect(session.getSnapshot().draft.files[0].file.name).toBe("FOFA_\u007fname.xlsx")
+    expect(await new Promise<number[]>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve([...new Uint8Array(reader.result as ArrayBuffer)])
+      reader.onerror = () => reject(reader.error)
+      reader.readAsArrayBuffer(uploaded)
+    })).toEqual([...payload])
+  })
+
+  it("reports a file that cannot be read and still deletes the draft", async () => {
+    const f = fixture()
+    const session = new ComposerDraftSession("thread:a", f.transport)
+    await session.load()
+    session.update({ text: "分析文档" })
+    const realReader = globalThis.FileReader
+    class BrokenReader {
+      result: ArrayBuffer | null = null
+      error = new DOMException("security scope")
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      readAsArrayBuffer() { queueMicrotask(() => this.onerror?.()) }
+    }
+    vi.stubGlobal("FileReader", BrokenReader)
+    try {
+      const file = new File([new Uint8Array([1, 2, 3])], "FOFA_Global_Crypto_Exchange.xlsx")
+      session.addFiles([file], "file")
+      await expect(session.flush()).rejects.toThrow(/could not be read|读不出来/)
+      expect(vi.mocked(f.transport.save)).not.toHaveBeenCalled()
+      expect(session.getSnapshot().draft.text).toBe("分析文档")
+      expect(session.getSnapshot().draft.files).toHaveLength(1)
+      await session.discard()
+      expect(session.getSnapshot().draft).toMatchObject({ text: "", files: [] })
+    } finally {
+      vi.stubGlobal("FileReader", realReader)
+    }
+  })
 })

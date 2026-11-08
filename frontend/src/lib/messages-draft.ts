@@ -9,6 +9,7 @@ export const draftEN = {
   "draft.useStored": "Use the saved version (replace this input)",
   "draft.useCurrent": "Save this input (replace the saved version)",
   "draft.slashTextOnly": "The /goal and /plan commands accept text only. Remove files, images and quotations first. Your draft was kept.",
+  "draft.unreadable": "This attachment could not be read, so it was not saved. Choose the file again. The rest of the draft is still here.",
 } as const
 export const draftZH = {
   "draft.failed": "草稿尚未保存，当前输入仍保留在这里。",
@@ -21,4 +22,5 @@ export const draftZH = {
   "draft.useStored": "使用已保存版本（替换当前输入）",
   "draft.useCurrent": "保存当前输入（替换已保存版本）",
   "draft.slashTextOnly": "/goal 和 /plan 仅接受正文。请先移除附件、图片和引用；草稿已保留。",
+  "draft.unreadable": "这个附件读不出来，所以没有保存。请重新选择文件。草稿里的其他内容还在。",
 } as const

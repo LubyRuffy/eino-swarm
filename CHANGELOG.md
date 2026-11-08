@@ -6,6 +6,11 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Composer file attachments save and send from the desktop window. A filename
+  WebKit leaves raw in the multipart header no longer rejects the whole draft,
+  and the file is read when it is chosen so a later save still has the bytes.
+  (`F-145`, `C-033`)
+
 - Mobile image previews open at the top in Fit to width. Fit to window
   remains available for viewing the entire image. Pinching scales the
   image around the touch midpoint while the preview controls stay fixed.

@@ -64,6 +64,9 @@ func (s *Server) uploadFiles(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// The same WebKit filename bytes that break a draft save break this upload.
+	// Analysis never sees a file whose transfer the parser rejected.
+	relaxMultipartBody(c.Request)
 	form, err := c.MultipartForm()
 	if err != nil {
 		badRequest(c, "could not read the upload: %v", err)

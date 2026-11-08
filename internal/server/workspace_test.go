@@ -156,6 +156,48 @@ func TestUploadValidation(t *testing.T) {
 	}
 }
 
+func TestUploadAcceptsWebKitFilenameControls(t *testing.T) {
+	h := newHarness(t)
+	id := h.newThread()
+	boundary := "----WebKitFormBoundaryUpload"
+	payload := []byte{0x50, 0x4b, 0x03, 0x04, 0x7f, 0x01}
+	var body bytes.Buffer
+	body.WriteString("--" + boundary + "\r\n")
+	body.WriteString("Content-Disposition: form-data; name=\"files\"; filename=\"FOFA_\x7f\x01.xlsx\"\r\n")
+	body.WriteString("Content-Type: application/octet-stream\r\n\r\n")
+	body.Write(payload)
+	body.WriteString("\r\n--" + boundary + "--\r\n")
+	req, err := http.NewRequest(http.MethodPost, h.srv.URL+"/api/threads/"+id+"/files", &body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "multipart/form-data; boundary="+boundary)
+	resp, err := h.srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", resp.StatusCode, raw)
+	}
+	var uploaded struct {
+		Files []store.Attachment `json:"files"`
+	}
+	if err := json.Unmarshal(raw, &uploaded); err != nil {
+		t.Fatal(err)
+	}
+	if len(uploaded.Files) != 1 || uploaded.Files[0].RelPath != "uploads/FOFA___.xlsx" {
+		t.Fatalf("uploads=%+v", uploaded.Files)
+	}
+	dl := h.do(http.MethodGet, "/api/threads/"+id+"/download/"+uploaded.Files[0].RelPath, nil)
+	defer dl.Body.Close()
+	got, _ := io.ReadAll(dl.Body)
+	if dl.StatusCode != http.StatusOK || !bytes.Equal(got, payload) {
+		t.Fatalf("status=%d downloaded=%v", dl.StatusCode, got)
+	}
+}
+
 func (h *harness) upload(threadID string, files map[string]string) *http.Response {
 	h.t.Helper()
 	var buf bytes.Buffer

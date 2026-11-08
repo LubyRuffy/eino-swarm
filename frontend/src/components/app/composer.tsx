@@ -422,12 +422,17 @@ export function Composer({
         accepted = result instanceof Promise ? await result : result
       } else {
         let uploaded: Attachment[] = []
-        if (pending.length > 0) {
+        const owned = session?.getSnapshot().draft.files
+        const uploadList = owned ? owned.filter((file) => file.kind === "file").map((file) => file.file) : pending
+        const imageList = owned ? owned.filter((file) => file.kind === "image").map((file) => ({
+          id: file.id, name: file.name, mime: file.mime, file: file.file, previewUrl: file.previewUrl || "",
+        })) : pasted
+        if (uploadList.length > 0) {
           setUploading(true)
-          uploaded = (await (threadId ? onUpload(pending, threadId) : onUpload(pending))) ?? []
-          if (uploaded.length !== pending.length) throw new Error("The attachments were not completely uploaded. The draft was kept.")
+          uploaded = (await (threadId ? onUpload(uploadList, threadId) : onUpload(uploadList))) ?? []
+          if (uploaded.length !== uploadList.length) throw new Error("The attachments were not completely uploaded. The draft was kept.")
         }
-        const images = pasted.length > 0 ? await toSendImages(pasted) : undefined
+        const images = imageList.length > 0 ? await toSendImages(imageList) : undefined
         const files = uploaded.map((a) => a.rel_path).filter(Boolean)
         const result = onSend(payload, images, {
           steer: Boolean(opts?.steer), files: files.length > 0 ? files : undefined,

@@ -69,12 +69,14 @@ func (s *Server) putComposerDraft(c *gin.Context) {
 	// JSON can encode each original text byte as a six-byte escape. Preserve
 	// the documented UTF-8 limit while bounding encoded metadata and framing.
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, store.MaxDraftBytes+(9<<20))
+	relaxMultipartBody(c.Request)
 	err := c.Request.ParseMultipartForm(maxUploadMemory)
 	if c.Request.MultipartForm != nil {
 		defer c.Request.MultipartForm.RemoveAll()
 	}
 	if err != nil {
-		s.fail(c, fmt.Errorf("%w: cannot read draft multipart body", store.ErrInvalidDraft))
+		s.log.Warn("composer draft multipart", "err", err)
+		s.fail(c, fmt.Errorf("%w: %s", store.ErrInvalidDraft, draftMultipartReason(err)))
 		return
 	}
 	form := c.Request.MultipartForm

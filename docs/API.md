@@ -49,8 +49,12 @@ PUT has exactly one `snapshot` JSON form field:
 
 The encoded snapshot field is capped at 8 MiB, allowing JSON escapes for the
 1 MiB original UTF-8 text budget; total multipart body is capped at attachment
-bytes plus 9 MiB of metadata/framing. New files use `file.<id>` multipart fields;
-an existing immutable ID references
+bytes plus 9 MiB of metadata/framing. New files use `file.<id>` multipart fields. The original file name lives in the
+snapshot. A WebKit filename may contain raw C0 controls or DEL in the part
+header; those header bytes are replaced so the form can be read, and the
+snapshot name and file bytes are stored unchanged. An upload that ends before
+the file is complete returns `400` / `invalid_draft` and does not save.
+An existing immutable ID references
 already saved bytes and must not be uploaded again. Changing name, MIME, kind,
 size or modification time requires a new ID. Referenced bytes must still exist
 and match the recorded length in the save transaction; missing or truncated

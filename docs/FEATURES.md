@@ -196,6 +196,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 离开已保存且无待处理操作的 scope 后释放内存中的附件缓存和预览 URL，返回时重读原始 bytes；未保存、冲突和发送中内容继续保留。
 - `/goal`、`/plan` 仅接收文本；同时带附件、粘贴图片或引用时，输入框拒绝动作并保留完整草稿，不能用只覆盖文本的确认清理其他内容。
 - 每份草稿正文与引用合计最多 1 MiB，最多 32 个附件、附件总量 256 MiB；视觉图片另遵守最多 8 张、单张 8 MiB。此限制约束草稿保存，不改变工作区上传的单文件上限。
+- 桌面选择或拖入的文件会在当时读入内存，再保存草稿并上传到工作区。WebKit 放进 multipart 头的原始控制字符不再让整份草稿无法保存；文件内容仍按原字节保存。读不出来时提示重新选择，其余草稿保留。
 
 ### F-146 Next-step composer suggestions
 

@@ -1,4 +1,5 @@
 import { api, ApiError } from "./api"
+import { readLocalePref, resolveLocale, t } from "./i18n"
 import { isPasteImage, visionMIME, type PasteImage } from "./paste-image"
 import { composerDraftFromStored, type Quote } from "./quote"
 
@@ -51,6 +52,18 @@ function emptyDraft(key: string): LocalComposerDraft {
   return { key, revision: 0, text: "", quotes: [], files: [], state: "editing" }
 }
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error) }
+function unreadableAttachment(): string { return t(resolveLocale(readLocalePref()), "draft.unreadable") }
+function readFileBytes(file: File): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) resolve(reader.result)
+      else reject(new Error(unreadableAttachment()))
+    }
+    reader.onerror = () => reject(reader.error ?? new Error(unreadableAttachment()))
+    reader.readAsArrayBuffer(file)
+  })
+}
 function revoke(file: LocalDraftFile) { if (file.previewUrl) URL.revokeObjectURL?.(file.previewUrl) }
 function recordOf(draft: LocalComposerDraft): ComposerDraftRecord {
   return { ...draft, files: draft.files.map(({ file: _file, previewUrl: _url, ...meta }) => meta) }
@@ -67,6 +80,7 @@ export class ComposerDraftSession {
   private loading?: Promise<void>
   private writing?: Promise<void>
   private timer?: ReturnType<typeof setTimeout>
+  private reads = new Map<string, Promise<File>>()
   private users = 0
   private collectionQueued = false
 
@@ -158,6 +172,7 @@ export class ComposerDraftSession {
     this.generation++
     this.publish({ draft, saved: false, error: this.snapshot.conflict ? this.snapshot.error : undefined })
     if (!this.snapshot.conflict) this.schedule()
+    this.startReads()
   }
 
   replaceFiles(files: File[], kind: ComposerDraftFile["kind"], images?: PasteImage[]) {
@@ -202,7 +217,12 @@ export class ComposerDraftSession {
         while (this.savedGeneration !== this.generation) {
           const generation = this.generation
           const draft = this.snapshot.draft
-          const files = new Map(draft.files.filter((file) => !this.persisted.has(file.id)).map((file) => [file.id, file.file]))
+          const files = new Map<string, File>()
+          for (const file of draft.files) {
+            if (this.persisted.has(file.id)) continue
+            const ready = await this.retainBytes(file)
+            files.set(file.id, new File([ready], draftPartName(ready.name), { type: ready.type, lastModified: ready.lastModified }))
+          }
           const saved = await this.client.save(recordOf(draft), files)
           this.savedGeneration = generation
           this.persisted = new Set(draft.files.map((file) => file.id))
@@ -301,7 +321,13 @@ export class ComposerDraftSession {
       await this.clear(sent.revision)
     })
   }
-  async discard() { return this.using(async () => { await this.flush(); await this.clear(this.snapshot.draft.revision) }) }
+  async discard() {
+    return this.using(async () => {
+      // A file the page can no longer read must not trap Delete on the same failed upload.
+      try { await this.flush() } catch { /* the explicit delete still removes this draft */ }
+      await this.clear(this.snapshot.draft.revision)
+    })
+  }
   private async clear(revision: number) {
     const generation = this.generation
     try {
@@ -319,6 +345,47 @@ export class ComposerDraftSession {
       this.publish({ draft: { ...cleared, files: [] }, saved: true, error: undefined })
     } catch (error) { this.publish({ error: errorMessage(error) }); throw error }
   }
+
+  private startReads() {
+    for (const row of this.snapshot.draft.files) {
+      if (!this.persisted.has(row.id) && !this.reads.has(row.id)) void this.retainBytes(row).catch(() => undefined)
+    }
+  }
+
+  // Reading starts while the file input or drop is still delivering the file.
+  // WebKit can report the name and size, then fail the later draft upload.
+  private retainBytes(row: LocalDraftFile): Promise<File> {
+    const existing = this.reads.get(row.id)
+    if (existing) return existing
+    const source = row.file
+    let pending!: Promise<File>
+    pending = (async () => {
+      let bytes: ArrayBuffer
+      try { bytes = await readFileBytes(source) } catch { throw new Error(unreadableAttachment()) }
+      if (bytes.byteLength !== source.size) throw new Error(unreadableAttachment())
+      const copy = new File([bytes], source.name, { type: source.type, lastModified: source.lastModified })
+      const files = this.snapshot.draft.files.map((file) => file.id === row.id && file.file === source ? { ...file, file: copy } : file)
+      if (files.some((file, index) => file.file !== this.snapshot.draft.files[index]?.file)) {
+        this.publish({ draft: { ...this.snapshot.draft, files } })
+      }
+      return copy
+    })().catch((error: unknown) => {
+      if (this.reads.get(row.id) === pending) this.reads.delete(row.id)
+      throw error
+    })
+    this.reads.set(row.id, pending)
+    return pending
+  }
+}
+
+function draftPartName(name: string): string {
+  let out = ""
+  for (const ch of name) {
+    const code = ch.codePointAt(0) ?? 0
+    out += code === 0x7f || (code < 0x20 && code !== 0x09) ? "_" : ch
+  }
+  const trimmed = out.trim()
+  return trimmed || "attachment"
 }
 
 function invalidFiles(files: LocalDraftFile[]): string | undefined {

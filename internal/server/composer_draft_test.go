@@ -198,3 +198,68 @@ func TestComposerDraftTextLimitCountsOriginalUTF8RatherThanJSONEscapes(t *testin
 		t.Fatal("valid text was changed by transport encoding")
 	}
 }
+
+func TestComposerDraftAcceptsWebKitFilenameControlsAndKeepsTheFile(t *testing.T) {
+	h := newHarness(t)
+	key := "thread:" + h.newThread()
+	payload := []byte{0x50, 0x4b, 0x03, 0x04, 0x01, 0x7f, 'F', 'O', 'F', 'A'}
+	name := "FOFA_\x7f\x01Global_Crypto_Exchange.xlsx"
+	draft := store.ComposerDraft{
+		Key: key, Text: "分析文档", State: "editing", Quotes: []store.DraftQuote{},
+		Files: []store.DraftFile{{
+			ID: "f1", Name: name, MIME: "application/octet-stream", Kind: "file",
+			Size: int64(len(payload)), LastModified: 1,
+		}},
+	}
+	raw, err := json.Marshal(draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	boundary := "----WebKitFormBoundaryDesktopFile"
+	var body bytes.Buffer
+	body.WriteString("--" + boundary + "\r\n")
+	body.WriteString("Content-Disposition: form-data; name=\"snapshot\"\r\n\r\n")
+	body.Write(raw)
+	body.WriteString("\r\n--" + boundary + "\r\n")
+	body.WriteString("Content-Disposition: form-data; name=\"file.f1\"; filename=\"")
+	body.WriteString(name)
+	body.WriteString("\"\r\nContent-Type: application/octet-stream\r\n\r\n")
+	body.Write(payload)
+	body.WriteString("\r\n--" + boundary + "--\r\n")
+	req, err := http.NewRequest(http.MethodPut, h.srv.URL+"/api/composer/drafts/"+url.PathEscape(key), &body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "multipart/form-data; boundary="+boundary)
+	resp, err := h.srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d body=%s", resp.StatusCode, data)
+	}
+	var out struct {
+		Draft store.ComposerDraft `json:"draft"`
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Draft.Text != "分析文档" || len(out.Draft.Files) != 1 || out.Draft.Files[0].Name != name {
+		t.Fatalf("snapshot=%+v", out.Draft)
+	}
+	fileReq, err := http.NewRequest(http.MethodGet, h.srv.URL+"/api/composer/drafts/"+url.PathEscape(key)+"/files/f1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fileResp, err := h.srv.Client().Do(fileReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fileResp.Body.Close()
+	got, _ := io.ReadAll(fileResp.Body)
+	if fileResp.StatusCode != http.StatusOK || !bytes.Equal(got, payload) {
+		t.Fatalf("status=%d bytes=%v", fileResp.StatusCode, got)
+	}
+}
