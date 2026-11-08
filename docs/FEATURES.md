@@ -102,6 +102,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
+- 普通主管可通过配置 YAML 或 Settings API 开启 `swarm.incremental_execution`，在实施回合加入先做小步实现、逐项验收用户要求的通用指导。默认关闭，真实任务收益需独立评测。关联 `C-009`。实现与验证见 `internal/config/config.go`、`internal/server/settings.go`、`internal/engine/incremental_execution.go`、`internal/engine/iterations.go` 以及 `internal/config/incremental_execution_test.go`、`internal/server/incremental_execution_settings_test.go`、`internal/engine/incremental_execution_http_test.go`。
+
 - 主管在工具前给出的完整说明通过调度声明核对后出现在对应工具之前，分隔主对话的工作折叠。PC 与手机按同一事件顺序显示实时及分页记录。关联 `C-009`、`C-022`；证据 `internal/engine/manager_prose_order_http_test.go`。
 
 - 联网工具执行位置：`web_search`／`web_fetch` 保持普通函数名、参数、开关、结果截断和工具 Trace；默认 `auto` 在当前 Gateway 账号授权后走该服务器云端，匿名走本机。设置可显式选本机或云端；云端拒绝／失败不重跑本地。Host 凭据仅在 Go 后端调用专用云工具路由，不进入 renderer、模型或普通推理 API；旧授权缺少服务端精确 Key 绑定时要求重新登录。关联 `C-006`、`C-009`；证据：`internal/tools/cloud_web.go`、`internal/tools/cloud_web_test.go`、`internal/tools/cloud_web_response_test.go`、`internal/engine/web_execution_test.go`。

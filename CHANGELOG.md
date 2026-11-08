@@ -6,6 +6,9 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Added opt-in incremental implementation guidance for ordinary manager turns.
+  The experimental setting defaults to disabled.
+
 - Added an optional default reasoning level for model calls without an explicit
   choice. Worker model bindings retain their selected level across restoration.
 

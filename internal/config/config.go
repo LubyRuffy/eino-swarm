@@ -90,6 +90,9 @@ type SwarmConfig struct {
 	// empty input's placeholder. Tab inserts it; Enter sends it. Off stops
 	// the extra call. An older file without the key stays on.
 	ComposerPredictions bool `yaml:"composer_predictions" json:"composer_predictions"`
+	// IncrementalExecution adds implementation-first and requirement-based
+	// verification guidance to ordinary manager turns. It is opt-in.
+	IncrementalExecution bool `yaml:"incremental_execution" json:"incremental_execution"`
 	// DefaultReasoningEffort fills an unspecified model-call effort. Empty
 	// preserves existing call defaults. An explicit call effort takes priority.
 	DefaultReasoningEffort string `yaml:"default_reasoning_effort" json:"default_reasoning_effort"`
