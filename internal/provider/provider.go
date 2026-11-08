@@ -309,17 +309,30 @@ func (p *Pool) Invalidate() {
 // Every agent in a run shares the provider's client for a given model name
 // and gets its own telemetry-recording wrapper so a trace can attribute each
 // call to an agent. effort is the conversation's thinking level, applied to
-// every model call as an option so the shared client stays cached: an empty
-// effort sends nothing. model overrides the provider's configured default.
+// every model call as an option so the shared client stays cached. Empty effort
+// inherits the configured default. An empty default sends nothing. model
+// overrides the provider's configured default.
 //
 // The mock provider is the exception: it scripts each role differently, so it
 // builds a fresh model per agent.
 func (p *Pool) ModelBuilder(ctx context.Context, id, modelName, effort string, rec Recorder) (func(role, agentID string) model.BaseChatModel, error) {
+	return p.modelBuilder(ctx, id, modelName, p.effectiveReasoningEffort(effort), rec)
+}
+
+func (p *Pool) effectiveReasoningEffort(effort string) string {
+	if normalized := config.NormalizeReasoning(effort); normalized != "" {
+		return normalized
+	}
+	return config.NormalizeReasoning(p.cfg.SwarmSnapshot().DefaultReasoningEffort)
+}
+
+// modelBuilder uses an already selected effort. In particular, restoring an
+// empty worker binding must not turn it into the installation's latest default.
+func (p *Pool) modelBuilder(ctx context.Context, id, modelName, effort string, rec Recorder) (func(role, agentID string) model.BaseChatModel, error) {
 	prov, err := p.ResolveModel(id, modelName)
 	if err != nil {
 		return nil, err
 	}
-	effort = config.NormalizeReasoning(effort)
 	limit := p.cfg.SwarmSnapshot().CompletionTokenLimit()
 	if p.mock {
 		return func(role, agentID string) model.BaseChatModel {

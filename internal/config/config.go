@@ -90,6 +90,9 @@ type SwarmConfig struct {
 	// empty input's placeholder. Tab inserts it; Enter sends it. Off stops
 	// the extra call. An older file without the key stays on.
 	ComposerPredictions bool `yaml:"composer_predictions" json:"composer_predictions"`
+	// DefaultReasoningEffort fills an unspecified model-call effort. Empty
+	// preserves existing call defaults. An explicit call effort takes priority.
+	DefaultReasoningEffort string `yaml:"default_reasoning_effort" json:"default_reasoning_effort"`
 	// TitleProvider and TitleModel pin which endpoint names conversations
 	// and untitled waits. Both empty follows the conversation's (or the
 	// wait's) own model so a cheap namer is opt-in. A provider with an
@@ -719,6 +722,7 @@ func (c *Config) normalize() {
 	if c.Swarm.ScheduleMaxActive <= 0 {
 		c.Swarm.ScheduleMaxActive = d.Swarm.ScheduleMaxActive
 	}
+	c.Swarm.DefaultReasoningEffort = NormalizeReasoning(c.Swarm.DefaultReasoningEffort)
 	c.Swarm.PolicyReasoningEffort = NormalizeAuxiliaryReasoning(c.Swarm.PolicyReasoningEffort)
 	if c.Tools.WebSearchMaxResults <= 0 {
 		c.Tools.WebSearchMaxResults = d.Tools.WebSearchMaxResults

@@ -256,6 +256,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-170 Settings and providers
 
+- YAML 或 Settings API 可通过 `swarm.default_reasoning_effort` 为未显式选择档位的模型调用设置 `low`／`medium`／`high`，默认空保留原调用行为。显式会话／调用档位优先。省略或 `null` 保存保留已存值，空字符串清除，非法类型拒绝且不写配置。关联 `C-009`。实现与验证见 `internal/config/config.go`、`internal/server/settings.go`、`internal/provider/provider.go`、`internal/provider/worker_model.go`、`internal/provider/default_reasoning_test.go`、`internal/config/default_reasoning_effort_test.go`、`internal/server/default_reasoning_effort_settings_test.go`、`internal/engine/default_reasoning_http_test.go`。
+
 - Settings → Tools 提供联网工具运行位置 `auto`／`local`／`cloud`，默认自动；旧客户端保存其他工具字段且省略／null 该字段时保留显式选择。PC 会话可独立覆盖而不改全局，设置和会话变更从下一回合生效；turn 快照使重启／parked 恢复保持本回合选择。手机默认继承不受手机登录影响，PC 云工具使用自己的 Gateway 授权。Pairlink 元数据仅提供 PC 默认路由与本机回执的离线快照，不宣称实时 grant，不暴露凭据、账号标识或服务器地址。关联 `C-006`、`C-009`；证据：`internal/config/web_execution.go`、`internal/server/settings_web_execution_test.go`、`internal/remote/web_execution_test.go`、`internal/remote/web_execution_status_test.go`、`internal/tools/cloud_web_status.go`、`internal/store/web_execution_test.go`、`frontend/src/components/app/settings-tools.tsx`、`frontend/e2e/web-execution.spec.ts`。
 
 - Chat Completions 推理字段兼容：PC 模型调用与手机直连均接收旧 `reasoning_content` 和新版 vLLM `reasoning`，覆盖 JSON message 与 SSE delta；非空旧字段优先，旧字段空或 null 时回退到新字段，不重复拼接。无需字段名配置；PC 思考沿现有流、历史与 Trace 展示，手机直连保留思考及本地历史。关联契约：`C-009`；入口：Settings → Models、手机 Models／Chat；实现证据：`internal/provider/provider.go`、`go.mod`、`mobile/src/lib/openai-wire.ts`；验证：`internal/provider/reasoning_fields_test.go`、`frontend/e2e/reasoning-fields.spec.ts`。
