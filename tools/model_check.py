@@ -22,6 +22,8 @@ models/provider/RouteRecovery.tla checks that confirmed route refusals stop
 after a consecutive cap instead of waiting forever or buying model retries (C-029).
 models/skills/InstalledSkills.tla checks project-scoped skill publication,
 lookup, removal and separation from learned memory.
+models/sidechat/SideChat.tla checks that temporary replies stay within their
+request owner and never write to or take control of the main task.
 Every case sets its model's switch constants and states
 the expected outcome: the current design must pass every safety invariant;
 each historical or seeded behaviour must break the named invariant (checked
@@ -86,6 +88,13 @@ MODELS = {
             ("TypeOK", "VisibleBundleValidated", "ExistingBundlePreserved", "RemovedBundleHidden",
              "ReadIsProjectScoped", "LoadIsExternalOnly", "ListDisclosesMetadataOnly", "ReviewPreservesInstalled",
              "ProjectDeletionIsFinal"),
+            (),
+        ),
+        Model(
+            "side-chat", ROOT / "models" / "sidechat" / "SideChat.tla",
+            ("UseMainSend", "RebindContext", "SkipReplyOwner", "EnableSideTools", "HoldMainDuringModel"),
+            ("TypeOK", "SideLeavesMainUntouched", "ModelReadsBoundThread",
+             "ReplyMatchesActiveOwner", "SideHasNoTools", "MainCanAdvanceWhileSideWaits"),
             (),
         ),
         Model(
@@ -204,6 +213,23 @@ def _consent(name: str, source: str, switches: tuple[str, ...] = (), violates: s
 
 
 CASES: tuple[Case, ...] = (
+    _case("side-chat-current", "side questions stay independent of the running task", model="side-chat"),
+    _case("side-chat-main-send", "seeded: sending a side question queues it on the main task",
+          ("UseMainSend",), "SideLeavesMainUntouched", model="side-chat"),
+    _case("side-chat-rebound-context", "seeded: navigation rebinds the source of a dispatched request",
+          ("RebindContext",), "ModelReadsBoundThread", model="side-chat"),
+    _case("side-chat-stale-reply", "seeded: a reply settles whichever panel is currently selected",
+          ("SkipReplyOwner",), "ReplyMatchesActiveOwner", model="side-chat"),
+    _case("side-chat-tools", "seeded: the side model inherits the task's tool surface",
+          ("EnableSideTools",), "SideHasNoTools", model="side-chat"),
+    _case("side-chat-holds-main", "seeded: a side model call holds the main task's progress lock",
+          ("HoldMainDuringModel",), "MainCanAdvanceWhileSideWaits", model="side-chat"),
+    *(_case(name, "witness", witness=witness, model="side-chat") for name, witness in (
+        ("side-chat-reach-main-progress", "NeverAnswerAcrossMainProgress"),
+        ("side-chat-reach-follow-up", "NeverTwoSideAnswers"),
+        ("side-chat-reach-late-reply", "NeverLateReplyWithNewRequest"),
+        ("side-chat-reach-error-recovery", "NeverRecoverAfterSideFailure"),
+    )),
     _case("route-current", "three confirmed route refusals fail the call without a model retry",
           model="route"),
     _case("route-unbounded", "historical, shipped through v0.1.69: a confirmed route refusal kept the same call waiting",

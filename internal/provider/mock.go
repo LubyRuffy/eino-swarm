@@ -67,6 +67,10 @@ func newMockModelWithStreamDelay(role string, delay time.Duration) model.BaseCha
 		}, instant: true, role: role}
 	case titleRole:
 		return &mockModel{script: titleNamerScript, role: titleRole, chunkDelay: delay}
+	case "side-chat":
+		return &mockModel{script: func(_ int, msgs []*schema.Message) *schema.Message {
+			return schema.AssistantMessage("Side chat: "+lastUserText(msgs), nil)
+		}, instant: true, role: role}
 	case predictionRole:
 		return &mockModel{script: composerPredictionScript, instant: true, role: predictionRole}
 	case compactRole, sessionMemoryRole:

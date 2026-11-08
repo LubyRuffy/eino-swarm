@@ -19,6 +19,22 @@ query omits the kernel suffix, preserving the environment prompt's format.
 both query errors and cancellation. The existing one-second context remains;
 Sysctl itself has no interruptible API. Other uname-supported platforms keep the existing command.
 
+## Task side chat (`F-147`, `C-042`)
+
+The HTTP tests send side questions through the actual route with a running
+loopback-model turn and with an unanswered human prompt. They check original
+turn identity, absence of side text in the main conversation, request
+limits, provider-error redaction and independent cancellation. The browser
+test drives transcript selection, follows up through the side panel and checks
+the same main turn's durable completion. It also opens a prefilled panel with
+`/side`. Run it with a private port, data directory and output directory.
+
+```bash
+go test -race -count=1 ./internal/server -run '^TestSideChat'
+(cd frontend && ZWAI_E2E_PORT="$OWNED_E2E_PORT" ZWAI_E2E_DATA_DIR="$PRIVATE_E2E_DATA" npm run e2e -- e2e/side-chat.spec.ts --output "$UNIQUE_E2E_OUTPUT")
+make model-check
+```
+
 ## External MCP tools (`F-176`, `C-041`)
 
 `internal/config/mcp_test.go` checks valid transports, private map validation,

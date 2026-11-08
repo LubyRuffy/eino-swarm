@@ -2,13 +2,21 @@
 
 Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user entry points and [CHANGELOG.md](../CHANGELOG.md) for history. Contract IDs are stable.
 
-## C-042 External skill packages have an independent catalog
+## C-043 External skill packages have an independent catalog
 
 - 状态 active。范围是项目级第三方技能安装、读取、卸载和模型发现，关联 `F-421`。
 - ZIP 由用户显式选择，包含一个 Agent Skills 技能。安装校验清单与有界的常规文件集合，拒绝路径逃逸、链接、冲突条目和重复的外部包名。完整文件先暂存，再按清单名称原子发布。卸载先摘除可见名称再清理目录。包内资源与原清单保留字节。删除项目会撤销外部技能目录的访问与发布资格，仍在读取或解包的上传无法重新创建项目或发布技能。
 - 项目间各有独立外部技能目录。项目记忆开关只影响沉淀技能，两个目录、命名空间、模型工具和整理流程分别管理。外部包与同名沉淀技能可共存。`load_skill` 调用和对应回执留在 Trace，排除于自动复盘的提示与写入证据。
 - 新回合在外部目录内按名称提供最多 32 个摘要。经理和 worker 可调用 `load_skill` 读取包正文及资源基址，HTTP 详情仅返回正文与元数据。安装和加载不会执行脚本。模型后续读取资源或运行脚本使用已有工具权限。
 - 实现 `internal/skills` 和 `internal/engine/external_skills.go`。验证见 `internal/engine/installed_skills_http_test.go`、`internal/engine/external_skills_worker_http_test.go`、`internal/server/installed_skills_test.go` 及 `models/skills`。
+
+## C-042 Side questions are isolated from the main task
+
+- 状态 active。作用范围为桌面／Web、`POST /api/threads/:id/side-chat`。关联功能 `F-147`。
+- 侧聊只读该会话的有限文本快照。会话目标、当前请求、近期原始用户消息和主管回复、选中文字和侧聊历史作为数据传给模型。内部提示、工具、诊断、附件内容和其他会话不进入快照。
+- 运行中或等待人工输入的任务保持自己的 turn 与控制路径。侧聊没有执行工具的能力，不创建或改写 turn、事件、排队消息、待答问题、目标或唤醒。独立模型请求不读写主任务的共享服务健康状态，也不使用主任务的重试流程。
+- 侧聊答复只交付给请求所在的面板和会话。取消、关闭或导航撤销该请求的交付资格，迟到结果不能显示在新面板。面板关闭、切换会话或重新加载清除临时问答。并发、输入、错误及超时边界见 [API](API.md)。
+- 实现 `internal/engine/side_chat.go`、`internal/store/side_chat.go`、`internal/server/side_chat.go`、`frontend/src/store/app-side-chat.ts`。验证见 `internal/server/side_chat_http_test.go`、`frontend/e2e/side-chat.spec.ts` 和 `models/sidechat/SideChat.tla`。来源为 GitHub Issue #161。
 
 ## C-041 Explicit MCP servers keep private configuration and scoped sessions
 

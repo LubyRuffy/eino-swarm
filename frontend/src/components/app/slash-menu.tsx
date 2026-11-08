@@ -1,4 +1,4 @@
-import { Flag, ListTodo, Minimize2 } from "lucide-react"
+import { Flag, ListTodo, MessageSquare, Minimize2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import type { SlashCommand } from "@/lib/slash"
@@ -8,6 +8,7 @@ const ICONS = {
   goal: Flag,
   plan: ListTodo,
   compact: Minimize2,
+  side: MessageSquare,
 } as const
 
 /** Codex/Cursor-style list that sits on the composer while the draft is `/…`.

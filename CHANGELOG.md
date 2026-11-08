@@ -10,7 +10,11 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   project menu. New turns discover package summaries and load instructions through
   `load_skill`; package resources stay with the original manifest. Learned
   project skills have their own catalog and keep using `skill_view`.
-  (#160, `F-421`, `C-042`)
+  (#160, `F-421`, `C-043`)
+
+- Added temporary task side chat on desktop and Web. Open it from the
+  conversation header, with `/side`, or from selected transcript text. Ask
+  follow-up questions about the task while it continues. (`F-147`, `C-042`)
 
 - Composer file attachments save and send from the desktop window. A filename
   WebKit leaves raw in the multipart header no longer rejects the whole draft,

@@ -3,7 +3,7 @@ import { type ReactNode, useCallback } from "react"
 import { useShallow } from "zustand/react/shallow"
 
 import { AccountSignIn } from "@/components/app/account-sign-in"
-import { Header } from "@/components/app/header"
+import { Header, type SideChatToggle } from "@/components/app/header"
 import { Palette } from "@/components/app/palette"
 import { SettingsDialog } from "@/components/app/settings-dialog"
 import { Button } from "@/components/ui/button"
@@ -44,6 +44,7 @@ export function AppHeader({
   onTogglePanel,
   onToggleSidebar,
   onOpenTerminal,
+  sideChat,
 }: {
   panelOpen: boolean
   sidebarOpen: boolean
@@ -51,6 +52,7 @@ export function AppHeader({
   onTogglePanel: () => void
   onToggleSidebar: () => void
   onOpenTerminal: () => void
+  sideChat?: SideChatToggle
 }) {
   const threads = useApp((s) => s.threads)
   const activeId = useApp((s) => s.activeId)
@@ -74,6 +76,7 @@ export function AppHeader({
       onTogglePanel={onTogglePanel}
       onToggleSidebar={onToggleSidebar}
       onOpenTerminal={onOpenTerminal}
+      sideChat={sideChat}
       terminalOpen={terminalOpen}
       terminalEnabled={Boolean(activeId || selectedId)}
     />

@@ -3,14 +3,11 @@ import { SLASH_COMMANDS, type SlashCommand, type SlashCommandId } from "./slash-
 
 export * from "./slash-core"
 
-export function localizedSlashCommands(locale: Locale): SlashCommand[] {
-  return SLASH_COMMANDS.map((c) => ({
-    ...c,
-    description: t(
-      locale,
-      c.id === "goal" ? "slash.goal" : c.id === "plan" ? "slash.plan" : "slash.compact",
-    ),
-  }))
+export function localizedSlashCommands(locale: Locale, sideChat = false): SlashCommand[] {
+  const commands = SLASH_COMMANDS.map((c) => ({ ...c, description: t(locale, `slash.${c.id}`) }))
+  // Side chat is local UI. It does not change the server command grammar.
+  if (sideChat) commands.push({ id: "side", name: "side", description: t(locale, "slash.side"), leadingOnly: true })
+  return commands
 }
 
 export function contextHint(chars: number, budget: number, locale: Locale = "en"): string | undefined {

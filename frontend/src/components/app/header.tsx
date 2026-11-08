@@ -1,5 +1,5 @@
-import { PanelLeft, PanelRight, SquareTerminal, WifiOff } from "lucide-react"
-import { useEffect, useState } from "react"
+import { MessageSquare, PanelLeft, PanelRight, SquareTerminal, WifiOff } from "lucide-react"
+import { useEffect, useState, type RefObject } from "react"
 
 import { CopyButton } from "@/components/app/copy-button"
 import { AskMark } from "@/components/app/ask-mark"
@@ -24,6 +24,12 @@ import { cn, formatDuration } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
 import { useApp } from "@/store/app"
 
+export interface SideChatToggle {
+  open: boolean
+  buttonRef: RefObject<HTMLButtonElement | null>
+  toggle: () => void
+}
+
 /** The window title bar. It spans the full width: traffic lights + sidebar
  *  toggle on the left (Codex/Cursor), the conversation on the rest. In desktop
  *  mode it is also the drag region; a double-click zooms like Finder. */
@@ -41,6 +47,7 @@ export function Header({
   onOpenTerminal,
   terminalOpen,
   terminalEnabled,
+  sideChat,
 }: {
   thread?: Thread
   /** The project the open conversation belongs to, when it has one: its name
@@ -60,6 +67,7 @@ export function Header({
   onOpenTerminal: () => void
   terminalOpen: boolean
   terminalEnabled: boolean
+  sideChat?: SideChatToggle
 }) {
   const t = useT()
   const scheduled = useApp((s) => s.scheduleInboxOpen)
@@ -254,6 +262,22 @@ export function Header({
           >
             <SquareTerminal />
           </Button>
+          {sideChat ? (
+            <Button
+              ref={sideChat.buttonRef}
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={sideChat.toggle}
+              aria-label={t(sideChat.open ? "sideChat.close" : "sideChat.open")}
+              title={t(sideChat.open ? "sideChat.close" : "sideChat.open")}
+              aria-expanded={sideChat.open}
+              aria-controls={sideChat.open ? "side-chat" : undefined}
+              className={sideChat.open ? "text-foreground" : "text-muted-foreground"}
+            >
+              <MessageSquare />
+            </Button>
+          ) : null}
           {scheduled || client || browsingClients ? null : (
             <Button
               variant="ghost"
