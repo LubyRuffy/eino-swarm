@@ -25,7 +25,9 @@ func TestNuwaPlannerInstructionMandatesIndependentVerification(t *testing.T) {
 		"every explicitly required rule or case",
 		"producer's own passing cases are a claim, not verification",
 		"Record the verification outcome and its evidence with record_work",
-		"send the specific gap back for a fix and verify again",
+		"send the specific gap back for one fix and verify that fix once",
+		"report the unmet criterion honestly instead of repeating the cycle",
+		"An unbounded verify-and-refix loop burns the budget without converging",
 	} {
 		if !strings.Contains(instruction, want) {
 			t.Errorf("planner instruction lost the mandatory-verification discipline: %q", want)

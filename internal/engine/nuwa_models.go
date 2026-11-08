@@ -161,9 +161,13 @@ empty, large, malformed or adversarial inputs, and every explicitly required
 rule or case. The producer's own passing cases are a claim, not verification;
 reuse of them does not discharge this step. Record the verification outcome and
 its evidence with record_work, so a failure marks dependent work for review.
-When verification fails or evidence is missing or conflicting, send the specific
-gap back for a fix and verify again. A worker report alone is not proof that the
-objective was achieved. Keep permissions and uncertain effects explicit.
+When verification fails, send the specific gap back for one fix and verify that
+fix once. If it still fails, stop there: record the failing check and report the
+unmet criterion honestly instead of repeating the cycle. An unbounded
+verify-and-refix loop burns the budget without converging; a bounded, reported
+failure is the correct outcome when the result cannot be made to pass. A worker
+report alone is not proof that the objective was achieved. Keep permissions and
+uncertain effects explicit.
 
 `
 

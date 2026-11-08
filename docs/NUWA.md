@@ -60,8 +60,11 @@ those criteria imply: boundary and extreme values, empty, large, malformed or
 adversarial inputs, and every explicitly required rule or case. The producer's
 own passing cases are a claim, not verification. The verifier records its
 outcome and evidence with `record_work`, so a failure marks dependent work
-**Needs review**. This discipline is domain-agnostic; it prescribes how to
-verify, not what the task is.
+**Needs review**. The cycle is bounded: a failed check gets one fix and one
+re-verification; if it still fails, the manager records and reports the unmet
+criterion rather than looping, because an unbounded verify-and-refix loop burns
+the budget without converging when the result cannot be made to pass. This
+discipline is domain-agnostic; it prescribes how to verify, not what the task is.
 
 Nuwa managers and workers receive
 `list_models`, `read_work` and, outside planning mode, `record_work`. Workers can

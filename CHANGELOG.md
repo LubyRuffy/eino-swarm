@@ -44,8 +44,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   separate executor — on a different configured model when one exists —
   derives boundary and required-case checks from the acceptance criteria and
   exercises the actual result, instead of trusting the producer's own passing
-  cases. Verification outcomes are recorded with `record_work`. The
-  instruction stays task-agnostic. (`C-037`)
+  cases. Verification outcomes are recorded with `record_work`. The cycle is
+  bounded to one fix and re-verification: a still-failing check is recorded and
+  reported rather than looped, so an unconvergeable result cannot burn the whole
+  budget. The instruction stays task-agnostic. (`C-037`)
 
 - Changed the Nuwa collaboration graph to make saved dependencies the only
   backbone and converge every terminal or isolated record on a single goal
