@@ -284,8 +284,17 @@ func TestNativeQuitReapsItsOwnedSuccessorAtReadyAndCommitBeforeDeletingTheCopy(t
 			appCtx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			result := make(chan error, 1)
-			go func() { result <- opts.Recovery.Relaunch(appCtx, desktop.RecoveryAttempt{Generation: 2, Attempts: 2}) }()
-			deadline := time.After(3 * time.Second)
+			finished := make(chan struct{})
+			go func() {
+				defer close(finished)
+				result <- opts.Recovery.Relaunch(appCtx, desktop.RecoveryAttempt{Generation: 2, Attempts: 2})
+			}()
+			// A failed precondition must still join focus/launcher actors before
+			// the fixture restores its global stub or removes its private files.
+			t.Cleanup(func() { cancel(); opts.OnShutdown(); <-finished })
+			// Starting an instrumented subprocess is preparation, separate from
+			// the unchanged five-second cancellation/reaping assertion below.
+			deadline := time.After(10 * time.Second)
 			var childPID int
 			for childPID == 0 {
 				body, readErr := os.ReadFile(boundary)
@@ -293,6 +302,8 @@ func TestNativeQuitReapsItsOwnedSuccessorAtReadyAndCommitBeforeDeletingTheCopy(t
 					_, _ = fmt.Sscan(string(body), &childPID)
 				}
 				select {
+				case err := <-result:
+					t.Fatalf("owned successor exited before the handoff boundary: %v", err)
 				case <-deadline:
 					t.Fatal("owned successor never reached the handoff boundary")
 				case <-time.After(10 * time.Millisecond):
