@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -317,7 +318,17 @@ func TestManagedWorkspaceExecPollAndProbeShareOneDeadline(t *testing.T) {
 	done := make(chan managedPollOutcome, 1)
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
-	ctx = BindExecOutput(ctx, func(string) {}, einoexec.ToolName, "poll")
+	var outputMu sync.Mutex
+	var observed struct {
+		Stdout string `json:"stdout"`
+	}
+	ctx = BindExecOutput(ctx, func(raw string) {
+		outputMu.Lock()
+		defer outputMu.Unlock()
+		if err := json.Unmarshal([]byte(raw), &observed); err != nil {
+			t.Errorf("invalid live probe output: %v", err)
+		}
+	}, einoexec.ToolName, "poll")
 	go func() {
 		out, err := tl.InvokableRun(ctx, `{"command":"sleep 31; pip list 2>/dev/null","timeout_ms":1200}`)
 		done <- managedPollOutcome{text: out, err: err}
@@ -340,9 +351,14 @@ func TestManagedWorkspaceExecPollAndProbeShareOneDeadline(t *testing.T) {
 			Stdout  string `json:"stdout"`
 			Error   string `json:"error"`
 		}
+		// Process startup spends this same hard deadline. A busy host may kill
+		// the shell before it prints; compare with actual observed bytes.
+		outputMu.Lock()
+		actualOutput := observed.Stdout
+		outputMu.Unlock()
 		if out.err != nil || json.Unmarshal([]byte(out.text), &receipt) != nil || !receipt.Waited ||
 			receipt.Timeout != 1200 || receipt.WaitMS < 400 || receipt.RunMS >= 1000 ||
-			receipt.Stdout != "started" || !strings.Contains(receipt.Error, "context deadline exceeded") {
+			receipt.Stdout != actualOutput || (actualOutput != "" && actualOutput != "started") || !strings.Contains(receipt.Error, "context deadline exceeded") {
 			t.Fatalf("probe reset the hard deadline or lost its actual output: %s, %v", out.text, out.err)
 		}
 	case <-ctx.Done():
