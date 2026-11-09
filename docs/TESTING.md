@@ -5313,8 +5313,9 @@ tests are offline integrity checks; opt-in execution calls a real model.
 The layers above prove the code is correct; they cannot say whether a prompt,
 delegation or harness change makes a real model finish tasks better, faster or
 cheaper. `make eval` answers that, and only that. It calls a real model, so it
-is never part of `make test`, `make check`, CI or the before-finishing checks,
-and its results are measurements rather than pass/fail gates.
+is never part of `make test`, `make check`, CI or the before-finishing checks.
+Its results are measurements. `--gate` below is a person's check before adopting
+an orchestration change; it is not a CI pass/fail gate.
 
 ```bash
 make eval EVAL_PROVIDER=default                 # every task, 2 runs each
@@ -5322,6 +5323,7 @@ make eval EVAL_PROVIDER=default EVAL_RUNS=3 EVAL_TASKS=direct-lookup,noisy-log
 make eval EVAL_PROVIDER=default EVAL_MODEL=<another model on that provider>
 python3 tools/agent_eval.py --mock --runs 1     # harness smoke test, no model
 python3 tools/agent_eval_compare.py --arm a=<out dir> --arm b=<out dir> --out compare.md
+python3 tools/agent_eval_compare.py --gate --arm baseline=<out dir> --arm candidate=<out dir>
 python3 tools/agent_eval_prereview.py <out dir> ...  # what a worker's report changed
 python3 tools/trace_to_eval.py --trace <run>/traces.json --id <new id>   # replay task
 python3 tools/agent_eval.py --provider default --task-root output/replays --tasks <new id>
@@ -5374,7 +5376,21 @@ python3 tools/agent_eval.py --provider default --task-root output/replays --task
   Markdown table of passes, median tokens and seconds, manager calls,
   spawns, system-prompt size and first-call cache share per arm, the
   per-task cells, the tasks whose pass rate differs from the reference and
-  every failed check. Harness errors are listed but not graded.
+  every failed check. Harness errors are listed but not graded as model
+  failures. A task row shows median tokens and seconds only when every arm
+  graded that task. Incomplete usage is `incomparable`, not zero, and a lower
+  time or token count never offsets a pass-rate drop. `--gate` exits 2 when a
+  later arm lowers the pass rate of a task the reference graded, omits that
+  task, or records a harness error on it. A higher pass rate stays in the
+  difference list and is not a significance claim. For a spec task, a failed
+  hidden rule is `self_attested` when that run's
+  `runs/<task>/run-N/traces.json` shows a successful execution of one of the
+  task's visible `test_basic.py` files, and `unknown` when the Trace is
+  missing or unreadable. A Trace that does not show that success is neither.
+  The first regression reference is the three spec review triples plus
+  `spec-dense`, two runs each, with the same default output cap on both
+  binaries. The full task directory uses the same `make eval` command without
+  `EVAL_TASKS`. Neither run is part of `make check`.
 - **Replayed human input.** A task's optional `replay` list holds the human
   messages that follow the prompt: `{"kind": "steer" | "answer" | "turn",
   "text": "…", "after_s": seconds}`. A steer is sent once the turn has run
@@ -5466,8 +5482,10 @@ and the spec-conventions arms reuse spec-edges' prompts.
 `tools/test_agent_eval_prereview.py` covers the replay (patch hunks, the
 first-report boundary, a failed edit, a worker's own wait) and the
 marking of a run changed through `exec`. `tools/test_trace_to_eval.py` converts synthetic
-traces only; `tools/test_agent_eval_compare.py` covers arm merging, flips
-and harness-error exclusion; `tools/test_agent_eval_limits.py` covers the
+traces only; `tools/test_agent_eval_compare.py` covers arm merging, flips,
+harness-error exclusion, a pass-rate drop that preserves the total, missing
+usage, hidden-rule `self_attested` / `unknown` classification, and the
+unchanged exit when `--gate` is absent; `tools/test_agent_eval_limits.py` covers the
 output-cap flag and that a SIGTERM unwinds through a run's cleanup.
 
 ### Cost measurements and what they decided

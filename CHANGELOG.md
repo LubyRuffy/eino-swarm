@@ -6,6 +6,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Agent-eval comparison can refuse a candidate that drops a reference task's
+  pass rate, omits the task, or adds a harness error. The check is opt-in and
+  stays out of `make check`. Incomplete usage is incomparable rather than zero.
+  A spec hidden-rule failure is marked when the visible tests passed, and stays
+  unknown when its Trace is missing.
+
 - Nuwa verification is a separate check, and the host allows one verify and one
   fix per turn and shared record. Another `spawn_agent` is refused before a
   worker starts. Ordinary work does not use the allowance. (`C-037`)

@@ -104,6 +104,102 @@ class CompareTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             cmp.load_arm(self.dir)
 
+    def test_gate_fails_a_single_task_drop_even_when_the_totals_match(self):
+        # The same total can hide one task that broke while another started passing.
+        write_report(self.dir / "a", "m1", [result("x", 1, True), result("y", 1, False)])
+        write_report(self.dir / "b", "m2", [result("x", 1, False), result("y", 1, True)])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = cmp.main(["--gate", "--arm", f"a={self.dir / 'a'}", "--arm", f"b={self.dir / 'b'}"])
+        text = out.getvalue()
+        self.assertEqual(code, 2)
+        self.assertIn("b x pass rate 0/1 is below a 1/1", text)
+        self.assertNotIn("improved", text.lower())
+
+    def test_without_gate_a_pass_rate_drop_still_exits_zero(self):
+        write_report(self.dir / "a", "m1", [result("x", 1, True)])
+        write_report(self.dir / "b", "m2", [result("x", 1, False)])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = cmp.main(["--arm", f"a={self.dir / 'a'}", "--arm", f"b={self.dir / 'b'}"])
+        self.assertEqual(code, 0)
+        self.assertNotIn("## Regression gate", out.getvalue())
+
+    def test_gate_treats_a_new_harness_error_as_adoption_failure_not_a_graded_miss(self):
+        write_report(self.dir / "a", "m1", [result("x", 1, True)])
+        broken = result("x", 1, False, harness_error="boot")
+        write_report(self.dir / "b", "m2", [broken])
+        graded = cmp.arm_stats(cmp.load_arm(self.dir / "b")[0])
+        self.assertEqual(graded["failures"], [])
+        self.assertEqual((graded["passed"], graded["runs"]), (0, 0))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = cmp.main(["--gate", "--arm", f"a={self.dir / 'a'}", "--arm", f"b={self.dir / 'b'}"])
+        self.assertEqual(code, 2)
+        text = out.getvalue()
+        self.assertIn("b x has a harness error after a graded it", text)
+        self.assertIn("| x | 1/1 | 0/0 |", text)
+
+    def test_gate_fails_when_the_candidate_omits_a_reference_task(self):
+        write_report(self.dir / "a", "m1", [result("x", 1, True), result("y", 1, True)])
+        write_report(self.dir / "b", "m2", [result("x", 1, True)])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = cmp.main(["--gate", "--arm", f"a={self.dir / 'a'}", "--arm", f"b={self.dir / 'b'}"])
+        self.assertEqual(code, 2)
+        self.assertIn("b is missing y", out.getvalue())
+
+    def test_missing_usage_is_incomparable_rather_than_zero(self):
+        row = result("x", 1, True)
+        row["metrics"]["usage_facts"] = {"total_tokens": None}
+        write_report(self.dir / "a", "m1", [row])
+        write_report(self.dir / "b", "m2", [result("x", 1, True)])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            cmp.main(["--arm", f"a={self.dir / 'a'}", "--arm", f"b={self.dir / 'b'}"])
+        text = out.getvalue()
+        self.assertIn("| a | 1/1 | 0 | incomparable | incomparable |", text)
+        self.assertNotIn("| a | 1/1 | 0 | 0K |", text)
+        self.assertIn("| x | 1/1 · incomparable · 2s | 1/1 · 1K · 2s |", text)
+
+    def test_hidden_rule_failure_records_self_attested_or_unknown(self):
+        # The visible test is the workspace file the task keeps unchanged.
+        # A successful run of it does not satisfy the hidden rule.
+        failed = {
+            "name": "money meets every README rule", "ok": False,
+        }
+        attested = result("spec-edges", 1, False)
+        attested["checks"] = [failed]
+        unknown = result("spec-edges", 2, False)
+        unknown["checks"] = [failed]
+        rejected = result("spec-edges", 3, False)
+        rejected["checks"] = [failed]
+        write_report(self.dir / "a", "m1", [attested, unknown, rejected])
+        runs = self.dir / "a" / "runs" / "spec-edges"
+        (runs / "run-1").mkdir(parents=True)
+        (runs / "run-1" / "traces.json").write_text(json.dumps([{
+            "events": [
+                {"kind": "tool_call", "tool_call_id": "visible",
+                 "text": 'exec({"command": "python3 money/test_basic.py"})'},
+                {"kind": "tool_result", "tool_call_id": "visible",
+                 "text": '{"exit_code": 0, "failed": false}'},
+            ],
+        }]))
+        (runs / "run-3").mkdir(parents=True)
+        (runs / "run-3" / "traces.json").write_text(json.dumps([{
+            "events": [
+                {"kind": "tool_call", "tool_call_id": "visible",
+                 "text": 'exec({"command": "python3 money/test_basic.py"})'},
+                {"kind": "tool_result", "tool_call_id": "visible",
+                 "text": '{"exit_code": 1, "failed": true}'},
+            ],
+        }]))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = cmp.main(["--arm", f"a={self.dir / 'a'}", "--arm", f"b={self.dir / 'a'}"])
+        self.assertEqual(code, 0)
+        self.assertIn("a spec-edges: self_attested 1, unknown 1", out.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
