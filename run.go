@@ -6,6 +6,7 @@ package swarm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -60,6 +61,11 @@ type RunConfig struct {
 
 	// MaxIterations caps the manager's ReAct loop (<=0 keeps the default).
 	MaxIterations int
+
+	// CaptureReasoningRecoveryInput retains an independent, in-memory input
+	// snapshot for a capped manager generation and joins its old runner before
+	// returning. False skips recovery input copies and extra iterator waiting.
+	CaptureReasoningRecoveryInput bool
 
 	// RestoreWorkers are leftover sub-agents from a previous process, started
 	// under their existing ids after the spawn hook is installed so the roster
@@ -169,7 +175,7 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 	}
 
 	acc := &streamAcc{reg: r, agentID: DefaultManagerID, role: DefaultManagerID}
-	managerModel = &generationModel{BaseChatModel: managerModel, acc: acc}
+	managerModel = &generationModel{BaseChatModel: managerModel, acc: acc, captureRecoveryInput: cfg.CaptureReasoningRecoveryInput}
 	mgr, err := adk.NewChatModelAgent(ctx, r.ManagerConfig(
 		DefaultManagerID, "swarm manager", managerModel, opts...))
 	if err != nil {
@@ -197,6 +203,7 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 	// delivers each assistant message ONLY as a MessageStream, so the final
 	// answer is the last stream that ended without tool calls.
 	final := ""
+	var recoveryCap *ReasoningOutputLimit
 	iter := adk.NewRunner(ctx, adk.RunnerConfig{Agent: mgr, EnableStreaming: true}).Run(ctx, msgs)
 	for {
 		ev, ok := iter.Next()
@@ -208,6 +215,9 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 		}
 		if ev.Err != nil {
 			acc.interruptPending(ev.Err)
+			if recoveryCap != nil {
+				continue
+			}
 			return RunResult{Final: final, Transcript: r.historySnapshot()}, ev.Err
 		}
 		o := ev.Output
@@ -217,6 +227,16 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 		if o.MessageOutput.IsStreaming && o.MessageOutput.MessageStream != nil {
 			answer, calls, drainErr := acc.drain(o.MessageOutput.MessageStream)
 			if drainErr != nil {
+				var capped *ReasoningOutputLimit
+				if cfg.CaptureReasoningRecoveryInput && errors.As(drainErr, &capped) {
+					// UI EOF precedes the asynchronous AfterModel history write.
+					// The reasoning-only generation has no tool batch to execute;
+					// drain this iterator before another run can reset its history.
+					if recoveryCap == nil {
+						recoveryCap = capped
+					}
+					continue
+				}
 				return RunResult{Final: final, Transcript: r.historySnapshot()}, drainErr
 			}
 			if len(calls) == 0 && strings.TrimSpace(answer) != "" {
@@ -233,6 +253,9 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 	}
 	if ctx.Err() != nil {
 		acc.interruptPending(ctx.Err())
+	}
+	if recoveryCap != nil {
+		return RunResult{Final: final, Transcript: r.historySnapshot()}, recoveryCap
 	}
 	return RunResult{Final: final, Transcript: r.historySnapshot()}, nil
 }

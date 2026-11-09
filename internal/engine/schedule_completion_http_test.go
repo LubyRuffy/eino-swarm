@@ -16,10 +16,13 @@ import (
 )
 
 type scheduleCompletionRequest struct {
-	Stream     bool              `json:"stream"`
-	ToolChoice string            `json:"tool_choice"`
-	Messages   []*schema.Message `json:"messages"`
-	Tools      []struct {
+	Model           string            `json:"model"`
+	MaxTokens       int               `json:"max_tokens"`
+	ReasoningEffort *string           `json:"reasoning_effort"`
+	Stream          bool              `json:"stream"`
+	ToolChoice      string            `json:"tool_choice"`
+	Messages        []*schema.Message `json:"messages"`
+	Tools           []struct {
 		Function struct {
 			Name        string
 			Description string

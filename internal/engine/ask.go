@@ -11,6 +11,7 @@ import (
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -263,7 +264,7 @@ func (rt *runtime) currentTurnID() string {
 // waitAsk identifies a new live tool call. A reply that arrives before its
 // waiter is armed remains in the call-attributed stash.
 func (rt *runtime) waitAsk(ctx context.Context, questions []AskQuestion) (AskAnswers, error) {
-	return rt.waitAskCall(ctx, questions, "")
+	return rt.waitAskCall(ctx, questions, compose.GetToolCallID(ctx))
 }
 
 // Recovery already validated this identity against its shared snapshot.

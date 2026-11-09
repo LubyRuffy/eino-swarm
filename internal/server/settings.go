@@ -188,6 +188,9 @@ type putSwarmSettings struct {
 	IncrementalExecution *bool `json:"incremental_execution"`
 	// Omitted or null preserves the choice. An explicit empty string clears it.
 	DefaultReasoningEffort *string `json:"default_reasoning_effort"`
+	// Absent keeps the stored choices when an older client saves the section.
+	RecoverReasoningOutputLimit   *bool   `json:"recover_reasoning_output_limit"`
+	ReasoningOutputRecoveryEffort *string `json:"reasoning_output_recovery_effort"`
 }
 
 // putSettingsRequest mirrors settingsView, plus the optional new API key per
@@ -271,6 +274,14 @@ func (s *Server) putSettings(c *gin.Context) {
 			next.Swarm.DefaultReasoningEffort = cfg.Swarm.DefaultReasoningEffort
 			if req.Swarm.DefaultReasoningEffort != nil {
 				next.Swarm.DefaultReasoningEffort = *req.Swarm.DefaultReasoningEffort
+			}
+			next.Swarm.RecoverReasoningOutputLimit = cfg.Swarm.RecoverReasoningOutputLimit
+			if req.Swarm.RecoverReasoningOutputLimit != nil {
+				next.Swarm.RecoverReasoningOutputLimit = *req.Swarm.RecoverReasoningOutputLimit
+			}
+			next.Swarm.ReasoningOutputRecoveryEffort = cfg.Swarm.ReasoningOutputRecoveryEffort
+			if req.Swarm.ReasoningOutputRecoveryEffort != nil {
+				next.Swarm.ReasoningOutputRecoveryEffort = *req.Swarm.ReasoningOutputRecoveryEffort
 			}
 		}
 		if req.Tools != nil {

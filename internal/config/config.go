@@ -146,6 +146,14 @@ type SwarmConfig struct {
 	// spend that entire default before it emits an answer or a tool call.
 	// Zero or negative is repaired to the default.
 	MaxCompletionTokens int `yaml:"max_completion_tokens" json:"max_completion_tokens"`
+	// RecoverReasoningOutputLimit permits one durable same-turn recovery when
+	// a manager generation spends its output cap on reasoning alone, including
+	// after earlier tools or an engine resume. It is disabled by default.
+	RecoverReasoningOutputLimit bool `yaml:"recover_reasoning_output_limit,omitempty" json:"recover_reasoning_output_limit,omitempty"`
+	// ReasoningOutputRecoveryEffort overrides only a fresh turn's first-generation
+	// recovery when no explicit effort is set. Mid-turn and resumed recovery keep
+	// the original effort, including omission.
+	ReasoningOutputRecoveryEffort string `yaml:"reasoning_output_recovery_effort,omitempty" json:"reasoning_output_recovery_effort,omitempty"`
 	// ScheduleMinIntervalSeconds is the shortest cadence a schedule may
 	// use. Zero or negative is repaired to the default so a hand-edit
 	// cannot arm a sub-second loop.
@@ -727,6 +735,7 @@ func (c *Config) normalize() {
 	}
 	c.Swarm.DefaultReasoningEffort = NormalizeReasoning(c.Swarm.DefaultReasoningEffort)
 	c.Swarm.PolicyReasoningEffort = NormalizeAuxiliaryReasoning(c.Swarm.PolicyReasoningEffort)
+	c.Swarm.ReasoningOutputRecoveryEffort = NormalizeReasoning(c.Swarm.ReasoningOutputRecoveryEffort)
 	if c.Tools.WebSearchMaxResults <= 0 {
 		c.Tools.WebSearchMaxResults = d.Tools.WebSearchMaxResults
 	}

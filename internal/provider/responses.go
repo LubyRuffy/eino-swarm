@@ -50,12 +50,16 @@ type responsesModel struct {
 }
 
 func newResponsesModel(p config.Provider) (*responsesModel, error) {
+	return newResponsesModelWithClient(p, chatHTTPClient(p.Timeout(), p.FirstByteTimeout()))
+}
+
+func newResponsesModelWithClient(p config.Provider, client *http.Client) (*responsesModel, error) {
 	tools, err := config.CloneBuiltinTools(p.BuiltinTools)
 	if err != nil {
 		return nil, err
 	}
 	p.BuiltinTools = tools
-	return &responsesModel{provider: p, client: chatHTTPClient(p.Timeout(), p.FirstByteTimeout())}, nil
+	return &responsesModel{provider: p, client: client}, nil
 }
 
 func (m *responsesModel) WithTools(tools []*schema.ToolInfo) (model.ToolCallingChatModel, error) {

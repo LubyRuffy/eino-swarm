@@ -94,3 +94,106 @@ export async function startGenerationInterruptionFixture() {
     }),
   }
 }
+
+// The manager performs a real tool effect before a later generation is capped.
+// Gates are released only after the browser has observed each generation.
+export async function startManagerMidturnInterruptionFixture(options: { receiptPath: string }) {
+  const errors: string[] = []
+  const marker = "effect preserved 23"
+  const answer = "The workspace effect was preserved after the interrupted output."
+  const cappedThought = "This capped generation remains recorded with its original cause."
+  const recoveryThought = "A distinct generation continues from the preserved tool evidence."
+  const callID = "original-midturn-effect"
+  let managerRequests = 0
+  let policyRequests = 0
+  let originalToolEvidencePreserved = false
+  let exhaustedReasoningAbsent = false
+  let capped: ServerResponse | undefined
+  let recovery: ServerResponse | undefined
+  const quote = (value: string) => "'" + value.replaceAll("'", "'\"'\"'") + "'"
+  const command = `printf '%s\\n' ${quote(marker)} >> ${quote(options.receiptPath)}; cat ${quote(options.receiptPath)}`
+  const chunk = (response: ServerResponse, delta: object, finish: string | null = null) => {
+    response.write(`data: ${JSON.stringify({ id: `manager-generation-${managerRequests}`, object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`)
+  }
+  const end = (response: ServerResponse, finish: string) => {
+    chunk(response, {}, finish)
+    response.end("data: [DONE]\n\n")
+  }
+  const endpoint = createServer((incoming, response) => {
+    let raw = ""
+    incoming.setEncoding("utf8")
+    incoming.on("data", (part: string) => { raw += part })
+    incoming.on("end", () => {
+      try {
+        if (incoming.headers.authorization) throw new Error("Manager recovery fixture must be keyless")
+        const input = JSON.parse(raw) as Omit<Input, "messages"> & {
+          messages: (Message & { tool_call_id?: string; reasoning_content?: string; reasoning?: string })[]
+          reasoning_effort?: string; max_tokens?: number; max_completion_tokens?: number
+        }
+        if (input.messages[0]?.role === "system" && input.messages[0].content?.split("\n", 1)[0] === "## Schedule answer claims") {
+          if (input.stream || input.tools?.length || input.tool_choice !== "none" || input.messages.length !== 2 || input.messages[1].role !== "user") {
+            throw new Error("Schedule answer admission must remain separate, non-streaming and tool-free")
+          }
+          policyRequests++
+          response.writeHead(200, { "Content-Type": "application/json" })
+          response.end(JSON.stringify({ choices: [{ index: 0, message: { role: "assistant", content: '{"claims":[]}' }, finish_reason: "stop" }] }))
+          return
+        }
+        if (!input.stream || !input.tools?.some((tool) => tool.function.name === "spawn_agent")) {
+          throw new Error("Unknown manager recovery fixture protocol")
+        }
+        if (input.reasoning_effort !== "high" || (input.max_tokens ?? input.max_completion_tokens) !== 16384) {
+          throw new Error("Manager recovery changed the explicit reasoning effort or output budget")
+        }
+        managerRequests++
+        if (managerRequests > 3) throw new Error("The same turn attempted more than one recovery")
+        if (managerRequests > 1) {
+          const tools = input.messages.filter((message) => message.role === "tool" && message.tool_call_id === callID)
+          const calls = input.messages.flatMap((message) => message.tool_calls ?? []).filter((call) => call.function.name === "exec")
+          if (tools.length !== 1 || !tools[0].content?.includes(marker) || calls.length !== 1) {
+            throw new Error("Original tool evidence was lost or duplicated before recovery")
+          }
+          originalToolEvidencePreserved = true
+        }
+        response.writeHead(200, { "Content-Type": "text/event-stream" })
+        if (managerRequests === 1) {
+          chunk(response, { role: "assistant", tool_calls: [{ index: 0, id: callID, type: "function", function: { name: "exec", arguments: JSON.stringify({ command }) } }] })
+          end(response, "tool_calls")
+        } else if (managerRequests === 2) {
+          capped = response
+          chunk(response, { role: "assistant", reasoning_content: cappedThought })
+        } else {
+          exhaustedReasoningAbsent = !input.messages.some((message) =>
+            [message.content, message.reasoning_content, message.reasoning].some((value) => value?.includes(cappedThought)))
+          if (!exhaustedReasoningAbsent) throw new Error("Exhausted generation reasoning was replayed into recovery input")
+          recovery = response
+          chunk(response, { role: "assistant", reasoning_content: recoveryThought })
+        }
+      } catch (error) {
+        errors.push(String(error))
+        if (!response.headersSent) response.writeHead(400, { "Content-Type": "application/json" })
+        response.end(JSON.stringify({ error: { message: String(error), type: "invalid_request_error" } }))
+      }
+    })
+  })
+  await new Promise<void>((resolve, reject) => {
+    endpoint.once("error", reject)
+    endpoint.listen(0, "127.0.0.1", () => { endpoint.off("error", reject); resolve() })
+  })
+  const address = endpoint.address()
+  if (!address || typeof address === "string") throw new Error("Manager recovery fixture did not listen")
+  return {
+    url: `http://127.0.0.1:${address.port}`, errors, marker, answer, cappedThought, recoveryThought, callID,
+    state: () => ({ managerRequests, policyRequests, originalToolEvidencePreserved, exhaustedReasoningAbsent }),
+    interruptCapped: () => { if (!capped) throw new Error("Capped manager generation has not started"); end(capped, "length") },
+    finishRecovery: () => {
+      if (!recovery) throw new Error("Manager recovery has not started")
+      chunk(recovery, { content: answer })
+      end(recovery, "stop")
+    },
+    close: () => new Promise<void>((resolve, reject) => {
+      endpoint.close((error) => error ? reject(error) : resolve())
+      endpoint.closeAllConnections()
+    }),
+  }
+}

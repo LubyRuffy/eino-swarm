@@ -183,6 +183,10 @@ type Registry struct {
 	// and for RunResult.Transcript. ManagerMiddleware keeps it fresh.
 	hist []adk.Message
 
+	// Test scheduling observer for this Registry only. Set before RunWith;
+	// clear only after its actual AfterModel writer has joined.
+	testBeforeAfterModelHistory func([]adk.Message) func()
+
 	// mgrInbox holds steering messages for the manager agent, drained by
 	// ManagerMiddleware at the manager's next turn boundary.
 	mgrInbox []*schema.Message
@@ -460,6 +464,11 @@ func (m *historyRecorder) BeforeModelRewriteState(ctx context.Context,
 func (m *historyRecorder) AfterModelRewriteState(ctx context.Context,
 	state *adk.ChatModelAgentState, mc *adk.TypedModelContext[*schema.Message],
 ) (context.Context, *adk.ChatModelAgentState, error) {
+	if pause := m.reg.testBeforeAfterModelHistory; pause != nil {
+		if after := pause(state.Messages); after != nil {
+			defer after()
+		}
+	}
 	m.reg.SetHistory(state.Messages)
 	return ctx, state, nil
 }

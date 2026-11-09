@@ -75,7 +75,10 @@ func missingExecWorkDir(args, workspaceDir string) error {
 		}
 		dir = filepath.Join(base, cwd)
 	}
-	dir = filepath.Clean(dir)
+	return checkExecWorkDir(filepath.Clean(dir))
+}
+
+func checkExecWorkDir(dir string) error {
 	info, err := os.Stat(dir)
 	switch {
 	case err == nil && info.IsDir():

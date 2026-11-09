@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/app"
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
@@ -27,14 +28,25 @@ func TestOrdinaryPCAndPhoneSendPreserveGoalPauseUntilExplicitResume(t *testing.T
 		for _, pause := range []string{"goal_capped", "goal_blocked", "goal_idle"} {
 			t.Run(ingress+"/"+pause, func(t *testing.T) {
 				var hold atomic.Bool
+				var requests, heldRequest atomic.Int64
+				resumedManagerHeld := make(chan int64, 1)
+				requestCanceled := make(chan int64, 1)
+				decodeFailed := make(chan int64, 1)
 				fixture := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					requestID := requests.Add(1)
+					holdAtDecode := hold.Load()
 					var input struct {
 						Stream   bool
 						Tools    []struct{ Function struct{ Name string } }
 						Messages []struct{ Role, Content string }
 					}
 					if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-						t.Error(err)
+						t.Errorf("fixture body decode failed: request=%d hold_at_decode=%t hold_now=%t context_err=%v: %v",
+							requestID, holdAtDecode, hold.Load(), r.Context().Err(), err)
+						select {
+						case decodeFailed <- requestID:
+						default:
+						}
 						http.Error(w, "invalid input", http.StatusBadRequest)
 						return
 					}
@@ -48,7 +60,14 @@ func TestOrdinaryPCAndPhoneSendPreserveGoalPauseUntilExplicitResume(t *testing.T
 					if manager && hold.Load() {
 						w.Header().Set("Content-Type", "text/event-stream")
 						w.(http.Flusher).Flush()
+						if !heldRequest.CompareAndSwap(0, requestID) {
+							t.Errorf("unexpected additional held manager request: request=%d first=%d", requestID, heldRequest.Load())
+							<-r.Context().Done()
+							return
+						}
+						resumedManagerHeld <- requestID
 						<-r.Context().Done()
+						requestCanceled <- requestID
 						return
 					}
 					content := "The requested status is available."
@@ -127,8 +146,52 @@ func TestOrdinaryPCAndPhoneSendPreserveGoalPauseUntilExplicitResume(t *testing.T
 				if err != nil || stored.GoalCapped || stored.GoalBlocked || stored.GoalIdle || stored.GoalAutoTurns != 0 || !e.Status(id).Running {
 					t.Fatalf("explicit resume did not reopen pursuit: thread=%+v status=%+v err=%v", stored, e.Status(id), err)
 				}
+				// Running acknowledges admission; only the fixture can confirm that
+				// the resumed manager body was decoded and its stream is held.
+				wait := time.NewTimer(5 * time.Second)
+				defer wait.Stop()
+				var resumedRequestID int64
+				select {
+				case resumedRequestID = <-resumedManagerHeld:
+				case requestID := <-decodeFailed:
+					t.Fatalf("fixture request %d failed before the resumed manager was held", requestID)
+				case <-wait.C:
+					t.Fatal("resumed manager did not reach the fixture body/stream boundary")
+				}
+				resumedTurnID := e.Status(id).TurnID
+				sub := e.Subscribe(id)
+				defer sub.Close()
 				if err := e.Interrupt(id); err != nil {
 					t.Fatal(err)
+				}
+				select {
+				case requestID := <-requestCanceled:
+					if requestID != resumedRequestID {
+						t.Fatalf("cancelled a different request: got=%d held=%d", requestID, resumedRequestID)
+					}
+				case requestID := <-decodeFailed:
+					t.Fatalf("fixture request %d failed during the controlled interruption", requestID)
+				case <-wait.C:
+					t.Fatal("held resumed request did not observe interruption")
+				}
+				for {
+					select {
+					case event, ok := <-sub.C:
+						if !ok {
+							t.Fatal("interrupted turn subscription closed before its terminal event")
+						}
+						if event.TurnID == resumedTurnID && event.AgentID == swarm.DefaultManagerID &&
+							(event.Kind == swarm.NotifyDone.String() || event.Kind == swarm.NotifyError.String()) {
+							if e.Status(id).Running {
+								t.Fatal("interrupted resumed turn remained running after its terminal event")
+							}
+							return
+						}
+					case requestID := <-decodeFailed:
+						t.Fatalf("fixture request %d failed before the interrupted turn became idle", requestID)
+					case <-wait.C:
+						t.Fatal("interrupted resumed turn did not publish an idle terminal event")
+					}
 				}
 			})
 		}

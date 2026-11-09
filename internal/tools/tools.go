@@ -174,8 +174,7 @@ func buildTools(ctx context.Context, cfg *config.Config, workspaceDir, execution
 			if err != nil {
 				return nil, err
 			}
-			budgeted := wrapExecOutputBudget(inner, cfg.Tools.ToolResultLimit())
-			return wrapExecSleepBias(wrapExecWorkDir(budgeted, workspaceDir))
+			return newWorkspaceExec(inner, workspaceDir, cfg.Tools.ToolResultLimit(), false, nil), nil
 		},
 		websearch.ToolName: func() (tool.BaseTool, error) {
 			local, err := websearch.New(ctx, websearch.Config{
@@ -215,7 +214,10 @@ func buildTools(ctx context.Context, cfg *config.Config, workspaceDir, execution
 		if err != nil {
 			return nil, fmt.Errorf("tools: build %q: %w", d.Name, err)
 		}
-		set.Tools = append(set.Tools, wrapResultCap(wrapAdvertisedParams(t), cfg.Tools.ToolResultLimit()))
+		if _, workspaceExec := t.(*workspaceExec); !workspaceExec {
+			t = wrapResultCap(wrapAdvertisedParams(t), cfg.Tools.ToolResultLimit())
+		}
+		set.Tools = append(set.Tools, t)
 		set.Names = append(set.Names, d.Name)
 	}
 	return set, nil

@@ -12,6 +12,26 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   Authentication, permission, cancellation and unsafe requests still stop
   the turn. (`F-211`, `C-006`)
 
+- Opt-in adaptive exec observation can deliver a short command's original
+  terminal result before the next manager request after a same-turn wait.
+- Added opt-in managed execution for ordinary manager turns on macOS and
+  Linux. The existing `exec` can yield an owned process to the background.
+  The engine streams progress and delivers completed commands on the next
+  model request. The manager can look up or wait for an individual session.
+  Fresh output renews the observation window while the command stays owned
+  by the turn. A configured provider's reported remaining request budget
+  prioritizes verification and delivery near the limit. Commands can tune
+  their initial observation window and preserve pipeline failures. Repeated
+  output can refer to its original tool result. Simple sleep-based polls wait for an owned process to
+  finish. Explicit delays run as written. Repeated identical failures return
+  the original error and ask the manager to change its approach. The engine
+  stops an owned group after a sustained, kernel-confirmed job-control stop.
+  (`F-130`, `C-009`)
+- Opt-in recovery can continue one ordinary manager generation that spent its
+  output budget on reasoning before any answer or tool call. The same turn
+  keeps the original input, tool identities and remaining request budget.
+  (`C-009`, `C-035`)
+
 - Agent-eval comparison can refuse a candidate that drops a reference task's
   pass rate, omits the task, or adds a harness error. The check is opt-in and
   stays out of `make check`. Incomplete usage is incomparable rather than zero.
@@ -117,7 +137,6 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 - Phone EPUB previews show the filename once and give the remaining space to
   the page. Tap left or right to turn pages and tap the middle to show or hide
   the chapter list and Download. (`F-224`, `C-020`)
-
 - Nuwa dispatch explains when a shared-work tool is already mounted so an agent can
   correct its workspace tool selection and keep the task instructions. (`C-037`)
 

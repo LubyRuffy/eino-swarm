@@ -37,7 +37,7 @@ func TestNuwaPlannerInstructionMandatesIndependentVerification(t *testing.T) {
 	}
 
 	// The reached planner prompt, not only the constant, carries the discipline.
-	assembled := strings.Join(strings.Fields(managerPrompt(&tools.Set{}, "", true)), " ")
+	assembled := strings.Join(strings.Fields(managerPrompt(&tools.Set{}, "", true, false)), " ")
 	if !strings.Contains(assembled, "verify it with an independent executor") {
 		t.Fatal("the assembled planner prompt did not include independent verification")
 	}

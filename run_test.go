@@ -1101,6 +1101,10 @@ func TestLengthStopWithNoAnswerIsAnError(t *testing.T) {
 	if !errors.Is(err, errOutputBudget) {
 		t.Fatalf("empty length stop: answer %q calls %d err %v", answer, len(calls), err)
 	}
+	var capped *ReasoningOutputLimit
+	if !errors.As(err, &capped) || capped.MessageID == "" || capped.MessageID != acc.messageID || err.Error() != errOutputBudget.Error() {
+		t.Fatalf("reasoning-only cap lost its generation identity or original error: %v", err)
+	}
 }
 
 func TestLengthStopWithAnAnswerIsKept(t *testing.T) {

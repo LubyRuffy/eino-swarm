@@ -31,7 +31,7 @@ help:
 	@echo "make check      formatting, vet, test, e2e"
 	@echo "make docs-check  validate feature and contract references"
 	@echo "make eval EVAL_PROVIDER=<id>  opt-in task evals against a real model (not in check)"
-	@echo "make model-check  TLC over lifecycle, event stream, scheduling, account, default source and route recovery (Java; fetches pinned TLC once)"
+	@echo "make model-check  TLC over lifecycle, event stream, generation recovery, scheduling, account, default source and route recovery (Java; fetches pinned TLC once)"
 	@echo "make native-smoke APP=... EVIDENCE=...  one isolated ci-macOS round, 60s budget"
 	@echo "make native-smoke-prepare  build the native AX helper once with the candidate"
 

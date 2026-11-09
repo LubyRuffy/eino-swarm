@@ -11,7 +11,6 @@ event identities and model-call metadata, so a running task can be distinguished
 from a failed terminal write. These sequential observations are not an atomic
 snapshot; message bodies, tool arguments, results and credentials are omitted.
 The diagnostic reads do not resume or retry the turn.
-
 Darwin kernel facts use `kern.ostype` and `kern.osrelease` system queries,
 without launching `uname`; the Darwin build tag also covers iOS. A missing
 query omits the kernel suffix, preserving the environment prompt's format.
@@ -188,7 +187,6 @@ output, final AX/pixel result and its own `smoke.json`; cleanup and a separate
 fresh inventory confirmed deleted case data and no owned processes. Its bound
 records are retained separately in `native-smoke-revision3-readygate01` and do
 not change the earlier failed baseline or accept a future public installer.
-
 ## Nuwa project collaboration (`F-136`, `C-037`)
 
 The mode is captured per turn. Test changes across a parked Registry and cold
@@ -1634,6 +1632,17 @@ establish this partial-output retention boundary.
 The generation and worker lifetimes are independent. `generation_test.go`
 checks per-output identity for cancellation, deadline, transport failure and
 output limits, with normal empty completion as a negative control.
+`generation_source_completion_test.go` delays a UI copy after the actual source
+has ended. A clean EOF belongs only to that generation; later cancellation
+cannot erase its call, while source errors, truncated calls and cancellation
+before EOF retain their original failure semantics. The next generation cannot
+reuse the preceding generation's completion fact.
+`internal/engine/restart_ask_publication_test.go` holds only the identified UI
+callback while the actual ADK Ask waiter is armed. It checks the real tool
+context ID before durable call publication, then checkpoints, cancels, releases
+publication and reopens the Store. The original Ask must remain unanswered until
+its original ID is answered. Empty-ID producer previews are forwarded, and the
+final-call gate is a control for the earlier preview gate.
 `internal/engine/generation_test.go` checks original-turn attribution across
 manager checks, cold recovery and already-completed output exclusion.
 Deletion regressions hold a real worker callback across conversation/project
@@ -1652,6 +1661,46 @@ including tiny text budgets that retain structured cause/recovery.
 Inspect the original turn with `zwai trace <turn>` or
 `GET /api/trace/:turn`; lifecycle rows must not become worker completion,
 spawn receipts, human input or completion attention.
+
+Opt-in reasoning-only output recovery is tested through the actual Registry,
+ADK and loopback model HTTP path. `output_recovery_run_join_http_test.go` pauses
+this Registry's original AfterModel writer before SetHistory: the NoJoin RED is
+an injected scheduling interleaving, not a claimed natural occurrence. The
+per-Registry observer defaults to nil and tests clear it after joining the
+writer, so the ordinary package suite needs no private overlay.
+`generation_recovery_system_http_test.go` preserves additional system messages,
+including equal text and prepended constraints in their exact order.
+`internal/engine/output_limit_midturn_http_test.go` and
+`internal/engine/output_limit_midturn_boundary_http_test.go` cover a committed
+non-idempotent tool effect, original background PID/session and worker identity,
+second cap, zero quota, partial tools, storage refusal, Stop, actual cold
+Engine/Store reopen and the unchanged effort of a resumed turn. Initial worker
+generation events whose old metadata omitted the worker generation remain
+unknown; real snapshots and identified spawn/finish receipts prove retention.
+`generation_recovery_test.go` checks independent tool/multimodal/Extra copies,
+large integer types, unavailable opaque/cyclic input and no JSON/YAML snapshot
+serialization. The existing first-generation/default-off cases remain.
+
+`generation_recovery_late_aftermodel_http_test.go` additionally exercises a real
+ADK AfterModel callback that returns a distinct error after the UI has observed
+the capped output. Registry must join that callback and retain the original
+typed output-limit cause, generation identity and recovery input. This is an
+additional targeted execution with unchanged production bytes, rather than a
+claim that every test ran in one invocation.
+
+
+The generation recovery protocol is registered in `tools/model_check.py` and
+`make model-check` alongside the existing models. Run its current safety case,
+NoJoin counterexample and recovery/cancellation/second-cap witnesses with:
+
+```bash
+python3 tools/model_check.py generation-recovery-current generation-recovery-no-join generation-recovery-reach-recovery generation-recovery-reach-cancel-after-claim generation-recovery-reach-second-cap
+```
+
+A targeted loopback/race run is useful while iterating; it does not replace the
+required final whole-repository race check or measured model evaluation. Tests
+must assert the actual recovery request's model, effort, output limit, original
+call IDs and request budget; synthetic helper calls alone do not prove them.
 
 PC and phone generation reducer/component tests cover closure of old thinking,
 reason/recovery retention, an independent new stream, late deltas, reversed
@@ -1682,6 +1731,17 @@ output-limit interruption, same-worker resume, a distinct new thought and
 reload. Assert the visible cause/recovery, closed old thought and absence of a
 false worker failure. Keep the business-red trace separately from build or
 artifact failures. Each browser run owns its server port, data and output.
+
+The same opt-in file also covers manager mid-turn output recovery. Its keyless
+HTTP fixture performs one real exec append/read effect, caps a later
+reasoning-only generation, then permits one recovery in the original turn with
+unchanged high effort and a 16,384-token output limit. It checks the interrupted
+output's cause, a distinct later generation, the final answer and the original
+tool evidence through live, reloaded and fresh-client paginated history. The
+fresh client uses actual server pages and does not restart the engine. Auxiliary
+memory is disabled for this UI fixture; the case restores its models, swarm,
+memory and UI settings, server locale and browser storage before closing its
+provider.
 
 Phone native acceptance uses the disposable iOS fixture below with
 `IOS_LAYOUT_QUERY='/?mock=1&tick=0&history=generation-interruption'`, copies
@@ -4816,6 +4876,15 @@ model comes first:
    reproduce shows that the model is wrong.
 4. Fix the code and keep the test and the case.
 
+Every input variant's current case checks its complete safety list. The two
+generation protocols explicitly declare which real guard-removal obligations
+need failure seeds; their other safety properties remain checked. Unlisted
+models retain the original requirement to seed every non-TypeOK invariant.
+Variants sharing one TLA specification share switch/witness coverage, while
+each still requires its own full current case. `tools/test_model_check.py`
+checks this registration separately from TLC, including removal regressions.
+The accepted-answer witness proves model reachability, not an observed ACK bug.
+
 Accept a new model only after it re-finds a historical or current fault. The
 lifecycle model re-found two shipped handoff faults; the stream model found
 the shipped rewind faults before their fix. The scheduling-authorization model
@@ -5295,6 +5364,41 @@ engine to inject a fault calls `exemptFromEventAudit`; fixtures that write
 under an invented readable turn id are outside the turn rule by its id
 pattern, not by exemption. Store fixtures name their conversations with
 `withThreads`; a test that rebuilds a legacy schema calls `legacySchema`.
+
+## Managed execution (`F-130`, `C-009`)
+
+`internal/engine/exec_session_http_test.go` exercises the real manager and
+loopback model HTTP requests. The original `exec` starts a real shell,
+yields while it is still running, and allows the manager to make independent
+progress. The engine waits for the terminal receipt before accepting a final
+answer. A workspace marker proves one launch, and the model request ledger
+checks that a quiet wait causes no repeated model requests. A command that
+exits during independent work must supply its original terminal receipt in
+the next request. A later command that finishes first wakes the waiting
+manager while the earlier command remains owned. Stop and tool
+interruption exercise process cleanup.
+`internal/engine/exec_observation_http_test.go` verifies that the model can
+observe the same session ID over the actual HTTP path. It checks the
+default-off tool list, output and terminal receipts, and a running process
+that survives observation expiry. `internal/engine/model_request_closeout_http_test.go`
+checks that a loopback provider's low request budget reaches the opted-in
+manager and that correction, verification and destination readback run
+through the normal tools. The HTTP observation fixture also verifies
+output references on the model wire and full durable receipts.
+`internal/tools/managed_exec_observe_test.go`
+exercises output renewing a wait, bounded latest output after truncation,
+command deadlines, and readback after the original result is collected.
+`internal/engine/exec_poll_http_test.go` sends a wait-shaped shell call over
+the same HTTP boundary. The next request waits for the first original exit,
+keeps its call ID and exit status, and receives the probe output once.
+`internal/engine/exec_retry_http_test.go` verifies that identical failures
+stop launching shells, the model gets the original error, a corrected
+working directory can run, and a persistent retry cannot spend another
+model request.
+`internal/tools/exec_session_process_test.go` exercises native process-group
+ownership, sustained kernel stops, and cleanup on exit or cancellation. `internal/tools/managed_exec_test.go` verifies
+that an omitted command timeout inherits the owner's lifetime, accepts an
+explicit long timeout, and respects an earlier owner deadline.
 
 ## Agent task evals (opt-in, real model)
 
@@ -6331,9 +6435,12 @@ cut a rune stays `encoding=utf-8`, why an empty `edit` `replace_block`
 deletes instead of the old catch-all missing-payload error, and why
 `write` refuses a missing/`contents` body instead of claiming `Updated file`
 while emptying the disk.
-`internal/tools/execwait_test.go` is why `exec` still runs a progress-poll
-sleep and shortens one of five seconds or more to about a third of that
-duration (a sub-second pause between commands is left as written).
+`internal/tools/execwait_test.go` verifies the legacy progress-poll bias.
+It shortens a sleep of five seconds or more to about a third and leaves a
+sub-second pause as written. `internal/tools/managed_exec_poll_test.go`
+verifies that opted-in managed execution preserves actual delays, delegates
+eligible polls to existing completion notifications, and applies a polling
+call's timeout without canceling the original command.
 
 ## Front-end unit tests
 
@@ -8580,3 +8687,12 @@ origin and locale before the first page. Record the IPA/source/resource hashes,
 the simulator identity, actual UI actions/results and cleanup. Simulator
 acceptance does not establish physical-device installation or TestFlight
 availability; those remain separate delivery observations.
+
+
+The opt-in adaptive exec experiment uses the actual Registry, ADK and HTTP
+adapter in `internal/engine/exec_adaptive_observation_http_test.go`. A
+standalone dependent wait supplies a same-ID witness. The next short command
+can send its original terminal receipt in one fewer request. The fixture also
+covers the default, explicit fast handoff, a concurrent tool batch and a
+steer that reaches the next request while the same process stays alive.
+Tool tests cover observation cancellation and deadline ownership.

@@ -14,6 +14,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/tools"
 	"github.com/LubyRuffy/eino-swarm/internal/workerstate"
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 )
@@ -51,7 +52,7 @@ func isMaxIterations(err error) bool {
 }
 
 func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.Registry,
-	acc *accumulator, toolset *tools.Set, pc *projectContext, messages []adk.Message,
+	acc *accumulator, toolset *tools.Set, pc *projectContext, messages []adk.Message, resumed bool,
 	snapshots ...*restoreSnapshot,
 ) (swarm.RunResult, error) {
 	e := rt.engine
@@ -127,12 +128,27 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	if e.cfg.SwarmSnapshot().IncrementalExecution && !turn.NuwaEnabled && (th == nil || !th.PlanMode) {
 		executionGuidance = incrementalExecutionInstruction
 	}
+	managedExecIndex := rt.managedExecToolIndex(turn, th, toolset, resumed)
 	instruction := managerPrompt(toolset, JoinPromptSections(historyPrompt(toolset, audience), taskCoordinationPrompt, executionGuidance,
-		managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID), turn.NuwaEnabled), humanReply, rt.finalGoalWorkerSection(th)), turn.NuwaEnabled)
+		managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID), turn.NuwaEnabled), humanReply, rt.finalGoalWorkerSection(th)), turn.NuwaEnabled, managedExecIndex >= 0)
 	// Fresh slice: pc.managerTools may return the workspace toolset's
 	// backing array, and appending complete_goal / block_goal in place
 	// would hand them to every sub-agent.
 	managerTools := append([]tool.BaseTool(nil), pc.managerTools(toolset)...)
+	var execSessions *tools.ManagedExecSessions
+	var adaptiveExecObservation bool
+	if managedExecIndex >= 0 {
+		settings := e.cfg.Snapshot().Tools
+		adaptiveExecObservation = settings.IsEnabled(adaptiveExecObservationOption) && !settings.IsDisabled(adaptiveExecObservationOption)
+		execSessions = tools.NewManagedExecSessions(ctx)
+		defer func() {
+			if err := execSessions.Close(); err != nil {
+				e.log.Warn("could not close background exec", "turn", turn.ID, "err", err)
+			}
+		}()
+		managerTools[managedExecIndex] = tools.ManagedExec(managerTools[managedExecIndex], execSessions)
+		managerTools = append(managerTools, execSessions.ObservationTools()...)
+	}
 	if turn.NuwaEnabled {
 		managerTools = nuwaPlannerTools(toolset, pc)
 		instruction = JoinPromptSections(instruction, nuwaInstruction)
@@ -194,6 +210,8 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	}
 	var res swarm.RunResult
 	var runErr error
+	var recoveryModel model.BaseChatModel
+	completeRecoveryInput := false
 	pending, restoredAnswer, restoreFailure := e.restorePendingScheduleAnswer(turn)
 	if restoreFailure != nil {
 		return res, restoreFailure
@@ -233,28 +251,86 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 			}
 			middlewares := append(e.autoCompactHandlers(rt.threadID, turn.ID, th, forceCompact), answer)
 			middlewares = append(middlewares, e.nuwaContextHandlers(turn)...)
+			if execSessions != nil {
+				middlewares = append(middlewares,
+					&managedExecDelivery{sessions: execSessions, adaptive: adaptiveExecObservation, reg: reg, acc: acc},
+					&modelRequestCloseout{pool: e.pool, providerID: turn.ProviderID})
+			}
 			answerCtx := context.WithValue(ctx, scheduleAnswerBufferContextKey{}, answer)
+			runInstruction := instruction
+			if completeRecoveryInput {
+				// The captured input already contains every system instruction in
+				// its actual order. Do not prepend a second constructed system.
+				runInstruction = ""
+			}
 			runConfig := swarm.RunConfig{
-				Instruction: instruction, Messages: messages, ManagerTools: managerTools, MaxIterations: budget,
-				RestoreWorkers: restore, FinishedWorkers: planted, ManagerMiddlewares: middlewares,
+				Model: recoveryModel, Instruction: runInstruction, Messages: messages, ManagerTools: managerTools, MaxIterations: budget,
+				CaptureReasoningRecoveryInput: e.cfg.SwarmSnapshot().RecoverReasoningOutputLimit,
+				RestoreWorkers:                restore, FinishedWorkers: planted, ManagerMiddlewares: middlewares,
 				ManagerForkContextFilter: withoutPendingManagerProse, OrderManagerCommentary: true,
 			}
-			if builder := reg.WorkerConfiguration().ModelBuilder; turn.NuwaEnabled && builder != nil {
-				// Hosted provider tools execute upstream, outside ManagerTools.
-				// Restrict only this planner instance; workers retain the factory.
-				runConfig.Model = provider.WithoutBuiltinTools(builder(swarm.DefaultManagerID, swarm.DefaultManagerID))
+			if recoveryModel == nil {
+				if builder := reg.WorkerConfiguration().ModelBuilder; turn.NuwaEnabled && builder != nil {
+					// Hosted provider tools execute upstream, outside ManagerTools.
+					// Restrict only this planner instance; workers retain the factory.
+					runConfig.Model = provider.WithoutBuiltinTools(builder(swarm.DefaultManagerID, swarm.DefaultManagerID))
+				}
 			}
 			res, runErr = reg.RunWith(answerCtx, runConfig, swarm.Callback(func(n swarm.Notification) {
 				if n.Kind == swarm.NotifyGenerationStarted && isManagerAgent(n.AgentID) {
 					modelRounds.Add(1)
 				}
+				if execSessions != nil && n.Kind == swarm.NotifyToolResult && isManagerAgent(n.AgentID) && execSessions.IsProvisional(n.ToolCallID, n.Text) {
+					// The tool response wakes the model, but the UI and durable
+					// orphan scan must still see the command as in flight.
+					return
+				}
 				answer.onNotify(n)
 			}))
 		}
+		recoveryModel = nil
+		completeRecoveryInput = false
 		forceCompact = false
-		used += int(modelRounds.Load())
+		rounds := int(modelRounds.Load())
+		used += rounds
 		if ctx.Err() != nil {
 			return answer.reject(res), ctx.Err()
+		}
+		if execSessions != nil && (runErr == nil || isMaxIterations(runErr)) && execSessions.Pending() {
+			// A final answer based on a running receipt cannot settle the
+			// original tool call. Let the process notify the engine first.
+			res = answer.reject(res)
+			reg.SetHistory(res.Transcript)
+			receipts, err := waitForManagedExec(ctx, reg, execSessions)
+			messages = nextManagerMessages(res, messages, nil)
+			if len(receipts) > 0 {
+				messages = spliceManagedExecReceipts(messages, receipts)
+				res.Transcript = messages
+				reg.SetHistory(messages)
+				publishManagedExecReceipts(acc, receipts)
+				messages = append(messages, runtimeUserMessage(managedExecCompletionCue))
+			}
+			if err != nil {
+				return res, err
+			}
+			messages = append(messages, reg.TakePendingSteerMessages()...)
+			reg.SetHistory(messages)
+			if len(receipts) > 0 {
+				// Receipt delivery starts a new ReAct slice, but the manager
+				// still owes the rounds already spent in this allowance.
+				budget -= rounds
+			}
+			if isMaxIterations(runErr) || budget <= 0 {
+				extend := e.cfg.SwarmSnapshot().ManagerIterations()
+				if !rt.waitToExtend(ctx, turn, used, extend) {
+					if ctx.Err() != nil {
+						return res, ctx.Err()
+					}
+					return res, limitStopError{Used: used}
+				}
+				budget = extend
+			}
+			continue
 		}
 		var failure *scheduleAnswerError
 		var evidence []store.Schedule
@@ -456,6 +532,26 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 			reg.SetHistory(res.Transcript)
 		}
 		if !isMaxIterations(runErr) {
+			if budget > rounds && rt.claimReasoningOutputRecovery(ctx, turn, th, runErr) {
+				var capped *swarm.ReasoningOutputLimit
+				_ = errors.As(runErr, &capped)
+				effort := e.cfg.SwarmSnapshot().ReasoningOutputRecoveryEffort
+				if !resumed && used == 1 && turn.ReasoningEffort == "" && effort != "" {
+					if build := reg.WorkerConfiguration().ModelBuilder; build != nil {
+						recoveryModel = provider.WithFirstRequestReasoningEffort(build(swarm.DefaultManagerID, swarm.DefaultManagerID), effort)
+					}
+				}
+				// This generation's independent input includes earlier tool effects
+				// but none of its exhausted reasoning. Retain the original call IDs
+				// and live session owner; do not synthesize dangling tool failures.
+				recovery := answer.reject(swarm.RunResult{Transcript: capped.RecoveryInput})
+				messages = append(recovery.Transcript, runtimeUserMessage(reasoningOutputRecoveryCue))
+				messages = append(messages, reg.TakePendingSteerMessages()...)
+				reg.SetHistory(messages)
+				budget -= rounds
+				completeRecoveryInput = true
+				continue
+			}
 			if runErr != nil && th != nil && isContextOverflow(runErr) && overflowRetries < 1 {
 				// A ceiling that does not move is still a prompt that did not
 				// fit: the request asked for max_tokens on top of the input.

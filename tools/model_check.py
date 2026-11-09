@@ -9,6 +9,10 @@ models/lifecycle/ProjectMoveAdmission.tla (C-037 live project ownership),
 models/stream/EventStream.tla (C-003 stored order, slow readers, catch-up,
 rewind and restart), and models/scheduling/ScheduleAuthorization.tla (C-009 /
 C-012 human cancellation, durable waiting authority and manager mutations).
+models/generation/ModelGenerationRecovery.tla checks same-Registry capped generation
+recovery, asynchronous AfterModel history ownership and one durable retry.
+models/generation/AskPublicationBoundary.tla checks clean-EOF publication across
+late owner cancellation and the actual Ask tool context identity.
 models/scheduling/WakeConsentTimeline.tla checks multiple original human
 decisions, asynchronous classification and exact-ID cancellation deduplication.
 models/stream/ManagerCommentary.tla checks the order and privacy of admitted
@@ -68,12 +72,20 @@ class Model:
     switches: tuple[str, ...]
     safety: tuple[str, ...]
     # Bounds that keep the state space finite.
-    constants: tuple[tuple[str, int], ...]
+    constants: tuple[tuple[str, int | str], ...]
 
 
 MODELS = {
     m.name: m
     for m in (
+        Model(
+            "generation-recovery", ROOT / "models" / "generation" / "ModelGenerationRecovery.tla",
+            ("NoJoin",),
+            ("TypeOK", "RecoveredHistoryOwnsEpoch", "RecoveryUsesCappedInput",
+             "OneDurableClaimPerTurn", "CancellationDoesNotStartRecovery",
+             "RequestBudgetConserved", "CapCauseRetained"),
+            (("MaxRequests", 3), ("InitialRequestsSpent", 2)),
+        ),
         Model(
             "route", ROOT / "models" / "provider" / "RouteRecovery.tla",
             ("UnboundedRouteRecovery", "ExhaustionStartsModelRetry"),
@@ -170,6 +182,43 @@ MODELS = {
 }
 
 
+# One publication protocol with finite input variants; existing model inputs stay unchanged.
+_ASKPUB_SAFETY = (
+    "TypeOK", "ObservedSourceFactRetained", "NoInvalidToolAdmission", "NoInvalidCallPublication",
+    "NoNewToolAfterOwnerCancel", "ExecutedCleanCallPublishedWhenUIDone", "WaiterKeepsContextIdentity",
+    "CheckpointPendingKeepsIdentity", "AcknowledgementKeepsContextIdentity",
+    "CheckpointAcknowledgementKeepsIdentity", "ExternalUnknownNotInventedSuccess",
+)
+for _name, _kind, _outcome, _complete, _finish in (
+    ("ask-publication", "ask", "clean_eof", True, False),
+    ("ask-publication-external", "external", "clean_eof", True, False),
+    ("ask-publication-finish", "ask", "clean_eof", True, True),
+    ("ask-publication-error", "ask", "source_error", True, False),
+    ("ask-publication-incomplete", "ask", "clean_eof", False, False),
+):
+    MODELS[_name] = Model(
+        _name, ROOT / "models" / "generation" / "AskPublicationBoundary.tla",
+        ("LateConsumerCancelMasksEOF", "WaiterUsesStoreIdentityOnly"), _ASKPUB_SAFETY,
+        (("ToolKind", f'"{_kind}"'), ("SourceOutcome", f'"{_outcome}"'),
+         ("CompleteCall", "TRUE" if _complete else "FALSE"),
+         ("FinishPresent", "TRUE" if _finish else "FALSE"), ("CallID", '"opaque-invocation-id"')),
+    )
+
+
+# Only these protocols separate observed guard-removal obligations from the
+# other safety properties checked on every current input variant. Unlisted
+# models retain the original requirement to seed every non-TypeOK invariant.
+SEEDED_GUARD_OBLIGATIONS = {
+    ROOT / "models" / "generation" / "ModelGenerationRecovery.tla": {
+        "NoJoin": ("RecoveredHistoryOwnsEpoch",),
+    },
+    ROOT / "models" / "generation" / "AskPublicationBoundary.tla": {
+        "LateConsumerCancelMasksEOF": ("ExecutedCleanCallPublishedWhenUIDone",),
+        "WaiterUsesStoreIdentityOnly": ("WaiterKeepsContextIdentity", "CheckpointPendingKeepsIdentity"),
+    },
+}
+
+
 @dataclass(frozen=True)
 class Case:
     name: str
@@ -210,6 +259,11 @@ def _scheduling(name: str, source: str, switches: tuple[str, ...] = (), violates
 def _consent(name: str, source: str, switches: tuple[str, ...] = (), violates: str | None = None,
              witness: str | None = None) -> Case:
     return _case(name, source, switches, violates, witness, "consent")
+
+
+def _askpub(name: str, source: str, switches: tuple[str, ...] = (), violates: str | None = None,
+            witness: str | None = None, model: str = "ask-publication") -> Case:
+    return _case(name, source, switches, violates, witness, model)
 
 
 CASES: tuple[Case, ...] = (
@@ -314,6 +368,37 @@ CASES: tuple[Case, ...] = (
         ("manager-commentary-reach-private-claim-tool", "NeverPrivateClaimAndToolProgress"),
         ("manager-commentary-reach-terminal-verified-claim", "NeverTerminalVerifiedClaim"),
     )),
+    # Real UI-ID callback scheduling witness; target remains a pre-code model gate.
+    _askpub("askpub-knownfault-publication", "observed clean EOF lost after actual checkpoint/cancel",
+            ("LateConsumerCancelMasksEOF", "WaiterUsesStoreIdentityOnly"), "ExecutedCleanCallPublishedWhenUIDone"),
+    _askpub("askpub-knownfault-waiter-identity", "actual compose ID present but waiter/store ID empty",
+            ("LateConsumerCancelMasksEOF", "WaiterUsesStoreIdentityOnly"), "WaiterKeepsContextIdentity"),
+    _askpub("askpub-knownfault-checkpoint-identity", "actual pending-ask checkpoint kept an empty ID",
+            ("LateConsumerCancelMasksEOF", "WaiterUsesStoreIdentityOnly"), "CheckpointPendingKeepsIdentity"),
+    _askpub("askpub-target-current", "proposed target: source fact and actual context identity retained"),
+    _askpub("askpub-control-external", "external effect still needs a genuine result receipt", model="ask-publication-external"),
+    _askpub("askpub-control-finish", "finish-present excludes missing-finish classification branch",
+            ("LateConsumerCancelMasksEOF",), model="ask-publication-finish"),
+    _askpub("askpub-current-finish", "current finish-present input checks every safety property",
+            model="ask-publication-finish"),
+    _askpub("askpub-control-source-error", "source failure cannot invent a tool call", model="ask-publication-error"),
+    _askpub("askpub-control-incomplete", "incomplete arguments cannot invent a complete call", model="ask-publication-incomplete"),
+    _askpub("askpub-reach-executed-before-publication", "witness", witness="NeverExecutedBeforePublication"),
+    _askpub("askpub-reach-accepted-before-publication", "target reachability, not an observed answer-ACK fault",
+            witness="NeverAcceptedBeforePublication"),
+    _askpub("askpub-reach-late-owner-cancel", "witness", witness="NeverLateOwnerCancel"),
+    _askpub("askpub-reach-pending-checkpoint", "witness", witness="NeverPendingCheckpoint"),
+    _askpub("askpub-reach-external-unknown", "witness", witness="NeverExternalUnknown", model="ask-publication-external"),
+    _askpub("askpub-reach-finish-late-drain", "witness",
+            witness="NeverFinishLateDrain", model="ask-publication-finish"),
+    _askpub("askpub-reach-source-error", "witness", witness="NeverErrorDrain", model="ask-publication-error"),
+    _askpub("askpub-reach-incomplete", "witness", witness="NeverIncompleteDrain", model="ask-publication-incomplete"),
+    _case("generation-recovery-current", "joined typed-cap runner before same-Registry recovery", model="generation-recovery"),
+    _case("generation-recovery-no-join", "known scheduler-injected old AfterModel SetHistory overwrites a later real Registry/HTTP RunWith",
+          ("NoJoin",), "RecoveredHistoryOwnsEpoch", model="generation-recovery"),
+    _case("generation-recovery-reach-recovery", "witness", witness="NeverRecovery", model="generation-recovery"),
+    _case("generation-recovery-reach-cancel-after-claim", "witness", witness="NeverCancelledAfterClaim", model="generation-recovery"),
+    _case("generation-recovery-reach-second-cap", "witness", witness="NeverSecondCap", model="generation-recovery"),
     _case("nuwa-current", "Nuwa current protocol", model="nuwa"),
     _case("nuwa-rebind-on-restore", "pre-fix WorkerCheckpoint omitted the selected model",
           ("RebindOnRestore",), "BindingStable", model="nuwa"),

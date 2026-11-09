@@ -261,10 +261,12 @@ func (rt *runtime) waitForWorkerCollection(ctx context.Context, turn *store.Turn
 		p.Decision, p.AutomaticResume = &proceed, false
 		rt.signalContinueLocked(true)
 	}
+	// ContinueTurn may change this shared pause as soon as the lock is released.
+	watchCompletion := p.AutomaticResume
 	rt.mu.Unlock()
 	defer func() { rt.mu.Lock(); rt.continueCh, rt.collectionPause = nil, nil; rt.mu.Unlock() }()
 	var completed <-chan error
-	if p.AutomaticResume {
+	if watchCompletion {
 		waitCtx, cancel := context.WithCancel(ctx)
 		result := make(chan error, 1)
 		joined := make(chan struct{})

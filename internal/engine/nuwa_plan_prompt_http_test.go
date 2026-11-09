@@ -150,7 +150,7 @@ func TestManagerPromptOmitsEmptyPlan(t *testing.T) {
 		for _, markdown := range []string{"", " \t\n"} {
 			t.Run(fmt.Sprintf("planner=%v/markdown=%q", plannerOnly, markdown), func(t *testing.T) {
 				extra := managerExtra(nil, &store.Thread{PlanMarkdown: markdown}, nil, "", plannerOnly)
-				prompt := managerPrompt(&tools.Set{}, extra, plannerOnly)
+				prompt := managerPrompt(&tools.Set{}, extra, plannerOnly, false)
 				if strings.Contains(prompt, "## Plan") {
 					t.Fatalf("empty plan created a planning or execution instruction: %s", extra)
 				}
