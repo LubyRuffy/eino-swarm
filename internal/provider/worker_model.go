@@ -16,8 +16,8 @@ func (p *Pool) WorkerModel(ctx context.Context, id, modelName, effort string, re
 	if err != nil {
 		return swarm.ModelBinding{}, nil, err
 	}
-	binding := swarm.ModelBinding{ProviderID: prov.ID, Model: strings.TrimSpace(prov.Model), ReasoningEffort: config.NormalizeReasoning(effort)}
-	builder, err := p.ModelBuilder(ctx, binding.ProviderID, binding.Model, binding.ReasoningEffort, rec)
+	binding := swarm.ModelBinding{ProviderID: prov.ID, Model: strings.TrimSpace(prov.Model), ReasoningEffort: p.effectiveReasoningEffort(effort)}
+	builder, err := p.modelBuilder(ctx, binding.ProviderID, binding.Model, binding.ReasoningEffort, rec)
 	if err != nil {
 		return swarm.ModelBinding{}, nil, err
 	}
@@ -25,7 +25,8 @@ func (p *Pool) WorkerModel(ctx context.Context, id, modelName, effort string, re
 }
 
 // RestoreWorkerModel rebuilds the concrete pinned model, never the current
-// default or a possibly changed catalog reference. Missing providers fail closed.
+// default or a possibly changed catalog reference. Empty effort bindings retain
+// their original omission. Missing providers fail closed.
 func (p *Pool) RestoreWorkerModel(ctx context.Context, binding swarm.ModelBinding, rec Recorder) (swarm.ModelBuilder, error) {
 	if strings.TrimSpace(binding.ProviderID) == "" || strings.TrimSpace(binding.Model) == "" {
 		return nil, fmt.Errorf("provider: worker model binding requires provider_id and model")
@@ -33,5 +34,5 @@ func (p *Pool) RestoreWorkerModel(ctx context.Context, binding swarm.ModelBindin
 	if config.NormalizeReasoning(binding.ReasoningEffort) != binding.ReasoningEffort {
 		return nil, fmt.Errorf("provider: invalid bound worker reasoning effort %q", binding.ReasoningEffort)
 	}
-	return p.ModelBuilder(ctx, binding.ProviderID, binding.Model, binding.ReasoningEffort, rec)
+	return p.modelBuilder(ctx, binding.ProviderID, binding.Model, binding.ReasoningEffort, rec)
 }

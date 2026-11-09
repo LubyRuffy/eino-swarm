@@ -123,7 +123,11 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	} else if report {
 		audience = historyForManagerReport
 	}
-	instruction := managerPrompt(toolset, JoinPromptSections(historyPrompt(toolset, audience), taskCoordinationPrompt,
+	executionGuidance := ""
+	if e.cfg.SwarmSnapshot().IncrementalExecution && !turn.NuwaEnabled && (th == nil || !th.PlanMode) {
+		executionGuidance = incrementalExecutionInstruction
+	}
+	instruction := managerPrompt(toolset, JoinPromptSections(historyPrompt(toolset, audience), taskCoordinationPrompt, executionGuidance,
 		managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID), turn.NuwaEnabled), humanReply, rt.finalGoalWorkerSection(th)), turn.NuwaEnabled)
 	// Fresh slice: pc.managerTools may return the workspace toolset's
 	// backing array, and appending complete_goal / block_goal in place

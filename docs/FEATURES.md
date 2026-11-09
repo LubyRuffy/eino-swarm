@@ -14,6 +14,7 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-140` Files and attachments
     - `F-145` Durable composer drafts
     - `F-146` Next-step composer suggestions
+    - `F-147` Temporary task side chat
     - `F-150` Goals and scheduled waits
     - `F-160` Trace and diagnostics
     - `F-170` Settings and providers
@@ -39,6 +40,7 @@ This is the current user-facing capability map. The code and tests named below a
   - `F-400` Persistence and operations
     - `F-410` Local conversation storage and search
     - `F-420` Configuration and project memory
+    - `F-421` External Agent Skills packages
     - `F-430` Build and release paths
 
 ### F-110 Desktop, browser, and terminal shells
@@ -99,6 +101,8 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：让多任务完成后的结果持续可见，直到使用者实际查看；使用者：PC 与配对手机用户；入口：桌面任务前的静态状态灯、收起项目标题右侧的汇总状态、手机顶部完成未读列表；输入：主任务完成事件与已观察的 `completed_seq`；输出：独立于运行呼吸灯的完成提示，查看后在同一 PC 的客户端同步清除；前置条件：同一 host 的未归档对话；失败表现：读取回执失败保留提示并显示错误；关联契约：`C-023`、`C-003`、`C-006`、`C-007`；实现证据：`internal/store/completion.go`, `internal/server/completion.go`, `internal/remote/rpc.go`, `frontend/src/components/app/completion-reader.tsx`, `mobile/src/lib/completion-read.ts`, `mobile/src/lib/inbox-refresh.ts`；验证：`internal/store/completion_test.go`, `frontend/e2e/unread-completion.spec.ts`, `mobile/e2e/unread-completion.spec.ts`, `mobile/src/lib/inbox-refresh.test.tsx`。
 
 ### F-130 Agent runs, tools, and live control
+
+- 普通主管可通过配置 YAML 或 Settings API 开启 `swarm.incremental_execution`，在实施回合加入先做小步实现、逐项验收用户要求的通用指导。默认关闭，真实任务收益需独立评测。关联 `C-009`。实现与验证见 `internal/config/config.go`、`internal/server/settings.go`、`internal/engine/incremental_execution.go`、`internal/engine/iterations.go` 以及 `internal/config/incremental_execution_test.go`、`internal/server/incremental_execution_settings_test.go`、`internal/engine/incremental_execution_http_test.go`。
 
 - 主管在工具前给出的完整说明通过调度声明核对后出现在对应工具之前，分隔主对话的工作折叠。PC 与手机按同一事件顺序显示实时及分页记录。关联 `C-009`、`C-022`；证据 `internal/engine/manager_prose_order_http_test.go`。
 
@@ -204,6 +208,12 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：一次可见回复结束后，给空的 PC 输入框一条基于当前会话的下一步；使用者：PC 桌面和 Web 用户；入口：空输入框占位符，设置 → 集群 → 建议下一步；输入：最近的人类消息和可见回复；输出：一条不超过 240 字、可直接发送的下一步，或没有建议；前置条件：功能开启（默认开，旧配置缺键仍开），本轮正常结束、最终回复非空、不是安静完成，且会话已经空闲；失败表现：无建议、超时、模型出错、或下一次对话已经开始时不显示占位符；Tab 只填入，回车才发送；手机不显示该占位符；关联契约：`C-039`、`C-009`、`C-012`；实现证据：`internal/engine/composer_prediction.go`、`internal/engine/composer_prediction_test.go`、`frontend/src/lib/composer-prediction.ts`、`frontend/src/components/app/composer.tsx`、`frontend/e2e/composer-prediction.spec.ts`。
 - 建议是 Trace 事件，不是对话消息。下一次模型请求不会把它当成已经发送的人类输入。关闭开关后不再发起这次调用；省略该字段的设置保存保留原值。
 
+### F-147 Temporary task side chat
+
+- 入口：桌面／Web 会话标题栏的侧聊按钮、在主输入框提交 `/side [问题]`，或在对话记录中选中文字后点击「在侧聊中提问」。带问题的命令预填侧聊输入框，由用户单独发送。
+- 输入与输出：侧聊参考当前会话的任务上下文和选中引用，支持连续问答。面板关闭、切换会话或重新加载后清除临时记录。发送失败可在面板内重试，取消等待不会停止主任务。
+- 前置条件：需要已有会话和可用的会话模型。关联契约 `C-042`。实现证据： `frontend/e2e/side-chat.spec.ts`，HTTP 并发与隔离见 `internal/server/side_chat_http_test.go`。
+
 ### F-150 Goals and scheduled waits
 
 - 暂停状态的含义：PC 与手机目标条明确显示“自动执行已暂停”和自动执行暂停原因；时间标为“目标设立至今”，从 `goal_started_at` 累计，包含暂停期间。后续普通手动答复不会解除既有目标暂停；显式恢复、目标完成、清除或重新设定目标按各自回执更新状态；实际可用的 Start 控件旁才显示恢复操作提示。无恢复入口时仍显示已记录的暂停原因。关联契约：`C-009`；实现／验证：`frontend/src/components/app/goal-banner.tsx`、`frontend/src/components/app/goal-banner.test.tsx`、`frontend/e2e/goal-pause.spec.ts`、`mobile/src/components/status-banners.tsx`、`mobile/src/components/goal-pause-meaning.test.tsx`、`mobile/src/lib/goal-pause.test.ts`、`mobile/e2e/goal-pause.spec.ts`；来源：Issue #131。
@@ -247,6 +257,8 @@ This is the current user-facing capability map. The code and tests named below a
 - 模型流的错误或 EOF 在本次调用记录回调结束后才交给消费端；部分 usage、调用者及错误类别保持，消费端在保存期间关闭也只记录一次。关联契约：`C-012`；证据：`internal/provider/provider.go`、`internal/provider/stream_terminal_order_test.go`。
 
 ### F-170 Settings and providers
+
+- YAML 或 Settings API 可通过 `swarm.default_reasoning_effort` 为未显式选择档位的模型调用设置 `low`／`medium`／`high`，默认空保留原调用行为。显式会话／调用档位优先。省略或 `null` 保存保留已存值，空字符串清除，非法类型拒绝且不写配置。关联 `C-009`。实现与验证见 `internal/config/config.go`、`internal/server/settings.go`、`internal/provider/provider.go`、`internal/provider/worker_model.go`、`internal/provider/default_reasoning_test.go`、`internal/config/default_reasoning_effort_test.go`、`internal/server/default_reasoning_effort_settings_test.go`、`internal/engine/default_reasoning_http_test.go`。
 
 - Settings → Tools 提供联网工具运行位置 `auto`／`local`／`cloud`，默认自动；旧客户端保存其他工具字段且省略／null 该字段时保留显式选择。PC 会话可独立覆盖而不改全局，设置和会话变更从下一回合生效；turn 快照使重启／parked 恢复保持本回合选择。手机默认继承不受手机登录影响，PC 云工具使用自己的 Gateway 授权。Pairlink 元数据仅提供 PC 默认路由与本机回执的离线快照，不宣称实时 grant，不暴露凭据、账号标识或服务器地址。关联 `C-006`、`C-009`；证据：`internal/config/web_execution.go`、`internal/server/settings_web_execution_test.go`、`internal/remote/web_execution_test.go`、`internal/remote/web_execution_status_test.go`、`internal/tools/cloud_web_status.go`、`internal/store/web_execution_test.go`、`frontend/src/components/app/settings-tools.tsx`、`frontend/e2e/web-execution.spec.ts`。
 
@@ -445,6 +457,11 @@ This is the current user-facing capability map. The code and tests named below a
 - 失败时 transcript 与 Memory 面板显示停止原因、提案次数、拒绝类别及可用容量数字，区分未提交 notes 与已落盘 skills；Trace 记录有界 attempts 安全元数据，不保存被拒提案正文、原文引句或旧条目。容量反馈向模型保留 usage/over_by/current_entries/matched，原容量、来源、数字、revision 校验不变，只能在原预算内先有依据地缩短或替换相关条目再新增，不能清理无关记忆；无法安全提交时明确失败，旧事件缺新增字段仍兼容。失败 Trace 按钮会打开侧栏并加载原回合，历史聚焦不冒用最新 token 用量；切换后返回原会话时恢复手动复盘结果，结果落在已加载 tail 之外时只读一次已知 turn 的 Trace，并校验点击代次、线程、回合和事件起点，不轮询。入口：回合自动复盘、Memory 的 Review now、同 turn Trace；关联契约：`C-025`、`C-012`；实现证据：`internal/engine/review_diagnostics.go`、`internal/engine/review_diagnostics_test.go`、`internal/engine/review_finalize_test.go`、`internal/server/review_diagnostics_test.go`、`frontend/src/lib/review-diagnostics.ts`、`frontend/src/lib/review-diagnostics.test.ts`、`frontend/e2e/memory-review.spec.ts`、`frontend/src/lib/transcript-review.ts`。
 
 - 记忆写入提示与 Memory 面板的复盘状态提供默认折叠的“查看详情”，展开已保存的新增／删除内容；notes 净变更和支持的 skill create/patch/delete 以事件内完整 before/after 为依据，后续文件编辑不改写历史。旧事件和无快照动作只显示明确标注的预览，失败复盘仍可查看已实际保存的部分变更。关联契约：`C-025`、`C-012`；实现证据：`frontend/src/components/app/review-status.tsx`、`frontend/src/components/app/review-changes.tsx`、`internal/engine/review_batch.go`；测试证据：`frontend/src/components/app/review-status.test.tsx`、`frontend/e2e/memory-review.spec.ts`、`internal/engine/review_change_details_test.go`。
+
+### F-421 External Agent Skills packages
+
+- 入口：PC 项目菜单的外部技能面板。用户选择包含一个 `SKILL.md` 和配套资源的 ZIP，安装完成后可查看或移除。每个新回合向经理与 worker 提供当前项目的外部技能摘要，`load_skill` 按名称读取正文及资源基址。项目关闭记忆时外部技能仍可用，同名沉淀技能继续走 `skill_view`。
+- 安装以可信来源的 ZIP、有效清单和可写项目数据目录为前置条件。同名外部包、无效 ZIP 和不安全条目会被拒绝。关联契约：`C-043`。实现证据：`internal/skills/store.go`、`internal/engine/external_skills.go`、`frontend/src/components/app/external-skills-dialog.tsx`。测试证据：`internal/skills/store_test.go`、`internal/server/installed_skills_test.go`、`internal/engine/installed_skills_http_test.go` 和 `frontend/e2e/installed-skills.spec.ts`。
 
 ### F-430 Build and release paths
 

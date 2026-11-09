@@ -99,9 +99,9 @@ test("account overlays keep the title and close control inside the safe area", a
 test("default account sign-in requires no server configuration and review hides all other resources", async ({ page }, testInfo) => {
   const calls = await fixture(page)
   await page.goto("/")
-  await page.getByRole("button", { name: "登录" }).click()
+  await page.getByRole("button", { name: "登录", exact: true }).click()
   await expect(page.getByLabel("服务器地址")).toHaveCount(0)
-  await page.getByRole("button", { name: "登录" }).click()
+  await page.getByRole("dialog", { name: "用户中心", exact: true }).getByRole("button", { name: "登录", exact: true }).click()
   await expect(page.getByText("等待管理员审核")).toBeVisible({ timeout: 12_000 })
   await expect(page.getByRole("button", { name: "扫描二维码" })).toHaveCount(0)
   await expect(page.getByLabel("消息")).toHaveCount(0)
@@ -189,8 +189,8 @@ const connectCalls = (calls: { path: string }[]) => calls.filter((call) => call.
 test("a fresh sign-in opens the account's only online PC without scanning", async ({ page }) => {
   const calls = await fixture(page, { apiEnabled: false, review: "authorized", hosts: [workPC] })
   await page.goto("/")
-  await page.getByRole("button", { name: "登录" }).click()
-  await page.getByRole("button", { name: "登录" }).click()
+  await page.getByRole("button", { name: "登录", exact: true }).click()
+  await page.getByRole("dialog", { name: "用户中心", exact: true }).getByRole("button", { name: "登录", exact: true }).click()
   await expect(page.getByRole("tab", { name: "办公电脑" })).toHaveAttribute("aria-selected", "true", { timeout: 20_000 })
   expect(connectCalls(calls)).toHaveLength(1)
   expect(calls.filter((call) => call.path.includes("pairings"))).toEqual([])
@@ -212,8 +212,8 @@ test("a returning session with an online PC still waits for the person to choose
 test("a fresh sign-in with several online PCs lets the person pick one", async ({ page }) => {
   const calls = await fixture(page, { apiEnabled: false, review: "authorized", hosts: [workPC, { ...workPC, id: "pc-lab", name: "实验室电脑", hostname: "lab" }] })
   await page.goto("/")
-  await page.getByRole("button", { name: "登录" }).click()
-  await page.getByRole("button", { name: "登录" }).click()
+  await page.getByRole("button", { name: "登录", exact: true }).click()
+  await page.getByRole("dialog", { name: "用户中心", exact: true }).getByRole("button", { name: "登录", exact: true }).click()
   await expect(page.getByRole("button", { name: "连接 办公电脑" })).toBeEnabled({ timeout: 20_000 })
   await expect(page.getByRole("button", { name: "连接 实验室电脑" })).toBeEnabled()
   await page.waitForTimeout(1_000)

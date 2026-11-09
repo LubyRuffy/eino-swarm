@@ -1383,7 +1383,8 @@ Body `{"ids": ["pj_a", "pj_b"]}`. Pins that order in the sidebar. Unknown ids ar
 ```
 
 `enabled` is false when either the project or `memory.enabled` has it off: what
-is stored stays readable, and nothing is carried into a prompt. `entries` are
+is stored stays readable, and learned memory is omitted from the prompt.
+External packages use the separate installed-skills endpoints. `entries` are
 the notes as the prompt sees them, split on blank lines. `skills` carries names
 and one-line descriptions only — the body is fetched per skill, exactly as an
 agent fetches it with `skill_view`. A copied skill also carries `origin`
@@ -1403,6 +1404,29 @@ in the prompt's skill index and `body_chars` the length of the body a
 index lines and `unviewed_chars` the part from skills no agent has viewed.
 Catalog tidy shows the reviewer the same index/body sizes for each stale
 candidate.
+
+### External skill packages
+
+- `GET /api/projects/:id/installed-skills` → `200` with
+  `{"skills":[{"name":"review-source","description":"…","updated_at":"…"}]}`.
+  The list contains external package metadata and may be empty.
+- `POST /api/projects/:id/installed-skills` accepts a raw `application/zip`
+  body up to 16 MiB and returns the installed metadata as `201`. A malformed
+  ZIP or skill package returns `400`, an installed name collision returns
+  `409` with `code: "exists"`, an oversized upload returns `413` and
+  an unsupported media type returns `415`. A valid upload that finishes
+  after its project is deleted returns `404`.
+- `GET /api/projects/:id/installed-skills/:name` → `200` with the metadata
+  plus `body`. The response carries no engine-local path.
+- `DELETE /api/projects/:id/installed-skills/:name` → `204`. Unknown projects
+  and missing packages return `404`. The learned skill catalog has its own
+  endpoints and can contain the same name.
+
+These same-origin routes work when project memory is disabled. One ZIP contains
+one package, at the root or in one wrapper folder. The manifest requires
+`name`, `description` and a nonempty Markdown body. Install bounds include
+512 ZIP entries, 32 MiB inflated and a 256 KiB manifest. Paths with traversal,
+symlinks, special files and colliding entries are refused.
 
 ### `PUT /api/projects/:id/memory`
 
@@ -1823,6 +1847,32 @@ ids belong to. Unknown ids are
 same URL filters the response the way `GET /api/threads` does. The sidebar
 sends the ids of one group (Recents or one project) and lists everything
 afterwards. Responds `{"threads": […]}`.
+
+### `POST /api/threads/:id/side-chat` → `200`
+
+Ask a temporary text question about the named conversation. Send
+`{"question":"…","quote":"…","history":[{"question":"…","answer":"…"}]}`.
+`quote` and `history` are optional. The nonblank question and the quote may
+each contain up to 4096 UTF-8 bytes. Send at most four complete exchanges,
+oldest first, with answers up to 8192 UTF-8 bytes each. The JSON envelope is
+limited to 384 KiB.
+
+The model receives a bounded snapshot of that conversation's task context,
+including its goal, current request, recent original user messages and
+manager replies where available. An active turn supplies its saved model
+selection. Otherwise the conversation supplies its current selection. The response is `{"answer":"…"}` with `Cache-Control: no-store`.
+Side chat works during a running turn or a pause for human input. It uses a
+separate model request without tools and creates no turn, event, queued
+follow-up or answer to a main-task prompt. The client owns the temporary
+exchange and can cancel the request by closing it.
+
+Invalid input returns `400 invalid_side_chat`, an oversized body returns
+`413 invalid_side_chat`, and an unknown thread returns `404`. During startup
+restoration the standard `409 restoring` applies. The server admits at most
+four simultaneous side requests and returns `429 side_chat_busy` for excess.
+An unavailable answer returns `502 side_chat_unavailable`. A timed-out
+request returns `504 side_chat_timeout`; the side call has a 90-second budget
+and can also end sooner at the provider boundary.
 
 ### `POST /api/threads/:id/turns`
 

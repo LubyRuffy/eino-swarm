@@ -67,6 +67,7 @@ type Server struct {
 	search    *search.Service
 	presence  *presence
 	updater   update.Checker
+	sideChats chan struct{}
 }
 
 // New builds the server and its routes.
@@ -87,6 +88,7 @@ func New(opts Options) (*Server, error) {
 		terminals: terminal.NewHub(terminal.MaxSessions),
 		presence:  newPresence(),
 		updater:   opts.Updater,
+		sideChats: make(chan struct{}, sideChatConcurrency),
 	}
 	r := gin.New()
 	r.Use(gin.Recovery(), s.accessLog())
@@ -140,6 +142,10 @@ func New(opts Options) (*Server, error) {
 		api.GET("/projects/:id/skills/:name", s.getSkill)
 		api.DELETE("/projects/:id/skills/:name", s.deleteSkill)
 		api.POST("/projects/:id/skills/:name/pull", s.pullSkill)
+		api.GET("/projects/:id/installed-skills", s.listInstalledSkills)
+		api.POST("/projects/:id/installed-skills", s.installSkill)
+		api.GET("/projects/:id/installed-skills/:name", s.getInstalledSkill)
+		api.DELETE("/projects/:id/installed-skills/:name", s.removeInstalledSkill)
 
 		api.GET("/library", s.getLibrary)
 		api.POST("/library/skills/copy", s.copyLibrarySkills)
@@ -161,6 +167,7 @@ func New(opts Options) (*Server, error) {
 		api.GET("/threads/:id/agents/:agent/log", s.listAgentLog)
 		api.POST("/threads/:id/turns", s.startTurn)
 		api.POST("/threads/:id/steer", s.steer)
+		api.POST("/threads/:id/side-chat", s.askSideChat)
 		api.POST("/threads/:id/preempt", s.preempt)
 		api.DELETE("/threads/:id/steers/:seq", s.retractSteer)
 		api.PATCH("/threads/:id/steers/:seq", s.reviseSteer)
@@ -280,6 +287,8 @@ func (s *Server) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "draft_conflict"})
 	case errors.Is(err, store.ErrInvalidDraft):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "invalid_draft"})
+	case errors.Is(err, engine.ErrInvalidSideChat):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Side chat question or history is invalid.", "code": "invalid_side_chat"})
 	case errors.Is(err, engine.ErrInvalidDesktopRecovery):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "invalid_desktop_recovery"})
 	case errors.Is(err, ErrEngineStopping):

@@ -4,7 +4,7 @@
  *  same prefix. Paths (`foo/bar`) and URLs (`https://`) are not a menu.
  *  The catalog is data, not a switch on ad-hoc strings in the textarea. */
 
-export type SlashCommandId = "goal" | "plan" | "compact"
+export type SlashCommandId = "goal" | "plan" | "compact" | "side"
 
 export interface SlashCommand {
   id: SlashCommandId
@@ -111,15 +111,18 @@ export function filterSlashCommands(
   )
 }
 
-export function parseSlashSubmit(text: string): SlashSubmit | null {
-  const leading = parseSlashFrom(text.trimStart())
+export function parseSlashSubmit(
+  text: string,
+  commands: readonly SlashCommand[] = SLASH_COMMANDS,
+): SlashSubmit | null {
+  const leading = parseSlashFrom(text.trimStart(), commands)
   if (leading) return leading
   const start = lastTriggeredSlashIndex(text)
   if (start < 0) return null
   // After other text only a bare trailing /goal is a command, as the engine
   // reads it. Taking a token mid-sentence as a command would drop the words
   // before it, and the same text from the phone is an ordinary message.
-  const command = parseSlashFrom(text.slice(start))
+  const command = parseSlashFrom(text.slice(start), commands)
   if (command?.id !== "goal" || command.arg) return null
   return { ...command, arg: text.slice(0, start).trim() }
 }
@@ -140,12 +143,12 @@ export function splitSlash(
   return { name: rest.slice(0, i).toLowerCase(), arg: rest.slice(i).trim() }
 }
 
-function parseSlashFrom(slice: string): SlashSubmit | null {
+function parseSlashFrom(slice: string, commands: readonly SlashCommand[]): SlashSubmit | null {
   const parsed = splitSlash(slice)
   if (!parsed) return null
   // A filename or directory named after a command is still a path.
   if (/^[.\/\\]/.test(slice.trimStart().slice(1 + parsed.name.length))) return null
-  const found = SLASH_COMMANDS.find((c) => c.name === parsed.name)
+  const found = commands.find((c) => c.name === parsed.name)
   if (!found) return null
   return { id: found.id, arg: parsed.arg }
 }

@@ -19,6 +19,22 @@ query omits the kernel suffix, preserving the environment prompt's format.
 both query errors and cancellation. The existing one-second context remains;
 Sysctl itself has no interruptible API. Other uname-supported platforms keep the existing command.
 
+## Task side chat (`F-147`, `C-042`)
+
+The HTTP tests send side questions through the actual route with a running
+loopback-model turn and with an unanswered human prompt. They check original
+turn identity, absence of side text in the main conversation, request
+limits, provider-error redaction and independent cancellation. The browser
+test drives transcript selection, follows up through the side panel and checks
+the same main turn's durable completion. It also opens a prefilled panel with
+`/side`. Run it with a private port, data directory and output directory.
+
+```bash
+go test -race -count=1 ./internal/server -run '^TestSideChat'
+(cd frontend && ZWAI_E2E_PORT="$OWNED_E2E_PORT" ZWAI_E2E_DATA_DIR="$PRIVATE_E2E_DATA" npm run e2e -- e2e/side-chat.spec.ts --output "$UNIQUE_E2E_OUTPUT")
+make model-check
+```
+
 ## External MCP tools (`F-176`, `C-041`)
 
 `internal/config/mcp_test.go` checks valid transports, private map validation,
@@ -4794,6 +4810,45 @@ reducers whose input space is large but whose rule can be stated get a
 property, fuzz or differential test instead (see "Fuzz and property tests").
 To close the gap between a model and the code, replay the code's own
 interleavings against the stated rule, as the history replay property does.
+
+## Installed skill publication model
+
+`models/skills/InstalledSkills.tla` checks one skill name in two projects
+with two independently staged installers per project. Installation stages
+and validates the archive before `Publish` checks the external namespace
+and renames the complete directory under the project skill store lock.
+`List` and `Load` map to the metadata catalog and the on-demand body
+read used by the project HTTP handlers and the agent `load_skill` tool.
+Removal detaches the visible package before cleaning up the hidden tree.
+Project deletion invalidates retained catalog handles before filesystem cleanup.
+The model keeps private stages to exercise publication attempts after deletion.
+`Learn` and `Review` represent operations in the distinct learned-memory
+namespace, even when it contains the same skill name.
+
+The current case checks validated publication, preservation of an existing
+package against a competing installer, immediate removal from lookup,
+project-scoped reads, metadata-only list results, and separation from learned
+lookup and review writes. Seeded violations check each guard. Separate witnesses
+exercise metadata listing, body loading, invalid staging, competing
+installers, the same installed name in two projects, the same name in
+learned and external skills, a learned-only load miss, and a fresh read miss
+after detachment. A reinstall can publish while old detached files await cleanup.
+A separate witness reaches project deletion with an upload already staged.
+
+The model abstracts archive and YAML validation to a Boolean outcome and
+treats the filesystem rename under the project skill store lock as atomic.
+Failure or cancellation before publish is stage abandonment. Hidden cleanup
+can stall. The model represents one or more hidden trees with a single flag.
+It assumes cooperating engine writers and makes no
+fairness or eventual-success claim. Real Go tests cover archive and path
+validation, filesystem publication, concurrent installers, and the agent
+model-call boundary. The server test pauses the ZIP request body while its
+project is deleted, then checks the response and the removed directory.
+
+```bash
+make model-check
+python3 tools/model_check.py --fetch installed-skills-current --out /tmp/installed-skills-model
+```
 
 ## Lifecycle protocol model (opt-in, `C-001` / `C-027`)
 

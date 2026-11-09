@@ -63,6 +63,14 @@ queued prose. Goals use the existing steer endpoint; plan entry uses start-turn
 admission so a newly busy target refuses it. Busy goal updates and bare planning
 keep their existing metadata operations.
 
+PC side chat uses a separate HTTP request and a browser-memory panel owned by
+the selected conversation. The server reads a bounded textual snapshot of
+that conversation and makes an independently cancelable, tool-free model call.
+There is no side-chat write path into the turn runtime, durable transcript,
+event bus, follow-up queue or schedule controls. Isolated provider recovery
+keeps the side call out of the main task's service-health state. A panel
+cancellation or selection change invalidates its in-flight response locally.
+
 Explicitly queued human follow-ups start in FIFO order after a turn completes
 or fails, independently of automatic goal continuation. A failed scheduled check
 keeps its failed turn/run and future wake; no queue means no new error-triggered
@@ -2259,6 +2267,7 @@ $ZWAI_HOME (default ~/.zwai-swarm)
 │   └── skills/<name>/SKILL.md
 └── projects/<project>/
     ├── workspace/         only when the project has no workdir of its own
+    ├── installed-skills/  explicit external Agent Skills bundles
     └── memory/            MEMORY.md + skills/<name>/SKILL.md
                            (a copy adds origin_project / origin_name / origin_digest;
                             origin_project `library` is the shared library, not a project row)
@@ -2274,9 +2283,16 @@ the 2000-entry cap on a VCS or dependency tree. It is **not** a sandbox:
 That is the "Full access" model, stated plainly in the UI rather than implied.
 
 A project's memory is kept here rather than in the working directory: a project
-pointed at a repository must not leave files in it. `skill_view` opens only
-that tree. A `SKILL.md` that already lives in the workspace is a file — `read`
-it; the two layouts look the same and mixing them produces a missing-name call.
+pointed at a repository must not leave files in it. `skill_view` opens learned
+skills from the memory tree. User-installed packages live separately under
+`installed-skills`. The engine snapshots their metadata at turn start and
+binds the project-scoped `load_skill` tool to the manager and workers.
+`load_skill` opens the selected package on demand and returns its base directory
+for relative resources. A `SKILL.md` already in the workspace is a regular
+workspace file. The installer stages validated ZIP files inside the project
+data directory and publishes the complete package with a directory rename.
+Project deletion invalidates the external catalog before removing its files.
+A request holding the old catalog cannot publish a staged upload.
 For the same reason, deleting a conversation removes its workspace **only when
 zwai created it** — `DeleteThread` on a project conversation would otherwise
 delete the user's repository — and deleting a project removes its memory and

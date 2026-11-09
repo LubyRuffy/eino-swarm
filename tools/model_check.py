@@ -20,6 +20,10 @@ is the source a new conversation starts on, and that a ready server catalog
 is a selectable row (C-040).
 models/provider/RouteRecovery.tla checks that confirmed route refusals stop
 after a consecutive cap instead of waiting forever or buying model retries (C-029).
+models/skills/InstalledSkills.tla checks project-scoped skill publication,
+lookup, removal and separation from learned memory.
+models/sidechat/SideChat.tla checks that temporary replies stay within their
+request owner and never write to or take control of the main task.
 Every case sets its model's switch constants and states
 the expected outcome: the current design must pass every safety invariant;
 each historical or seeded behaviour must break the named invariant (checked
@@ -75,6 +79,23 @@ MODELS = {
             ("UnboundedRouteRecovery", "ExhaustionStartsModelRetry"),
             ("TypeOK", "RouteRefusalStops", "NoRetryAfterExhaustion"),
             (("Cap", 3), ("MaxProbes", 9)),
+        ),
+        Model(
+            "installed-skills", ROOT / "models" / "skills" / "InstalledSkills.tla",
+            ("PublishWithoutValidation", "PublishOverExisting", "CleanupBeforeHide",
+             "ReadOtherProject", "LoadFallsBackToLearned", "ListIncludesBody", "ReviewTouchesInstall",
+             "PublishAfterProjectDeletion"),
+            ("TypeOK", "VisibleBundleValidated", "ExistingBundlePreserved", "RemovedBundleHidden",
+             "ReadIsProjectScoped", "LoadIsExternalOnly", "ListDisclosesMetadataOnly", "ReviewPreservesInstalled",
+             "ProjectDeletionIsFinal"),
+            (),
+        ),
+        Model(
+            "side-chat", ROOT / "models" / "sidechat" / "SideChat.tla",
+            ("UseMainSend", "RebindContext", "SkipReplyOwner", "EnableSideTools", "HoldMainDuringModel"),
+            ("TypeOK", "SideLeavesMainUntouched", "ModelReadsBoundThread",
+             "ReplyMatchesActiveOwner", "SideHasNoTools", "MainCanAdvanceWhileSideWaits"),
+            (),
         ),
         Model(
             "account", ROOT / "models" / "account" / "AccountCatalog.tla",
@@ -192,6 +213,23 @@ def _consent(name: str, source: str, switches: tuple[str, ...] = (), violates: s
 
 
 CASES: tuple[Case, ...] = (
+    _case("side-chat-current", "side questions stay independent of the running task", model="side-chat"),
+    _case("side-chat-main-send", "seeded: sending a side question queues it on the main task",
+          ("UseMainSend",), "SideLeavesMainUntouched", model="side-chat"),
+    _case("side-chat-rebound-context", "seeded: navigation rebinds the source of a dispatched request",
+          ("RebindContext",), "ModelReadsBoundThread", model="side-chat"),
+    _case("side-chat-stale-reply", "seeded: a reply settles whichever panel is currently selected",
+          ("SkipReplyOwner",), "ReplyMatchesActiveOwner", model="side-chat"),
+    _case("side-chat-tools", "seeded: the side model inherits the task's tool surface",
+          ("EnableSideTools",), "SideHasNoTools", model="side-chat"),
+    _case("side-chat-holds-main", "seeded: a side model call holds the main task's progress lock",
+          ("HoldMainDuringModel",), "MainCanAdvanceWhileSideWaits", model="side-chat"),
+    *(_case(name, "witness", witness=witness, model="side-chat") for name, witness in (
+        ("side-chat-reach-main-progress", "NeverAnswerAcrossMainProgress"),
+        ("side-chat-reach-follow-up", "NeverTwoSideAnswers"),
+        ("side-chat-reach-late-reply", "NeverLateReplyWithNewRequest"),
+        ("side-chat-reach-error-recovery", "NeverRecoverAfterSideFailure"),
+    )),
     _case("route-current", "three confirmed route refusals fail the call without a model retry",
           model="route"),
     _case("route-unbounded", "historical, shipped through v0.1.69: a confirmed route refusal kept the same call waiting",
@@ -203,6 +241,39 @@ CASES: tuple[Case, ...] = (
         ("route-reach-recovered", "NeverRecovered"),
         ("route-reach-cancelled", "NeverCancelled"),
         ("route-reach-other", "NeverOtherError"),
+    )),
+    _case("installed-skills-current", "validate, publish and detach whole project skill bundles",
+          model="installed-skills"),
+    *(_case(name, source, (switch,), invariant, model="installed-skills")
+      for name, source, switch, invariant in (
+        ("installed-skills-unvalidated", "seeded: publish an unvalidated stage",
+         "PublishWithoutValidation", "VisibleBundleValidated"),
+        ("installed-skills-overwrite", "seeded: a second installer overwrites the published package",
+         "PublishOverExisting", "ExistingBundlePreserved"),
+        ("installed-skills-cleanup-visible", "seeded: keep the retired package visible during cleanup",
+         "CleanupBeforeHide", "RemovedBundleHidden"),
+        ("installed-skills-cross-project", "seeded: load falls back to another project",
+         "ReadOtherProject", "ReadIsProjectScoped"),
+        ("installed-skills-learned-fallback", "seeded: load falls back to a same-named learned skill",
+         "LoadFallsBackToLearned", "LoadIsExternalOnly"),
+        ("installed-skills-list-body", "seeded: listing includes the instruction body",
+         "ListIncludesBody", "ListDisclosesMetadataOnly"),
+        ("installed-skills-review-rewrites", "seeded: learned review rewrites an installed bundle",
+         "ReviewTouchesInstall", "ReviewPreservesInstalled"),
+        ("installed-skills-publish-after-project-delete", "seeded: a staged upload ignores project deletion",
+         "PublishAfterProjectDeletion", "ProjectDeletionIsFinal"),
+    )),
+    *(_case(name, "witness", witness=witness, model="installed-skills") for name, witness in (
+        ("installed-skills-reach-list", "NeverInstalledList"),
+        ("installed-skills-reach-load", "NeverInstalledLoad"),
+        ("installed-skills-reach-invalid", "NeverInvalidStage"),
+        ("installed-skills-reach-install-race", "NeverCompetingInstalls"),
+        ("installed-skills-reach-learned-coexistence", "NeverSameNameLearnedAndInstalled"),
+        ("installed-skills-reach-learned-load-miss", "NeverLearnedOnlyLoadMiss"),
+        ("installed-skills-reach-two-projects", "NeverSameNameAcrossProjects"),
+        ("installed-skills-reach-hidden-view", "NeverDetachedLookup"),
+        ("installed-skills-reach-reinstall", "NeverReinstalledWithPendingCleanup"),
+        ("installed-skills-reach-delete-with-stage", "NeverDeletedWithStagedUpload"),
     )),
     _case("account-current", "publish rechecks the credential and login or logout seals the catalog",
           model="account"),

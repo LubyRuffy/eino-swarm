@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
+	"github.com/LubyRuffy/eino-swarm/internal/skills"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
@@ -145,6 +146,7 @@ func collectReviewSources(events []store.Event, sessionMemory, final string) ([]
 	retracted := retractedSteerSeqs(events)
 	revised := revisedSteerText(events)
 	calls := make(map[reviewToolKey]int)
+	const excludedToolGroup = -1
 	for _, ev := range events {
 		if ev.Kind == KindSteer {
 			if _, ok := retracted[ev.Seq]; ok {
@@ -165,8 +167,19 @@ func collectReviewSources(events []store.Event, sessionMemory, final string) ([]
 			priority = 0
 		case swarm.NotifyToolCall.String(), swarm.NotifyToolResult.String():
 			priority = 1
+			if ev.Kind == swarm.NotifyToolCall.String() && toolCallName(ev.Text) == skills.ToolLoad {
+				// External instructions are available to the live agent. Their
+				// load receipt is neither review context nor learned evidence.
+				if ev.ToolCallID != "" {
+					calls[key] = excludedToolGroup
+				}
+				continue
+			}
 			if ev.Kind == swarm.NotifyToolResult.String() && ev.ToolCallID != "" {
 				if existing, ok := calls[key]; ok {
+					if existing == excludedToolGroup {
+						continue
+					}
 					group = existing
 				}
 			}

@@ -2,6 +2,22 @@
 
 Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user entry points and [CHANGELOG.md](../CHANGELOG.md) for history. Contract IDs are stable.
 
+## C-043 External skill packages have an independent catalog
+
+- 状态 active。范围是项目级第三方技能安装、读取、卸载和模型发现，关联 `F-421`。
+- ZIP 由用户显式选择，包含一个 Agent Skills 技能。安装校验清单与有界的常规文件集合，拒绝路径逃逸、链接、冲突条目和重复的外部包名。完整文件先暂存，再按清单名称原子发布。卸载先摘除可见名称再清理目录。包内资源与原清单保留字节。删除项目会撤销外部技能目录的访问与发布资格，仍在读取或解包的上传无法重新创建项目或发布技能。
+- 项目间各有独立外部技能目录。项目记忆开关只影响沉淀技能，两个目录、命名空间、模型工具和整理流程分别管理。外部包与同名沉淀技能可共存。`load_skill` 调用和对应回执留在 Trace，排除于自动复盘的提示与写入证据。
+- 新回合在外部目录内按名称提供最多 32 个摘要。经理和 worker 可调用 `load_skill` 读取包正文及资源基址，HTTP 详情仅返回正文与元数据。安装和加载不会执行脚本。模型后续读取资源或运行脚本使用已有工具权限。
+- 实现 `internal/skills` 和 `internal/engine/external_skills.go`。验证见 `internal/engine/installed_skills_http_test.go`、`internal/engine/external_skills_worker_http_test.go`、`internal/server/installed_skills_test.go` 及 `models/skills`。
+
+## C-042 Side questions are isolated from the main task
+
+- 状态 active。作用范围为桌面／Web、`POST /api/threads/:id/side-chat`。关联功能 `F-147`。
+- 侧聊只读该会话的有限文本快照。会话目标、当前请求、近期原始用户消息和主管回复、选中文字和侧聊历史作为数据传给模型。内部提示、工具、诊断、附件内容和其他会话不进入快照。
+- 运行中或等待人工输入的任务保持自己的 turn 与控制路径。侧聊没有执行工具的能力，不创建或改写 turn、事件、排队消息、待答问题、目标或唤醒。独立模型请求不读写主任务的共享服务健康状态，也不使用主任务的重试流程。
+- 侧聊答复只交付给请求所在的面板和会话。取消、关闭或导航撤销该请求的交付资格，迟到结果不能显示在新面板。面板关闭、切换会话或重新加载清除临时问答。并发、输入、错误及超时边界见 [API](API.md)。
+- 实现 `internal/engine/side_chat.go`、`internal/store/side_chat.go`、`internal/server/side_chat.go`、`frontend/src/store/app-side-chat.ts`。验证见 `internal/server/side_chat_http_test.go`、`frontend/e2e/side-chat.spec.ts` 和 `models/sidechat/SideChat.tla`。来源为 GitHub Issue #161。
+
 ## C-041 Explicit MCP servers keep private configuration and scoped sessions
 
 - 状态：active；类型：security / lifecycle / compatibility；作用范围：`mcp.servers`、独立 MCP CRUD／inspect API、Desktop/Web 设置和会话工具表；关联功能：`F-176`、`F-130`、`F-170`。
@@ -272,6 +288,10 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 摘要／复核证据：实现 `internal/engine/worker_lifecycle_facts.go`、`internal/engine/session_memory.go`、`internal/engine/review_source.go`、`internal/engine/review.go`；测试 `internal/engine/worker_lifecycle_facts_test.go`、`internal/engine/session_memory_bound_test.go`、`internal/engine/review_source_test.go`；变更规则：同步摘要、目标收尾、复核及事实裁剪回归；来源：GitHub Issue #78。
 
 ## C-009 Editable configuration and scheduled waits
+
+- `swarm.default_reasoning_effort` 为未显式选择推理档位的模型调用提供默认值，默认空并保留原调用行为。会话或调用已显式选择的 `low`／`medium`／`high` 优先。YAML 与 Settings API 使用同一字符串键，裁去首尾空白并转小写，无效字符串归空。Settings 保存省略或 `null` 保留锁内最新值，显式空字符串清除。非法类型在任何配置写入前以 `400` 拒绝。新 worker 在选择时固定有效档位，恢复沿用已存档位，旧空绑定继续省略该字段。关联 `F-130`、`F-170`。实现与验证见 `internal/config/config.go`、`internal/server/settings.go`、`internal/provider/provider.go`、`internal/provider/worker_model.go`、`internal/provider/default_reasoning_test.go`、`internal/config/default_reasoning_effort_test.go`、`internal/server/default_reasoning_effort_settings_test.go`、`internal/engine/default_reasoning_http_test.go`。本项为 Added。
+
+- `swarm.incremental_execution` 是默认 `false` 的实验选项，向普通主管的实施回合加入先做小步实现、逐项验收需求的通用指导。YAML 与 Settings API 使用相同布尔键。Settings 保存省略或 `null` 时保留已存选择，显式布尔值更新并持久化，非法类型在写入前以 `400` 拒绝。模型遵从情况与评测收益需独立测量。关联 `F-130`、`F-170`。实现与验证见 `internal/config/config.go`、`internal/server/settings.go`、`internal/engine/incremental_execution.go`、`internal/engine/iterations.go` 以及 `internal/config/incremental_execution_test.go`、`internal/server/incremental_execution_settings_test.go`、`internal/engine/incremental_execution_http_test.go`。本项为 Added。
 
 - 模型来源与欢迎回答：`models.default_source`（`account`／`provider`）与 `ui.welcome_dismissed`（布尔）是可编辑配置，设置保存省略任一字段时保留已存值，不能把缺字段当作回到默认；非法 `default_source` 以 `400` 拒绝，`gateway:` 前缀的 provider id 保留给运行期账号投影而被拒绝。关联功能：`F-171`、`F-170`，主契约 `C-040`；证据：`internal/config/default_source.go`、`internal/config/default_source_test.go`、`internal/server/settings.go`、`internal/server/account_models_http_test.go`、`frontend/src/lib/settings-persist-default-source.test.ts`。
 

@@ -847,6 +847,8 @@ $ZWAI_HOME (default ~/.zwai-swarm)/
 └── projects/
     └── pj_cd34…/
         ├── workspace/         only when the project has no workdir of its own
+        ├── installed-skills/  external packages, by manifest name
+        │   └── <skill-name>/  original SKILL.md and package resources
         └── memory/
             ├── MEMORY.md      notes, one per blank-line-separated paragraph
             └── skills/

@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/LubyRuffy/eino-swarm/internal/memory"
+	"github.com/LubyRuffy/eino-swarm/internal/skills"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/LubyRuffy/eino-swarm/internal/tools"
 	"github.com/cloudwego/eino/components/tool"
@@ -26,8 +27,9 @@ var ErrInvalidWorkdir = errors.New("engine: that working directory cannot be use
 // entries, and two instances over one directory have two mutexes and no
 // protection at all.
 type projectMemory struct {
-	mu     sync.Mutex
-	stores map[string]*memory.Store
+	mu       sync.Mutex
+	stores   map[string]*memory.Store
+	external map[string]*skills.Store
 }
 
 // CreateProject opens a new project and prepares the directories it needs.
@@ -230,6 +232,10 @@ func (e *Engine) libraryContextForThread(threadID string) *projectContext {
 func (e *Engine) forgetProjectMemory(projectID string) {
 	e.memory.mu.Lock()
 	delete(e.memory.stores, projectID)
+	if catalog := e.memory.external[projectID]; catalog != nil {
+		catalog.Invalidate()
+		delete(e.memory.external, projectID)
+	}
 	e.memory.mu.Unlock()
 }
 
@@ -249,12 +255,12 @@ type projectContext struct {
 	project  *store.Project
 	memory   *memory.Store
 	sections string
-	// tools is the manager set (read and write). viewTools is skill_view
-	// only — workers get that plus the workspace tools, never the writers.
+	// tools is the manager set. Workers get the read-only skill tools in
+	// viewTools alongside their workspace tools.
 	tools     []tool.BaseTool
 	viewTools []tool.BaseTool
 	// workerText is the notes/skills snapshot and the return-to-manager
-	// contract. Empty when memory is off.
+	// contract, plus the installed skill index when present.
 	workerText string
 	changes    func(memory.Change)
 	// library is the shared skill store for a conversation in no project.
@@ -374,6 +380,7 @@ func (e *Engine) projectContextFor(th *store.Thread) (*projectContext, error) {
 		}
 	}
 	pc.sections = memory.PromptSections(p.SystemPrompt, snap, skills, e.cfg.Memory.IndexMax(), pc.memory != nil)
+	e.attachExternalSkills(pc)
 	return pc, nil
 }
 
