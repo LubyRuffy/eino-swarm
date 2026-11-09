@@ -116,8 +116,6 @@ func (e *Engine) workerConfigurationForTag(ctx context.Context, threadID, tag st
 	if err != nil {
 		return swarm.WorkerConfig{}, err
 	}
-	effective := *turn
-	effective.ProviderID, effective.Model, effective.ReasoningEffort = selection.ProviderID, selection.Model, selection.ReasoningEffort
-	reg := e.newTurnRegistry(builder, set, pc, &effective)
+	reg := e.newTurnRegistry(builder, set, pc, turn)
 	return reg.WorkerConfiguration(), nil
 }

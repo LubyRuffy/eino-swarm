@@ -1283,6 +1283,8 @@ A non-empty `workdir` is a literal absolute path: leading/trailing whitespace is
                "resolved_workdir": "/Users/me/work/report",
                "memory_enabled": true,
                "nuwa_enabled": false, "nuwa_revision": 0,
+               "nuwa_planner_provider_id": "", "nuwa_planner_model": "",
+               "nuwa_executor_provider_id": "", "nuwa_executor_model": "",
                "memory_dir": "/Users/me/.zwai-swarm/projects/pj_ab12…/memory",
                "skills": [{"name": "weekly-rollup", "description": "…", "updated_at": "…"}],
                "sort_rank": 0, "created_at": "…", "updated_at": "…"}]}
@@ -1305,7 +1307,14 @@ positive rank and pins relative order.
 ### `POST /api/projects` → `201`
 
 Body `{"name": "…", "system_prompt": "optional", "workdir": "optional",
-"memory_enabled": true, "nuwa_enabled": false}`. A name is required (`400`). `workdir` must be an
+"memory_enabled": true, "nuwa_enabled": false}`. Enabling Nuwa without a model
+pair stores the ready-catalog default: the planner is the first ready default,
+otherwise the first ready row, and the executor is the first other ready row,
+or the same row when only one is ready. Send all four of
+`nuwa_planner_provider_id`, `nuwa_planner_model`, `nuwa_executor_provider_id`
+and `nuwa_executor_model` to choose both. A half pair or a name that is not
+ready is `400` with `code: "nuwa_model"`, and the new project is not kept.
+A name is required (`400`). `workdir` must be an
 absolute path to an existing directory — anything else is `400` with
 `code: "workdir"`, which the project dialog shows against that field. Left
 empty, the project gets `projects/<id>/workspace` under the data directory.
@@ -1314,8 +1323,13 @@ memory off.
 
 ### `GET /api/projects/:id` · `PATCH /api/projects/:id`
 
-`PATCH` accepts `name`, `system_prompt`, `workdir`, `memory_enabled` and `nuwa_enabled`; an
-omitted field is left alone. Both respond `{"project": {…}}`.
+`PATCH` accepts `name`, `system_prompt`, `workdir`, `memory_enabled`, `nuwa_enabled`
+and the four Nuwa model fields. The four model fields are replaced together;
+omitting all four leaves a saved pair in place. Enabling Nuwa when none is
+saved fills the same ready-catalog default as create. Closing Nuwa keeps the
+pair. A half pair or a model that is not ready is `400` with `code: "nuwa_model"`
+and does not change the project. Any other omitted field is left alone. Both
+respond `{"project": {…}}`.
 
 `system_prompt` is also the global description saved by the manager's
 project-bound `update_project_description` tool. Subsequent GET requests and
@@ -1669,6 +1683,24 @@ objective was set (not edited). `plan_mode` is true while `/plan` is open.
 `plan_markdown` is the current plan body (also written to
 `$ZWAI_HOME/plans/<thread_id>/PLAN.md`). `compacted` is true after `/compact` or auto-compact has folded
 earlier replay into a briefing; the event log is unchanged.
+
+### `POST /api/threads/:id/worker-model-recovery` → `200`
+
+An explicit human repair for retained workers whose provider no longer exists.
+Body: `{ "provider_id": "<selected provider>", "model": "<selected model>" }`.
+Returns `{ "configurations": N }`, the number of affected original configuration
+turns. The destination is resolved to a concrete provider/model/reasoning binding.
+A normal model PATCH does not grant this recovery authority.
+
+Requires an idle conversation without a parked Registry (`409 busy` otherwise).
+Only missing provider bindings are replaced; healthy bindings and historical
+turn selections remain unchanged. All source-turn overlays commit atomically
+under their conversation/project ownership. Frozen Nuwa executor selection and
+actual Restore/Resume apply the same explicit overlay. Completed results keep
+the model that produced them. No task or tool starts on save: the user then
+Continues or Retries. Invalid choices/no missing retained binding return `400`,
+a missing conversation `404`, and storage failures retain all prior bindings.
+See `C-037` and `internal/server/worker_model_recovery_test.go`.
 
 ### `POST /api/threads/:id/read` → `200`
 
@@ -2641,7 +2673,7 @@ reason, and skips unknown or malformed envelopes that paint no phone block.
 有当前有效 goal／同对话 wake 的工作继续遵守既有停泊契约。
 
 生命周期 `tool_result.text` 的新成功回执附带 worker 执行 `generation`：
-女娲回合的 `spawn_agent` 还可带 `intent`（`work`、`verify`、`fix`，省略为普通实现）和 `target`（已有共享记录 id）。同一 turn 与记录允许一次验证和一次修复；超额、缺目标或未知记录返回 `{error}`，不产生 `spawned`。同一次 tool call 重送不重复扣次。普通模式忽略这两个字段。
+女娲回合的 `spawn_agent` 还可带 `intent`（`work`、`verify`、`fix`，省略为普通实现）和 `target`（已有共享记录 id）。同一 turn 与记录允许一次验证和一次修复；超额、缺目标或未知记录返回 `{error}`，不产生 `spawned`。同一次 tool call 重送不重复扣次。普通模式忽略这两个字段。项目已保存执行模型时，这个回合的新角色省略 `model_ref` 或传递该执行模型的目录 ref；其它 ref 在创建 worker 前返回可修正 `{error}`。验收和修复使用同一个执行模型。未保存这一对的旧项目仍按多模型显式 `model_ref` 规则处理。
 `spawn_agent`／`resume_agent` 返回 `{agent_id,generation,...}`；`wait_agents`
 每个已知条目包含 `{agent_id,generation,status,...}`，只有实际返回的 done／failed
 结果结清该 generation，running／unknown 和 wait 超时不结清；`close_agent`

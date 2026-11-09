@@ -83,7 +83,7 @@ func TestExplicitWorkerRecoveryReachesHTTPWithOriginalIdentityAndPermissions(t *
 			e.cfg.Swarm.AutoTitle = false
 			e.cfg.Models.Default = "restore-fixture"
 			e.cfg.Models.Providers = []config.Provider{{ID: "restore-fixture", BaseURL: endpoint.URL,
-				Model: "planner/current", Catalog: []string{"planner/original", "planner/current", "executor/original"}}}
+				Model: "planner/current", Catalog: []string{"planner/original", "planner/current", "executor/original", "executor/replacement"}}}
 			e.pool = provider.New(e.cfg)
 			workspace := t.TempDir()
 			if err := os.WriteFile(filepath.Join(workspace, "source.txt"), []byte("Original source retained.\n"), 0o600); err != nil {
@@ -97,7 +97,7 @@ func TestExplicitWorkerRecoveryReachesHTTPWithOriginalIdentityAndPermissions(t *
 			if err != nil {
 				t.Fatal(err)
 			}
-			turn := &store.Turn{ThreadID: thread.ID, ProjectID: project.ID, ProviderID: "removed-provider", Model: "planner/original", NuwaEnabled: true, NuwaReadOnly: readOnly}
+			turn := &store.Turn{ThreadID: thread.ID, ProjectID: project.ID, ProviderID: "removed-provider", Model: "planner/original", NuwaEnabled: true, NuwaReadOnly: readOnly, NuwaExecutorProviderID: "removed-provider", NuwaExecutorModel: "executor/original"}
 			if err := e.store.CreateTurn(turn); err != nil {
 				t.Fatal(err)
 			}
@@ -136,6 +136,17 @@ func TestExplicitWorkerRecoveryReachesHTTPWithOriginalIdentityAndPermissions(t *
 				t.Fatalf("historical selection rewritten: %+v %v", original, err)
 			}
 			*binding = original.WorkerModelRecovery["removed-provider"]
+			if original.NuwaExecutorProviderID != "removed-provider" {
+				t.Fatal("historical executor rewritten")
+			}
+			restoredConfig, err := next.workerConfigurationForTag(t.Context(), thread.ID, turn.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			selected, _, err := restoredConfig.SelectWorkerModel(t.Context(), "")
+			if err != nil || selected != *binding {
+				t.Fatalf("new role kept a missing frozen executor: %+v %v", selected, err)
+			}
 			// Reopen storage after the human action before restoring the worker.
 			next = restartedTestEngine(t, next)
 			if n, err := next.ResumeParkedWorkers(); err != nil || n != 1 {

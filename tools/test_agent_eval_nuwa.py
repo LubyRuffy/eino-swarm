@@ -226,6 +226,8 @@ class ProjectRunTest(unittest.TestCase):
             self.assertFalse(result["harness_error"], result["harness_error"])
             self.assertEqual(calls[0][1], "/api/projects")
             self.assertTrue(calls[0][2]["nuwa_enabled"])
+            self.assertEqual(calls[0][2]["nuwa_planner_model"], "other")
+            self.assertEqual(calls[0][2]["nuwa_executor_model"], "model-one")
             self.assertEqual(calls[1][2]["project_id"], "pj")
             self.assertEqual(calls[2], ("PATCH", "/api/threads/th", {"provider_id": "default", "model": "other"}))
             self.assertEqual(calls[3][1], "/api/threads/th/turns")
@@ -268,6 +270,7 @@ class ProjectRunTest(unittest.TestCase):
         base = protocol.project_prompt(task, models)
         self.assertEqual([row["system_prompt"] for row in calls],
                          [base, base + "\n\nUse independent evidence checks.", base + "\n\nKeep a compact audit trail."])
+        self.assertTrue(all(row["nuwa_planner_model"] == "model-one" and row["nuwa_executor_model"] == "other" for row in calls))
         self.assertEqual(len({row["task_sha256"] for row in results}), 1)
         self.assertEqual(len({row["fixture_sha256"] for row in results}), 1)
         self.assertEqual(task, original)

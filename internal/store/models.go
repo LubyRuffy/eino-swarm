@@ -36,6 +36,15 @@ type Project struct {
 	MemoryEnabled bool `json:"memory_enabled"`
 	// NuwaEnabled enables prompt-driven collaboration for subsequent turns.
 	NuwaEnabled bool `json:"nuwa_enabled"`
+	// NuwaPlannerProviderID and NuwaPlannerModel are the manager model for
+	// subsequent Nuwa turns. Both empty means this project has not saved a
+	// pair, so new roles keep the previous model-choice rules.
+	NuwaPlannerProviderID string `gorm:"size:64" json:"nuwa_planner_provider_id,omitempty"`
+	NuwaPlannerModel      string `gorm:"size:200" json:"nuwa_planner_model,omitempty"`
+	// NuwaExecutorProviderID and NuwaExecutorModel are the model for a new
+	// worker role. Closing Nuwa keeps the pair so the next open restores it.
+	NuwaExecutorProviderID string `gorm:"size:64" json:"nuwa_executor_provider_id,omitempty"`
+	NuwaExecutorModel      string `gorm:"size:200" json:"nuwa_executor_model,omitempty"`
 	// NuwaRevision identifies the latest committed shared-work snapshot.
 	NuwaRevision int64 `json:"nuwa_revision"`
 	// SortRank is the sidebar's manual order. Zero means "never dragged":
@@ -195,6 +204,11 @@ type Turn struct {
 	// NuwaEnabled freezes the project's collaboration mode for this turn and
 	// its recovered workers; editing the project affects subsequent turns.
 	NuwaEnabled bool `json:"nuwa_enabled"`
+	// NuwaExecutorProviderID and NuwaExecutorModel freeze the project's
+	// executor at turn start. Empty means the project had not saved a pair.
+	// A later project edit does not retarget this turn or its workers.
+	NuwaExecutorProviderID string `gorm:"size:64" json:"nuwa_executor_provider_id,omitempty"`
+	NuwaExecutorModel      string `gorm:"size:200" json:"nuwa_executor_model,omitempty"`
 	// NuwaReadOnly preserves planning's read-only tool surface after recovery.
 	NuwaReadOnly bool `json:"nuwa_read_only"`
 	// GoalContinue is true when the engine started this turn to keep pursuing

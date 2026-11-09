@@ -218,6 +218,8 @@ in this database: notes and skills are files, so a person can read and fix them
 | `workdir` | text | the directory the user chose; empty means zwai manages one |
 | `memory_enabled` | bool | whether this project remembers anything. `memory.enabled` in the config can override it off, never on |
 | `nuwa_enabled` | bool | opt-in collaboration mode for subsequent turns; existing projects default off |
+| `nuwa_planner_provider_id`, `nuwa_planner_model` | text | manager model for later Nuwa turns. Both empty, together with the executor columns, means the project has not saved a pair |
+| `nuwa_executor_provider_id`, `nuwa_executor_model` | text | model for a new worker role. Closing Nuwa keeps the pair. A later edit does not retarget a turn that already copied it |
 | `nuwa_revision` | int64 | committed mode/shared-node/worker-view invalidation revision, independent of conversation seq |
 | `sort_rank` | int | sidebar drag order. `0` means never dragged: those rows interleave by `updated_at` with ranked rows |
 | `created_at`, `updated_at` | time | gorm-managed. `updated_at` is also bumped when a conversation in the project is used, so the default project list is last used, not created |
@@ -509,6 +511,7 @@ The `id` is the handle the whole troubleshooting story hangs off: the UI shows i
 | `reasoning_effort` | the thinking level this turn ran with, so a trace shows what produced the answer |
 | `web_execution` | captured Web-tool preference at turn start; restoration and parked workers use it before later conversation/global settings. Old rows remain empty and use the current inherited policy |
 | `nuwa_enabled` | collaboration mode captured at turn start; later project edits do not change this turn or its workers |
+| `nuwa_executor_provider_id`, `nuwa_executor_model` | executor copied from the project at turn start. Empty means the project had not saved a pair. In-flight workers keep the binding recorded for their role |
 | `nuwa_read_only` | planning's read-only Nuwa surface retained through recovery |
 | `goal_continue` | true when the runtime started this turn to keep pursuing an open `/goal`. The timeline records `goal_continued`, not `user_message` |
 | `schedule_run_id` | set when this turn is a scheduled fire; empty for every other origin. Trace joins the run through it |

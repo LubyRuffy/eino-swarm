@@ -50,6 +50,10 @@ export interface ProjectPatch {
   workdir?: string
   memory_enabled?: boolean
   nuwa_enabled?: boolean
+  nuwa_planner_provider_id?: string
+  nuwa_planner_model?: string
+  nuwa_executor_provider_id?: string
+  nuwa_executor_model?: string
 }
 
 export interface SideChatExchange {

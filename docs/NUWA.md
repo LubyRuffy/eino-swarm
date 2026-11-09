@@ -53,8 +53,8 @@ does not prescribe a domain, role list, workflow or worker model.
 
 Verification is a mandatory, independent step, not optional advice. Before the
 manager accepts a deliverable or completes the goal, a separate executor — not
-the one that produced the result, and on a different configured model when one
-exists — derives its own checks from the stated objective, constraints and
+the one that produced the result — derives its own checks from the stated
+objective, constraints and
 acceptance criteria and exercises the actual result against the hardest inputs
 those criteria imply: boundary and extreme values, empty, large, malformed or
 adversarial inputs, and every explicitly required rule or case. The producer's
@@ -88,16 +88,19 @@ model chosen for the owning conversation turn. It does not identify the model
 running a worker. When a worker calls `list_models`, `current` separately
 reports its ID, role, parent if any, generation and recorded model binding.
 Choose a new worker using `models[].ref`, not the current binding's provenance.
-With multiple ready choices, each new role must supply an exact `model_ref`;
-omission returns a correctable error pointing to `list_models` before context
-forking, dispatch or any worker model request. With at most one ready choice,
-omission retains default selection. Same-role steering, resume and recovery
-retain the concrete binding; an explicit conflict refuses before queuing a
-message or changing a generation. Roles remain globally unique in the Registry.
-The schema keeps `model_ref` optional for existing-role reuse. This changes the
-former default fallback for new roles in multi-model Nuwa projects; no stored
-data migration is needed. Ordinary mode and the generic Registry retain their
-existing default behavior. Model choice remains the agent's decision.
+When the project has saved an executor, this turn's new roles use that model:
+omit `model_ref` or pass its exact catalog ref. Verification and repair use
+the same executor. A different ref returns a correctable error before a worker
+is created. The turn copies the executor at start, so a later project edit does
+not retarget this turn, and same-role steering, resume and recovery keep the
+recorded binding. A project whose four model columns are still empty keeps the
+previous rule: with multiple ready choices, each new role must supply an exact
+`model_ref`, and omission returns a correctable error pointing to `list_models`
+before context forking, dispatch or any worker model request. With at most one
+ready choice, omission retains default selection. Roles remain globally unique
+in the Registry. The schema keeps `model_ref` optional. Ordinary mode ignores
+the saved pair and the generic Registry retains its default behavior. Saving
+the pair does not force the planner to spawn a worker.
 
 Every Nuwa worker model call also receives that same current assignment as a
 separate runtime System message. It describes the binding already in effect
@@ -350,7 +353,7 @@ Related boundaries: `F-136`, `C-037`, `C-019`, `C-027`. See [API](API.md),
 
 ### 恢复已移除的模型提供商
 
-会话的模型选择只影响后续新执行；已有 worker 保留自己的绑定。若错误为
+会话的模型选择只影响后续新执行；已有 worker 保留自己的绑定。Nuwa 已保存模型对时，恢复按钮使用输入框当前显示的项目规划模型，未保存模型对时使用会话模型。若错误为
 `restore worker configuration: provider: unknown provider`，先在输入框选择可用模型，
 再点击错误行的“使用 … 修复恢复配置”。这会原子保存失效配置的显式替代，保留
 原始模型历史、worker 身份、项目归属与工具权限；健康绑定保持原值。会话必须

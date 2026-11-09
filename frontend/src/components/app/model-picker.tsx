@@ -23,6 +23,8 @@ export function ModelPicker({
   onChange,
   onRefresh,
   onEdit,
+  id,
+  label: accessibleName,
 }: {
   models: ModelInfo[]
   providerId?: string
@@ -30,6 +32,9 @@ export function ModelPicker({
   onChange: (providerId: string, model: string) => void
   onRefresh?: () => Promise<void>
   onEdit?: () => void
+  id?: string
+  /** Accessible name when this picker is not the composer control. */
+  label?: string
 }) {
   const t = useT()
   const [open, setOpen] = useState(false)
@@ -180,7 +185,8 @@ export function ModelPicker({
     <div ref={wrapRef} className="relative">
       <button
         type="button"
-        aria-label={t("composer.model")}
+        id={id}
+        aria-label={accessibleName ?? t("composer.model")}
         aria-expanded={open}
         aria-haspopup="listbox"
         className={cn(

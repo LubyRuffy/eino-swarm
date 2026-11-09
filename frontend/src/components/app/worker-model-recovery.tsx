@@ -2,6 +2,8 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
 import { useT } from "@/lib/use-t"
+import { savedNuwaPlanner } from "@/lib/nuwa-models"
+import { useProjects } from "@/store/projects"
 import { useApp } from "@/store/app"
 
 /** Repair is explicit and does not resend input or replay uncertain tools. */
@@ -9,11 +11,15 @@ export function WorkerModelRecovery({ turnId }: { turnId?: string }) {
   const t = useT()
   const id = useApp((s) => s.activeId)
   const thread = useApp((s) => s.threads.find((row) => row.id === s.activeId))
+  const project = useProjects((s) => s.projects.find((row) => row.id === thread?.project_id))
+  const planner = savedNuwaPlanner(project)
+  const providerId = planner?.providerId ?? thread?.provider_id
+  const model = planner?.model ?? thread?.model
   const latest = useApp((s) => s.transcript.turns.at(-1))
   const unavailable = useApp((s) => !s.loaded || s.status.running || s.transcript.running || s.status.awaiting_answer || s.meta?.startup === "restoring")
   const [pending, setPending] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; text: string }>()
-  const selected = useApp((s) => s.models.find((row) => row.ready && row.provider_id === thread?.provider_id && (!thread?.model || row.model === thread.model)))
+  const selected = useApp((s) => s.models.find((row) => row.ready && row.provider_id === providerId && (!model || row.model === model)))
   if (!id || !thread || !turnId || latest?.id !== turnId || latest.status !== "error") return null
   async function repair() {
     if (pending || unavailable || !selected || !id) return

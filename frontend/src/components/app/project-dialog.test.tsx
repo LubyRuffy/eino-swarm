@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ProjectDialog } from "./project-dialog"
 import { ToastStack } from "./toast-stack"
 import { ApiError } from "@/lib/api"
-import type { Project } from "@/lib/types"
+import type { ModelInfo, Project } from "@/lib/types"
+
+HTMLElement.prototype.scrollIntoView = function () {}
 
 const directory = vi.hoisted(() => ({
   available: vi.fn(),
@@ -66,6 +68,51 @@ describe("Project dialog", () => {
     expect(screen.getByText(/Applies from the next turn; current work continues/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ nuwa_enabled: false })))
+  })
+
+  it("shows the conversation model and another ready model when Nuwa is turned on", async () => {
+    const models: ModelInfo[] = [
+      { id: "a\talpha", provider_id: "a", provider_label: "One", label: "alpha", model: "alpha", ready: true, default: true },
+      { id: "a\tbeta", provider_id: "a", provider_label: "One", label: "beta", model: "beta", ready: true },
+      { id: "hidden", provider_id: "a", provider_label: "One", label: "hidden", model: "hidden", ready: false },
+    ]
+    const { onSave } = renderDialog({ models, plannerHint: { providerId: "a", model: "beta" } })
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Shared work" } })
+    expect(screen.queryByRole("button", { name: "Planner model" })).toBeNull()
+    fireEvent.click(screen.getByRole("switch", { name: "Nuwa collaboration" }))
+    expect(screen.getByRole("button", { name: "Planner model" })).toHaveTextContent("beta")
+    expect(screen.getByRole("button", { name: "Executor model" })).toHaveTextContent("alpha")
+    fireEvent.click(screen.getByRole("button", { name: "Executor model" }))
+    fireEvent.click(screen.getByRole("option", { name: /beta/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      nuwa_enabled: true,
+      nuwa_planner_provider_id: "a",
+      nuwa_planner_model: "beta",
+      nuwa_executor_provider_id: "a",
+      nuwa_executor_model: "beta",
+    })))
+  })
+
+  it("keeps a saved pair when Nuwa is already on", async () => {
+    const models: ModelInfo[] = [
+      { id: "a\talpha", provider_id: "a", provider_label: "One", label: "alpha", model: "alpha", ready: true, default: true },
+      { id: "b\tgamma", provider_id: "b", provider_label: "Two", label: "gamma", model: "gamma", ready: true },
+    ]
+    renderDialog({
+      models,
+      plannerHint: { providerId: "a", model: "alpha" },
+      project: {
+        ...project,
+        nuwa_enabled: true,
+        nuwa_planner_provider_id: "b",
+        nuwa_planner_model: "gamma",
+        nuwa_executor_provider_id: "a",
+        nuwa_executor_model: "alpha",
+      },
+    })
+    await waitFor(() => expect(screen.getByRole("button", { name: "Planner model" })).toHaveTextContent("gamma"))
+    expect(screen.getByRole("button", { name: "Executor model" })).toHaveTextContent("alpha")
   })
 
   it("preserves an enabled project's collaboration independently of memory", async () => {

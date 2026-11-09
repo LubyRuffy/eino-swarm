@@ -205,9 +205,7 @@ func (e *Engine) resumeTurn(restoreCtx context.Context, turn *store.Turn, snapsh
 	if err := restoreCtx.Err(); err != nil {
 		return err
 	}
-	effective := *turn
-	effective.ProviderID, effective.Model, effective.ReasoningEffort = selection.ProviderID, selection.Model, effort
-	reg := e.newTurnRegistry(builder, toolset, pc, &effective)
+	reg := e.newTurnRegistry(builder, toolset, pc, turn)
 	unread := e.unreadSteerMessages(turn, snapshot)
 	messages = dropSteerMessages(messages, unread)
 

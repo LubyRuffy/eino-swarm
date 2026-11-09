@@ -19,11 +19,15 @@ type projectView struct {
 	Workdir string `json:"workdir"`
 	// ResolvedWorkdir is where the agents actually work, so the UI can show
 	// the managed path without knowing how it is derived.
-	ResolvedWorkdir string `json:"resolved_workdir"`
-	MemoryEnabled   bool   `json:"memory_enabled"`
-	NuwaEnabled     bool   `json:"nuwa_enabled"`
-	NuwaRevision    int64  `json:"nuwa_revision"`
-	MemoryDir       string `json:"memory_dir"`
+	ResolvedWorkdir        string `json:"resolved_workdir"`
+	MemoryEnabled          bool   `json:"memory_enabled"`
+	NuwaEnabled            bool   `json:"nuwa_enabled"`
+	NuwaPlannerProviderID  string `json:"nuwa_planner_provider_id"`
+	NuwaPlannerModel       string `json:"nuwa_planner_model"`
+	NuwaExecutorProviderID string `json:"nuwa_executor_provider_id"`
+	NuwaExecutorModel      string `json:"nuwa_executor_model"`
+	NuwaRevision           int64  `json:"nuwa_revision"`
+	MemoryDir              string `json:"memory_dir"`
 	// Skills is the index the sidebar lists under the project: names and
 	// one-line descriptions, not the bodies. An unreadable store is an empty
 	// list rather than a failed listing — hiding every project because one
@@ -36,19 +40,23 @@ type projectView struct {
 
 func (s *Server) viewProject(p *store.Project) projectView {
 	return projectView{
-		ID:              p.ID,
-		Name:            p.Name,
-		SystemPrompt:    p.SystemPrompt,
-		Workdir:         p.Workdir,
-		ResolvedWorkdir: s.engine.ProjectWorkdir(p),
-		MemoryEnabled:   p.MemoryEnabled,
-		NuwaEnabled:     p.NuwaEnabled,
-		NuwaRevision:    p.NuwaRevision,
-		MemoryDir:       s.engine.ProjectMemory(p.ID).Dir(),
-		Skills:          s.projectSkills(p.ID),
-		SortRank:        p.SortRank,
-		CreatedAt:       p.CreatedAt.Format(timeFormat),
-		UpdatedAt:       p.UpdatedAt.Format(timeFormat),
+		ID:                     p.ID,
+		Name:                   p.Name,
+		SystemPrompt:           p.SystemPrompt,
+		Workdir:                p.Workdir,
+		ResolvedWorkdir:        s.engine.ProjectWorkdir(p),
+		MemoryEnabled:          p.MemoryEnabled,
+		NuwaEnabled:            p.NuwaEnabled,
+		NuwaPlannerProviderID:  p.NuwaPlannerProviderID,
+		NuwaPlannerModel:       p.NuwaPlannerModel,
+		NuwaExecutorProviderID: p.NuwaExecutorProviderID,
+		NuwaExecutorModel:      p.NuwaExecutorModel,
+		NuwaRevision:           p.NuwaRevision,
+		MemoryDir:              s.engine.ProjectMemory(p.ID).Dir(),
+		Skills:                 s.projectSkills(p.ID),
+		SortRank:               p.SortRank,
+		CreatedAt:              p.CreatedAt.Format(timeFormat),
+		UpdatedAt:              p.UpdatedAt.Format(timeFormat),
 	}
 }
 
@@ -81,6 +89,7 @@ type createProjectRequest struct {
 	// gets the configured default rather than silently opting out.
 	MemoryEnabled *bool `json:"memory_enabled"`
 	NuwaEnabled   bool  `json:"nuwa_enabled"`
+	nuwaModelBody
 }
 
 func (s *Server) createProject(c *gin.Context) {
@@ -95,6 +104,13 @@ func (s *Server) createProject(c *gin.Context) {
 	}
 	p, err := s.engine.CreateProject(req.Name, req.SystemPrompt, req.Workdir, enabled, req.NuwaEnabled)
 	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	created := p
+	p, err = s.saveProjectNuwaModels(created, req.NuwaEnabled, req.nuwaModelBody)
+	if err != nil {
+		_ = s.engine.DeleteProject(created.ID)
 		s.fail(c, err)
 		return
 	}
@@ -115,6 +131,7 @@ type patchProjectRequest struct {
 	Workdir       *string `json:"workdir"`
 	MemoryEnabled *bool   `json:"memory_enabled"`
 	NuwaEnabled   *bool   `json:"nuwa_enabled"`
+	nuwaModelBody
 }
 
 func (s *Server) patchProject(c *gin.Context) {
@@ -126,12 +143,86 @@ func (s *Server) patchProject(c *gin.Context) {
 		badRequest(c, "could not read the request body: %v", err)
 		return
 	}
+	current, err := s.engine.GetProject(c.Param("id"))
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	enabled := current.NuwaEnabled
+	if req.NuwaEnabled != nil {
+		enabled = *req.NuwaEnabled
+	}
+	// Reject a bad pair before the mode or name changes. A refused save must
+	// leave the project the user still has open.
+	supplied, err := req.pair()
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	if supplied != nil {
+		if err := s.engine.ValidateNuwaModelPair(*supplied); err != nil {
+			s.fail(c, err)
+			return
+		}
+	}
 	p, err := s.engine.UpdateProject(c.Param("id"), req.Name, req.SystemPrompt, req.Workdir, req.MemoryEnabled, req.NuwaEnabled)
 	if err != nil {
 		s.fail(c, err)
 		return
 	}
+	p, err = s.saveProjectNuwaModels(p, enabled, req.nuwaModelBody)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"project": s.viewProject(p)})
+}
+
+// nuwaModelBody is the optional planner/executor pair. All four fields
+// together replace the saved pair. Omitting all four leaves it alone, and
+// enabling Nuwa with none saved fills the ready-catalog default.
+type nuwaModelBody struct {
+	PlannerProviderID  *string `json:"nuwa_planner_provider_id"`
+	PlannerModel       *string `json:"nuwa_planner_model"`
+	ExecutorProviderID *string `json:"nuwa_executor_provider_id"`
+	ExecutorModel      *string `json:"nuwa_executor_model"`
+}
+
+func (b nuwaModelBody) pair() (*engine.NuwaModelPair, error) {
+	ptrs := []*string{b.PlannerProviderID, b.PlannerModel, b.ExecutorProviderID, b.ExecutorModel}
+	supplied := 0
+	for _, field := range ptrs {
+		if field != nil {
+			supplied++
+		}
+	}
+	if supplied == 0 {
+		return nil, nil
+	}
+	if supplied != 4 {
+		return nil, engine.ErrNuwaModelInvalid
+	}
+	return &engine.NuwaModelPair{
+		PlannerProviderID:  strings.TrimSpace(*b.PlannerProviderID),
+		PlannerModel:       strings.TrimSpace(*b.PlannerModel),
+		ExecutorProviderID: strings.TrimSpace(*b.ExecutorProviderID),
+		ExecutorModel:      strings.TrimSpace(*b.ExecutorModel),
+	}, nil
+}
+
+func (s *Server) saveProjectNuwaModels(p *store.Project, enabled bool, body nuwaModelBody) (*store.Project, error) {
+	supplied, err := body.pair()
+	if err != nil {
+		return nil, err
+	}
+	resolved, err := s.engine.ResolveNuwaModelPair(enabled, p, supplied)
+	if err != nil {
+		return nil, err
+	}
+	if resolved == nil {
+		return p, nil
+	}
+	return s.engine.SaveNuwaModelPair(p.ID, *resolved)
 }
 
 func (s *Server) deleteProject(c *gin.Context) {

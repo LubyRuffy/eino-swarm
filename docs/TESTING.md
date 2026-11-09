@@ -189,7 +189,12 @@ records are retained separately in `native-smoke-revision3-readygate01` and do
 not change the earlier failed baseline or accept a future public installer.
 ## Nuwa project collaboration (`F-136`, `C-037`)
 
-The mode is captured per turn. Test changes across a parked Registry and cold
+A saved Nuwa planner and executor are checked through project create/update and
+the real model adapter: omission uses the frozen executor, a conflicting ref
+creates no worker, same-role resume keeps the old binding, one ready model is
+used for both, ordinary mode ignores the columns, and an unavailable saved
+model fails before a model request. `nuwa_model_pair_http_test.go` and
+`nuwa_model_pair_test.go` cover that boundary. The mode is captured per turn. Test changes across a parked Registry and cold
 recovery, not only project JSON. Existing workers must retain their original
 configuration tag, delegation mode, model binding and trusted owner; bad tags,
 model selection conflicts and old generations must refuse before side effects.

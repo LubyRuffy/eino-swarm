@@ -10,6 +10,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 - Explicitly repair removed worker providers using the selected conversation model; preserve historical model selections, worker identity and permissions across restart. Ordinary model switching keeps its existing scope (#162).
 
+- A Nuwa project saves a planner model and an executor model. Later turns use
+  the planner. A new worker role uses the executor, and a different `model_ref`
+  is refused before a worker starts. Same-role resume keeps the recorded
+  binding. Closing Nuwa keeps the pair. A project that has not saved one keeps
+  the previous explicit `model_ref` rule. (`F-136`, `C-037`)
+
 - Selecting transcript text and then clicking elsewhere dismisses Add to
   chat. A click that does not paint a new range no longer leaves the menu
   up when the browser collapses that range after the pointer is released.

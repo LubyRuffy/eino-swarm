@@ -30,6 +30,20 @@ func nuwaModelRef(providerID, model string) string {
 	return "model:" + base64.RawURLEncoding.EncodeToString([]byte(provider.ChoiceID(providerID, model)))
 }
 
+func nuwaRefMatches(ref, providerID, model string) bool {
+	ref = strings.TrimSpace(ref)
+	return ref == nuwaModelRef(providerID, model) || ref == provider.ChoiceID(providerID, model)
+}
+
+func nuwaReadyChoice(options []nuwaModel, providerID, model string) bool {
+	for _, option := range options {
+		if option.ProviderID == providerID && option.Model == model {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Engine) nuwaModels(turn *store.Turn) []nuwaModel {
 	models := []nuwaModel{}
 	for _, info := range e.pool.List() {
@@ -67,11 +81,22 @@ func (e *Engine) wireNuwaRegistry(reg *swarm.Registry, set *tools.Set, pc *proje
 	reg.SelectableToolNames = selectableWorkerToolNames(pc.workerTools(set))
 	reg.SelectWorkerModel = func(ctx context.Context, ref string) (swarm.ModelBinding, swarm.ModelBuilder, error) {
 		options := e.nuwaModels(turn)
-		if ref == "" && len(options) > 1 {
+		selection := recoveredWorkerBinding(turn, swarm.ModelBinding{ProviderID: turn.ProviderID, Model: turn.Model, ReasoningEffort: turn.ReasoningEffort})
+		id, name, effort := selection.ProviderID, selection.Model, selection.ReasoningEffort
+		if turn.NuwaExecutorProviderID != "" && turn.NuwaExecutorModel != "" {
+			executor := recoveredWorkerBinding(turn, swarm.ModelBinding{ProviderID: turn.NuwaExecutorProviderID, Model: turn.NuwaExecutorModel, ReasoningEffort: turn.ReasoningEffort})
+			// The turn froze the project executor. Only an explicit recovery replaces it.
+			// Another ref is a correctable refusal and does not start a worker.
+			if ref != "" && !nuwaRefMatches(ref, executor.ProviderID, executor.Model) {
+				return swarm.ModelBinding{}, nil, fmt.Errorf("this project already chose the executor model")
+			}
+			id, name, effort = executor.ProviderID, executor.Model, executor.ReasoningEffort
+			if !nuwaReadyChoice(options, id, name) {
+				return swarm.ModelBinding{}, nil, fmt.Errorf("choose a ready planner model and executor model in the project")
+			}
+		} else if ref == "" && len(options) > 1 {
 			return swarm.ModelBinding{}, nil, fmt.Errorf("model_ref is required for a new role when multiple models are available; use an exact ref returned by list_models")
-		}
-		id, name := turn.ProviderID, turn.Model
-		if ref != "" {
+		} else if ref != "" {
 			found := false
 			for _, option := range options {
 				if option.Ref == ref || provider.ChoiceID(option.ProviderID, option.Model) == ref {
@@ -83,7 +108,7 @@ func (e *Engine) wireNuwaRegistry(reg *swarm.Registry, set *tools.Set, pc *proje
 				return swarm.ModelBinding{}, nil, fmt.Errorf("unknown or unavailable model_ref; use a ref returned by list_models")
 			}
 		}
-		binding, builder, err := e.pool.WorkerModel(ctx, id, name, turn.ReasoningEffort, recorder)
+		binding, builder, err := e.pool.WorkerModel(ctx, id, name, effort, recorder)
 		binding.Ref = provider.ChoiceID(id, name)
 		return binding, builder, err
 	}
@@ -148,15 +173,17 @@ from the available evidence. There is no predefined domain workflow or role
 list. A task may need only one executor. A purely conversational response that
 needs no task operation does not require spawning a worker.
 
-Use list_worker_tools to discover execution tools and list_models to select
-configured models. When multiple models are available, pass an exact model_ref
-for each new role. Give each executor a self-contained objective, constraints,
+Use list_worker_tools to discover execution tools and list_models to see
+configured models. When the project has chosen an executor model, omit
+model_ref or pass that exact ref for each new role; a different model is
+refused. When it has not, and multiple models are available, pass an exact
+model_ref from list_models. Give each executor a self-contained objective, constraints,
 inputs, expected outputs, and evidence requirements. Do not repeat its task.
 Collect results with wait_agents and inspect shared records with read_work.
 
 Before you accept any deliverable or call complete_goal, verify it with an
-independent executor — not the one that produced it, and on a different model
-when one is configured. That verifier derives its own checks from the stated
+independent executor — not the one that produced it. Verification and repair
+use the project's executor model when one is saved. That verifier derives its own checks from the stated
 objective, constraints and acceptance criteria, then exercises the actual result
 against the hardest inputs those criteria imply: boundary and extreme values,
 empty, large, malformed or adversarial inputs, and every explicitly required
@@ -190,12 +217,14 @@ the current facts, refine the objective into verifiable subgoals, and revise you
 plan as new evidence arrives. Choose useful executor roles and collaboration
 yourself; there is no prescribed domain workflow or predefined executor list.
 
-list_models lists configured, ready resources. When multiple models are available,
-each new role requires an exact model_ref from that catalog. With at most one
-ready model, an omitted reference uses the current default. A model name alone
-does not establish its capabilities. Use observed results to evaluate your
-choices. Existing workers retain their resolved model when continued, so their
-model_ref can be omitted.
+list_models lists configured, ready resources. When the project has chosen an
+executor model, a new role uses that model: omit model_ref or pass its exact
+ref, and a different ref is refused. When it has not, and multiple models are
+available, each new role requires an exact model_ref from that catalog. With
+at most one ready model, an omitted reference uses the current default. A
+model name alone does not establish its capabilities. Existing workers retain
+their resolved model when continued, so a later change to the project executor
+does not retarget them and their model_ref can be omitted.
 
 Share concise results with source evidence and artifact locations. Distinguish
 observations, hypotheses, attempted work and verified outcomes. A peer's report
@@ -232,7 +261,12 @@ func (t *nuwaTool) InvokableRun(ctx context.Context, args string, _ ...tool.Opti
 }
 
 func (e *Engine) nuwaModelTool(turn *store.Turn) tool.BaseTool {
-	return &nuwaTool{name: "list_models", description: "List the configured models available for delegation and the current worker assignment, when called by a worker. Catalog default is the owning conversation turn's model. Copy an exact models[].ref into spawn_agent model_ref; capabilities not listed here are unknown.",
+	description := "List the configured models available for delegation and the current worker assignment, when called by a worker. Catalog default is the owning conversation turn's model. Copy an exact models[].ref into spawn_agent model_ref; capabilities not listed here are unknown."
+	if turn != nil && turn.NuwaExecutorProviderID != "" && turn.NuwaExecutorModel != "" {
+		executor := recoveredWorkerBinding(turn, swarm.ModelBinding{ProviderID: turn.NuwaExecutorProviderID, Model: turn.NuwaExecutorModel})
+		description += " This turn's new roles use executor ref " + nuwaModelRef(executor.ProviderID, executor.Model) + ". Omit model_ref or copy that ref. A different ref is refused."
+	}
+	return &nuwaTool{name: "list_models", description: description,
 		params: map[string]*schema.ParameterInfo{}, run: func(ctx context.Context, _ string) (string, error) {
 			if err := context.Cause(ctx); err != nil {
 				return "", err

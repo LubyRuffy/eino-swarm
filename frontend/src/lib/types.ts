@@ -112,6 +112,12 @@ export interface Project {
   memory_enabled: boolean
   /** Opt-in project collaboration; absent on older hosts means standard mode. */
   nuwa_enabled?: boolean
+  /** Saved planner for later Nuwa turns. Empty means this project has not chosen a pair. */
+  nuwa_planner_provider_id?: string
+  nuwa_planner_model?: string
+  /** Saved model for a new worker role. Closing Nuwa keeps the pair. */
+  nuwa_executor_provider_id?: string
+  nuwa_executor_model?: string
   /** Recorded shared work remains readable after collaboration is switched off. */
   nuwa_revision?: number
   memory_dir: string

@@ -186,7 +186,5 @@ func (e *Engine) parkedRegistry(th *store.Thread, turn *store.Turn) (*swarm.Regi
 	if err != nil {
 		return nil, err
 	}
-	effective := *turn
-	effective.ProviderID, effective.Model, effective.ReasoningEffort = selection.ProviderID, selection.Model, effort
-	return e.newTurnRegistry(builder, set, pc, &effective), nil
+	return e.newTurnRegistry(builder, set, pc, turn), nil
 }

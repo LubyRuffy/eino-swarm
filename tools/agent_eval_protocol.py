@@ -1,7 +1,7 @@
 """Model-catalog snapshots and immutable identities for opt-in paired evals.
 
-Resources are configured by the human. Tasks and roles are left to the model;
-an executor choice is a prompt preference, never a role-to-model routing rule.
+Resources are configured by the human. Tasks and roles are left to the model.
+A Nuwa executor is the project pair the host enforces, not a role name.
 """
 
 from __future__ import annotations
@@ -75,14 +75,30 @@ def render_model_config(models: dict, cap: int = 0) -> str:
     return "\n".join(lines) + "\n"
 
 
+def nuwa_model_pair(models: dict) -> dict:
+    """The planner the eval selected, and the executor the host must enforce."""
+    planner = models["planner"]
+    executor = models.get("executor")
+    if not executor:
+        executor = next((choice for choice in models["catalog"]
+                         if choice["provider_id"] != planner["provider_id"] or choice["model"] != planner["model"]),
+                        planner)
+    return {
+        "nuwa_planner_provider_id": planner["provider_id"],
+        "nuwa_planner_model": planner["model"],
+        "nuwa_executor_provider_id": executor["provider_id"],
+        "nuwa_executor_model": executor["model"],
+    }
+
+
 def project_prompt(task: dict, models: dict | None, extra: str = "") -> str:
     prompt = task.get("project_prompt", "")
     if models and models.get("executor"):
         identity = json.dumps({key: models["executor"][key] for key in ("provider_id", "model")}, ensure_ascii=False)
-        prompt += ("\n\nFor this evaluation, prefer the configured model identity " + identity + " for delegated execution when useful. "
-                   "First call list_models and copy its exact returned ref for that provider_id and model into model_ref. "
-                   "Do not construct, decode or escape a tool ref from a model name. "
-                   "You may choose the roles, division of work, worker count and other available models from evidence. "
+        prompt += ("\n\nThis evaluation saved the model identity " + identity + " as the project executor. "
+                   "Omit model_ref, or copy the exact ref list_models returns for that provider_id and model. "
+                   "Do not construct, decode or escape a tool ref from a model name. A different model is refused. "
+                   "You may choose the roles, division of work and worker count from evidence. "
                    "Do not delegate only to satisfy a quota. Report actual limitations.")
     if extra.strip():
         prompt += "\n\n" + extra.strip()

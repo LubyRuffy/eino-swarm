@@ -313,6 +313,8 @@ func (s *Server) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "ask_mismatch"})
 	case errors.Is(err, engine.ErrNothingToCompact):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "nothing_to_compact"})
+	case errors.Is(err, engine.ErrNuwaModelUnavailable), errors.Is(err, engine.ErrNuwaModelInvalid):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "nuwa_model"})
 	case errors.Is(err, engine.ErrInvalidWorkdir):
 		// Its own code so the project dialog can put the message under the
 		// working directory field instead of somewhere the user has to hunt.

@@ -68,6 +68,9 @@ func (e *Engine) RecoverWorkerModels(ctx context.Context, threadID, providerID, 
 		}
 		selection := swarm.ModelBinding{ProviderID: source.ProviderID, Model: source.Model, ReasoningEffort: source.ReasoningEffort}
 		candidates := []swarm.ModelBinding{selection}
+		if source.NuwaExecutorProviderID != "" {
+			candidates = append(candidates, swarm.ModelBinding{ProviderID: source.NuwaExecutorProviderID, Model: source.NuwaExecutorModel, ReasoningEffort: source.ReasoningEffort})
+		}
 		if binding != nil {
 			candidates = append(candidates, *binding)
 		}
