@@ -386,11 +386,17 @@ func runToolScopeFlow(t *testing.T, names *[]string, writeProbe, failReadReceipt
 			}
 			if step == 5 {
 				preview := nuwaContextHTTPBlock(t, request.scheduleCompletionRequest, true)
-				node := nuwaContextHTTPNode(t, preview, id)
-				if preview.ProjectID != node.ProjectID || preview.Revision <= 0 || node.ID != id || node.Version != version ||
-					node.Kind != "fact" || node.Status != "reported" || node.Summary != value || node.Detail != "" ||
-					node.AgentID != spawn.AgentID || node.Generation != spawn.Generation || len(node.Evidence) != 1 {
-					fail("automatic shared preview lost reported value, collected identity or worker evidence")
+				shown := nuwaContextHTTPNode(t, preview, id)
+				if preview.Revision <= 0 || shown.ID != id || shown.Version != version ||
+					shown.Kind != "fact" || shown.Status != "reported" || shown.Summary != value || shown.Detail != "" ||
+					shown.AgentID != "" || shown.Generation != 0 || len(shown.Evidence) != 0 || shown.ThreadID != "" || shown.TurnID != "" {
+					fail("automatic shared preview lost the reported value or repeated storage identity")
+					return
+				}
+				var node store.NuwaNode
+				if err := db.WithContext(r.Context()).First(&node, "id = ?", id).Error; err != nil ||
+					node.ProjectID != preview.ProjectID || node.AgentID != spawn.AgentID || node.Generation != spawn.Generation || len(node.Evidence) != 1 {
+					fail("stored record lost the worker identity or evidence")
 					return
 				}
 				ref := node.Evidence[0]
@@ -399,7 +405,7 @@ func runToolScopeFlow(t *testing.T, names *[]string, writeProbe, failReadReceipt
 					source.Kind != "tool_result" || source.ToolCallID != "scope-read" || source.AgentID != spawn.AgentID ||
 					source.WorkerGeneration != spawn.Generation || source.TurnID != ref.TurnID ||
 					node.ThreadID != ref.ThreadID || node.TurnID != ref.TurnID || !strings.Contains(source.Text, value) {
-					fail("automatic shared preview did not reference the worker's actual durable source")
+					fail("stored record did not reference the worker's actual durable source")
 					return
 				}
 				for _, message := range request.Messages {

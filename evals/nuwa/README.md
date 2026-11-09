@@ -32,7 +32,9 @@ all failures and unresolved usage. No completed comparison on that frozen
 protocol currently supports a persistent-project benefit. A separate one-run
 folded chain, recorded in [RESULTS.md](RESULTS.md), graded 80/80 after the
 saved executor received the shared graph and 71/80 from the same executor with
-notes alone; it was slower and used more tokens. Quality takes precedence over
+notes alone; it was slower and used more tokens. A rerun with the short
+preview graded the same 80/80 and 71/80 and used more tokens and time than
+that Nuwa run. Quality takes precedence over
 time and tokens; no positive result is presumed.
 
 ## Planner and execution comparison

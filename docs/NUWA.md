@@ -147,8 +147,13 @@ Closing a subtree records the affected generations and retains
 ## Shared work
 
 Before each Nuwa manager or worker model call, the engine adds a fresh, bounded
-preview of the original turn's project graph. It includes node versions, reported
-states, dependencies and source identity. Managers see recent updates first.
+preview of the original turn's project graph. Each record in that preview
+keeps its id, kind, title, status, summary, dependencies, version and
+dependency warnings. Storage provenance, timestamps, empty detail and evidence
+stay on `read_work`. When the same request already contains every current id
+and summary outside the preview, the call sends `status: unchanged` and the
+revision instead of repeating the snapshot. A changed revision or a missing
+summary sends the short preview again. Managers see recent updates first.
 Workers prioritize records whose titles or summaries match the task supplied
 when their current generation started, then use update time and ID for stable
 ordering. Matching uses words and CJK character pairs, not semantic inference;

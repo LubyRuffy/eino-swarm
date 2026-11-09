@@ -177,8 +177,12 @@ func TestNuwaSharedContextRefreshesManagerAtActualHTTP(t *testing.T) {
 	if initialSource.Version != 1 || initialSource.Status != "reported" || changedSource.Version != 2 || changedSource.Summary != correction || changedSource.Status != "reported" {
 		t.Errorf("reported observation/correction lost: before=%+v after=%+v", initialSource, changedSource)
 	}
-	if changedSource.ThreadID != seedThread.ID || changedSource.UpdatedThreadID != editor.ID || changedSource.UpdatedTurnID != editTurn.ID {
-		t.Errorf("automatic context lost original versus correction identity: %+v", changedSource)
+	if strings.Contains(joinedContent(requests[1].Messages), editor.ID) || strings.Contains(joinedContent(requests[1].Messages), editTurn.ID) {
+		t.Errorf("prompt repeated storage provenance for %s / %s", editor.ID, editTurn.ID)
+	}
+	var stored store.NuwaNode
+	if err := e.store.DB().First(&stored, "id = ?", source.ID).Error; err != nil || stored.ThreadID != seedThread.ID || stored.UpdatedThreadID != editor.ID || stored.UpdatedTurnID != editTurn.ID {
+		t.Errorf("stored record lost original versus correction identity: %+v err=%v", stored, err)
 	}
 	if initialDependent.Status != "pending" || len(initialDependent.StaleDependencies) != 0 || len(changedDependent.StaleDependencies) != 1 || changedDependent.StaleDependencies[0] != source.ID {
 		t.Errorf("corrected basis still appeared current: before=%+v after=%+v", initialDependent, changedDependent)

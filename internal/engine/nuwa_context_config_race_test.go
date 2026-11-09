@@ -182,13 +182,21 @@ func assertNuwaCommittedBudgetHTTP(t *testing.T, request scheduleCompletionReque
 			count++
 		}
 	}
-	var preview nuwaContextUnitView
-	err := json.Unmarshal([]byte(strings.TrimPrefix(block, nuwaContextPrefix)), &preview)
-	if count != 1 || err != nil || preview.Status != "available" || preview.ProjectID != projectID || preview.Total != total || preview.Omitted != total-len(preview.Nodes) || utf8.RuneCountInString(block) > budget {
-		t.Errorf("committed preview budget=%d: blocks=%d nodes=%d omitted=%d total=%d err=%v", budget, count, len(preview.Nodes), preview.Omitted, preview.Total, err)
+	if count != 1 || utf8.RuneCountInString(block) > budget {
+		t.Errorf("committed preview budget=%d: blocks=%d runes=%d", budget, count, utf8.RuneCountInString(block))
 	}
-	if len(preview.Nodes) == 0 || partial != (len(preview.Nodes) < total) {
-		t.Errorf("committed budget did not change whole preview nodes: budget=%d nodes=%d total=%d", budget, len(preview.Nodes), total)
+	var preview nuwaContextUnitView
+	// A later call can already hold every id and summary in earlier tool
+	// results. That call sends the revision only; the same budget still has
+	// to bound the read_work receipt below.
+	if !strings.Contains(block, `"unchanged"`) {
+		err := json.Unmarshal([]byte(strings.TrimPrefix(block, nuwaContextPrefix)), &preview)
+		if err != nil || preview.Status != "available" || preview.ProjectID != projectID || preview.Total != total || preview.Omitted != total-len(preview.Nodes) {
+			t.Errorf("committed preview budget=%d: blocks=%d nodes=%d omitted=%d total=%d err=%v", budget, count, len(preview.Nodes), preview.Omitted, preview.Total, err)
+		}
+		if len(preview.Nodes) == 0 || partial != (len(preview.Nodes) < total) {
+			t.Errorf("committed budget did not change whole preview nodes: budget=%d nodes=%d total=%d", budget, len(preview.Nodes), total)
+		}
 	}
 	receipt := nuwaValidationReceipt(request, readID)
 	var page struct {
@@ -196,8 +204,7 @@ func assertNuwaCommittedBudgetHTTP(t *testing.T, request scheduleCompletionReque
 		Total int              `json:"total"`
 		More  bool             `json:"more"`
 	}
-	err = json.Unmarshal([]byte(receipt), &page)
-	if err != nil || page.Total != total || len(page.Nodes) == 0 || partial != (len(page.Nodes) < total) || page.More != partial || utf8.RuneCountInString(receipt) > budget {
+	if err := json.Unmarshal([]byte(receipt), &page); err != nil || page.Total != total || len(page.Nodes) == 0 || partial != (len(page.Nodes) < total) || page.More != partial || utf8.RuneCountInString(receipt) > budget {
 		t.Errorf("committed read_work budget=%d: nodes=%d total=%d more=%v err=%v", budget, len(page.Nodes), page.Total, page.More, err)
 	}
 	for _, node := range append(preview.Nodes, page.Nodes...) {

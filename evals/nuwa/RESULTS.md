@@ -1,3 +1,25 @@
+# Folded stage chain, short preview: 2026-11-09
+
+The same 80-stage chain was run again after the model-facing preview kept only
+the path fields and stopped repeating a snapshot whose identifiers were already
+in the request. Source was `2299a72d` plus that uncommitted preview change.
+The pair, notes, briefing, question, disabled tools and manager cap of 12 were
+unchanged. Both arms again held 71 identifiers in notes and none in the
+conversation.
+
+| Arm | File | Visible identifiers | Model calls | Tokens | Wall time |
+|---|---|---|---|---|---|
+| default | first 71, last 9 absent | 71, no shared graph | `deepseek-v4.1-flash` only, 8 calls | 108,076 | 117.4 s |
+| nuwa | 80 lines, exact order | 13 calls saw the short graph and all 80; 18 later calls omitted the snapshot and still contained all 80 | planner GLM, 9 calls; `stages-file-writer` and `stages-file-verifier` on DeepSeek | 967,270 | 641.6 s |
+
+The first planner prompt was 15,461 tokens. Host dispatch again put both new
+roles on `deepseek-v4.1-flash`. During the Nuwa run the graded file was briefly
+27 identifiers, then returned to the exact 80. This is one constructed chain.
+The short preview did not reduce total tokens or time against the earlier Nuwa
+run of 458,618 tokens and 310.5 s; this run made 33 model calls rather than 17.
+The joint completion/speed/token objective remains unmet. Evidence:
+`~/.codex/nuwa-evidence/folded-path-20261109-slim/`.
+
 # Folded stage chain: 2026-11-09
 
 One paired run of a chain that does not fit in the conversation. Eighty stage

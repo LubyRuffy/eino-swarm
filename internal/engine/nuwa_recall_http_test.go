@@ -226,9 +226,13 @@ func TestNuwaWorkersRecallRelatedOlderRecordsAtActualHTTP(t *testing.T) {
 			if len(recent) != 4 {
 				t.Fatal("fixture did not retain its four recent records")
 			}
+			shown := make([]nuwaPromptNode, len(recent))
+			for i := range recent {
+				shown[i] = nuwaPromptNodeFrom(recent[i])
+			}
 			envelope, err := json.Marshal(map[string]any{
 				"project_id": project.ID, "status": "available", "revision": revision,
-				"total": len(nodes), "omitted": len(nodes) - len(recent), "nodes": recent,
+				"total": len(nodes), "omitted": len(nodes) - len(shown), "nodes": shown,
 			})
 			if err != nil {
 				t.Fatal(err)

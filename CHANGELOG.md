@@ -8,6 +8,15 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Fixed
 
+- Nuwa's model preview now sends the short path fields instead of each stored
+  row. Version and dependency warnings stay. Storage provenance, timestamps
+  and on-demand detail stay on `read_work`. A later call in the same request
+  does not repeat that snapshot when the request already contains every current
+  id and summary. The same folded chain still graded 80/80 against 71/80.
+  Eighteen later calls omitted the snapshot and still contained all 80
+  identifiers. That rerun used 967,270 tokens and 641.6 s, more than the
+  earlier Nuwa run, so the joint objective remains unmet. (`F-136`, `C-037`)
+
 - Recorded one folded stage chain in `evals/nuwa/RESULTS.md`. The conversation
   held none of the 80 identifiers and notes held 71. The default executor wrote
   the first 71; Nuwa's saved executor, dispatched by a different planner, wrote

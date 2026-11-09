@@ -73,9 +73,8 @@ func testNuwaRestoredWorkerContextAtHTTP(t *testing.T, bound bool) {
 			current.Summary != corrected.Summary || current.Status != "reported" || current.Detail != "" {
 			t.Errorf("restored HTTP input used stale or unverified shared state: view=%+v node=%+v", view, current)
 		}
-		if current.ThreadID != source.ThreadID || current.TurnID != source.TurnID ||
-			current.UpdatedThreadID != editor.ID || current.UpdatedTurnID != editTurn.ID {
-			t.Errorf("recovered context lost original versus correction provenance: %+v", current)
+		if strings.Contains(joinedContent(request.Messages), editor.ID) || strings.Contains(joinedContent(request.Messages), editTurn.ID) {
+			t.Errorf("recovered prompt repeated storage provenance: %s %s", editor.ID, editTurn.ID)
 		}
 		if strings.Contains(joinedContent(request.Messages), foreign.ID) || strings.Contains(joinedContent(request.Messages), source.Detail) {
 			t.Error("recovery disclosed foreign graph data or an on-demand detail")
@@ -192,12 +191,13 @@ func testNuwaRestoredWorkerContextAtHTTP(t *testing.T, bound bool) {
 		t.Fatal(err)
 	}
 	recent := append([]store.NuwaNode(nil), nodes[len(nodes)-4:]...)
+	shown := make([]nuwaPromptNode, len(recent))
 	for i := range recent {
-		recent[i].Detail = ""
+		shown[i] = nuwaPromptNodeFrom(recent[i])
 	}
 	envelope, err := json.Marshal(map[string]any{
 		"project_id": project.ID, "status": "available", "revision": correctedRevision,
-		"total": len(nodes), "omitted": len(nodes) - len(recent), "nodes": recent,
+		"total": len(nodes), "omitted": len(nodes) - len(shown), "nodes": shown,
 	})
 	if err != nil {
 		t.Fatal(err)

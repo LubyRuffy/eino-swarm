@@ -142,11 +142,10 @@ func TestNuwaContextPreviewHandlesEmptyAndRefusesInvalidEnvelopes(t *testing.T) 
 			}
 		}
 	}
-	invalid := store.NuwaNode{ID: "invalid-time", Title: "invalid-time", UpdatedAt: time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)}
+	invalid := store.NuwaNode{ID: "invalid-time", Title: "invalid-time", Summary: "kept-summary", UpdatedAt: time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)}
 	text, err := renderNuwaContext("project", 0, []store.NuwaNode{invalid}, "", 1<<20)
-	var marshalError *json.MarshalerError
-	if text != "" || !errors.As(err, &marshalError) {
-		t.Fatalf("invalid time JSON error became a current/empty board: text=%q err=%v", text, err)
+	if err != nil || !strings.Contains(text, "kept-summary") || strings.Contains(text, "created_at") || strings.Contains(text, "updated_at") {
+		t.Fatalf("storage time entered the prompt or dropped the record: text=%q err=%v", text, err)
 	}
 }
 
@@ -193,6 +192,97 @@ func nuwaContextUnitFixture(t *testing.T) (*Engine, *store.Project, *store.Threa
 		t.Fatal(err)
 	}
 	return e, project, thread, turn, node
+}
+
+func TestNuwaContextPreviewKeepsPathFieldsAndSkipsARepeatedSnapshot(t *testing.T) {
+	recorded := store.NuwaNode{
+		ID: "path-node", Kind: "fact", Title: "stage", Status: "reported",
+		Summary: "carried-summary", DependsOn: []string{"earlier-step"}, Version: 4,
+		Detail: "private-detail", ThreadID: "thread-secret", TurnID: "turn-secret",
+		ProjectID: "project-secret", AgentID: "agent-secret",
+		StaleDependencies: []string{"earlier-step"},
+		CreatedAt:         time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+	}
+	text, err := renderNuwaContext("project", 4, []store.NuwaNode{recorded}, "", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var preview struct {
+		Nodes []json.RawMessage `json:"nodes"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimPrefix(text, nuwaContextPrefix)), &preview); err != nil || len(preview.Nodes) != 1 {
+		t.Fatalf("preview JSON: %v nodes=%d", err, len(preview.Nodes))
+	}
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(preview.Nodes[0], &keys); err != nil {
+		t.Fatal(err)
+	}
+	allowed := map[string]bool{"id": true, "kind": true, "title": true, "status": true, "summary": true, "depends_on": true, "version": true, "stale_dependencies": true}
+	for key := range keys {
+		if !allowed[key] {
+			t.Fatalf("prompt node kept storage field %s", key)
+		}
+	}
+	for _, forbidden := range []string{"private-detail", "thread-secret", "turn-secret", "project-secret", "agent-secret", "created_at"} {
+		if strings.Contains(string(preview.Nodes[0]), forbidden) {
+			t.Fatalf("prompt node exposed %s", forbidden)
+		}
+	}
+
+	e, _, _, turn, node := nuwaContextUnitFixture(t)
+	node.Summary = "carried-summary"
+	if err := e.store.UpsertNuwaNode(t.Context(), &node, node.Version); err != nil {
+		t.Fatal(err)
+	}
+	probe := &nuwaContextUnitProbe{}
+	handlers := e.nuwaContextHandlers(turn)
+	wrapped, err := handlers[0].WrapModel(t.Context(), probe, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := [][]*schema.Message{
+		{schema.UserMessage("Inspect the current state.")},
+		{schema.UserMessage(node.ID + "\ncarried-summary")},
+		{schema.UserMessage(node.ID)},
+	}
+	for _, messages := range calls {
+		if _, err := wrapped.Generate(t.Context(), messages); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(probe.requests) != 3 {
+		t.Fatalf("requests=%d", len(probe.requests))
+	}
+	block := func(request []*schema.Message) string {
+		t.Helper()
+		for _, message := range request {
+			if message.Role == schema.System && strings.HasPrefix(message.Content, nuwaContextPrefix) {
+				return message.Content
+			}
+		}
+		t.Fatal("model request had no shared-state block")
+		return ""
+	}
+	userText := func(request []*schema.Message) string {
+		t.Helper()
+		for _, message := range request {
+			if message.Role == schema.User {
+				return message.Content
+			}
+		}
+		t.Fatal("model request had no user message")
+		return ""
+	}
+	first, repeated, missing := block(probe.requests[0]), block(probe.requests[1]), block(probe.requests[2])
+	if !strings.Contains(first, "carried-summary") || strings.Contains(first, node.Detail) || strings.Contains(first, node.ThreadID) {
+		t.Fatal("first preview lost the summary or exposed storage identity")
+	}
+	if strings.Contains(repeated, "carried-summary") || !strings.Contains(repeated, `"unchanged"`) || !strings.Contains(userText(probe.requests[1]), "carried-summary") {
+		t.Fatal("request that already carried the record repeated the snapshot")
+	}
+	if !strings.Contains(missing, "carried-summary") || strings.Contains(missing, `"unchanged"`) {
+		t.Fatal("missing summary did not restore the current snapshot")
+	}
 }
 
 func runNuwaContextUnitADK(ctx context.Context, agent adk.Agent, streaming bool, messages []*schema.Message) error {
