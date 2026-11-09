@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- The planner and executor menus in a project dialog accept another ready
+  model. The list stays above the dialog, and choosing one keeps the dialog
+  open.
+
 - A Nuwa project saves a planner model and an executor model. Later turns use
   the planner. A new worker role uses the executor, and a different `model_ref`
   is refused before a worker starts. Same-role resume keeps the recorded

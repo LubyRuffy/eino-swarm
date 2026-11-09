@@ -94,6 +94,34 @@ describe("Project dialog", () => {
     })))
   })
 
+  it("changes the planner from the menu without closing the dialog", async () => {
+    const models: ModelInfo[] = [
+      { id: "a\talpha", provider_id: "a", provider_label: "One", label: "alpha", model: "alpha", ready: true, default: true },
+      { id: "b\tgamma", provider_id: "b", provider_label: "Two", label: "gamma", model: "gamma", ready: true },
+    ]
+    renderDialog({
+      models,
+      project: {
+        ...project,
+        nuwa_enabled: true,
+        nuwa_planner_provider_id: "a",
+        nuwa_planner_model: "alpha",
+        nuwa_executor_provider_id: "b",
+        nuwa_executor_model: "gamma",
+      },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Planner model" }))
+    const menu = document.querySelector(".toast-layer")
+    expect(menu).toHaveClass("pointer-events-auto")
+    const search = screen.getByLabelText("Search models")
+    await waitFor(() => expect(search).toHaveFocus())
+    fireEvent.pointerDown(screen.getByRole("option", { name: /gamma/ }))
+    fireEvent.click(screen.getByRole("option", { name: /gamma/ }))
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Planner model" })).toHaveTextContent("gamma")
+    expect(screen.getByRole("button", { name: "Executor model" })).toHaveTextContent("gamma")
+  })
+
   it("keeps a saved pair when Nuwa is already on", async () => {
     const models: ModelInfo[] = [
       { id: "a\talpha", provider_id: "a", provider_label: "One", label: "alpha", model: "alpha", ready: true, default: true },
