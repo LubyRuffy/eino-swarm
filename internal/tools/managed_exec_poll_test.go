@@ -20,9 +20,13 @@ type managedPollOutcome struct {
 	err  error
 }
 
-func runManagedPollTool(ctx context.Context, tl tool.InvokableTool, callID, command string) managedPollOutcome {
+func runManagedPollTool(ctx context.Context, tl tool.InvokableTool, callID, command string, observationMS ...int) managedPollOutcome {
 	ctx = BindExecOutput(ctx, func(string) {}, einoexec.ToolName, callID)
-	args, _ := json.Marshal(map[string]string{"command": command})
+	params := map[string]any{"command": command}
+	if len(observationMS) > 0 {
+		params["yield_after_ms"] = observationMS[0]
+	}
+	args, _ := json.Marshal(params)
 	out, err := tl.InvokableRun(ctx, string(args))
 	return managedPollOutcome{text: out, err: err}
 }
@@ -56,7 +60,10 @@ func TestManagedWorkspaceExecPollsWakeOnFirstExitWithoutStartingSleep(t *testing
 	output := make([]chan managedPollOutcome, len(polls))
 	for i, p := range polls {
 		output[i] = make(chan managedPollOutcome, 1)
-		go func() { output[i] <- runManagedPollTool(ctx, tl, p.id, p.command) }()
+		// This assertion needs the probe's terminal result. The normal one-second
+		// observation may truthfully yield a running session on a busy host.
+		// Keep the same three-second context deadline, which still forbids sleep.
+		go func() { output[i] <- runManagedPollTool(ctx, tl, p.id, p.command, 3000) }()
 	}
 	// Neither polling invocation should return a timer or run the probe while
 	// the original commands are both still running.
