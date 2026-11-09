@@ -155,6 +155,64 @@ describe("SelectionMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Add to chat" })).toBeNull()
   })
 
+  // Chromium reports the previous range at mouseup when the click lands in
+  // the quote source's empty area, and collapses it afterwards. That looks
+  // like a stream wiping the native selection, which must not keep the menu.
+  it("hides Add to chat when a click leaves the range unchanged", () => {
+    render(
+      <>
+        <div data-quote-source="">alpha beta</div>
+        <button type="button">elsewhere</button>
+        <SelectionMenu onAdd={vi.fn()} />
+      </>,
+    )
+    const text = screen.getByText("alpha beta")
+    fireEvent.mouseDown(text, { clientX: 0, clientY: 0 })
+    selectAll(text)
+    fireEvent.mouseUp(text, { clientX: 24, clientY: 0, detail: 1 })
+    expect(screen.getByRole("menuitem", { name: "Add to chat" })).toBeInTheDocument()
+
+    const away = screen.getByRole("button", { name: "elsewhere" })
+    fireEvent.mouseDown(away, { clientX: 8, clientY: 40 })
+    fireEvent.mouseUp(away, { clientX: 36, clientY: 48, detail: 1 })
+    expect(screen.queryByRole("menuitem", { name: "Add to chat" })).toBeNull()
+    fireEvent(document, new Event("selectionchange"))
+    expect(screen.queryByRole("menuitem", { name: "Add to chat" })).toBeNull()
+    window.getSelection()?.removeAllRanges()
+    fireEvent(document, new Event("selectionchange"))
+    expect(screen.queryByRole("menuitem", { name: "Add to chat" })).toBeNull()
+  })
+
+  it("keeps Add to chat when the gesture that created the selection then loses it to a stream", () => {
+    render(
+      <>
+        <div data-quote-source="">alpha beta</div>
+        <SelectionMenu onAdd={vi.fn()} />
+      </>,
+    )
+    const text = screen.getByText("alpha beta")
+    fireEvent.mouseDown(text, { clientX: 0, clientY: 0 })
+    selectAll(text)
+    fireEvent.mouseUp(text, { clientX: 24, clientY: 0, detail: 1 })
+    window.getSelection()?.removeAllRanges()
+    fireEvent(document, new Event("selectionchange"))
+    expect(screen.getByRole("menuitem", { name: "Add to chat" })).toBeInTheDocument()
+  })
+
+  it("shows Add to chat after a double click selects a word", () => {
+    render(
+      <>
+        <div data-quote-source="">alpha beta</div>
+        <SelectionMenu onAdd={vi.fn()} />
+      </>,
+    )
+    const text = screen.getByText("alpha beta")
+    selectAll(text)
+    fireEvent.mouseDown(text, { clientX: 4, clientY: 4, detail: 2 })
+    fireEvent.mouseUp(text, { clientX: 4, clientY: 4, detail: 2 })
+    expect(screen.getByRole("menuitem", { name: "Add to chat" })).toBeInTheDocument()
+  })
+
   it("does not appear for a selection outside a quote source", () => {
     render(
       <>
