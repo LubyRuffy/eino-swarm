@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,17 +14,37 @@ import (
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+func checkMCPRouteGuidance(t *testing.T, description string) {
+	t.Helper()
+	for _, rule := range []string{"inspect its current tool catalog", "unless the user specifies another route", "A past failure alone does not justify bypassing"} {
+		if !strings.Contains(description, rule) {
+			t.Errorf("MCP tool description is missing routing guidance %q", rule)
+		}
+	}
+}
+
 func engineMCPFixture(t *testing.T) (config.MCPServer, *atomic.Int32) {
+	t.Helper()
+	return engineMCPFixtureWithProgress(t, nil)
+}
+
+func engineMCPFixtureWithProgress(t *testing.T, beforeResult func(context.Context, *mcp.CallToolRequest) error) (config.MCPServer, *atomic.Int32) {
 	t.Helper()
 	calls := new(atomic.Int32)
 	s := mcp.NewServer(&mcp.Implementation{Name: "engine-fixture", Version: "test"}, nil)
-	s.AddTool(&mcp.Tool{Name: "inspect_record", Description: "Inspect external evidence", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"key": map[string]any{"type": "string", "description": "record identity"}}}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	s.AddTool(&mcp.Tool{Name: "inspect_record", Description: "Inspect external evidence", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"key": map[string]any{"type": "string", "description": "record identity"}}}}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		calls.Add(1)
+		if beforeResult != nil {
+			if err := beforeResult(ctx, req); err != nil {
+				return nil, err
+			}
+		}
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "mcp-protocol-evidence"}}}, nil
 	})
 	h := httptest.NewServer(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s }, nil))
@@ -41,9 +62,28 @@ func TestMCPToolsReachManagerAndWorkerAtTheRealModelBoundary(t *testing.T) {
 	}{{"default", false}, {"nuwa-selected-model-and-tools", true}} {
 		t.Run(tc.name, func(t *testing.T) {
 			const managerModel, workerModel, workerProvider = "mcp-fixture", "mcp-selected-worker", "mcp-worker-fixture"
+			const phase = "Checking the external record"
+			const staleSkill = "earlier-service-workaround"
+			const staleProcedure = "Use the shell because the connector timed out in an earlier turn."
 			var selectedRef string
 			var selectedTools atomic.Value // []string, published before the real spawn response.
-			server, calls := engineMCPFixture(t)
+			release := make(chan struct{}, 2)
+			defer close(release)
+			server, calls := engineMCPFixtureWithProgress(t, func(ctx context.Context, req *mcp.CallToolRequest) error {
+				token := req.Params.GetProgressToken()
+				if token == nil {
+					return errors.New("model-driven call did not request progress")
+				}
+				if err := req.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{ProgressToken: token, Progress: 1, Message: phase}); err != nil {
+					return err
+				}
+				select {
+				case <-release:
+					return nil
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			})
 			var managerSteps, workerSteps atomic.Int32
 			endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var wire struct {
@@ -65,9 +105,11 @@ func TestMCPToolsReachManagerAndWorkerAtTheRealModelBoundary(t *testing.T) {
 					manager = manager || offered.Function.Name == "spawn_agent"
 					if strings.Contains(offered.Function.Name, "_list_tools_") {
 						list = offered.Function.Name
+						checkMCPRouteGuidance(t, offered.Function.Description)
 					}
 					if strings.Contains(offered.Function.Name, "_call_tool_") {
 						call = offered.Function.Name
+						checkMCPRouteGuidance(t, offered.Function.Description)
 						if offered.Function.Parameters.Properties["arguments"].Description == "" {
 							t.Error("proxy argument schema did not reach model")
 						}
@@ -109,6 +151,19 @@ func TestMCPToolsReachManagerAndWorkerAtTheRealModelBoundary(t *testing.T) {
 				if manager {
 					managerStep = managerSteps.Add(1)
 				}
+				if !tc.nuwa && manager {
+					if managerStep == 1 {
+						if !strings.Contains(request.Messages[0].Content, staleSkill) {
+							t.Error("the manager did not see the earlier skill in its library index")
+						}
+						nuwaValidationTool(w, request, "earlier-skill", memory.ToolSkillView, `{"name":"`+staleSkill+`"}`)
+						return
+					}
+					managerStep--
+					if managerStep == 1 && !strings.Contains(nuwaValidationReceipt(request, "earlier-skill"), staleProcedure) {
+						t.Error("the manager did not receive the saved shell fallback alongside the MCP tools")
+					}
+				}
 				if tc.nuwa && manager {
 					if managerStep == 1 {
 						nuwaValidationTool(w, request, "manager-discover", "list_worker_tools", "{}")
@@ -116,7 +171,7 @@ func TestMCPToolsReachManagerAndWorkerAtTheRealModelBoundary(t *testing.T) {
 					}
 					if managerStep == 2 {
 						var discovery struct {
-							Tools []struct{ Name string } `json:"tools"`
+							Tools []struct{ Name, Description string } `json:"tools"`
 						}
 						if err := json.Unmarshal([]byte(nuwaValidationReceipt(request, "manager-discover")), &discovery); err != nil {
 							t.Errorf("decode actual worker tool catalog: %v", err)
@@ -124,9 +179,11 @@ func TestMCPToolsReachManagerAndWorkerAtTheRealModelBoundary(t *testing.T) {
 						for _, offered := range discovery.Tools {
 							if strings.Contains(offered.Name, "_list_tools_") {
 								list = offered.Name
+								checkMCPRouteGuidance(t, offered.Description)
 							}
 							if strings.Contains(offered.Name, "_call_tool_") {
 								call = offered.Name
+								checkMCPRouteGuidance(t, offered.Description)
 							}
 						}
 					} else {
@@ -160,7 +217,7 @@ func TestMCPToolsReachManagerAndWorkerAtTheRealModelBoundary(t *testing.T) {
 						checkCatalog("worker-list")
 						nuwaValidationTool(w, request, "worker-mcp", call, `{"name":"inspect_record","arguments":{"key":"record"}}`)
 					default:
-						if !strings.Contains(nuwaValidationReceipt(request, "worker-mcp"), "mcp-protocol-evidence") {
+						if receipt := nuwaValidationReceipt(request, "worker-mcp"); !strings.Contains(receipt, "mcp-protocol-evidence") || strings.Contains(receipt, phase) {
 							t.Error("worker did not receive real MCP result")
 						}
 						answer("External evidence is available.")
@@ -223,18 +280,53 @@ func TestMCPToolsReachManagerAndWorkerAtTheRealModelBoundary(t *testing.T) {
 					t.Fatal(err)
 				}
 				projectID = project.ID
+			} else if _, err := e.LibraryMemory().WriteSkill(staleSkill, "Earlier route for external records", staleProcedure); err != nil {
+				t.Fatal(err)
 			}
 			thread, err := e.CreateThread("External records", "", projectID)
 			if err != nil {
 				t.Fatal(err)
 			}
+			sub := e.Subscribe(thread.ID)
+			defer sub.Close()
 			turn, err := e.StartTurn(thread.ID, "Inspect the external record and ask a worker to verify the result.")
 			if err != nil {
 				t.Fatal(err)
 			}
+			want := []string{"manager-mcp", "worker-mcp"}
+			if tc.nuwa {
+				want = want[1:]
+			}
+			// The external server cannot send a final result until the real
+			// registry/engine stream has delivered progress to the right call.
+			timer := time.NewTimer(8 * time.Second)
+			defer timer.Stop()
+			for _, id := range want {
+			awaitProgress:
+				for {
+					select {
+					case ev := <-sub.C:
+						if ev.ToolCallID != id {
+							continue
+						}
+						if ev.Kind == "tool_result" {
+							t.Fatalf("%s completed before progress: %s", id, ev.Text)
+						}
+						if ev.Kind == "tool_delta" && strings.Contains(ev.Text, phase) {
+							if ev.TurnID != turn.ID || ev.Seq != 0 || ev.AgentID == "" || (ev.AgentID == "manager") != (id == "manager-mcp") {
+								t.Fatalf("progress ownership: %+v", ev)
+							}
+							release <- struct{}{}
+							break awaitProgress
+						}
+					case <-timer.C:
+						t.Fatalf("%s never published progress", id)
+					}
+				}
+			}
 			finished := waitForTurn(t, e, turn.ID)
 			waitSettled(t, e, thread.ID)
-			wantMCPCalls, wantManagerSteps := int32(2), int32(5)
+			wantMCPCalls, wantManagerSteps := int32(2), int32(6)
 			if tc.nuwa {
 				wantMCPCalls, wantManagerSteps = 1, 4
 			}
@@ -263,8 +355,13 @@ func TestPlanningMCPCommandFixture(t *testing.T) {
 
 func TestPlanningAndReadOnlyRestorationDoNotStartOrAdvertiseMCP(t *testing.T) {
 	e, _ := newScheduleCompletionHTTPEngine(t, func(w http.ResponseWriter, _ *http.Request, _ int, request scheduleCompletionRequest) {
+		for _, msg := range request.Messages {
+			if strings.Contains(msg.Content, "inspect its current tool catalog") {
+				t.Error("planning received routing guidance for an unmounted MCP tool")
+			}
+		}
 		for _, offered := range request.Tools {
-			if strings.HasPrefix(offered.Function.Name, "mcp_") {
+			if strings.HasPrefix(offered.Function.Name, "mcp_") || strings.Contains(offered.Function.Description, "inspect its current tool catalog") {
 				t.Error("planning exposed external MCP capability")
 			}
 		}

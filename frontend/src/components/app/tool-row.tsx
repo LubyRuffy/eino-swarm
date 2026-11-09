@@ -13,9 +13,11 @@ import { ShellCommand } from "@/components/app/shell-command"
 import { ToolResultBody } from "@/components/app/tool-result"
 import { Disclosure } from "@/components/ui/collapsible"
 import { applyCarriageReturns, lastLine } from "@/lib/carriage"
+import { formatMCPProgress, isMCPTool } from "@/lib/mcp-progress"
 import { execCommand, toolRowSummary, viewTool } from "@/lib/tool-view"
 import type { Block } from "@/lib/transcript"
 import { useT } from "@/lib/use-t"
+import { cn } from "@/lib/utils"
 
 export function ToolRow({ block, reveal, defaultCollapsed = false }: {
   block: Block
@@ -45,6 +47,9 @@ export function ToolRow({ block, reveal, defaultCollapsed = false }: {
   })
   const command = tool.name === "exec" ? execCommand(tool.args) : ""
   const liveLine = tool.pending && view.body ? lastLine(applyCarriageReturns(view.body)) : ""
+  const mcpProgress = tool.pending && tool.writing === undefined && isMCPTool(tool.name)
+    ? tool.progress ?? "" : undefined
+  const pendingSummary = mcpProgress === undefined ? liveLine || summary : formatMCPProgress(mcpProgress, t)
   const watchLive =
     Boolean(tool.pending) &&
     tool.name !== "exec" &&
@@ -65,10 +70,13 @@ export function ToolRow({ block, reveal, defaultCollapsed = false }: {
           ) : (
             <Terminal className="size-3.5 shrink-0" />
           )}
-          <span className="shrink-0 font-mono text-[13px] text-foreground">{tool.name}</span>
+          <span className={cn(
+            "shrink-0 font-mono text-[13px] text-foreground",
+            mcpProgress !== undefined && "max-w-1/2 truncate",
+          )}>{tool.name}</span>
           {tool.pending ? (
             <MarqueeText
-              text={liveLine || summary}
+              text={pendingSummary}
               active
               className={view.failed ? "text-[13px] text-destructive" : "text-[13px] text-muted-foreground"}
             />
@@ -99,6 +107,7 @@ export function ToolRow({ block, reveal, defaultCollapsed = false }: {
         result={tool.result}
         failed={tool.failed}
         pending={tool.pending}
+        mcpProgress={mcpProgress}
         view={view}
       />
     </Disclosure>

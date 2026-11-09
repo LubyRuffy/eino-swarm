@@ -37,6 +37,7 @@ export type CompactBlock = {
   failed?: boolean
   cancelled?: boolean
   toolName?: string
+  toolProgress?: string
   callId?: string
   args?: string
   hasImages?: boolean
@@ -124,7 +125,22 @@ function liveBlockId(blocks: CompactBlock[], id: string): string {
 
 function settleWorkerBlock(block: CompactBlock, failed: boolean): CompactBlock {
   if (!block.streaming && !block.pending) return block
-  return { ...block, streaming: false, pending: false, failed: failed || block.failed }
+  return { ...block, streaming: false, pending: false, failed: failed || block.failed, toolProgress: undefined }
+}
+
+function isMCPTool(block: CompactBlock): boolean {
+  return block.kind === "tool" && block.toolName?.startsWith("mcp_") === true
+}
+
+function matchesMCPCallTurn(block: CompactBlock, turnId?: string): boolean {
+  // applyEvent already scopes worker blocks by agent. Their calls can outlive
+  // the manager turn whose accumulator originally recorded the call.
+  return Boolean(block.agentId) || block.turnId === turnId
+}
+
+function settleMCPTool(block: CompactBlock, turnId?: string): CompactBlock {
+  if (!isMCPTool(block) || !block.pending || (turnId && block.turnId !== turnId)) return block
+  return { ...block, pending: false, toolProgress: undefined }
 }
 
 function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlock[] {
@@ -250,6 +266,7 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
       settleReasoning(next)
       const parsed = splitToolCall(ev.text)
       const composing = ev.kind === "tool_call_delta"
+      const mcp = parsed.name.startsWith("mcp_")
       if (!composing && parsed.name === ASK_TOOL) {
         const i = lastIndex(next, (b) => b.turnId === ev.turn_id && Boolean(b.callId) && b.callId === ev.tool_call_id)
         if (i >= 0) {
@@ -285,8 +302,15 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
           return next
         }
       }
-      const i = lastIndex(next, (b) => b.kind === "tool" && Boolean(ev.tool_call_id) && b.callId === ev.tool_call_id)
+      const i = lastIndex(next, (b) => {
+        if (b.kind !== "tool" || !ev.tool_call_id || b.callId !== ev.tool_call_id) return false
+        if ((!mcp && !isMCPTool(b)) || b.turnId === ev.turn_id) return true
+        // A parked worker can finish composing the same output in a new manager turn.
+        return Boolean(mcp && b.agentId && b.toolName === parsed.name && ev.message_id && b.messageId === ev.message_id)
+      })
       if (i >= 0) {
+        const prior = next[i]
+        if (isMCPTool(prior) && (!prior.pending || (prior.agentId && composing && !prior.writing))) return next
         next[i] = {
           ...next[i],
           text: composing ? ev.text : parsed.name || ev.text,
@@ -306,6 +330,7 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
         toolName: parsed.name,
         args: composing ? "" : parsed.args,
         callId: ev.tool_call_id,
+        ...(mcp ? { turnId: ev.turn_id } : {}),
         pending: true,
         writing: composing,
         messageId: ev.message_id,
@@ -315,7 +340,8 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
     case "tool_result": {
       const i = lastIndex(
         next,
-        (b) => Boolean(b.callId) && b.callId === ev.tool_call_id && (b.kind !== "question" || b.turnId === ev.turn_id),
+        (b) => Boolean(b.callId) && b.callId === ev.tool_call_id &&
+          (b.kind === "question" ? b.turnId === ev.turn_id : !isMCPTool(b) || matchesMCPCallTurn(b, ev.turn_id)),
       )
       if (i >= 0) {
         if (next[i].kind === "question") {
@@ -330,6 +356,7 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
           pending: false,
           failed: Boolean(ev.err),
           text: ev.text || next[i].text,
+          toolProgress: undefined,
         }
       }
       return next
@@ -340,7 +367,12 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
         (b) => b.kind === "tool" && (!ev.tool_call_id || b.callId === ev.tool_call_id),
       )
       if (i >= 0 && ev.text) {
-        next[i] = { ...next[i], text: ev.text }
+        const tool = next[i]
+        if (isMCPTool(tool)) {
+          if (ev.tool_call_id && matchesMCPCallTurn(tool, ev.turn_id) && tool.pending && !tool.writing) {
+            next[i] = { ...tool, toolProgress: ev.text }
+          }
+        } else next[i] = { ...tool, text: ev.text }
       }
       return next
     }
@@ -351,12 +383,15 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
         text: ev.role || ev.agent_id || "",
       })
       return next
+    case "cleanup":
+      return next.map((b) => settleMCPTool(b))
     case "error":
-      next.push({ id: blockId(ev), kind: ev.err === "interrupted" || ev.err === "stopped before collecting worker results" ? "notice" : "error", text: ev.err || ev.text })
-      next.push({ id: `${blockId(ev)}:end`, kind: "turn_end", text: ev.created_at })
-      return next
+      return next.map((b) => settleMCPTool(b, ev.turn_id)).concat(
+        { id: blockId(ev), kind: ev.err === "interrupted" || ev.err === "stopped before collecting worker results" ? "notice" : "error", text: ev.err || ev.text },
+        { id: `${blockId(ev)}:end`, kind: "turn_end", text: ev.created_at },
+      )
     case "done":
-      return next.map((b) => (b.streaming ? { ...b, streaming: false } : b))
+      return next.map((b) => settleMCPTool(b.streaming ? { ...b, streaming: false } : b, ev.turn_id))
         .concat({ id: blockId(ev), kind: "turn_end", text: ev.created_at })
     case "goal_complete":
       next.push({ id: blockId(ev), kind: "notice", text: t("notice.goalCompleted") })
@@ -716,6 +751,7 @@ export function formatPhoneTicker(frame: PhoneTicker): string {
 }
 
 function toolTicker(block: CompactBlock): PhoneTicker {
+  if (block.toolProgress) return { kind: "using", detail: lastLine(block.toolProgress) }
   const name = block.toolName || ""
   const preview = jsonPreview(block.args) || jsonPreview(block.text)
   if (name === "read") {

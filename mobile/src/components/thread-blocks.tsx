@@ -160,6 +160,7 @@ function ToolChip({ block }: { block: CompactBlock }) {
 }
 
 function toolChipSummary(b: CompactBlock): string {
+  if (b.pending && b.toolProgress) return clip(lastLine(b.toolProgress), 72)
   const roster = formatRoster(rosterCounts(b.text) || rosterCounts(b.args))
   if (roster) return roster
   const line = lastLine(b.text)
@@ -168,6 +169,7 @@ function toolChipSummary(b: CompactBlock): string {
 }
 
 function packedBody(block: CompactBlock): string {
+  if (block.pending && block.toolProgress) return clip(block.toolProgress, 400)
   const roster = rosterLines(block.text)
   if (roster.length) return roster.join("\n")
   const preview = jsonPreview(block.text)

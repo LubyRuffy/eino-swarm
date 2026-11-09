@@ -499,6 +499,10 @@ or `sse`; stdio uses `command` and an argument array without a shell, while
 remote transports use an HTTP(S) `url` and optional `headers`. URLs must have
 no user info or fragment. `timeout_seconds` accepts 0–3600; zero or omission
 uses 60 seconds, independently for connection/discovery and each tool call.
+For a server that enforces a longer task budget internally, set its MCP timeout
+above that budget so the server can finish and return its result. For example,
+a 120-second server task can use `timeout_seconds: 150`. Progress notifications
+do not extend the configured deadline.
 
 Put credentials in `env` or `headers`, not command arguments or URLs: ordinary
 fields are visible in Settings and its API. These two private maps are saved in
@@ -518,6 +522,12 @@ or nonnegative `offset` and positive `limit` for paging (default limit 10).
 uses the same tool-result budget; narrow a truncated page, or increase
 `tools.result_max_chars` if one schema still exceeds it.
 
+Running MCP calls show progress when the server sends standard
+[`notifications/progress`](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/progress)
+with the request's progress token. Servers can send a short, user-visible
+phase description and optional total. Until a notification arrives, the
+desktop and Web transcript shows that it is waiting for progress.
+
 Stdio uses the conversation workspace as cwd, without confining filesystem access.
 A toolset fixes its configuration and the first session it uses. Plan mode and
 Nuwa read-only toolsets do not mount MCP. Configuration reload, connection failure
@@ -527,6 +537,22 @@ Each server/configuration retains at most eight idle workspace sessions; other
 servers do not evict them, but survival between calls is not guaranteed. Calls
 and results use the normal tool transcript, result limit and Trace. Only MCP tools
 are supported here; resources, prompts and OAuth login are not.
+
+For timing diagnosis, search the engine log for `MCP tool call` and match its
+`tool_call_id` and server within the turn's Trace time window. The record
+includes the transport, host phase (`session`, `connect`, or `call`), outcome
+code, elapsed time and configured deadline. A call with a catalog-confirmed
+tool includes its name.
+Servers that attach recognized phase metadata to progress notifications also
+produce `MCP tool progress` records. Match those records to the outcome using
+`progress_token_sha256`. These records contain fixed phase and outcome codes,
+bounded timing fields, and at most 64 entries per call. Free-form progress
+text, tool arguments, results, raw errors and stderr are excluded.
+The metadata keys use the `io.github.lubyruffy/` namespace. `phase` identifies
+`task`, `prepare_model`, `model_generate`, `source_access`, `source_schema`, or
+`source_read`. `phase-event` is `start` or `finish`. A finish supplies an integer
+`phase-duration-ms` in 0–3600000 and a recognized `phase-code` such as `ok`,
+`failed`, or `timeout`.
 
 ## `memory`
 

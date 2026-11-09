@@ -1,6 +1,7 @@
 import type { ImageRef, ReviewOutcome, SwarmEvent } from "./types"
 import { applyGenerationEvent, applyInterruptedOutput, recoverLegacyGeneration, type GenerationInterruption } from "./transcript-generation"
 import { cloudToolSummary, parseCloudTool } from "./cloud-tool"
+import { isMCPTool } from "./mcp-progress"
 import {
   compactBriefing,
   compactNotice,
@@ -29,7 +30,7 @@ import {
   steerRevisionsBefore,
 } from "./transcript-steer"
 import { applyScheduleEvent, sealQuietTurns } from "./transcript-schedule"
-import { findToolBlock, splitToolCall, summarise, supersededToolDelta } from "./transcript-tool-block"
+import { findMCPToolEvent, findToolBlock, splitToolCall, summarise, supersededToolDelta } from "./transcript-tool-block"
 import { closePendingTools, parseWorkerRetention, settleFailedWorkers, type WorkerRetention } from "./transcript-worker-ownership"
 import {
   MANAGER_ID,
@@ -115,7 +116,10 @@ export interface Block {
     callId: string
     name: string
     args: string
+    generation?: number
     result?: string
+    /** Latest MCP progress snapshot. Only a tool_result can settle the call. */
+    progress?: string
     failed?: boolean
     /** A call with no result yet is still running. */
     pending: boolean
@@ -499,23 +503,28 @@ export function reduceEvent(
 
     case "tool_call":
     case "tool_call_delta": {
-      if (supersededToolDelta(agent, ev) || !keepWorkerLive(agent)) break
+      const { name, args } = splitToolCall(ev.text ?? "")
+      const mcp = findMCPToolEvent(agent, ev, name)
+      const superseded = mcp === undefined ? supersededToolDelta(agent, ev)
+        : ev.kind === "tool_call_delta" && mcp?.tool && (!mcp.tool.pending || mcp.tool.writing === undefined)
+      if (superseded || !keepWorkerLive(agent)) break
       closeStreaming(agent, "reasoning")
       // tool_call_delta arrives while the commentary is still streaming.
       // Closing the answer here seals that paragraph, and the agent_message
       // flushed when the call is issued can no longer find it, so the same
       // text is painted again under the tools.
       if (ev.kind !== "tool_call_delta") closeStreaming(agent, "answer")
-      const { name, args } = splitToolCall(ev.text ?? "")
       const writing = ev.kind === "tool_call_delta" ? Number(args) : undefined
       const ask = ev.kind === "tool_call" ? askCardFromEvent(ev, name, args) : undefined
-      const existing = ev.tool_call_id ? findToolBlock(agent, ev.tool_call_id, ask ? ev.turn_id : undefined) : undefined
+      const existing = mcp === undefined && ev.tool_call_id
+        ? findToolBlock(agent, ev.tool_call_id, ask ? ev.turn_id : undefined) : mcp
       if (existing?.tool && !ask) {
         existing.tool = {
           ...existing.tool,
           name: name || existing.tool.name,
           args: ev.kind === "tool_call" ? args : existing.tool.args,
           pending: true,
+          ...(mcp && ev.generation ? { generation: ev.generation } : {}),
           writing: Number.isFinite(writing) ? writing : undefined,
         }
         Object.assign(existing, { text: name || existing.text, seq: ev.seq || existing.seq })
@@ -539,6 +548,7 @@ export function reduceEvent(
             name,
             args: ev.kind === "tool_call" ? args : "",
             pending: true,
+            ...(isMCPTool(name) && ev.generation ? { generation: ev.generation } : {}),
             writing: Number.isFinite(writing) ? writing : undefined,
           },
         })
@@ -550,24 +560,33 @@ export function reduceEvent(
     case "tool_delta": {
       // Live tool output is the accumulated snapshot, same as a text delta.
       // The call is still running: a later tool_result is what closes it.
-      const target = supersededToolDelta(agent, ev) ? undefined : findToolBlock(agent, ev.tool_call_id)
+      const mcp = findMCPToolEvent(agent, ev)
+      const target = mcp === undefined
+        ? supersededToolDelta(agent, ev) ? undefined : findToolBlock(agent, ev.tool_call_id)
+        : mcp?.tool?.pending ? mcp : undefined
       if (target?.tool) {
+        const snapshot = ev.text ?? ""
+        // MCP server text may resemble a result envelope. Preserve its
+        // provenance even if Stop closes the row before a result arrives.
         target.tool = {
           ...target.tool,
-          result: ev.text ?? "",
+          ...(isMCPTool(target.tool.name) ? { progress: snapshot } : { result: snapshot }),
         }
       }
       break
     }
 
     case "tool_result": {
-      const target = findToolBlock(agent, ev.tool_call_id, ev.turn_id)
+      const mcp = findMCPToolEvent(agent, ev)
+      if (mcp === null) break
+      const target = mcp ?? findToolBlock(agent, ev.tool_call_id, ev.turn_id)
       if (target?.question) {
         target.question = settleAskCard(target.question, ev)
       } else if (target?.tool) {
         target.tool = {
           ...target.tool,
           result: ev.text ?? ev.err ?? "",
+          progress: undefined,
           failed: Boolean(ev.err),
           pending: false,
         }
@@ -760,7 +779,7 @@ export function collapseLiveEvents(events: SwarmEvent[]): SwarmEvent[] {
       seen.add(key)
     }
     if (ev.kind === "tool_delta" || ev.kind === "tool_call_delta") {
-      const key = `${ev.agent_id || MANAGER_ID}:${ev.kind}:${ev.tool_call_id || ""}`
+      const key = JSON.stringify([ev.agent_id || MANAGER_ID, ev.kind, ev.turn_id, ev.generation, ev.tool_call_id])
       if (seen.has(key)) continue
       seen.add(key)
     }

@@ -77,11 +77,20 @@ connection failure returns `session_expired`, without a silent reconnect or
 replay. A later toolset may reconnect/discover; no test may assume the idle cache
 guarantees continuous state between tool calls.
 
+The SDK HTTP progress regression holds the final response until the client
+observes the matched notification. It also checks that progress cannot cross
+parallel or settled calls. The opt-in browser spec uses a loopback model and
+MCP server with a held response. It verifies the actual named SSE event and
+its call ID, observes the phase in the default folded work row and expanded
+tool row, then releases the result. Trace and the model receive the final
+receipt without the live status.
+
 ```bash
 go test -race -timeout 25m ./internal/config ./internal/server ./internal/mcpclient
 go test -race -timeout 25m ./...
 (cd frontend && npm run lint && npm test && npm run build)
 (cd frontend && ZWAI_E2E_PORT="$OWNED_E2E_PORT" ZWAI_E2E_DATA_DIR="$PRIVATE_E2E_DATA" npm run e2e -- e2e/mcp-settings.spec.ts --output "$UNIQUE_E2E_OUTPUT")
+(cd frontend && ZWAI_E2E_MCP_PROGRESS=1 ZWAI_E2E_PORT="$OWNED_E2E_PORT" ZWAI_E2E_DATA_DIR="$PRIVATE_E2E_DATA" npm run e2e -- --output "$UNIQUE_E2E_OUTPUT")
 python3 -B -m unittest discover -s tools -p 'test_native_macos_mcp*.py'
 ```
 

@@ -930,6 +930,15 @@ waiting for an in-progress connection is cancellable. Calls and JSON results use
 the existing tool transcript, result limit and Trace, preserving error identity
 and `isError` across clipping. No uncertain call is automatically retried.
 
+An executing MCP proxy requests standard progress with a unique invocation
+token. Only matching notifications for an active call reach the registry's
+live output sink. It coalesces the latest one-line status into the existing
+`tool_delta` stream. The status stays in the live UI and the final result
+continues through the normal tool receipt path.
+Compatible servers attach typed phase start and finish metadata to the same
+notifications. Engine logs keep only allowlisted phase and outcome codes and
+bounded timings, joined to the call outcome by the progress-token digest.
+
 The inspection path owns a temporary connection and closes it after listing;
 runtime calls use a session cache keyed by configuration fingerprint and
 workspace, retaining at most eight idle workspace sessions per server/configuration.

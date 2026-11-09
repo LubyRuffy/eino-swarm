@@ -21,6 +21,23 @@ function paint(b: Block) {
 }
 
 describe("WorkFold live ticker", () => {
+  it("shows the current MCP progress while the user's work group is collapsed", () => {
+    const thought = block({ kind: "reasoning", text: "Checking" })
+    const mcp = block({
+      kind: "tool",
+      tool: { callId: "c", name: "mcp_local_check_012345abcdef", args: "{}", pending: true },
+    })
+    const { rerender } = render(<TurnBlockList mode="user" running blocks={[thought, mcp]} renderBlock={paint} />)
+    const fold = screen.getByTestId("work-fold")
+    expect(fold).toHaveAttribute("aria-expanded", "false")
+    expect(fold).toHaveTextContent("Waiting for MCP progress…")
+    rerender(<TurnBlockList mode="user" running blocks={[thought, {
+      ...mcp, tool: { ...mcp.tool!, progress: "error: retrying one source" },
+    }]} renderBlock={paint} />)
+    expect(fold).toHaveTextContent("MCP progress · error: retrying one source")
+    expect(fold).not.toHaveAttribute("aria-invalid")
+  })
+
   it("marquees the latest thinking line while a thought is streaming", () => {
     render(
       <WorkFold

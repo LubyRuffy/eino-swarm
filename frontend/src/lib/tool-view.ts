@@ -1,6 +1,7 @@
 import { parseFileChange, type EditDiff } from "./edit-diff"
 import type { MessageKey } from "./i18n"
 import { memoryChangeView } from "./memory-diff"
+import { isMCPTool } from "./mcp-progress"
 
 /** How a built-in tool call should read on one line, and how its payload
  *  should look once expanded. Field names come from the tool schemas — not
@@ -98,7 +99,7 @@ export function viewTool(name: string, args: string, result?: string, flagged?: 
     return { summary, summaryKey, failed: Boolean(flagged), body: "", diff, noticeKey }
   }
   const prefix = errorPrefix(result)
-  if (name.startsWith("mcp_")) {
+  if (isMCPTool(name)) {
     const mcp = parseMCPResult(result)
     if (mcp) return { summary, failed: Boolean(flagged || mcp.failed), error: mcp.error, errorKey: mcp.errorKey, body: mcp.body }
   }

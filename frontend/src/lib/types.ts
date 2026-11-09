@@ -81,6 +81,8 @@ export interface SwarmEvent {
   kind: EventKind | string
   agent_id: string
   role?: string
+  /** Worker execution identity, independent of the manager turn carrying the event. */
+  generation?: number
   text?: string
   /** Identity of one model output, retained by cumulative checkpoints across manager turns. */
   message_id?: string

@@ -1,5 +1,6 @@
 import { lastLine } from "./carriage"
 import type { MessageKey, Vars } from "./i18n"
+import { formatMCPProgress, isMCPTool } from "./mcp-progress"
 import { execCommand, summariseToolCall, toolRowSummary, viewTool } from "./tool-view"
 import type { Block } from "./transcript"
 import type { TranscriptModePref } from "./appearance"
@@ -25,6 +26,7 @@ export type WorkTickerFrame = {
   detail: string
   pending: boolean
   failed: boolean
+  mcpProgress?: string
 }
 
 export type WorkFoldStats = {
@@ -169,6 +171,9 @@ function toolFrame(block: Block): WorkTickerFrame | undefined {
       failed: false,
     }
   }
+  if (pending && isMCPTool(tool.name)) {
+    return { id, kind: "using", detail: tool.name, pending, failed, mcpProgress: tool.progress ?? "" }
+  }
   if (tool.name === "read") {
     return {
       id,
@@ -305,6 +310,9 @@ export function formatWorkTicker(
       const [name, n] = frame.detail.split("\n")
       return t("transcript.writingTool", { name: name || "", n: n || "0" })
     }
+    case "using":
+      return frame.mcpProgress === undefined
+        ? frame.detail : `${formatMCPProgress(frame.mcpProgress, t)} · ${frame.detail}`
     default:
       return frame.detail
   }

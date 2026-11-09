@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/cloudwego/eino/components/tool"
+	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
 	"github.com/eino-contrib/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -78,6 +81,8 @@ type externalTool struct {
 	list   bool
 }
 
+const mcpRouteGuidance = "When this server may cover the request, inspect its current tool catalog and prefer a matching MCP tool unless the user specifies another route. Before reusing a saved shell or direct API fallback, verify that the current catalog has no match or the current attempt failed, and that the alternate route is authorized. A past failure alone does not justify bypassing this server. "
+
 func (t *externalTool) Info(context.Context) (*schema.ToolInfo, error) {
 	name := "call_tool"
 	description := "Call one tool on this configured MCP server. First use its list_tools proxy to inspect exact remote names and JSON input schemas. Copy a returned remote name into name and supply its arguments object. A session_expired result requires a new turn; calls are never automatically replayed."
@@ -91,7 +96,7 @@ func (t *externalTool) Info(context.Context) (*schema.ToolInfo, error) {
 	if label == "" {
 		label = t.holder.server.ID
 	}
-	description = fmt.Sprintf("MCP server %q (id %q). %s", label, t.holder.server.ID, description)
+	description = fmt.Sprintf("MCP server %q (id %q). %s%s", label, t.holder.server.ID, mcpRouteGuidance, description)
 	return toolInfo(ToolDescriptor{Name: toolName(t.holder.server.ID, name), Description: description, InputSchema: input})
 }
 
@@ -122,9 +127,12 @@ func (t *externalTool) InvokableRun(ctx context.Context, args string, _ ...tool.
 	if !t.list && (json.Unmarshal([]byte(args), &request) != nil || request.Name == "" || request.Arguments == nil) {
 		return t.failure("invalid_arguments"), nil
 	}
+	started := time.Now()
 	e, err := t.holder.acquire()
 	if err != nil {
-		return t.failure(err.(*Error).Code), nil
+		code := err.(*Error).Code
+		t.logCall(ctx, started, "", "session", code, "")
+		return t.failure(code), nil
 	}
 	broken := false
 	defer func() { t.holder.manager.release(e, broken) }()
@@ -138,6 +146,7 @@ func (t *externalTool) InvokableRun(ctx context.Context, args string, _ ...tool.
 		} else if failure, ok := err.(*Error); ok {
 			code = failure.Code
 		}
+		t.logCall(ctx, started, "", "connect", code, "")
 		return t.failure(code), nil
 	}
 	if t.list {
@@ -174,11 +183,12 @@ func (t *externalTool) InvokableRun(ctx context.Context, args string, _ ...tool.
 	if !found {
 		return t.failure("unknown_tool"), nil
 	}
+	started = time.Now()
 	callCtx, cancel := context.WithTimeout(ctx, t.holder.server.Timeout())
 	defer cancel()
 	stop := context.AfterFunc(e.ctx, cancel)
 	defer stop()
-	result, err := session.CallTool(callCtx, &mcp.CallToolParams{Name: request.Name, Arguments: request.Arguments})
+	result, err, digest := e.callTool(callCtx, session, &mcp.CallToolParams{Name: request.Name, Arguments: request.Arguments}, t.holder.manager.log)
 	if err != nil {
 		broken = true
 		code := "call_failed"
@@ -189,7 +199,42 @@ func (t *externalTool) InvokableRun(ctx context.Context, args string, _ ...tool.
 		} else if errors.Is(callCtx.Err(), context.DeadlineExceeded) {
 			code = "timeout"
 		}
+		t.logCall(ctx, started, request.Name, "call", code, digest)
 		return t.failure(code), nil
 	}
+	code := "ok"
+	if result != nil && result.IsError {
+		code = "tool_error"
+	}
+	t.logCall(ctx, started, request.Name, "call", code, digest)
 	return jsonResult(result), nil
+}
+
+func (t *externalTool) logCall(ctx context.Context, started time.Time, name, phase, code, digest string) {
+	if t.list {
+		return
+	}
+	level := slog.LevelInfo
+	if code != "ok" {
+		level = slog.LevelWarn
+	}
+	server := t.holder.server
+	attrs := []slog.Attr{
+		slog.String("server_id", server.ID),
+		slog.String("transport", server.Transport),
+		slog.String("tool_call_id", compose.GetToolCallID(ctx)),
+		slog.String("phase", phase),
+		slog.String("code", code),
+		slog.Int64("elapsed_ms", time.Since(started).Milliseconds()),
+		slog.Int64("timeout_ms", server.Timeout().Milliseconds()),
+	}
+	if name != "" {
+		// Only catalog-confirmed names reach this point. Never log arguments,
+		// results, transport errors, or untrusted stderr.
+		attrs = append(attrs, slog.String("tool", progressMessage(name)))
+	}
+	if digest != "" {
+		attrs = append(attrs, slog.String("progress_token_sha256", digest))
+	}
+	t.holder.manager.log.LogAttrs(ctx, level, "MCP tool call", attrs...)
 }

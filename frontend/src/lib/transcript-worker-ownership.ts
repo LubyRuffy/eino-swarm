@@ -61,7 +61,7 @@ export function closePendingTools(agent: AgentState, reason?: string, keepQuesti
     changed = true
     return {
       ...b,
-      tool: { ...b.tool, pending: false, failed: true, result: b.tool.result ?? reason ?? "" },
+      tool: { ...b.tool, pending: false, failed: true, progress: undefined, result: b.tool.result ?? reason ?? "" },
     }
   })
   if (changed) agent.blocks = blocks

@@ -20,7 +20,7 @@ func TestBindExecOutputForwardsStdoutBeforeWait(t *testing.T) {
 	first := make(chan string, 1)
 	var mu sync.Mutex
 	var latest string
-	ctx := BindExecOutput(context.Background(), func(text string) {
+	ctx := BindToolOutput(context.Background(), func(text string) {
 		mu.Lock()
 		latest = text
 		mu.Unlock()
@@ -60,6 +60,23 @@ func TestBindExecOutputForwardsStdoutBeforeWait(t *testing.T) {
 	defer mu.Unlock()
 	if !strings.Contains(latest, `"stdout":"ab"`) && !strings.Contains(latest, "ab") {
 		t.Fatalf("accumulated live text: %s", latest)
+	}
+}
+
+func TestToolOutputEmitterBelongsToTheInvocation(t *testing.T) {
+	parent := context.Background()
+	var got string
+	ctx := BindToolOutput(parent, func(text string) { got = text }, "other", "call")
+	if ToolOutputEmitter(parent) != nil || BindToolOutput(parent, nil, "other", "call") != parent {
+		t.Fatal("emitter leaked into a context without an invocation")
+	}
+	emit := ToolOutputEmitter(ctx)
+	if emit == nil {
+		t.Fatal("tool has no live output sink")
+	}
+	emit("Working through the inputs")
+	if got != "Working through the inputs" {
+		t.Fatalf("wrong invocation output: %q", got)
 	}
 }
 

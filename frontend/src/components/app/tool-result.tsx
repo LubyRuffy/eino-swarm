@@ -18,6 +18,7 @@ export function ToolResultBody({
   result,
   failed,
   pending,
+  mcpProgress,
   view: given,
 }: {
   name: string
@@ -25,6 +26,7 @@ export function ToolResultBody({
   result?: string
   failed?: boolean
   pending?: boolean
+  mcpProgress?: string
   view?: ToolView
 }) {
   const t = useT()
@@ -42,7 +44,14 @@ export function ToolResultBody({
       }`}
     >
       {command ? <ShellCommand command={command} /> : null}
-      {waiting ? (
+      {mcpProgress !== undefined ? (
+        <div data-testid="mcp-tool-progress" className="space-y-2">
+          <p className="text-muted-foreground">
+            {t(mcpProgress.trim() ? "mcp.toolProgress" : "mcp.toolWaiting")}
+          </p>
+          {mcpProgress.trim() ? <OutputPre text={mcpProgress} follow /> : null}
+        </div>
+      ) : waiting ? (
         <p className="text-muted-foreground">{t("tool.running")}</p>
       ) : listing ? (
         <FileBody listing={listing} failed={view.failed} />

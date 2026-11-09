@@ -12,6 +12,23 @@ import (
 // a UI copy, not a second filesystem.
 const liveExecNotifyLimit = 64_000
 
+type toolOutputEmitterKey struct{}
+
+// BindToolOutput supplies the call's live output emitter to tools that opt in.
+func BindToolOutput(ctx context.Context, emit func(string), toolName, callID string) context.Context {
+	if emit == nil {
+		return ctx
+	}
+	ctx = context.WithValue(ctx, toolOutputEmitterKey{}, emit)
+	return BindExecOutput(ctx, emit, toolName, callID)
+}
+
+// ToolOutputEmitter returns the UI-only output sink for the current invocation.
+func ToolOutputEmitter(ctx context.Context) func(string) {
+	emit, _ := ctx.Value(toolOutputEmitterKey{}).(func(string))
+	return emit
+}
+
 // BindExecOutput attaches exec's stdout/stderr listener so the host can emit
 // NotifyToolDelta while the command still runs. Other tools are left alone.
 func BindExecOutput(ctx context.Context, emit func(string), toolName, callID string) context.Context {

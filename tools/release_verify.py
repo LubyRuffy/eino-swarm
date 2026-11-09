@@ -22,7 +22,8 @@ from release_host_lease import HostLeaseBlocked, HostValidationLease
 NATIVE_PENDING = "required_separate_guest_acceptance"
 E2E_PROFILES = ("REASONING_FIELDS", "MODEL_API_ERROR", "WORKER_ROSTER", "SCHEDULE_ANSWER",
                 "WORKER_COMPLETION", "GOAL_SCHEDULE", "GOAL_PAUSE", "HUMAN_WAKE_POLICY",
-                "MEMORY_REVIEW", "BUILTIN_TOOLS", "SCHEDULE_WORKER_OWNERSHIP", "GENERATION_INTERRUPTION")
+                "MEMORY_REVIEW", "BUILTIN_TOOLS", "SCHEDULE_WORKER_OWNERSHIP", "GENERATION_INTERRUPTION",
+                "MCP_PROGRESS")
 
 
 class Cancelled(KeyboardInterrupt):

@@ -6,6 +6,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Long MCP calls show the server's latest progress in the conversation,
+  including folded work on desktop and Web. The final result replaces the
+  live status when the call settles. (`F-176`, `C-041`)
+- MCP execution logs correlate host-side elapsed time, deadlines and failure
+  phases with the tool call ID in Trace. Compatible servers can report typed
+  phase timings over progress notifications. (`F-176`, `C-041`)
+
 - Nuwa's shared preview keeps the prerequisite chain after the conversation is
   folded. A kept record's omitted prerequisites stay on `path`, in dependency
   order, inside the existing tool-result budget. (`C-037`)

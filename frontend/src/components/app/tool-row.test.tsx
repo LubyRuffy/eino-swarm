@@ -29,6 +29,37 @@ const searchHits = JSON.stringify({
 })
 
 describe("ToolRow", () => {
+  it("shows a real MCP progress snapshot as text and replaces it with the terminal result", () => {
+    const block = toolBlock({ name: "mcp_local_check_012345abcdef", args: "{}", pending: true })
+    const { rerender } = render(<ToolRow block={block} defaultCollapsed />)
+    const toggle = screen.getByRole("button", { name: /mcp_local_check/ })
+    expect(toggle).toHaveAttribute("aria-expanded", "false")
+    expect(toggle).toHaveTextContent("Waiting for MCP progress…")
+    fireEvent.click(toggle)
+    expect(screen.getByTestId("mcp-tool-progress")).toHaveTextContent("Waiting for MCP progress…")
+    fireEvent.click(toggle)
+
+    // A server controls the message. JSON shaped like an MCP error is still
+    // progress until the tool_result event settles this row.
+    const progress = '{"isError":true,"content":[{"type":"text","text":"<b>$&</b>"}]}'
+    rerender(<ToolRow block={{ ...block, tool: { ...block.tool!, progress } }} defaultCollapsed />)
+    expect(toggle).toHaveTextContent(`MCP progress · ${progress}`)
+    expect(toggle).not.toHaveAttribute("aria-invalid")
+    fireEvent.click(toggle)
+    const live = screen.getByTestId("mcp-tool-progress")
+    expect(live).toHaveTextContent(progress)
+    expect(live.querySelector("b")).toBeNull()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+
+    const result = JSON.stringify({ isError: true, content: [{ type: "text", text: "Check failed" }] })
+    rerender(<ToolRow block={{ ...block, tool: { ...block.tool!, pending: false, result } }} defaultCollapsed />)
+    expect(toggle).toHaveAttribute("aria-invalid", "true")
+    expect(toggle).toHaveAttribute("aria-expanded", "true")
+    expect(toggle).toHaveTextContent("Check failed")
+    expect(screen.queryByTestId("mcp-tool-progress")).not.toBeInTheDocument()
+    expect(screen.getByRole("alert")).toHaveTextContent("Check failed")
+  })
+
   it.each([
     ["en", "The MCP connection has expired. Retry in a new turn."],
     ["zh", "MCP 连接已失效，请在新轮次重试。"],

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sync"
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
@@ -26,6 +27,8 @@ type entry struct {
 	session                     *mcp.ClientSession
 	catalog                     Catalog
 	failed                      bool // gate; a failed initialization is never replayed on this entry
+	progressMu                  sync.Mutex
+	progress                    map[string]*activeProgress
 }
 
 // Waiting for somebody else's initialization does not own its connection.
@@ -92,7 +95,10 @@ func (e *entry) connect(caller context.Context) (*mcp.ClientSession, Catalog, er
 			transport = &mcp.StreamableClientTransport{Endpoint: e.server.URL, HTTPClient: client, MaxRetries: -1}
 		}
 	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "zwai", Version: "1"}, &mcp.ClientOptions{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	client := mcp.NewClient(&mcp.Implementation{Name: "zwai", Version: "1"}, &mcp.ClientOptions{
+		Logger:                      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		ProgressNotificationHandler: e.handleProgress,
+	})
 	session, err := client.Connect(ctx, transport, nil)
 	if err != nil {
 		return nil, Catalog{}, &Error{Code: "connection_failed", ServerID: e.server.ID}

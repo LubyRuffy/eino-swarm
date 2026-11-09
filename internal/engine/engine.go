@@ -132,7 +132,7 @@ func NewWithAnswerRecoveryClock(cfg *config.Config, st *store.Store, pool *provi
 		store:               st,
 		pool:                pool,
 		log:                 log,
-		mcp:                 mcpclient.NewManager(),
+		mcp:                 mcpclient.NewManager(log),
 		runtimes:            map[string]*runtime{},
 		subs:                map[string]map[int]*subscriber{},
 		droppedTurns:        map[string]struct{}{},

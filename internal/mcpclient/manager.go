@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"maps"
 	"slices"
 	"sync"
@@ -47,13 +48,18 @@ type Manager struct {
 	entries     map[string]*entry
 	current     map[string]bool
 	inspections sync.WaitGroup
+	log         *slog.Logger
 }
 
 const maxIdleSessions = 8
 
-func NewManager() *Manager {
+func NewManager(loggers ...*slog.Logger) *Manager {
+	log := slog.Default()
+	if len(loggers) != 0 && loggers[0] != nil {
+		log = loggers[0]
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Manager{ctx: ctx, cancel: cancel, entries: map[string]*entry{}}
+	return &Manager{ctx: ctx, cancel: cancel, entries: map[string]*entry{}, log: log}
 }
 
 func fingerprint(s config.MCPServer) string {

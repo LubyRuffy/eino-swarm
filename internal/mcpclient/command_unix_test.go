@@ -44,9 +44,34 @@ func TestMCPCommandFixture(t *testing.T) {
 		return
 	}
 	s := mcp.NewServer(&mcp.Implementation{Name: "subprocess", Version: "test"}, nil)
-	s.AddTool(&mcp.Tool{Name: "observe", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(raw)}}}, nil
-	})
+	if mode == "progress" {
+		s.AddTool(&mcp.Tool{Name: "work", InputSchema: map[string]any{"type": "object"}}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if token := req.Params.GetProgressToken(); token != nil {
+				if err := req.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{ProgressToken: token, Progress: 1, Total: 2, Message: "Reading rows"}); err != nil {
+					return nil, err
+				}
+			}
+			finish := os.Getenv("ZWAI_MCP_TEST_RECEIPT") + ".finish"
+			tick := time.NewTicker(10 * time.Millisecond)
+			defer tick.Stop()
+			for {
+				if _, err := os.Stat(finish); err == nil {
+					return progressFixtureResult(), nil
+				} else if !errors.Is(err, os.ErrNotExist) {
+					return nil, err
+				}
+				select {
+				case <-tick.C:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+		})
+	} else {
+		s.AddTool(&mcp.Tool{Name: "observe", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(raw)}}}, nil
+		})
+	}
 	_ = s.Run(context.Background(), &mcp.StdioTransport{})
 	_ = child.Process.Kill()
 	_ = child.Wait()
@@ -127,6 +152,42 @@ func TestStdioToolsUseSelectedWorkspaceAndCloseOwnedDescendants(t *testing.T) {
 	if err != nil || !strings.Contains(out, "owned-environment") {
 		t.Fatalf("call %s %v", out, err)
 	}
+	m.Close()
+	assertProcessExited(t, receipt.Parent)
+	assertProcessExited(t, receipt.Child)
+}
+
+func TestMCPProgressStreamsFromOwnedStdioCommand(t *testing.T) {
+	s, receiptPath := stdioConfig(t, "progress")
+	m := NewManager()
+	t.Cleanup(m.Close)
+	set, err := m.Tools(t.Context(), []config.MCPServer{s}, t.TempDir(), 10000)
+	if err != nil || len(set) != 2 {
+		t.Fatalf("tools %d %v", len(set), err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	remote := set[1].(tool.InvokableTool)
+	updates, result := runProgressTool(t, ctx, remote, `{}`)
+	if got := awaitProgress(t, updates); got != "Reading rows · 1 / 2" {
+		t.Fatalf("stdio progress %q", got)
+	}
+	select {
+	case got := <-result:
+		t.Fatalf("stdio tool completed before its release: %+v", got)
+	default:
+	}
+	if err := os.WriteFile(receiptPath+".finish", nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := awaitProgress(t, result)
+	// The negotiated stdio protocol adds its own terminal metadata. Compare
+	// with an otherwise identical call that did not request notifications.
+	baseline, err := remote.InvokableRun(ctx, `{"name":"work","arguments":{}}`)
+	if got.err != nil || err != nil || got.text != baseline || !strings.Contains(got.text, `"text":"completed external work"`) {
+		t.Fatalf("progress altered the stdio result: %+v, baseline %s %v", got, baseline, err)
+	}
+	receipt := readProcessReceipt(t, receiptPath)
 	m.Close()
 	assertProcessExited(t, receipt.Parent)
 	assertProcessExited(t, receipt.Child)
