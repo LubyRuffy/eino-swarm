@@ -33,8 +33,12 @@ func (r *Registry) Tools() []tool.BaseTool {
 
 func (r *Registry) toolsWithWorkerConfig(config WorkerConfig) []tool.BaseTool {
 	n := r.advertisedCap()
+	spawnDesc := fmt.Sprintf("start a sub-agent in the background; returns its agent_id immediately. A second call with the same role does not mint a twin: if that worker is still running, the new task is queued for its next turn; if it already finished, it continues in place under the same agent_id. fork_context only applies when this role has no worker yet — it copies this manager conversation so far into the new worker, not a previous worker's. A missing role or task returns {error}; it does not fail the turn. Supply both in one corrected call. In manager runs, same-error invalid calls in one reply are coalesced with rejected_calls; they did not create workers. The concurrency cap is %d. Do not start a larger batch. If %d sub-agents are already running, returns {error} and does not start or queue another worker: wait for one to finish, then resume that id or spawn the next piece.", n, n)
+	if config.VerifyAdmission != nil {
+		spawnDesc += " For an acceptance check, set intent to verify or fix and target to the shared record id. This turn allows one verify and one fix for each record; another is refused before a worker starts. Omit intent for ordinary implementation work."
+	}
 	tools := []tool.BaseTool{
-		&ctlTool{name: "spawn_agent", desc: fmt.Sprintf("start a sub-agent in the background; returns its agent_id immediately. A second call with the same role does not mint a twin: if that worker is still running, the new task is queued for its next turn; if it already finished, it continues in place under the same agent_id. fork_context only applies when this role has no worker yet — it copies this manager conversation so far into the new worker, not a previous worker's. A missing role or task returns {error}; it does not fail the turn. Supply both in one corrected call. In manager runs, same-error invalid calls in one reply are coalesced with rejected_calls; they did not create workers. The concurrency cap is %d. Do not start a larger batch. If %d sub-agents are already running, returns {error} and does not start or queue another worker: wait for one to finish, then resume that id or spawn the next piece.", n, n), fn: r.spawn, modelSelection: config.SelectWorkerModel != nil, toolSelection: config.SelectableToolNames != nil},
+		&ctlTool{name: "spawn_agent", desc: spawnDesc, fn: r.spawn, modelSelection: config.SelectWorkerModel != nil, toolSelection: config.SelectableToolNames != nil, verifyAdmission: config.VerifyAdmission != nil},
 		&ctlTool{name: "send_message", desc: sendMessageDesc, fn: r.send},
 		&ctlTool{name: "wait_agents", desc: "wait until the next listed agent reaches a final status, or the timeout hits; " +
 			"returns every listed agent's status (running/done/failed), the finished ones' results, " +
@@ -91,11 +95,12 @@ func toolName(t tool.BaseTool) string {
 
 // ctlTool is a minimal invokable tool driven by a closure.
 type ctlTool struct {
-	name           string
-	desc           string
-	fn             func(ctx context.Context, args string) (string, error)
-	modelSelection bool
-	toolSelection  bool
+	name            string
+	desc            string
+	fn              func(ctx context.Context, args string) (string, error)
+	modelSelection  bool
+	toolSelection   bool
+	verifyAdmission bool
 }
 
 func (t *ctlTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
@@ -113,6 +118,10 @@ func (t *ctlTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 		if t.toolSelection {
 			params["tool_names"] = &schema.ParameterInfo{Type: schema.Array, ElemInfo: &schema.ParameterInfo{Type: schema.String},
 				Desc: "Optional exact subset of workspace tool names from list_worker_tools. Put directions for using already mounted shared-work and lifecycle tools in task. An empty array removes all selectable tools. Omit to inherit the available tools or retain the existing worker selection."}
+		}
+		if t.verifyAdmission {
+			params["intent"] = &schema.ParameterInfo{Type: schema.String, Desc: "work, verify, or fix. Omit for ordinary implementation. verify checks an existing shared record; fix repairs one that failed that check. The host allows one of each per record in this turn."}
+			params["target"] = &schema.ParameterInfo{Type: schema.String, Desc: "Existing shared record id from record_work or read_work. Required when intent is verify or fix."}
 		}
 	case "send_message":
 		params = map[string]*schema.ParameterInfo{
@@ -225,6 +234,9 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 						return ctlRefuse(err.Error())
 					}
 				}
+				if out, err, refused := r.refuseVerification(ctx, a); refused {
+					return out, err
+				}
 				h.pushInbox(a.Task)
 				return marshal(map[string]any{"agent_id": h.ID, "generation": h.generation(), "steered": "true"}), nil
 			}
@@ -248,6 +260,9 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 				}
 			}
 		}
+		if out, err, refused := r.refuseVerification(ctx, a); refused {
+			return out, err
+		}
 		h, err := r.resumeAdmitted(ctx, id, a.Task, config.ModelBuilder)
 		if err != nil {
 			var exhausted *WorkerTimeoutLimitError
@@ -267,6 +282,9 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 		if err != nil {
 			return ctlRefuse(err.Error())
 		}
+	}
+	if out, err, refused := r.refuseVerification(ctx, a); refused {
+		return out, err
 	}
 	seed := ""
 	if a.ForkContext {

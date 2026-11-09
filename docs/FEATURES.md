@@ -177,6 +177,7 @@ This is the current user-facing capability map. The code and tests named below a
 - Nuwa manager 只负责规划、派工、协调和基于 worker 证据验收，不挂 workspace／MCP 实际执行工具，并禁用其 provider-hosted builtin 执行；worker 和普通模式保留原 provider 配置。需要操作的任务由 worker 执行。无需操作的纯讨论不强制创建 worker。角色、任务拆分、模型及工具选择由 AI 根据目标决定，不固定领域角色表或工作流。
 - Nuwa 执行者通过独立项目上下文直接获得用户的项目目标、约束和验收指令，memory 关闭时仍可读取；不继承规划者完整 System／personality，不改变既有角色和工具权限。普通模式不变；非空已存 Instruction 首次恢复保留原文，旧空 Instruction 保留按配置重建的兼容路径。实际模型 HTTP 输入与已保存 worker 恢复验证：`internal/engine/nuwa_project_instructions_http_test.go`。
 - 规划者可查询 worker 的完整可选工具目录，并在派工时为新角色选择所需的 workspace／MCP 工具；manager 不挂执行工具不会缩减 worker 的可选目录。省略选择时使用 worker 可用范围，显式选择随身份恢复，后代可继承或缩小。见 `C-037` 和 [Nuwa](NUWA.md)。既有工具选择验证：`internal/engine/worker_tool_scope_flow_test.go`、`internal/engine/worker_tool_scope_restore_test.go`；规划／执行分离验证：`internal/engine/nuwa_planner_separation_http_test.go`、`internal/engine/nuwa_planner_responses_http_test.go`、`internal/provider/nuwa_planner_builtin_test.go`。
+- 女娲验收次数由主机计数：同一回合、同一共享记录最多一次 `verify` 和一次 `fix`。超额在创建 worker 之前拒绝，同一次调用重送不重复扣次，重启后额度仍在。普通实现和普通模式不占这个额度，也不按任务原文猜测意图。额度不是设置项。验证：`internal/engine/nuwa_verify_budget_http_test.go`、`internal/store/nuwa_verify_test.go`、`verify_admission_test.go`。
 
 - 当前范围没有共享节点或 Worker 时，Collaboration 显示已打开会话的最新轮次状态，并可进入对应 Trace 和会话文件。验证见 `frontend/e2e/nuwa.spec.ts`。
 - 协作路径图用实线显示已登记的工作依赖，并用单一目标节点收敛：没有后继依赖的终端记录（含孤立记录）通过虚线汇向目标，不再悬空；记录者、来源轮次与模型作为该记录卡片上的出处元数据显示，而非独立的图节点，已有记录在重载后也保留这些出处。验证见 `frontend/e2e/nuwa.spec.ts`。

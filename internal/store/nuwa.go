@@ -444,6 +444,9 @@ func deleteNuwaThread(tx *gorm.DB, threadID string) error {
 			return err
 		}
 	}
+	if err := deleteNuwaVerifySlots(tx, "", threadID, nil); err != nil {
+		return err
+	}
 	if thread.ProjectID != "" && !slices.Contains(projects, thread.ProjectID) {
 		projects = append(projects, thread.ProjectID)
 	}
@@ -458,6 +461,9 @@ func deleteNuwaThread(tx *gorm.DB, threadID string) error {
 
 func deleteNuwaProject(tx *gorm.DB, projectID string) error {
 	if err := tx.Where("project_id = ?", projectID).Delete(&NuwaRevision{}).Error; err != nil {
+		return err
+	}
+	if err := deleteNuwaVerifySlots(tx, projectID, "", nil); err != nil {
 		return err
 	}
 	return tx.Where("project_id = ?", projectID).Delete(&NuwaNode{}).Error

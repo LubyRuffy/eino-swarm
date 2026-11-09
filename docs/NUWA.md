@@ -51,6 +51,27 @@ coordinates their work and checks their reported evidence. Pure discussion that
 requires no such operations does not require spawning a worker. This boundary
 does not prescribe a domain, role list, workflow or worker model.
 
+Verification is a mandatory, independent step, not optional advice. Before the
+manager accepts a deliverable or completes the goal, a separate executor — not
+the one that produced the result, and on a different configured model when one
+exists — derives its own checks from the stated objective, constraints and
+acceptance criteria and exercises the actual result against the hardest inputs
+those criteria imply: boundary and extreme values, empty, large, malformed or
+adversarial inputs, and every explicitly required rule or case. The producer's
+own passing cases are a claim, not verification. The verifier records its
+outcome and evidence with `record_work`, so a failure marks dependent work
+**Needs review**. The host bounds the cycle. A check uses `spawn_agent` with
+`intent` `verify` and `target` set to that record id; the one repair uses
+`intent` `fix` and the same target. Each turn allows one verify and one fix
+for a shared record and refuses another before a worker starts, including a
+same-role steer or resume. The committed count survives restart. Ordinary
+implementation omits `intent` and is not counted. The host does not classify
+task text, so a check labeled as ordinary work is outside this allowance and
+the turn timeout remains the last fuse. Report the unmet criterion instead of
+retrying a refused check. This allowance is a contract constant, not a setting.
+The discipline stays domain-agnostic: it prescribes how to verify, not what
+the task is.
+
 Nuwa managers and workers receive
 `list_models`, `read_work` and, outside planning mode, `record_work`. Workers can
 delegate again. All descendants share one Registry, concurrency budget, Stop

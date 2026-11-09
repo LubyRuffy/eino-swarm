@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Nuwa verification is a separate check, and the host allows one verify and one
+  fix per turn and shared record. Another `spawn_agent` is refused before a
+  worker starts. Ordinary work does not use the allowance. (`C-037`)
+
 - Long MCP calls show the server's latest progress in the conversation,
   including folded work on desktop and Web. The final result replaces the
   live status when the call settles. (`F-176`, `C-041`)

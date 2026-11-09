@@ -231,6 +231,9 @@ type Registry struct {
 	// SelectWorkerModel enables opt-in model_ref selection. Resolve and build
 	// before admission; an empty reference selects the host default.
 	SelectWorkerModel func(context.Context, string) (ModelBinding, ModelBuilder, error)
+	// VerifyAdmission bounds Nuwa verify/fix spawns. Nil ignores intent and
+	// target, which is ordinary mode. A refusal happens before a worker starts.
+	VerifyAdmission func(context.Context, string, string, string) error
 	// RestoreWorkerModel builds a pinned binding without resolving its Ref again.
 	RestoreWorkerModel func(context.Context, ModelBinding) (ModelBuilder, error)
 

@@ -18,8 +18,11 @@ type WorkerConfig struct {
 	ModelBuilder       ModelBuilder
 	SelectWorkerModel  func(context.Context, string) (ModelBinding, ModelBuilder, error)
 	RestoreWorkerModel func(context.Context, ModelBinding) (ModelBuilder, error)
-	EnableDelegation   bool
-	SubAgentTools      []tool.BaseTool
+	// VerifyAdmission is nil outside Nuwa. It refuses a verify or fix that
+	// would exceed the host's per-record allowance before any worker starts.
+	VerifyAdmission  func(context.Context, string, string, string) error
+	EnableDelegation bool
+	SubAgentTools    []tool.BaseTool
 	// SelectableToolNames opts in to selection of these configured worker tools.
 	// Nil disables selection; an empty non-nil slice enables an empty catalog.
 	SelectableToolNames []string
@@ -48,7 +51,7 @@ func (r *Registry) WorkerConfiguration() WorkerConfig {
 	if r.workerConfig != nil {
 		return cloneWorkerConfig(*r.workerConfig)
 	}
-	return cloneWorkerConfig(WorkerConfig{ModelBuilder: r.ModelBuilder, SelectWorkerModel: r.SelectWorkerModel, RestoreWorkerModel: r.RestoreWorkerModel, EnableDelegation: r.EnableDelegation, SubAgentTools: r.SubAgentTools, SelectableToolNames: r.SelectableToolNames, WorkerPreamble: r.WorkerPreamble, ToolOutputBinder: r.ToolOutputBinder, WorkerContextValues: r.WorkerContextValues})
+	return cloneWorkerConfig(WorkerConfig{ModelBuilder: r.ModelBuilder, SelectWorkerModel: r.SelectWorkerModel, RestoreWorkerModel: r.RestoreWorkerModel, VerifyAdmission: r.VerifyAdmission, EnableDelegation: r.EnableDelegation, SubAgentTools: r.SubAgentTools, SelectableToolNames: r.SelectableToolNames, WorkerPreamble: r.WorkerPreamble, ToolOutputBinder: r.ToolOutputBinder, WorkerContextValues: r.WorkerContextValues})
 }
 
 // RetainedWorkerConfigTags returns the distinct host tags of addressable

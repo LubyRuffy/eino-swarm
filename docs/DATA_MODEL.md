@@ -262,6 +262,19 @@ their audit history, retaining surviving nodes' unavailable references.
 Event evidence validates identity, not truth; artifact paths do not freeze file
 bytes. See `internal/store/nuwa.go` and [Nuwa](NUWA.md).
 
+## `nuwa_verify_slots` — one verify and one fix (`C-037`)
+
+One row is one committed `verify` or `fix` of a `nuwa_nodes` id during a turn.
+`request_key` is the trusted tool-call identity (thread, turn, agent,
+generation, call id). `request_hash` binds that call to its intent and target.
+Replaying the same call and arguments adds no row. A second distinct call for
+the same turn, target and intent is refused before insert. A unique
+turn/target/intent index keeps the allowance at one even if two writes overlap.
+Deleting the thread, deleting the project, or rewinding the owning turn removes
+these rows. An earlier turn's rows stay, so restart does not reset the
+allowance. The table is not a chat event and not a Settings value. See
+`internal/store/nuwa_verify.go`.
+
 ## `threads` — one conversation
 
 | column | type | notes |

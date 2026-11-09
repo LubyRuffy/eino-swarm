@@ -2325,7 +2325,7 @@ shortening only the bounded detail text.
 | `ask_recovered` | the existing unanswered human wait is restored, not executed again; original `tool_call_id`, `text` is original `{"questions":[...]}`. A confirmed answer wins over duplicate recovery or unknown-result replay; private checkpoint history is excluded |
 | `tool_delta` | live tool output while a call still runs, paired by `tool_call_id`. For `exec`, `text` is the current `{stdout,stderr}` JSON snapshot. For MCP calls, it is the latest bounded plain-text progress reported by the server. `seq` is 0 and the event is not stored. The model still receives one `tool_result` when the call finishes |
 | `tool_call_delta` | the model is still writing a tool call. `text` is `name(N)` where `N` is the argument size in runes so far, paired by `tool_call_id`. `seq` is 0, not stored. The call has not run; `tool_call` arrives when the stream ends and replaces this row |
-| `spawned` | a sub-agent started; `text` is its system prompt, `role` is its role, `agent_id` is its id. A slash-shaped role is stored as the job word (`-2`, `-3` when that word is taken), not the path. Older rows stored the role in `text` too. A later `spawn_agent` for that role reuses the same id: steering while running, a second `spawned` after it finished |
+| `spawned` | a sub-agent started; `text` is its system prompt, `role` is its role, `agent_id` is its id. A slash-shaped role is stored as the job word (`-2`, `-3` when that word is taken), not the path. Older rows stored the role in `text` too. A later `spawn_agent` for that role reuses the same id: steering while running, a second `spawned` after it finished. A Nuwa verify or fix that exceeds this turn's one-each allowance for that shared record returns `{error}` and does not emit `spawned` |
 | `finished` | a sub-agent finished; `err` set when it failed |
 | `turn` | an agent started a model turn (`turn N`) |
 | `steer` | human guidance was accepted. `images` as on `user_message` when the steer carried a paste. The `/goal` session wrap-up cue is **not** this event — it is delivered to the in-flight manager only. Retracting unread steering does not delete this row |
@@ -2577,6 +2577,7 @@ reason, and skips unknown or malformed envelopes that paint no phone block.
 有当前有效 goal／同对话 wake 的工作继续遵守既有停泊契约。
 
 生命周期 `tool_result.text` 的新成功回执附带 worker 执行 `generation`：
+女娲回合的 `spawn_agent` 还可带 `intent`（`work`、`verify`、`fix`，省略为普通实现）和 `target`（已有共享记录 id）。同一 turn 与记录允许一次验证和一次修复；超额、缺目标或未知记录返回 `{error}`，不产生 `spawned`。同一次 tool call 重送不重复扣次。普通模式忽略这两个字段。
 `spawn_agent`／`resume_agent` 返回 `{agent_id,generation,...}`；`wait_agents`
 每个已知条目包含 `{agent_id,generation,status,...}`，只有实际返回的 done／failed
 结果结清该 generation，running／unknown 和 wait 超时不结清；`close_agent`

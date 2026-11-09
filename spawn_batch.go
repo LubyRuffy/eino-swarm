@@ -17,6 +17,8 @@ type spawnArgs struct {
 	Task        string    `json:"task"`
 	ForkContext bool      `json:"fork_context"`
 	ModelRef    string    `json:"model_ref"`
+	Intent      string    `json:"intent"`
+	Target      string    `json:"target"`
 	ToolNames   *[]string `json:"-"`
 }
 
@@ -33,6 +35,8 @@ func readSpawnArgs(args string) (spawnArgs, string) {
 	a.Role = strings.TrimSpace(a.Role)
 	a.Task = strings.TrimSpace(a.Task)
 	a.ModelRef = strings.TrimSpace(a.ModelRef)
+	a.Intent = strings.ToLower(strings.TrimSpace(a.Intent))
+	a.Target = strings.TrimSpace(a.Target)
 	if a.Role == "" {
 		return a, "spawn_agent: role is required"
 	}

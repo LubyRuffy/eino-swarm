@@ -73,6 +73,95 @@ Evidence (outside the repo):
 `~/.codex/nuwa-evidence/exp1-budget-probe/`,
 `~/.codex/nuwa-evidence/exp2-fair-arena-20261107-202956/`.
 
+## Verification-doctrine probe: 2026-11-08
+
+Follow-up after aligning the mode against its reference (Sapper-v2/nvwabase).
+The reference's autonomy loop is `reason → explore → verify`, with verification
+a mandatory, independent dispatch, not optional advice. Our planner instruction
+only *asked* for verification "when evidence is missing or conflicting", so a
+worker that re-ran its own cases shipped the `spec-edges` `money` bug. A product
+change (`7f7c409c`) makes verification a mandatory, independent, adversarial
+step: a separate executor derives boundary and required-case checks from the
+acceptance criteria and exercises the actual result before the manager accepts
+it. The instruction stays task-agnostic.
+
+Focused `spec-edges` reruns on the real gateway measured whether this converts
+the failure. At the frozen 16,384-token/1200 s budget the verify loop does not
+converge: `nuwa-glm-verify` timed out at 1202 s with `money` still broken and
+`headers` regressed mid-fix. Raising the budget to 64,000 tokens/2400 s
+(`exp5-verify64k`) separates capability from budget:
+
+| Arm | Run | Outcome | task s | money | slug | headers |
+|---|---|---|---|---|---|---|
+| nuwa-glm-verify (GLM plan+exec) | 1 | timeout | 2401 | fail | pass | fail |
+| nuwa-mixed-verify (GLM plan, DS exec) | 1 | done | 564 | **fail** | pass | pass |
+| nuwa-mixed-verify (GLM plan, DS exec) | 2 | done | 387 | **fail** | pass | pass |
+
+Three findings, none of them a reproduced correctness win on the hard case:
+
+- **The doctrine does not fix `money`, even with the capable executor.** DS emits
+  the `set_int_max_str_digits` guard when asked directly (exp3), yet both mixed
+  runs still shipped `money` without it. Mandatory adversarial verification did
+  not reach the failure. The blocking boundary is Python's 4300-digit int↔str
+  limit — an implementation detail the README never states. "Derive adversarial
+  inputs from the acceptance criteria" yields "a number with many digits", not
+  one past 4300, because the spec says "any number of digits" without revealing
+  the threshold. Spec-derived verification has a blind spot exactly where the
+  hidden grader bites. The reference's CTF domain has a ground-truth oracle
+  (submit the flag, it scores); general engineering tasks often do not expose
+  the failure boundary in the spec, so derived checks cannot find it.
+- **It helps where the failure is spec-derivable.** `headers` passed in both
+  mixed runs here, where the tight-budget 16k run had left it broken; the
+  verification caught and closed gaps the acceptance criteria do express.
+- **A capable executor converges; an incapable one does not.** The DS-executor
+  arm finished in ~6–9 min; the GLM-only arm looped verify→refix→reverify until
+  the 40-minute cap without converging. Making verification mandatory and
+  adversarial introduces a non-convergence/timeout risk for a model that cannot
+  actually close the gap it keeps finding — operationally worse than a bounded
+  wrong answer. A shippable form must bound the verify/refix cycles.
+
+Conclusion: implementing the reference's verify loop faithfully does not
+reproduce a correctness win on a task whose failure boundary is hidden from the
+stated acceptance criteria; it helps on spec-derivable failures and converges
+with a capable executor, but adds a timeout risk otherwise. The high-leverage
+lever remains a verification *oracle* (spec-derived boundaries are not enough),
+which the reference gets for free from its arena and a general task does not.
+Evidence: `~/.codex/nuwa-evidence/exp4-verify-20261107-232116/` (16k, timeout),
+`~/.codex/nuwa-evidence/exp5-verify64k-20261108-083515/` (64k).
+
+## Host verify budget: 2026-11-08
+
+The prompt sentence that asked the model to stop after one fix did not bound the
+loop. The host now counts `spawn_agent` intents: one `verify` and one `fix` per
+shared record in a turn, refused before another worker starts. This probe asks
+whether that count lets a GLM-only `spec-edges` run finish inside the task
+timeout instead of riding a 1500/2400 s fuse. Money passing is not the
+acceptance criterion.
+
+One run, planner and catalog limited to `glm-5.3-flash`, 64,000 output tokens,
+task timeout 1200 s, review wait 30 s. Source `2ae884d0` plus the uncommitted
+host-budget change (`dirty_sha256`
+`7663379b55bb2271e5a0f403cb7428e48d5534c81e4bf38511c98f1b93ba86b6`).
+
+| Arm | Outcome | task s | money | slug | headers | tokens |
+|---|---|---|---|---|---|---|
+| nuwa-glm host budget | done | 646 | fail | pass | pass | 2,630,724 |
+| nuwa-glm host budget, repeat | done | 997 | fail | pass | pass | 2,489,867 |
+
+The turn settled `done` at 646 s, inside the 1200 s task timeout, with no
+harness error. The hidden grader still fails only `money`. The manager spawned
+one `intent=verify` for each of the three records and no `fix`. The allowance
+was not exhausted, so the host did not have to refuse a second check. The
+model's own answer claimed every module passed; the unmet money rule is the
+grader's result, not a sentence the model reported. Compared with the earlier
+GLM-only verify run that timed out at 2401 s, this run ended on its own.
+Evidence: `~/.codex/nuwa-evidence/exp7-glm-only/20261108-114132/`.
+
+A repeat with the same catalog, cap and timeout also settled `done` at 997 s.
+Again one `verify` per record, no `fix`, and no host refusal, because the
+second check was never requested. `money` failed and `slug`/`headers` passed.
+Evidence: `~/.codex/nuwa-evidence/exp8-glm-only/20261108-122058/`.
+
 # Generic Nuwa observation: 2026-11-02
 
 The completed strict-separation/shared-state-preview calibration on source

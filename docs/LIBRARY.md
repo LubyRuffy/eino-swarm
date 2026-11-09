@@ -81,6 +81,16 @@ Its schema stays optional for same-role reuse; single-ready-model and existing
 worker bindings keep their current behavior. This host policy adds no library
 configuration field or stored-data migration.
 
+`WorkerConfig.VerifyAdmission(ctx, intent, target, callID)` is optional. Nil
+ignores `intent` and `target`: ordinary mode and a generic Registry do not
+advertise or require them. When the callback is set, `spawn_agent` accepts
+`intent` (`work`, `verify`, or `fix`; omit means `work`) and `target`. `verify`
+and `fix` require a target and a real tool-call id. The callback runs before
+fork, dispatch, queue, steer or resume. A refusal becomes `{"error": …}` and
+starts no worker; context cancellation stays a Go error. The library does not
+count or store the allowance. The zwai host allows one verify and one fix per
+turn and shared record, persisted in `nuwa_verify_slots`.
+
 `EnableDelegation` gives workers the lifecycle tools under their captured
 configuration. Worker callers carry trusted ID/parent/generation; they may only
 control descendants. Roles and capacity remain global to the Registry. A child
