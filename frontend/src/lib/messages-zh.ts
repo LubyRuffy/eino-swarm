@@ -387,6 +387,11 @@ export const zh: { [K in keyof typeof en]: string } = {
   "transcript.collectionStop": "停止等待委派结果",
   "transcript.outputBudgetHint": "可以在设置里调高单次输出上限。",
   "transcript.outputBudgetSettings": "单次输出上限",
+  "transcript.workerRecoveryHint": "旧工作线程仍绑定已移除的提供商。此操作只替换失效配置，保留任务历史和权限，不会自动执行任务。",
+  "transcript.workerRecoveryAction": "使用 {model} 修复恢复配置",
+  "transcript.workerRecoverySaving": "正在保存…",
+  "transcript.workerRecoverySelect": "先选择可用模型",
+  "transcript.workerRecoverySaved": "恢复配置已保存。现在可点击继续或重试。",
   "transcript.outputBudgetRetry": "重试",
   "notice.firstByteTimeout": "模型在 {duration} 内未返回首字节。",
   "transcript.firstByteTimeoutHint":

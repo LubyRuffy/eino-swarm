@@ -96,7 +96,8 @@ func (r *Registry) Restore(ctx context.Context, w RestoredWorker, modelOpt Model
 	if modelOpt == nil {
 		modelOpt = config.ModelBuilder
 	}
-	modelOpt, err = r.restoreWorkerModel(ctx, w.ModelBinding, modelOpt)
+	binding := config.recoveredBinding(w.ModelBinding)
+	modelOpt, err = r.restoreWorkerModel(ctx, binding, modelOpt)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +110,7 @@ func (r *Registry) Restore(ctx context.Context, w RestoredWorker, modelOpt Model
 	h.configTag = config.Tag
 	enabled := config.EnableDelegation
 	h.delegationEnabled = &enabled
-	h.modelBinding = cloneModelBinding(w.ModelBinding)
+	h.modelBinding = cloneModelBinding(binding)
 	h.handoff.task, h.handoff.instruction = task, instruction
 	h.handoff.restoreHistory = cloneMessages(w.History)
 	h.inbox = append(h.inbox, w.Inbox...)

@@ -106,10 +106,18 @@ func (e *Engine) workerConfigurationForTag(ctx context.Context, threadID, tag st
 	if turn.NuwaReadOnly {
 		set = tools.ExploreOnly(set)
 	}
-	builder, err := e.pool.ModelBuilder(ctx, turn.ProviderID, turn.Model, turn.ReasoningEffort, e.callRecorder(threadID, tag))
+	selection := recoveredWorkerBinding(turn, swarm.ModelBinding{ProviderID: turn.ProviderID, Model: turn.Model, ReasoningEffort: turn.ReasoningEffort})
+	var builder swarm.ModelBuilder
+	if _, recovered := turn.WorkerModelRecovery[turn.ProviderID]; recovered {
+		builder, err = e.pool.RestoreWorkerModel(ctx, selection, e.callRecorder(threadID, tag))
+	} else {
+		builder, err = e.pool.ModelBuilder(ctx, selection.ProviderID, selection.Model, selection.ReasoningEffort, e.callRecorder(threadID, tag))
+	}
 	if err != nil {
 		return swarm.WorkerConfig{}, err
 	}
-	reg := e.newTurnRegistry(builder, set, pc, turn)
+	effective := *turn
+	effective.ProviderID, effective.Model, effective.ReasoningEffort = selection.ProviderID, selection.Model, selection.ReasoningEffort
+	reg := e.newTurnRegistry(builder, set, pc, &effective)
 	return reg.WorkerConfiguration(), nil
 }

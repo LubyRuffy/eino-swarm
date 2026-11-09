@@ -160,6 +160,7 @@ func New(opts Options) (*Server, error) {
 		api.POST("/threads/:id/read", s.readThread)
 		api.GET("/threads/:id/schedules", s.listThreadSchedules)
 		api.PATCH("/threads/:id", s.patchThread)
+		api.POST("/threads/:id/worker-model-recovery", s.recoverWorkerModels)
 		api.DELETE("/threads/:id", s.deleteThread)
 
 		api.GET("/threads/:id/events", s.streamEvents)

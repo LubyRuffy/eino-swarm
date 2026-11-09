@@ -1,3 +1,5 @@
+import { WorkerModelRecovery } from "./worker-model-recovery"
+
 import { AlertTriangle, RotateCcw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -70,6 +72,7 @@ export function TranscriptError({
             </p>
           </div>
         ) : null}
+        {/restore worker (configuration|model).*provider: unknown provider/.test(text) ? <WorkerModelRecovery key={turnId} turnId={turnId} /> : null}
         {retryable ? (
           <Button
             type="button"

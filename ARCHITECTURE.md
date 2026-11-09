@@ -25,7 +25,12 @@ model and tool-scope selection still use that complete catalog. For Responses,
 the planner receives a model-instance copy without provider-hosted builtins,
 preserving the shared client, worker factory, call accounting and backoff.
 Ordinary turns keep their existing tool surface. Restored workers retain their
-original model and selected tools; a resumed Nuwa manager uses the planner surface.
+original model and selected tools; a human can explicitly replace a removed
+provider through the idle conversation worker-model-recovery endpoint. Its
+transactional source-turn overlay preserves historical selection, worker identity
+and tool/project scope, survives restart, and starts no execution. Healthy
+bindings never follow a composer change.
+A resumed Nuwa manager uses the planner surface.
 
 The Nuwa Registry adds the user's project instruction to the worker preamble as
 independent shared project context, including when memory is off. It does not

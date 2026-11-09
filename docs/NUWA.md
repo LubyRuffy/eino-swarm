@@ -347,3 +347,13 @@ score or comparative performance result, and that requirement remains incomplete
 
 Related boundaries: `F-136`, `C-037`, `C-019`, `C-027`. See [API](API.md),
 [data model](DATA_MODEL.md) and [library](LIBRARY.md) for integration details.
+
+### 恢复已移除的模型提供商
+
+会话的模型选择只影响后续新执行；已有 worker 保留自己的绑定。若错误为
+`restore worker configuration: provider: unknown provider`，先在输入框选择可用模型，
+再点击错误行的“使用 … 修复恢复配置”。这会原子保存失效配置的显式替代，保留
+原始模型历史、worker 身份、项目归属与工具权限；健康绑定保持原值。会话必须
+空闲且无后台 Registry。保存本身不执行任务，之后点击继续／重试即可沿原恢复
+流程推进；未确认的外部工具效果仍需按原规则核验。恢复配置随原始轮次持久保存，
+重启后有效。

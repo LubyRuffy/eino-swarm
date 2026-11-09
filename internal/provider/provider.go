@@ -142,6 +142,9 @@ func NewMockWithStreamDelay(cfg *config.Config, delay time.Duration) *Pool {
 // surfaces so nobody mistakes a demo answer for a real one.
 func (p *Pool) IsMock() bool { return p.mock }
 
+// ErrUnknownProvider identifies a removed provider without parsing error prose.
+var ErrUnknownProvider = errors.New("provider: unknown provider")
+
 // Resolve returns the provider record for id, falling back to the configured
 // default when id is empty.
 func (p *Pool) Resolve(id string) (config.Provider, error) {
@@ -156,7 +159,7 @@ func (p *Pool) Resolve(id string) (config.Provider, error) {
 	}
 	prov, ok := p.cfg.Provider(id)
 	if !ok {
-		return config.Provider{}, fmt.Errorf("provider: unknown provider %q", id)
+		return config.Provider{}, fmt.Errorf("%w %q", ErrUnknownProvider, id)
 	}
 	if p.mock {
 		// Offline runs are usually against an unconfigured provider, and a

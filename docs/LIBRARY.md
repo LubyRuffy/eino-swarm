@@ -112,7 +112,12 @@ For durable configuration, set a host-owned `WorkerConfig.Tag` and implement
 `FinishedWorker` retain `ConfigTag`, `DelegationEnabled`, `ParentID` and
 `ModelBinding`. A resolver must reconstruct that original surface; mismatched
 tags/mode or resolution errors refuse before claim/resume. Go tool instances and
-secrets are not serialized. The zwai app binds the tag to a durable turn and
+secrets are not serialized. An optional host-authorized `WorkerConfig.RecoveredModels`
+map replaces a removed provider only at actual Restore/Resume execution;
+ConfigureWorkers and WorkerConfiguration clone the map. PlantFinished preserves
+the completed result's original binding. Hosts must persist and authorize these
+replacements themselves; ordinary defaults never grant recovery authority.
+The zwai app binds the tag to a durable turn and
 validates its conversation/project owner; see [Nuwa](NUWA.md).
 The app's shared-work idempotency returns a frozen same-call/same-argument receipt
 only after current ownership and input validation; it does not bypass

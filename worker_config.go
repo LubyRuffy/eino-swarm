@@ -3,6 +3,7 @@ package swarm
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -18,6 +19,9 @@ type WorkerConfig struct {
 	ModelBuilder       ModelBuilder
 	SelectWorkerModel  func(context.Context, string) (ModelBinding, ModelBuilder, error)
 	RestoreWorkerModel func(context.Context, ModelBinding) (ModelBuilder, error)
+	// RecoveredModels contains only explicit host-authorized provider replacements.
+	// Completed results retain their historical binding until actual resumption.
+	RecoveredModels map[string]ModelBinding
 	// VerifyAdmission is nil outside Nuwa. It refuses a verify or fix that
 	// would exceed the host's per-record allowance before any worker starts.
 	VerifyAdmission  func(context.Context, string, string, string) error
@@ -36,6 +40,7 @@ type WorkerConfig struct {
 }
 
 func cloneWorkerConfig(config WorkerConfig) WorkerConfig {
+	config.RecoveredModels = maps.Clone(config.RecoveredModels)
 	config.SubAgentTools = append([]tool.BaseTool(nil), config.SubAgentTools...)
 	config.SelectableToolNames = slices.Clone(config.SelectableToolNames)
 	config.workerToolNames = cloneWorkerToolNames(config.workerToolNames)
@@ -132,4 +137,17 @@ func (r *Registry) restoreWorkerConfiguration(ctx context.Context, tag string, e
 		config.EnableDelegation = *enabled
 	}
 	return cloneWorkerConfig(config), nil
+}
+
+// recoveredBinding applies a persisted human choice at the execution boundary,
+// never while planting a completed result or merely displaying its history.
+func (config WorkerConfig) recoveredBinding(binding *ModelBinding) *ModelBinding {
+	if binding == nil {
+		return nil
+	}
+	selected := *binding
+	if replacement, ok := config.RecoveredModels[binding.ProviderID]; ok {
+		selected = replacement
+	}
+	return &selected
 }

@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+### Fixed
+
+- Explicitly repair removed worker providers using the selected conversation model; preserve historical model selections, worker identity and permissions across restart. Ordinary model switching keeps its existing scope (#162).
+
 - Phone direct chat retries one transient cloud page fetch inside the same
   tool budget, and returns a recognized search or fetch failure to the same
   model. Streamed text stays visible and the failed tool keeps its card.

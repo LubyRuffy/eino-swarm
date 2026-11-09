@@ -256,7 +256,8 @@ func (r *Registry) resumeHandle(ctx context.Context, fromID, task string,
 	if admit || config.workerToolNames != nil || (config.Tag != "" && len(extraTools) == 0) {
 		extraTools = append(append([]tool.BaseTool(nil), config.SubAgentTools...), r.SendTool())
 	}
-	modelOpt, err = r.restoreWorkerModel(ctx, past.checkpoint.ModelBinding, modelOpt)
+	binding := config.recoveredBinding(past.checkpoint.ModelBinding)
+	modelOpt, err = r.restoreWorkerModel(ctx, binding, modelOpt)
 	if err != nil {
 		return nil, err
 	}
@@ -265,6 +266,7 @@ func (r *Registry) resumeHandle(ctx context.Context, fromID, task string,
 		return nil, err
 	}
 	h.mu.Lock()
+	h.modelBinding = cloneModelBinding(binding)
 	h.workerToolNames = cloneWorkerToolNames(config.workerToolNames)
 	instruction := workerInstructionWithConfig(r.workerConfigurationForContext(ctx), task)
 	h.handoff.task, h.handoff.instruction = task, instruction

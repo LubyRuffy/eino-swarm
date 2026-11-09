@@ -407,6 +407,18 @@ recovery updates are additional events, preserving the historical cause.
 These are generation facts, not worker `finished` receipts or completion
 attention. Legacy rows need no output-ID or cause migration.
 
+### Worker model recovery overrides
+
+`turns.worker_model_recovery` is an optional JSON map from original provider ID to
+an explicitly chosen, concrete `ModelBinding` (provider/model/reasoning; no keys or
+endpoints). Original turn provider/model columns remain historical facts. One
+human recovery transaction updates every affected source turn only while it still
+belongs to the same conversation/project. Repeated repairs flatten aliases, so
+old events and newer checkpoints select the same model at actual Restore/Resume
+after reopening storage. Completed results keep their original historical binding. Deleting or
+rewinding the source turn removes its override with it. Ordinary model switching
+never writes this field. See `C-037` and `internal/store/worker_model_recovery.go`.
+
 ## `pending_schedule_answers` — private admission and recovery state
 
 | column | type | notes |

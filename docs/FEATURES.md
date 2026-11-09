@@ -171,6 +171,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-136 Nuwa project collaboration
 
+失效模型恢复：桌面错误行提供“使用当前所选模型修复恢复配置”，仅显式迁移已移除的提供商；保存后继续／重试，保留 worker 身份、历史和工具范围。空闲／无 parked Registry 才可操作；失败不部分更新。契约 `C-037`；证据 `internal/engine/worker_model_recovery_http_test.go`、`frontend/src/components/app/worker-model-recovery.test.tsx`。
+
 - 目的：由模型基于目标与事实选择计划、分工和已接入模型，并让项目内共享任务、事实报告、成果及依赖可检查；使用者：PC 用户；入口：项目创建／编辑的 Nuwa collaboration、Instruction、右侧 Collaboration、`list_models`／`read_work`／`record_work` 及项目 Nuwa GET／SSE；输入：项目提示词、已配置资源、实际事件证据及已有成果文件；输出：动态 worker 树、实际模型绑定、有版本和来源的共享记录与依赖图；前置条件：项目启用模式，资源已接入；失败表现：不可用模型、跨子树控制、无效引用、过期版本及存储失败明确拒绝；关联契约：`C-037`、`C-019`、`C-027`、`C-012`；实现证据：`internal/engine/nuwa_models.go`、`internal/engine/nuwa_tools.go`、`internal/store/nuwa.go`、`internal/server/nuwa.go`、`delegation.go`、`worker_config.go`、`model_binding.go`、`frontend/src/components/app/nuwa-panel.tsx`；验证：`internal/engine/nuwa_engine_http_test.go`、`internal/store/nuwa_test.go`、`internal/server/nuwa_stream_test.go`、`delegation_http_test.go`、`model_binding_http_test.go`、`frontend/e2e/nuwa.spec.ts`。
 - 模式变更从后续 turn 生效；既有 worker 保留原配置／模型和执行身份。fact／artifact 是 reported，引用存在不证明推导成立；来源纠正／删除需明确重查。项目 revision 标识共享快照，不进入聊天 seq。停用保留已存内容，规划模式不挂共享写工具。见 [Nuwa](NUWA.md)；不预置领域流程，不宣称 CyberGym、原生或真实模型效率已验收。
 - 女娲执行者每次收到当前 generation 已实际绑定的身份及模型；`list_models.current` 显示同一事实，和会话轮次的 `default` 分开。原绑定跨续办和冷恢复保留；旧未绑定执行标为未知。提示是临时运行事实，不改变普通模式、项目指令、工具权限或可委派范围。关联 `C-037`；实际输入及工具验证见 `internal/engine/nuwa_context_worker_http_test.go`、`internal/engine/nuwa_context_restore_http_test.go`。

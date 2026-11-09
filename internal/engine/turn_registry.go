@@ -20,6 +20,7 @@ func (e *Engine) newTurnRegistry(builder swarm.ModelBuilder, toolset *tools.Set,
 		e.wireNuwaRegistry(reg, toolset, pc, turns[0])
 		config := reg.WorkerConfiguration()
 		config.Tag = turns[0].ID
+		config.RecoveredModels = turns[0].WorkerModelRecovery
 		ownerTurn := turns[0]
 		if handlers := e.nuwaContextHandlers(ownerTurn); len(handlers) > 0 {
 			config.WorkerMiddlewares = func(swarm.AgentIdentity) []adk.ChatModelAgentMiddleware {

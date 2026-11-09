@@ -547,6 +547,10 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(patch),
     }).then((r) => r.thread),
+  recoverWorkerModels: (id: string, providerId: string, model: string) =>
+    request<{ configurations: number }>(`/api/threads/${id}/worker-model-recovery`, {
+      method: "POST", body: JSON.stringify({ provider_id: providerId, model }),
+    }),
   compactThread: (id: string) =>
     request<{ thread: Thread; status: ThreadStatus; usage?: UsageSnapshot }>(
       `/api/threads/${id}/compact`,

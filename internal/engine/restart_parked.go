@@ -168,17 +168,25 @@ func (e *Engine) parkedRegistry(th *store.Thread, turn *store.Turn) (*swarm.Regi
 	if providerID == "" {
 		providerID = th.ProviderID
 	}
-	prov, err := e.pool.ResolveModel(providerID, turn.Model)
+	selection := recoveredWorkerBinding(turn, swarm.ModelBinding{ProviderID: providerID, Model: turn.Model, ReasoningEffort: turn.ReasoningEffort})
+	_, err = e.pool.ResolveModel(selection.ProviderID, selection.Model)
 	if err != nil {
 		return nil, err
 	}
-	effort := turn.ReasoningEffort
-	if effort == "" {
+	effort := selection.ReasoningEffort
+	if _, recovered := turn.WorkerModelRecovery[providerID]; effort == "" && !recovered {
 		effort = th.ReasoningEffort
 	}
-	builder, err := e.pool.ModelBuilder(context.Background(), prov.ID, prov.Model, effort, e.callRecorder(th.ID, turn.ID))
+	var builder swarm.ModelBuilder
+	if _, recovered := turn.WorkerModelRecovery[providerID]; recovered {
+		builder, err = e.pool.RestoreWorkerModel(context.Background(), selection, e.callRecorder(th.ID, turn.ID))
+	} else {
+		builder, err = e.pool.ModelBuilder(context.Background(), selection.ProviderID, selection.Model, effort, e.callRecorder(th.ID, turn.ID))
+	}
 	if err != nil {
 		return nil, err
 	}
-	return e.newTurnRegistry(builder, set, pc, turn), nil
+	effective := *turn
+	effective.ProviderID, effective.Model, effective.ReasoningEffort = selection.ProviderID, selection.Model, effort
+	return e.newTurnRegistry(builder, set, pc, &effective), nil
 }

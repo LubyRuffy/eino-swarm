@@ -398,6 +398,11 @@ export const en = {
   "transcript.outputBudgetHint":
     "You can raise the per-request output limit in Settings.",
   "transcript.outputBudgetSettings": "Max completion tokens",
+  "transcript.workerRecoveryHint": "Old workers still reference a removed provider. Repair replaces missing configurations, preserves history and permissions, and starts no execution.",
+  "transcript.workerRecoveryAction": "Repair recovery using {model}",
+  "transcript.workerRecoverySaving": "Saving…",
+  "transcript.workerRecoverySelect": "select an available model",
+  "transcript.workerRecoverySaved": "Recovery settings saved. You can now Continue or Retry.",
   "transcript.outputBudgetRetry": "Retry",
   "notice.firstByteTimeout": "The model sent no first byte within {duration}.",
   "transcript.firstByteTimeoutHint":

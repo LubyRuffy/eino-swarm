@@ -183,6 +183,9 @@ type Turn struct {
 	Error      string `json:"error,omitempty"`
 	ProviderID string `gorm:"size:64" json:"provider_id"`
 	Model      string `gorm:"size:128" json:"model"`
+	// WorkerModelRecovery is a human-authorized provider replacement for retained
+	// workers. It never overwrites the historical model selection or credentials.
+	WorkerModelRecovery map[string]swarm.ModelBinding `gorm:"serializer:json" json:"worker_model_recovery,omitempty"`
 	// ReasoningEffort records the thinking level this turn actually ran with,
 	// so a trace shows what produced the answer, not what is configured now.
 	ReasoningEffort string `gorm:"size:16" json:"reasoning_effort,omitempty"`
