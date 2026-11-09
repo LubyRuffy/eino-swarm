@@ -132,6 +132,10 @@ without a useful match, ordering remains recent first. Full detail is left to
 `read_work`. The complete preview, including its explanation and JSON,
 uses the existing **tool result character limit**. Oversized nodes are omitted
 whole and counted explicitly; they are still available through `read_work`.
+When a kept node depends on an omitted one, `path` lists that prerequisite
+chain in dependency order, including each step's summary. Lower-priority
+detailed nodes make room only when the chain itself fits in the budget.
+Omitted records that the kept nodes do not depend on stay out of `path`.
 Each model call and shared-work read takes its budget from one committed config
 snapshot, so live Settings updates do not race or change the cap during encoding.
 This bounds the preview, not the entire model context. Provider-internal retries

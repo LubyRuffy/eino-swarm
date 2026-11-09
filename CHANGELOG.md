@@ -6,6 +6,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Nuwa's shared preview keeps the prerequisite chain after the conversation is
+  folded. A kept record's omitted prerequisites stay on `path`, in dependency
+  order, inside the existing tool-result budget. (`C-037`)
+
 - Composer file attachments save and send from the desktop window. A filename
   WebKit leaves raw in the multipart header no longer rejects the whole draft,
   and the file is read when it is chosen so a later save still has the bytes.
