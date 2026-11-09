@@ -8,6 +8,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Fixed
 
+- The composer model and the model a turn requests stay the same when the
+  signed-in account catalog is refreshed. An empty conversation follows only a
+  user-configured default. The catalog's first name is stored on the
+  conversation the first time it is needed, including the name the composer is
+  showing. A saved default that leaves the catalog stays on the button as
+  unavailable and is still the name requested.
+
 - Recorded one folded stage chain in `evals/nuwa/RESULTS.md`. The conversation
   held none of the 80 identifiers and notes held 71. The default executor wrote
   the first 71; Nuwa's saved executor, dispatched by a different planner, wrote

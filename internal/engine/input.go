@@ -70,6 +70,11 @@ type UserInput struct {
 	// FromEventSeq, when set, truncates the conversation at that user_message
 	// and starts again from there. It is a rewind, not a new turn on top.
 	FromEventSeq int64
+	// ComposerModel is the name the composer is showing for this send. It is
+	// remembered only when the conversation has no model yet and that provider
+	// has no user-configured default. A stored name and a settings default
+	// both win over it.
+	ComposerModel string
 	// ImplementPlan is an engine-started turn that executes an accepted plan.
 	// The transcript records plan_implemented, not a human user_message.
 	ImplementPlan bool

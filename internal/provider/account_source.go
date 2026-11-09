@@ -146,26 +146,77 @@ func (s *AccountSource) provider(preferred string) config.Provider {
 			windows[name] = n
 		}
 	}
+	model := strings.TrimSpace(preferred)
+	if model == "" {
+		model = chooseName(names, "")
+	}
 	return config.Provider{
 		ID: s.id, Label: s.label, BaseURL: s.baseURL, APIKey: s.token,
-		Model: chooseName(names, preferred), Catalog: names, ModelContext: windows,
+		Model: model, Catalog: names, ModelContext: windows,
 	}
+}
+
+// ConversationDefault is the model an unpinned conversation on id uses.
+// followsSetting is false only for an account catalog whose saved account
+// model is empty: name is then the current first conversation model, and the
+// caller remembers it instead of reading the catalog again on the next send.
+func (p *Pool) ConversationDefault(id string) (name string, followsSetting bool, ok bool) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		id = p.DefaultProviderID()
+	}
+	if src := p.account.Load(); src != nil && id == src.ID() {
+		if preferred := p.accountModel(); preferred != "" {
+			return preferred, true, true
+		}
+		return chooseName(src.conversationalNames(), ""), false, true
+	}
+	prov, err := p.Resolve(id)
+	if err != nil {
+		return "", false, false
+	}
+	return strings.TrimSpace(prov.Model), true, true
 }
 
 // ParseCatalog reads an OpenAI-compatible model list body.
 func ParseCatalog(raw []byte) (Catalog, error) { return parseModelCatalog(raw) }
 
-// rows lists the conversation models. preferred, when it is still one of
-// them, is the name a new conversation starts on.
+// rows lists the conversation models. A saved preferred name stays the default
+// after it leaves the catalog, as a not-ready row, so the composer does not
+// paint a different model as selected. An empty preferred marks the current
+// first conversation name, and that mark does not follow a setting.
 func (s *AccountSource) rows(isDefault bool, preferred string) []Info {
 	names := s.conversationalNames()
-	chosen := chooseName(names, preferred)
-	out := make([]Info, 0, len(names))
+	preferred = strings.TrimSpace(preferred)
+	follows := preferred != ""
+	chosen := preferred
+	chosenReady := false
+	if !follows {
+		chosen = chooseName(names, "")
+		chosenReady = chosen != ""
+	} else {
+		for _, name := range names {
+			if name == preferred {
+				chosenReady = true
+				break
+			}
+		}
+	}
+	out := make([]Info, 0, len(names)+1)
 	for _, name := range names {
 		out = append(out, Info{
 			ID: ChoiceID(s.id, name), ProviderID: s.id, ProviderLabel: s.label,
-			Label: name, Model: name, Ready: true, Default: isDefault && name == chosen,
-			ContextWindow: s.windows[name], Source: SourceAccount,
+			Label: name, Model: name, Ready: true,
+			Default:               isDefault && name == chosen,
+			DefaultFollowsSetting: isDefault && follows && name == chosen,
+			ContextWindow:         s.windows[name], Source: SourceAccount,
+		})
+	}
+	if isDefault && follows && chosen != "" && !chosenReady {
+		out = append(out, Info{
+			ID: ChoiceID(s.id, chosen), ProviderID: s.id, ProviderLabel: s.label,
+			Label: chosen, Model: chosen, Ready: false, Default: true, DefaultFollowsSetting: true,
+			Source: SourceAccount,
 		})
 	}
 	return out

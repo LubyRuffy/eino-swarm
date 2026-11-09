@@ -101,7 +101,7 @@ export function Composer({
     setPick(chosen(models, providerId, model))
   }, [providerId, model])
   useEffect(() => {
-    if (!explicitPick.current) setPick(chosen(models, providerId, model))
+    if (!explicitPick.current) setPick((current) => chosen(models, providerId, model, current))
   }, [models, providerId, model])
   useEffect(() => {
     setLevel(reasoning)
@@ -316,7 +316,9 @@ export function Composer({
             type="button"
             aria-label={t("composer.model")}
             aria-describedby={modelTextId}
-            className="h-8 w-0 min-w-0 flex-1 truncate rounded-full bg-muted px-2 text-left text-xs text-foreground"
+            title={modelUnavailable(models, pick) ? t("composer.modelUnavailable") : undefined}
+            data-unavailable={modelUnavailable(models, pick) ? "true" : undefined}
+            className={`h-8 w-0 min-w-0 flex-1 truncate rounded-full bg-muted px-2 text-left text-xs ${modelUnavailable(models, pick) ? "text-muted-foreground" : "text-foreground"}`}
             disabled={disabled || pending}
             onClick={() => setModelPickerOpen(true)}
           >
@@ -361,19 +363,40 @@ export function Composer({
   )
 }
 
-function chosen(models: ModelChoice[], providerId: string, model: string) {
+function chosen(
+  models: ModelChoice[],
+  providerId: string,
+  model: string,
+  current?: { providerId: string; model: string },
+) {
   if (providerId && model) return { providerId, model }
-  const ready = models.filter((row) => row.model)
+  const rows = models.filter((row) => row.model)
   // A known provider that left the catalog was switched off. Keep the
   // conversation on it instead of silently sending the next endpoint.
-  const stillListed = !providerId || ready.some((row) => row.provider_id === providerId)
+  const stillListed = !providerId || rows.some((row) => row.provider_id === providerId)
   if (!stillListed) return { providerId, model }
+  const settings =
+    rows.find((row) => row.provider_id === providerId && row.default && row.default_follows_setting) ??
+    rows.find((row) => row.default && row.default_follows_setting)
+  if (settings && (!providerId || settings.provider_id === providerId)) {
+    return { providerId: settings.provider_id, model: settings.model }
+  }
+  // A catalog-order fallback already on the button stays there when the
+  // list is reordered. A settings default above is allowed to move it.
+  if (current?.model && (!providerId || !current.providerId || current.providerId === providerId)) {
+    return { providerId: current.providerId || providerId, model: current.model }
+  }
   const hit =
-    ready.find((row) => row.provider_id === providerId && row.model === model) ??
-    ready.find((row) => row.provider_id === providerId && row.default) ??
-    ready.find((row) => row.default) ??
-    ready[0]
+    rows.find((row) => row.provider_id === providerId && row.default) ??
+    rows.find((row) => row.default) ??
+    rows[0]
   return { providerId: hit?.provider_id ?? providerId, model: hit?.model ?? model }
+}
+
+function modelUnavailable(models: ModelChoice[], pick: { providerId: string; model: string }) {
+  if (!pick.model) return false
+  const row = models.find((item) => item.provider_id === pick.providerId && item.model === pick.model)
+  return !row || row.ready === false
 }
 
 function thinkingLabel(level: string) {

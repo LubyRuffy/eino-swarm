@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import { groupModels, modelChoiceId, parseModelChoiceId, auxiliaryModelChoices, isTitleModelAuto, titleModelChoiceId, TITLE_MODEL_AUTO } from "./models"
+import { groupModels, modelChoiceId, parseModelChoiceId, auxiliaryModelChoices, isTitleModelAuto, titleModelChoiceId, TITLE_MODEL_AUTO, displayedModel, composerRequestModel, rememberedCatalogModel } from "./models"
+import type { ModelInfo } from "./types"
 
 describe("model choice ids", () => {
   it("round-trips a provider and a model name", () => {
@@ -11,6 +12,36 @@ describe("model choice ids", () => {
   it("does not split on a slash inside the model name", () => {
     const id = modelChoiceId("p", "org/name")
     expect(parseModelChoiceId(id)).toEqual({ providerId: "p", model: "org/name" })
+  })
+})
+
+function row(model: string, patch: Partial<ModelInfo> = {}): ModelInfo {
+  return {
+    id: model, provider_id: "gateway:a", provider_label: "Server", label: model, model, ready: true, ...patch,
+  }
+}
+
+describe("displayed model", () => {
+  it("keeps a missing saved name and a missing settings default on the button", () => {
+    const models = [row("first"), row("removed", { ready: false, default: true, default_follows_setting: true })]
+    expect(displayedModel(models, "gateway:a", "kept")?.model).toBeUndefined()
+    expect(displayedModel(models, "gateway:a", "")?.model).toBe("removed")
+    expect(composerRequestModel(models, "gateway:a", "kept")).toBeUndefined()
+    expect(composerRequestModel(models, "gateway:a", "")).toBe("removed")
+  })
+
+  it("shows the catalog-order default only while the conversation has no name", () => {
+    const models = [row("first", { default: true }), row("second")]
+    expect(displayedModel(models, "gateway:a", "")?.model).toBe("first")
+    expect(displayedModel(models, "gateway:a", "second")?.model).toBe("second")
+    expect(composerRequestModel(models, "gateway:a", "")).toBe("first")
+    expect(rememberedCatalogModel(displayedModel(models, "gateway:a", ""), "")).toEqual({ providerId: "gateway:a", model: "first" })
+    expect(rememberedCatalogModel(displayedModel(models, "gateway:a", "second"), "second")).toBeUndefined()
+  })
+
+  it("does not remember a user-configured default", () => {
+    const models = [row("saved", { default: true, default_follows_setting: true })]
+    expect(rememberedCatalogModel(displayedModel(models, "gateway:a", ""), "")).toBeUndefined()
   })
 })
 

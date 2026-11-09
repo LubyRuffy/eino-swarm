@@ -592,10 +592,19 @@ non-empty type. The model name is not used to guess. A catalog that does not
 send the field is unchanged. An empty account catalog is `no_models`. A catalog
 that only contains non-conversation types stays `ready` and contributes no
 rows here; its counts and embedding names are on `account_models.kinds`.
-`default` on an account row follows `models.account_model` when that name is
-still a conversation model, otherwise the first conversation name. The stored
-conversation name stays selectable for a turn that already chose a hidden
-model; the picker does not switch the button to a different row.
+`default` on an account row is the name an empty conversation would use.
+`default_follows_setting` is true only when that name is `models.account_model`
+(or, for the user's own endpoint, its configured `model`). A saved account
+model that has left the catalog stays on the list with `ready: false`,
+`default: true` and `default_follows_setting: true`; the composer shows it as
+unavailable and does not select another row. When `account_model` is empty,
+`default` is the current first conversation name and `default_follows_setting`
+is false. A new conversation stores that name, so a later catalog reorder does
+not change the button or the request. A conversation whose model is still
+empty sends the name the composer is showing; the server stores it only in
+this empty, non-settings case. The stored conversation name stays selectable
+for a turn that already chose a hidden model; the picker does not switch the
+button to a different row.
 
 `id` is the composer's opaque selection key (`provider_id`, tab, `model`).
 `default` on a row is that provider's configured default name. `default` at the
@@ -1797,7 +1806,10 @@ Body may contain `title`, `provider_id`, `model`, `reasoning_effort`, `archived`
 `pinned`, `project_id`, `goal`, `goal_edit`, `goal_resume`, `plan_mode`,
 `plan_markdown`. An empty title is rejected; an unknown `provider_id` or
 `project_id` is rejected. `model` is the name this conversation sends from the
-next turn; empty follows the provider's configured default. `reasoning_effort` is
+next turn. Empty follows a user-configured default (`models.account_model`, or
+the provider's own `model`). It does not follow a later change in account
+catalog order: that order is stored on the conversation the first time a
+concrete name is required. `reasoning_effort` is
 one of `""` (the model default), `low`, `medium` or `high` — a blank clears back
 to the default, and any other value is rejected the same way an unknown provider
 is. An empty `project_id` takes the conversation out of its project; from then on
@@ -1912,7 +1924,11 @@ and can also end sooner at the provider boundary.
 
 ### `POST /api/threads/:id/turns` → `202`
 
-Body `{"text": "…", "images": [{"name": "clip.png", "mime": "image/png", "data": "<base64>"}], "files": ["uploads/notes.md"], "from_event_seq": 12}`.
+Body `{"text": "…", "images": [{"name": "clip.png", "mime": "image/png", "data": "<base64>"}], "files": ["uploads/notes.md"], "from_event_seq": 12, "model": "shown-name"}`.
+Optional `model` is the name the composer is showing. It is stored only when
+the conversation's model is empty and the provider has no user-configured
+default. A stored model and a settings default both win, so this field cannot
+retarget a conversation by itself.
 Optional `history_report:true` explicitly requests a source-bound history
 report for this turn. The project menu creates an explicitly titled thread in
 the selected project and sends this flag without transferring or clearing the

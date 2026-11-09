@@ -1,5 +1,13 @@
 import { create } from "zustand"
 
+function shownComposerModel(
+  state: { models: ModelInfo[]; threads: Thread[]; meta?: Meta },
+  threadId: string,
+): string | undefined {
+  const thread = state.threads.find((row) => row.id === threadId)
+  return composerRequestModel(state.models, thread?.provider_id || state.meta?.default_provider, thread?.model)
+}
+
 import { applyPinnedOrder } from "@/lib/reorder"
 import {
   applyAppearance,
@@ -31,6 +39,7 @@ import {
   rewindTranscript,
   type TranscriptState,
 } from "@/lib/transcript"
+import { composerRequestModel } from "@/lib/models"
 import { mergeModelContext } from "@/lib/usage"
 import { persistPayload } from "@/lib/settings-persist"
 import type {
@@ -523,8 +532,9 @@ export const useApp = create<AppState>((set, get) => ({
         error: undefined,
       }))
       try {
-        if (opts.historyReport) await api.startTurn(id, text, images, opts.files, from, true)
-        else await api.startTurn(id, text, images, opts.files, from)
+        const shown = shownComposerModel(get(), id)
+        if (opts.historyReport) await api.startTurn(id, text, images, opts.files, from, true, shown)
+        else await api.startTurn(id, text, images, opts.files, from, undefined, shown)
         void get().refreshFollowups()
         void get().refreshThreads()
         return true
@@ -597,11 +607,12 @@ export const useApp = create<AppState>((set, get) => ({
       // Event sequences belong to one conversation, including after navigation.
       const sentSeq = get().activeId === id ? get().transcript.lastSeq : 0
       // Plan entry must reject a newly busy target, while goals may update its live turn.
+      const shown = shownComposerModel(get(), id)
       const accepted = opts?.historyReport
-        ? { steered: false, turn: await api.startTurn(id, text, images, opts?.files, undefined, true) }
+        ? { steered: false, turn: await api.startTurn(id, text, images, opts?.files, undefined, true, shown) }
         : opts?.command === "plan"
-          ? { steered: false, turn: await api.startTurn(id, text, images, opts?.files) }
-          : await api.steer(id, text, images, opts?.files)
+          ? { steered: false, turn: await api.startTurn(id, text, images, opts?.files, undefined, undefined, shown) }
+          : await api.steer(id, text, images, opts?.files, shown)
       set((s) => {
         // The acknowledgement may arrive after this turn's terminal event.
         if (s.activeId !== id || (!s.status.running &&

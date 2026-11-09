@@ -98,6 +98,7 @@ export const en = {
   "composer.attach": "Attach files",
   "composer.remove": "Remove {name}",
   "composer.model": "Model",
+  "composer.modelUnavailable": "This model is not in the current list",
   "composer.thinking": "Thinking level",
   "composer.thinkingDefault": "Default thinking",
   "composer.loading": "Loading models",

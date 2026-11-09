@@ -43,14 +43,19 @@ func modelViews(eng *engine.Engine) []ModelView {
 	listed := eng.Providers().List()
 	out := make([]ModelView, 0, len(listed))
 	for _, info := range listed {
-		if !info.Ready || strings.TrimSpace(info.Model) == "" {
+		if strings.TrimSpace(info.Model) == "" {
+			continue
+		}
+		if !info.Ready && !(info.Default && info.DefaultFollowsSetting) {
 			continue
 		}
 		out = append(out, ModelView{
-			ProviderID:    info.ProviderID,
-			ProviderLabel: info.ProviderLabel,
-			Model:         info.Model,
-			Default:       info.Default,
+			ProviderID:            info.ProviderID,
+			ProviderLabel:         info.ProviderLabel,
+			Model:                 info.Model,
+			Default:               info.Default,
+			DefaultFollowsSetting: info.DefaultFollowsSetting,
+			Ready:                 info.Ready,
 		})
 	}
 	if len(out) == 0 {
@@ -206,6 +211,25 @@ func checkReasoning(effort string) error {
 	return nil
 }
 
+func keepsSettingsDefault(eng *engine.Engine, threadID string, req Request) bool {
+	if eng == nil || eng.Store() == nil || eng.Providers() == nil {
+		return false
+	}
+	th, err := eng.Store().GetThread(threadID)
+	if err != nil || strings.TrimSpace(th.Model) != "" {
+		return false
+	}
+	providerID := strings.TrimSpace(req.ProviderID)
+	if providerID == "" {
+		providerID = th.ProviderID
+	}
+	if strings.TrimSpace(th.ProviderID) != "" && providerID != th.ProviderID {
+		return false
+	}
+	name, follows, ok := eng.Providers().ConversationDefault(providerID)
+	return ok && follows && name != "" && strings.TrimSpace(req.Model) == name
+}
+
 func applySelection(eng *engine.Engine, threadID string, req Request) error {
 	if req.WebExecution != nil {
 		if err := eng.SetThreadWebExecution(threadID, *req.WebExecution); err != nil {
@@ -213,8 +237,12 @@ func applySelection(eng *engine.Engine, threadID string, req Request) error {
 		}
 	}
 	if strings.TrimSpace(req.ProviderID) != "" || strings.TrimSpace(req.Model) != "" {
-		if err := eng.SetThreadProvider(threadID, req.ProviderID, req.Model); err != nil {
-			return err
+		// Repeating the user-configured default must not freeze it onto the
+		// conversation, or a later settings change would stop applying.
+		if !keepsSettingsDefault(eng, threadID, req) {
+			if err := eng.SetThreadProvider(threadID, req.ProviderID, req.Model); err != nil {
+				return err
+			}
 		}
 	}
 	if req.Reasoning != nil {

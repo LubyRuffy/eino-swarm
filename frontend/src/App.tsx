@@ -16,6 +16,7 @@ import { ClientChat } from "@/components/app/client-transcript"
 import { CompletionReader } from "@/components/app/completion-reader"
 import { ClientsStage } from "@/components/app/local-clients"
 import { Composer } from "@/components/app/composer"
+import { displayedModel, rememberedCatalogModel } from "@/lib/models"
 import { DeleteProjectDialog } from "@/components/app/delete-project-dialog"
 import { EmptyState } from "@/components/app/empty-state"
 import { ExternalSkillsDialog } from "@/components/app/external-skills-dialog"
@@ -811,6 +812,19 @@ function AppComposer({
   const scopedProjectId = thread ? thread.project_id : projectId
   const scopedProject = projects.find((row) => row.id === scopedProjectId)
   const planner = savedNuwaPlanner(scopedProject)
+  const pinnedCatalog = useRef("")
+  useEffect(() => {
+    if (planner || !thread) return
+    const remember = rememberedCatalogModel(
+      displayedModel(models, thread.provider_id || meta?.default_provider, thread.model),
+      thread.model,
+    )
+    if (!remember) return
+    const key = `${thread.id}\t${remember.providerId}\t${remember.model}`
+    if (pinnedCatalog.current === key) return
+    pinnedCatalog.current = key
+    void api.patchThread(thread.id, { provider_id: remember.providerId, model: remember.model }).then(() => refreshThreads())
+  }, [planner, thread, models, meta?.default_provider, refreshThreads])
   const setGoal = useApp((s) => s.setGoal)
   const editGoal = useApp((s) => s.editGoal)
   const resumeGoal = useApp((s) => s.resumeGoal)

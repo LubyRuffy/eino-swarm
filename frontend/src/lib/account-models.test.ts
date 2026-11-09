@@ -76,7 +76,7 @@ describe("account model rows", () => {
     const models = [row("first", true), row("second")]
     expect(effectiveAccountModel(models, "")).toBe("first")
     expect(effectiveAccountModel(models, "second")).toBe("second")
-    expect(effectiveAccountModel(models, "missing")).toBe("first")
+    expect(effectiveAccountModel(models, "missing")).toBe("missing")
     expect(embeddingModelChoices({
       state: "ready", models: 1, source_id: "gateway:a", label: "Server",
       kinds: { chat: 0, embedding: 1, ocr: 0, decisions: 0, other: 0, unclassified: 0, embedding_models: ["embed-a", "embed-a"] },

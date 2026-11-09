@@ -104,6 +104,8 @@ export type ModelChoice = {
   provider_label?: string
   model: string
   default?: boolean
+  default_follows_setting?: boolean
+  ready?: boolean
 }
 
 export type ProjectView = { id: string; name: string }

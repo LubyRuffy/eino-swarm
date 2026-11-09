@@ -144,6 +144,43 @@ func TestSignedOutAccountConversationNeverFallsBackToAPrivateProvider(t *testing
 	}
 }
 
+// A saved account model that left the catalog is still the name a conversation
+// asks for. Substituting the catalog's new first name sends a model the
+// composer is not showing.
+func TestMissingAccountModelIsNotReplacedByCatalogOrder(t *testing.T) {
+	cfg := configFor(t, true)
+	cfg.Models.DefaultSource = config.DefaultSourceAccount
+	cfg.Models.AccountModel = "removed-model"
+	p := New(cfg)
+	p.SetAccountSource(accountSourceFor(t, "https://gateway.invalid/client/desktop/v1", "t", "first-model", "second-model"))
+
+	prov, err := p.ResolveModel(accountTestID, "")
+	if err != nil || prov.Model != "removed-model" {
+		t.Fatalf("missing account model resolved to %q (%v)", prov.Model, err)
+	}
+	name, follows, ok := p.ConversationDefault(accountTestID)
+	if !ok || !follows || name != "removed-model" {
+		t.Fatalf("conversation default = %q follows=%v ok=%v", name, follows, ok)
+	}
+	var sawMissing, catalogDefault bool
+	for _, row := range p.List() {
+		switch row.Model {
+		case "removed-model":
+			if row.Ready || !row.Default || !row.DefaultFollowsSetting || row.Source != SourceAccount {
+				t.Fatalf("missing default row: %+v", row)
+			}
+			sawMissing = true
+		case "first-model", "second-model":
+			if row.Default {
+				catalogDefault = true
+			}
+		}
+	}
+	if !sawMissing || catalogDefault {
+		t.Fatalf("catalog order replaced the saved default: %+v", p.List())
+	}
+}
+
 func TestDefaultProviderFollowsTheConfiguredSource(t *testing.T) {
 	cfg := configFor(t, true)
 	p := New(cfg)
