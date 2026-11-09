@@ -1,3 +1,38 @@
+# Folded stage chain: 2026-11-09
+
+One paired run of a chain that does not fit in the conversation. Eighty stage
+identifiers were planted in order. Both arms folded the conversation around a
+briefing that contains none of them, and both note stores stopped at the same
+71 identifiers. The shared graph held all 80. The grade is the workspace file
+`stages.txt`: ordered identifiers, one per line. The scripted copy test was
+not used. Each arm called the local gateway once through an isolated data
+directory.
+
+The default arm compiled from `main` at `4c119c2b`. The Nuwa arm compiled a
+few minutes later at `4005e703`. The commits between them do not change this
+engine path. Nuwa used the saved pair from `7a383728`: planner
+`GLM-5.3-Flash-FP8`, executor `deepseek-v4.1-flash`. The default arm used that
+same executor model alone. Memory review, automatic titles and composer
+predictions were off. The manager iteration cap for the run was 12.
+
+| Arm | File | Visible identifiers | Model calls | Tokens | Wall time |
+|---|---|---|---|---|---|
+| default | first 71, last 9 absent | 71, no shared graph | `deepseek-v4.1-flash` only | 86,326 | 107.2 s |
+| nuwa | 80 lines, exact order | planner and both workers saw 80 and the shared graph | planner GLM; `writer` and `verifier` on DeepSeek | 458,618 | 310.5 s |
+
+Both turns finished `done`. The conversation retained no stage identifier.
+Host dispatch put the new roles on the executor: the spawn records for
+`writer` and `verifier` are `deepseek-v4.1-flash`, and the manager calls stayed
+on `GLM-5.3-Flash-FP8`. The Nuwa file matches the 80 identifiers in order. The
+default file bytes were not retained; its recorded grade is the first 71
+identifiers present and the last 9 absent.
+
+This is one constructed chain, not a task suite or a significance claim. The
+extra nine identifiers are the ones the notes could not hold. The Nuwa arm was
+slower and used more tokens, so the joint completion/speed/token objective is
+not met. Evidence:
+`~/.codex/nuwa-evidence/folded-path-20261109/`.
+
 # Nuwa takeover re-test: 2026-11-07
 
 Clean paired run on the executor-binding candidate (`fe064364`, Nuwa workers

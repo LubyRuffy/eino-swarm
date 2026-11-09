@@ -28,9 +28,12 @@ Persistent-project evidence requires a separately frozen protocol, with equal
 inputs, corrections and recovery conditions for both modes. The default arm may
 keep and read its normal notes. Reuse the existing recording, usage, grading and
 cleanup paths, report development and held-out evidence separately, and retain
-all failures and unresolved usage. No such completed comparison currently
-supports a persistent-project benefit. Quality takes precedence over time and
-tokens; no positive result is presumed.
+all failures and unresolved usage. No completed comparison on that frozen
+protocol currently supports a persistent-project benefit. A separate one-run
+folded chain, recorded in [RESULTS.md](RESULTS.md), graded 80/80 after the
+saved executor received the shared graph and 71/80 from the same executor with
+notes alone; it was slower and used more tokens. Quality takes precedence over
+time and tokens; no positive result is presumed.
 
 ## Planner and execution comparison
 

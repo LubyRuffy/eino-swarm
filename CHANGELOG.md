@@ -8,6 +8,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Fixed
 
+- Recorded one folded stage chain in `evals/nuwa/RESULTS.md`. The conversation
+  held none of the 80 identifiers and notes held 71. The default executor wrote
+  the first 71; Nuwa's saved executor, dispatched by a different planner, wrote
+  all 80 in order. That arm took 310.5 s and 458,618 tokens against 107.2 s and
+  86,326. The joint completion/speed/token objective remains unmet.
+
 - Explicitly repair removed worker providers using the selected conversation model; preserve historical model selections, worker identity and permissions across restart. Ordinary model switching keeps its existing scope (#162).
 
 - The planner and executor menus in a project dialog accept another ready
