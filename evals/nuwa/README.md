@@ -56,18 +56,20 @@ guarantees or product defaults.
 tab between provider ID and model name. Model names may contain slashes; never
 split a ChoiceID on `/`. Structured protocol files avoid shell tab quoting.
 The agent tool's `model_ref` is a separate opaque token returned by `list_models`.
-The project preference names provider/model and tells the model to call that
-tool and copy its exact returned ref. Do not synthesize, escape or decode a tool
-ref from the CLI ChoiceID, label or model-name string.
+`--planner-ref` and `--executor-ref` are saved on the Nuwa project. The host
+uses that executor for a new role. Omit `model_ref` or copy the exact ref
+`list_models` returns for that provider and model. Do not synthesize, escape
+or decode a tool ref from the CLI ChoiceID, label or model-name string.
 
 For supported configurations, the harness copies every enabled, configured
 provider, its actual `api_mode` (including Responses) and saved model
 catalog/context metadata into a new private engine configuration. It never
 edits the source config. The snapshot is identified as configured data; it is
 not proof that each upstream service currently answers. The planner selection
-is acknowledged by the actual thread API. An executor preference is placed in
-the project's prompt. No role name forces a worker model. In Nuwa, operations
-must be delegated, while the manager chooses roles, tasks and available models;
+is saved on the project and also acknowledged by the thread API. The executor
+is saved on the same project; a different `model_ref` is refused before a
+worker starts. No role name selects a model. In Nuwa, operations
+must be delegated, while the manager chooses roles and tasks;
 a discussion that needs no operations can finish without workers. Per-call Trace
 identities show what actually happened, and
 `routing.executor_preference_realized` records the result.

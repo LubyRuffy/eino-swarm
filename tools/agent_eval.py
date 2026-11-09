@@ -402,13 +402,20 @@ def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict 
         workspace = data_dir / "eval-workspace"
         if hasattr(args, "project_mode"):
             workspace.mkdir(parents=True, exist_ok=True)
-            project = http_json(engine.base, "POST", "/api/projects", {
+            project_body = {
                 "name": task["id"] + " eval", "workdir": str(workspace),
                 "system_prompt": protocol.project_prompt(task, models, getattr(args, "project_instruction", "")),
                 "nuwa_enabled": args.project_mode == "nuwa",
-            })["project"]
+            }
+            if args.project_mode == "nuwa" and models:
+                project_body.update(protocol.nuwa_model_pair(models))
+            project = http_json(engine.base, "POST", "/api/projects", project_body)["project"]
             if args.project_mode == "nuwa" and project.get("nuwa_enabled") is not True:
                 raise EvalError("project API did not acknowledge nuwa_enabled")
+            if args.project_mode == "nuwa" and models:
+                for key, value in protocol.nuwa_model_pair(models).items():
+                    if project.get(key) not in (None, value):
+                        raise EvalError("project API did not acknowledge the Nuwa model pair")
             thread_body["project_id"] = project["id"]
         if models:
             thread_body["provider_id"] = models["planner"]["provider_id"]
@@ -528,7 +535,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--model", default="", help="another model on the same provider (default: its configured model)")
     p.add_argument("--project-mode", choices=("default", "nuwa"), default="default", help="project execution mode")
     p.add_argument("--planner-ref", default="", help="exact provider<TAB>model choice; takes priority over --model")
-    p.add_argument("--executor-ref", default="", help="catalog choice preferred in the project prompt, never forced by role")
+    p.add_argument("--executor-ref", default="", help="ready catalog choice saved as the Nuwa project executor")
     p.add_argument("--runs", type=int, default=2, help="runs per task")
     p.add_argument("--max-completion-tokens", type=int, default=0,
                    help="output cap per model request (default: the engine's default, not the source config's)")

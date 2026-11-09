@@ -38,6 +38,7 @@ import { toggleContentWidth, toggleTranscriptMode } from "@/lib/appearance"
 import { attachExternalLinkHandler } from "@/lib/external-links"
 import { findShortcut } from "@/lib/find"
 import { LIBRARY_ID } from "@/lib/library"
+import { nuwaPlannerPatch, savedNuwaPlanner } from "@/lib/nuwa-models"
 import { appendQuote } from "@/lib/quote"
 import { composerDraftKey, composerDraftSession } from "@/lib/composer-draft"
 import { installComposerRecoveryAttribution } from "@/lib/composer-recovery"
@@ -596,6 +597,8 @@ function AppProjectDialog({
   const create = useProjects((s) => s.create)
   const update = useProjects((s) => s.update)
   const memoryAvailable = useApp((s) => s.meta?.capabilities?.memory ?? false)
+  const models = useApp((s) => s.models)
+  const thread = useApp((s) => s.threads.find((row) => row.id === s.activeId))
   const selectProject = useApp((s) => s.selectProject)
   const project = state?.project
   return (
@@ -603,6 +606,8 @@ function AppProjectDialog({
       open={Boolean(state?.open)}
       project={project}
       memoryAvailable={memoryAvailable}
+      models={models}
+      plannerHint={thread ? { providerId: thread.provider_id, model: thread.model } : undefined}
       onOpenChange={onOpenChange}
       onSave={async (patch) => {
         if (project) return update(project.id, patch)
@@ -801,6 +806,11 @@ function AppComposer({
   const newThread = useApp((s) => s.newThread)
   const creatingThread = useApp((s) => s.creatingThread)
   const projectId = useProjects((s) => s.selectedId)
+  const projects = useProjects((s) => s.projects)
+  const updateProject = useProjects((s) => s.update)
+  const scopedProjectId = thread ? thread.project_id : projectId
+  const scopedProject = projects.find((row) => row.id === scopedProjectId)
+  const planner = savedNuwaPlanner(scopedProject)
   const setGoal = useApp((s) => s.setGoal)
   const editGoal = useApp((s) => s.editGoal)
   const resumeGoal = useApp((s) => s.resumeGoal)
@@ -817,10 +827,14 @@ function AppComposer({
       running={running}
       compressing={compressing}
       models={models}
-      provider={thread?.provider_id || meta?.default_provider}
-      model={thread?.model}
+      provider={planner?.providerId || thread?.provider_id || meta?.default_provider}
+      model={planner ? planner.model : thread?.model}
       onModelChange={(providerId, name) => {
         void (async () => {
+          if (planner && scopedProject) {
+            await updateProject(scopedProject.id, nuwaPlannerPatch(scopedProject, providerId, name))
+            return
+          }
           const id = activeId ?? (await newThread(projectId, composerDraftKey(activeId, projectId)))
           if (!id) return
           await api.patchThread(id, { provider_id: providerId, model: name })

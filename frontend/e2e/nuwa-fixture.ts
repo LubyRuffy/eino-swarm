@@ -229,7 +229,6 @@ export async function startNuwaFixture(mode?: "discussion" | "published") {
               task: task
                 ? `Review the supplied evidence for shared task ${task.id}; write review-notes.md, record the bounded observation and cite its source.`
                 : "Write review-notes.md and field-observations.md, then publish the independent field observations as a shared artifact.",
-              model_ref: chosen.ref,
             },
             "spawn_agent"
           )

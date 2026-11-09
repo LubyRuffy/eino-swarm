@@ -8,8 +8,9 @@ One Go binary. The native window and the browser run the **same** HTTP server, s
 uploads, downloads and the live event stream have exactly one implementation.
 
 Projects can opt into **Nuwa collaboration**: describe the objective in
-Instruction and let agents choose useful roles, delegate further and select
-configured models. The conversation manager plans, delegates and reviews;
+Instruction, and save a planner model and an executor model on the project.
+Agents choose useful roles and delegate further. New worker roles use the
+executor. The conversation manager plans, delegates and reviews on the planner;
 workers perform workspace and external-service operations. The planner has
 coordination tools, without local execution tools or provider-hosted builtins.
 The **Collaboration** panel shows shared tasks, reported

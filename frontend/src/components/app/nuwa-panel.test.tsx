@@ -36,6 +36,13 @@ beforeEach(() => {
 })
 
 describe("Nuwa shared work", () => {
+  it("shows the project executor without inventing one for an older project", async () => {
+    const { rerender } = render(<NuwaPanel project={project} threadId="a" onSelectAgent={vi.fn()} />)
+    expect(await screen.findByText("Executor model is not saved yet.")).toBeInTheDocument()
+    rerender(<NuwaPanel project={{ ...project, nuwa_executor_model: "executor-model" }} threadId="a" onSelectAgent={vi.fn()} />)
+    expect(screen.getByText("Executor model: executor-model")).toBeInTheDocument()
+  })
+
   it("shows recorder and model on each record and converges isolated records to the goal", async () => {
     vi.mocked(nuwaAPI.snapshot).mockResolvedValue({
       ...snapshot,

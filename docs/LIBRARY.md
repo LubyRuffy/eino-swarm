@@ -75,11 +75,13 @@ without decoding or constructing it. zwai's tool token is separate from its
 UI/CLI ChoiceID; a saved `ModelBinding.Ref` remains source provenance.
 The generic Registry adds no explicit-reference requirement; omission keeps its
 existing default or host-selector behavior.
-The zwai Nuwa host instead rejects omission for a new role when multiple ready
-choices exist, before forking or dispatch, and points the caller to `list_models`.
-Its schema stays optional for same-role reuse; single-ready-model and existing
-worker bindings keep their current behavior. This host policy adds no library
-configuration field or stored-data migration.
+The zwai Nuwa host uses the executor copied onto the turn when the project has
+saved one. Omission or that exact ref selects it; a different ref is refused
+before a worker is created. A project that has not saved a pair still rejects
+omission for a new role when multiple ready choices exist, before forking or
+dispatch, and points the caller to `list_models`. Its schema stays optional for
+same-role reuse; single-ready-model and existing worker bindings keep their
+current behavior. This host policy adds no library configuration field.
 
 `WorkerConfig.VerifyAdmission(ctx, intent, target, callID)` is optional. Nil
 ignores `intent` and `target`: ordinary mode and a generic Registry do not

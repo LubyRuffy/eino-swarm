@@ -82,6 +82,13 @@ export function NuwaPanel({
             <Radio className="size-3" />
             {connected ? t("nuwa.connected") : t("nuwa.connecting")}
           </span>
+          {project.nuwa_enabled ? (
+            <p className="mt-1 truncate text-[11px] text-muted-foreground">
+              {project.nuwa_executor_model?.trim()
+                ? t("nuwa.executorModel", { model: project.nuwa_executor_model })
+                : t("nuwa.executorUnset")}
+            </p>
+          ) : null}
         </div>
         <Button
           variant="ghost"

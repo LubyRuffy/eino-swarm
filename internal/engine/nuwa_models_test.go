@@ -19,7 +19,9 @@ func TestNuwaPlannerInstructionMandatesIndependentVerification(t *testing.T) {
 	for _, want := range []string{
 		"verify it with an independent executor",
 		"not the one that produced it",
-		"on a different model when one is configured",
+		"use the project's executor model when one is saved",
+		"omit model_ref or pass that exact ref",
+		"a different model is refused",
 		"derives its own checks from the stated objective, constraints and acceptance criteria",
 		"boundary and extreme values",
 		"every explicitly required rule or case",
