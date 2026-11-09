@@ -2570,8 +2570,14 @@ only with an approved, enabled, unexpired session; otherwise it sends ordinary
 chat. Explicit cloud refuses before model dispatch without that session. Off
 omits these functions. A tool-capable Chat/Responses model is required; complete
 function rounds invoke that account's standalone Search/Fetch endpoints and
-continue under bounded round, call and byte budgets. A tool/model error never
-switches the selected source, strips functions and retries, or runs locally.
+continue under bounded round, call and byte budgets. The phone renders public
+model text as the stream arrives. A page fetch without browser actions may
+repeat one Gateway `fetch_timeout` or `proxy_unavailable` failure inside the
+same tool budget. A recognized search or page failure is returned to the same
+model as a bounded tool error, together with any successful sibling results.
+Authentication, authorization, cancellation, unsafe input, logging admission,
+and invalid responses or budgets still stop the turn. Tool errors never change
+the model source or run locally.
 
 The separate PC preference uses `inherit`, `local`, or `cloud`. Inherit always
 sends an empty conversation override, so phone sign-in cannot override PC global

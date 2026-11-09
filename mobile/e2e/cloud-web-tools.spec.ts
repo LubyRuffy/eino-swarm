@@ -7,7 +7,7 @@ const user = { id: "owner", username: "工具测试账号", enabled: true, appro
 const device = { id: "phone", expires_at: "2099-01-01T00:00:00Z" }
 const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type, accept-encoding", "access-control-allow-methods": "GET,POST,OPTIONS" }
 
-async function fixture(page: Page, api: "chat" | "responses", denied = false) {
+async function fixture(page: Page, api: "chat" | "responses", denied = false, fetchTimeout?: Promise<void>) {
   await page.addInitScript(({ origin, token, user, device, api, modelOrigin }) => {
     localStorage.setItem("zwai.phone.gateway.origin", origin)
     localStorage.setItem("zwai.phone.gateway.session", JSON.stringify({ origin, token, user, device }))
@@ -29,11 +29,12 @@ async function fixture(page: Page, api: "chat" | "responses", denied = false) {
     }
     expect((body.tools as { type: string }[]).every((tool) => tool.type === "function")).toBe(true)
     const name = models === 1 ? "web_search" : "web_fetch"
-    const args = JSON.stringify(models === 1 ? { query: "current information" } : { url: "https://public.invalid/page", render: true })
+    const args = JSON.stringify(models === 1 ? { query: "current information" } : { url: "https://public.invalid/page", render: !fetchTimeout })
     let events: unknown[]
     if (models > 2) events = api === "chat" ? [{ choices: [{ delta: { content: "依据云端证据完成" }, finish_reason: "stop" }] }, "[DONE]"] : [{ type: "response.output_text.delta", delta: "依据云端证据完成" }, { type: "response.completed", response: { id: "response-3", status: "completed", output: [] } }]
     else if (api === "chat") events = [{ choices: [{ delta: { tool_calls: [{ index: 0, id: "call-" + models, type: "function", function: { name, arguments: args.slice(0, 8) } }] } }] }, { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: args.slice(8) } }] }, finish_reason: "tool_calls" }] }, "[DONE]"]
     else events = [{ type: "response.output_item.added", output_index: 0, item: { type: "function_call", id: "item-" + models, call_id: "call-" + models, name, arguments: "" } }, { type: "response.function_call_arguments.delta", item_id: "item-" + models, delta: args }, { type: "response.completed", response: { id: "response-" + models, status: "completed", output: [{ type: "function_call", id: "item-" + models, call_id: "call-" + models, name, arguments: args }] } }]
+    if (fetchTimeout && models === 2) events.unshift({ choices: [{ delta: { content: "已找到搜索结果。" } }] })
     if (models > 1 && api === "responses") expect(body.previous_response_id).toBe("response-" + (models - 1))
     await route.fulfill({ headers: cors, contentType: "text/event-stream", body: events.map((event) => "data: " + (typeof event === "string" ? event : JSON.stringify(event)) + "\n\n").join("") })
   }
@@ -53,6 +54,12 @@ async function fixture(page: Page, api: "chat" | "responses", denied = false) {
       if (denied) { await route.fulfill({ status: 403, headers: cors, contentType: "application/json", body: JSON.stringify({ error: { code: "permission_denied" } }) }); return }
       if (path.endsWith("/search")) data = { provider: "fixture", query: body.query, results: [{ title: "云端搜索证据", url: "https://public.invalid/page", snippet: "云端摘要", position: 1 }] }
       else {
+        if (fetchTimeout) {
+          expect(body).toEqual({ url: "https://public.invalid/page", formats: ["markdown"] })
+          await fetchTimeout
+          await route.fulfill({ status: 504, headers: cors, contentType: "application/json", body: JSON.stringify({ success: false, error: { code: "fetch_timeout", message: "private fixture diagnostic" } }) })
+          return
+        }
         expect(body).toMatchObject({ url: "https://public.invalid/page", formats: ["markdown"], actions: [{ type: "wait", milliseconds: 1 }] })
         data = { markdown: "# 云端网页正文", url: "https://public.invalid/page", source: "camofox" }
       }
@@ -105,6 +112,35 @@ for (const api of ["chat", "responses"] as const) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   })
 }
+
+test("a page timeout preserves streamed text and the model continues after one retry", async ({ page }, testInfo) => {
+  let completeFetch!: () => void
+  const fetchTimeout = new Promise<void>((resolve) => { completeFetch = resolve })
+  const seen = await fixture(page, "chat", false, fetchTimeout)
+  await chooseModel(page, "gateway")
+  await page.getByLabel("消息").fill("Use web evidence")
+  await page.getByRole("button", { name: "发送", exact: true }).click()
+  try {
+    await expect.poll(() => seen.calls.filter((call) => call.path === "/v1/web/fetch").length).toBe(1)
+    await expect(page.getByText("已找到搜索结果。", { exact: true })).toBeVisible()
+  } finally {
+    completeFetch()
+  }
+
+  await expect(page.getByText("已找到搜索结果。依据云端证据完成", { exact: true })).toBeVisible()
+  await expect(page.getByRole("alert")).toHaveCount(0)
+  expect(seen.models()).toBe(3)
+  expect(seen.calls.filter((call) => call.path === "/v1/web/search")).toHaveLength(1)
+  expect(seen.calls.filter((call) => call.path === "/v1/web/fetch")).toHaveLength(2)
+  const continuation = seen.calls.filter((call) => call.path === "/v1/chat/completions").at(-1)?.body
+  expect(JSON.stringify(continuation)).toContain("fetch_timeout")
+  expect(JSON.stringify(continuation)).not.toContain("private fixture diagnostic")
+  const tools = page.getByTestId("work-fold")
+  await expect(tools).toHaveClass(/text-destructive/)
+  await tools.click()
+  await expect(page.getByText("web_fetch", { exact: true })).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath("cloud-web-fetch-timeout.png") })
+})
 
 test("permission denial is visible; disabling phone Web persists without overriding PC selection", async ({ page }, testInfo) => {
   const seen = await fixture(page, "chat", true)

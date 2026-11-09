@@ -23,7 +23,7 @@ import type { DirectProvider } from "./direct-provider"
 import { defaultTimeoutSeconds } from "./direct-provider"
 import { openBody, type StreamBodyPlugin } from "./stream-body"
 import { gatewayFetch } from "./gateway-fetch"
-import { assertCloudWebToolsCurrent, cloudToolTraceText, currentCloudWebTools, executeCloudWebTool, validateCloudWebTool, type CloudToolEvent } from "./cloud-web-tools"
+import { assertCloudWebToolsCurrent, CloudWebToolFailure, cloudToolTraceText, currentCloudWebTools, executeCloudWebTool, validateCloudWebTool, type CloudToolEvent } from "./cloud-web-tools"
 import { ToolContinuation, ToolRoundCollector } from "./openai-tool-wire"
 import { watchWebAuthority } from "./web-execution"
 import { loadGatewaySession, type GatewaySession } from "./gateway-account"
@@ -233,17 +233,27 @@ export async function streamCompletion(input: {
       for (const call of calls) {
         const event = { id: `${roundIndex}:${call.id}`, callId: call.id, responseId: completed.round.responseID || undefined, name: call.name, args: call.arguments.slice(0, 4096), text: "" }
         input.onTool?.({ ...event, status: "running" })
+        let output: string
+        let status: "completed" | "failed" = "completed"
         try {
-          const output = await executeCloudWebTool(tools, call, ctrl.signal, idleMs)
-          outputBytes += new TextEncoder().encode(output).length
-          if (outputBytes > (512 << 10)) throw new ModelCallError("cloud_tools_output_limit", "parse")
-          outputs.push(output)
-          const preview = cloudToolTraceText(call.name, output)
-          input.onTool?.({ ...event, status: "completed", text: preview.slice(0, 4096), truncated: preview.length > 4096 })
+          output = await executeCloudWebTool(tools, call, ctrl.signal, idleMs)
         } catch (error) {
-          input.onTool?.({ ...event, status: ctrl.signal.aborted || error instanceof ModelCallError && error.kind === "abort" ? "cancelled" : "failed" })
-          throw error
+          const cancelled = ctrl.signal.aborted || error instanceof ModelCallError && error.kind === "abort"
+          if (cancelled || !(error instanceof CloudWebToolFailure)) {
+            input.onTool?.({ ...event, status: cancelled ? "cancelled" : "failed" })
+            throw error
+          }
+          status = "failed"
+          output = JSON.stringify({ error: { code: error.code, message: "The cloud Web tool could not retrieve evidence." } })
         }
+        outputBytes += new TextEncoder().encode(output).length
+        if (outputBytes > (512 << 10)) {
+          input.onTool?.({ ...event, status: "failed" })
+          throw new ModelCallError("cloud_tools_output_limit", "parse")
+        }
+        outputs.push(output)
+        const preview = status === "completed" ? cloudToolTraceText(call.name, output) : ""
+        input.onTool?.({ ...event, status, text: preview.slice(0, 4096), truncated: preview.length > 4096 })
       }
       assertCloudWebToolsCurrent(tools)
       continuation.append(style, completed.round, completed.piece, outputs)

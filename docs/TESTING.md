@@ -425,8 +425,15 @@ calls, restore approved access and isolate confirmed pending/rejected or failed
 verification. Refusal headers release unread bodies. `stream-body-cancel.test.ts`
 covers cancellation during native listener/open preparation as well as active
 reads, without claiming real-device transport acceptance. Tool/model failures
-do not switch sources or retry
-without tools. Settings summaries describe the next turn and treat local PC
+do not switch sources or retry the model
+without tools. A recognized page-fetch timeout or proxy failure may retry that
+same call once inside its original budget. A typed search or fetch failure
+returns a bounded error to the same model and keeps streamed text and sibling
+results. The direct cloud recovery tests cover those typed failures, Chat and
+Responses continuation, and a browser fixture that shows the model's streamed
+text before releasing the first Fetch timeout. Authentication, authorization,
+cancellation, logging admission and unsafe input still stop the turn.
+Settings summaries describe the next turn and treat local PC
 receipt status as distinct from live server grants. Browser
 fixtures do not establish native iOS/Android transport or Mac WebView acceptance;
 record those separately when running the packaged clients.

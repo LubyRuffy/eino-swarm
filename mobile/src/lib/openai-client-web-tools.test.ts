@@ -56,6 +56,90 @@ describe("approved account cloud web execution", () => {
     expect(onDelta).toHaveBeenLastCalledWith({ text: "Answer from evidence", reasoning: "" })
   })
 
+  it.each(["chat", "responses"] as const)("streams %s planning text and continues after an exhausted fetch", async (api) => {
+    saveGatewaySession(session)
+    const selected: DirectProvider = { ...provider, api, baseURL: origin + "/v1", apiKey: session.token, sourceKind: "gateway" }
+    const planningText = "I will check the available sources. "
+    const answer = "The available sources support this answer."
+    const toolCalls = [
+      { id: "first", name: "web_search", arguments: '{"query":"first source"}' },
+      { id: "failed", name: "web_fetch", arguments: '{"url":"https://public.invalid/"}' },
+      { id: "last", name: "web_search", arguments: '{"query":"last source"}' },
+    ]
+    const requestOrder: string[] = []
+    let modelCalls = 0
+    let continuation: Record<string, unknown> | undefined
+    let planningStream!: ReadableStreamDefaultController<Uint8Array>
+    const planning = new ReadableStream<Uint8Array>({ start: (stream) => { planningStream = stream } })
+    const pushPlanning = (event: object | string) => planningStream.enqueue(new TextEncoder().encode(
+      "data: " + (typeof event === "string" ? event : JSON.stringify(event)) + "\n\n",
+    ))
+    const transport = vi.fn(async (resource: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(resource)
+      const body = JSON.parse(String(init?.body ?? "{}"))
+      if (url === origin + "/v1/web/search") {
+        requestOrder.push(body.query)
+        return Response.json({ success: true, data: { results: [{ title: body.query, url: "https://public.invalid/evidence" }] } })
+      }
+      if (url === origin + "/v1/web/fetch") {
+        requestOrder.push("fetch")
+        return Response.json({ success: false, error: { code: "fetch_timeout", message: "private upstream failure details" } }, { status: 504 })
+      }
+      requestOrder.push("model")
+      if (++modelCalls === 1) return new Response(planning, { headers: { "Content-Type": "text/event-stream" } })
+      continuation = body
+      return api === "chat"
+        ? sse({ choices: [{ delta: { content: answer }, finish_reason: "stop" }] }, "[DONE]")
+        : sse({ type: "response.output_text.delta", delta: answer }, { type: "response.completed", response: { id: "final", output: [] } })
+    })
+    const onDelta = vi.fn()
+    const onTool = vi.fn()
+    const completion = streamCompletion({ provider: selected, model: "model", reasoning: "", turns: [], fetchImpl: transport, onDelta, onTool })
+    void completion.catch(() => undefined)
+    try {
+      pushPlanning(api === "chat"
+        ? { id: "plan", choices: [{ delta: { content: planningText } }] }
+        : { type: "response.output_text.delta", delta: planningText })
+      await vi.waitFor(() => expect(onDelta).toHaveBeenLastCalledWith({ text: planningText, reasoning: "" }))
+      expect(requestOrder).toEqual(["model"])
+      expect(onTool).not.toHaveBeenCalled()
+      if (api === "chat") {
+        pushPlanning({ id: "plan", choices: [{ delta: { tool_calls: toolCalls.map(({ id, name, arguments: args }, index) => ({
+          index, id, type: "function", function: { name, arguments: args },
+        })) }, finish_reason: "tool_calls" }] })
+        pushPlanning("[DONE]")
+      } else {
+        pushPlanning({ type: "response.completed", response: { id: "plan", status: "completed", output: toolCalls.map(({ id, ...call }) => ({
+          type: "function_call", call_id: id, ...call,
+        })) } })
+      }
+    } finally {
+      planningStream.close()
+    }
+    await completion
+    expect(requestOrder).toEqual(["model", "first source", "fetch", "fetch", "last source", "model"])
+    expect(onTool.mock.calls.map(([event]) => [event.callId, event.status])).toEqual([
+      ["first", "running"], ["first", "completed"], ["failed", "running"], ["failed", "failed"], ["last", "running"], ["last", "completed"],
+    ])
+    const outputs = api === "chat"
+      ? (continuation?.messages as Record<string, unknown>[]).filter((message) => message.role === "tool")
+        .map((message) => [message.tool_call_id, message.content])
+      : (continuation?.input as Record<string, unknown>[]).map((item) => [item.call_id, item.output])
+    expect(outputs).toEqual([
+      ["first", expect.stringContaining("first source")],
+      ["failed", expect.any(String)],
+      ["last", expect.stringContaining("last source")],
+    ])
+    expect(JSON.parse(String(outputs[1][1]))).toEqual({
+      error: { code: "fetch_timeout", message: "The cloud Web tool could not retrieve evidence." },
+    })
+    expect(continuation?.stream).toBe(true)
+    if (api === "responses") expect(continuation?.previous_response_id).toBe("plan")
+    else expect(continuation?.messages).toContainEqual(expect.objectContaining({ role: "assistant", content: planningText }))
+    expect(JSON.stringify(continuation)).not.toContain("private upstream failure details")
+    expect(onDelta).toHaveBeenLastCalledWith({ text: planningText + answer, reasoning: "" })
+  })
+
   it.each(["anonymous", "off"])("keeps ordinary direct model chat for %s use", async (mode) => {
     if (mode === "off") { saveGatewaySession(session); saveWebExecution("off") }
     const fetcher = vi.fn(async (_resource: RequestInfo | URL, options?: RequestInit) => {
@@ -84,12 +168,16 @@ describe("approved account cloud web execution", () => {
     expect(fetcher).toHaveBeenCalledTimes(1)
   })
 
-  it("fails a revoked cloud grant without local work or another model request", async () => {
+  it.each([
+    [403, "permission_denied", "cloud_tools_denied"],
+    [400, "unsafe_url", "cloud_tools_unavailable"],
+    [503, "logging_unavailable", "cloud_tools_unavailable"],
+  ] as const)("stops on cloud %s %s without local work or another model request", async (status, code, message) => {
     saveGatewaySession(session)
-    const fetcher = vi.fn(async (resource: RequestInfo | URL) => String(resource).includes("/web/search")
-      ? new Response(JSON.stringify({ error: { message: session.token } }), { status: 403 })
-      : sse({ choices: [{ delta: { tool_calls: [{ index: 0, id: "one", type: "function", function: { name: "web_search", arguments: '{"query":"x"}' } }] }, finish_reason: "tool_calls" }] }, "[DONE]"))
-    await expect(streamCompletion({ provider, model: "model", reasoning: "", turns: [], fetchImpl: fetcher, onDelta: vi.fn() })).rejects.toMatchObject({ message: "cloud_tools_denied" })
+    const fetcher = vi.fn(async (resource: RequestInfo | URL) => String(resource) === origin + "/v1/web/fetch"
+      ? Response.json({ success: false, error: { code, message: status === 403 ? session.token : code } }, { status })
+      : sse({ choices: [{ delta: { tool_calls: [{ index: 0, id: "one", type: "function", function: { name: "web_fetch", arguments: '{"url":"https://public.invalid/"}' } }] }, finish_reason: "tool_calls" }] }, "[DONE]"))
+    await expect(streamCompletion({ provider, model: "model", reasoning: "", turns: [], fetchImpl: fetcher, onDelta: vi.fn() })).rejects.toMatchObject({ message })
     expect(fetcher).toHaveBeenCalledTimes(2)
   })
 

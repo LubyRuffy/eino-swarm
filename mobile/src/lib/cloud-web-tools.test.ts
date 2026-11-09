@@ -5,7 +5,12 @@ import { loadWebExecution, pcWebExecution, saveWebExecution } from "./web-execut
 
 const session: GatewaySession = { origin: "https://account.invalid", token: "agm_" + "b".repeat(64), user: { id: "one", username: "one", enabled: true, approval_status: "approved" }, device: { id: "phone", expires_at: "2099-01-01T00:00:00Z" } }
 const fetchCall: CloudToolCall = { id: "call", name: "web_fetch", arguments: '{"url":"https://public.invalid/","render":true}' }
+const plainFetch = { ...fetchCall, arguments: '{"url":"https://public.invalid/"}' }
 const ok = (data: unknown) => new Response(JSON.stringify({ success: true, data }))
+const failure = (status: number, code: string) => new Response(
+  JSON.stringify({ success: false, error: { code, message: "Unavailable" } }),
+  { status, headers: { "Content-Type": "application/json" } },
+)
 beforeEach(() => { localStorage.clear(); saveGatewaySession(session) })
 
 it("projects search evidence into existing text tool cards without changing the model's result envelope", () => {
@@ -63,6 +68,59 @@ it("closes an error response body without waiting for an unbounded download", as
   const fetcher = vi.fn(async () => new Response(new ReadableStream({ cancel: cancelled }), { status: 503 }))
   await expect(executeCloudWebTool(currentCloudWebTools(fetcher)!, fetchCall, new AbortController().signal, 1000)).rejects.toMatchObject({ message: "cloud_tools_unavailable" })
   expect(cancelled).toHaveBeenCalledTimes(1)
+})
+
+it("retries a gateway Fetch timeout once with the same authorized request", async () => {
+  const fetcher = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(failure(504, "fetch_timeout"))
+    .mockResolvedValueOnce(ok({ markdown: "# Recovered page" }))
+  await expect(executeCloudWebTool(currentCloudWebTools(fetcher)!, plainFetch, new AbortController().signal, 1000)).resolves.toBe("# Recovered page")
+  expect(fetcher).toHaveBeenCalledTimes(2)
+  expect(fetcher.mock.calls[1]).toEqual(fetcher.mock.calls[0])
+})
+
+it.each([
+  [plainFetch, 504, "fetch_timeout", 2],
+  [fetchCall, 504, "fetch_timeout", 1],
+  [plainFetch, 502, "browser_fetch_failed", 1],
+  [plainFetch, 404, "upstream_not_found", 1],
+] as const)("retains a typed tool failure after the permitted attempts", async (call, status, code, attempts) => {
+  const fetcher = vi.fn(async () => failure(status, code))
+  await expect(executeCloudWebTool(currentCloudWebTools(fetcher)!, call, new AbortController().signal, 1000)).rejects.toMatchObject({ code, status })
+  expect(fetcher).toHaveBeenCalledTimes(attempts)
+})
+
+it.each([
+  [400, "unsafe_url"], [401, "fetch_timeout"], [403, "fetch_timeout"],
+  [429, "rate_limit_exceeded"], [503, "logging_unavailable"], [503, "gateway_draining"],
+  [502, "unknown"], [502, "fetch_timeout"], [200, "fetch_timeout"],
+] as const)("does not recover untrusted or fatal status %d / %s", async (status, code) => {
+  const fetcher = vi.fn(async () => failure(status, code))
+  const err = await executeCloudWebTool(currentCloudWebTools(fetcher)!, plainFetch, new AbortController().signal, 1000).catch((error: unknown) => error)
+  expect(err).toBeInstanceOf(Error)
+  expect(err).not.toHaveProperty("code")
+  expect(fetcher).toHaveBeenCalledTimes(1)
+})
+
+it("retains the verified Fetch failure if its retry spends the remaining tool budget", async () => {
+  vi.useFakeTimers()
+  try {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockImplementationOnce(() => new Promise((resolve) => setTimeout(() => resolve(failure(504, "fetch_timeout")), 80)))
+      .mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => {
+        options?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")))
+      }))
+    let outcome: unknown
+    void executeCloudWebTool(currentCloudWebTools(fetcher)!, plainFetch, new AbortController().signal, 100)
+      .then((result) => { outcome = result }, (error: unknown) => { outcome = error })
+    await vi.advanceTimersByTimeAsync(80)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(outcome).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(20)
+    expect(outcome).toMatchObject({ code: "fetch_timeout", status: 504 })
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
 it("refuses an account credential reflected in successful tool output", async () => {

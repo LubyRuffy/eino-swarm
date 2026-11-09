@@ -6,6 +6,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+- Phone direct chat retries one transient cloud page fetch inside the same
+  tool budget, and returns a recognized search or fetch failure to the same
+  model. Streamed text stays visible and the failed tool keeps its card.
+  Authentication, permission, cancellation and unsafe requests still stop
+  the turn. (`F-211`, `C-006`)
+
 - Agent-eval comparison can refuse a candidate that drops a reference task's
   pass rate, omits the task, or adds a harness error. The check is opt-in and
   stays out of `make check`. Incomplete usage is incomparable rather than zero.
