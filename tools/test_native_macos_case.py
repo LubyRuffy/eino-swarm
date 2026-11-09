@@ -534,23 +534,27 @@ Path(os.environ['ZWAI_NATIVE_EVIDENCE'],'engine-pid').write_text(p.read_text())
     def test_engine_and_scenario_helpers_survive_parent_exit_but_not_case_cleanup(self):
         # The engine's tool has neither bundle nor data argv markers. Its private
         # process group remains ours after the engine leader has already exited.
-        engine_code = ("import subprocess,sys,time,os; from pathlib import Path; "
+        engine_code = ("import subprocess,sys,os; from pathlib import Path; "
                        "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(120)']); "
-                       "Path(os.environ['ZWAI_NATIVE_EVIDENCE'],'tool-pid').write_text(str(p.pid)); "
-                       "time.sleep(.3)")
-        self.executable.write_text("#!" + sys.executable + "\nimport subprocess,sys,os,time\n"
-            "subprocess.Popen([sys.executable,'-c'," + repr(engine_code) + ", 'engine','--data-dir',os.environ['ZWAI_HOME']],start_new_session=True)\n"
+                       "Path(os.environ['ZWAI_NATIVE_EVIDENCE'],'tool-pid').write_text(str(p.pid))")
+        self.executable.write_text("#!" + sys.executable + "\nimport subprocess,sys,os,time\nfrom pathlib import Path\n"
+            "engine=subprocess.Popen([sys.executable,'-c'," + repr(engine_code) + ", 'engine','--data-dir',os.environ['ZWAI_HOME']],start_new_session=True)\n"
+            "engine.wait()\nPath(os.environ['ZWAI_NATIVE_EVIDENCE'],'engine-exited').write_text(str(engine.pid))\n"
             "time.sleep(120)\n")
         scenario = """import subprocess,sys,os,time
 from pathlib import Path
-p=subprocess.Popen([sys.executable,'-c','import os,time; os.setpgrp(); time.sleep(120)'])
-Path(os.environ['ZWAI_NATIVE_EVIDENCE'],'scenario-helper-pid').write_text(str(p.pid))
-time.sleep(.8)
+child="import os,time; from pathlib import Path; os.setpgrp(); Path(os.environ['ZWAI_NATIVE_EVIDENCE'],'scenario-helper-pid').write_text(str(os.getpid())); time.sleep(120)"
+subprocess.Popen([sys.executable,'-c',child])
+evidence=Path(os.environ['ZWAI_NATIVE_EVIDENCE'])
+deadline=time.monotonic()+5
+while not all((evidence/name).is_file() for name in ('tool-pid','engine-exited','scenario-helper-pid')):
+ assert time.monotonic()<deadline, 'fixture actors did not reach the ownership boundary'
+ time.sleep(.01)
 """
         code, evidence, receipt = self.run_case(scenario)
         self.assertEqual(code, 0)
         self.assertTrue(receipt["cleanup_complete"])
-        for name in ("tool-pid", "scenario-helper-pid"):
+        for name in ("tool-pid", "engine-exited", "scenario-helper-pid"):
             self.assertIsNone(runner.process_argv(int((evidence / name).read_text())))
 
     def test_immediate_detached_helper_is_owned_after_parent_disappears(self):

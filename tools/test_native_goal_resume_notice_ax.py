@@ -196,7 +196,10 @@ int main(int argc,const char **argv) {@autoreleasepool {
         notice.validate_session_helper(self.real_binary)
 
     def observe(self, mode="good", action="read-up"):
-        result = subprocess.run([str(self.binary), mode, action], capture_output=True, text=True, timeout=3)
+        # This outer budget also includes launching a fresh SDK-linked process.
+        # Admission, geometry and exact input counts are asserted below; this is
+        # not the guest adapter's action deadline or a native timing acceptance.
+        result = subprocess.run([str(self.binary), mode, action], capture_output=True, text=True, timeout=10)
         return result.returncode, json.loads(result.stdout), json.loads(result.stderr)
 
     def test_actual_main_posts_one_upward_wheel_only_at_the_unique_notice(self):
