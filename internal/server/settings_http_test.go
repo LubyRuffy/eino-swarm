@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/server"
 )
 
@@ -287,6 +288,50 @@ func TestSettingsPersistAndValidate(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("garbage body accepted: %d", resp.StatusCode)
+	}
+}
+
+// An older Settings client can save the swarm section after the experiment
+// was enabled in config.yaml or by another API client.
+func TestSettingsPreservesReasoningOutputRecoveryChoice(t *testing.T) {
+	h := newHarness(t)
+	const key = "recover_reasoning_output_limit"
+	const effortKey = "reasoning_output_recovery_effort"
+	for _, step := range []struct {
+		name        string
+		put         map[string]any
+		wantEnabled bool
+		wantEffort  string
+	}{
+		{name: "default off"},
+		{name: "explicit enable", put: map[string]any{key: true, effortKey: " LOW "}, wantEnabled: true, wantEffort: config.ReasoningLow},
+		{name: "omitted", put: map[string]any{"max_concurrent": 3}, wantEnabled: true, wantEffort: config.ReasoningLow},
+		{name: "null", put: map[string]any{key: nil, effortKey: nil}, wantEnabled: true, wantEffort: config.ReasoningLow},
+		{name: "explicit disable", put: map[string]any{key: false, effortKey: ""}},
+		{name: "invalid effort normalized", put: map[string]any{effortKey: "unknown"}},
+	} {
+		if step.put != nil {
+			h.json(http.MethodPut, "/api/settings", map[string]any{"swarm": step.put}, http.StatusOK)
+		}
+		out := h.json(http.MethodGet, "/api/settings", nil, http.StatusOK)
+		swarm := out["settings"].(map[string]any)["swarm"].(map[string]any)
+		got, exists := swarm[key]
+		if exists != step.wantEnabled || (exists && got != true) {
+			t.Errorf("%s: GET %s = %v (present %t), want enabled %t", step.name, key, got, exists, step.wantEnabled)
+		}
+		if got, exists := swarm[effortKey]; exists != (step.wantEffort != "") || (exists && got != step.wantEffort) {
+			t.Errorf("%s: GET %s = %v (present %t), want %q", step.name, effortKey, got, exists, step.wantEffort)
+		}
+		reloaded, err := config.Load(h.app.Config.DataDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if reloaded.Swarm.ReasoningOutputRecoveryEffort != step.wantEffort {
+			t.Errorf("%s: reloaded %s = %q, want %q", step.name, effortKey, reloaded.Swarm.ReasoningOutputRecoveryEffort, step.wantEffort)
+		}
+		if reloaded.Swarm.RecoverReasoningOutputLimit != step.wantEnabled {
+			t.Errorf("%s: reloaded %s = %t, want %t", step.name, key, reloaded.Swarm.RecoverReasoningOutputLimit, step.wantEnabled)
+		}
 	}
 }
 

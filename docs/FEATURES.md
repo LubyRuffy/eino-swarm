@@ -102,12 +102,13 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
+- 命令托管通过 `tools.enabled: [exec_session]` 显式开启。在 macOS／Linux 的新建普通轮次中，主管通过原 `exec` 启动命令。短等后的原进程继续在后台执行，主管可先处理独立工作。引擎推送增量输出并在下一次模型请求交付已就绪的终态。主管可以按会话 ID 查询最近输出和终态，也可等待指定命令。 可另行开启 `exec_adaptive_observation`，让引擎依据同一轮次的短命令等待证据，减少后续单独命令的额外模型往返。新输出续期观察窗口，观察到期仍在运行的进程继续执行。简单的等待型 `sleep` 由引擎挂起，任一命令退出后唤醒主管，显式延时按原时长执行。相同命令连续产生相同错误时，工具拦截重试并交回原错误，供主管调整做法。Stop 和内核确认的持续进程组停滞按所有权清理。关联契约：`C-009`。证据：`internal/engine/exec_session.go`、`internal/tools/exec_session_process_unix.go`；验证：`internal/engine/exec_session_http_test.go`。
+
 - 普通主管可通过配置 YAML 或 Settings API 开启 `swarm.incremental_execution`，在实施回合加入先做小步实现、逐项验收用户要求的通用指导。默认关闭，真实任务收益需独立评测。关联 `C-009`。实现与验证见 `internal/config/config.go`、`internal/server/settings.go`、`internal/engine/incremental_execution.go`、`internal/engine/iterations.go` 以及 `internal/config/incremental_execution_test.go`、`internal/server/incremental_execution_settings_test.go`、`internal/engine/incremental_execution_http_test.go`。
 
 - 主管在工具前给出的完整说明通过调度声明核对后出现在对应工具之前，分隔主对话的工作折叠。PC 与手机按同一事件顺序显示实时及分页记录。关联 `C-009`、`C-022`；证据 `internal/engine/manager_prose_order_http_test.go`。
 
 - 联网工具执行位置：`web_search`／`web_fetch` 保持普通函数名、参数、开关、结果截断和工具 Trace；默认 `auto` 在当前 Gateway 账号授权后走该服务器云端，匿名走本机。设置可显式选本机或云端；云端拒绝／失败不重跑本地。Host 凭据仅在 Go 后端调用专用云工具路由，不进入 renderer、模型或普通推理 API；旧授权缺少服务端精确 Key 绑定时要求重新登录。关联 `C-006`、`C-009`；证据：`internal/tools/cloud_web.go`、`internal/tools/cloud_web_test.go`、`internal/tools/cloud_web_response_test.go`、`internal/engine/web_execution_test.go`。
-
 - 桌面/Web 的 `memory add/replace/remove` 工具行复用 edit 的默认折叠、增删行数和红绿差异视图，展开只显示本次条目变更。新成功回执保存完整 before/after，旧记录缺快照时明确标注请求片段预览；失败保留错误和请求，重复添加显示未变化。关联 `C-025`；证据：`internal/memory/tool_result_test.go`、`frontend/src/lib/memory-diff.ts`、`frontend/src/components/app/tool-row.test.tsx`、`frontend/e2e/memory-diff.spec.ts`。
 
 - 本地执行的 `web_fetch` 默认先 HTTP；识别带 DataDome 信号的 401/403 后，沿已有浏览器渲染路径尝试一次并保留工具代理。普通授权错误不升级，渲染失败或仍为挑战页返回失败；不保证真实站点可访问。入口与验证：`internal/tools/tools.go`、`internal/tools/webfetch_upgrade_test.go`；配置见 `docs/CONFIG.md`。
@@ -125,6 +126,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 已答提问的交接恢复：按检查点的原 call 身份确认已回答问题，历史上参数错误或结果未知的其他提问不阻断续跑；当前身份缺失或冲突时仍拒绝。关联契约：`C-027`；验证：`internal/engine/restart_answered_ask_test.go`、`internal/server/restart_answered_ask_http_test.go`。
 
 - 生成中断：桌面、Web 和配对手机按模型输出身份保留中断原因及恢复状态，旧思考结束流式动画，新生成使用独立身份；恢复中的 worker 保留原 ID，不冒充失败或任务完成。明确区分交接重启、进程退出、取消、超时、模型错误与输出额度；未记录的具体原因保持未知。实时、重开与历史重放保留说明，原 turn 的 Trace 可查。关联契约：`C-035`、`C-003`、`C-027`；实现证据：`signal.go`、`internal/engine`、`frontend/src/lib/transcript.ts`、`mobile/src/lib/transcript.ts`。
+- 可选思考额度续接：`swarm.recover_reasoning_output_limit` 默认关闭。普通 Chat Completions 主管的某次输出仅有思考且被额度截断时，同一 turn 可持久认领一次续接；已执行工具、原 call ID、系统约束顺序及同进程 worker／后台 exec 所有者保留，额度和显式思考等级不重置。Stop、存储证据不足或已知配额为零时不续接；跨 engine 后旧后台 PID 不宣称仍可用。该能力不把中断变成任务成功，旧 worker 事件缺失代际仍保持未知。关联契约：`C-035`、`C-009`；验证：`internal/engine/output_limit_midturn_http_test.go`、`internal/engine/output_limit_midturn_boundary_http_test.go`、`output_recovery_run_join_http_test.go`。
 
 - 巡检失败后的 Agent 状态：按 `F-150` 的有效任务归属回执保留指定 worker 的 running、思考流和待完成工具；父巡检错误仍可见，不派生为这些 worker 的失败原因，也不把内部归属 JSON 显示为正文。实时、完整历史和 roster 重放保持一致，实际完成／Stop／cleanup 仍生效。关联契约：`C-009`、`C-012`、`C-003`；实现证据：`frontend/src/lib/transcript-worker-ownership.ts`、`internal/engine/worker_ownership.go`；测试：`frontend/src/lib/transcript-worker-ownership.test.ts`、`frontend/e2e/schedule-worker-ownership.spec.ts`。
 - PC 输出身份与回放：同一 worker 模型输出跨 manager 巡检轮次时，累计思考／回答快照更新同一条记录；独立输出即使文字相同也保留。历史页、按需 Agent 日志和实时事件重叠时，同一持久事件只应用一次，重放不重复触发终态刷新等副作用。旧记录缺少输出身份时不按相似文字推断合并。关联契约：`C-003`；证据：`signal.go`、`internal/engine/accumulator.go`、`frontend/src/lib/transcript-blocks.ts`、`frontend/src/store/thread-history.ts`、`frontend/src/store/app-stream.ts`、`signal_identity_test.go`、`internal/engine/accumulator_identity_test.go`、`frontend/src/lib/transcript-message.test.ts`、`frontend/src/store/app-stream-history.test.ts`、`frontend/e2e/agent-history-overlap.spec.ts`。

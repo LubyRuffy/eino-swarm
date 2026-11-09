@@ -36,11 +36,20 @@ def cases_of(model: mc.Model) -> list[mc.Case]:
     return [c for c in mc.CASES if c.model == model.name]
 
 
+def family_cases(model: mc.Model) -> list[mc.Case]:
+    return [c for c in mc.CASES if mc.MODELS[c.model].spec == model.spec]
+
+
 class CaseTable(unittest.TestCase):
     def test_every_case_belongs_to_a_model(self):
         self.assertLessEqual({c.model for c in mc.CASES}, set(mc.MODELS))
         for model in mc.MODELS.values():
             self.assertTrue(cases_of(model), model.name)
+            for variant in mc.MODELS.values():
+                if variant.spec == model.spec:
+                    self.assertEqual(variant.switches, model.switches, variant.name)
+                    self.assertEqual(variant.safety, model.safety, variant.name)
+        self.assertLessEqual(set(mc.SEEDED_GUARD_OBLIGATIONS), {m.spec for m in mc.MODELS.values()})
 
     def test_every_switch_and_invariant_exists_in_the_model(self):
         for model in mc.MODELS.values():
@@ -51,17 +60,30 @@ class CaseTable(unittest.TestCase):
                 for inv in case.invariants():
                     self.assertIn(inv, ops, case.name)
                 self.assertLessEqual(case.switches, set(model.switches), case.name)
+            obligations = mc.SEEDED_GUARD_OBLIGATIONS.get(model.spec)
+            if obligations is not None:
+                self.assertEqual(set(obligations), set(model.switches), model.name)
+                for targets in obligations.values():
+                    self.assertTrue(targets, model.name)
+                    self.assertLessEqual(set(targets), set(model.safety) - {"TypeOK"}, model.name)
 
     def test_every_switch_is_shown_to_break_an_invariant(self):
         # A switch no case turns on is an untested claim about the protocol.
         for model in mc.MODELS.values():
-            exercised = set().union(*(c.switches for c in cases_of(model) if c.violates))
+            exercised = set().union(*(c.switches for c in family_cases(model) if c.violates))
             self.assertEqual(exercised, set(model.switches), model.name)
+            for guard, targets in mc.SEEDED_GUARD_OBLIGATIONS.get(model.spec, {}).items():
+                for target in targets:
+                    self.assertTrue(any(guard in c.switches and c.violates == target
+                                        for c in family_cases(model)), (model.name, guard, target))
 
     def test_every_safety_invariant_is_shown_to_catch_something(self):
         for model in mc.MODELS.values():
-            caught = {c.violates for c in cases_of(model) if c.violates}
-            self.assertEqual(caught, set(model.safety) - {"TypeOK"}, model.name)
+            caught = {c.violates for c in family_cases(model) if c.violates}
+            obligations = mc.SEEDED_GUARD_OBLIGATIONS.get(model.spec)
+            required = (set().union(*map(set, obligations.values())) if obligations is not None
+                        else set(model.safety) - {"TypeOK"})
+            self.assertEqual(caught, required, model.name)
 
     def test_the_current_design_is_checked_against_every_safety_invariant(self):
         for model in mc.MODELS.values():
@@ -72,8 +94,8 @@ class CaseTable(unittest.TestCase):
 
     def test_every_witness_is_checked_alone_on_the_current_design(self):
         for model in mc.MODELS.values():
-            witnesses = [c for c in cases_of(model) if c.witness]
-            self.assertTrue(witnesses, model.name)
+            self.assertTrue([c for c in cases_of(model) if c.witness], model.name)
+            witnesses = [c for c in family_cases(model) if c.witness]
             defined = {op for op in defined_operators(model) if op.startswith("Never")}
             self.assertEqual({c.witness for c in witnesses}, defined, model.name)
             for c in witnesses:
@@ -88,6 +110,36 @@ class CaseTable(unittest.TestCase):
         for c in mc.CASES:
             if c.source.startswith("historical"):
                 self.assertRegex(c.source, r"\b[0-9a-f]{7}\b|\bv\d+\.\d+\.\d+\b", c.name)
+
+
+class RegistrationGuards(unittest.TestCase):
+    def assert_case_table_fails(self, method, cases):
+        result = unittest.TestResult()
+        with mock.patch.object(mc, "CASES", tuple(cases)):
+            CaseTable(method).run(result)
+        self.assertTrue(result.failures or result.errors, "the case-table guard accepted missing coverage")
+
+    def test_removing_real_guard_seeds_still_fails_for_new_and_legacy_models(self):
+        for name in ("generation-recovery", "ask-publication", "lifecycle"):
+            model = mc.MODELS[name]
+            seeded = next(c for c in cases_of(model) if c.violates)
+            remaining = [c for c in mc.CASES
+                         if not (mc.MODELS[c.model].spec == model.spec and c.violates == seeded.violates)]
+            with self.subTest(model=name):
+                self.assert_case_table_fails("test_every_switch_is_shown_to_break_an_invariant", remaining)
+                self.assert_case_table_fails("test_every_safety_invariant_is_shown_to_catch_something", remaining)
+
+    def test_every_variant_still_requires_its_own_full_current_case(self):
+        for name in ("ask-publication-finish", "ask-publication-error", "generation-recovery", "stream"):
+            remaining = [c for c in mc.CASES if not (c.model == name and not c.switches and not c.witness)]
+            with self.subTest(model=name):
+                self.assert_case_table_fails("test_the_current_design_is_checked_against_every_safety_invariant", remaining)
+
+    def test_a_shared_spec_cannot_hide_a_removed_witness(self):
+        for witness in ("NeverAcceptedBeforePublication", "NeverExternalUnknown", "NeverParkedCheckpoint"):
+            remaining = [c for c in mc.CASES if c.witness != witness]
+            with self.subTest(witness=witness):
+                self.assert_case_table_fails("test_every_witness_is_checked_alone_on_the_current_design", remaining)
 
 
 class Config(unittest.TestCase):

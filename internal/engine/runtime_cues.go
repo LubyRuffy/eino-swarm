@@ -56,7 +56,7 @@ func inputMessageSource(in UserInput) string {
 // not evidence that a human message came from the runtime.
 func legacyRuntimeCue(text string) bool {
 	switch text {
-	case GoalContinueText(), legacyGoalContinueCue, workerCollectionCorrectionCue, modelRetryCue,
+	case GoalContinueText(), legacyGoalContinueCue, workerCollectionCorrectionCue, modelRetryCue, reasoningOutputRecoveryCue,
 		resumeCue, resumeWorkersCue, parkedWorkersCue, scheduleCompletionCue,
 		scheduleAnswerCorrectionCue, goalSessionWrapSteer(), "[steer] " + goalSessionWrapSteer():
 		return true

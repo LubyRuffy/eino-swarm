@@ -29,7 +29,7 @@ test("an ordinary manager yield keeps its worker alive until the actual result i
     const { settings } = await (await request.get("/api/settings")).json()
     expect((await request.put("/api/settings", { data: {
       models: { default: "collection-fixture", providers: [{ id: "collection-fixture", label: "Offline worker completion", base_url: fixture.url, model: "fixture-model", api_key: "", context_window: 128000 }] },
-      swarm: { ...settings.swarm, auto_title: false }, memory: { ...settings.memory, auto_review: false },
+      swarm: { ...settings.swarm, auto_title: false, composer_predictions: false }, memory: { ...settings.memory, auto_review: false },
     } })).ok()).toBe(true)
     await page.addInitScript(() => {
       const NativeEventSource = window.EventSource
@@ -95,7 +95,7 @@ test("a repeated completion waits for its worker and resumes once without human 
     const { settings } = await (await request.get("/api/settings")).json()
     expect((await request.put("/api/settings", { data: {
       models: { default: "collection-fixture", providers: [{ id: "collection-fixture", label: "Offline worker completion", base_url: fixture.url, model: "fixture-model", api_key: "", context_window: 128000 }] },
-      swarm: { ...settings.swarm, auto_title: false }, memory: { ...settings.memory, auto_review: false },
+      swarm: { ...settings.swarm, auto_title: false, composer_predictions: false }, memory: { ...settings.memory, auto_review: false },
     } })).ok()).toBe(true)
     await freshConversation(page)
     threadID = (await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute("data-id")) ?? ""

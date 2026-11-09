@@ -2370,6 +2370,70 @@ shortening only the bounded detail text.
 | `error` | the turn failed; `err` explains |
 | `ready` | replay is complete (no `seq`, not stored) |
 
+When `tools.enabled` includes `exec_session`, eligible ordinary manager
+turns use the existing `exec` call for managed execution. The engine owns
+the process from launch and publishes stdout and stderr through `tool_delta`.
+The initial observation may return a running session to the model. With
+`exec_adaptive_observation` also enabled, a verified same-turn dependent wait
+can let a later standalone command deliver its original terminal result
+before the next model request. Tool event identities and process ownership
+follow the same managed execution contract.
+Set `yield_after_ms` to a positive whole number up to 30,000 to choose how
+long the initial call observes the command. Omit it or pass zero for 1,000
+ms. This sets the observation window. Set `pipefail: true` to report failed
+commands in a Bash pipeline. Its
+visible tool row stays pending until a terminal `tool_result` arrives for
+the original call ID. The next model request receives that terminal result
+if the command has already exited. The same turn can call
+`exec_status(session_id)` for the current status and recent stdout and
+stderr, or `wait_exec(session_id, idle_timeout_ms?)` to wait on that command.
+Both can read its terminal result after automatic
+delivery to the original call. IDs belong to the turn that started the
+command. An unavailable ID returns `status: unknown` and
+`code: unknown_exec_session`. Results include elapsed time, the original
+`timeout_ms`, and `last_output_at` once output has arrived. Terminal results
+include the actual exit code. The recent output retains at most 4 KiB per
+stream and respects the configured result budget. Observations carry a
+`revision` and the `original_call_id`. Passing that revision as
+`after_revision` returns `unchanged: true` with status metadata when no new
+output or terminal state has arrived. In model input, duplicate streams
+can use `output_from_tool_call_id` to reference matching full evidence in
+the same request. Stored tool results retain the original output.
+
+While the requested command is still running, `wait_exec` can return early
+when another uncollected background command exits, or a foreground command
+in this manager model's current tool batch exits. It reports the requested
+session's current status with `code: peer_exec_settled`, without an
+idle-timeout indication. `observation_timed_out` is false and omitted from
+JSON. The target process continues under its
+original owner. The completed command's result is delivered under its own
+original tool call ID; it does not replace the requested session's receipt.
+
+Omit `idle_timeout_ms` or pass zero for 60 seconds. The observation starts
+at entry and each new stdout or stderr chunk renews the full interval.
+Silence returns `status: running` and `observation_timed_out: true` while
+the process keeps running under its original owner. `exec.timeout_ms` remains an absolute
+command deadline measured from launch. A manager waiting for several commands
+resumes when any one completes. A managed manager can use the provider's
+latest request-budget report to prioritize required verification and
+delivery near the limit. This uses the provider's forwarded request count.
+An eligible sleep-based poll waits on that
+same completion signal. Its result includes `waited_for_background: true`
+and `background_wait_ms`. A wait with no shell follow-up returns
+`code: background_exec_ready`. An eligible marker or read-only probe runs
+once after the wake and returns its actual output. An explicit deadline
+also covers the wait and follow-up. A timeout before the wake returns
+`code: background_exec_wait_timeout`. The original background command keeps
+its own deadline. After two consecutive
+ordinary nonzero exits with identical command inputs and complete output,
+another attempt returns
+`code: repeated_exec_failure` with the original failure details and a
+request to change approach. Repeating it in a later model round ends the
+turn. The terminal JSON's `timeout_ms` is the requested hard
+command deadline. Zero uses the owner's lifetime. A watchdog termination
+reports `status: stalled`. An interrupted run with unknown effects requires
+workspace or external receipt verification.
+
 The `model_unavailable` retry category excludes a confirmed immediate gateway
 route refusal: HTTP 503 `provider_unavailable` with exact message
 `no healthy provider can serve this model`, fully received within the provider's

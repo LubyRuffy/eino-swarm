@@ -11,6 +11,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"github.com/cloudwego/eino/adk"
@@ -393,15 +394,18 @@ type streamAcc struct {
 	// which is the raw (non-UI) hook workers have always exposed.
 	rawEvents bool
 
-	mu        sync.Mutex
-	turn      int
-	answer    strings.Builder
-	reason    strings.Builder
-	previews  map[string]string // last tool_call_delta text per call id
-	messageID string
-	active    bool
-	ctx       context.Context
-	pending   []generationAttempt
+	mu                  sync.Mutex
+	turn                int
+	answer              strings.Builder
+	reason              strings.Builder
+	previews            map[string]string // last tool_call_delta text per call id
+	messageID           string
+	active              bool
+	ctx                 context.Context
+	pending             []generationAttempt
+	recoveryInput       []*schema.Message
+	recoveryUnavailable string
+	sourceEOF           *atomic.Bool
 }
 
 // errOutputBudget is a model call that hit its output cap before any answer
@@ -411,6 +415,19 @@ type streamAcc struct {
 // The desktop transcript matches this sentence exactly and links to
 // Settings → Swarm. Change frontend/src/lib/output-budget.ts with it.
 var errOutputBudget = errors.New("the model used its whole output budget before it produced an answer")
+
+// ReasoningOutputLimit identifies a clean manager completion capped before
+// any answer or tool attempt. The generation's original error remains intact.
+type ReasoningOutputLimit struct {
+	MessageID string
+	// RecoveryInput belongs to this generation only. It must never be logged
+	// or serialized as an additional prompt/transcript record.
+	RecoveryInput       []*schema.Message `json:"-" yaml:"-"`
+	RecoveryUnavailable string            `json:"-" yaml:"-"`
+}
+
+func (*ReasoningOutputLimit) Error() string { return errOutputBudget.Error() }
+func (*ReasoningOutputLimit) Unwrap() error { return errOutputBudget }
 
 func outputStoppedEarly(finish string) bool {
 	switch strings.ToLower(strings.TrimSpace(finish)) {
@@ -428,10 +445,18 @@ func outputStoppedEarly(finish string) bool {
 // because the output budget ran out is an error, not a finished turn.
 func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []schema.ToolCall, error) {
 	s.beginTurn()
+	if s.recoveryInput != nil || s.recoveryUnavailable != "" {
+		defer func() {
+			s.mu.Lock()
+			s.recoveryInput, s.recoveryUnavailable = nil, ""
+			s.mu.Unlock()
+		}()
+	}
 
 	var chunks []schema.ToolCall
 	var finish string
 	var streamErr error
+	var hasReasoning, hasAnswer bool
 	for {
 		chunk, err := st.Recv()
 		if err != nil {
@@ -447,6 +472,7 @@ func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []s
 			finish = chunk.ResponseMeta.FinishReason
 		}
 		if rc := chunk.ReasoningContent; rc != "" {
+			hasReasoning = hasReasoning || strings.TrimSpace(rc) != ""
 			acc, changed := s.addReasoning(rc)
 			if changed {
 				s.touch(lastLine(rc))
@@ -454,6 +480,7 @@ func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []s
 				s.raw(&schema.Message{Role: schema.Assistant, ReasoningContent: rc})
 			}
 		}
+		hasAnswer = hasAnswer || chunk.Content != "" || len(chunk.MultiContent) != 0 || len(chunk.AssistantGenMultiContent) != 0
 		if c := chunk.Content; c != "" {
 			acc, changed := s.addAnswer(c)
 			if changed {
@@ -472,9 +499,9 @@ func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []s
 
 	if streamErr == nil && finish == "" {
 		s.mu.Lock()
-		ctx := s.ctx
+		ctx, sourceEOF := s.ctx, s.sourceEOF
 		s.mu.Unlock()
-		if ctx != nil {
+		if ctx != nil && (sourceEOF == nil || !sourceEOF.Load()) {
 			streamErr = ctx.Err()
 		}
 	}
@@ -506,6 +533,9 @@ func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []s
 		s.raw(&schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{tc}})
 	}
 	if len(calls) == 0 && strings.TrimSpace(answer) == "" && outputStoppedEarly(finish) {
+		if s.agentID == DefaultManagerID && hasReasoning && !hasAnswer && len(chunks) == 0 {
+			return "", nil, &ReasoningOutputLimit{MessageID: s.messageID, RecoveryInput: s.recoveryInput, RecoveryUnavailable: s.recoveryUnavailable}
+		}
 		return "", nil, errOutputBudget
 	}
 	if len(calls) == 0 && strings.TrimSpace(answer) != "" {
@@ -552,10 +582,17 @@ func (s *streamAcc) beginTurn() {
 	turn := s.turn
 	started := false
 	s.messageID = rand.Text()
+	s.recoveryInput, s.recoveryUnavailable = nil, ""
+	s.sourceEOF = nil
 	if len(s.pending) > 0 {
 		attempt := s.pending[0]
+		// A consumed slot must not keep an old prompt alive through the
+		// backing array while this generation executes a long tool.
+		s.pending[0] = generationAttempt{}
 		s.pending = s.pending[1:]
 		s.messageID, s.ctx = attempt.id, attempt.ctx
+		s.recoveryInput, s.recoveryUnavailable = attempt.recoveryInput, attempt.recoveryUnavailable
+		s.sourceEOF = attempt.sourceEOF
 		started = true
 	}
 	s.active = true

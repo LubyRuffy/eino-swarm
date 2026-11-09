@@ -374,9 +374,11 @@ Runtime limits and model-call defaults for the swarm.
 | `goal_auto_compact_percent` | `80` | how full a **confirmed** context window must be before compression, both in-turn and before the next goal auto-continue. The line is `min(window × percent, window − max(compact_output_reserve, max_completion_tokens))` when the window exceeds that reserve. An unknown window uses `auto_compact_tokens` instead. Replayed messages without billed usage use a conservative token estimate that counts non-ASCII text separately from ASCII and reserves message framing, including tool results and arguments; the `/compact` hint for an unknown model window uses `context_char_budget`. The rolling session briefing is caught up first (this session's last manager answers, then a bounded incremental refresh) so the fold copies that view; a session briefing that has moved since the last compact also folds even when the meter is still cold. Zero or negative is repaired to the default; above 100 is clamped. |
 | `compact_output_reserve` | `8192` | minimum tokens kept free under a confirmed window; the configured completion cap may require more headroom because every request sends `max_tokens`. A window smaller than the larger reserve uses the percent alone and a remaining overflow is reported with recovery advice. Zero or negative is repaired to the default. |
 | `max_completion_tokens` | `16384` | `max_tokens` sent on every chat request. A thinking model that is left to the endpoint's default can spend that whole default before it emits an answer or a tool call, and the turn used to close as a blank success. Zero or negative is repaired to the default. When a turn fails with that empty length-stop, the desktop transcript links to Settings → Swarm and focuses this field. Closing that sheet offers Retry, which resends the same request. A sub-agent with the same exact recorded error offers the same focused field from its failure details, without arming a manager retry or automatically resuming the worker. |
+| `recover_reasoning_output_limit` | `false` | Opt-in ordinary Chat Completions manager recovery when one generation uses its output limit on reasoning without any answer or tool chunk. One durable recovery claim per turn applies before or after earlier tool work and survives engine/store reopen. Recovery preserves the full input, system order, original tool IDs and existing same-process worker/exec owners; it consumes the original remaining request and iteration budgets. Stop, unavailable evidence, a partial answer/tool attempt, known zero quota and existing unsupported modes refuse recovery. No cross-engine recovery of the same background PID is implied. |
+| `reasoning_output_recovery_effort` | empty | Optional override for exactly the recovery request after a fresh turn's first manager generation, only when that turn has no explicit reasoning effort. Empty preserves the original builder's behavior. Mid-turn and resumed recovery preserve the original effort, including an omitted value; explicit effort is always retained. Requires `recover_reasoning_output_limit`; it does not change the model or completion cap. |
 | `schedule_min_interval_seconds` | `30` | shortest cadence a schedule may use, in seconds. Zero or negative is repaired to the default so a hand-edit cannot arm a sub-second loop. Editable in Settings → Swarm. |
 | `schedule_tick_ms` | `1000` | how often the process looks for due schedules. Zero or negative is repaired to the default so the ticker cannot silently stop. Editable in Settings → Swarm. |
-| `schedule_max_active` | `32` | schedule runs that may execute at once. Overflow waits for the next tick. Zero or negative is repaired to the default so a hand-edit cannot refuse every fire or unbounded fan-out. Editable in Settings → Swarm. A supplied `swarm` section replaces its fields before normalization, except omitted or `null` `agent_timeout_seconds`, `composer_predictions`, `incremental_execution`, and `default_reasoning_effort` keep their latest stored values. Desktop autosave includes the other swarm fields when that section changes. |
+| `schedule_max_active` | `32` | schedule runs that may execute at once. Overflow waits for the next tick. Zero or negative is repaired to the default so a hand-edit cannot refuse every fire or unbounded fan-out. Editable in Settings → Swarm. A supplied `swarm` section replaces its fields before normalization, except omitted or `null` `agent_timeout_seconds`, `composer_predictions`, `incremental_execution`, `default_reasoning_effort`, `recover_reasoning_output_limit`, and `reasoning_output_recovery_effort` keep their latest stored values. Desktop autosave includes the other swarm fields when that section changes. |
 | `policy_reasoning_effort` | `""` | reasoning level for the two policy classifiers: the schedule-answer check that verifies a claimed armed check before a finished answer is published, and the wake-permission check. Empty is the background default, `low`; `inherit` follows the conversation's thinking level; `low` / `medium` / `high` are sent as chosen. Values are trimmed/lowercased; unknown values normalize to empty. These calls classify, so the default keeps them off the answer's critical path: thinking at a high conversation level once held an answer for 57s and 10K reasoning tokens. Only the empty default is optional: an endpoint that rejects it with HTTP 400 is asked once more without `reasoning_effort`, and Trace keeps the refused call. An explicitly chosen or inherited level keeps the endpoint's error. Editable as **Swarm → Policy check thinking**. |
 
 A leftover `goal_session_max_seconds` from older builds is ignored on load; the next save omits it.
@@ -388,6 +390,77 @@ The current values are reported in `GET /api/meta` and are part of the manager's
 system prompt, so it knows how wide it may fan out.
 
 ## `tools`
+
+To enable managed execution on macOS or Linux, add `exec_session` to
+`tools.enabled`. This opt-in switches the existing `exec` tool on fresh
+ordinary manager turns. The engine starts the command once. `yield_after_ms` can set the initial
+observation window up to 30 seconds. The default is one second. If the
+command is still running when that window ends, it remains owned by the
+turn and the manager receives its session ID. The manager can work on
+independent steps. The next model request receives any terminal result that
+is already available. When the manager is waiting, it resumes when any
+owned command completes. The engine collects every terminal result before
+accepting the final answer. Output continues through the existing live
+stream. `exec_status` reads the status and bounded recent output of one
+owned session. `wait_exec` waits for that same ID and accepts an optional
+`idle_timeout_ms`. Omit it or pass zero for the 60-second default. The observation
+window starts when waiting begins and renews whenever stdout or stderr
+advances. An idle observation expiry returns the running process state and
+leaves it running. While that target is still running, another uncollected
+background command or a foreground command in this manager model's current
+tool batch can end the wait early with `code: peer_exec_settled` and the
+target's current status, without an idle-timeout indication. The
+`observation_timed_out` flag is false and omitted from JSON; the target
+process continues. The
+completed command's result still arrives under its original tool call ID.
+Session IDs and terminal lookups are scoped to the owning turn. Pass a
+previously observed `revision` as `after_revision` to avoid
+repeating unchanged output. An explicit `pipefail: true` preserves a
+failed Bash pipeline status for build, install or test commands.
+
+Add `exec_adaptive_observation` to `tools.enabled` alongside
+`exec_session` to try adaptive observation. After a standalone command
+yields and the next standalone `wait_exec` collects that same short
+command, the engine can briefly observe later standalone commands before
+sending the next model request. A command can use this observation until
+five seconds from its launch. The original one-second handoff still applies.
+Explicit `yield_after_ms` values and concurrent tool or worker work take
+precedence. An observation that reaches its limit returns control and clears
+the learned preference. Steering can interrupt the observation. Stop and
+command deadlines retain their existing process ownership. The preference
+belongs to the current turn and the option is off by default.
+
+If the configured provider reports both `X-Zwai-Model-Request-Limit` and
+`X-Zwai-Model-Requests-Remaining`, an eligible manager sees the remaining
+forwarded request budget, including supporting calls. The last fifth of
+that budget adds guidance to prioritize required verification and delivery.
+The budget is shared by model clients for the provider route and resets
+when those clients are invalidated.
+
+With an owned background command, a simple literal `sleep` of at
+least five seconds can wait for the next process exit. The recognized forms
+allow literal status markers and a read-only package listing after the wait.
+Those follow-ups run after the wake. Use `command sleep` for an intentional
+delay in that shape. An explicit timeout bounds the wait and its follow-up.
+The original background command keeps its own deadline. Compound commands
+with other work, environment overrides, and standard input keep their
+shell behavior. Managed exec uses the requested duration for literal
+sleeps. Two consecutive ordinary nonzero exits with identical command
+inputs and complete output block a further launch. The refusal carries
+the original error. An identical retry in a later model round ends the turn.
+The default tool list omits this setting.
+
+Omit `timeout_ms` or pass zero to use the owner's lifetime. A positive whole
+number sets a hard command deadline in milliseconds from launch, subject
+to any earlier owner deadline. Output advances the observation window for
+`wait_exec` and leaves the launch deadline in effect. Invalid or unrepresentable values are rejected before launch.
+Stop and handoff cancel and join the owned process group. Keep the job in its
+owned process group for that cleanup contract.
+
+The watchdog terminates a group after repeatedly verifying the same live
+processes are all in a job-control stop for 30 seconds. A quiet command,
+ordinary sleeps, I/O waits, and inconclusive process observations leave the
+process under normal ownership.
 
 Both lists record **exceptions** rather than the whole toolset, so a tool added in
 a later release behaves sensibly without anyone editing their config:

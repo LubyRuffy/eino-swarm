@@ -153,7 +153,7 @@ func TestAcceptedHistoryReportRestoresTheSameFrozenRenderingWithoutAnotherPublic
 	rt.mu.Unlock()
 	// An accepted candidate is already public. Restoration uses its exact
 	// admitted bytes even when originals subsequently disappear.
-	got, err := rt.runManager(t.Context(), turn, reg, newAccumulator(e, turn.ThreadID, turn.ID, 0), set, nil, []adk.Message{schema.UserMessage("Restore the original turn.")})
+	got, err := rt.runManager(t.Context(), turn, reg, newAccumulator(e, turn.ThreadID, turn.ID, 0), set, nil, []adk.Message{schema.UserMessage("Restore the original turn.")}, true)
 	if err != nil || got.Final != res.Final {
 		t.Fatalf("accepted restore reran or rewrote output: final=%q err=%v", got.Final, err)
 	}

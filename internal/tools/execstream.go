@@ -37,7 +37,7 @@ func BindExecOutput(ctx context.Context, emit func(string), toolName, callID str
 	}
 	var mu sync.Mutex
 	var stdout, stderr string
-	return einoexec.WithOutputListener(ctx, func(stream string, chunk []byte) {
+	listener := einoexec.OutputListener(func(stream string, chunk []byte) {
 		mu.Lock()
 		if stream == "stderr" {
 			stderr += string(chunk)
@@ -48,6 +48,20 @@ func BindExecOutput(ctx context.Context, emit func(string), toolName, callID str
 		mu.Unlock()
 		emit(text)
 	})
+	observation := managedExecObservation{listener: listener, callID: callID}
+	return einoexec.WithOutputListener(context.WithValue(ctx, managedExecOutputKey{}, observation), listener)
+}
+
+type managedExecOutputKey struct{}
+
+type managedExecObservation struct {
+	listener einoexec.OutputListener
+	callID   string
+}
+
+func managedExecObservationFrom(ctx context.Context) managedExecObservation {
+	observation, _ := ctx.Value(managedExecOutputKey{}).(managedExecObservation)
+	return observation
 }
 
 func liveExecJSON(stdout, stderr string) string {

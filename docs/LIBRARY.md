@@ -170,6 +170,23 @@ from that last round**, so the next `RunWith` can continue instead of repeating
 the same calls. `SetHistory` keeps wrap-appended tool results that a later
 model-step snapshot would otherwise drop.
 
+`RunConfig.CaptureReasoningRecoveryInput` is an opt-in host orchestration
+option, false by default. It retains an independently copied manager input in
+memory and joins a reasoning-only capped run's real ADK history writer before
+returning. A typed `ReasoningOutputLimit` identifies that generation and can
+carry `RecoveryInput`; opaque/cyclic values can make the snapshot unavailable.
+These input fields are excluded from JSON and YAML and must not be logged.
+This library option does not automatically retry or grant a new resource budget.
+
+A host choosing to continue from `RecoveryInput` must use the same Registry,
+preserve all messages and their order, and pass `Instruction: ""` for that next
+RunWith: the complete snapshot already contains the system instructions.
+Removing every system message can lose independent middleware constraints;
+prepending the constructor instruction again can change their precedence.
+Keep the original instruction variable for later ordinary calls. Cancellation
+and the host's durable allowance/request budget still take priority. zwai's
+engine applies the default-off same-turn policy described in `C-035`.
+
 `SetHostNotify` is the sink workers use after `RunWith` returns. A `/goal`
 session parks the registry across manager turns; without it, in-flight
 sub-agents emit into a nil sink and a later `finished` never lands. Install

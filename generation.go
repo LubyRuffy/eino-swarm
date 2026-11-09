@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync/atomic"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -67,12 +68,16 @@ func (s *streamAcc) completeGeneration() {
 // request or cancellation before the first byte cannot disappear from Trace.
 type generationModel struct {
 	model.BaseChatModel
-	acc *streamAcc
+	acc                  *streamAcc
+	captureRecoveryInput bool
 }
 
 type generationAttempt struct {
-	id  string
-	ctx context.Context
+	id                  string
+	ctx                 context.Context
+	recoveryInput       []*schema.Message
+	recoveryUnavailable string
+	sourceEOF           *atomic.Bool
 }
 
 func (m *generationModel) start(ctx context.Context) *streamAcc {
@@ -104,14 +109,30 @@ func (m *generationModel) Generate(ctx context.Context, in []*schema.Message, op
 
 func (m *generationModel) Stream(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
 	attempt := m.start(ctx)
+	var recoveryInput []*schema.Message
+	var recoveryUnavailable string
+	if m.captureRecoveryInput && m.acc.agentID == DefaultManagerID {
+		recoveryInput, recoveryUnavailable = cloneReasoningRecoveryInput(in)
+	}
 	out, err := m.BaseChatModel.Stream(ctx, in, opts...)
 	if err != nil {
 		attempt.interruptGeneration(err)
 	} else {
+		sourceEOF := &atomic.Bool{}
 		m.acc.mu.Lock()
-		m.acc.pending = append(m.acc.pending, generationAttempt{id: attempt.messageID, ctx: ctx})
+		m.acc.pending = append(m.acc.pending, generationAttempt{id: attempt.messageID, ctx: ctx, recoveryInput: recoveryInput, recoveryUnavailable: recoveryUnavailable, sourceEOF: sourceEOF})
 		m.acc.mu.Unlock()
 		out = guardGenerationTools(out)
+		// ADK may consume this source before the UI's copy. Keep its observed
+		// successful EOF with this attempt, rather than consulting a later ctx.
+		out = schema.StreamReaderWithConvert(out, func(msg *schema.Message) (*schema.Message, error) {
+			return msg, nil
+		}, schema.WithOnEOF(func() (any, error) {
+			if ctx.Err() == nil {
+				sourceEOF.Store(true)
+			}
+			return nil, io.EOF
+		}))
 	}
 	return out, err
 }

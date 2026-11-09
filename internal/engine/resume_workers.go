@@ -427,6 +427,9 @@ func (e *Engine) resumeConversation(turn *store.Turn, snapshots ...*restoreSnaps
 	// not look like newly executed spawn calls after a restart.
 	combined = appendWorkerRoster(combined, running, finished)
 	msgs := resumeMessages(combined, text)
+	if hasUnfinishedManagedExec(events) {
+		msgs = append(msgs, runtimeUserMessage(managedExecResumeCue))
+	}
 	if events, err := e.restoreTurnEvents(turn.ID, snapshots...); err == nil {
 		for _, call := range orphanedToolCalls(events) {
 			name := toolCallName(call.Text)

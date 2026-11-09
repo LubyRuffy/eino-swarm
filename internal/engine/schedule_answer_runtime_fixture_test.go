@@ -43,7 +43,7 @@ func (rt *runtime) runOwnedTestManager(ctx context.Context, turn *store.Turn, re
 	}
 	ctx, release := ownManagerTestFixture(ctx, rt, turn.ID, reg)
 	defer release()
-	return rt.runManager(ctx, turn, reg, acc, set, pc, messages)
+	return rt.runManager(ctx, turn, reg, acc, set, pc, messages, false)
 }
 
 func (e *Engine) reportOwnedTestScheduleJSON(threadID, turnID, args string) (string, error) {

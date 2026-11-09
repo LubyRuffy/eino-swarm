@@ -367,6 +367,7 @@ func (e *Engine) restartTargets(ctx context.Context) ([]*restartTarget, error) {
 func (e *Engine) writeCheckpoint(target *restartTarget) error {
 	checkpoint := target.checkpoint
 	checkpoint.ManagerHistory = withoutPendingManagerProse(checkpoint.ManagerHistory)
+	markBackgroundExecUnknown(checkpoint.ManagerHistory)
 	body, err := json.Marshal(checkpoint)
 	if err != nil {
 		return fmt.Errorf("marshal restart checkpoint: %w", err)

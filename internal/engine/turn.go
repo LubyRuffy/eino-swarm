@@ -673,7 +673,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	var res swarm.RunResult
 	runErr := resumeErr
 	if runErr == nil {
-		res, runErr = rt.runManager(ctx, turn, reg, acc, toolset, pc, messages, snapshots...)
+		res, runErr = rt.runManager(ctx, turn, reg, acc, toolset, pc, messages, resumed, snapshots...)
 	}
 	stopBeat()
 	acc.flushAll()

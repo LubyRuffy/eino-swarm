@@ -35,10 +35,10 @@ import (
 // so those are the most recent thing the model read. Empty for a
 // conversation that has none of those.
 func ManagerPrompt(set *tools.Set, extra string) string {
-	return managerPrompt(set, extra, false)
+	return managerPrompt(set, extra, false, false)
 }
 
-func managerPrompt(set *tools.Set, extra string, plannerOnly bool) string {
+func managerPrompt(set *tools.Set, extra string, plannerOnly, managedExec bool) string {
 	var b strings.Builder
 
 	if plannerOnly {
@@ -142,7 +142,11 @@ present; a message with only <selected_text> is pointing at that snippet.
 		if plannerOnly {
 			b.WriteString(".\nDiscover exact names with list_worker_tools and assign useful scopes to executors. Your coordination tools have their own registered schemas.\n\n")
 		} else {
-			b.WriteString(".\nYour sub-agents have the same workspace tools.\n\n")
+			b.WriteString(".\nYour sub-agents have the same workspace tools.")
+			if managedExec {
+				b.WriteString("\nThis manager also has exec_status and wait_exec for its owned commands.")
+			}
+			b.WriteString("\n\n")
 		}
 	}
 
@@ -158,7 +162,11 @@ reply does not pause anything. Workers cannot ask.
 
 Human restrictions on parking this conversation override this Waiting guidance and every scheduled-check instruction. If the human forbids yielding to a later check, continue working in this turn. Do not arm schedule_wake or pass next_in_s to report_schedule. Only later explicit human permission can lift that restriction; neither an inferred condition nor a summary can lift it.
 
-When progress is gated on time or a condition that is not worth polling in this
+`)
+	if managedExec {
+		b.WriteString(managedExecBackgroundInstruction + "\n\n")
+	}
+	b.WriteString(`When progress is gated on time or a condition that is not worth polling in this
 turn, call schedule_wake and end the turn. Do not spin, do not block a tool to
 wait, and do not wait for the human to remind you. Do not schedule work that
 can finish now. Do not use a wake instead of ask_user.
@@ -173,12 +181,20 @@ was accepted. If no active next wait remains and the work is still open, arm one
 before ending the turn when the human permits waiting.
 Writing that a wait is planned does not create one.
 
-A parallel exec may keep working in one call and sleep in another before
+`)
+	if managedExec {
+		b.WriteString(`For a scheduled check, use about a third of an estimated remaining time as
+the interval. Honor
+`)
+	} else {
+		b.WriteString(`A parallel exec may keep working in one call and sleep in another before
 printing progress. That sleep, and schedule_wake, use the same clock: when
 remaining time is an estimate, wait about a third of it and keep checking at
 that interval. Do not sleep the full remaining time. Extra checks are fine; a
 wait that fires after the work already finished looks late. Do not pad. Honor
-a named clock time the human asked for. Busy ticks are skipped; a missed beat
+`)
+	}
+	b.WriteString(`a named clock time the human asked for. Busy ticks are skipped; a missed beat
 only costs one interval. A pending wake pauses /goal auto-continue until it
 fires.
 
@@ -196,6 +212,24 @@ wait_agents unknown is not evidence it is still working.
 
 `)
 
+	if managedExec {
+		b.WriteString(`## Completing tool work
+
+Identify the user's required outcomes before substantial work. Keep a short
+list of the changes and verification needed at the final destination. An
+intermediate build or a test from a source directory can be useful evidence.
+Check the actual installed artifact or other requested destination directly
+before reporting completion.
+
+When a reproducible failure and current evidence support a small reversible
+fix, apply it and run the smallest failing check. Reopen the investigation if
+the result contradicts the fix. For a build, install, or test piped into an
+output filter, use set -o pipefail and keep the real diagnostic output. Run
+dependency installation, build, and verification in separable steps so an
+unsuccessful command leaves an actionable receipt.
+
+`)
+	}
 	b.WriteString(`## Answering
 
 Write in Markdown. Answer in the language the human is using. Lead with the

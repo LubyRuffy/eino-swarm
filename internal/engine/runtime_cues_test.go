@@ -26,7 +26,7 @@ func TestRuntimeCueSourcesKeepHumanQuotesThroughTheRealNextTurn(t *testing.T) {
 	if err := e.store.CreateTurn(old); err != nil {
 		t.Fatal(err)
 	}
-	cues := []string{GoalContinueText(), legacyGoalContinueCue, workerCollectionCorrectionCue, workerCollectionCue([]string{"worker-a", "worker-b"}), modelRetryCue, scheduleCompletionCue, scheduleAnswerCorrectionCue, resumeCue, resumeWorkersCue, parkedWorkersCue}
+	cues := []string{GoalContinueText(), legacyGoalContinueCue, workerCollectionCorrectionCue, workerCollectionCue([]string{"worker-a", "worker-b"}), modelRetryCue, reasoningOutputRecoveryCue, scheduleCompletionCue, scheduleAnswerCorrectionCue, resumeCue, resumeWorkersCue, parkedWorkersCue}
 	cues = append(cues, workerCollectionStateCue([]swarm.PendingAgent{{AgentID: "worker-a", Generation: 1, Running: true}, {AgentID: "worker-b", Generation: 2}}))
 	rows := []store.Message{{Role: "user", Content: old.UserText}}
 	for _, cue := range cues {

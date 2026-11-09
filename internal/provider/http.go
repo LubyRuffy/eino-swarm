@@ -53,6 +53,10 @@ func (e FirstByteTimeoutError) Unwrap() error { return e.Err }
 // The first byte gets its own budget. After headers arrive, silence
 // between chunks gets `idle`. A live stream can outlast the first-byte cap.
 func chatHTTPClient(idle, firstByte time.Duration) *http.Client {
+	return chatHTTPClientWithRequestBudget(idle, firstByte, nil)
+}
+
+func chatHTTPClientWithRequestBudget(idle, firstByte time.Duration, budget *modelRequestBudget) *http.Client {
 	if idle <= 0 {
 		idle = config.DefaultRequestTimeout
 	}
@@ -60,7 +64,7 @@ func chatHTTPClient(idle, firstByte time.Duration) *http.Client {
 		firstByte = config.DefaultFirstByteTimeout
 	}
 	return &http.Client{
-		Transport: &idleTransport{base: chatTransport(firstByte), idle: idle, firstByte: firstByte},
+		Transport: &idleTransport{base: chatTransport(firstByte), idle: idle, firstByte: firstByte, requestBudget: budget},
 	}
 }
 
@@ -78,9 +82,10 @@ func chatTransport(firstByte time.Duration) *http.Transport {
 }
 
 type idleTransport struct {
-	base      http.RoundTripper
-	idle      time.Duration
-	firstByte time.Duration
+	base          http.RoundTripper
+	idle          time.Duration
+	firstByte     time.Duration
+	requestBudget *modelRequestBudget
 }
 
 func (t *idleTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -128,6 +133,9 @@ func (t *idleTransport) roundTrip(req *http.Request) (*http.Response, error) {
 		}
 	}
 	if resp != nil {
+		if t.requestBudget != nil {
+			t.requestBudget.observe(req, resp.Header)
+		}
 		observeRouteResponse(req, resp, started, t.firstByte)
 	}
 	return resp, nil

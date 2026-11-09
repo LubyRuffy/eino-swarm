@@ -94,9 +94,10 @@ type Pool struct {
 	// Atomic because Resolve is reached from paths that already hold mu.
 	account atomic.Pointer[AccountSource]
 
-	mu       sync.Mutex
-	cache    map[string]model.BaseChatModel
-	backoffs map[string]*backoffGate
+	mu             sync.Mutex
+	cache          map[string]model.BaseChatModel
+	backoffs       map[string]*backoffGate
+	requestBudgets map[modelRequestBudgetKey]*modelRequestBudget
 	// discover is swapped in tests so listing models does not need a network.
 	discover func(ctx context.Context, p config.Provider) (Catalog, error)
 }
@@ -109,8 +110,11 @@ func New(cfg *config.Config) *Pool {
 // NewWithBackoffClock injects only endpoint cooldown timing. A nil clock keeps
 // real time; HTTP timeouts and request duration telemetry are unchanged.
 func NewWithBackoffClock(cfg *config.Config, clock timing.Clock) *Pool {
-	return &Pool{cfg: cfg, build: buildOpenAI, cache: map[string]model.BaseChatModel{},
-		backoffClock: timing.OrReal(clock)}
+	p := &Pool{cfg: cfg, cache: map[string]model.BaseChatModel{}, backoffClock: timing.OrReal(clock)}
+	p.build = func(ctx context.Context, prov config.Provider) (model.BaseChatModel, error) {
+		return buildOpenAIWithRequestBudget(ctx, prov, p.requestBudgetLocked(prov))
+	}
+	return p
 }
 
 // NewMock returns a pool whose models are scripted: no network, deterministic
@@ -302,6 +306,7 @@ func (p *Pool) Get(ctx context.Context, id, model string) (model.BaseChatModel, 
 func (p *Pool) Invalidate() {
 	p.mu.Lock()
 	p.cache = map[string]model.BaseChatModel{}
+	p.requestBudgets = nil
 	p.mu.Unlock()
 }
 
@@ -353,14 +358,19 @@ func (p *Pool) modelBuilder(ctx context.Context, id, modelName, effort string, r
 }
 
 func buildOpenAI(ctx context.Context, p config.Provider) (model.BaseChatModel, error) {
+	return buildOpenAIWithRequestBudget(ctx, p, nil)
+}
+
+func buildOpenAIWithRequestBudget(ctx context.Context, p config.Provider, budget *modelRequestBudget) (model.BaseChatModel, error) {
 	if err := p.Validate(); err != nil {
 		return nil, err
 	}
 	if !p.Ready() {
 		return nil, fmt.Errorf("provider: %q needs a base_url and a model", p.ID)
 	}
+	client := chatHTTPClientWithRequestBudget(p.Timeout(), p.FirstByteTimeout(), budget)
 	if p.APIMode == "responses" {
-		return newResponsesModel(p)
+		return newResponsesModelWithClient(p, client)
 	}
 	// HTTPClient, not Timeout: eino puts Timeout on http.Client, which
 	// includes the streamed body and kills a long thought mid-token.
@@ -368,7 +378,7 @@ func buildOpenAI(ctx context.Context, p config.Provider) (model.BaseChatModel, e
 		BaseURL:    strings.TrimSpace(p.BaseURL),
 		APIKey:     strings.TrimSpace(p.APIKey),
 		Model:      strings.TrimSpace(p.Model),
-		HTTPClient: chatHTTPClient(p.Timeout(), p.FirstByteTimeout()),
+		HTTPClient: client,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("provider: build %q: %w", p.ID, err)
@@ -412,6 +422,7 @@ type recordingModel struct {
 	// call, not a level the human chose: an endpoint that rejects it is asked
 	// again without it.
 	optionalEffort bool
+	firstReasoning *firstRequestReasoning
 	maxTokens      int
 	rec            Recorder
 }
@@ -425,11 +436,14 @@ func (r *recordingModel) withReasoning(opts []model.Option, level string) []mode
 	if level == "" {
 		return opts
 	}
-	effort := openaimodel.WithReasoningEffort(openaimodel.ReasoningEffortLevel(level))
+	return append([]model.Option{r.reasoningOption(level)}, opts...)
+}
+
+func (r *recordingModel) reasoningOption(level string) model.Option {
 	if _, ok := r.inner.(*responsesModel); ok {
-		effort = responsesReasoningOption(level)
+		return responsesReasoningOption(level)
 	}
-	return append([]model.Option{effort}, opts...)
+	return openaimodel.WithReasoningEffort(openaimodel.ReasoningEffortLevel(level))
 }
 
 func (r *recordingModel) Generate(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.Message, error) {
@@ -449,7 +463,7 @@ func (r *recordingModel) generateOnce(ctx context.Context, in []*schema.Message,
 	ctx, builtin := observeBuiltinTools(ctx, recorder != nil)
 	ctx, route := observeRouteRejection(ctx)
 	start := time.Now()
-	out, err := r.inner.Generate(ctx, in, opts...)
+	out, err := r.inner.Generate(ctx, in, r.firstRequestOptions(opts)...)
 	err = route.wrap(err)
 	finish(err)
 	if recorder == nil {
@@ -486,7 +500,7 @@ func (r *recordingModel) streamOnce(ctx context.Context, in []*schema.Message, o
 	ctx, route := observeRouteRejection(ctx)
 	progress, _ := ctx.Value(backoffProgressKey{}).(func())
 	start := time.Now()
-	stream, err := r.inner.Stream(ctx, in, opts...)
+	stream, err := r.inner.Stream(ctx, in, r.firstRequestOptions(opts)...)
 	err = route.wrap(err)
 	if err != nil {
 		finish(err)
