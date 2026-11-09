@@ -69,7 +69,9 @@ export function readTextSelection(doc: Document = document): PageSelection | nul
 /** The Add to chat pill is a snapshot. A live quote-source range replaces it;
  *  an empty range only dismisses when the user settled (mouseup / key). Token
  *  replacements and auto-follow scroll both look like "the selection vanished"
- *  and used to flash the pill then hide it mid-stream. */
+ *  and used to flash the pill then hide it mid-stream. A click that never
+ *  paints a new range is not this signal: Chromium collapses that click after
+ *  mouseup, so the menu dismisses the unchanged click itself. */
 export function nextMenuSelection(
   current: PageSelection | null,
   live: PageSelection | null,

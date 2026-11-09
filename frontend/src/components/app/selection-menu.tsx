@@ -28,6 +28,8 @@ export function SelectionMenu({
 
   useEffect(() => {
     let pressed = false
+    let downText = ""
+    let dismissedClick = false
     let terminal: TerminalSelection | null = null
 
     const fromEventTarget = (target: EventTarget | null) =>
@@ -42,21 +44,39 @@ export function SelectionMenu({
     }
 
     const onMouseDown = (event: MouseEvent) => {
-      if (fromEventTarget(event.target)) return
+      if (event.button !== 0 || fromEventTarget(event.target)) return
       pressed = true
+      dismissedClick = false
+      downText = window.getSelection()?.toString() ?? ""
     }
     const onMouseUp = (event: MouseEvent) => {
-      if (fromEventTarget(event.target)) return
+      if (event.button !== 0) return
       pressed = false
-      if (terminal && !(event.target instanceof Node && terminal.source.contains(event.target))) {
+      if (fromEventTarget(event.target)) return
+      const insideTerminal = Boolean(
+        terminal && event.target instanceof Node && terminal.source.contains(event.target),
+      )
+      if (terminal && !insideTerminal) {
         terminal = null
         setClearSelection(null)
       }
+      const upText = window.getSelection()?.toString() ?? ""
+      // A single click that does not paint a new range is leaving the
+      // selection. Chromium still reports the old range at mouseup, then
+      // collapses it. The later selectionchange must not restore the menu:
+      // the same event is how streaming keeps a snapshot.
+      if (!insideTerminal && event.detail === 1 && upText !== "" && upText === downText) {
+        dismissedClick = true
+        setActive(null)
+        return
+      }
+      dismissedClick = false
       apply(true, true)
     }
     const onSelectionChange = () => {
       // While the pointer is down the range is still being painted; wait.
-      if (pressed) return
+      // A click that did not paint a new range already dismissed the menu.
+      if (pressed || dismissedClick) return
       apply(false, true)
     }
     const onKeyUp = (event: KeyboardEvent) => {
@@ -68,6 +88,7 @@ export function SelectionMenu({
     }
     const hide = () => {
       terminal = null
+      dismissedClick = false
       setClearSelection(null)
       setActive(null)
     }
