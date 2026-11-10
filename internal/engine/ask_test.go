@@ -13,6 +13,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
+	"github.com/cloudwego/eino/schema"
 )
 
 func TestParseAskArgumentsRejectsJunk(t *testing.T) {
@@ -235,7 +236,12 @@ func TestAskUserComposerLineAnswersEveryQuestion(t *testing.T) {
 func TestInterruptCancelsAWaitingAsk(t *testing.T) {
 	provider.SetMockAskUser(true)
 	t.Cleanup(func() { provider.SetMockAskUser(false) })
+	t.Run("visible call", func(t *testing.T) { testInterruptAsk(t, false) })
+	t.Run("armed waiter", func(t *testing.T) { testInterruptAsk(t, true) })
+}
 
+func testInterruptAsk(t *testing.T, armed bool) {
+	t.Helper()
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	sub := e.Subscribe(th.ID)
@@ -245,6 +251,9 @@ func TestInterruptCancelsAWaitingAsk(t *testing.T) {
 		t.Fatal(err)
 	}
 	call := waitAskToolCall(t, sub, 15*time.Second)
+	if armed {
+		waitAskArmed(t, e, th.ID)
+	}
 	if err := e.Interrupt(th.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -256,14 +265,72 @@ func TestInterruptCancelsAWaitingAsk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var result string
+	var stopSeq, resultSeq, terminalSeq int64
+	want := askToolFailure("cancelled")
 	for _, ev := range events {
-		if ev.Kind == swarm.NotifyToolResult.String() && ev.ToolCallID == call.ToolCallID {
-			result = ev.Text
+		switch {
+		case ev.Kind == KindUserStopRequested:
+			stopSeq = ev.Seq
+		case ev.Kind == swarm.NotifyToolResult.String() && ev.ToolCallID == call.ToolCallID:
+			if resultSeq != 0 || ev.Text != want || ev.Err != "" || !isManagerAgent(ev.AgentID) {
+				t.Fatalf("unexpected Ask result: %+v", ev)
+			}
+			resultSeq = ev.Seq
+		case ev.Kind == swarm.NotifyError.String():
+			terminalSeq = ev.Seq
 		}
 	}
-	if !strings.Contains(result, "cancelled") {
-		t.Fatalf("ask result=%q", result)
+	if !(call.Seq < stopSeq && stopSeq < resultSeq && resultSeq < terminalSeq) {
+		t.Fatalf("Ask call, Stop, result, terminal must occur in order: %d %d %d %d",
+			call.Seq, stopSeq, resultSeq, terminalSeq)
+	}
+	for {
+		select {
+		case ev := <-sub.C:
+			if ev.Seq == resultSeq {
+				if ev.ToolCallID != call.ToolCallID || ev.Text != want {
+					t.Fatalf("live Ask result disagrees with storage: %+v", ev)
+				}
+				assertAskTranscript(t, e, turn, call.ToolCallID, want)
+				return
+			}
+		default:
+			t.Fatal("Ask result was persisted without being broadcast")
+		}
+	}
+}
+
+func assertAskTranscript(t *testing.T, e *Engine, turn *store.Turn, callID, want string) {
+	t.Helper()
+	messages, err := e.Store().ListMessages(turn.ThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls, results := 0, 0
+	for _, msg := range messages {
+		if msg.TurnID != turn.ID {
+			continue
+		}
+		var tools []schema.ToolCall
+		if msg.ToolCalls != "" {
+			if err := json.Unmarshal([]byte(msg.ToolCalls), &tools); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, tc := range tools {
+			if tc.ID == callID && tc.Function.Name == ToolAskUser {
+				calls++
+			}
+		}
+		if msg.Role == string(schema.Tool) && msg.ToolCallID == callID {
+			if msg.Content != want || calls != 1 {
+				t.Fatalf("stored Ask result lost its content or call: %+v", msg)
+			}
+			results++
+		}
+	}
+	if calls != 1 || results != 1 {
+		t.Fatalf("stored Ask has %d calls and %d results", calls, results)
 	}
 }
 

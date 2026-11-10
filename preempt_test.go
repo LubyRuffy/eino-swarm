@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/LubyRuffy/eino-tools/grep"
+	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
@@ -201,6 +202,85 @@ func TestCancelReturnsWhileAToolIgnoresCancellation(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("cancelling the run waited for a tool that ignores cancellation")
+	}
+}
+
+func TestManagerToolPanicRemainsRunError(t *testing.T) {
+	reg := NewRegistry()
+	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
+		return &chunkedModel{turns: []turnScript{{calls: []schema.ToolCall{
+			rawCall("tc-panic", "crash", "{}"),
+		}}}}
+	}
+	crash := &fnTool{name: "crash", fn: func(context.Context, string) (string, error) {
+		panic("tool panic witness")
+	}}
+	_, err := reg.RunWith(t.Context(), RunConfig{Task: "work", ManagerTools: []tool.BaseTool{crash}}, nil)
+	if err == nil || !strings.Contains(err.Error(), "tool panic witness") {
+		t.Fatalf("a tool panic must reach ADK as a run error, got %v", err)
+	}
+}
+
+func TestCancelReturnsWhileAStreamingToolIsOpening(t *testing.T) {
+	reg := NewRegistry()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	started, release := make(chan struct{}), make(chan struct{})
+	stream, writer := schema.Pipe[string](0)
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	writerStarted := false
+	t.Cleanup(func() {
+		unblock()
+		if !writerStarted {
+			writer.Close()
+		}
+	})
+	wrapped, err := (&historyRecorder{reg: reg}).WrapStreamableToolCall(ctx,
+		func(context.Context, string, ...tool.Option) (*schema.StreamReader[string], error) {
+			close(started)
+			<-release
+			return stream, nil
+		}, &adk.ToolContext{Name: "blocked-stream", CallID: "stream"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		sr, err := wrapped(ctx, "{}")
+		if sr != nil {
+			sr.Close()
+		}
+		done <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the stream opener never started")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("opening a stream must surface cancellation, got %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelling the run waited for a blocked stream opener")
+	}
+	unblock()
+	closed := make(chan bool, 1)
+	writerStarted = true
+	go func() {
+		defer writer.Close()
+		closed <- writer.Send("late tool output", nil)
+	}()
+	select {
+	case wasClosed := <-closed:
+		if !wasClosed {
+			t.Fatal("the tool consumed output from a stream opened after Stop")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the late stream reader was never closed")
 	}
 }
 

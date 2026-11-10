@@ -4334,9 +4334,10 @@ were left out on purpose, so that what shipped is complete rather than broad:
   upstream and downstream dependencies of the selected record. (`F-136`, `C-037`)
 - Mobile can create and edit paired-PC projects, render Mermaid in the transcript
   and insert PC next-step suggestions as drafts.
-- Stop finishes even when a tool is still blocked, and late tool results are
-  discarded. Conversation requests keep the model displayed by the composer
-  when the account catalog changes. (`C-009`, `C-040`)
+- Stop finishes even when a tool is still blocked. Human questions retain
+  their cancellation receipt, and engine handoff keeps unconfirmed tool
+  effects marked unknown. Conversation requests keep the model displayed by
+  the composer when the account catalog changes. (`C-002`, `C-027`, `C-040`)
 
 ## [0.1.71] - 2026-11-08
 

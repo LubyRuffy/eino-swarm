@@ -494,7 +494,9 @@ func (m *historyRecorder) WrapInvokableToolCall(ctx context.Context,
 		out, refused := m.spawnFeedback.take(tc.CallID)
 		var err error
 		if !refused {
-			out, err = callUntilCancel(ctx, func() (string, error) {
+			out, err = callUntilCancel(ctx, func() bool {
+				return parent.Err() != nil && m.reg.isHandingOff()
+			}, func() (string, error) {
 				return endpoint(ctx, argumentsInJSON, opts...)
 			})
 		}
@@ -516,20 +518,18 @@ func (m *historyRecorder) WrapStreamableToolCall(ctx context.Context,
 		ctx, id := m.reg.bindEpoch(ctx)
 		defer m.reg.dropEpoch(id)
 		ctx = withToolCaller(ctx, AgentIdentity{AgentID: DefaultManagerID, Role: DefaultManagerID})
-		sr, err := endpoint(ctx, argumentsInJSON, opts...)
-		if err != nil {
-			out, err := m.reg.preemptToolResult(parent, ctx, "", err)
-			m.reg.appendHistoryToolResult(tc, m.reg.checkpointManagerToolResult(ctx, tc.CallID, out), err)
+		finishHandoff := func() bool { return parent.Err() != nil && m.reg.isHandingOff() }
+		text, err := callUntilCancel(ctx, finishHandoff, func() (string, error) {
+			sr, err := endpoint(ctx, argumentsInJSON, opts...)
 			if err != nil {
-				return nil, err
+				return "", err
 			}
-			return schema.StreamReaderFromArray([]string{out}), nil
-		}
-		// Recv can sit in a syscall that does not observe ctx. Read it on
-		// the side so Stop and preempt can finish this call.
-		text, err := callUntilCancel(ctx, func() (string, error) {
+			defer sr.Close()
 			var b strings.Builder
 			for {
+				if err := ctx.Err(); err != nil && !finishHandoff() {
+					return "", err
+				}
 				chunk, recvErr := sr.Recv()
 				if recvErr != nil {
 					return b.String(), nil
@@ -539,7 +539,10 @@ func (m *historyRecorder) WrapStreamableToolCall(ctx context.Context,
 		})
 		out, err := m.reg.preemptToolResult(parent, ctx, text, err)
 		m.reg.appendHistoryToolResult(tc, m.reg.checkpointManagerToolResult(ctx, tc.CallID, out), err)
-		return schema.StreamReaderFromArray([]string{out}), err
+		if err != nil {
+			return nil, err
+		}
+		return schema.StreamReaderFromArray([]string{out}), nil
 	}, nil
 }
 
@@ -960,7 +963,9 @@ func (in *Injector) WrapInvokableToolCall(ctx context.Context,
 			ctx = context.WithValue(ctx, toolReceiptScopeKey{}, in.toolReceiptScope)
 			ctx = in.reg.bindToolOutput(ctx, in.handle.ID, in.handle.Role, tc)
 		}
-		out, err := callUntilCancel(ctx, func() (string, error) {
+		out, err := callUntilCancel(ctx, func() bool {
+			return in.reg != nil && in.reg.isHandingOff()
+		}, func() (string, error) {
 			return endpoint(ctx, argumentsInJSON, opts...)
 		})
 		if in.handle != nil {

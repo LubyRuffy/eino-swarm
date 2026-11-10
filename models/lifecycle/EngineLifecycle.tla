@@ -170,6 +170,9 @@ WorkerDone ==
                    owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
 
 (* interruptThread on a live runtime: a running manager or parked workers. *)
+(* StopLive abstracts normal terminalization. The concrete engine pairs any *)
+(* unresolved admitted Ask with its original call before the turn terminal. *)
+(* Handoff is a different transition and preserves an unanswered pause.    *)
 StopLive ==
     /\ eng[owner] = "serving" /\ lease = owner
     /\ work \in {"running", "parked"} /\ ~stopped

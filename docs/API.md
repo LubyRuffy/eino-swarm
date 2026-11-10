@@ -2214,8 +2214,10 @@ actually removed that row; a lost claim reselects the oldest remaining row.
 ### `POST /api/threads/:id/interrupt` → `202`
 
 Cancels the running turn, or stops its parked worker registry after the manager
-has already ended. A running turn keeps its transcript and becomes `cancelled`;
-stopping parked workers preserves the manager's existing terminal status,
+has already ended. A running turn keeps its transcript and becomes `cancelled`.
+An outstanding `ask_user` retains its original tool call ID and receives its
+cancellation result before the turn ends. An accepted answer keeps precedence.
+Stopping parked workers preserves the manager's existing terminal status,
 including a failed scheduled check's error. `user_stop_requested` and cleanup
 remain authoritative over worker-retention receipts. `409 idle` means there is
 neither a running turn nor a parked registry to stop.
