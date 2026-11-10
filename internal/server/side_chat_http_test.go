@@ -1,9 +1,11 @@
 package server_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -56,6 +58,7 @@ func TestSideChatRejectsInvalidRequestsAtHTTPBoundary(t *testing.T) {
 		{"empty", `{"question":"  "}`, "", http.StatusBadRequest, "invalid_side_chat"},
 		{"oversized", `{"question":"` + strings.Repeat("x", 384<<10) + `"}`, "", http.StatusRequestEntityTooLarge, "invalid_side_chat"},
 		{"invalid history", `{"question":"hello","history":[{"question":"a"}]}`, "", http.StatusBadRequest, "invalid_side_chat"},
+		{"incomplete model selection", `{"question":"hello","model":"chosen"}`, "", http.StatusBadRequest, "invalid_side_chat"},
 		{"foreign origin", `{"question":"hello"}`, "https://foreign.invalid", http.StatusForbidden, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -237,6 +240,123 @@ func TestSideChatProviderFailuresAndCancellationStaySeparateFromLiveTask(t *test
 		case <-time.After(5 * time.Second):
 			t.Fatal("canceled HTTP request did not return")
 		}
+	}
+}
+
+func TestSideChatStreamsSelectedModelBeforeCompletionAndCancelsIndependently(t *testing.T) {
+	const first = "Evidence so far: "
+	const last = "已检查。"
+	const selected = "side-only-model"
+	finish := make(chan struct{})
+	cancelled := make(chan struct{})
+	fixture := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model    string
+			Stream   bool
+			Tools    []json.RawMessage
+			Messages []struct{ Content string }
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Error(err)
+			return
+		}
+		if req.Model != selected || !req.Stream || len(req.Tools) != 0 || len(req.Messages) != 3 {
+			t.Errorf("wrong isolated side model request: %+v", req)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		delta := func(text string) {
+			frame, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{
+				"index": 0, "delta": map[string]string{"content": text},
+			}}})
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", frame)
+			w.(http.Flusher).Flush()
+		}
+		delta(first)
+		switch req.Messages[2].Content {
+		case "cancel":
+			<-r.Context().Done()
+			close(cancelled)
+		case "fail":
+			_, _ = io.WriteString(w, "data: private-provider-error\n\n")
+		default:
+			select {
+			case <-finish:
+				delta(last)
+				_, _ = io.WriteString(w, "data: [DONE]\n\n")
+			case <-r.Context().Done():
+			}
+		}
+	}))
+	t.Cleanup(fixture.Close)
+	for _, key := range []string{"OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL"} {
+		t.Setenv(key, "")
+	}
+	h, _ := newRestartAskHTTPHarness(t, t.TempDir(), fixture.URL)
+	id := h.newThread()
+	before, err := h.app.Store.GetThread(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, question := range []string{"complete", "cancel", "fail"} {
+		t.Run(question, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			body, _ := json.Marshal(map[string]string{
+				"question": question, "provider_id": h.app.Config.Models.Providers[0].ID, "model": selected,
+			})
+			req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.srv.URL+"/api/threads/"+id+"/side-chat", bytes.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Accept", "text/event-stream")
+			resp, err := h.srv.Client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "text/event-stream" || resp.Header.Get("Cache-Control") != "no-store" {
+				t.Fatalf("wrong stream response: %d %v", resp.StatusCode, resp.Header)
+			}
+			reader := bufio.NewReader(resp.Body)
+			frame := func(kind string, payload map[string]string) {
+				t.Helper()
+				event, err := reader.ReadString('\n')
+				if err != nil || event != "event: "+kind+"\n" {
+					t.Fatalf("wanted %s event, got %q: %v", kind, event, err)
+				}
+				line, _ := reader.ReadString('\n')
+				var data map[string]string
+				if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &data); err != nil {
+					t.Fatalf("bad SSE data: %q: %v", line, err)
+				}
+				for key, expected := range payload {
+					if data[key] != expected {
+						t.Fatalf("expected %s=%q, got %v", key, expected, data)
+					}
+				}
+				if blank, err := reader.ReadString('\n'); err != nil || blank != "\n" {
+					t.Fatalf("unterminated SSE frame: %q: %v", blank, err)
+				}
+			}
+			// The fixture cannot send the second chunk until this one arrives.
+			frame("delta", map[string]string{"text": first})
+			switch question {
+			case "complete":
+				close(finish)
+				frame("delta", map[string]string{"text": last})
+				frame("done", map[string]string{"answer": first + last})
+			case "cancel":
+				cancel()
+				waitSideChatSignal(t, cancelled, "provider stream cancellation")
+			case "fail":
+				frame("error", map[string]string{"code": "side_chat_unavailable", "error": "Side chat could not get an answer."})
+			}
+		})
+	}
+	after, err := h.app.Store.GetThread(id)
+	if err != nil || after.ProviderID != before.ProviderID || after.Model != before.Model {
+		t.Fatalf("side selection changed the main conversation: before=%+v after=%+v err=%v", before, after, err)
 	}
 }
 

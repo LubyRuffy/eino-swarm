@@ -218,8 +218,8 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-147 Temporary task side chat
 
 - 入口：桌面／Web 会话标题栏的侧聊按钮、在主输入框提交 `/side [问题]`，或在对话记录中选中文字后点击「在侧聊中提问」。带问题的命令预填侧聊输入框，由用户单独发送。
-- 输入与输出：侧聊参考当前会话的任务上下文和选中引用，支持连续问答。面板关闭、切换会话或重新加载后清除临时记录。发送失败可在面板内重试，取消等待不会停止主任务。
-- 前置条件：需要已有会话和可用的会话模型。关联契约 `C-042`。实现证据： `frontend/e2e/side-chat.spec.ts`，HTTP 并发与隔离见 `internal/server/side_chat_http_test.go`。
+- 输入与输出：拖动面板左边界可调整宽度，聚焦边界后也可用左右键调整。侧聊参考当前任务和选中引用，流式显示回答，支持连续问答。模型默认跟随任务，也可单独切换。面板关闭、切换会话或重新加载后清除临时记录。发送失败可在面板内重试，取消等待不会停止主任务。
+- 前置条件：需要已有会话和可用的模型。关联契约 `C-042`。实现证据： `frontend/e2e/side-chat.spec.ts`，HTTP 流式交付与隔离见 `internal/server/side_chat_http_test.go`。
 
 ### F-150 Goals and scheduled waits
 

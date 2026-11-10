@@ -28,6 +28,8 @@ interface SideChatSession {
   quote: string
   exchanges: SideChatExchange[]
   focus: number
+  model?: { provider_id: string; model: string }
+  preview?: string
   request?: AbortController
   error?: string
 }
@@ -39,6 +41,7 @@ interface SideChatStore {
   cancel: () => void
   edit: (question: string) => void
   clearQuote: () => void
+  selectModel: (providerId: string, model: string) => void
   ask: () => Promise<void>
 }
 
@@ -66,7 +69,7 @@ export const useSideChat = create<SideChatStore>((set, get) => ({
   cancel: () => {
     const session = get().session
     if (!session?.request) return
-    set({ session: { ...session, request: undefined, focus: session.focus + 1 } })
+    set({ session: { ...session, request: undefined, preview: undefined, focus: session.focus + 1 } })
     session.request.abort()
   },
   edit: (question) => {
@@ -76,6 +79,12 @@ export const useSideChat = create<SideChatStore>((set, get) => ({
   clearQuote: () => {
     const session = get().session
     if (session) set({ session: { ...session, quote: "" } })
+  },
+  selectModel: (providerId, model) => {
+    const session = get().session
+    if (session && !session.request) {
+      set({ session: { ...session, model: providerId && model ? { provider_id: providerId, model } : undefined } })
+    }
   },
   ask: async () => {
     const session = get().session
@@ -88,7 +97,12 @@ export const useSideChat = create<SideChatStore>((set, get) => ({
         question,
         quote: session.quote || undefined,
         history: session.exchanges.slice(-HISTORY_PAIRS),
-      }, request.signal)
+        ...session.model,
+      }, request.signal, (delta) => {
+        const current = get().session
+        if (current?.request !== request) return
+        set({ session: { ...current, preview: (current.preview ?? "") + delta } })
+      })
       const current = get().session
       // Closing, cancelling or changing tasks relinquishes this response,
       // including when the transport returns after abort was requested.
@@ -96,13 +110,14 @@ export const useSideChat = create<SideChatStore>((set, get) => ({
       set({ session: {
         ...current,
         request: undefined,
+        preview: undefined,
         question: "",
         exchanges: [...current.exchanges, { question, answer }],
       } })
     } catch (error) {
       const current = get().session
       if (current?.request !== request) return
-      set({ session: { ...current, request: undefined, error: errorMessage(error) } })
+      set({ session: { ...current, request: undefined, preview: undefined, error: errorMessage(error) } })
     }
   },
 }))

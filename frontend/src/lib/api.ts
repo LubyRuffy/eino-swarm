@@ -182,6 +182,12 @@ function emitSSE(block: string, onEvent: (name: string, data: unknown) => void) 
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await requestResponse(path, init)
+  if (res.status === 204) return undefined as T
+  return (await res.json()) as T
+}
+
+async function requestResponse(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(path, {
     ...init,
     headers: {
@@ -218,8 +224,37 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     notifyEngineRestoring(code)
     throw new ApiError(message, res.status, code, details)
   }
-  if (res.status === 204) return undefined as T
-  return (await res.json()) as T
+  return res
+}
+
+async function askSideChat(
+  id: string,
+  body: { question: string; quote?: string; history?: SideChatExchange[]; provider_id?: string; model?: string },
+  signal: AbortSignal,
+  onDelta: (text: string) => void,
+): Promise<{ answer: string }> {
+  const res = await requestResponse(`/api/threads/${id}/side-chat`, {
+    method: "POST",
+    headers: { Accept: "text/event-stream" },
+    body: JSON.stringify(body),
+    signal,
+  })
+  let answer: string | undefined
+  let failure: ApiError | undefined
+  await readSSE(res, (kind, data) => {
+    if (answer !== undefined || failure || !data || typeof data !== "object") return
+    if (kind === "delta" && "text" in data && typeof data.text === "string") onDelta(data.text)
+    if (kind === "done" && "answer" in data && typeof data.answer === "string") answer = data.answer
+    if (kind === "error" && "error" in data && typeof data.error === "string") {
+      const code = "code" in data && typeof data.code === "string" ? data.code : undefined
+      failure = new ApiError(data.error, code === "side_chat_timeout" ? 504 : 502, code)
+    }
+  })
+  if (failure) throw failure
+  if (!answer?.trim()) {
+    throw new ApiError(t(resolveLocale(readLocalePref()), "sideChat.incomplete"), 502, "side_chat_unavailable")
+  }
+  return { answer }
 }
 
 function turnBody(
@@ -575,16 +610,7 @@ export const api = {
     ).then((r) => r.threads)
   },
 
-  askSideChat: (
-    id: string,
-    body: { question: string; quote?: string; history?: SideChatExchange[] },
-    signal: AbortSignal,
-  ) =>
-    request<{ answer: string }>(`/api/threads/${id}/side-chat`, {
-      method: "POST",
-      body: JSON.stringify(body),
-      signal,
-    }),
+  askSideChat,
   startTurn: (
     id: string,
     text: string,

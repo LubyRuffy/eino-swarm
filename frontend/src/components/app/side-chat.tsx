@@ -1,15 +1,20 @@
 import { ArrowUp, Square, X } from "lucide-react"
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 
+import { ModelPicker } from "@/components/app/model-picker"
+import { ResizeHandle } from "@/components/app/resize-handle"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { afterImeSettles, enterSendsMessage } from "@/lib/ime"
 import { useT } from "@/lib/use-t"
+import { useApp } from "@/store/app"
 import { SIDE_CHAT_QUESTION_BYTES, sideChatQuestionTooLong, useSideChat } from "@/store/app-side-chat"
 
 export function SideChat({ threadId, onClose }: { threadId: string; onClose: () => void }) {
   const t = useT()
   const session = useSideChat((s) => s.session?.threadId === threadId ? s.session : undefined)
+  const models = useApp((s) => s.models)
+  const [width, setWidth] = useState(384)
   const input = useRef<HTMLTextAreaElement>(null)
   const log = useRef<HTMLDivElement>(null)
   const composing = useRef(false)
@@ -21,12 +26,13 @@ export function SideChat({ threadId, onClose }: { threadId: string; onClose: () 
     if (focus) input.current?.focus()
   }, [focus])
   const count = session?.exchanges.length
+  const preview = session?.preview
+  const pending = Boolean(session?.request)
   useEffect(() => {
     if (log.current) log.current.scrollTop = log.current.scrollHeight
-  }, [count])
+  }, [count, pending, preview])
 
   if (!session) return null
-  const pending = Boolean(session.request)
   const tooLong = sideChatQuestionTooLong(session.question)
   const canSend = !pending && !tooLong && session.question.trim() !== ""
   const ask = () => {
@@ -39,13 +45,15 @@ export function SideChat({ threadId, onClose }: { threadId: string; onClose: () 
     <aside
       id="side-chat"
       aria-labelledby="side-chat-title"
-      className="flex h-full w-96 max-w-[55%] min-w-0 shrink-0 flex-col border-l border-border bg-card"
+      className="relative flex h-full max-w-[55%] min-w-0 shrink-0 flex-col border-l border-border bg-card"
+      style={{ width }}
       onKeyDown={(event) => {
         if (event.key !== "Escape" || event.nativeEvent.isComposing || composing.current) return
         event.stopPropagation()
         onClose()
       }}
     >
+      <ResizeHandle width={width} onWidthChange={setWidth} edge="left" label={t("sideChat.resize")} min={260} max={720} />
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
         <h2 id="side-chat-title" className="text-sm font-medium">{t("sideChat.title")}</h2>
         <Button type="button" variant="ghost" size="icon-sm" aria-label={t("sideChat.close")} onClick={onClose}>
@@ -53,7 +61,7 @@ export function SideChat({ threadId, onClose }: { threadId: string; onClose: () 
         </Button>
       </div>
       <div ref={log} role="log" aria-label={t("sideChat.messages")} className="min-h-0 flex-1 space-y-4 overflow-auto p-3 text-sm">
-        {session.exchanges.length === 0 ? (
+        {session.exchanges.length === 0 && !pending ? (
           <p className="text-muted-foreground">{t("sideChat.intro")}</p>
         ) : session.exchanges.map(({ question, answer }, index) => (
           <div key={index} className="space-y-2">
@@ -67,6 +75,15 @@ export function SideChat({ threadId, onClose }: { threadId: string; onClose: () 
             </p>
           </div>
         ))}
+        {pending ? (
+          <div className="space-y-2" aria-live="off">
+            <p className="ml-5 rounded-lg bg-muted px-3 py-2 wrap-anywhere whitespace-pre-wrap">
+              <span className="sr-only">{t("sideChat.you")} </span>
+              {session.question.trim()}
+            </p>
+            {preview ? <p className="wrap-anywhere whitespace-pre-wrap">{preview}</p> : null}
+          </div>
+        ) : null}
       </div>
       <form
         className="shrink-0 space-y-2 border-t border-border p-3"
@@ -87,7 +104,7 @@ export function SideChat({ threadId, onClose }: { threadId: string; onClose: () 
         ) : null}
         <Textarea
           ref={input}
-          value={session.question}
+          value={pending ? "" : session.question}
           aria-label={t("sideChat.question")}
           aria-invalid={tooLong || undefined}
           aria-describedby={tooLong ? "side-chat-question-length" : undefined}
@@ -112,16 +129,25 @@ export function SideChat({ threadId, onClose }: { threadId: string; onClose: () 
         />
         {tooLong ? <p id="side-chat-question-length" className="text-xs text-destructive">{t("sideChat.questionTooLong")}</p> : null}
         {session.error ? <p role="alert" className="wrap-anywhere text-xs text-destructive">{session.error}</p> : null}
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <ModelPicker
+            models={models}
+            providerId={session.model?.provider_id}
+            model={session.model?.model}
+            onChange={useSideChat.getState().selectModel}
+            label={t("sideChat.model")}
+            defaultLabel={t("sideChat.followModel")}
+            disabled={pending}
+          />
           {pending ? (
-            <>
-              <span role="status" className="text-xs text-muted-foreground">{t("sideChat.thinking")}</span>
+            <div className="ml-auto flex items-center gap-2">
+              <span role="status" className="text-xs text-muted-foreground">{t(preview ? "sideChat.streaming" : "sideChat.thinking")}</span>
               <Button type="button" variant="outline" size="icon-sm" aria-label={t("sideChat.cancel")} onClick={useSideChat.getState().cancel}>
                 <Square />
               </Button>
-            </>
+            </div>
           ) : (
-            <Button type="submit" size="icon-sm" aria-label={t("sideChat.send")} disabled={!canSend}>
+            <Button type="submit" size="icon-sm" className="ml-auto" aria-label={t("sideChat.send")} disabled={!canSend}>
               <ArrowUp />
             </Button>
           )}

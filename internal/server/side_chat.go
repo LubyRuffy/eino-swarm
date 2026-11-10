@@ -43,19 +43,62 @@ func (s *Server) askSideChat(c *gin.Context) {
 		return
 	}
 
+	if wantsEventStream(c) {
+		s.streamSideChat(c, input)
+		return
+	}
 	answer, err := s.engine.AskSideChat(c.Request.Context(), c.Param("id"), input)
-	switch {
-	case err == nil:
+	if err == nil {
 		c.JSON(http.StatusOK, gin.H{"answer": answer})
+		return
+	}
+	s.failSideChat(c, err)
+}
+
+func (s *Server) streamSideChat(c *gin.Context, input engine.SideChatInput) {
+	write := func(kind string, payload gin.H) {
+		if !c.Writer.Written() {
+			c.Header("Content-Type", "text/event-stream")
+			c.Header("X-Accel-Buffering", "no")
+		}
+		writeSSE(c, kind, payload, 0)
+		c.Writer.Flush()
+	}
+	ctx := c.Request.Context()
+	answer, err := s.engine.StreamSideChat(ctx, c.Param("id"), input, func(text string) {
+		if ctx.Err() == nil {
+			write("delta", gin.H{"text": text})
+		}
+	})
+	if ctx.Err() != nil {
+		return
+	}
+	if err == nil {
+		write("done", gin.H{"answer": answer})
+	} else if !c.Writer.Written() {
+		s.failSideChat(c, err)
+	} else {
+		_, payload := sideChatFailure(err)
+		write("error", payload)
+	}
+}
+
+func (s *Server) failSideChat(c *gin.Context, err error) {
+	switch {
 	case errors.Is(err, engine.ErrInvalidSideChat), errors.Is(err, store.ErrNotFound):
 		s.fail(c, err)
 	case errors.Is(err, context.Canceled) && c.Request.Context().Err() != nil:
 		return
-	case errors.Is(err, context.DeadlineExceeded):
-		c.JSON(http.StatusGatewayTimeout, gin.H{"error": "The side question timed out.", "code": "side_chat_timeout"})
 	default:
-		// An upstream error can include request excerpts or credentials. Keep
-		// the public response and access log free of provider response bodies.
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Side chat could not get an answer.", "code": "side_chat_unavailable"})
+		status, payload := sideChatFailure(err)
+		c.JSON(status, payload)
 	}
+}
+
+func sideChatFailure(err error) (int, gin.H) {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return http.StatusGatewayTimeout, gin.H{"error": "The side question timed out.", "code": "side_chat_timeout"}
+	}
+	// Keep provider response bodies out of the public response and access log.
+	return http.StatusBadGateway, gin.H{"error": "Side chat could not get an answer.", "code": "side_chat_unavailable"}
 }

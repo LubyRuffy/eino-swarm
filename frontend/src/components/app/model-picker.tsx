@@ -26,6 +26,8 @@ export function ModelPicker({
   onEdit,
   id,
   label: accessibleName,
+  defaultLabel,
+  disabled,
 }: {
   models: ModelInfo[]
   providerId?: string
@@ -36,6 +38,9 @@ export function ModelPicker({
   id?: string
   /** Accessible name when this picker is not the composer control. */
   label?: string
+  /** If present, an empty selection represents the caller's own default. */
+  defaultLabel?: string
+  disabled?: boolean
 }) {
   const t = useT()
   const [open, setOpen] = useState(false)
@@ -48,15 +53,23 @@ export function ModelPicker({
   const groups = groupModels(ready)
   // An empty id follows the default row, including one the catalog no longer
   // contains. A known name that left the list stays on the button.
-  const selected = displayedModel(models, providerId, model)
+  const followsDefault = Boolean(defaultLabel && !providerId && !model)
+  const selected = followsDefault ? undefined : displayedModel(models, providerId, model)
   const unavailable = Boolean((model?.trim() && !selected) || (selected && !selected.ready))
-  const label = selected?.label || selected?.model || model?.trim() || t("model.fallback")
+  const label = followsDefault ? defaultLabel : selected?.label || selected?.model || model?.trim() || t("model.fallback")
 
   useLayoutEffect(() => {
-    if (!open || !wrapRef.current) return
+    if (!open || disabled || !wrapRef.current || !menuRef.current) return
     const r = wrapRef.current.getBoundingClientRect()
-    setPos({ left: r.left, bottom: window.innerHeight - r.top + 4 })
-  }, [open])
+    setPos({
+      left: Math.max(0, Math.min(r.left, window.innerWidth - menuRef.current.offsetWidth - 8)),
+      bottom: window.innerHeight - r.top + 4,
+    })
+  }, [open, disabled])
+
+  useEffect(() => {
+    if (disabled) setOpen(false)
+  }, [disabled])
 
   useEffect(() => {
     if (!open) return
@@ -93,6 +106,12 @@ export function ModelPicker({
               ? t("model.emptyNone")
               : t("model.emptyFilter")}
           </CommandEmpty>
+          {defaultLabel ? (
+            <CommandItem onSelect={() => { onChange("", ""); setOpen(false) }}>
+              <Check className={cn("size-3.5", !followsDefault && "opacity-0")} />
+              {defaultLabel}
+            </CommandItem>
+          ) : null}
           {groups.map((g) => (
             <CommandGroup key={g.providerId} heading={g.label}>
               {g.models.map((m) => {
@@ -166,11 +185,11 @@ export function ModelPicker({
   // on that page and closes when a pointerdown reaches the document, so a click
   // on a model would land on the dialog and leave the saved choice unchanged.
   const menu =
-    open && typeof document !== "undefined"
+    open && !disabled && typeof document !== "undefined"
       ? createPortal(
           <div
             ref={menuRef}
-            className="pointer-events-auto fixed toast-layer w-72 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md"
+            className="pointer-events-auto fixed toast-layer w-72 max-w-[calc(100vw-1rem)] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md"
             style={{ left: pos.left, bottom: pos.bottom }}
             onPointerDown={(event) => event.stopPropagation()}
           >
@@ -187,17 +206,23 @@ export function ModelPicker({
       : null
 
   return (
-    <div ref={wrapRef} className="relative">
+    <div ref={wrapRef} className="relative min-w-0 max-w-full" onKeyDown={(event) => {
+      if (!open || event.key !== "Escape") return
+      event.stopPropagation()
+      setOpen(false)
+      wrapRef.current?.querySelector("button")?.focus()
+    }}>
       <button
         type="button"
+        disabled={disabled}
         id={id}
         aria-label={accessibleName ?? t("composer.model")}
-        aria-expanded={open}
+        aria-expanded={open && !disabled}
         aria-haspopup="listbox"
         title={unavailable ? t("model.unavailable") : undefined}
         data-unavailable={unavailable ? "true" : undefined}
         className={cn(
-          "inline-flex h-7 max-w-56 items-center gap-1.5 rounded-md px-2 hover:bg-accent",
+          "inline-flex h-7 max-w-[min(100%,14rem)] items-center gap-1.5 rounded-md px-2 hover:bg-accent disabled:opacity-50",
           chromeTypeClass,
           unavailable && "text-muted-foreground",
           open && "bg-accent",

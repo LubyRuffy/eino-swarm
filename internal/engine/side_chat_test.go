@@ -284,6 +284,19 @@ func TestSideChatOmitsHostedToolsWithoutChangingTheSharedResponsesModel(t *testi
 		}
 		requests <- req
 		kind := string(req.Input)
+		if req.Stream {
+			w.Header().Set("Content-Type", "text/event-stream")
+			switch {
+			case strings.Contains(kind, "tool-shaped answer"):
+				_, _ = fmt.Fprint(w, "data: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"write\",\"arguments\":\"{}\"}}\n\n")
+			case strings.Contains(kind, "blank answer"):
+				_, _ = fmt.Fprint(w, "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[]}}\n\n")
+			default:
+				_, _ = fmt.Fprintf(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":%q}\n\n", longAnswer)
+				_, _ = fmt.Fprintf(w, "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":%q}]}]}}\n\n", longAnswer)
+			}
+			return
+		}
 		switch {
 		case strings.Contains(kind, "tool-shaped answer"):
 			_, _ = fmt.Fprint(w, `{"status":"completed","output":[{"type":"function_call","call_id":"call_1","name":"write","arguments":"{}"}]}`)
@@ -306,6 +319,17 @@ func TestSideChatOmitsHostedToolsWithoutChangingTheSharedResponsesModel(t *testi
 	if req.Stream || req.ToolChoice != "none" || len(req.Tools) != 0 || req.MaxOutputTokens != 600 || req.Model != "fixture-model" {
 		t.Fatalf("side Responses request = %+v", req)
 	}
+	var preview strings.Builder
+	streamed, err := e.StreamSideChat(t.Context(), thread.ID, SideChatInput{Question: "Summarize the distinction."}, func(delta string) {
+		preview.WriteString(delta)
+	})
+	if err != nil || streamed != out || preview.String() != out {
+		t.Fatalf("stream preview and final text must share the same UTF-8 bound: preview=%d final=%d err=%v", preview.Len(), len(streamed), err)
+	}
+	streamReq := waitSideChatResult(t, requests)
+	if !streamReq.Stream || streamReq.ToolChoice != "none" || len(streamReq.Tools) != 0 || streamReq.MaxOutputTokens != 600 {
+		t.Fatalf("side Responses stream enabled tools or lost its limit: %+v", streamReq)
+	}
 
 	shared, err := e.pool.Get(t.Context(), thread.ProviderID, "")
 	if err != nil {
@@ -322,6 +346,13 @@ func TestSideChatOmitsHostedToolsWithoutChangingTheSharedResponsesModel(t *testi
 		if text, err := e.AskSideChat(t.Context(), thread.ID, SideChatInput{Question: q}); text != "" || !errors.Is(err, ErrSideChatUnavailable) {
 			t.Fatalf("model returned %q, err=%v", text, err)
 		}
+		waitSideChatResult(t, requests)
+		if text, err := e.StreamSideChat(t.Context(), thread.ID, SideChatInput{Question: q}, func(delta string) {
+			t.Errorf("unexpected text from %q: %s", q, delta)
+		}); text != "" || !errors.Is(err, ErrSideChatUnavailable) {
+			t.Fatalf("stream returned %q, err=%v", text, err)
+		}
+		waitSideChatResult(t, requests)
 	}
 }
 

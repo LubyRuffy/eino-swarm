@@ -51,13 +51,43 @@ test("asks follow-up questions about selected task text without feeding the task
   await expect(transcript.getByText(first, { exact: true })).toHaveCount(0)
 })
 
-test("opens a prefilled temporary side chat from the composer", async ({ page }) => {
+test("opens, resizes and selects a model in a temporary side chat", async ({ page }) => {
   await freshConversation(page)
   await composer(page).fill("/side What is known so far?")
   await composer(page).press("Enter")
   const side = page.getByRole("complementary", { name: "Side chat" })
   await expect(side.getByRole("textbox", { name: "Side chat question" })).toHaveValue("What is known so far?")
   await expect(statusBadge(page)).toContainText("Idle")
+  await expect(page.getByTestId("user-message")).toHaveCount(0)
+  const start = (await side.boundingBox())!.width
+  const separator = side.getByRole("separator", { name: "Resize side chat" })
+  const edge = (await separator.boundingBox())!
+  const x = edge.x + edge.width / 2
+  const y = edge.y + edge.height / 2
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x - 96, y, { steps: 4 })
+  await page.mouse.up()
+  await expect.poll(async () => (await side.boundingBox())!.width).toBe(start + 96)
+  await separator.focus()
+  await separator.press("ArrowRight")
+  await expect.poll(async () => (await side.boundingBox())!.width).toBe(start + 72)
+
+  const { models } = await (await page.request.get("/api/models")).json()
+  const chosen = models.find((row: { ready: boolean; model: string }) => row.ready && row.model)
+  expect(chosen).toBeTruthy()
+  const picker = side.getByRole("button", { name: "Side chat model" })
+  await expect(picker).toHaveText("Follow task model")
+  await picker.click()
+  await page.getByRole("option", { name: chosen.label || chosen.model, exact: true }).click()
+  const request = page.waitForRequest((req) => req.method() === "POST" && req.url().endsWith("/side-chat"))
+  await side.getByRole("button", { name: "Send side question" }).click()
+  expect((await request).postDataJSON()).toMatchObject({ provider_id: chosen.provider_id, model: chosen.model })
+  await expect(side.getByRole("log")).toContainText("Side chat: What is known so far?")
+  await expect(picker).toBeEnabled()
+  await picker.click()
+  await page.getByRole("option", { name: "Follow task model", exact: true }).click()
+  await expect(picker).toHaveText("Follow task model")
   await expect(page.getByTestId("user-message")).toHaveCount(0)
   await side.getByRole("button", { name: "Close side chat" }).click()
   await expect(side).toHaveCount(0)

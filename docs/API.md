@@ -1926,12 +1926,19 @@ Ask a temporary text question about the named conversation. Send
 `quote` and `history` are optional. The nonblank question and the quote may
 each contain up to 4096 UTF-8 bytes. Send at most four complete exchanges,
 oldest first, with answers up to 8192 UTF-8 bytes each. The JSON envelope is
-limited to 384 KiB.
+limited to 384 KiB. Optionally send `provider_id` and `model` together to
+select a model for this request without changing the conversation.
 
 The model receives a bounded snapshot of that conversation's task context,
 including its goal, current request, recent original user messages and
-manager replies where available. An active turn supplies its saved model
-selection. Otherwise the conversation supplies its current selection. The response is `{"answer":"…"}` with `Cache-Control: no-store`.
+manager replies where available. With no override, an active turn supplies
+its saved model selection and an idle conversation supplies its current
+selection. The default response is `{"answer":"…"}`.
+With `Accept: text/event-stream`, each `delta` event carries `{"text":"…"}`,
+and `done` carries the complete bounded `{"answer":"…"}`. After a delta,
+failure is an `error` event with `error` and `code`; an earlier failure uses
+the ordinary HTTP error response. Only `done` completes an exchange. Both
+response modes use `Cache-Control: no-store`.
 Side chat works during a running turn or a pause for human input. It uses a
 separate model request without tools and creates no turn, event, queued
 follow-up or answer to a main-task prompt. The client owns the temporary

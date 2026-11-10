@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
@@ -32,9 +34,11 @@ const (
 // SideChatInput carries the panel's own temporary exchanges. The engine
 // reads main-conversation context independently of this client-supplied data.
 type SideChatInput struct {
-	Question string             `json:"question"`
-	Quote    string             `json:"quote,omitempty"`
-	History  []SideChatExchange `json:"history,omitempty"`
+	Question   string             `json:"question"`
+	Quote      string             `json:"quote,omitempty"`
+	History    []SideChatExchange `json:"history,omitempty"`
+	ProviderID string             `json:"provider_id,omitempty"`
+	Model      string             `json:"model,omitempty"`
 }
 
 type SideChatExchange struct {
@@ -50,6 +54,16 @@ You have no tools. Do not claim to take actions, alter the task, answer a main-c
 // AskSideChat performs one tool-free model call using a read-only conversation
 // snapshot. The caller's context owns it independently of any main turn.
 func (e *Engine) AskSideChat(ctx context.Context, threadID string, input SideChatInput) (string, error) {
+	return e.askSideChat(ctx, threadID, input, nil)
+}
+
+// StreamSideChat delivers answer text as it arrives, and returns the complete
+// bounded answer for the panel to keep in its temporary history.
+func (e *Engine) StreamSideChat(ctx context.Context, threadID string, input SideChatInput, onDelta func(string)) (string, error) {
+	return e.askSideChat(ctx, threadID, input, onDelta)
+}
+
+func (e *Engine) askSideChat(ctx context.Context, threadID string, input SideChatInput, onDelta func(string)) (string, error) {
 	if !validSideChatInput(input) {
 		return "", ErrInvalidSideChat
 	}
@@ -63,6 +77,9 @@ func (e *Engine) AskSideChat(ctx context.Context, threadID string, input SideCha
 	if active := snapshot.Latest; active.Status == store.TurnRunning && active.ProviderID != "" {
 		providerID, modelName, effort = active.ProviderID, active.Model, active.ReasoningEffort
 	}
+	if input.ProviderID != "" {
+		providerID, modelName, effort = input.ProviderID, input.Model, ""
+	}
 	ctx = provider.WithIsolatedRecovery(ctx)
 	build, err := e.pool.ModelBuilder(ctx, providerID, modelName, effort, nil)
 	if err != nil {
@@ -70,11 +87,20 @@ func (e *Engine) AskSideChat(ctx context.Context, threadID string, input SideCha
 	}
 	chatModel := provider.WithoutBuiltinTools(build(sideChatAgentID, sideChatAgentID))
 	limit := min(sideChatMaxTokens, e.cfg.SwarmSnapshot().CompletionTokenLimit())
-	out, err := chatModel.Generate(ctx, []*schema.Message{
+	messages := []*schema.Message{
 		schema.SystemMessage(sideChatPrompt),
 		schema.UserMessage(sideChatReference(snapshot, input)),
 		schema.UserMessage(strings.TrimSpace(input.Question)),
-	}, model.WithTools(nil), model.WithToolChoice(schema.ToolChoiceForbidden), model.WithMaxTokens(limit))
+	}
+	options := []model.Option{model.WithTools(nil), model.WithToolChoice(schema.ToolChoiceForbidden), model.WithMaxTokens(limit)}
+	if onDelta != nil {
+		answer, err := receiveSideChat(ctx, chatModel, messages, onDelta, options)
+		if ctx.Err() != nil {
+			return "", context.Cause(ctx)
+		}
+		return answer, err
+	}
+	out, err := chatModel.Generate(ctx, messages, options...)
 	if ctx.Err() != nil {
 		return "", context.Cause(ctx)
 	}
@@ -87,9 +113,60 @@ func (e *Engine) AskSideChat(ctx context.Context, threadID string, input SideCha
 	return clipSideChatText(out.Content, sideChatMaxAnswer), nil
 }
 
+func receiveSideChat(ctx context.Context, chatModel model.BaseChatModel, messages []*schema.Message, onDelta func(string), options []model.Option) (string, error) {
+	stream, err := chatModel.Stream(ctx, messages, options...)
+	if err != nil {
+		return "", err
+	}
+	defer stream.Close()
+	answer := ""
+	full := false
+	for {
+		part, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+		if part == nil {
+			continue
+		}
+		if len(part.ToolCalls) != 0 {
+			return "", ErrSideChatUnavailable
+		}
+		if full || part.Content == "" {
+			continue
+		}
+		next := answer + part.Content
+		if answer == "" {
+			next = strings.TrimLeftFunc(next, unicode.IsSpace)
+		}
+		if len(next) > sideChatMaxAnswer {
+			next = clipSideChatText(next, sideChatMaxAnswer)
+			full = true
+		}
+		// The terminal answer can shorten the preview to fit the UTF-8 limit.
+		if len(next) > len(answer) && strings.HasPrefix(next, answer) {
+			onDelta(next[len(answer):])
+		}
+		answer = next
+	}
+	answer = strings.TrimSpace(answer)
+	if answer == "" {
+		return "", ErrSideChatUnavailable
+	}
+	return answer, nil
+}
+
 func validSideChatInput(input SideChatInput) bool {
 	if len(input.Question) > sideChatMaxQuestion || strings.TrimSpace(input.Question) == "" ||
 		len(input.Quote) > sideChatMaxQuestion || len(input.History) > sideChatMaxExchanges {
+		return false
+	}
+	if (input.ProviderID != "" || input.Model != "") &&
+		(strings.TrimSpace(input.ProviderID) == "" || strings.TrimSpace(input.Model) == "" ||
+			len(input.ProviderID) > sideChatMaxQuestion || len(input.Model) > sideChatMaxQuestion) {
 		return false
 	}
 	for _, exchange := range input.History {

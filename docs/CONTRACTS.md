@@ -15,7 +15,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 状态 active。作用范围为桌面／Web、`POST /api/threads/:id/side-chat`。关联功能 `F-147`。
 - 侧聊只读该会话的有限文本快照。会话目标、当前请求、近期原始用户消息和主管回复、选中文字和侧聊历史作为数据传给模型。内部提示、工具、诊断、附件内容和其他会话不进入快照。
 - 运行中或等待人工输入的任务保持自己的 turn 与控制路径。侧聊没有执行工具的能力，不创建或改写 turn、事件、排队消息、待答问题、目标或唤醒。独立模型请求不读写主任务的共享服务健康状态，也不使用主任务的重试流程。
-- 侧聊答复只交付给请求所在的面板和会话。取消、关闭或导航撤销该请求的交付资格，迟到结果不能显示在新面板。面板关闭、切换会话或重新加载清除临时问答。并发、输入、错误及超时边界见 [API](API.md)。
+- 侧聊模型选择只作用于该面板发起的请求，默认跟随任务。流式片段和最终答复只交付给请求所在的面板和会话，只有成功完成的答复进入侧聊历史。取消、关闭或导航撤销该请求的交付资格，迟到结果不能显示在新面板。面板关闭、切换会话或重新加载清除临时问答。并发、输入、错误及超时边界见 [API](API.md)。
 - 实现 `internal/engine/side_chat.go`、`internal/store/side_chat.go`、`internal/server/side_chat.go`、`frontend/src/store/app-side-chat.ts`。验证见 `internal/server/side_chat_http_test.go`、`frontend/e2e/side-chat.spec.ts` 和 `models/sidechat/SideChat.tla`。来源为 GitHub Issue #161。
 
 ## C-041 Explicit MCP servers keep private configuration and scoped sessions
