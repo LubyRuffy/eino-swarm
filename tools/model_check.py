@@ -28,6 +28,9 @@ models/skills/InstalledSkills.tla checks project-scoped skill publication,
 lookup, removal and separation from learned memory.
 models/sidechat/SideChat.tla checks that temporary replies stay within their
 request owner and never write to or take control of the main task.
+models/backup/DataBackup.tla checks that a backup or restore waits until the
+data directory is idle, a failed full restore rolls back, and a project
+restore cannot take another project's identity (C-044).
 Every case sets its model's switch constants and states
 the expected outcome: the current design must pass every safety invariant;
 each historical or seeded behaviour must break the named invariant (checked
@@ -100,6 +103,12 @@ MODELS = {
             ("TypeOK", "VisibleBundleValidated", "ExistingBundlePreserved", "RemovedBundleHidden",
              "ReadIsProjectScoped", "LoadIsExternalOnly", "ListDisclosesMetadataOnly", "ReviewPreservesInstalled",
              "ProjectDeletionIsFinal"),
+            (),
+        ),
+        Model(
+            "backup", ROOT / "models" / "backup" / "DataBackup.tla",
+            ("AllowWhileBusy", "SkipRollback", "AllowForeignIdentity"),
+            ("TypeOK", "RestoringImpliesIdle", "SnapshotNeverLost", "ForeignUnchanged"),
             (),
         ),
         Model(
@@ -267,6 +276,14 @@ def _askpub(name: str, source: str, switches: tuple[str, ...] = (), violates: st
 
 
 CASES: tuple[Case, ...] = (
+    _case("backup-current", "backup and restore wait until the data directory is idle", model="backup"),
+    _case("backup-while-busy", "seeded: removing the idle guard lets a transfer start during other work",
+          ("AllowWhileBusy",), "RestoringImpliesIdle", model="backup"),
+    _case("backup-skip-rollback", "seeded: a failed full restore keeps the half-applied snapshot and advances the generation",
+          ("SkipRollback",), "SnapshotNeverLost", model="backup"),
+    _case("backup-foreign-identity", "seeded: a project restore writes an identity another project already owns",
+          ("AllowForeignIdentity",), "ForeignUnchanged", model="backup"),
+    _case("backup-reach-commit", "witness", witness="NeverCommitted", model="backup"),
     _case("side-chat-current", "side questions stay independent of the running task", model="side-chat"),
     _case("side-chat-main-send", "seeded: sending a side question queues it on the main task",
           ("UseMainSend",), "SideLeavesMainUntouched", model="side-chat"),

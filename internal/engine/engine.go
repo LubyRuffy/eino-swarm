@@ -59,8 +59,12 @@ type Engine struct {
 	nextSub          int
 	restart          restartState
 	startupRestoring bool
-	restoreProgress  RestoreProgress
-	restoreMu        sync.Mutex
+	// backupRunning is the exclusive backup or restore. New turns, schedule
+	// fires and another transfer wait until it finishes; the data directory
+	// is being snapshotted or replaced.
+	backupRunning   bool
+	restoreProgress RestoreProgress
+	restoreMu       sync.Mutex
 
 	// recordMu keeps a stored event's sequence number and its delivery in the
 	// same order. See record.

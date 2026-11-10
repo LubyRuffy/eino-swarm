@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LubyRuffy/eino-swarm/internal/backup"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/remote"
 	"github.com/LubyRuffy/eino-swarm/internal/search"
@@ -116,6 +117,9 @@ func New(opts Options) (*Server, error) {
 		api.POST("/open", s.openURL)
 		api.GET("/settings", s.getSettings)
 		api.PUT("/settings", s.putSettings)
+		api.POST("/backup", s.postBackup)
+		api.POST("/backup/preview", s.postBackupPreview)
+		api.POST("/backup/restore", s.postBackupRestore)
 		api.GET("/clients", s.getClients)
 		api.GET("/clients/task", s.getClientTask)
 		api.GET("/search", s.getSearch)
@@ -297,6 +301,18 @@ func (s *Server) fail(c *gin.Context, err error) {
 	case errors.Is(err, store.ErrNotFound):
 		s.missingRecord(c, "not_found", "The requested record was not found. Refresh and try again.",
 			gin.H{"record_id": c.Param("id")})
+	case errors.Is(err, engine.ErrBackupBusy):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "backup_busy"})
+	case errors.Is(err, backup.ErrConflict):
+		body := gin.H{"error": err.Error(), "code": "backup_conflict"}
+		if conflicts := backup.ConflictsOf(err); len(conflicts) > 0 {
+			body["conflicts"] = conflicts
+		}
+		c.JSON(http.StatusConflict, body)
+	case errors.Is(err, backup.ErrConfirm):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "confirmation_required"})
+	case errors.Is(err, backup.ErrInvalid):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "backup_invalid"})
 	case errors.Is(err, engine.ErrRestarting):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "restarting"})
 	case errors.Is(err, engine.ErrBusy):

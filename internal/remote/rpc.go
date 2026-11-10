@@ -37,6 +37,11 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req R
 		resp := okBase(req.ID, path, sessionID)
 		state, progress := eng.StartupStatus()
 		resp.Startup, resp.Restore = state, &progress
+		generation, genErr := eng.DataGeneration()
+		if genErr != nil {
+			return mapErr(req.ID, path, sessionID, genErr)
+		}
+		resp.DataGeneration = &generation
 		resp.WebExecutionSupported = true
 		webStatus := tools.DescribeWebExecution(eng.Config())
 		resp.WebExecutionStatus = &webStatus
@@ -225,6 +230,8 @@ func mapErr(id, path, sessionID string, err error) Response {
 	switch {
 	case errors.Is(err, engine.ErrRestoring):
 		return fail(id, path, sessionID, "restoring", err.Error())
+	case errors.Is(err, engine.ErrBackupBusy):
+		return fail(id, path, sessionID, "backup_busy", err.Error())
 	case errors.Is(err, engine.ErrBusy):
 		return fail(id, path, sessionID, "busy", err.Error())
 	case errors.Is(err, engine.ErrIdle):

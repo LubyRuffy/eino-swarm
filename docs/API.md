@@ -235,6 +235,7 @@ Client startup metadata. During recovery, clients poll it until `startup` is `re
   "account_models": {"state": "signed_out", "models": 0},
   "reasoning_levels": ["low", "medium", "high"],
   "data_dir": "/Users/me/.zwai-swarm",
+  "data_generation": 0,
   "capabilities": { "reveal": false, "open_url": false, "memory": true, "restart_handoff": true },
   "swarm": { "max_concurrent": 6, "agent_timeout_seconds": 3600,
              "max_turns": 200, "manager_max_iterations": 200,
@@ -292,6 +293,11 @@ unsent input and do not automatically retry a send. The schedule-create form
 also closes only after a successful acknowledgement and retains inputs on refusal. Recovery finishes before the
 scheduler starts. The paired-phone read-only `meta` RPC returns the same `startup`
 and `restore` fields; work mutations reject `code: "restoring"` before changing state.
+
+`data_generation` is a monotonic count of committed restores. It is `0` before
+the first one. Desktop and web reload when it changes. A phone poll that sees
+a new value for the same host drops its loaded conversation list and reads
+page one again. The first value it sees is only a baseline.
 
 `mode` is `engine` for the shared process. Older notes that said `web` or
 `desktop` described a process that was itself the window; shells now attach
@@ -371,6 +377,58 @@ Quit. Native termination may bypass the Go return path; if Run returns, its type
 cause is retained. An early failure returns without opening the native window.
 Normal presence release does not report a terminal failure. No path replaces the
 engine or changes the frontend's presence ownership.
+
+## Backup and restore (`F-422`, `C-044`)
+
+A backup is a zip named `*.zwai-backup` with `manifest.json`. The same package
+serves the settings page, these routes, and `zwai backup` / `zwai restore`.
+
+### `POST /api/backup`
+
+```json
+{ "kind": "full", "omit_secrets": false, "output": "/Users/me/zwai.zwai-backup" }
+```
+
+`kind` is `full` or `project`. A project backup also sends `project_id`.
+`omit_secrets` writes provider API keys and MCP `env` / `headers` empty and
+leaves `remote/` out. An empty `output` streams the zip as
+`attachment; filename="zwai.zwai-backup"`. A path is written by the engine, mode
+`0600`, and must be an absolute file outside the data directory.
+
+### `POST /api/backup/preview`
+
+JSON `{ "path": "/Users/me/zwai.zwai-backup" }`, or a raw
+`application/octet-stream` body. The response is a report and changes nothing:
+
+```json
+{
+  "manifest": { "format": 1, "kind": "project", "includes_secrets": false,
+                "counts": { "projects": 1, "threads": 2, "messages": 0, "turns": 0, "schedules": 0, "nuwa_nodes": 0 },
+                "external_workdirs": [{ "project_id": "pj_ab12", "path": "/work" }] },
+  "conflicts": [],
+  "action": "add-project"
+}
+```
+
+`action` is `replace-all`, `add-project`, `replace-project`, or `blocked`.
+
+### `POST /api/backup/restore`
+
+JSON `{ "path": "…", "confirm": true, "replace": false, "replace_project": false }`,
+or the same flags as a query on an `application/octet-stream` body
+(`confirm=1`, `replace=1`, `replace_project=1`). A full restore without
+`replace` returns `400` `confirmation_required`. Replacing one project needs
+`replace_project`. Adding a project needs only `confirm`.
+
+| status | code | meaning |
+|---|---|---|
+| 409 | `backup_busy` | a task is running, or another backup or restore has not finished |
+| 409 | `backup_conflict` | an identity belongs to other data; `conflicts` lists `table`, `id`, and `owner` |
+| 400 | `confirmation_required` | a full restore was not explicitly confirmed |
+| 400 | `backup_invalid` | the archive or the path cannot be used |
+| 404 | | the named project does not exist |
+
+A successful restore returns the manifest and increments `data_generation`.
 
 ## Settings, models and tools
 

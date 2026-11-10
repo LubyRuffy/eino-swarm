@@ -64,6 +64,35 @@ export interface SideChatExchange {
 /** Errors from the API carry the server's message, because it is written for
  *  the person reading it — "the conversation is already running a turn" is
  *  more use than "409". */
+export interface BackupRequest {
+  kind: "full" | "project"
+  project_id?: string
+  omit_secrets?: boolean
+  output?: string
+}
+
+export interface BackupManifest {
+  kind: string
+  project_id?: string
+  includes_secrets?: boolean
+  counts?: { projects?: number; threads?: number }
+}
+
+export interface BackupReport {
+  manifest: BackupManifest & {
+    external_workdirs?: { project_id: string; path: string }[]
+  }
+  conflicts: { table: string; id: string; owner?: string }[]
+  action: "replace-all" | "add-project" | "replace-project" | "blocked"
+}
+
+export interface BackupRestoreRequest {
+  path: string
+  confirm: boolean
+  replace?: boolean
+  replace_project?: boolean
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -361,6 +390,38 @@ export const api = {
     `/api/composer/drafts/${encodeURIComponent(key)}?revision=${revision}`, { method: "DELETE" },
   ).then((r) => r.draft),
   meta: () => request<Meta>("/api/meta"),
+
+  backupCreate: (body: BackupRequest) =>
+    request<BackupManifest>("/api/backup", { method: "POST", body: JSON.stringify(body) }),
+
+  backupDownload: async (body: BackupRequest) => {
+    const res = await requestResponse("/api/backup", { method: "POST", body: JSON.stringify(body) })
+    return res.blob()
+  },
+
+  backupPreview: (body: { path: string }) =>
+    request<BackupReport>("/api/backup/preview", { method: "POST", body: JSON.stringify(body) }),
+
+  backupPreviewFile: (file: Blob) =>
+    request<BackupReport>("/api/backup/preview", {
+      method: "POST",
+      body: file,
+      headers: { "Content-Type": "application/octet-stream" },
+    }),
+
+  backupRestore: (body: BackupRestoreRequest) =>
+    request<BackupManifest>("/api/backup/restore", { method: "POST", body: JSON.stringify(body) }),
+
+  backupRestoreFile: (file: Blob, flags: { replace?: boolean; replace_project?: boolean }) => {
+    const query = new URLSearchParams({ confirm: "1" })
+    if (flags.replace) query.set("replace", "1")
+    if (flags.replace_project) query.set("replace_project", "1")
+    return request<BackupManifest>("/api/backup/restore?" + query.toString(), {
+      method: "POST",
+      body: file,
+      headers: { "Content-Type": "application/octet-stream" },
+    })
+  },
 
   desktopUpdate: (fresh = false) =>
     request<DesktopUpdate>("/api/update" + (fresh ? "?fresh=1" : "")),

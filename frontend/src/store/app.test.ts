@@ -79,7 +79,7 @@ describe("send", () => {
     const start = vi.spyOn(api, "startTurn")
     try {
       expect(await useApp.getState().send("Review original records", undefined, { threadId: "th_old", historyReport: true })).toBe(true)
-      expect(start).toHaveBeenCalledWith("th_old", "Review original records", undefined, undefined, undefined, true)
+      expect(start).toHaveBeenCalledWith("th_old", "Review original records", undefined, undefined, undefined, true, undefined)
       expect(fake.answers).toEqual([])
       expect(fake.enqueued).toEqual([])
       expect(fake.steers).toEqual([])
@@ -743,6 +743,38 @@ describe("sidebar running", () => {
     useApp.setState({ error: undefined })
     await useApp.getState().syncThreads()
     expect(useApp.getState().error).toBeUndefined()
+  })
+
+  it("replaces the loaded list when the data generation changes", async () => {
+    useApp.setState({
+      activeId: "th_gone",
+      threads: [listed("th_gone")],
+      meta: {
+        version: "test",
+        mode: "web",
+        mock: true,
+        configured: true,
+        default_provider: "default",
+        reasoning_levels: [],
+        data_dir: "/tmp",
+        capabilities: {},
+        swarm: {
+          max_concurrent: 1,
+          agent_timeout_seconds: 1,
+          max_turns: 1,
+          manager_max_iterations: 1,
+          progress_interval_seconds: 1,
+          delta_coalesce_ms: 1,
+          auto_title: false,
+        },
+        data_generation: 1,
+      },
+    })
+    fake.metaBody = { ...useApp.getState().meta, data_generation: 2 }
+    fake.listedThreads = [listed("th_new")]
+    await useApp.getState().syncThreads()
+    expect(useApp.getState().threads.map((row) => row.id)).toEqual(["th_new"])
+    expect(useApp.getState().activeId).toBeUndefined()
   })
 
   it("refreshes which shells are attached on the same tick as the list", async () => {

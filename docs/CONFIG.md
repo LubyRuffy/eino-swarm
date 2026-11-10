@@ -23,6 +23,16 @@ replace the current value; reopening Settings loads the latest saved values.
 Nothing in the binary hardcodes an endpoint or a model name. If it is not in this
 file (or seeded from the environment on first run), it does not exist.
 
+A full backup includes this file. By default the provider `api_key` values and
+MCP `env` / `headers` are in the archive, and so is `remote/`. Turning
+credentials off writes those secrets empty, strips proxy and MCP userinfo, and
+omits `remote/`. Restoring that archive copies this machine's existing non-empty
+API keys and MCP secrets back over the empty values and leaves `remote/` where
+it is, so a backup made without credentials does not wipe the keys already
+saved here. A machine that has never saved a config has nothing to copy back.
+An empty key that was only filled from the environment is not saved over by an
+empty value from the archive.
+
 ## A complete file
 
 ```yaml

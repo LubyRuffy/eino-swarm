@@ -522,6 +522,8 @@ export interface Meta {
    *  rendered as "Default" and is not in this list. */
   reasoning_levels: string[]
   data_dir: string
+  /** Moves after a restore commits. Zero before the first restore. */
+  data_generation?: number
   capabilities: { reveal?: boolean; memory?: boolean; open_url?: boolean }
   swarm: SwarmLimits
   /** Chrome language: system, en, or zh. Kept next to `ui` so older clients

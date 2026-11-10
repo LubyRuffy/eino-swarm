@@ -6,6 +6,16 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+### Added
+
+- Settings, `zwai backup` / `zwai restore`, and `/api/backup` write a
+  `.zwai-backup` of all local data or of one project, and put it back. A full
+  restore replaces the data directory. A project restore adds the project, or
+  replaces that same project when asked. A running task is refused and the data
+  stays as it was. A backup without credentials keeps the keys already on this
+  machine. After a restore, desktop and web reload, and the phone drops its
+  loaded conversation list. (`F-422`, `C-044`)
+
 ### Changed
 
 - The collaboration path draws recorded dependencies. Several unconnected

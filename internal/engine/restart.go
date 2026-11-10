@@ -90,6 +90,10 @@ func (e *Engine) beginAdmission() (func(), error) {
 // beginLifecycleAdmission keeps Stop and internal recovery available during startup.
 func (e *Engine) beginLifecycleAdmission() (func(), error) {
 	e.mu.Lock()
+	if e.backupRunning {
+		e.mu.Unlock()
+		return nil, ErrBackupBusy
+	}
 	if e.restart.freezing {
 		e.mu.Unlock()
 		return nil, ErrRestarting

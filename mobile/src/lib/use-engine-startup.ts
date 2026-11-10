@@ -17,7 +17,14 @@ export function useEngineStartup(link: RemoteLink | null): EngineStartup | undef
         if (r.code === "unknown_op") { unsupported = true; return }
         if (r.ok) link.webExecutionSupported = r.web_execution_supported === true
         if (r.ok && (r.startup === "restoring" || r.startup === "ready")) {
-          setSnapshot({ link, value: { startup: r.startup, restore: r.restore } })
+          setSnapshot({
+            link,
+            value: {
+              startup: r.startup,
+              restore: r.restore,
+              data_generation: typeof r.data_generation === "number" ? r.data_generation : undefined,
+            },
+          })
         }
       } catch {
         // Loss of metadata is not readiness. Keep the last acknowledged state.

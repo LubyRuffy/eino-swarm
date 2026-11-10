@@ -22,6 +22,11 @@ func (s *Server) requireStartupReady() gin.HandlerFunc {
 				c.Abort()
 				return
 			}
+			if err := s.engine.RejectIfBackup(); err != nil {
+				s.fail(c, err)
+				c.Abort()
+				return
+			}
 		}
 		c.Next()
 	}

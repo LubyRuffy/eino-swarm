@@ -4943,6 +4943,17 @@ make model-check
 python3 tools/model_check.py --fetch installed-skills-current --out /tmp/installed-skills-model
 ```
 
+## Backup protocol model (opt-in, `C-044`)
+
+`models/backup/DataBackup.tla` checks the backup and restore state machine, not
+SQLite and not the rest of the engine. The current case keeps three properties:
+a backup or restore cannot start while work is active or another transfer is
+unfinished; a failed full restore leaves the generation unchanged and the
+snapshot restored; a project restore cannot write an identity another project
+holds. `AllowWhileBusy`, `SkipRollback`, and `AllowForeignIdentity` each remove
+one of those guards, and TLC must find that case. `NeverCommitted` is a witness
+that a successful restore is reachable. `make model-check` includes the cases.
+
 ## Lifecycle protocol model (opt-in, `C-001` / `C-027`)
 
 The Go tests reproduce the interleavings someone thought of. The protocol

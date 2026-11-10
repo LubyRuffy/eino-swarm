@@ -18,6 +18,7 @@ import {
   type Appearance,
 } from "@/lib/appearance"
 import { ApiError, api } from "@/lib/api"
+import { dataGenerationChanged } from "@/lib/data-generation"
 import { closeClient } from "@/lib/client-open"
 import { listDestForThread, setDeskDest } from "@/lib/desk-nav"
 import { desktopShell, startPresence } from "@/lib/shell"
@@ -267,11 +268,28 @@ export const useApp = create<AppState>((set, get) => ({
    *  this is the background pass that keeps folder progress honest. */
   syncThreads: async () => {
     const baseline = get().threads
+    const previousGeneration = get().meta?.data_generation
     try {
       const [incoming, meta] = await Promise.all([
         api.threads(),
         api.meta().catch(() => undefined),
       ])
+      if (meta && dataGenerationChanged(previousGeneration, meta.data_generation)) {
+        await useProjects.getState().refresh()
+        set((s) => {
+          const still = s.activeId != null && incoming.some((row) => row.id === s.activeId)
+          return {
+            threads: incoming,
+            meta,
+            ...(still ? {} : {
+              activeId: undefined,
+              transcript: emptyTranscript(),
+              status: { running: false },
+            }),
+          }
+        })
+        return
+      }
       set((s) => ({
         threads: applyThreadListing(s.threads, incoming, s.activeId, s.status, baseline),
         ...(meta ? { meta } : {}),

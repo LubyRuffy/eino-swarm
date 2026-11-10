@@ -2,6 +2,7 @@ import { usePhoneAccount } from "@/components/gateway-account-shell"
 import { useEffect, useRef, useState } from "react"
 import { EngineStartupBanner } from "@/components/engine-startup"
 import { useEngineStartup } from "@/lib/use-engine-startup"
+import { rosterGenerationReset } from "@/lib/roster-generation"
 import { runPhoneAction } from "@/lib/phone-action"
 import { AddHostSheet } from "@/components/add-host-sheet"
 import type { ComposerExtra } from "@/components/composer"
@@ -306,6 +307,19 @@ export function PhoneApp() {
     }, 2000)
     return () => window.clearInterval(id)
   }, [link, view.detail])
+  const seenGeneration = useRef<{ link: RemoteLink | null; value: number | null }>({ link: null, value: null })
+  const resetRosterRef = useRef(resetRoster)
+  const refreshInboxRef = useRef(refreshInbox)
+  resetRosterRef.current = resetRoster
+  refreshInboxRef.current = refreshInbox
+  useEffect(() => {
+    const same = seenGeneration.current.link === link
+    const decision = rosterGenerationReset(same ? seenGeneration.current.value : null, startup?.data_generation)
+    seenGeneration.current = { link, value: decision.seen }
+    if (!same || !decision.reset || !link) return
+    resetRosterRef.current()
+    void refreshInboxRef.current(link)
+  }, [link, startup?.data_generation])
   useClientPoll(link, linkRef, setClientsOn, setClientTools)
 
 

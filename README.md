@@ -1387,6 +1387,8 @@ zwai tui --task "..."       # one task, then this process can exit; the conversa
 zwai tui --model NAME --reasoning high   # same session, pinned model and thinking level
 zwai trace tn_ab12…         # replay one turn; also accepts a conversation id
 zwai trace th_cd34… --full  # untruncated event text
+zwai backup --output ~/zwai.zwai-backup
+zwai restore ~/zwai.zwai-backup --replace
 zwai config path            # where the config file is
 zwai config show            # what it says (the API key is redacted)
 zwai --data-dir /tmp/demo   # use a throwaway data directory
@@ -1408,6 +1410,7 @@ engines without this API use bounded compatibility recovery. See
 ```
 ~/.zwai-swarm/            $ZWAI_HOME overrides this
 ├── config.yaml           settings (0600; the API key is in here)
+├── data-generation       how many restores have committed; not part of a backup
 ├── engine.lock           one engine process for this directory
 ├── engine.json           pid and URL of that process
 ├── zwai.db               conversations, transcripts, event timeline, model calls
@@ -1416,6 +1419,11 @@ engines without this API use bounded compatibility recovery. See
 ├── library/skills/       procedures recorded from conversations in no project
 └── projects/<project>/   a managed working directory, and the project's memory
 ```
+
+Settings → Backup writes a `.zwai-backup` file, and `zwai backup` /
+`zwai restore` do the same thing from the command line. Use that while the app
+is running. Copying this directory still works when the engine is stopped.
+See [docs/CLI.md](docs/CLI.md).
 
 Deleting a conversation deletes its workspace when zwai created it; a
 conversation in a project shares the project's directory, which may be your own

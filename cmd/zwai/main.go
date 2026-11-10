@@ -50,6 +50,10 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		err = runTrace(args[1:])
 	case "config":
 		err = runConfig(args[1:])
+	case "backup":
+		err = runBackup(args[1:])
+	case "restore":
+		err = runRestore(args[1:])
 	case "version", "--version", "-v":
 		fmt.Fprintln(stdout, "zwai", version)
 	case "help", "--help", "-h":
@@ -153,6 +157,12 @@ usage:
 
   zwai config [path|init|show] [--data-dir DIR]
         where the configuration lives, and what is in it (default: show)
+
+  zwai backup --output FILE [--project ID] [--omit-secrets] [--data-dir DIR]
+        write a backup of all local data, or of one project
+
+  zwai restore FILE [--replace | --replace-project] [--data-dir DIR]
+        put a backup back; --replace is required for all data
 
   zwai version | help
         also -v / --version and -h / --help

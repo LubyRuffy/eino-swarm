@@ -856,6 +856,7 @@ $ZWAI_HOME (default ~/.zwai-swarm)/
 ├── engine.lock                exclusive lease; the kernel drops it when the process dies
 ├── engine.json                pid, url, mock, started_at, version, exe_dev, exe_ino of the live engine
 ├── engine.log                 stderr of an engine a shell spawned
+├── data-generation            monotonic restore count; not part of a backup
 ├── zwai.db
 ├── remote/                    private connection state (0700)
 │   ├── identity               long-term X25519 identity (0600)
@@ -883,6 +884,11 @@ $ZWAI_HOME (default ~/.zwai-swarm)/
                 └── <skill-name>/   lowercase, digits and dashes only
                     └── SKILL.md
 ```
+
+`data-generation` is a decimal integer, mode `0600`. It starts absent, which
+clients read as `0`. Each committed restore writes the next value by renaming
+a temporary file. The file is not copied into a `.zwai-backup` archive, so
+restoring an older backup cannot move the count backwards. See `C-044`.
 
 `engine.lock` is an `flock` held by the one process that may open
 `zwai.db`. `engine.json` is rewritten atomically when that process starts

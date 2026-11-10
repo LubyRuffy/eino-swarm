@@ -112,6 +112,25 @@ func (s *Store) Close() error {
 	return sqlDB.Close()
 }
 
+// ResetSequences drops cached per-conversation counters. A restore replaces
+// the rows those counters were based on; the next message has to read the
+// database again or it can reuse a sequence the restored transcript already
+// has.
+func (s *Store) ResetSequences() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.evtSeq = map[string]int64{}
+	s.msgSeq = map[string]int64{}
+	s.turnSeq = map[string]int64{}
+	s.followupSeq = map[string]int64{}
+}
+
+// RebuildSearch recreates keyword documents from the conversations now stored.
+// Embedding rows are left as they are: a restore already copied them.
+func (s *Store) RebuildSearch() error {
+	return s.rebuildAllSearch()
+}
+
 // nextSeq hands out the next sequence number for key in counters, seeding the
 // counter from the database the first time a key is seen.
 func (s *Store) nextSeq(counters map[string]int64, key string, seed func() int64) int64 {

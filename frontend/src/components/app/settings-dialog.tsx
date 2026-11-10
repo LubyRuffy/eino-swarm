@@ -1,4 +1,5 @@
 import {
+  Archive,
   ArrowLeft,
   Bot,
   Cpu,
@@ -19,6 +20,7 @@ import { ModelsTab } from "@/components/app/model-settings"
 import { GeneralTab } from "@/components/app/settings-general"
 import { PersonalityTab } from "@/components/app/settings-personality"
 import { ClientsTab } from "@/components/app/settings-clients"
+import { BackupTab } from "@/components/app/settings-backup"
 import { RemoteTab } from "@/components/app/settings-remote"
 import { SwarmTab } from "@/components/app/settings-swarm"
 import { ToolsTab } from "@/components/app/settings-tools"
@@ -104,6 +106,12 @@ function sections(t: Translate) {
       label: t("settings.nav.remote"),
       icon: Smartphone,
       keys: "phone remote pair qr hub token pairing scan awake sleep model device account sign in account gateway self-hosted advanced 手机 扫码 远程 配对 唤醒 休眠 型号 账号 登录 网关 自建 高级",
+    },
+    {
+      id: "backup",
+      label: t("settings.nav.backup"),
+      icon: Archive,
+      keys: "backup restore snapshot credentials project 备份 还原 凭据 项目",
     },
     {
       id: "clients",
@@ -616,6 +624,7 @@ export function SettingsDialog({
                       query={query}
                     />
                   ) : null}
+                  {page === "backup" ? <BackupTab query={query} /> : null}
                   {page === "clients" ? (
                     <ClientsTab
                       settings={settings}

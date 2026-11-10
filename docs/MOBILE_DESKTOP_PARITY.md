@@ -5,6 +5,7 @@
 
 | 能力 | 手机状态 | 实现依据／缺口 |
 | --- | --- | --- |
+| 本机备份还原后的对话列表 | 轮询识别 | 手机不写备份；`meta.data_generation` 在同一连接上变化后清空已加载列表并重读第一页。`mobile/src/lib/roster-generation.ts`、`mobile/src/components/phone-app.tsx` |
 | 项目新建、名称、指令、工作目录、记忆、女娲开关 | 本次实现 | `mobile/src/components/project-manager.tsx`、`internal/remote/project_settings.go` |
 | 女娲项目规划／执行模型组合 | 本次实现 | 同一项目编辑器及 PC 就绪模型目录；保存整组、关闭保留，后续任务使用 |
 | MCP 长调用实时进度 | 已有 | `mobile/src/components/thread-blocks-mcp-progress.test.tsx`、`mobile/src/lib/transcript.ts`；不是本次新增 |

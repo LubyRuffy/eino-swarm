@@ -42,6 +42,7 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-410` Local conversation storage and search
     - `F-420` Configuration and project memory
     - `F-421` External Agent Skills packages
+    - `F-422` Local backup and restore
     - `F-430` Build and release paths
 
 ### F-110 Desktop, browser, and terminal shells
@@ -477,6 +478,12 @@ This is the current user-facing capability map. The code and tests named below a
 - 失败时 transcript 与 Memory 面板显示停止原因、提案次数、拒绝类别及可用容量数字，区分未提交 notes 与已落盘 skills；Trace 记录有界 attempts 安全元数据，不保存被拒提案正文、原文引句或旧条目。容量反馈向模型保留 usage/over_by/current_entries/matched，原容量、来源、数字、revision 校验不变，只能在原预算内先有依据地缩短或替换相关条目再新增，不能清理无关记忆；无法安全提交时明确失败，旧事件缺新增字段仍兼容。失败 Trace 按钮会打开侧栏并加载原回合，历史聚焦不冒用最新 token 用量；切换后返回原会话时恢复手动复盘结果，结果落在已加载 tail 之外时只读一次已知 turn 的 Trace，并校验点击代次、线程、回合和事件起点，不轮询。入口：回合自动复盘、Memory 的 Review now、同 turn Trace；关联契约：`C-025`、`C-012`；实现证据：`internal/engine/review_diagnostics.go`、`internal/engine/review_diagnostics_test.go`、`internal/engine/review_finalize_test.go`、`internal/server/review_diagnostics_test.go`、`frontend/src/lib/review-diagnostics.ts`、`frontend/src/lib/review-diagnostics.test.ts`、`frontend/e2e/memory-review.spec.ts`、`frontend/src/lib/transcript-review.ts`。
 
 - 记忆写入提示与 Memory 面板的复盘状态提供默认折叠的“查看详情”，展开已保存的新增／删除内容；notes 净变更和支持的 skill create/patch/delete 以事件内完整 before/after 为依据，后续文件编辑不改写历史。旧事件和无快照动作只显示明确标注的预览，失败复盘仍可查看已实际保存的部分变更。关联契约：`C-025`、`C-012`；实现证据：`frontend/src/components/app/review-status.tsx`、`frontend/src/components/app/review-changes.tsx`、`internal/engine/review_batch.go`；测试证据：`frontend/src/components/app/review-status.test.tsx`、`frontend/e2e/memory-review.spec.ts`、`internal/engine/review_change_details_test.go`。
+
+### F-422 Local backup and restore
+
+- 入口：设置 → 备份；`zwai backup` / `zwai restore`；`POST /api/backup`、`/api/backup/preview`、`/api/backup/restore`。整库备份可整份还原。项目备份可加入现有数据，或在明确确认后替换同一个项目。关联契约：`C-044`。
+- 有任务在跑或另一次备份／还原未结束时拒绝，数据不变。还原失败回到还原前的库和文件。成功还原后 `data_generation` 加一，桌面／Web 重新加载，手机清空已加载对话列表再拉第一页。
+- 实现证据：`internal/backup`、`internal/engine/backup.go`、`internal/server/backup.go`、`cmd/zwai/backup.go`、`frontend/src/components/app/settings-backup.tsx`、`internal/backup/backup_test.go`、`internal/engine/backup_test.go`、`internal/server/backup_http_test.go`、`cmd/zwai/backup_test.go`、`frontend/e2e/backup.spec.ts`、`models/backup/DataBackup.tla`。来源：GitHub Issue #164。
 
 ### F-421 External Agent Skills packages
 

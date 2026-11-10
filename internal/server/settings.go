@@ -38,10 +38,16 @@ type metaView struct {
 	Locale          string                    `json:"locale"`
 	UI              config.UIConfig           `json:"ui"`
 	Clients         []PresenceClient          `json:"clients"`
+	DataGeneration  int64                     `json:"data_generation"`
 }
 
 func (s *Server) getMeta(c *gin.Context) {
 	startup, progress := s.engine.StartupStatus()
+	generation, err := s.engine.DataGeneration()
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
 	cfg := s.engine.Config().Snapshot()
 	pool := s.engine.Providers()
 	account := s.remote.AccountModels()
@@ -70,10 +76,11 @@ func (s *Server) getMeta(c *gin.Context) {
 			"memory":          cfg.Memory.Enabled,
 			"restart_handoff": true,
 		},
-		Swarm:   cfg.Swarm,
-		Locale:  cfg.UI.Locale,
-		UI:      cfg.UI,
-		Clients: clients,
+		Swarm:          cfg.Swarm,
+		Locale:         cfg.UI.Locale,
+		UI:             cfg.UI,
+		Clients:        clients,
+		DataGeneration: generation,
 	})
 }
 
