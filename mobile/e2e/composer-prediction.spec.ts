@@ -1,0 +1,37 @@
+import { expect, test, type Page } from "@playwright/test"
+const suggestion='Check the remaining assumptions'
+async function open(page: Page, off=false) {
+ await page.goto('/?mock=1&tick=0&history=prediction'+(off?'&prediction=off':''))
+ await page.getByRole('button',{name:'返回',exact:true}).click()
+ await page.getByRole('button',{name:'打开 Sweep the unused exports',exact:true}).click()
+ await expect(page.getByText('The review is complete.',{exact:true})).toBeVisible()
+}
+test('a suggestion inserts into a draft and never sends by itself',async({page})=>{
+ await open(page)
+ const box=page.getByRole('textbox',{name:'消息',exact:true})
+ const row=page.getByTestId('composer-prediction')
+ await expect(row).toBeVisible()
+ await expect(page.getByTestId('transcript').getByText(suggestion,{exact:true})).toHaveCount(0)
+ await box.fill('My draft')
+ await expect(row).toHaveCount(0)
+ await box.fill('')
+ await row.getByRole('button',{name:/插入下一步建议/}).click()
+ await expect(box).toHaveValue(suggestion)
+ await expect(page.getByTestId('transcript').getByText(suggestion,{exact:true})).toHaveCount(0)
+ await page.locator('form').getByRole('button',{name:'发送',exact:true}).click()
+ await expect(page.getByTestId('transcript').getByText(suggestion,{exact:true})).toBeVisible()
+ await expect(row).toHaveCount(0)
+})
+test('Tab inserts, dismissal is local and the PC can disable suggestions',async({page})=>{
+ await open(page)
+ const box=page.getByRole('textbox',{name:'消息',exact:true})
+ const row=page.getByTestId('composer-prediction')
+ await expect(row).toBeVisible()
+ await box.press('Tab')
+ await expect(box).toHaveValue(suggestion)
+ await box.fill('')
+ await row.getByRole('button',{name:'忽略这条建议',exact:true}).click()
+ await expect(row).toHaveCount(0)
+ await open(page,true)
+ await expect(row).toHaveCount(0)
+})

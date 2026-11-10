@@ -1,6 +1,7 @@
 import { ChevronRight, Loader2, SquarePen } from "lucide-react"
-import { Children, useState, type ReactNode } from "react"
+import { Children, useEffect, useState, type ReactNode } from "react"
 
+import { ProjectManager } from "@/components/project-manager"
 import { ClientGroups } from "@/components/client-groups"
 import { HomeBar } from "@/components/home-bar"
 import { HostChrome } from "@/components/host-chrome"
@@ -114,6 +115,8 @@ export function HomeScreen({
   onClientMore?: (id: string, next?: string) => void
   onClientRead?: (id: string, before?: number) => Promise<import("@/lib/rpc").ClientView | null>
 }) {
+  const [managing, setManaging] = useState(false)
+  useEffect(() => setManaging(false), [pcLink, activeFingerprint])
   const [query, setQuery] = useState("")
   const [folded, setFolded] = useState(readFolded)
   const [runningShown, setRunningShown] = useState(INBOX_PREVIEW)
@@ -194,9 +197,11 @@ export function HomeScreen({
         showChat={showChat}
         onSelectChat={onSelectChat}
         onModels={onModels}
+        onProjects={pcLink?.alive() ? () => setManaging(true) : undefined}
         pcLink={pcLink}
       />
 
+      {managing && pcLink ? <ProjectManager link={pcLink} projects={projects} onClose={() => setManaging(false)} onSaved={() => { void Promise.resolve(onRefresh?.()).catch(() => undefined) }} /> : null}
       {waiting ? (
         <InboxSkeleton pending={connecting || reconnecting} error={error} onRetry={onRetry} />
       ) : (

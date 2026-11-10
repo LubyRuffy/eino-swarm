@@ -1,5 +1,9 @@
 import {
   Children,
+  createContext,
+  lazy,
+  Suspense,
+  useContext,
   isValidElement,
   useMemo,
   useState,
@@ -30,15 +34,20 @@ import { copyText } from "@/lib/copy-text"
 import { t } from "@/lib/i18n"
 import { HighlightedLines } from "../../../frontend/src/lib/highlighted-lines"
 
+import { mermaidFenceIsClosed } from "../../../frontend/src/lib/markdown-mermaid"
+
+const MarkdownSource = createContext("")
+const Mermaid = lazy(() => import("./phone-mermaid").then((mod) => ({ default: mod.PhoneMermaid })))
+
 const PLUGINS = [remarkGfm, remarkMath]
 const MATH_LANGS = new Set(["math", "latex", "tex", "katex"])
 
 export function PhoneMarkdown({ text, className }: { text: string; className?: string }) {
   return (
     <div className={cn("md-body wrap-break-word text-sm", className)}>
-      <Markdown remarkPlugins={PLUGINS} components={COMPONENTS} urlTransform={safeUrl}>
+      <MarkdownSource.Provider value={text}><Markdown remarkPlugins={PLUGINS} components={COMPONENTS} urlTransform={safeUrl}>
         {text}
-      </Markdown>
+      </Markdown></MarkdownSource.Provider>
     </div>
   )
 }
@@ -109,9 +118,10 @@ function safeUrl(url: string): string {
 
 function PhonePre({
   children,
-  node: _node,
+  node,
   ...props
 }: ComponentPropsWithoutRef<"pre"> & { node?: unknown }) {
+  const source = useContext(MarkdownSource)
   const fence = readFence(children)
   if (fence && MATH_LANGS.has(fence.lang.toLowerCase())) {
     return <PhoneMath tex={fence.text} display />
@@ -122,7 +132,7 @@ function PhonePre({
     if (parsed.incomplete) return <PhoneChartPending />
   }
   if (fence) {
-    return (
+    const code = (
       <CodeBlock data-testid="markdown-code">
         <CodeBlockHeader data-find-ignore="">
           <CodeBlockTitle className="font-mono text-xs font-normal text-muted-foreground">
@@ -137,7 +147,12 @@ function PhonePre({
         </CodeBlockContent>
       </CodeBlock>
     )
+    if (fence.lang.toLowerCase() === "mermaid" && mermaidFenceIsClosed(source, node)) {
+      return <Suspense fallback={code}><Mermaid source={fence.text} fallback={code} /></Suspense>
+    }
+    return code
   }
+
   return <pre {...props}>{children}</pre>
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { ArrowDown, ChevronLeft, ChevronRight, FileText, Loader2, MessageSquarePlus } from "lucide-react"
 
+import type { ComposerPrediction } from "../../../frontend/src/lib/composer-prediction"
 import { AccountButton } from "@/components/account-button"
 import { AskCard } from "@/components/ask-card"
 import { IterationLimitCard } from "@/components/iteration-limit-card"
@@ -23,6 +24,7 @@ import type { RemoteLink } from "@/lib/link"
 
 export function ThreadScreen({
   detail,
+  prediction,
   onReadVisibility,
   fileLink,
   blocks,
@@ -55,6 +57,7 @@ export function ThreadScreen({
   onCancelWait,
   onResumeGoal,
 }: {
+  prediction?: ComposerPrediction
   detail: ThreadDetail
   onReadVisibility?: (visible: boolean) => void
   fileLink?: RemoteLink
@@ -142,15 +145,15 @@ export function ThreadScreen({
 
   useEffect(() => {
     if (asking) return
+    const inMessage = (node: Node) => {
+      const element = node instanceof Element ? node : node.parentElement
+      return element?.closest("[data-quote-text]")
+    }
     const read = () => {
       const selection = window.getSelection()
       if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
       const range = selection.getRangeAt(0)
       const source = quoteSource.current
-      const inMessage = (node: Node) => {
-        const element = node instanceof Element ? node : node.parentElement
-        return element?.closest("[data-quote-text]")
-      }
       if (!source?.contains(range.startContainer) || !source.contains(range.endContainer) ||
         !inMessage(range.startContainer) || !inMessage(range.endContainer)) {
         setSelectedText("")
@@ -180,8 +183,26 @@ export function ThreadScreen({
       }
       stick.current = false
     }
+    const dismissOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target instanceof Element ? event.target : null
+      if (target?.closest("[data-phone-quote-action]")) return
+      const selection = window.getSelection()
+      const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : undefined
+      const rects = range?.getClientRects?.()
+      if (target && quoteSource.current?.contains(target) && rects && Array.from(rects).some((rect) =>
+        event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom)) return
+      if (range && quoteSource.current?.contains(range.startContainer) && quoteSource.current.contains(range.endContainer) &&
+        inMessage(range.startContainer) && inMessage(range.endContainer)) selection?.removeAllRanges()
+      setSelectedText("")
+      setQuoteActionPosition(null)
+      setQuoteActionDocked(false)
+    }
     document.addEventListener("selectionchange", read)
-    return () => document.removeEventListener("selectionchange", read)
+    document.addEventListener("click", dismissOnOutsideClick, true)
+    return () => {
+      document.removeEventListener("selectionchange", read)
+      document.removeEventListener("click", dismissOnOutsideClick, true)
+    }
   }, [asking])
 
   useLayoutEffect(() => {
@@ -432,6 +453,7 @@ export function ThreadScreen({
               quoteActionDocked ? "mb-2 mr-3 shrink-0 self-end" : "absolute",
               !quoteActionDocked && (quoteActionPosition ? "-translate-x-1/2" : "bottom-3 right-3"),
             )}
+            data-phone-quote-action=""
             style={!quoteActionDocked ? quoteActionPosition ?? undefined : undefined}
             onClick={() => {
               setQuotes((current) => [...current, selectedText])
@@ -472,6 +494,7 @@ export function ThreadScreen({
         />
       ) : null}
       {agentPage === "chat" ? <Composer
+        prediction={!running && !asking && !waiting && caughtUp ? prediction : undefined}
         quotes={asking ? [] : quotes}
         onQuotesChange={setQuotes}
         // The box and the button cannot share a name, or a screen reader

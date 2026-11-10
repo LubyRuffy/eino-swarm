@@ -33,6 +33,9 @@ const (
 	OpCancelWait     = "cancel_wait"
 	OpResumeGoal     = "resume_goal"
 	OpHello          = "hello"
+	OpProjectGet     = "project_get"
+	OpProjectCreate  = "project_create"
+	OpProjectUpdate  = "project_update"
 	OpCatalog        = "catalog"
 	OpRefreshCatalog = "refresh_catalog"
 	OpGetTimeouts    = "get_timeouts"
@@ -116,6 +119,7 @@ type Request struct {
 	// FilePath is workspace-relative; Before is the byte offset for file_chunk.
 	FilePath string `json:"file_path,omitempty"`
 
+	ProjectPatch    json.RawMessage `json:"project_patch,omitempty"`
 	TimeoutSettings json.RawMessage `json:"timeout_settings,omitempty"`
 	timeoutInvalid  bool
 }
@@ -159,8 +163,11 @@ type Response struct {
 	Files                 []FileView              `json:"files,omitempty"`
 	FileChunk             *FileChunkView          `json:"file_chunk,omitempty"`
 
-	TimeoutSettings    *config.TimeoutSettings   `json:"timeout_settings,omitempty"`
-	WebExecutionStatus *tools.WebExecutionStatus `json:"web_execution_status,omitempty"`
+	Project             *ProjectSettings          `json:"project,omitempty"`
+	ComposerPredictions *bool                     `json:"composer_predictions,omitempty"`
+	MemoryAvailable     *bool                     `json:"memory_available,omitempty"`
+	TimeoutSettings     *config.TimeoutSettings   `json:"timeout_settings,omitempty"`
+	WebExecutionStatus  *tools.WebExecutionStatus `json:"web_execution_status,omitempty"`
 }
 
 // FileView is one PC workspace entry, including upload provenance.

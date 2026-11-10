@@ -4,6 +4,7 @@ import { ArrowUp, Loader2, Paperclip, Square, X, Zap } from "lucide-react"
 import { cn } from "@/lib/cn"
 import { t } from "@/lib/i18n"
 import { formatQuotedMessage } from "@/lib/quote"
+import type { ComposerPrediction } from "../../../frontend/src/lib/composer-prediction"
 import { parseSlashSubmit } from "../../../frontend/src/lib/slash-core"
 import { isVisionFile } from "@/lib/put-chunks"
 import type { ModelChoice } from "@/lib/rpc"
@@ -27,6 +28,7 @@ type Send = (text: string, extra?: ComposerExtra) => void | Promise<void>
 export function Composer({
   label,
   placeholder,
+  prediction,
   sendLabel,
   disabled,
   pending,
@@ -51,6 +53,7 @@ export function Composer({
   onTune,
 }: {
   label: string
+  prediction?: ComposerPrediction
   placeholder?: string
   sendLabel: string
   disabled?: boolean
@@ -75,6 +78,7 @@ export function Composer({
   refreshError?: string
   onTune?: (next: { providerId: string; model: string; reasoning: string }) => void
 }) {
+  const [dismissedPrediction, setDismissedPrediction] = useState<string>()
   const [text, setText] = useState("")
   const [commandRejected, setCommandRejected] = useState(false)
   const [attached, setAttached] = useState<File[]>([])
@@ -88,6 +92,8 @@ export function Composer({
   const images = attached.filter((file) => isVisionFile(file))
   const files = attached.filter((file) => !isVisionFile(file))
   const hasDraft = text.trim().length > 0 || attached.length > 0 || quotes.some((quote) => quote.trim().length > 0)
+  const suggestion = !hasDraft && !disabled && !pending && prediction?.turnId !== dismissedPrediction ? prediction : undefined
+  const insertSuggestion = () => { if (suggestion) { setText(suggestion.text); box.current?.focus() } }
   const command = quotes.some((quote) => quote.trim()) ? parseSlashSubmit(text) : null
   const quotedCommand = command?.id === "goal" || command?.id === "plan"
   const ready = hasDraft && !disabled && !pending
@@ -167,6 +173,10 @@ export function Composer({
   return (
     <div className="min-w-0 shrink-0 border-t border-border bg-background px-3 pb-2 pt-1.5">
       {above}
+      {suggestion ? <div className="mb-1 flex min-w-0 items-start gap-1" data-testid="composer-prediction">
+        <button type="button" className="line-clamp-2 min-w-0 flex-1 wrap-break-word rounded-lg px-2 py-1 text-left text-sm text-muted-foreground active:bg-accent" aria-label={`${t("prediction.insert")}: ${suggestion.text}`} onClick={insertSuggestion}>{suggestion.text}</button>
+        <button type="button" className="flex size-9 shrink-0 items-center justify-center text-muted-foreground" aria-label={t("prediction.dismiss")} onClick={() => setDismissedPrediction(suggestion.turnId)}><X className="size-4" /></button>
+      </div> : null}
       {quotes.length > 0 ? (
         <ul className="mb-2 flex flex-col gap-1" data-testid="quote-drafts">
           {quotes.map((quote, i) => (
@@ -255,6 +265,8 @@ export function Composer({
             addFiles(pasted)
           }}
           onKeyDown={(e) => {
+            if (e.key === "Tab" && !e.shiftKey && !e.nativeEvent.isComposing && suggestion) { e.preventDefault(); insertSuggestion(); return }
+            if (e.key === "Escape" && suggestion) { e.preventDefault(); setDismissedPrediction(suggestion.turnId); return }
             if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return
             e.preventDefault()
             void fire(onSubmit)

@@ -84,6 +84,7 @@ import { usePhoneVisibility } from "@/lib/phone-visibility"
 import { openPhoneThread } from "@/lib/open-thread"
 import { answerPhoneQuestion, continuePhoneTurn, interruptPhoneFollowup, sendPhoneQueue, sendPhoneTurn } from "@/lib/phone-turn"
 import { sendComposed } from "@/lib/turn-send"
+import { phonePrediction } from "@/lib/composer-prediction"
 import { useModelCatalog } from "@/lib/use-model-catalog"
 
 export function PhoneApp() {
@@ -119,7 +120,7 @@ export function PhoneApp() {
   const [clientTools, setClientTools] = useState<ClientTool[]>([])
   const [loadingGroup, setLoadingGroup] = useState("")
   const [loadingMore, setLoadingMore] = useState(false)
-  const { models, levels, catalogBusy, refreshModels, refreshBusy, refreshError, webExecutionStatus } = useModelCatalog(link)
+  const { models, levels, catalogBusy, refreshModels, refreshBusy, refreshError, webExecutionStatus, predictionsEnabled } = useModelCatalog(link)
   const startup = useEngineStartup(link)
   const restoring = startup?.startup === "restoring"
   const [composerPending, setComposerPending] = useState(false)
@@ -771,6 +772,8 @@ export function PhoneApp() {
             hosts={hosts}
             activeFingerprint={activeFp}
             projects={projects}
+            link={link}
+            onProjectsChanged={() => { const target = linkRef.current; if (target) void refreshInbox(target).catch(fail) }}
             initialProject={composeProject}
             connected={Boolean(link?.alive())}
             connecting={busy || reconnecting}
@@ -807,6 +810,7 @@ export function PhoneApp() {
           <ThreadScreen
             key={locale + detail.id}
             detail={detail}
+            prediction={phonePrediction(view.events, detail, predictionsEnabled && !catalogBusy)}
             onReadVisibility={(visible) => { managerVisible.current = visible }}
             fileLink={link}
             blocks={view.blocks}

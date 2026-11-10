@@ -1,6 +1,8 @@
 import { ChevronLeft, Monitor } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
+import { ProjectManager } from "@/components/project-manager"
+import type { RemoteLink } from "@/lib/link"
 import { AccountButton } from "@/components/account-button"
 import { ChoiceRail } from "@/components/choice-rail"
 import { Composer, type ComposerExtra } from "@/components/composer"
@@ -16,6 +18,8 @@ export function NewChatScreen({
   hosts,
   activeFingerprint,
   projects,
+  link,
+  onProjectsChanged,
   initialProject = "",
   connected = true,
   connecting = false,
@@ -35,6 +39,8 @@ export function NewChatScreen({
   hosts: SavedLink[]
   activeFingerprint: string
   projects: ProjectView[]
+  link?: RemoteLink | null
+  onProjectsChanged?: () => void
   initialProject?: string
   connected?: boolean
   connecting?: boolean
@@ -51,6 +57,10 @@ export function NewChatScreen({
   onOpenAccount?: () => void
   onStart: (text: string, projectId: string, extra?: ComposerExtra) => void
 }) {
+  const [managing, setManaging] = useState(false)
+  const [savedProject, setSavedProject] = useState<ProjectView>()
+  useEffect(() => { setManaging(false); setSavedProject(undefined) }, [link])
+  const choices = savedProject && !projects.some((p) => p.id === savedProject.id) ? [...projects, savedProject] : projects
   // A project id from another PC must not ride in as a selection this PC
   // cannot honour.
   const [project, setProject] = useState(() =>
@@ -97,14 +107,16 @@ export function NewChatScreen({
         <ChoiceRail
           label={t("home.project")}
           value={project}
-          choices={[{ id: "", name: t("home.defaultProject") }, ...projects]}
+          choices={[{ id: "", name: t("home.defaultProject") }, ...choices]}
           onChange={setProject}
         />
+        {link?.alive() ? <Button type="button" variant="outline" disabled={restoring} onClick={() => setManaging(true)}>{t("projects.manage")}</Button> : null}
         {!connected && !connecting ? (
           <p className="px-1 text-[13px] text-destructive">{t("compose.offline")}</p>
         ) : null}
       </div>
 
+      {managing && link ? <ProjectManager link={link} projects={choices} onClose={() => setManaging(false)} onSaved={(row) => { setSavedProject(row); setProject(row.id); onProjectsChanged?.() }} /> : null}
       <Composer
         label={t("home.newMessage")}
         sendLabel={t("home.start")}

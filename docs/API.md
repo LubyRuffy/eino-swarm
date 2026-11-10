@@ -955,7 +955,7 @@ The slim RPC the phone sends over pairlink is not an HTTP API. Request ops:
 `hello` / `list` / `more` / `open` / `read` / `start` / `send` / `steer` / `stop` /
 `followup_drop` / `followup_steer` / `preempt` /
 `answer` / `continue` / `watch` / `unwatch` / `log` / `run_now` / `cancel_wait` /
-`resume_goal` / `catalog` / `refresh_catalog` / `get_timeouts` / `set_timeouts` /
+`resume_goal` / `project_get` / `project_create` / `project_update` / `catalog` / `refresh_catalog` / `get_timeouts` / `set_timeouts` /
 `tune` / `put` / `clients` / `files` /
 `file_chunk`. `hello` `{text}` is the phone's one-line model; the host
 keys it by the pairlink fingerprint, not a client-supplied id.
@@ -1107,6 +1107,33 @@ sequence numbers and the normal page size once visible content is found. A later
 bodies are stripped; `tool_delta` is one line; other text is capped by
 `event_chars` (default 4000). A frame over 64KiB is dropped rather than
 tearing the link.
+
+`project_get` takes `project_id` and returns one `project` with name,
+`system_prompt`, `workdir`, `resolved_workdir`, `memory_enabled`, `nuwa_enabled`
+and optional `nuwa_planner_provider_id` / `nuwa_planner_model` /
+`nuwa_executor_provider_id` / `nuwa_executor_model`. It also returns the PC's
+`memory_available` global setting. An oversized explicit read is `too_large`;
+ordinary inbox lists remain name/ID only.
+
+`project_create` and `project_update` take `project_patch` with those editable
+fields (`resolved_workdir` is read-only). Update also requires `project_id`.
+Omitted fields remain unchanged. Unknown fields, empty/null patches and patches
+over half the reply frame budget are `bad_request`. Create requires a name;
+omitted memory uses the PC default. Workdir is an existing path on the PC,
+retains its exact selected identity, and an unusable path returns `workdir`.
+All four Nuwa model fields must be supplied together and name ready models.
+Enabling without a saved pair selects the same catalog defaults as desktop;
+disabling preserves the pair. Model resolution precedes project writes.
+Successful mutations return a single ID/name in `projects`, without repeating
+potentially large instructions. Both mutations refuse with `restoring` during
+engine restoration. These operations use the existing paired, encrypted RPC
+channel and add no unauthenticated HTTP or cross-origin surface.
+
+`catalog` additionally returns `memory_available`; older PCs omit it, so the
+mobile editor requests an upgrade rather than assuming an editable default.
+`catalog` and `refresh_catalog` report `composer_predictions`; an explicit
+`false` hides paired-PC suggestions. The phone uses only the latest completed
+turn’s `composer_prediction` event and never sends it without a human submit.
 
 `catalog` lists ready models (`provider_id`, `provider_label`, `model`,
 `default`) and `reasoning_levels`. It carries no keys, URLs, or context

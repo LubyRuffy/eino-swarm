@@ -42,3 +42,13 @@ export function reasoningOnlyTurn(running: boolean): Step[] {
     ]),
   ]
 }
+
+export function predictionTurn(): Step[] {
+  const turnID = "prediction-turn"
+  return [
+    { kind: "user_message", turnID, text: "Review the current results" },
+    { kind: "agent_message", turnID, text: "The review is complete." },
+    { kind: "done", turnID },
+    { kind: "composer_prediction", turnID, agentID: "composer-prediction", text: "Check the remaining assumptions" },
+  ]
+}

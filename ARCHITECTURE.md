@@ -642,6 +642,21 @@ system sleep assertion (`awake` on that same status). The assertion
 follows the config, not the socket: a hub reload must not release and
 re-acquire or idle sleep wins the gap. On macOS the hold is AC-only.
 
+Phone project management uses explicit `project_get`, `project_create` and
+`project_update` RPCs against the same engine project methods as desktop.
+Full instructions are fetched only for the editor, while ordinary inbox polls
+keep name/ID views. Catalog replies advertise global memory availability;
+mutations respect startup readiness and preserve omitted fields. Nuwa model
+pairs resolve through the engine's existing ready-catalog rules before writes.
+The editor invalidates late replies when it closes or switches PCs and retains
+failed drafts for explicit retry. Working directories refer to the PC filesystem.
+
+The phone derives one suggestion from the current conversation's ordered,
+identity-merged events and the PC catalog's `composer_predictions` flag.
+The suggestion stays outside transcript blocks; insertion only updates the
+empty local composer. A new turn, failed or declined suggestion, or an explicit
+PC disable retires the hint.
+
 `internal/remote/host_start.go` owns the cancellable background registration
 lifecycle started by `Host.StartBackground`; hub registration is not a local
 HTTP readiness condition. A slow or unavailable hub leaves desktop, browser
@@ -2006,8 +2021,8 @@ image, retaining source copying. The image keeps its measured pixel size;
 the view fits that image to the reading column and a bounded height, and
 zoom or actual size scrolls inside the figure. Rendering waits for a live fence to close;
 syntax failures retain readable code. Theme changes redraw diagrams, while
-later prose leaves completed diagrams mounted. The phone has its own Markdown
-renderer and does not share this Mermaid path. A fenced `chart` block
+later prose leaves completed diagrams mounted. The phone has its own Markdown components and touch controls; it shares the
+strict Mermaid renderer, source checks and zoom calculations. A fenced `chart` block
 whose body is a comparison (bar, line, area, pie JSON) paints as a plot
 with a Table tab for the same rows. `x` and `y` are field names when those
 keys are on the rows; a caption in those slots, or a row that uses different

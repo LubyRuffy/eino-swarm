@@ -19,6 +19,8 @@ func handleCatalogRefresh(ctx context.Context, eng *engine.Engine, req Request, 
 		return fail(req.ID, path, sessionID, "refresh_failed", "could not refresh model list")
 	}
 	resp := okBase(req.ID, path, sessionID)
+	resp.ComposerPredictions = new(bool)
+	*resp.ComposerPredictions = eng.Config().SwarmSnapshot().ComposerPredictions
 	resp.Models = models
 	resp.ReasoningLevels = config.ReasoningEfforts()
 	// This response contains only strings, booleans and their slices.

@@ -29,6 +29,7 @@ export function HostChrome({
   onModels,
   onOpenAccount,
   pcLink,
+  onProjects,
 }: {
   hosts: SavedLink[]
   activeFingerprint: string
@@ -46,6 +47,7 @@ export function HostChrome({
   onSelectChat?: () => void
   onModels?: () => void
   onOpenAccount?: () => void
+  onProjects?: () => void
   pcLink?: RemoteLink | null
 }) {
   const account = usePhoneAccount()
@@ -101,6 +103,7 @@ export function HostChrome({
               {t("home.addHost")}
             </MenuRow>
             {pcLink && activeHost && !chatSelected ? <MenuRow onClick={() => { setMenu(false); setTimeoutsOpen(true) }}>{t("pcTimeouts.title")}</MenuRow> : null}
+            {onProjects && !chatSelected ? <MenuRow onClick={() => { setMenu(false); onProjects() }}>{t("projects.manage")}</MenuRow> : null}
             {onModels ? (
               <MenuRow
                 onClick={() => {

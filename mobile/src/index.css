@@ -420,3 +420,11 @@
   background: transparent;
   color: hsl(var(--qr-plate));
 }
+
+/* Mermaid's shared renderer measures invisibly before producing an image. */
+.md-mermaid-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  inset: 0 auto auto 0;
+}

@@ -30,6 +30,7 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-221` Quote PC conversation text
     - `F-222` Inspect sub-agents on the phone
     - `F-223` Inspect local client tasks on the phone
+    - `F-225` Manage PC projects from the phone
     - `F-224` Browse and preview PC conversation files on the phone
     - `F-230` Direct model chat
     - `F-240` Phone updates
@@ -84,7 +85,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 在项目会话中，可授权 manager 更新项目全局描述。保存后该项目后续回合使用新描述，Memory 关闭也可用。并发修改、对话移出项目或写入失败时返回拒绝回执。PC 项目编辑打开时读取当前描述，保存其他设置时省略未改动的描述。契约 `C-038`。实现 `internal/engine/project_description.go`、`internal/store/projects.go`、`frontend/src/components/app/project-dialog.tsx`。验证 `internal/engine/project_description_http_test.go`、`frontend/e2e/projects.spec.ts`。
 
 - PC 轮次导航：回到底部恢复实时跟随时，撤销旧轮次定位；后续消息、历史分页或已排队的定位帧不得再次拉回旧轮次。点击「跳到最新」、手动滚到底部和发送新消息共用该行为。尚在查看旧轮次时，分页后继续保持所选轮次位置。实现／验证：`frontend/src/lib/use-turn-jump.ts`、`frontend/src/lib/use-turn-jump.test.tsx`、`frontend/src/components/app/transcript-jump-latest.test.tsx`、`frontend/e2e/transcript-jump-latest.spec.ts`。
-- Mermaid 图：桌面与 Web 的对话、工具输出和 Markdown 文件预览识别 `mermaid` 代码围栏，按需加载随应用打包的渲染器，跟随明暗主题并保留原文复制。未闭合的流式围栏、无效语法及依赖外部图片／CSS `url()`／`@import` 的图保留可读代码；标识符末尾的 url 不是资源请求。图表作为 SVG 图片显示，默认适应阅读列和有限高度以便看全图；可放大、缩小、回到测量尺寸或重新适应，放大后只在图内滚动。手机独立渲染器不在本次能力范围。关联契约：`C-005`；证据：`frontend/src/components/app/markdown.tsx`、`frontend/src/components/app/markdown-mermaid.tsx`、`frontend/e2e/mermaid.spec.ts`。
+- Mermaid 图：桌面与 Web 的对话、工具输出和 Markdown 文件预览识别 `mermaid` 代码围栏，按需加载随应用打包的渲染器，跟随明暗主题并保留原文复制。未闭合的流式围栏、无效语法及依赖外部图片／CSS `url()`／`@import` 的图保留可读代码；标识符末尾的 url 不是资源请求。图表作为 SVG 图片显示，默认适应阅读列和有限高度以便看全图；可放大、缩小、回到测量尺寸或重新适应，放大后只在图内滚动。手机配对对话及直连 Chat 复用同一严格渲染、适应和缩放规则，使用触控控件并保留可复制源码。关联契约：`C-005`；证据：`frontend/src/components/app/markdown.tsx`、`frontend/src/components/app/markdown-mermaid.tsx`、`frontend/e2e/mermaid.spec.ts`、`mobile/src/components/phone-mermaid.tsx`、`mobile/e2e/markdown-mermaid.spec.ts`。
 - Markdown 表格：桌面、Web 与手机按内容自动分配列宽，各列保留随字体变化的最小可读宽度，避免短标签被长说明挤成逐字竖排；长内容可换行，过多列仅在表格内横向滚动，保留 Markdown 列对齐。文件预览复用相同规则。证据：`frontend/src/index.css`、`mobile/src/index.css`、`frontend/e2e/file-preview.spec.ts`、`mobile/e2e/markdown-table.spec.ts`。
 - Markdown 代码围栏：桌面与 Web 的对话、工具输出和 Markdown 文件预览使用 Code Block。已知语言按需加载 Shiki 语法色并跟随明暗主题，其中包括汇编（`asm`，以及 `assembly`、`nasm`、`gas`、`x86asm`、`yasm`）；空标签与未知标签保持纯文本。公式、图表和 Mermaid 仍用各自的渲染。文件列表、差异和命令行继续使用原有词法色。复制和选区保留围栏原文。证据：`frontend/src/components/ui/code-block.tsx`、`frontend/src/components/app/markdown-code.tsx`、`frontend/src/lib/highlighter.tsx`、`frontend/src/components/app/markdown.test.tsx`、`frontend/e2e/markdown.spec.ts`。
 - 目的：创建、组织、搜索和继续对话；使用者：PC 用户；入口：侧边栏、项目、`/api/threads`；输入：项目和消息；输出：可恢复的对话；前置条件：本机数据库可写；失败表现：错误提示或不存在的对话；关联契约：`C-001`, `C-003`, `C-008`, `C-026`；实现证据：`internal/engine`, `internal/store`, `frontend/src/store/app.ts`。
@@ -211,7 +212,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-146 Next-step composer suggestions
 
-- 目的：一次可见回复结束后，给空的 PC 输入框一条基于当前会话的下一步；使用者：PC 桌面和 Web 用户；入口：空输入框占位符，设置 → 集群 → 建议下一步；输入：最近的人类消息和可见回复；输出：一条不超过 240 字、可直接发送的下一步，或没有建议；前置条件：功能开启（默认开，旧配置缺键仍开），本轮正常结束、最终回复非空、不是安静完成，且会话已经空闲；失败表现：无建议、超时、模型出错、或下一次对话已经开始时不显示占位符；Tab 只填入，回车才发送；手机不显示该占位符；关联契约：`C-039`、`C-009`、`C-012`；实现证据：`internal/engine/composer_prediction.go`、`internal/engine/composer_prediction_test.go`、`frontend/src/lib/composer-prediction.ts`、`frontend/src/components/app/composer.tsx`、`frontend/e2e/composer-prediction.spec.ts`。
+- 目的：一次可见回复结束后，给空的 PC 输入框一条基于当前会话的下一步；使用者：PC 桌面和 Web 用户；入口：空输入框占位符，设置 → 集群 → 建议下一步；输入：最近的人类消息和可见回复；输出：一条不超过 240 字、可直接发送的下一步，或没有建议；前置条件：功能开启（默认开，旧配置缺键仍开），本轮正常结束、最终回复非空、不是安静完成，且会话已经空闲；失败表现：无建议、超时、模型出错、或下一次对话已经开始时不显示占位符；Tab 只填入，回车才发送；手机空输入框上方显示同一条建议，点击或 Tab 填入，关闭只影响当前页面；关联契约：`C-039`、`C-009`、`C-012`；实现证据：`internal/engine/composer_prediction.go`、`internal/engine/composer_prediction_test.go`、`frontend/src/lib/composer-prediction.ts`、`frontend/src/components/app/composer.tsx`、`frontend/e2e/composer-prediction.spec.ts`、`mobile/src/lib/composer-prediction.ts`、`mobile/e2e/composer-prediction.spec.ts`。
 - 建议是 Trace 事件，不是对话消息。下一次模型请求不会把它当成已经发送的人类输入。关闭开关后不再发起这次调用；省略该字段的设置保存保留原值。
 
 ### F-147 Temporary task side chat
@@ -362,6 +363,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-221 Quote PC conversation text
 
+- 点击选区之外收起「加入对话」并释放旧选区；点击该操作仍将原文插入草稿，不发送。证据：`mobile/src/components/thread-screen.test.tsx`、`mobile/e2e/composer-layout.spec.ts`。
+
 - 目的：从手机对话选择原文并附在下一条消息；使用者：手机用户；入口：选中对话正文 → 选区附近的 Add to chat／加入对话，系统复制／全选菜单仍可用；输入：选区及可选请求；输出：可查看、编辑、移除引用，发送或插入后显示独立的引用块；前置条件：打开 PC 对话，选区在正文中；失败表现：无效选区不显示操作，发送失败恢复草稿；关联契约：`C-011`, `C-017`；实现证据：`mobile/src/components/thread-screen.tsx`, `mobile/src/components/composer.tsx`, `mobile/src/lib/quote.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/e2e/composer-layout.spec.ts`。
 - 引用与目标／计划命令同时存在时，按 `F-150` 的提交前拒绝与完整保稿边界处理，不通过丢弃引用激活命令。
 
@@ -394,6 +397,12 @@ This is the current user-facing capability map. The code and tests named below a
 - 手机预览工具：图片提供放大／缩小、比例、100% 原始大小、适应宽度和适应窗口。默认按宽度等比适配，从图片顶部开始阅读，长图可向下滚动。适应窗口可查看整张图，两种模式均不放大小图。双指捏合以两指中点缩放图片，工具栏保持原尺寸，单指可横纵滚动。按钮缩放范围为 10%—400%，双指可从低于 10% 的适配比例平滑放大。加载或解码失败时禁用缩放。Markdown、源码、纯文本和 EPUB 共用双指字号调整、放大／缩小和重置。字号范围为 12—28 px，普通文本默认 14 px，标题、表格和代码同步缩放。EPUB 默认基准字号为 18 px，保留书内字号层级。工具栏及下载保留在内容滚动区外，重新打开恢复默认，下载保留原字节。关联契约：`C-020`；证据：`mobile/src/components/image-file-preview.tsx`, `mobile/src/components/image-file-preview.test.tsx`, `mobile/src/components/text-file-preview.test.tsx`, `mobile/e2e/file-preview-controls.spec.ts`。
 
 - 手机预览加载中即可点击下载，等同一份传输完成后自动开始下载。返回列表取消等待。原生手机的下载打开系统保存／导出面板，选择位置后写出原文件；取消不显示成功，保存失败在预览中提示并允许重试。浏览器保留下载链接。证据：`mobile/src/components/file-download.tsx`, `mobile/src/lib/file-save.ts`, `mobile/src/components/file-browser.test.tsx`, `mobile/android/app/src/main/java/com/lubyruffy/zwai/FileSavePlugin.java`, `mobile/ios/App/App/FileSavePlugin.swift`；关联契约：`C-020`。
+
+### F-225 Manage PC projects from the phone
+
+- 目的：手机直接创建和配置已配对 PC 的项目；入口：首页菜单 → 项目管理、新建会话 → 项目管理；输入：名称、项目指令、PC 已存在的工作目录、记忆开关、女娲开关和规划／执行模型；输出：PC 中同一项目的持久化设置，新建后可直接用于手机新会话。
+- 前置条件：PC 在线且支持项目 RPC；全局关闭记忆时禁用项目记忆开关；女娲使用 PC 就绪模型目录。失败表现：旧版 PC 提示升级、加载失败可重试、保存失败保留输入；恢复阶段拒绝写入。只发送编辑过的字段，切换 PC／关闭面板后忽略迟到回复，不把配置写入手机直连模型的 Chat。
+- 关联契约：`C-006`、`C-026`；实现证据：`internal/remote/project_settings.go`、`internal/remote/project_settings_test.go`、`mobile/src/components/project-manager.tsx`、`mobile/src/components/project-manager.test.tsx`、`mobile/e2e/project-management.spec.ts`。
 
 ### F-230 Direct model chat
 

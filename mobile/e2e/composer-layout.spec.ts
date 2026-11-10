@@ -171,7 +171,7 @@ test("selected answer keeps Add to chat near the highlight in WebKit", async ({ 
   await page.getByRole("button", { name: "跟进" }).click()
   const source = page.getByTestId("transcript").getByText("Here is what changed:")
   await expect(source).toBeVisible()
-  await source.evaluate((element) => {
+  const select = () => source.evaluate((element) => {
     element.scrollIntoView({ block: "center" })
     const range = document.createRange()
     range.selectNodeContents(element)
@@ -179,6 +179,7 @@ test("selected answer keeps Add to chat near the highlight in WebKit", async ({ 
     window.getSelection()?.addRange(range)
     document.dispatchEvent(new Event("selectionchange"))
   })
+  await select()
   const bottom = await page.evaluate(() => window.getSelection()?.getRangeAt(0).getBoundingClientRect().bottom)
   const action = page.getByRole("button", { name: "加入对话" })
   await expect(action).toBeVisible()
@@ -187,6 +188,9 @@ test("selected answer keeps Add to chat near the highlight in WebKit", async ({ 
   expect(bottom).toBeDefined()
   expect(box!.y - bottom!).toBeGreaterThanOrEqual(56)
   expect(box!.y - bottom!).toBeLessThanOrEqual(80)
+  await page.getByRole("textbox", { name: "消息", exact: true }).click()
+  await expect(action).toHaveCount(0)
+  await select()
   await action.click()
   await expect(page.getByTestId("quote-draft")).toHaveValue("Here is what changed:")
 })

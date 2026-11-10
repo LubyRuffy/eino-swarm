@@ -8,6 +8,7 @@ import { OpCatalog, OpRefreshCatalog, type ModelChoice, type PcWebExecutionStatu
 const refreshTimeoutMs = 30_000
 
 export function useModelCatalog(link: RemoteLink | null) {
+  const [predictionsEnabled, setPredictionsEnabled] = useState(true)
   const [models, setModels] = useState<ModelChoice[]>([])
   const [levels, setLevels] = useState<string[]>([])
   const [webExecutionStatus, setWebExecutionStatus] = useState<PcWebExecutionStatus>()
@@ -22,6 +23,7 @@ export function useModelCatalog(link: RemoteLink | null) {
   useEffect(() => {
     const gen = ++generation.current
     inFlight.current = null
+    setPredictionsEnabled(true)
     setModels([])
     setLevels([])
     setWebExecutionStatus(undefined)
@@ -32,6 +34,7 @@ export function useModelCatalog(link: RemoteLink | null) {
       const current = () => active.current === link && generation.current === gen
       void link.rpc({ op: OpCatalog }).then((r) => {
         if (!current() || !r.ok) return
+        if (typeof r.composer_predictions === "boolean") setPredictionsEnabled(r.composer_predictions)
         setModels(r.models ?? [])
         setLevels(r.reasoning_levels ?? [])
         setWebExecutionStatus(validWebStatus(r.web_execution_status))
@@ -62,6 +65,7 @@ export function useModelCatalog(link: RemoteLink | null) {
         setRefreshError(t(r.code === "unknown_op" ? "composer.refreshUnsupported" : "composer.refreshFailed"))
         return
       }
+      if (typeof r.composer_predictions === "boolean") setPredictionsEnabled(r.composer_predictions)
       setModels(r.models ?? [])
       setLevels(r.reasoning_levels ?? [])
       setWebExecutionStatus(validWebStatus(r.web_execution_status))
@@ -73,7 +77,7 @@ export function useModelCatalog(link: RemoteLink | null) {
     }
   }, [])
 
-  return { models, levels, catalogBusy, refreshBusy, refreshError, refreshModels, webExecutionStatus }
+  return { predictionsEnabled, models, levels, catalogBusy, refreshBusy, refreshError, refreshModels, webExecutionStatus }
 }
 
 function validWebStatus(status: PcWebExecutionStatus | undefined): PcWebExecutionStatus | undefined {

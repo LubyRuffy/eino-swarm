@@ -1,10 +1,11 @@
+import { MockProjects } from "./mock-projects"
 import { mockFileChunk, mockOutputFiles } from "./mock-files"
 import { iterationLimitHistory, iterationSnapshotOnly, mockAwaitingContinue, mockContinueIteration } from "./mock-iteration-limit"
 import { restartAskHistory } from "./mock-ask-restart"
 import { generationHistory } from "./mock-generation"
 import { backoffHistory } from "./mock-backoff"
 import { workerCollectionHistory, workerCollectionStopHistory, workerCollectionPaged } from "./mock-worker-collection"
-import { reasoningOnlyTurn, scriptedTurn, type Step } from "./mock-turn"
+import { predictionTurn, reasoningOnlyTurn, scriptedTurn, type Step } from "./mock-turn"
 import { mockGoalDetail, mockGoalFixture, resumeMockGoal, type MockGoalFields } from "./mock-goal"
 import {
   OpAnswer,
@@ -43,7 +44,6 @@ import {
   PROTOCOL_V,
   type TimeoutSettings,
   type TimeoutSettingsPatch,
-  type ProjectView,
   type FollowupView,
   type RemoteEvent,
   type RemoteRequest,
@@ -105,10 +105,6 @@ type MockThread = MockGoalFields & {
   followups?: FollowupView[]
 }
 
-const projects: ProjectView[] = [
-  { id: "p-platform", name: "Platform" },
-  { id: "p-notes", name: "Field notes" },
-]
 
 function threadSeed(): MockThread[] {
   return [
@@ -179,6 +175,7 @@ function threadSeed(): MockThread[] {
 type Watcher = { threadID: string; deliver: (resp: RemoteResponse) => void }
 
 export class MockHost {
+  readonly projects = new MockProjects()
   private createdAt = Date.now()
   private threads = threadSeed()
   private watchers = new Set<Watcher>()
@@ -303,7 +300,7 @@ export class MockHost {
           { kind: "agent_message", text: "Second completed run" },
           { kind: "done", at: "2026-10-08T02:03:04Z" },
         ], false)
-      } else this.seed(done, scriptedTurn(done.title), false)
+      } else this.seed(done, new URLSearchParams(location.search).get("history") === "prediction" ? predictionTurn() : scriptedTurn(done.title), false)
       if (new URLSearchParams(location.search).get("history") === "timeout") {
         this.seed(done, [{ kind: "error", agentID: "manager", err: "swarm: worker worker-1 stopped after 3 consecutive watchdog timeouts; automatic recovery is exhausted. This recurring check is paused." }], false)
       }
@@ -459,7 +456,7 @@ export class MockHost {
       next: more ? "older" : "",
     })
     return {
-      projects,
+      projects: this.projects.list(),
       threads: idle,
       ...(this.legacyCompletion ? {} : this.attentionPage()),
       // Start on Home rather than auto-opening an active task and reading it.
@@ -470,7 +467,7 @@ export class MockHost {
       more: true,
       next: "older",
       groups: [
-        ...projects.map((p) => section(p.id, idle.filter((th) => th.project_id === p.id), false)),
+        ...this.projects.list().map((p) => section(p.id, idle.filter((th) => th.project_id === p.id), false)),
         section(GROUP_RECENT, idle.filter((th) => !th.project_id), true),
       ],
       clients: this.clientCatalog(),
@@ -777,6 +774,7 @@ export class MockLink {
     if (this.closed) throw new Error("offline")
     const id = req.id ?? ""
     const thread = () => this.host.find(req.thread_id ?? "")
+    if (req.op.startsWith("project_")) return this.host.projects.handle(req)
     switch (req.op) {
       case "continue":
         return mockContinueIteration(this.host, thread(), req, id)
@@ -849,6 +847,8 @@ export class MockLink {
       }
       case OpCatalog:
         return this.ok({
+          memory_available: true,
+          composer_predictions: new URLSearchParams(location.search).get("prediction") !== "off",
           id,
           web_execution_supported: true,
           web_execution_status: { preference: "auto", execution: "local", cloud_account: "sign_in_required" },

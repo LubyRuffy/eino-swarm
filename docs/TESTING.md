@@ -8701,3 +8701,19 @@ can send its original terminal receipt in one fewer request. The fixture also
 covers the default, explicit fast handoff, a concurrent tool batch and a
 steer that reaches the next request while the same process stays alive.
 Tool tests cover observation cancellation and deadline ownership.
+
+### Phone project management
+
+`internal/remote/project_settings_test.go` covers actual LinkPump dispatch,
+project create/read/partial update, Nuwa ready-model pairs, startup write refusal,
+working-directory identity and frame limits. The phone editor regressions are
+`mobile/src/components/project-manager.test.tsx`; browser acceptance is
+`mobile/e2e/project-management.spec.ts` on Chromium and WebKit. Tests create
+projects only on private engines or the offline MockLink. Browser screenshots do
+not establish a packaged iOS/Android acceptance or installer publication.
+
+`mobile/e2e/markdown-mermaid.spec.ts` verifies actual rendered image dimensions,
+local scrolling at 100% and zoom, copyable source, rewatch and refusal of remote
+resources. `mobile/e2e/composer-prediction.spec.ts` verifies tap/Tab insertion,
+explicit Send, dismissal and the PC setting. The quote selection case in
+`mobile/e2e/composer-layout.spec.ts` verifies dismissal and subsequent re-selection.

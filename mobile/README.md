@@ -9,6 +9,26 @@ reconnection. API access is independent: approved users with an enabled API
 grant and Key can use **Server** models in Chat without any PC. An approved
 account without API permission can still connect to its PCs.
 
+After connecting to a PC, open **Menu → Manage projects**, or **Manage projects**
+from New conversation. Create or edit the PC's project name, shared instruction,
+existing PC working directory (blank uses a managed directory), project memory,
+and Nuwa collaboration mode. Nuwa's planner and executor selectors use that PC's
+ready model catalog and save the pair together. Closing Nuwa retains the pair;
+settings apply to subsequent tasks, while running workers retain their model.
+The phone sends only changed fields when editing, so changing a name does not
+overwrite an instruction changed on the PC. A failed save retains the draft for
+retry. Switching PCs or leaving the editor invalidates its pending UI responses.
+This requires a PC version supporting the project RPCs; older PCs show an update
+message. No project settings are stored in the phone's direct-model Chat scope.
+Recent desktop/mobile differences are tracked in [the parity audit](../docs/MOBILE_DESKTOP_PARITY.md).
+
+Conversation Mermaid fences open as fit-to-width/height diagrams with touch zoom,
+actual size and copyable source. Incomplete, invalid or resource-bearing diagrams
+remain code. In paired PC conversations, an idle empty composer can show the
+PC's latest next-step suggestion. Tap it or press Tab to edit it as a draft;
+Send remains explicit. The PC settings switch also controls this phone hint.
+Tapping outside a transcript selection closes its Add to chat action.
+
 The iOS shell uses UIKit's single-window scene lifecycle, including when built
 with the iOS 27 SDK. The scene loads the existing Main storyboard and retains
 Capacitor URL and universal-link delivery on cold launch and while running.

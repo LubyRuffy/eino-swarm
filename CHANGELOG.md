@@ -414,6 +414,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- Mobile: create and edit paired-PC projects from the home menu or New conversation,
+  including project instructions, PC workdir, memory and Nuwa planner/executor models.
+  Saves preserve untouched fields and keep failed drafts for retry.
+- Mobile: render Mermaid in conversations with fit, zoom, actual size and source
+  copy. Paired PC next-step suggestions can be inserted as editable drafts.
+- Mobile: tapping outside selected transcript text dismisses Add to chat.
+
 - `F-171`, `C-040`: The official server is now the primary model source on the
   desktop. A first-run welcome offers **Sign in to the official server** with
   **Use my own model service** and **Not now** as equal alternatives; once

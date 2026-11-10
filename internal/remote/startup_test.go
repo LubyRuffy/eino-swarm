@@ -13,7 +13,7 @@ func TestPhoneRecoveryMetadataAndWorkGate(t *testing.T) {
 	if !meta.OK || meta.Startup != "restoring" || meta.Restore == nil || meta.Restore.Completed != 3 || meta.Restore.Total != 8 {
 		t.Fatalf("bad metadata: %+v", meta)
 	}
-	for _, op := range []string{OpStart, OpSend, OpSteer, OpPreempt, OpAnswer, OpContinue, OpRunNow, OpCancelWait, OpResumeGoal, OpFollowupSteer, OpTune, OpSetTimeouts} {
+	for _, op := range []string{OpProjectCreate, OpProjectUpdate, OpStart, OpSend, OpSteer, OpPreempt, OpAnswer, OpContinue, OpRunNow, OpCancelWait, OpResumeGoal, OpFollowupSteer, OpTune, OpSetTimeouts} {
 		got := Handle(e, config.RemoteConfig{}, Request{Op: op}, "relay", "session")
 		if got.OK || got.Code != "restoring" {
 			t.Fatalf("%s bypassed restore: %+v", op, got)

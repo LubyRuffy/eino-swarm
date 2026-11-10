@@ -21,6 +21,10 @@ var maxCatalogFrame = MaxPushPayload - 512
 
 func handleCatalog(eng *engine.Engine, req Request, path, sessionID string) Response {
 	resp := okBase(req.ID, path, sessionID)
+	resp.ComposerPredictions = new(bool)
+	*resp.ComposerPredictions = eng.Config().SwarmSnapshot().ComposerPredictions
+	resp.MemoryAvailable = new(bool)
+	*resp.MemoryAvailable = eng.Config().Memory.Enabled
 	resp.Models = modelViews(eng)
 	resp.ReasoningLevels = config.ReasoningEfforts()
 	resp.WebExecutionSupported = true

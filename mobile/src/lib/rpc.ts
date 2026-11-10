@@ -22,6 +22,9 @@ export const OpCancelWait = "cancel_wait"
 export const OpResumeGoal = "resume_goal"
 export const OpHello = "hello"
 export const OpMeta = "meta"
+export const OpProjectGet = "project_get"
+export const OpProjectCreate = "project_create"
+export const OpProjectUpdate = "project_update"
 export const OpCatalog = "catalog"
 export const OpRefreshCatalog = "refresh_catalog"
 export const OpGetTimeouts = "get_timeouts"
@@ -67,6 +70,7 @@ export type RemoteRequest = {
   followup_id?: string
   task_id?: string
   file_path?: string
+  project_patch?: ProjectPatch
   timeout_settings?: TimeoutSettingsPatch
 }
 
@@ -107,6 +111,21 @@ export type ModelChoice = {
   default_follows_setting?: boolean
   ready?: boolean
 }
+
+export type ProjectSettings = {
+  id: string
+  name: string
+  system_prompt: string
+  workdir: string
+  resolved_workdir?: string
+  memory_enabled: boolean
+  nuwa_enabled: boolean
+  nuwa_planner_provider_id?: string
+  nuwa_planner_model?: string
+  nuwa_executor_provider_id?: string
+  nuwa_executor_model?: string
+}
+export type ProjectPatch = Partial<Omit<ProjectSettings, "id" | "resolved_workdir">>
 
 export type ProjectView = { id: string; name: string }
 
@@ -223,6 +242,9 @@ export type RemoteResponse = EngineStartup & {
   path?: string
   session_id?: string
   host?: string
+  project?: ProjectSettings
+  memory_available?: boolean
+  composer_predictions?: boolean
   projects?: ProjectView[]
   threads?: ThreadView[]
   attention?: ThreadView[]
