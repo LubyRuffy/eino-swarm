@@ -66,6 +66,9 @@ export const memoryZh: { [K in keyof typeof memoryEn]: string } = {
   "settings.memory.autoReview": "会话结束时复盘",
   "settings.memory.autoReviewHint":
     "读回已完成的回合，留下值得带走的事实和可复用流程。不在项目里的会话把流程写进共享技能库。关掉后记忆只在代理或你写入时变化。",
+  "settings.memory.autoDream": "核验并修正项目技能",
+  "settings.memory.autoDreamHint":
+    "回合成功结束后，读取项目历史和成功的工具结果，核验此前自动复盘写入的技能。证据与更新内容明确矛盾时，自动复盘可以恢复上一版本。需要开启记忆和自动复盘。",
   "settings.memory.after": "复盘之后",
   "settings.memory.afterHint":
     "复盘照样跑、照样写。这里只管答案后面那一行。",
@@ -75,9 +78,10 @@ export const memoryZh: { [K in keyof typeof memoryEn]: string } = {
   "settings.memory.budget": "预算",
   "settings.memory.reviewThinking": "复盘推理级别",
   "settings.memory.reviewThinkingHint":
-    "单独控制自动复盘和手动复盘的推理级别。复盘只做提取，默认使用低档；端点拒绝默认档时会去掉它再请求一次。手动选择的档位按所选发送。其他会话工作继续使用原设置。",
+    "单独控制自动复盘和手动复盘的推理级别。普通复盘默认使用低档，核验请求默认关闭推理。如果端点拒绝核验请求，普通复盘仍可继续。手动选择的档位按所选发送。其他会话工作继续使用原设置。",
   "settings.memory.reviewThinkingDefault": "默认（低）",
   "settings.memory.reviewThinkingInherit": "跟随会话",
+  "settings.memory.reviewThinkingNone": "关闭",
   "settings.memory.reviewThinkingLow": "低",
   "settings.memory.reviewThinkingMedium": "中",
   "settings.memory.reviewThinkingHigh": "高",

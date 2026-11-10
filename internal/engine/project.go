@@ -94,7 +94,10 @@ func (e *Engine) UpdateProject(id string, name, systemPrompt, workdir *string, m
 	if len(nuwaEnabled) > 0 && nuwaEnabled[0] != nil {
 		fields["nuwa_enabled"] = *nuwaEnabled[0]
 	}
-	if err := e.store.UpdateProject(id, fields); err != nil {
+	e.generations.Lock()
+	err := e.store.UpdateProject(id, fields)
+	e.generations.Unlock()
+	if err != nil {
 		return nil, err
 	}
 	updated, err := e.store.GetProject(id)
@@ -173,6 +176,9 @@ func (e *Engine) MoveThread(threadID, projectID string) error {
 	rt := e.runtimeFor(threadID)
 	rt.projectMoveMu.Lock()
 	defer rt.projectMoveMu.Unlock()
+	// Generation observers take generations before the runtime mutex.
+	e.generations.Lock()
+	defer e.generations.Unlock()
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	return e.store.SetThreadProject(threadID, projectID)
@@ -255,6 +261,7 @@ type projectContext struct {
 	project  *store.Project
 	memory   *memory.Store
 	sections string
+	planning bool
 	// tools is the manager set. Workers get the read-only skill tools in
 	// viewTools alongside their workspace tools.
 	tools     []tool.BaseTool
@@ -358,7 +365,7 @@ func (e *Engine) projectContextFor(th *store.Thread) (*projectContext, error) {
 		}
 		return nil, err
 	}
-	pc := &projectContext{project: p}
+	pc := &projectContext{project: p, planning: th.PlanMode}
 	var snap memory.Snapshot
 	var skills []memory.SkillInfo
 	if e.MemoryEnabled(p) {

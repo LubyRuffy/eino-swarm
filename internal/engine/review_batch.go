@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 
@@ -34,13 +35,17 @@ type reviewBatchTool struct {
 	store *memory.Store
 	// Fixed before the first model call; a repair must not silently rebase
 	// onto notes the reviewer has never seen.
-	notesRev  string
-	sources   map[int64]store.Event
-	humanOnly bool
-	library   bool
-	mu        *sync.Mutex
-	outcome   *reviewOutcome
-	complete  bool
+	notesRev           string
+	sources            map[int64]store.Event
+	humanOnly          bool
+	library            bool
+	mu                 *sync.Mutex
+	outcome            *reviewOutcome
+	complete           bool
+	dream              *dreamReview
+	dreamStatus        string
+	dreamInvalidReason string
+	dreamRefs          []dreamEventRef
 	// Only changes the model-facing representation of aggregated refusals.
 	deduplicateFeedback bool
 	// A successful batch ends the ADK agent without a billed closing sentence.
@@ -63,9 +68,25 @@ func (t *reviewBatchTool) Info(context.Context) (*schema.ToolInfo, error) {
 		"sources":     {Type: schema.Array, ElemInfo: &schema.ParameterInfo{Type: schema.String}, Desc: "Other existing skill names for merge."},
 		"evidence":    {Type: schema.Array, Required: true, ElemInfo: citation, Desc: "Exact source quotes supporting this change, including any replacement or removal."},
 	}}
-	return &schema.ToolInfo{Name: reviewBatchToolName, Desc: "Submit the complete minimal memory changes and finish this review. Notes are validated in a draft before one revision-checked commit. Use an empty changes array when nothing is worth keeping. A refusal changes no notes and lets you repair the proposal within the existing iteration cap. Notes changed since the model input cause a terminal conflict; this review never silently rebases.", ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+	params := map[string]*schema.ParameterInfo{
 		"changes": {Type: schema.Array, Required: true, ElemInfo: op},
-	})}, nil
+	}
+	if t.dream != nil {
+		decisions := []string{"keep", "uncertain", "defer"}
+		for _, choice := range dreamRevertChoices(t.dream.ids) {
+			decisions = append(decisions, choice.decision)
+		}
+		params["changes"].Desc = "Exclude the audited skill."
+		params["dream"] = &schema.ParameterInfo{
+			Type: schema.Object, Required: true, Desc: "Decision for the supplied Dream audit.",
+			SubParams: map[string]*schema.ParameterInfo{
+				"decision": {Type: schema.String, Required: true, Enum: decisions},
+				"quote":    {Type: schema.String},
+				"sources":  {Type: schema.Array, ElemInfo: &schema.ParameterInfo{Type: schema.String, Enum: t.dream.ids}},
+			},
+		}
+	}
+	return &schema.ToolInfo{Name: reviewBatchToolName, Desc: "Submit the complete minimal memory changes and finish this review. Notes are validated in a draft before one revision-checked commit. Use an empty changes array when nothing is worth keeping. A refusal changes no notes and lets you repair the proposal within the existing iteration cap. Notes changed since the model input cause a terminal conflict; this review never silently rebases.", ParamsOneOf: schema.NewParamsOneOfByParams(params)}, nil
 }
 
 func (t *reviewBatchTool) InvokableRun(ctx context.Context, args string, _ ...tool.Option) (string, error) {
@@ -76,8 +97,11 @@ func (t *reviewBatchTool) InvokableRun(ctx context.Context, args string, _ ...to
 		return reviewBatchResult(true, "review already completed"), nil
 	}
 	number := t.beginAttempt()
+	// A second batch from the same model response cannot reuse a refused decision.
+	offered := t.dream != nil && t.dream.offered.Swap(false)
 	var input struct {
 		Changes *[]reviewOperation `json:"changes"`
+		Dream   dreamVerdictField  `json:"dream"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(args))
 	decoder.DisallowUnknownFields()
@@ -87,8 +111,30 @@ func (t *reviewBatchTool) InvokableRun(ctx context.Context, args string, _ ...to
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return t.refuse(number, -1, "validation", errors.New("invalid proposal: expected exactly one JSON object"), nil), nil
 	}
+	if t.dream == nil && len(input.Dream.raw) != 0 {
+		return t.refuse(number, -1, "validation", errors.New("no Dream revision audit was offered"), nil), nil
+	}
+	var dreamStatus, dreamInvalidReason string
+	var dreamRefs []dreamEventRef
+	if t.dream != nil {
+		dreamStatus = "not_submitted"
+		if offered {
+			if input.Dream.duplicate {
+				dreamStatus, dreamInvalidReason = "invalid", "duplicate_decision"
+			} else {
+				dreamStatus, dreamRefs, dreamInvalidReason = t.dream.decision(input.Dream.raw)
+			}
+		}
+	}
 	operations := *input.Changes
 	t.describeAttempt(number, operations)
+	if dreamStatus == "defer" {
+		if len(operations) != 0 {
+			return t.refuse(number, -1, "validation", errors.New("defer requires an empty changes array"), operations), nil
+		}
+		t.markAttempt(number, "deferred")
+		return reviewBatchResult(true, "Continue the ordinary memory review."), nil
+	}
 	hasNotes := false
 	for _, op := range operations {
 		hasNotes = hasNotes || op.Target == memory.ToolMemory
@@ -104,7 +150,7 @@ func (t *reviewBatchTool) InvokableRun(ctx context.Context, args string, _ ...to
 	}
 	// The empty batch is a real decision, with no filesystem mutation.
 	if len(operations) == 0 {
-		return t.completed(ctx, number, nil)
+		return t.completed(ctx, number, nil, dreamStatus, dreamRefs, dreamInvalidReason)
 	}
 	draft, err := t.store.BeginNotesDraft()
 	if err != nil {
@@ -139,7 +185,7 @@ func (t *reviewBatchTool) InvokableRun(ctx context.Context, args string, _ ...to
 	// Rephrasing and then undoing it, or only reordering the same notes, must
 	// not mutate the live file or advertise a change.
 	if len(reviewNoteDiff(before, proposed)) == 0 {
-		return t.completed(ctx, number, evidence)
+		return t.completed(ctx, number, evidence, dreamStatus, dreamRefs, dreamInvalidReason)
 	}
 	after, changed, err := draft.Commit()
 	if err != nil {
@@ -152,7 +198,7 @@ func (t *reviewBatchTool) InvokableRun(ctx context.Context, args string, _ ...to
 		}
 		t.mu.Unlock()
 	}
-	return t.completed(ctx, number, evidence)
+	return t.completed(ctx, number, evidence, dreamStatus, dreamRefs, dreamInvalidReason)
 }
 
 func (t *reviewBatchTool) validateOperation(op reviewOperation) error {
@@ -165,6 +211,15 @@ func (t *reviewBatchTool) validateOperation(op reviewOperation) error {
 			return nil
 		}
 	} else if op.Target == memory.ToolSkillManage {
+		if t.dream != nil {
+			skill := t.dream.receipt.Skill
+			if memory.ResolveSkillToolName(op.Name) == skill ||
+				slices.ContainsFunc(op.Sources, func(source string) bool {
+					return memory.ResolveSkillToolName(source) == skill
+				}) {
+				return errors.New("the audited skill must use the Dream decision")
+			}
+		}
 		if t.humanOnly {
 			return errors.New("failed turns cannot record or modify skills")
 		}
@@ -200,9 +255,12 @@ func invokeReviewOperation(ctx context.Context, invoke tool.InvokableTool, op re
 	return nil
 }
 
-func (t *reviewBatchTool) completed(ctx context.Context, number int, evidence []reviewEvidence) (string, error) {
+func (t *reviewBatchTool) completed(ctx context.Context, number int, evidence []reviewEvidence, dreamStatus string, dreamRefs []dreamEventRef, dreamInvalidReason string) (string, error) {
 	t.mu.Lock()
 	t.complete = true
+	t.dreamStatus = dreamStatus
+	t.dreamInvalidReason = dreamInvalidReason
+	t.dreamRefs = dreamRefs
 	t.outcome.StopReason = "completed"
 	t.outcome.Evidence = append(t.outcome.Evidence, evidence...)
 	t.outcome.Note = "Review finished — nothing new to keep."

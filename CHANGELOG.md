@@ -8,6 +8,11 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Changed
 
+- Automatic project memory review now checks previously learned skills
+  against later tool evidence by default. It can restore the exact previous
+  revision when two scoped observations contradict the update. An explicit
+  opt-out in Memory settings survives reload. (`F-420`, `C-025`)
+
 - The collaboration path draws recorded dependencies. Several unconnected
   records of the same kind collapse into one row and share a dashed arrow to
   the goal; a single unconnected record stays visible. The row shows status

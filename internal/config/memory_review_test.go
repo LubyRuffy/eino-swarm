@@ -14,6 +14,7 @@ func TestMemoryReviewEffortConfigNormalizesAndRoundTrips(t *testing.T) {
 	for _, tc := range []struct{ name, yaml, want string }{
 		{"legacy missing", "log:\n  level: info\n", ""},
 		{"blank default", "memory:\n  review_reasoning_effort: ''\n", ""},
+		{"explicit non-thinking", "memory:\n  review_reasoning_effort: ' NONE '\n", "none"},
 		{"explicit inherit", "memory:\n  review_reasoning_effort: ' Inherit '\n", "inherit"},
 		{"low", "memory:\n  review_reasoning_effort: low\n", "low"},
 		{"medium normalization", "memory:\n  review_reasoning_effort: ' MEDIUM '\n", "medium"},
@@ -122,7 +123,7 @@ func TestMemoryReviewEffortInheritsOnlyWhenAskedTo(t *testing.T) {
 		{"low", "high", "low", false}, {" MEDIUM ", "high", "medium", false}, {"HIGH", "low", "high", false},
 		{"", "high", "low", true}, {"", "", "low", true}, {"unsupported", "high", "low", true},
 		{"inherit", "high", "high", false}, {"INHERIT", "", "", false}, {"inherit", "max", "", false},
-		{"none", "", "low", true}, {"off", "high", "low", true},
+		{" NONE ", "high", "none", false}, {"off", "high", "low", true},
 	} {
 		got, optional := (MemoryConfig{ReviewReasoningEffort: tc.configured}).ReviewEffort(tc.inherited)
 		if got != tc.want || optional != tc.optional {

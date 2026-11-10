@@ -43,6 +43,17 @@ describe("Memory review thinking", () => {
     expect(next.models).toEqual(settings.models)
   })
 
+  it("saves disabled thinking explicitly for memory review", () => {
+    const onChange = vi.fn()
+    render(<MemorySettings settings={settings} onChange={onChange} />)
+    fireEvent.click(screen.getByLabelText("Review thinking"))
+    fireEvent.click(screen.getByRole("option", { name: "None" }))
+    const next = onChange.mock.calls[0][0] as Settings
+    expect(next.memory).toEqual({ ...settings.memory, review_reasoning_effort: "none" })
+    expect(next.swarm).toEqual(settings.swarm)
+    expect(next.models).toEqual(settings.models)
+  })
+
   it("saves inheritance explicitly and Default as blank", () => {
     const onChange = vi.fn()
     const { rerender } = render(<MemorySettings settings={settings} onChange={onChange} />)
@@ -72,5 +83,28 @@ describe("Skill age settings", () => {
       ...configured, memory: { ...configured.memory, skill_stale_days: 45 },
     })
     expect(screen.getByText(/candidates for review.*never deleted automatically/i)).toBeInTheDocument()
+  })
+})
+
+describe("Project skill verification", () => {
+  it.each([
+    { enabled: false, auto_review: true },
+    { enabled: true, auto_review: false },
+  ])("keeps the choice while a prerequisite is off (%j)", (prerequisites) => {
+    const onChange = vi.fn()
+    const { rerender } = render(<MemorySettings
+      settings={{ ...settings, memory: { ...settings.memory, ...prerequisites, auto_dream: true } }}
+      onChange={onChange}
+    />)
+    const toggle = () => screen.getByRole("switch", { name: "Verify and correct project skills" })
+    expect(toggle()).toBeDisabled()
+    expect(toggle()).toBeChecked()
+    rerender(<MemorySettings
+      settings={{ ...settings, memory: { ...settings.memory, auto_dream: true } }}
+      onChange={onChange}
+    />)
+    expect(toggle()).toBeEnabled()
+    expect(toggle()).toBeChecked()
+    expect(onChange).not.toHaveBeenCalled()
   })
 })

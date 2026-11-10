@@ -88,6 +88,7 @@ mcp:
 memory:
     enabled: true
     auto_review: true
+    auto_dream: true
     char_limit: 2200
     entry_max: 360
     review_max_iterations: 8
@@ -641,9 +642,10 @@ a project is how that project's own agent follows it.
 |---|---|---|
 | `enabled` | `true` | the master switch. Off means no project carries notes or skills, no review runs, and a conversation outside a project does not add to the shared skill library, whatever a project's own switch says. What is already stored stays readable in the Memory panel. |
 | `auto_review` | `true` | read a turn's event log when it finishes and keep what is worth carrying forward. Off leaves note extraction to the agents' own tools and the "Review now" button. Successful turns receive a full review even if the manager already wrote memory. A failed project turn may retain explicit human requirements as notes only, without task-tool/derived evidence, skill edits or skill folding; cancellation starts no automatic review. "Review now" still runs against the latest successful turn. Leftover skill families are folded after successful turns, including when auto-review is off; this is catalog hygiene, not extraction. The Memory panel's **Tidy memory** control still folds leftover stems, then asks the reviewer to curate the live catalog by content (a model call, not a filename scan). A catalog tidy uses at least 24 tool rounds (`DefaultTidyMaxIterations`), or `review_max_iterations` when that is higher, so a large index can actually be merged. |
+| `auto_dream` | `true` | **Settings → Memory → Verify and correct project skills**. Verify an existing project skill patch against later tool observations after a successful ordinary conversation. Requires project memory and automatic review. Set `false` to disable verification. Existing config files with no value use the default. An older Settings client that omits this field preserves the selected value. |
 | `char_limit` | `2200` | how long the notes may get. They ride in the system prompt of **every** turn in the project, so this is a per-turn cost, not a disk one. A write that would grow past this is refused, including replacing a note with a longer one. Review input shows current usage and limits; refused batches preserve structured `usage`, `over_by`, `current_entries` and replacement `matched` feedback for the model. It may shorten or replace supported related notes before adding, within the same review budget; unrelated notes are not automatically evicted. Failed drafts leave official notes intact. Small on purpose. |
 | `entry_max` | `360` | how long **one** note may get on an agent write (`memory` add/replace). Notes are short declarations whose absence would misdirect work; methods, steps and workflow-local constraints belong in a skill. A note that restates a recorded skill is refused; an exact existing-name pointer without a body restatement is allowed. The Memory panel's editor still uses `char_limit` only: a person who pastes a longer note is spending that budget on purpose. Zero or negative is repaired to the default; a value above `char_limit` is clamped. |
-| `review_reasoning_effort` | `""` | separate reasoning level for automatic and manual turn reviews. Empty is the background default, `low`; `inherit` follows the reviewed turn; `low` / `medium` / `high` are sent as chosen. Values are trimmed/lowercased; unsupported values normalize to empty. Only the empty default is optional: an endpoint that rejects it with HTTP 400 is asked once more without `reasoning_effort`; an explicit or inherited level keeps the endpoint's error. Main conversation work and catalog tidy retain their own effort, model and output cap. Editable as **Memory → Review thinking**. Before this default, an empty value inherited the turn; set `inherit` to keep that behavior. |
+| `review_reasoning_effort` | `""` | separate reasoning level for automatic and manual turn reviews. Empty uses the background default, `low` for ordinary reviews or `none` when Dream verification is offered. `inherit` follows the reviewed turn. `none` explicitly disables thinking, and `low` / `medium` / `high` are sent as chosen. Values are trimmed/lowercased; unsupported values normalize to empty. Only the empty default is optional. An HTTP 400 on the audit request continues as ordinary review without the audit. An HTTP 400 on ordinary review retries once without `reasoning_effort`. An explicit or inherited level keeps the endpoint's error. Main conversation work and catalog tidy retain their own effort, model and output cap. Editable as **Memory → Review thinking**. Before this default, an empty value inherited the turn; set `inherit` to keep that behavior. |
 | `review_deduplicate_feedback` | `false` | opt-in experiment for automatic and manual turn review. Set `review_deduplicate_feedback: true` under `memory` in `config.yaml` to remove the duplicate first issue at the top level and the duplicate `success` and `note` fields inside aggregate refusal issues. The receipt keeps `success: false`, the shared instruction and every issue's error, index, code and repair details. Receipts without an `issues` array keep their existing format. An omitted key uses the legacy feedback format. |
 | `review_max_iterations` | `8` | how many times a post-turn review may think and write before it is stopped. It reads one conversation and makes a handful of tool calls; a large number here buys a slow, expensive review rather than a better one. The index is enough to decide; the reviewer does not open every skill. Same-stem families are folded after the review. A successful complete batch ends without a model closing sentence. If the post-turn reviewer ends without a successful batch, including at the cap, it records an explicit error and `stop_reason`, with submitted-proposal count and bounded safe attempt/refusal metadata. Capacity feedback does not add rounds or raise limits. Pending notes are not committed, while actual skill writes remain recorded. The separate catalog-tidy cap retains its existing behavior. The Memory panel's catalog tidy uses at least 24 rounds (`DefaultTidyMaxIterations`), or this value when it is higher. |
 | `skill_stale_days` | `90` | advisory age threshold for Memory badges and catalog tidy. An already-viewed skill ages from its last view; a never-viewed skill uses its content modification time. Exactly N days is a candidate; unknown dates are not. Non-positive values use the default. The reviewer decides whether to keep, merge or delete; age alone never deletes. Editable in Settings → Memory. |
@@ -652,6 +654,18 @@ a project is how that project's own agent follows it.
 
 Numbers that are zero or negative fall back to their defaults, so a hand-edited
 file cannot leave a project with no room to remember anything.
+
+When automatic verification finds a matching recorded skill revision, it looks
+for the original tool evidence and later complete tool results in the same
+project and provider scope. The existing review reuses the fully visible later
+results and receives a compact appendix with the prior revision and original
+observations. When the reasoning setting is left at its default, that audit
+requests non-thinking mode. An endpoint that rejects the optional setting can
+use the existing compatibility retry without it. Explicit levels and inherit
+retain their selected behavior. After the normal batch succeeds, an exact, evidence-backed
+revert can restore the prior document if the sources, ownership and full file
+revision still match. Trace records the outcome, the lookup and apply timings,
+and any actual change.
 
 The files live in the data directory, never in your repository — see
 [DATA_MODEL.md](DATA_MODEL.md) for the layout. Edit notes from the Memory
