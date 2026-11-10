@@ -85,7 +85,11 @@ func (s *Store) readSkill(name string) (Skill, error) {
 		}
 		return Skill{}, fmt.Errorf("memory: read skill %s: %w", name, err)
 	}
-	front, body := splitFrontMatter(string(raw))
+	return s.skillFromDocument(name, string(raw)), nil
+}
+
+func (s *Store) skillFromDocument(name, document string) Skill {
+	front, body := splitFrontMatter(document)
 	skill := Skill{SkillInfo: SkillInfo{Name: name, Description: front["description"]}, Body: body}
 	if n := front["name"]; n != "" {
 		// The directory name wins: it is what skill_view is called with, and a
@@ -105,7 +109,7 @@ func (s *Store) readSkill(name string) (Skill, error) {
 	usage := s.readSkillUsage(name)
 	skill.Views = usage.Views
 	skill.LastViewedAt = usage.LastViewedAt
-	return skill, nil
+	return skill
 }
 
 // WriteSkill creates or overwrites one skill.
@@ -303,6 +307,16 @@ func ValidSkillName(name string) error {
 		return ErrBadName
 	}
 	return nil
+}
+
+// ResolveSkillToolName returns the name a skill tool will use for a write.
+// Valid names keep their exact spelling. A free-form title is salvaged.
+func ResolveSkillToolName(name string) string {
+	name = strings.TrimSpace(name)
+	if ValidSkillName(name) != nil {
+		return SafeSkillName(name)
+	}
+	return name
 }
 
 // SafeSkillName turns a model's free-form title into a usable name, so a good

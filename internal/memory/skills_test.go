@@ -89,6 +89,18 @@ func TestSkillNamesAreConstrainedToPathSafeText(t *testing.T) {
 	}
 }
 
+func TestResolveSkillToolNamePreservesValidNames(t *testing.T) {
+	for input, want := range map[string]string{
+		"  transfer--receipt  ": "transfer--receipt",
+		"Transfer Receipt":      "transfer-receipt",
+		"!!!":                   "",
+	} {
+		if got := ResolveSkillToolName(input); got != want {
+			t.Errorf("ResolveSkillToolName(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 // A model asked for a hyphenated name usually sends a title. Salvaging it is
 // better than losing the procedure, but it must stay path-safe.
 func TestSafeSkillNameSalvagesAModelsTitle(t *testing.T) {

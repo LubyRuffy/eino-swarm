@@ -116,7 +116,7 @@ func (e *Engine) SetPlanMode(id string, on bool) error {
 	if th.PlanMode == on {
 		return nil
 	}
-	if err := e.store.UpdateThread(id, map[string]any{"plan_mode": on}); err != nil {
+	if err := e.writePlanState(id, map[string]any{"plan_mode": on}); err != nil {
 		return err
 	}
 	if on {
@@ -191,6 +191,13 @@ func (e *Engine) proposePlanJSON(threadID, markdown string) (string, error) {
 	return string(body), nil
 }
 
+// Plan-state changes and a Dream commit share ownership ordering.
+func (e *Engine) writePlanState(threadID string, fields map[string]any) error {
+	e.generations.Lock()
+	defer e.generations.Unlock()
+	return e.store.UpdateThread(threadID, fields)
+}
+
 // ImplementPlan leaves planning and starts an execute turn with the current
 // plan in the manager prompt. It does not resume a paused /goal.
 func (e *Engine) ImplementPlan(id string) (*store.Turn, error) {
@@ -211,14 +218,14 @@ func (e *Engine) ImplementPlan(id string) (*store.Turn, error) {
 	if markdown == "" {
 		return nil, fmt.Errorf("engine: there is no plan to implement")
 	}
-	if err := e.store.UpdateThread(id, map[string]any{"plan_mode": false, "plan_markdown": markdown}); err != nil {
+	if err := e.writePlanState(id, map[string]any{"plan_mode": false, "plan_markdown": markdown}); err != nil {
 		return nil, err
 	}
 	turn, startErr := e.StartTurnInput(id, UserInput{
 		Text: PlanImplementText(), ImplementPlan: true,
 	})
 	if startErr != nil {
-		_ = e.store.UpdateThread(id, map[string]any{"plan_mode": true, "plan_markdown": markdown})
+		_ = e.writePlanState(id, map[string]any{"plan_mode": true, "plan_markdown": markdown})
 		return nil, startErr
 	}
 	return turn, nil

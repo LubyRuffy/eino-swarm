@@ -15,9 +15,16 @@ export function persistPayload(
   const patch: SettingsPatch = {}
   const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
   for (const key of [
-    "server", "tools", "memory", "personality", "log", "remote", "search", "clients",
+    "server", "tools", "personality", "log", "remote", "search", "clients",
   ] as const) {
     if (!same(next[key], baseline[key])) Object.assign(patch, { [key]: next[key] })
+  }
+  if (!same(next.memory, baseline.memory)) {
+    const { auto_dream, ...rest } = next.memory
+    patch.memory = rest
+    if (auto_dream !== undefined && auto_dream !== baseline.memory.auto_dream) {
+      patch.memory.auto_dream = auto_dream
+    }
   }
   if (!same(next.ui, normalizeUISettings(baseline.ui))) patch.ui = next.ui
   if (!same(next.swarm, baseline.swarm)) {

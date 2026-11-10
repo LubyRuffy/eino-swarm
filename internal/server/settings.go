@@ -225,13 +225,20 @@ type putSettingsRequest struct {
 	} `json:"models"`
 	Swarm       *putSwarmSettings         `json:"swarm"`
 	Tools       *putToolsSettings         `json:"tools"`
-	Memory      *config.MemoryConfig      `json:"memory"`
+	Memory      *putMemorySettings        `json:"memory"`
 	Personality *config.PersonalityConfig `json:"personality"`
 	Log         *config.LogConfig         `json:"log"`
 	UI          *putUISettings            `json:"ui"`
 	Remote      *config.RemoteConfig      `json:"remote"`
 	Search      *config.SearchConfig      `json:"search"`
 	Clients     *config.ClientsConfig     `json:"clients"`
+}
+
+// putMemorySettings preserves the verifier setting when older clients save
+// the Memory section without auto_dream.
+type putMemorySettings struct {
+	config.MemoryConfig
+	AutoDream *bool `json:"auto_dream"`
 }
 
 // putUISettings carries the optional welcome flag beside the appearance
@@ -292,7 +299,11 @@ func (s *Server) putSettings(c *gin.Context) {
 			}
 		}
 		if req.Memory != nil {
-			next.Memory = *req.Memory
+			next.Memory = req.Memory.MemoryConfig
+			next.Memory.AutoDream = cfg.Memory.AutoDream
+			if req.Memory.AutoDream != nil {
+				next.Memory.AutoDream = *req.Memory.AutoDream
+			}
 		}
 		if req.Personality != nil {
 			next.Personality = *req.Personality

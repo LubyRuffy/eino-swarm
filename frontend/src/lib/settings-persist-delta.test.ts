@@ -146,3 +146,17 @@ describe("server-owned account settings", () => {
     persist.dispose()
   })
 })
+
+describe("project skill verification preference", () => {
+  it("omits an untouched switch when saving another memory setting", () => {
+    const before = copy()
+    before.memory.auto_dream = true
+    const draft = structuredClone(before)
+    draft.memory.char_limit = 200
+    const patch = persistPayload(draft, undefined, before)
+    expect(patch.memory?.char_limit).toBe(200)
+    expect(patch.memory).not.toHaveProperty("auto_dream")
+    draft.memory.auto_dream = false
+    expect(persistPayload(draft, undefined, before).memory?.auto_dream).toBe(false)
+  })
+})

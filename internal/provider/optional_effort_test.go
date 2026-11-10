@@ -117,6 +117,23 @@ func TestConversationEffortIsNotDroppedOnRejection(t *testing.T) {
 	}
 }
 
+// Explicitly disabling review thinking keeps the endpoint's rejection.
+func TestExplicitNonThinkingReviewIsNotRetried(t *testing.T) {
+	srv, seen := effortRejectingServer(t)
+	s := &sink{}
+	build, err := backoffPool(srv.URL).ReviewModelBuilder(t.Context(), "fixture", "", config.ReviewReasoningNone, s.rec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := build("review", "review").Stream(t.Context(), backoffMessages()); HTTPStatus(err) != http.StatusBadRequest {
+		t.Fatalf("err=%v, want the endpoint's 400", err)
+	}
+	got, calls := seen(), s.all()
+	if len(got) != 1 || got[0] != config.ReviewReasoningNone || len(calls) != 1 || HTTPStatus(calls[0].Err) != http.StatusBadRequest {
+		t.Fatalf("efforts=%v, recorded=%+v", got, calls)
+	}
+}
+
 // Other rejections are not about the effort; asking again would only double
 // the failure.
 func TestAuxiliaryCallDoesNotRetryOtherFailures(t *testing.T) {
@@ -137,5 +154,26 @@ func TestAuxiliaryCallDoesNotRetryOtherFailures(t *testing.T) {
 	}
 	if requests.Load() != 1 {
 		t.Fatalf("requests=%d, want 1", requests.Load())
+	}
+}
+
+// The default Dream audit can explicitly disable thinking on supporting
+// endpoints without changing the foreground reasoning configuration.
+func TestAuxiliaryNonThinkingEffortIsExplicitAndStillOptional(t *testing.T) {
+	srv, seen := effortRejectingServer(t)
+	pool := backoffPool(srv.URL)
+	s := &sink{}
+	build, err := pool.AuxiliaryModelBuilder(t.Context(), "fixture", "", "none", s.rec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := build("review", "review").Generate(t.Context(), backoffMessages())
+	if err != nil || out.Content != "ready" {
+		t.Fatalf("fallback=%v, err=%v", out, err)
+	}
+	got := seen()
+	calls := s.all()
+	if len(got) != 2 || got[0] != "none" || got[1] != "" || len(calls) != 2 || HTTPStatus(calls[0].Err) != http.StatusBadRequest || calls[1].Err != nil {
+		t.Fatalf("efforts=%v, recorded=%+v", got, calls)
 	}
 }

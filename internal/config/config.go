@@ -523,6 +523,7 @@ func Default() *Config {
 		Memory: MemoryConfig{
 			Enabled:               true,
 			AutoReview:            true,
+			AutoDream:             true,
 			CharLimit:             DefaultMemoryCharLimit,
 			EntryMax:              DefaultMemoryEntryMax,
 			ReviewMaxIterations:   DefaultReviewMaxIterations,
@@ -756,7 +757,7 @@ func (c *Config) normalize() {
 	if c.Memory.ReviewMaxIterations <= 0 {
 		c.Memory.ReviewMaxIterations = d.Memory.ReviewMaxIterations
 	}
-	c.Memory.ReviewReasoningEffort = NormalizeAuxiliaryReasoning(c.Memory.ReviewReasoningEffort)
+	c.Memory.ReviewReasoningEffort = normalizeReviewReasoning(c.Memory.ReviewReasoningEffort)
 	if c.Memory.SkillsIndexMax <= 0 {
 		c.Memory.SkillsIndexMax = d.Memory.SkillsIndexMax
 	}

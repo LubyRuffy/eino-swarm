@@ -1699,6 +1699,30 @@ restate the body. This changes no Markdown format or event kind.
    continuation, session briefing, final answer or task-tool evidence, no skill
    tools and no skill fold. Cancellation starts no automatic review.
 
+   Dream verification is enabled by default. It discovers an already-recorded
+   skill patch before automatic review using bounded same-project and
+   same-provider history. Settings can disable it for later reviews.
+   It requires an exact earlier revision, original exec receipts, and a fully
+   visible current skill read with at least two distinct later tool pairs. The
+   normal reviewer receives a compact audit appendix and can submit a `dream`
+   decision with its existing memory batch. The appendix pairs exact previous
+   and current changed lines and points to the complete current skill result
+   and the visible call/result pairs. Unchanged boundary lines stay in the
+   current skill result. The reviewer chooses a specific pair of later result
+   sequences to justify a revert.
+   The first audit request advertises only the existing batch tool and offers
+   a required decision field. The reviewer can defer without writes to consult
+   ordinary tools. Later ordinary requests keep the normal tools and iteration
+   budget, with the audit appendix, schema and decision arguments removed.
+   They cannot submit a Dream decision. Blank review effort uses non-thinking for the audit request, and a
+   rejected optional audit request falls back to ordinary review. Explicit and
+   inherited levels are preserved. The audited skill is excluded from ordinary
+   skill edits for the whole review. The guard resolves targets and merge
+   sources with the same rules as the skill tool. Only a decision in an accepted
+   first batch can authorize restoration. After the batch and family fold, the
+   engine rechecks source identities and applies a full-document compare-and-swap
+   for a supported revert. The outcome and timing are part of `memory_review`.
+
    Successful-turn reviews reconstruct turn-attributed worker lifecycle facts
    from the full persisted conversation history before clipping the selected
    source transcript. These deterministic facts precede the bounded briefing and
@@ -1769,7 +1793,9 @@ restate the body. This changes no Markdown format or event kind.
    revision remain mandatory. `memory.review_reasoning_effort` sets only this
    turn-review agent's effort; empty is the background default `low`, built
    through `Pool.AuxiliaryModelBuilder` so an endpoint that rejects the default
-   with HTTP 400 is asked once more without it, and `inherit` follows the turn.
+   with HTTP 400 is asked once more without it. Explicit `none` disables thinking
+   and preserves an endpoint rejection, as do other explicit settings.
+   `inherit` follows the turn.
    Preflight collects all independently discoverable operation, evidence,
    numeric and note-tool validation problems in one `issues` array before any
    notes commit or skill write. The first issue retains the existing top-level
@@ -1789,7 +1815,10 @@ restate the body. This changes no Markdown format or event kind.
    batch within the same iteration cap; source authority and exact spelling
    checks are unchanged. These repair details never enter persisted diagnostics.
    Conversation work and catalog tidy keep their existing effort, model and
-   output budget. A new skill must be worth reusing on a different later task:
+   output budget. The reviewer can compare a complete successful skill result
+   already visible in the transcript, reopening relevant skills when the view
+   is incomplete or needs refreshing before an edit.
+   A new skill must be worth reusing on a different later task:
    the review prompt refuses one for the conversation's own request or for
    steps any agent already takes.
    The instruction starts with source-supported durable deltas and separates

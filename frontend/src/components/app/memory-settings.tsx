@@ -53,6 +53,17 @@ export function MemorySettings({
             onCheckedChange={(auto_review) => update({ auto_review })}
           />
         </Field>
+        <Field
+          query={query}
+          label={t("settings.memory.autoDream")}
+          hint={t("settings.memory.autoDreamHint")}
+        >
+          <Switch
+            checked={settings.memory.auto_dream === true}
+            disabled={!settings.memory.enabled || !settings.memory.auto_review}
+            onCheckedChange={(auto_dream) => update({ auto_dream })}
+          />
+        </Field>
         <SettingsChoice
           query={query}
           search={[t("settings.memory.after"), "notifications", "transcript"]}
@@ -83,6 +94,7 @@ export function MemorySettings({
         >
           <SelectItem value="default">{t("settings.memory.reviewThinkingDefault")}</SelectItem>
           <SelectItem value="inherit">{t("settings.memory.reviewThinkingInherit")}</SelectItem>
+          <SelectItem value="none">{t("settings.memory.reviewThinkingNone")}</SelectItem>
           <SelectItem value="low">{t("settings.memory.reviewThinkingLow")}</SelectItem>
           <SelectItem value="medium">{t("settings.memory.reviewThinkingMedium")}</SelectItem>
           <SelectItem value="high">{t("settings.memory.reviewThinkingHigh")}</SelectItem>

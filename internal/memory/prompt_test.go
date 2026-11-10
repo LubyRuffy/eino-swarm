@@ -221,6 +221,21 @@ func TestReviewPromptSetsTheBarAndNamesItsTools(t *testing.T) {
 	}
 }
 
+func TestReviewPromptReusesCompleteSkillReceiptsWithoutSkippingNecessaryReads(t *testing.T) {
+	for _, deduplicate := range []bool{false, true} {
+		prompt := ReviewPromptWithFeedback(deduplicate)
+		for _, want := range []string{
+			"Use a complete successful skill_view result already in the transcript for comparison",
+			"only for a related skill whose complete result is missing or needs refreshing before an edit",
+			"Inspect the skill before patching or merging",
+		} {
+			if !strings.Contains(prompt, want) {
+				t.Fatalf("review instructions lack %q (deduplicate=%t)", want, deduplicate)
+			}
+		}
+	}
+}
+
 // A review saved each finished task as a new skill named after that task,
 // which no later task opened. Both review prompts must hold a new skill to a
 // reuse bar on a different task, while still keeping observed recovery.
