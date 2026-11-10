@@ -75,6 +75,7 @@ test("a plan arriving after another turn starts keeps its draft and never answer
   await freshConversation(page)
   const id = (await selectedThread(page).getAttribute("data-id"))!
   const command = "/plan Inspect the later assigned operation"
+  const payload = { text: command, model: "mock" }
   const observed = observeCommands(page, id)
   const cleanup = await createRequest.newContext({ baseURL: info.project.use.baseURL })
   let original: Awaited<ReturnType<typeof startQuestion>> | undefined
@@ -92,14 +93,14 @@ test("a plan arriving after another turn starts keeps its draft and never answer
     await composer(page).press("Enter")
     const response = await refused
     expect(response.status()).toBe(409)
-    expect(response.request().postDataJSON()).toEqual({ text: command })
+    expect(response.request().postDataJSON()).toEqual(payload)
     await expect(composer(page)).toHaveValue(command)
     await expect.poll(async () => (await (await request.get(draftPath(id))).json()).draft.state).toBe("uncertain")
     const draft = (await (await request.get(draftPath(id))).json()).draft
     expect(draft.text).toBe(command)
     const after = await expectOriginalQuestion(request, id, original!)
     expect(after.snapshot.thread).toMatchObject({ plan_mode: true, goal: "" })
-    expect(observed).toEqual([{ path: `${threadPath(id)}/turns`, body: { text: command } }])
+    expect(observed).toEqual([{ path: `${threadPath(id)}/turns`, body: payload }])
     await reloadOpenConversation(page)
     await expect(composer(page)).toHaveValue(command)
     await expect(page.getByTestId("ask-card")).toBeVisible()
@@ -162,7 +163,7 @@ test("a captured goal target entering a question keeps that question and leaves 
     const after = await expectOriginalQuestion(request, id, original!)
     expect(after.snapshot.thread.goal).toBe(objective)
     expect(metadata.length).toBeGreaterThan(0)
-    expect(observed).toEqual([{ path: `${threadPath(id)}/steer`, body: { text: command } }])
+    expect(observed).toEqual([{ path: `${threadPath(id)}/steer`, body: { text: command, model: "mock" } }])
     const other = await (await request.get(threadPath(selected))).json()
     expect(other.status.running).toBe(false)
     await expect(selectedThread(page)).toHaveAttribute("data-id", selected)

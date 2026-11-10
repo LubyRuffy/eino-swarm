@@ -74,16 +74,31 @@ describe("send", () => {
     } finally { create.mockRestore() }
   })
 
-  it("sends a source report as an explicit turn instead of answering or queuing", async () => {
+  it("sends a source report with the displayed model instead of answering or queuing", async () => {
+    const model = "report-model"
+    const previousModels = useApp.getState().models
+    fake.listedModels = [{
+      id: `default\t${model}`,
+      provider_id: "default",
+      provider_label: "Main",
+      label: model,
+      model,
+      ready: true,
+      default: true,
+    }]
+    await useApp.getState().boot()
     useApp.setState({ activeId: "th_old", status: { running: true, awaiting_answer: true } })
     const start = vi.spyOn(api, "startTurn")
     try {
       expect(await useApp.getState().send("Review original records", undefined, { threadId: "th_old", historyReport: true })).toBe(true)
-      expect(start).toHaveBeenCalledWith("th_old", "Review original records", undefined, undefined, undefined, true)
+      expect(start.mock.calls).toEqual([["th_old", "Review original records", undefined, undefined, undefined, true, model]])
       expect(fake.answers).toEqual([])
       expect(fake.enqueued).toEqual([])
       expect(fake.steers).toEqual([])
-    } finally { start.mockRestore() }
+    } finally {
+      start.mockRestore()
+      useApp.setState({ models: previousModels })
+    }
   })
 
   it("creates a conversation when there is none", async () => {

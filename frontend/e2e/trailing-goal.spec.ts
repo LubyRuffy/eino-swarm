@@ -50,7 +50,7 @@ async function submitStandingObjective(
   // Setting a standing objective starts one human turn; the command token
   // must neither become that turn's text nor cause an extra ordinary send.
   expect(observed.goals).toEqual([])
-  expect(observed.messages).toEqual([{ text: `/goal ${objective}` }])
+  expect(observed.messages).toEqual([{ text: `/goal ${objective}`, model: "mock" }])
   const { thread } = await (await request.get(`/api/threads/${id}`)).json()
   expect(thread).toMatchObject({ goal: objective, goal_complete: true, plan_mode: false })
   await expect(page.getByTestId("plan-banner")).toHaveCount(0)
@@ -142,7 +142,7 @@ test("bare goals still need an objective while unknown commands, quotations and 
     })
   }
   expect(observed.goals).toEqual([])
-  expect(observed.messages).toEqual(ordinary.map((text) => ({ text })))
+  expect(observed.messages).toEqual(ordinary.map((text) => ({ text, model: "mock" })))
   const { thread } = await (await request.get(`/api/threads/${id}`)).json()
   expect(thread.goal).toBeFalsy()
   await page.screenshot({ path: info.outputPath("literal-goal-messages.png"), animations: "disabled" })
@@ -165,7 +165,7 @@ test("a trailing goal marker starts a new objective after the old one completed"
   await composer(page).press("Enter")
   const sent = await activated
   expect(sent.status()).toBe(202)
-  expect(sent.request().postDataJSON()).toEqual({ text: `/goal ${objective}` })
+  expect(sent.request().postDataJSON()).toEqual({ text: `/goal ${objective}`, model: "mock" })
   const activation = await (await request.get(`/api/threads/${threadID}`)).json()
   expect(activation.thread).toMatchObject({ goal: objective, goal_complete: false, goal_blocked: false, goal_capped: false, goal_idle: false })
   await expect(page.getByTestId("goal-banner")).toContainText(objective)

@@ -407,8 +407,8 @@ provider carries `has_api_key` and `ready` instead.
             "web_execution": "auto",
             "result_max_chars": 40000,
             "proxy": {"http": "", "https": "", "no_proxy": ""}},
-  "memory": {"enabled": true, "auto_review": true, "char_limit": 2200,
-             "entry_max": 360, "review_max_iterations": 8,
+  "memory": {"enabled": true, "auto_review": true, "auto_dream": true,
+             "char_limit": 2200, "entry_max": 360, "review_max_iterations": 8,
              "review_reasoning_effort": "",
              "skills_index_max": 50, "notifications": "on"},
   "personality": {"instructions": ""},
@@ -429,6 +429,8 @@ provider carries `has_api_key` and `ready` instead.
 `memory.review_deduplicate_feedback` appears as `true` when the experiment is
 enabled and is omitted otherwise. A `PUT /api/settings` request that supplies
 `memory` replaces that section. Include the flag to keep the experiment on.
+`memory.auto_dream` defaults to `true`. An explicit `false` disables automatic
+skill verification. Omitting `auto_dream` from a `PUT` preserves the saved choice.
 
 ### `GET /api/clients`
 

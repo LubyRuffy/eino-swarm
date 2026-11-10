@@ -117,7 +117,7 @@ test("an output-budget error opens the completion cap", async ({ page }) => {
   expect(sourceSeq).toBeGreaterThan(0)
   await transcript.getByRole("button", { name: "Retry" }).click()
   await expect.poll(() => submissions.length).toBe(1)
-  expect(submissions).toEqual([{ text: originalInput, from_event_seq: sourceSeq }])
+  expect(submissions).toEqual([{ text: originalInput, from_event_seq: sourceSeq, model: "mock" }])
   await expect(page.getByText("Retry fixture refused the resend.", { exact: true })).toBeVisible()
   await expect(transcript.getByTestId("output-budget-error")).toBeVisible()
   await expect(transcript.getByTestId("user-message-editor")).toHaveCount(0)
