@@ -693,7 +693,15 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	go rt.heartbeat(beat, turn.ID, reg, time.Now(), e.cfg.SwarmSnapshot().ProgressInterval())
 	var res swarm.RunResult
 	runErr := resumeErr
-	if runErr == nil {
+	if resumed && runErr == nil {
+		// Stop can wake the recovered question before it cancels ctx.
+		status, _, abandoned := rt.turnOutcome(ctx, nil)
+		if abandoned || status == store.TurnCancelled {
+			runErr = context.Canceled
+		}
+	}
+	managerAdmitted := runErr == nil
+	if managerAdmitted {
 		res, runErr = rt.runManager(ctx, turn, reg, acc, toolset, pc, messages, resumed, snapshots...)
 	}
 	stopBeat()
@@ -704,7 +712,13 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	if !rt.isAbandoned() {
 		leftover = reg.TakePendingSteerMessages()
 	}
-	e.persistTranscript(rt.threadID, turn.ID, res.Transcript, inputCount, rt.stoppedAskReceipts(turn)...)
+	var stoppedAsks []stoppedAskReceipt
+	// Recovery already settled any old question from its shared snapshot.
+	// Only a live manager could have published another one before Stop.
+	if managerAdmitted {
+		stoppedAsks = rt.stoppedAskReceipts(turn)
+	}
+	e.persistTranscript(rt.threadID, turn.ID, res.Transcript, inputCount, stoppedAsks...)
 
 	// Decide before releasing, which cancels the context. Freeze and this
 	// decision share rt.mu so a restart cancellation cannot become user Stop.

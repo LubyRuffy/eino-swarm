@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/schema"
 	"gorm.io/gorm"
@@ -88,6 +89,23 @@ func TestRestoreBindsTheOriginalQuestionWithoutRereadingItsTurn(t *testing.T) {
 				mu.Unlock()
 				if finished.Status != store.TurnCancelled || cancelReads != 0 || len(endpoint.requests()) != 0 {
 					t.Fatalf("cancelled recovered question lost identity/no-read boundary: turn=%+v reads=%d calls=%d", finished, cancelReads, len(endpoint.requests()))
+				}
+				events, err := e.store.ListTurnEvents(turn.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				results := 0
+				for _, event := range events {
+					if event.Kind != swarm.NotifyToolResult.String() || event.ToolCallID != "snapshot-ask" {
+						continue
+					}
+					results++
+					if !isManagerAgent(event.AgentID) || event.Text != askToolFailure("%s", context.Canceled.Error()) {
+						t.Fatalf("recovered question has the wrong cancellation result: %+v", event)
+					}
+				}
+				if results != 1 {
+					t.Fatalf("recovered question has %d cancellation results, want one", results)
 				}
 				return
 			}
