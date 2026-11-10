@@ -8,11 +8,6 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Changed
 
-- Automatic project memory review now checks previously learned skills
-  against later tool evidence by default. It can restore the exact previous
-  revision when two scoped observations contradict the update. An explicit
-  opt-out in Memory settings survives reload. (`F-420`, `C-025`)
-
 - The collaboration path draws recorded dependencies. Several unconnected
   records of the same kind collapse into one row and share a dashed arrow to
   the goal; a single unconnected record stays visible. The row shows status
@@ -4325,6 +4320,23 @@ were left out on purpose, so that what shipped is complete rather than broad:
 - **A native directory picker** for a project's working directory. The field
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
+
+## [0.1.73] - 2026-11-10
+
+- Automatic project memory review now checks previously learned skills
+  against later tool evidence by default. It can restore the exact previous
+  revision when two scoped observations contradict the update. An explicit
+  opt-out in Memory settings survives reload. (`F-420`, `C-025`)
+
+- Desktop side chat can resize, use a selected model and stream replies.
+  (`F-147`, `C-042`)
+- The Nuwa collaboration view groups unconnected records and highlights the
+  upstream and downstream dependencies of the selected record. (`F-136`, `C-037`)
+- Mobile can create and edit paired-PC projects, render Mermaid in the transcript
+  and insert PC next-step suggestions as drafts.
+- Stop finishes even when a tool is still blocked, and late tool results are
+  discarded. Conversation requests keep the model displayed by the composer
+  when the account catalog changes. (`C-009`, `C-040`)
 
 ## [0.1.71] - 2026-11-08
 
