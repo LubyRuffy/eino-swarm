@@ -196,6 +196,37 @@ func (r *Registry) preemptToolResult(parent, epoch context.Context, out string, 
 	return InterruptedToolResult, nil
 }
 
+// callUntilCancel runs fn and returns when fn finishes or ctx is cancelled.
+// A tool blocked in a syscall does not observe ctx. Waiting for that return
+// is what left Stop and preempt stuck on the turn. After cancellation the
+// call may still be inside the syscall; its later result is discarded.
+func callUntilCancel(ctx context.Context, fn func() (string, error)) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	type result struct {
+		out string
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		out, err := fn()
+		done <- result{out, err}
+	}()
+	select {
+	case res := <-done:
+		return res.out, res.err
+	case <-ctx.Done():
+		select {
+		case res := <-done:
+			return res.out, res.err
+		default:
+			go func() { <-done }()
+			return "", ctx.Err()
+		}
+	}
+}
+
 type epochModel struct {
 	inner model.BaseModel[*schema.Message]
 	reg   *Registry

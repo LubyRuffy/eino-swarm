@@ -2090,7 +2090,11 @@ running; `409 no_steer` when the inbox is empty.
 
 The timeline records `steer_preempted`. Interrupted tools get a synthetic
 `tool_result` (`the user interrupted this tool before it finished`) rather than
-killing the ReAct graph.
+killing the ReAct graph. That result is recorded when the tool context is
+cancelled, including when the tool is blocked in a syscall and does not
+return. Stop (`POST …/interrupt`) uses the same cutoff: cancelling the turn
+finishes it without waiting for that call. A result the tool produces later
+is discarded.
 
 ### `DELETE /api/threads/:id/steers/:seq` → `204`
 

@@ -1,7 +1,7 @@
 codeberg.org/readeck/go-readability/v2 v2.1.2 h1:JBrdyYJBRPMBbodLM1b5KxCSDH+JqCkGcuVRD7ICBAw=
 codeberg.org/readeck/go-readability/v2 v2.1.2/go.mod h1:Ut31sW4osSrJPR3T8eQslMh4+jbwimXqn0w0ReCT+PU=
-github.com/LubyRuffy/eino-tools v0.1.1-0.20261030051610-3664a9a30a27 h1:LCrQO81UJbgN1Inf5Ay93dVvaurXWfGPX1H/P7qQfa4=
-github.com/LubyRuffy/eino-tools v0.1.1-0.20261030051610-3664a9a30a27/go.mod h1:7scgMTMfFbPoWZxQDdLPiYXWvL9ihgP+2V3EmtNhcuE=
+github.com/LubyRuffy/eino-tools v0.1.1-0.20261110060047-5da5e22f0a08 h1:5G5eTvqspVz2hCgu809lTJ1BZf6Dt/4CewzCsAHIiG4=
+github.com/LubyRuffy/eino-tools v0.1.1-0.20261110060047-5da5e22f0a08/go.mod h1:7scgMTMfFbPoWZxQDdLPiYXWvL9ihgP+2V3EmtNhcuE=
 github.com/LubyRuffy/pairlink v0.0.0-20260924021808-3e3676dc96d5 h1:VSyfTCQQNn5P9lTEeQu87BApxfVP8qo/bqzBsBCjQw4=
 github.com/LubyRuffy/pairlink v0.0.0-20260924021808-3e3676dc96d5/go.mod h1:LrougBPKQ02k4sDddargHAuqUZbjBBf2oBOWWQPwE/0=
 github.com/PuerkitoBio/goquery v1.13.0 h1:mqHbjD7Jmnul4DTR24LKTjo1uUmHUh072kteGV+xpFM=
@@ -114,6 +114,8 @@ github.com/godbus/dbus/v5 v5.2.2/go.mod h1:3AAv2+hPq5rdnr5txxxRwiGjPXamgoIHgz9FP
 github.com/gofrs/uuid v3.2.0+incompatible/go.mod h1:b2aQJv3Z4Fp6yNu3cdSllBxTCLRxnplIgP/c0N/04lM=
 github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f h1:3BSP1Tbs2djlpprl7wCLuiqMaUh5SJkkzI2gDs+FgLs=
 github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f/go.mod h1:Pcatq5tYkCW2Q6yrR2VRHlbHpZ/R4/7qyL1TCF7vl14=
+github.com/golang-jwt/jwt/v5 v5.3.1 h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63YCY=
+github.com/golang-jwt/jwt/v5 v5.3.1/go.mod h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE=
 github.com/golang/protobuf v1.2.0/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
 github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=

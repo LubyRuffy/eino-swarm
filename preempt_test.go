@@ -2,13 +2,18 @@ package swarm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
+	"github.com/LubyRuffy/eino-tools/grep"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
@@ -87,6 +92,152 @@ func TestPreemptAbortsInFlightToolAndDeliversSteer(t *testing.T) {
 	}
 	if strings.Contains(InterruptedToolResult, "change course") {
 		t.Fatal("the synthetic result must stay task-agnostic")
+	}
+}
+
+// A filesystem tool can sit in open or read and never look at ctx. Stop and
+// preempt still have to finish the turn; waiting for that syscall is the
+// hang that left the button with nothing to show.
+func TestPreemptAbortsAToolThatIgnoresCancellation(t *testing.T) {
+	reg := NewRegistry()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	var sawInterrupted bool
+	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
+		return &chunkedModel{turns: []turnScript{
+			{
+				content: []string{"working"},
+				calls:   []schema.ToolCall{rawCall("tc-stuck", "stuck", "{}")},
+			},
+			{
+				content: []string{"acknowledged"},
+				inspect: func(msgs []*schema.Message) {
+					for _, m := range msgs {
+						if m != nil && m.Role == schema.Tool && m.ToolCallID == "tc-stuck" &&
+							strings.Contains(m.Content, InterruptedToolResult) {
+							sawInterrupted = true
+						}
+					}
+				},
+			},
+		}}
+	}
+	stuck := &fnTool{name: "stuck", fn: func(context.Context, string) (string, error) {
+		close(started)
+		<-release
+		return "finished after the turn moved on", nil
+	}}
+	done := make(chan error, 1)
+	go func() {
+		_, err := reg.RunWith(context.Background(), RunConfig{
+			Instruction:  "do work",
+			Task:         "go",
+			ManagerTools: []tool.BaseTool{stuck},
+		}, nil)
+		done <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stuck tool never started")
+	}
+	if !reg.SteerManager("change course") {
+		t.Fatal("SteerManager refused on a live registry")
+	}
+	if !reg.Preempt() {
+		t.Fatal("Preempt refused on a live registry")
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("preempt must not kill the run: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("preempt waited for a tool that ignores cancellation")
+	}
+	if !sawInterrupted {
+		t.Fatal("the stuck tool did not report a synthetic result")
+	}
+}
+
+func TestCancelReturnsWhileAToolIgnoresCancellation(t *testing.T) {
+	reg := NewRegistry()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
+		return &chunkedModel{turns: []turnScript{{
+			content: []string{"working"},
+			calls:   []schema.ToolCall{rawCall("tc-stuck", "stuck", "{}")},
+		}}}
+	}
+	stuck := &fnTool{name: "stuck", fn: func(context.Context, string) (string, error) {
+		close(started)
+		<-release
+		return "should not pin the run", nil
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := reg.RunWith(ctx, RunConfig{
+			Instruction:   "do work",
+			Task:          "go",
+			MaxIterations: 1,
+			ManagerTools:  []tool.BaseTool{stuck},
+		}, nil)
+		done <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stuck tool never started")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Stop must surface cancellation, got %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelling the run waited for a tool that ignores cancellation")
+	}
+}
+
+// The grep linked by this module must skip a named pipe. Opening it waits for
+// the other end, and Stop cannot finish a turn blocked in that read.
+func TestLinkedGrepSkipsNamedPipe(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hit.txt"), []byte("needle\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(filepath.Join(dir, "console.in"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(map[string]string{"pattern": "needle", "path": dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	search, err := grep.New(grep.Config{DefaultBaseDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make(chan string, 1)
+	go func() {
+		out, runErr := search.InvokableRun(context.Background(), string(body))
+		if runErr != nil {
+			got <- "err:" + runErr.Error()
+			return
+		}
+		got <- out
+	}()
+	select {
+	case out := <-got:
+		if strings.HasPrefix(out, "err:") || !strings.Contains(out, "hit.txt") || strings.Contains(out, "console.in") {
+			t.Fatalf("linked grep = %q", out)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("linked grep blocked on a named pipe")
 	}
 }
 

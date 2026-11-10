@@ -357,6 +357,9 @@ still must call the actual wait/close tools to collect or discard those results.
   `Registry.Preempt` is the explicit abort: it cancels nested epoch contexts
   wrapping the current manager generate/tool, converts that cancel into
   `InterruptedToolResult`, and leaves workers on their own contexts.
+  A tool that blocks in a syscall and never looks at the context does not
+  delay that result: the call returns when the epoch or the run context is
+  cancelled, and a late tool return is discarded.
   `RetractManagerSteer(seq)` drops one unread manager inbox item tagged with
   `SetSteerSeq`. `HasPendingSteers` / `TakePreempt` are how a host re-enters
   a generate that died on epoch cancel without treating a provider cancel as
@@ -435,6 +438,9 @@ Each of those has a test: `TestCallerContextCancelDoesNotReleaseAgents`,
 `TestRaisingMaxConcurrentUnblocksQueuedWorkers`,
 `TestLoweringMaxConcurrentKeepsWaitersQueuedUntilASlotFrees`,
 `TestPreemptAbortsInFlightToolAndDeliversSteer`,
+`TestPreemptAbortsAToolThatIgnoresCancellation`,
+`TestCancelReturnsWhileAToolIgnoresCancellation`,
+`TestLinkedGrepSkipsNamedPipe`,
 `TestPreemptAbortsInFlightGenerate`,
 `TestRetractPendingSteerDropsItFromTheInbox`,
 `TestPreemptDoesNotCancelWorkers`. Run them with `-race`.

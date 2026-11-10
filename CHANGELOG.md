@@ -18,6 +18,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Fixed
 
+- Stop and the queued-steer interrupt finish the turn when a tool is blocked
+  in a syscall and does not observe cancellation. The call returns as soon as
+  the turn or the tool context is cancelled; a result that arrives later is
+  discarded. The linked `grep` skips named pipes, devices and sockets, and
+  stops walking when its context is cancelled.
+
 - The composer model and the model a turn requests stay the same when the
   signed-in account catalog is refreshed. An empty conversation follows only a
   user-configured default. The catalog's first name is stored on the
