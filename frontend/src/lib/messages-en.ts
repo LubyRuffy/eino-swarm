@@ -191,6 +191,7 @@ export const en = {
   "model.refresh": "Refresh models",
   "model.edit": "Edit providers",
   "model.fallback": "Model",
+  "model.unavailable": "This model is not in the current list",
 
   "api.threadNotFound": "The conversation for this action no longer exists. Refresh the conversation list and reopen it.",
   "api.recordNotFound": "Could not complete {method} {route}: the requested record no longer exists. Refresh and try again.",

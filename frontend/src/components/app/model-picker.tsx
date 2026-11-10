@@ -11,7 +11,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command"
-import { groupModels, modelChoiceId } from "@/lib/models"
+import { displayedModel, groupModels, modelChoiceId } from "@/lib/models"
 import { chromeTypeClass } from "@/lib/chrome-type"
 import type { ModelInfo } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -46,22 +46,10 @@ export function ModelPicker({
   const menuRef = useRef<HTMLDivElement>(null)
   const ready = models.filter((m) => m.ready && m.model)
   const groups = groupModels(ready)
-  // An empty id is "not chosen yet" and may fall through to the default row.
-  // A known name the list no longer contains stays on the button. Falling
-  // through to another row would claim that model is selected.
-  const exact =
-    providerId && model
-      ? ready.find((m) => m.provider_id === providerId && m.model === model)
-      : undefined
-  const providerListed = !providerId || ready.some((m) => m.provider_id === providerId)
-  const selected =
-    exact ??
-    (providerListed && !model?.trim()
-      ? ready.find((m) => m.provider_id === providerId && m.default) ??
-        ready.find((m) => m.provider_id === providerId) ??
-        ready.find((m) => m.default) ??
-        ready[0]
-      : undefined)
+  // An empty id follows the default row, including one the catalog no longer
+  // contains. A known name that left the list stays on the button.
+  const selected = displayedModel(models, providerId, model)
+  const unavailable = Boolean((model?.trim() && !selected) || (selected && !selected.ready))
   const label = selected?.label || selected?.model || model?.trim() || t("model.fallback")
 
   useLayoutEffect(() => {
@@ -206,9 +194,12 @@ export function ModelPicker({
         aria-label={accessibleName ?? t("composer.model")}
         aria-expanded={open}
         aria-haspopup="listbox"
+        title={unavailable ? t("model.unavailable") : undefined}
+        data-unavailable={unavailable ? "true" : undefined}
         className={cn(
           "inline-flex h-7 max-w-56 items-center gap-1.5 rounded-md px-2 hover:bg-accent",
           chromeTypeClass,
+          unavailable && "text-muted-foreground",
           open && "bg-accent",
         )}
         onClick={() => {

@@ -250,6 +250,12 @@ func (e *Engine) CreateThread(title, providerID, projectID string) (*store.Threa
 		ProviderID: providerID,
 		ProjectID:  projectID,
 	}
+	// An account catalog's first name is not a setting. Remember it now so a
+	// later refresh cannot retarget this conversation. A user-configured
+	// default stays empty and keeps following Settings.
+	if name, follows, ok := e.pool.ConversationDefault(providerID); ok && !follows && name != "" {
+		th.Model = name
+	}
 	if err := e.store.CreateThread(th); err != nil {
 		return nil, err
 	}
@@ -327,9 +333,35 @@ func (e *Engine) RenameThread(id, title string) error {
 	return nil
 }
 
+// rememberShownModel writes a concrete model onto a conversation that would
+// otherwise follow the account catalog's current first name. A user-configured
+// default stays empty, so changing it still applies. composerModel is the name
+// on the button; without one, the current first conversation name is kept.
+func (e *Engine) rememberShownModel(th *store.Thread, composerModel string) error {
+	if th == nil || strings.TrimSpace(th.Model) != "" {
+		return nil
+	}
+	name, follows, ok := e.pool.ConversationDefault(th.ProviderID)
+	if !ok || follows {
+		return nil
+	}
+	chosen := strings.TrimSpace(composerModel)
+	if chosen == "" {
+		chosen = name
+	}
+	if chosen == "" {
+		return nil
+	}
+	if err := e.store.UpdateThread(th.ID, map[string]any{"model": chosen}); err != nil {
+		return err
+	}
+	th.Model = chosen
+	return nil
+}
+
 // SetThreadProvider switches which endpoint a conversation uses from its next
-// turn on. An empty model follows that provider's default; a set model is the
-// name the composer picked.
+// turn on. An empty model follows that provider's user-configured default; a
+// set model is the name the composer picked.
 func (e *Engine) SetThreadProvider(id, providerID, model string) error {
 	prov, err := e.pool.ResolveModel(providerID, model)
 	if err != nil {

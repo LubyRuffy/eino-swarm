@@ -188,6 +188,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "model.refresh": "刷新模型",
   "model.edit": "编辑提供商",
   "model.fallback": "模型",
+  "model.unavailable": "当前列表里没有这个模型",
 
   "api.threadNotFound": "本次操作对应的会话已不存在，请刷新会话列表后重新打开。",
   "api.recordNotFound": "无法完成 {method} {route}：所需记录已不存在，请刷新后重试。",

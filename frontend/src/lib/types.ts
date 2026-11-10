@@ -451,6 +451,9 @@ export interface ModelInfo {
   model: string
   ready: boolean
   default?: boolean
+  /** True when this default is a user setting. A catalog's first name is a
+   *  default that does not follow a setting, so the conversation remembers it. */
+  default_follows_setting?: boolean
   /** Token limit for this name. 0 means the endpoint never said. */
   context_window?: number
   /** `account` is the signed-in server's catalog; `provider` is the user's

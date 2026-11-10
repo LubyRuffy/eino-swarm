@@ -365,6 +365,9 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 	if !in.ContinueGoal && !in.ImplementPlan && !in.ContinueSchedule && hasOpenGoal(th) {
 		resetGoalBudget(e, th)
 	}
+	if err := e.rememberShownModel(th, in.ComposerModel); err != nil {
+		return nil, err
+	}
 
 	prov, err := e.pool.ResolveModel(th.ProviderID, th.Model)
 	if err != nil {

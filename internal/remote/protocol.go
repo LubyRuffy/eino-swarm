@@ -251,10 +251,14 @@ type FollowupView struct {
 // ModelView is one composer row. No endpoint, key, or token window: the phone
 // only needs enough to pick a name the PC already knows.
 type ModelView struct {
-	ProviderID    string `json:"provider_id"`
-	ProviderLabel string `json:"provider_label,omitempty"`
-	Model         string `json:"model"`
-	Default       bool   `json:"default,omitempty"`
+	ProviderID            string `json:"provider_id"`
+	ProviderLabel         string `json:"provider_label,omitempty"`
+	Model                 string `json:"model"`
+	Default               bool   `json:"default,omitempty"`
+	DefaultFollowsSetting bool   `json:"default_follows_setting,omitempty"`
+	// Ready is false when the name is a saved default the catalog no longer
+	// lists. The phone keeps it on the button instead of substituting another.
+	Ready bool `json:"ready"`
 }
 
 // PutView is the progress of one chunked upload on this link.

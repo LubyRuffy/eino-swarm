@@ -129,6 +129,19 @@ describe("ModelPicker", () => {
     expect(onEdit).toHaveBeenCalled()
   })
 
+  it("shows a missing settings default as unavailable and does not replace it", () => {
+    const onChange = vi.fn()
+    const modelsWithGap: ModelInfo[] = [
+      { ...models[0], default: false },
+      { ...models[1], ready: false, default: true, default_follows_setting: true, model: "removed", label: "removed", id: "a\tremoved" },
+    ]
+    render(<ModelPicker models={modelsWithGap} providerId="a" model="" onChange={onChange} />)
+    const button = screen.getByRole("button", { name: "Model" })
+    expect(button).toHaveTextContent("removed")
+    expect(button).toHaveAttribute("data-unavailable", "true")
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
   it("lists the signed-in server's models before the user's own services", () => {
     const mixed: ModelInfo[] = [
       { id: "g\tserver-a", provider_id: "gateway:x", provider_label: "Server", label: "server-a", model: "server-a", ready: true, default: true, source: "account" },

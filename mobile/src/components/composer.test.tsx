@@ -291,6 +291,42 @@ describe("catalog changes preserve an explicit conversation model", () => {
   })
 })
 
+it("keeps a shown catalog fallback when the list is reordered", () => {
+  setLocale("en")
+  const props = { label: "Message", sendLabel: "Send", onSubmit: vi.fn(), providerId: "a", model: "" }
+  const { rerender } = render(<Composer {...props} models={[
+    { provider_id: "a", model: "first", default: true },
+    { provider_id: "a", model: "second" },
+  ]} />)
+  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent("first")
+  rerender(<Composer {...props} models={[
+    { provider_id: "a", model: "second", default: true },
+    { provider_id: "a", model: "first" },
+  ]} />)
+  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent("first")
+})
+
+it("follows a changed settings default and marks a missing one unavailable", () => {
+  setLocale("en")
+  const props = { label: "Message", sendLabel: "Send", onSubmit: vi.fn(), providerId: "a", model: "" }
+  const { rerender } = render(<Composer {...props} models={[
+    { provider_id: "a", model: "saved", default: true, default_follows_setting: true, ready: true },
+    { provider_id: "a", model: "other", ready: true },
+  ]} />)
+  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent("saved")
+  rerender(<Composer {...props} models={[
+    { provider_id: "a", model: "other", default: true, default_follows_setting: true, ready: true },
+    { provider_id: "a", model: "saved", ready: true },
+  ]} />)
+  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent("other")
+  rerender(<Composer {...props} models={[
+    { provider_id: "a", model: "removed", default: true, default_follows_setting: true, ready: false },
+    { provider_id: "a", model: "other", ready: true },
+  ]} />)
+  expect(screen.getByRole("button", { name: "Model" })).toHaveAttribute("data-unavailable", "true")
+  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent("removed")
+})
+
 it("keeps a user's local new-chat pick when refreshing the available models", () => {
   setLocale("en")
   const props = { label: "Message", sendLabel: "Send", onSubmit: vi.fn() }

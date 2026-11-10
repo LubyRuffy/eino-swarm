@@ -115,7 +115,8 @@ export function ModelPicker({
                     type="button"
                     role="radio"
                     aria-checked={selected}
-                    className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-foreground active:bg-accent"
+                    title={row.ready === false ? t("composer.modelUnavailable") : undefined}
+                    className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm active:bg-accent ${row.ready === false ? "text-muted-foreground" : "text-foreground"}`}
                     onClick={() => onSelect(row.provider_id, row.model)}
                   >
                     <span className="min-w-0 flex-1 break-all">{row.model}</span>

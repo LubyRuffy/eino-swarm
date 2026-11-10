@@ -59,6 +59,11 @@ type Info struct {
 	Model         string `json:"model"`
 	Ready         bool   `json:"ready"`
 	Default       bool   `json:"default"`
+	// DefaultFollowsSetting is true when this default is a name the user set
+	// (the account default, or a provider's configured model). A default that
+	// is only the catalog's current first name is not one: remembering it on
+	// the conversation keeps a later catalog refresh from changing the request.
+	DefaultFollowsSetting bool `json:"default_follows_setting,omitempty"`
 	// ContextWindow is this name's token limit, or 0 when nobody has said.
 	ContextWindow int `json:"context_window"`
 	// Source is SourceAccount for the signed-in server's models and
@@ -232,6 +237,7 @@ func (p *Pool) List() []Info {
 	if accountDefault {
 		for i := range rows {
 			rows[i].Default = false
+			rows[i].DefaultFollowsSetting = false
 		}
 	}
 	return append(src.rows(accountDefault, p.accountModel()), rows...)
@@ -261,16 +267,18 @@ func listModels(cfg *config.Config, mock bool) []Info {
 		ready := p.mock || prov.EndpointReady()
 		label := prov.GroupName()
 		for _, name := range names {
+			isDefault := name == prov.Model || (prov.Model == "" && p.mock && name == MockModelName)
 			out = append(out, Info{
-				ID:            ChoiceID(prov.ID, name),
-				ProviderID:    prov.ID,
-				ProviderLabel: label,
-				Label:         name,
-				Model:         name,
-				Ready:         ready && name != "",
-				Default:       name == prov.Model || (prov.Model == "" && p.mock && name == MockModelName),
-				ContextWindow: p.WindowFor(prov.ID, name),
-				Source:        SourceProvider,
+				ID:                    ChoiceID(prov.ID, name),
+				ProviderID:            prov.ID,
+				ProviderLabel:         label,
+				Label:                 name,
+				Model:                 name,
+				Ready:                 ready && name != "",
+				Default:               isDefault,
+				DefaultFollowsSetting: isDefault,
+				ContextWindow:         p.WindowFor(prov.ID, name),
+				Source:                SourceProvider,
 			})
 		}
 	}

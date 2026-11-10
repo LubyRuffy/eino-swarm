@@ -67,8 +67,8 @@ func TestRefreshCatalogReadsCurrentUpstreamWithoutChangingConfig(t *testing.T) {
 		t.Fatalf("explicit refresh must discover upstream: code=%s error=%s", resp.Code, resp.Error)
 	}
 	want := []ModelView{
-		{ProviderID: "endpoint", ProviderLabel: "Endpoint", Model: "new-a"},
-		{ProviderID: "endpoint", ProviderLabel: "Endpoint", Model: "new-b"},
+		{ProviderID: "endpoint", ProviderLabel: "Endpoint", Model: "new-a", Ready: true},
+		{ProviderID: "endpoint", ProviderLabel: "Endpoint", Model: "new-b", Ready: true},
 	}
 	if !reflect.DeepEqual(resp.Models, want) || requests.Load() != 1 {
 		t.Fatalf("fresh catalog=%v requests=%d", resp.Models, requests.Load())

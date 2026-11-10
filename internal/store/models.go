@@ -75,9 +75,10 @@ type Thread struct {
 	// project's.
 	ProjectID  string `gorm:"index;size:64" json:"project_id"`
 	ProviderID string `gorm:"size:64" json:"provider_id"`
-	// Model is the name this conversation sends. Empty means the provider's
-	// configured default, so a Settings change applies until someone picks
-	// a different name in the composer.
+	// Model is the name this conversation sends. Empty follows a user-configured
+	// default (the account model, or the provider's own model field), so a
+	// Settings change still applies. An account catalog's first name is not a
+	// setting: it is written here once, and a later catalog reorder leaves it.
 	Model string `gorm:"size:200" json:"model"`
 	// ReasoningEffort is this conversation's thinking level ("", low, medium,
 	// high). Empty means the model's own default. It applies from the next turn.

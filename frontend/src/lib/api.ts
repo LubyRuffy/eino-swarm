@@ -228,6 +228,7 @@ function turnBody(
   files?: string[],
   fromEventSeq?: number,
   historyReport?: boolean,
+  model?: string,
 ) {
   const body: {
     text: string
@@ -235,11 +236,13 @@ function turnBody(
     files?: string[]
     from_event_seq?: number
     history_report?: boolean
+    model?: string
   } = { text }
   if (images && images.length > 0) body.images = images
   if (files && files.length > 0) body.files = files
   if (fromEventSeq && fromEventSeq > 0) body.from_event_seq = fromEventSeq
   if (historyReport) body.history_report = true
+  if (model?.trim()) body.model = model.trim()
   return body
 }
 
@@ -589,17 +592,18 @@ export const api = {
     files?: string[],
     fromEventSeq?: number,
     historyReport?: boolean,
+    model?: string,
   ) =>
     request<{ turn: Turn }>(`/api/threads/${id}/turns`, {
       method: "POST",
-      body: JSON.stringify(turnBody(text, images, files, fromEventSeq, historyReport)),
+      body: JSON.stringify(turnBody(text, images, files, fromEventSeq, historyReport, model)),
     }).then((r) => r.turn),
   /** Injects into a running turn. Idle conversations start a turn instead,
    *  so a Steer click that lost the race still lands. */
-  steer: (id: string, text: string, images?: SendImage[], files?: string[]) =>
+  steer: (id: string, text: string, images?: SendImage[], files?: string[], model?: string) =>
     request<{ steered: boolean; turn?: Turn }>(`/api/threads/${id}/steer`, {
       method: "POST",
-      body: JSON.stringify(turnBody(text, images, files)),
+      body: JSON.stringify(turnBody(text, images, files, undefined, undefined, model)),
     }),
   followups: (id: string) =>
     request<{ followups: Followup[] }>(`/api/threads/${id}/followups`).then(

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
@@ -59,7 +60,9 @@ func discoverModelViews(ctx context.Context, eng *engine.Engine) ([]ModelView, e
 			}
 			for _, name := range cat.Names {
 				results[i] = append(results[i], ModelView{
-					ProviderID: p.ID, ProviderLabel: p.GroupName(), Model: name, Default: name == p.Model,
+					ProviderID: p.ID, ProviderLabel: p.GroupName(), Model: name,
+					Default: name == strings.TrimSpace(p.Model), DefaultFollowsSetting: name == strings.TrimSpace(p.Model) && strings.TrimSpace(p.Model) != "",
+					Ready: true,
 				})
 			}
 		}()
@@ -80,11 +83,16 @@ func discoverModelViews(ctx context.Context, eng *engine.Engine) ([]ModelView, e
 func accountModelViews(eng *engine.Engine) []ModelView {
 	var out []ModelView
 	for _, info := range eng.Providers().List() {
-		if info.Source == provider.SourceAccount && info.Ready {
-			out = append(out, ModelView{
-				ProviderID: info.ProviderID, ProviderLabel: info.ProviderLabel, Model: info.Model, Default: info.Default,
-			})
+		if info.Source != provider.SourceAccount || strings.TrimSpace(info.Model) == "" {
+			continue
 		}
+		if !info.Ready && !(info.Default && info.DefaultFollowsSetting) {
+			continue
+		}
+		out = append(out, ModelView{
+			ProviderID: info.ProviderID, ProviderLabel: info.ProviderLabel, Model: info.Model,
+			Default: info.Default, DefaultFollowsSetting: info.DefaultFollowsSetting, Ready: info.Ready,
+		})
 	}
 	return out
 }

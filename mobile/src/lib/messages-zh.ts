@@ -117,6 +117,7 @@ export const zh: Record<MessageKey, string> = {
   "composer.attach": "添加文件",
   "composer.remove": "移除{name}",
   "composer.model": "模型",
+  "composer.modelUnavailable": "当前列表里没有这个模型",
   "composer.thinking": "思考强度",
   "composer.thinkingDefault": "默认思考",
   "composer.loading": "正在加载模型",

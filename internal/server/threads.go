@@ -319,6 +319,9 @@ type turnRequest struct {
 	Files         []string       `json:"files"`
 	FromEventSeq  int64          `json:"from_event_seq"`
 	HistoryReport bool           `json:"history_report"`
+	// Model is the name the composer is showing. The engine remembers it only
+	// when the conversation has no model and no user-configured default.
+	Model string `json:"model"`
 }
 
 type rawImageJSON struct {
@@ -332,7 +335,10 @@ func (req turnRequest) input() (engine.UserInput, error) {
 	if err != nil {
 		return engine.UserInput{}, err
 	}
-	return engine.UserInput{Text: req.Text, Images: images, Files: req.Files, HistoryReport: req.HistoryReport}, nil
+	return engine.UserInput{
+		Text: req.Text, Images: images, Files: req.Files,
+		HistoryReport: req.HistoryReport, ComposerModel: req.Model,
+	}, nil
 }
 
 func rawImages(in []rawImageJSON) []engine.RawImage {

@@ -44,12 +44,12 @@ export function accountKindTally(kinds?: AccountModels["kinds"]): Array<{ key: A
   })
 }
 
-/** The conversation model a new server chat starts on. A saved name that is
- *  no longer in the conversation list falls back to the listed default. */
+/** The conversation model Settings shows for the server. A saved name stays
+ *  even after it leaves the list. Empty follows the listed default. */
 export function effectiveAccountModel(models: ModelInfo[], chosen?: string): string {
   const rows = accountModelRows(models)
   const want = chosen?.trim()
-  if (want && rows.some((row) => row.model === want)) return want
+  if (want) return want
   return rows.find((row) => row.default)?.model || rows[0]?.model || ""
 }
 

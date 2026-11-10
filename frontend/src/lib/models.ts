@@ -1,3 +1,5 @@
+import type { ModelInfo } from "./types"
+
 /** Selection key for a provider+model pair. Opaque to the UI. */
 export function modelChoiceId(providerId: string, model: string): string {
   return `${providerId}\t${model}`
@@ -91,4 +93,51 @@ export function titleModelChoiceId(
   if (hit) return modelChoiceId(hit.providerId, hit.model)
   if (provider && model) return modelChoiceId(provider, model)
   return TITLE_MODEL_AUTO
+}
+
+/** The row the composer button shows. An empty conversation model follows
+ *  the default row, including one that is not ready. A stored name that left
+ *  the list is not replaced. */
+export function displayedModel(
+  models: ModelInfo[],
+  providerId?: string,
+  model?: string,
+): ModelInfo | undefined {
+  const named = model?.trim() ?? ""
+  const rows = models.filter((row) => row.model)
+  if (providerId && named) {
+    return rows.find((row) => row.provider_id === providerId && row.model === named)
+  }
+  const providerListed = !providerId || rows.some((row) => row.provider_id === providerId)
+  if (!providerListed || named) return undefined
+  const same = providerId ? rows.filter((row) => row.provider_id === providerId) : rows
+  return (
+    same.find((row) => row.default) ??
+    same.find((row) => row.ready) ??
+    rows.find((row) => row.default) ??
+    rows.find((row) => row.ready)
+  )
+}
+
+/** A catalog-order default is remembered on the conversation. A user setting
+ *  is not: later changes to that setting must still apply. */
+export function rememberedCatalogModel(
+  row: ModelInfo | undefined,
+  storedModel?: string,
+): { providerId: string; model: string } | undefined {
+  if (storedModel?.trim()) return undefined
+  if (!row?.default || row.default_follows_setting || !row.ready || !row.model || !row.provider_id) return undefined
+  return { providerId: row.provider_id, model: row.model }
+}
+
+/** Name to send with a turn when the conversation has not stored one. The
+ *  server remembers it only when no user-configured default applies. */
+export function composerRequestModel(
+  models: ModelInfo[],
+  providerId?: string,
+  storedModel?: string,
+): string | undefined {
+  if (storedModel?.trim()) return undefined
+  const name = displayedModel(models, providerId, "")?.model.trim()
+  return name || undefined
 }
