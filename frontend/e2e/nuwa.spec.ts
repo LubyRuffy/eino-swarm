@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test"
 import { writeFile } from "node:fs/promises"
-import type { NuwaSnapshot } from "../src/lib/nuwa"
+import { nuwaLooseGroupID, NUWA_GOAL_ID, type NuwaSnapshot } from "../src/lib/nuwa"
 import { startNuwaFixture } from "./nuwa-fixture"
 
 const collaborationGraph = "Shared work collaboration graph"
@@ -346,43 +346,47 @@ test("published artifacts retain their recorded turn and publishers after reload
     }
 
     const assertOrigins = async (graph: Locator) => {
-      // Two independently published results share no dependency, so neither is
-      // a prerequisite of the other and both converge on the single goal node.
+      // Two independently published results share no dependency. They collapse
+      // into one result row and one dashed arrow instead of a card each.
       await expect(graph.getByTestId("nuwa-edge")).toHaveCount(0)
       await expect(graph.getByTestId("nuwa-origin")).toHaveCount(0)
       await expect(graph.getByTestId("nuwa-goal")).toHaveCount(1)
+      const group = graph.getByTestId("nuwa-loose-group")
+      await expect(group).toHaveAttribute("data-kind", "artifact")
+      await expect(group).toHaveAttribute("data-count", "2")
+      const edges = graph.getByTestId("nuwa-goal-edge")
+      await expect(edges).toHaveCount(1)
+      const routed = await edges.evaluateAll((paths) => paths.map((path) => [
+        path.getAttribute("data-from"),
+        path.getAttribute("data-to"),
+        getComputedStyle(path).strokeDasharray !== "none",
+      ]))
+      expect(routed).toEqual([[nuwaLooseGroupID("artifact"), NUWA_GOAL_ID, true]])
+      await group.click()
       for (const [node, author] of [
         [managerResult, "Manager"],
         [workerResult, worker.role],
       ] as const) {
         const card = graph.getByRole("button", { name: new RegExp(node.title) })
         await expect(card).toHaveAttribute("data-node-id", node.id)
-        await expect(card).toContainText(author)
+        await expect(card).toHaveAccessibleDescription(new RegExp(author))
         await expect(card).toHaveAccessibleDescription(new RegExp(`in turn ${turn.id}`))
       }
-      const edges = graph.getByTestId("nuwa-goal-edge")
-      await expect(edges).toHaveCount(2)
-      const routed = await edges.evaluateAll((paths) => paths.map((path) => [
-        path.getAttribute("data-from"),
-        path.getAttribute("data-to"),
-        getComputedStyle(path).strokeDasharray !== "none",
-      ]))
-      const sink = routed[0][1]
-      expect(routed.map((edge) => edge[0]).sort()).toEqual([managerResult.id, workerResult.id].sort())
-      expect(routed.every((edge) => edge[1] === sink && edge[2] === true)).toBe(true)
     }
 
-    const sidebarGraph = page.getByRole("region", { name: collaborationGraph, exact: true })
-    await assertOrigins(sidebarGraph)
+    const sidebarPath = page.getByRole("region", { name: collaborationPaths, exact: true })
+    await assertOrigins(sidebarPath)
+    const group = sidebarPath.getByTestId("nuwa-loose-group")
+    await expect(group).toBeInViewport({ ratio: 1 })
     for (const result of [managerResult, workerResult]) {
-      const card = sidebarGraph.getByRole("button", { name: new RegExp(result.title) })
+      const card = sidebarPath.getByRole("button", { name: new RegExp(result.title) })
       await expect(card).toBeInViewport({ ratio: 1 })
     }
     for (const [result, contents] of [
       [managerResult, "# Review notes\n\nThe conclusion is limited to the measured input.\n"],
       [workerResult, "# Field observations\n\nObserved facts were recorded.\n"],
     ] as const) {
-      const card = sidebarGraph.getByRole("button", { name: new RegExp(result.title) })
+      const card = sidebarPath.getByRole("button", { name: new RegExp(result.title) })
       await card.click()
       const output = await request.get(
         (await page
@@ -397,7 +401,7 @@ test("published artifacts retain their recorded turn and publishers after reload
     await page.getByRole("tab", { name: "Collaboration", exact: true }).click()
     await page.getByRole("button", { name: "Expand graph", exact: true }).click()
     const dialog = page.getByRole("dialog", { name: collaborationPaths, exact: true })
-    await assertOrigins(dialog.getByRole("region", { name: collaborationGraph, exact: true }))
+    await assertOrigins(dialog.getByRole("region", { name: collaborationPaths, exact: true }))
     await expect(dialog.getByText("Converges to goal", { exact: true })).toBeVisible()
     await writeFile(
       info.outputPath("nuwa-published-artifact-origins.png"),

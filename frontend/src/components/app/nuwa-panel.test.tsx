@@ -5,7 +5,7 @@ import { NuwaGraph } from "./nuwa-graph"
 import { useApp } from "@/store/app"
 import { useTraceFocus } from "@/store/trace-focus"
 import { nuwaAPI, subscribeNuwa } from "@/lib/nuwa-api"
-import { NUWA_GOAL_ID, type NuwaNode, type NuwaSnapshot } from "@/lib/nuwa"
+import { nuwaLooseGroupID, NUWA_GOAL_ID, type NuwaNode, type NuwaSnapshot } from "@/lib/nuwa"
 import type { Project } from "@/lib/types"
 
 vi.mock("@/lib/nuwa-api", () => ({ nuwaAPI: { snapshot: vi.fn() }, subscribeNuwa: vi.fn() }))
@@ -55,19 +55,30 @@ describe("Nuwa shared work", () => {
       workers: snapshot.workers.map((worker) => ({ ...worker, generation: 1 })),
     })
     render(<NuwaPanel project={project} threadId="a" onSelectAgent={vi.fn()} />)
-    const graph = await screen.findByRole("region", { name: "Shared work collaboration graph" })
-    // No synthetic turn/author columns; provenance rides on each record instead.
+    const path = await screen.findByRole("region", { name: "Collaboration paths" })
+    const graph = within(path).getByRole("region", { name: "Shared work collaboration graph" })
+    // Four isolated results share one row and one dashed arrow, not a card each.
     expect(within(graph).queryByTestId("nuwa-origin")).toBeNull()
     expect(within(graph).queryByTestId("nuwa-edge")).toBeNull()
-    const rightCard = within(graph).getByRole("button", { name: /Node right/ })
-    expect(rightCard).toHaveAccessibleDescription("Recorded by researcher in turn turn1")
-    expect(rightCard).toHaveTextContent("chosen-model")
-    expect(within(graph).getByRole("button", { name: /Node left/ })).toHaveTextContent("Manager")
-    // Every record, even an isolated one, converges on a single goal node.
+    expect(within(graph).queryByRole("button", { name: /Node right/ })).toBeNull()
+    const group = within(graph).getByTestId("nuwa-loose-group")
+    expect(group).toHaveAttribute("data-kind", "artifact")
+    expect(group).toHaveAttribute("data-count", "4")
+    expect(group).toHaveTextContent("4 Pending")
     expect(within(graph).getByTestId("nuwa-goal")).toBeInTheDocument()
     const goalEdges = within(graph).getAllByTestId("nuwa-goal-edge")
-    expect(goalEdges.map((edge) => edge.getAttribute("data-from")).sort()).toEqual(["left", "legacy", "prior", "right"])
+    expect(goalEdges.map((edge) => edge.getAttribute("data-from"))).toEqual([nuwaLooseGroupID("artifact")])
     expect(goalEdges.every((edge) => edge.getAttribute("data-to") === NUWA_GOAL_ID)).toBe(true)
+    fireEvent.click(group)
+    const rightCard = within(path).getByRole("button", { name: /Node right/ })
+    expect(rightCard).toHaveAccessibleDescription("Recorded by researcher in turn turn1")
+    fireEvent.click(rightCard)
+    const detail = screen.getByTestId("nuwa-node-detail")
+    expect(within(detail).getByText("chosen-model · high")).toBeInTheDocument()
+    expect(within(detail).getByText("Recorded by researcher in turn turn1")).toBeInTheDocument()
+    fireEvent.click(within(path).getByRole("button", { name: /Node left/ }))
+    expect(screen.queryByRole("list", { name: "Shared work nodes" })).toBeNull()
+    expect(within(screen.getByTestId("nuwa-node-detail")).getByText("Recorded by Manager in turn turn1")).toBeInTheDocument()
   })
 
   it("keeps a direct turn visible when the collaboration graph is empty", async () => {
@@ -164,6 +175,54 @@ describe("Nuwa shared work", () => {
     fireEvent.click(within(screen.getByTestId("nuwa-node-detail")).getByRole("button", { name: "Details and evidence" }))
     expect(screen.getByRole("button", { name: /Measured result/ })).toBeDisabled()
     expect(screen.getByText("Source unavailable")).toBeInTheDocument()
+  })
+
+  it("draws a dense report as its dependency path and fades records outside the selection", () => {
+    const loose = [
+      ...Array.from({ length: 16 }, (_, index) => node(`artifact-${index}`, { kind: "artifact" })),
+      ...Array.from({ length: 8 }, (_, index) => node(`fact-${index}`, { kind: "fact" })),
+      node("loose-task"),
+    ]
+    const chain = [
+      node("audit"),
+      node("cve", { kind: "fact", depends_on: ["audit"] }),
+      node("verify", { kind: "artifact", depends_on: ["cve"] }),
+      node("matrix", { kind: "fact" }),
+      node("poc", { kind: "artifact", depends_on: ["matrix"] }),
+    ]
+    render(<NuwaGraph nodes={[...loose, ...chain]} onSelect={vi.fn()} selected="poc" />)
+    const graph = screen.getByRole("region", { name: "Shared work collaboration graph" })
+    expect(within(graph).getAllByTestId("nuwa-loose-group")).toHaveLength(2)
+    expect(within(graph).getByRole("button", { name: /loose-task/ })).toHaveAttribute("data-node-id", "loose-task")
+    const artifactGroup = within(graph).getAllByTestId("nuwa-loose-group").find((group) => group.getAttribute("data-kind") === "artifact")
+    expect(artifactGroup).toHaveAttribute("data-count", "16")
+    expect(within(graph).queryByRole("button", { name: /artifact-0/ })).toBeNull()
+    expect(within(graph).getAllByTestId("nuwa-edge")).toHaveLength(3)
+    expect(within(graph).getAllByTestId("nuwa-goal-edge")).toHaveLength(5)
+    expect(within(graph).getByRole("button", { name: /poc/ })).toHaveAttribute("data-emphasis", "active")
+    expect(within(graph).getByRole("button", { name: /matrix/ })).toHaveAttribute("data-emphasis", "active")
+    expect(within(graph).getByRole("button", { name: /audit/ })).toHaveAttribute("data-emphasis", "dim")
+    expect(within(graph).getByRole("button", { name: /verify/ })).toHaveAttribute("data-emphasis", "dim")
+    const pocEdge = within(graph).getAllByTestId("nuwa-edge").find((edge) => edge.getAttribute("data-to") === "poc")
+    expect(pocEdge).toHaveAttribute("data-emphasis", "active")
+    const verifyEdge = within(graph).getAllByTestId("nuwa-goal-edge").find((edge) => edge.getAttribute("data-from") === "verify")
+    expect(verifyEdge).toHaveAttribute("data-emphasis", "dim")
+  })
+
+  it("filters a long unlinked list by title or summary", () => {
+    const records = Array.from({ length: 9 }, (_, index) => node(`artifact-${index}`, {
+      kind: "artifact", summary: index === 3 ? "unique-summary" : "shared",
+    }))
+    render(<NuwaGraph nodes={records} onSelect={vi.fn()} />)
+    const path = screen.getByRole("region", { name: "Collaboration paths" })
+    fireEvent.click(within(path).getByTestId("nuwa-loose-group"))
+    const filter = screen.getByRole("textbox", { name: "Filter Results" })
+    expect(within(path).getAllByRole("button", { name: /artifact-/ })).toHaveLength(9)
+    fireEvent.change(filter, { target: { value: "unique-summary" } })
+    expect(within(path).getByRole("button", { name: /artifact-3/ })).toBeInTheDocument()
+    expect(within(path).queryByRole("button", { name: /artifact-0/ })).toBeNull()
+    fireEvent.change(filter, { target: { value: "missing" } })
+    expect(screen.getByText("No matching records")).toBeInTheDocument()
   })
 
   it("keeps unknown states visible and exposes every cyclic graph node", () => {

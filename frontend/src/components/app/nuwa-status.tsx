@@ -24,8 +24,7 @@ export function NuwaStale({ node }: { node: NuwaNode }) {
   )
 }
 
-export function NuwaStatus({ status }: { status: string }) {
-  const t = useT()
+export function nuwaStatusLabel(status: string, t: Translate) {
   const labels: Record<string, string> = {
     pending: t("nuwa.pending"),
     running: t("nuwa.running"),
@@ -37,6 +36,11 @@ export function NuwaStatus({ status }: { status: string }) {
     superseded: t("nuwa.superseded"),
     retracted: t("nuwa.retracted"),
   }
+  return labels[status] ?? status
+}
+
+export function NuwaStatus({ status }: { status: string }) {
+  const t = useT()
   const variant =
     status === "done"
       ? "success"
@@ -47,7 +51,7 @@ export function NuwaStatus({ status }: { status: string }) {
           : "outline"
   return (
     <Badge variant={variant} className="max-w-full truncate px-1.5 py-0 text-[10px]">
-      {labels[status] ?? status}
+      {nuwaStatusLabel(status, t)}
     </Badge>
   )
 }

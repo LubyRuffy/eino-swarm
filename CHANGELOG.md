@@ -6,6 +6,16 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+### Changed
+
+- The collaboration path draws recorded dependencies. Several unconnected
+  records of the same kind collapse into one row and share a dashed arrow to
+  the goal; a single unconnected record stays visible. The row shows status
+  counts, and opening it lists the newest records first. A longer list can be
+  filtered, and the graph frame no longer stretches to fill the panel.
+  Selecting a record highlights only its upstream and downstream. Recorder and
+  model stay in the detail. (`F-136`, `C-037`)
+
 ### Fixed
 
 - The composer model and the model a turn requests stay the same when the

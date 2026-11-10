@@ -78,7 +78,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 冷恢复包含未收取的已完成结果。其原项目不匹配时拒绝加载；已收取或明确丢弃的旧项目结果继续保存在原历史，但不进入目的项目的新 Registry。
 - 共享写：必须来自受信 project/thread/turn/agent/generation 的实际工具调用，参数不能伪造作者。correction 保留原 author 并记录实际更新者。patch 仅改显式字段，省略 evidence/dependencies 保留，空数组清除。CAS、项目 revision 和完整版本审计原子提交；通过当前归属和输入有效性检查后，同 tool-call 身份与参数重送返回冻结回执，不重建节点、覆盖更新版本或增加 revision；幂等不绕过取消、删除归属／目标或成果文件有效性检查，异参复用身份冲突。取消、删除归属及存储失败不发布假回执。
 - 证据与依赖：事件必须存在且同项目，给定 turn 必须匹配；artifact 发布时须工作区内已有普通文件。引用存在不证明语义支持、内容不可变或业务完成，空证据不当作验证。依赖须同项目且无环，记录所依赖版本；纠正／superseded／retracted 后标 stale，普通 patch 不确认新源，须重读并显式更新 depends_on。删除的引用保留 unavailable 提示。
-- 协作图来源：没有可见工作依赖的节点按保存的 conversation／turn／agent／generation 显示原始来源。只有四项身份均匹配才显示 worker 目录中的名称和模型。虚线仅表示记录来源，不能替代显式 depends_on 或证据引用。
+- 协作图来源：有可见 depends_on 的记录按依赖分列。同一 kind 有多条且都没有可见依赖时收成一行，不按记录数展开卡片；只有一条时仍显示该记录。该类和真实链路的末端各用一条虚线指向目标。分组行显示状态数量；展开清单在画布外，最新记录在前，超过 8 条可按标题或摘要筛选，侧栏索引不重复这些记录。虚线不能替代显式 depends_on 或证据引用。选中一条路径记录时，高亮只覆盖其上下游。记录者、轮次和模型显示在详情中。只有 conversation／turn／agent／generation 四项身份均匹配才显示 worker 目录中的名称和模型。
 - `record_work.own_tool_call_ids` 可引用当前 manager turn 或同一 worker 执行中已落库的工具回执。接管通知的轮次变化不改变活跃 worker 的执行范围，证据指向实际记录结果的轮次。恢复后新调用使用新范围，历史回执仍可按显式 `evidence` 引用。同一已提交请求重送返回原回执。最多 16 个 ID，每个须有唯一且有序的调用与结果。缺失、未落库、重复或越界时整笔拒绝。两个证据字段互斥，省略两者保留原引用，空数组清除。
 - 展示与失败：按摘要／detail／原证据读取，预算内保持 JSON 完整，超限明确拒绝。worker 状态来自持久生命周期，task done 不替代收取。GET／SSE 用独立项目 revision 失效重读，不进入聊天 seq 或自动执行 DAG；旧 revision 和迟到项目响应不覆盖新视图，停用不删已存记录。
 - 验证边界：Registry／ADK／HTTP、Store 并发／失败、冷回放与浏览器测试分别证明相应边界；规划／执行分离须检查真实 manager 模型输入不含执行工具，并验证 worker 仍可发现、选择和执行原可选工具。旧测试、mock 和未分离的历史校准不证明新边界或真实模型质量／效率。真实性能对照须重新绑定符合该边界的 source、ELF、image 与校准。CyberGym 执行因平台安全审查中止，没有正式成绩；原生与真实性能不能从离线结果推断。

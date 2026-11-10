@@ -10,14 +10,14 @@ import {
 } from "@/components/ui/dialog"
 import { MemoMarkdown } from "@/components/app/markdown"
 import { api } from "@/lib/api"
-import { scopeNuwaNodes, type NuwaEvidence, type NuwaNode, type NuwaWorker } from "@/lib/nuwa"
+import { partitionNuwaCollaboration, scopeNuwaNodes, type NuwaEvidence, type NuwaNode, type NuwaWorker } from "@/lib/nuwa"
 import type { Project } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 import { cn } from "@/lib/utils"
 import { useApp } from "@/store/app"
 import { useNuwa } from "@/store/nuwa"
 import { useTraceFocus } from "@/store/trace-focus"
-import { NuwaGraph } from "./nuwa-graph"
+import { NuwaGraph, nuwaRecorder } from "./nuwa-graph"
 import { NuwaStatus, NuwaStale, nuwaKind } from "./nuwa-status"
 
 export function NuwaPanel({
@@ -46,6 +46,10 @@ export function NuwaPanel({
     () => scopeNuwaNodes(current?.nodes ?? [], scope === "thread" ? threadId : undefined),
     [current, scope, threadId]
   )
+  const indexed = useMemo(() => {
+    const grouped = new Set(partitionNuwaCollaboration(nodes).groups.flatMap((group) => group.records.map((record) => record.id)))
+    return nodes.filter((node) => !grouped.has(node.id))
+  }, [nodes])
   const detail = nodes.find((node) => node.id === selected)
   const workers = (current?.workers ?? []).filter(
     (worker) => scope !== "thread" || worker.thread_id === threadId
@@ -202,14 +206,15 @@ export function NuwaPanel({
               key={detail.id}
               node={detail}
               nodes={current.nodes}
+              workers={current.workers}
               onSelect={setSelected}
               onSource={openSource}
               onWorker={openWorker}
             />
           ) : null}
-          {nodes.length ? (
+          {indexed.length ? (
             <div role="list" aria-label={t("nuwa.list")} className="mt-4 grid gap-1">
-              {nodes.map((node) => (
+              {indexed.map((node) => (
                 <div role="listitem" key={node.id} className="min-w-0">
                   <button
                     type="button"
@@ -264,6 +269,7 @@ export function NuwaPanel({
                       key={detail.id}
                       node={detail}
                       nodes={current.nodes}
+                      workers={current.workers}
                       onSelect={setSelected}
                       onSource={async (source) => {
                         setGraphOpen(false)
@@ -321,19 +327,23 @@ function WorkerRow({ worker, onOpen }: { worker: NuwaWorker; onOpen: () => void 
 function NodeDetail({
   node,
   nodes,
+  workers,
   onSelect,
   onSource,
   onWorker,
 }: {
   node: NuwaNode
   nodes: NuwaNode[]
+  workers: NuwaWorker[]
   onSelect: (id: string) => void
   onSource: (source: NuwaEvidence) => Promise<void>
   onWorker: (worker: { thread_id: string; agent_id: string }) => Promise<void>
 }) {
   const t = useT()
   const [expanded, setExpanded] = useState(false)
-  const model = node.model_binding?.model || node.model
+  const recorder = nuwaRecorder(node, workers)
+  const author = recorder.manager ? t("nuwa.originManager") : recorder.name
+  const model = recorder.model
   return (
     <section
       data-testid="nuwa-node-detail"
@@ -354,10 +364,15 @@ function NodeDetail({
           {t("nuwa.updatedBy", { agent: node.updated_by })}
         </p>
       ) : null}
+      {author && node.turn_id ? (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          {t("nuwa.originDescription", { agent: author, turn: node.turn_id })}
+        </p>
+      ) : null}
       {model ? (
         <p className="mt-2 break-all text-[11px] text-muted-foreground">
           {model}
-          {node.reasoning_effort ? ` · ${node.reasoning_effort}` : ""}
+          {recorder.effort ? ` · ${recorder.effort}` : ""}
         </p>
       ) : null}
       {node.depends_on?.length ? (

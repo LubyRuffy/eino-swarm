@@ -192,11 +192,18 @@ Open **Collaboration** in the right panel. **Entire project** shows all recorded
 work; **This conversation** retains cross-conversation prerequisites so their
 paths remain visible. Select a node for detail, sources and correction identity,
 or expand the collaboration graph. Solid arrows show recorded work dependencies.
-A single goal node collects the records nothing else depends on, so a dashed
-arrow converges each terminal or isolated record on the shared goal instead of
-leaving it floating; these arrows do not assert that one result relied on
-another. Who recorded a result, in which turn, and with which model is
-provenance shown on the record's own card, not a separate graph node. Worker
+When several records of the same kind neither depend on nor support another
+record, they collapse into one row and share a single dashed arrow to the goal.
+A single unconnected record stays a card. A real chain
+still ends in its own dashed arrow. These arrows do not assert that one result
+relied on another. Selecting a record on the path highlights only its upstream
+and downstream. The graph frame stays as tall as the path instead of stretching to fill the
+panel. A collapsed row shows how many records share each status. Opening it
+lists the newest records first, and a list longer than eight records can be
+filtered by title or summary. The index below the graph does not repeat those
+grouped records. The graph card shows kind, title and status. Who recorded a
+result, in which turn, and with which model stays in the detail and in the
+opened kind list, not on a separate graph node. Worker
 rows show durable lifecycle status and recorded model bindings. Source links open the source conversation and, when a
 turn is given, its Trace; results use the existing file API.
 

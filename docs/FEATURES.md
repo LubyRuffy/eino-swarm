@@ -186,7 +186,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 女娲验收次数由主机计数：同一回合、同一共享记录最多一次 `verify` 和一次 `fix`。超额在创建 worker 之前拒绝，同一次调用重送不重复扣次，重启后额度仍在。普通实现和普通模式不占这个额度，也不按任务原文猜测意图。额度不是设置项。验证：`internal/engine/nuwa_verify_budget_http_test.go`、`internal/store/nuwa_verify_test.go`、`verify_admission_test.go`。
 
 - 当前范围没有共享节点或 Worker 时，Collaboration 显示已打开会话的最新轮次状态，并可进入对应 Trace 和会话文件。验证见 `frontend/e2e/nuwa.spec.ts`。
-- 协作路径图用实线显示已登记的工作依赖，并用单一目标节点收敛：没有后继依赖的终端记录（含孤立记录）通过虚线汇向目标，不再悬空；记录者、来源轮次与模型作为该记录卡片上的出处元数据显示，而非独立的图节点，已有记录在重载后也保留这些出处。验证见 `frontend/e2e/nuwa.spec.ts`。
+- 协作路径图用实线显示已登记的工作依赖。同一类型有多条且都没有依赖时收成一行，共用一条虚线指向目标；只有一条时仍显示该记录。真实依赖链的末端仍各自以虚线指向目标。选中路径上的记录时，只高亮它的上下游，其余变淡。分组行显示各状态的数量。展开后的清单紧挨画布，超过 8 条时可按标题或摘要筛选，最新的在前；这些记录不再在图下的索引里重复。类型、标题和状态留在图上；记录者、来源轮次与模型在详情和未接入清单中显示，不另做图节点。验证见 `frontend/src/lib/nuwa.test.ts`、`frontend/src/components/app/nuwa-panel.test.tsx`、`frontend/e2e/nuwa.spec.ts`。
 - 移动会话时，打开的 Collaboration 视图会更新来源链接状态。移回源会话后可重新打开仍然存在的证据。关联契约 `C-037`，验证见 `internal/server/nuwa_stream_test.go`、`frontend/e2e/nuwa.spec.ts`。
 - 编辑重发移除来源事件后，已打开的 Collaboration 视图会将原引用标记为不可用。删除迁移过的会话会清理它在历史项目中创建的共享工作和版本，其他会话的引用保留。关联契约 `C-037`，验证见 `internal/server/nuwa_source_lifecycle_test.go`、`frontend/e2e/nuwa.spec.ts`。
 - Agent 可用已见的工具调用 ID 将自己的持久回执关联到共享记录。活跃 worker 跨轮保留时可引用当前执行的回执，冷恢复后可引用新执行产生的回执。事实保留原始作者，链接指向实际记录结果的轮次。持久化失败时写入会明确拒绝。验证见 `internal/engine/nuwa_adopted_evidence_test.go`、`internal/engine/nuwa_worker_restore_test.go` 和 `internal/store/nuwa_own_tool_evidence_test.go`。
