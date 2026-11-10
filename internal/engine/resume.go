@@ -323,7 +323,10 @@ type orphanedToolCall struct {
 }
 
 func orphanedToolCalls(events []store.Event) []orphanedToolCall {
-	events = restartAskEvents(events)
+	return unpairedToolCalls(restartAskEvents(events))
+}
+
+func unpairedToolCalls(events []store.Event) []orphanedToolCall {
 	type callKey struct{ agent, id string }
 	open := make(map[callKey]orphanedToolCall)
 	order := make([]callKey, 0)

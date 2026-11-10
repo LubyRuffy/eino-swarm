@@ -350,10 +350,7 @@ func (s *Store) MergeSkills(keep string, sources []string, description, body str
 	seen := map[string]struct{}{}
 	var from []string
 	for _, raw := range sources {
-		name := strings.TrimSpace(raw)
-		if ValidSkillName(name) != nil {
-			name = SafeSkillName(name)
-		}
+		name := ResolveSkillToolName(raw)
 		if name == "" || name == keep {
 			continue
 		}

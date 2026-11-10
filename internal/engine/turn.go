@@ -693,7 +693,15 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	go rt.heartbeat(beat, turn.ID, reg, time.Now(), e.cfg.SwarmSnapshot().ProgressInterval())
 	var res swarm.RunResult
 	runErr := resumeErr
-	if runErr == nil {
+	if resumed && runErr == nil {
+		// Stop can wake the recovered question before it cancels ctx.
+		status, _, abandoned := rt.turnOutcome(ctx, nil)
+		if abandoned || status == store.TurnCancelled {
+			runErr = context.Canceled
+		}
+	}
+	managerAdmitted := runErr == nil
+	if managerAdmitted {
 		res, runErr = rt.runManager(ctx, turn, reg, acc, toolset, pc, messages, resumed, snapshots...)
 	}
 	stopBeat()
@@ -704,7 +712,13 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	if !rt.isAbandoned() {
 		leftover = reg.TakePendingSteerMessages()
 	}
-	e.persistTranscript(rt.threadID, turn.ID, res.Transcript, inputCount)
+	var stoppedAsks []stoppedAskReceipt
+	// Recovery already settled any old question from its shared snapshot.
+	// Only a live manager could have published another one before Stop.
+	if managerAdmitted {
+		stoppedAsks = rt.stoppedAskReceipts(turn)
+	}
+	e.persistTranscript(rt.threadID, turn.ID, res.Transcript, inputCount, stoppedAsks...)
 
 	// Decide before releasing, which cancels the context. Freeze and this
 	// decision share rt.mu so a restart cancellation cannot become user Stop.
@@ -916,15 +930,16 @@ func (e *Engine) emit(ev store.Event) {
 // persistTranscript stores the messages this turn added. The transcript the
 // swarm returns starts with the system instruction and then replays the input
 // messages, so only the tail past them is new.
-func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Message, inputCount int) {
-	start := compactPersistStart(transcript, inputCount)
-	if len(transcript) <= start {
+func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Message, inputCount int, stoppedAsks ...stoppedAskReceipt) {
+	start := min(compactPersistStart(transcript, inputCount), len(transcript))
+	tail := e.stoppedAskTranscript(threadID, turnID, transcript[start:], stoppedAsks)
+	if len(tail) == 0 {
 		return
 	}
 	have := e.storedAssistantText(threadID, turnID)
 	haveUsers := e.storedUserText(threadID, turnID)
 	var rows []store.Message
-	for _, m := range transcript[start:] {
+	for _, m := range tail {
 		if _, runtimeState := workerstate.Parse(m); runtimeState {
 			continue
 		}

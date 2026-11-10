@@ -472,6 +472,24 @@ describe("Settings dialog", () => {
     expect(vi.mocked(api.saveSettings).mock.calls[0][0].ui).toBeUndefined()
   })
 
+  it("autosaves the project skill verifier opt-in and explicit opt-out", async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await waitSettingsLoaded()
+    await user.click(screen.getByRole("tab", { name: "Memory" }))
+    const toggle = screen.getByRole("switch", { name: "Verify and correct project skills" })
+    expect(toggle).not.toBeChecked()
+    await user.click(toggle)
+    await waitFor(() => expect(api.saveSettings).toHaveBeenLastCalledWith({
+      memory: { ...base.memory, auto_dream: true },
+    }))
+    await user.click(toggle)
+    await waitFor(() => expect(api.saveSettings).toHaveBeenLastCalledWith({
+      memory: { ...base.memory, auto_dream: false },
+    }))
+    expect(toggle).not.toBeChecked()
+  })
+
   it("keeps invalid cloud tool JSON across pages and blocks auto-save and leaving", async () => {
     vi.mocked(api.settings).mockResolvedValue({
       ...base,

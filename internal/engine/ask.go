@@ -274,7 +274,24 @@ func (rt *runtime) waitAskCall(ctx context.Context, questions []AskQuestion, cal
 	if callID == "" {
 		callID = rt.peekAskCallID()
 	}
+	owner, _ := ctx.Value(historyReadOwnerKey{}).(historyReadOwner)
 	rt.mu.Lock()
+	owned := owner.ThreadID == rt.threadID && owner.TurnID == rt.turnID
+	err := ctx.Err()
+	if rt.userStopped || (owner.TurnID != "" && !owned) {
+		err = context.Canceled
+	}
+	if err != nil {
+		// An exact answer admitted before Stop remains valid if the
+		// waiter only reaches the runtime after cancellation.
+		accepted := rt.acceptedAsk
+		if rt.userStopped && owned && callID != "" && accepted != nil && accepted.CallID == callID {
+			rt.mu.Unlock()
+			return accepted.Answers, nil
+		}
+		rt.mu.Unlock()
+		return nil, err
+	}
 	if rt.askStash != nil && (rt.askStashCallID == "" || callID == "" || rt.askStashCallID == callID) {
 		reply := *rt.askStash
 		rt.askStash = nil
@@ -282,7 +299,8 @@ func (rt *runtime) waitAskCall(ctx context.Context, questions []AskQuestion, cal
 		rt.mu.Unlock()
 		return reply.answers, reply.err
 	}
-	rt.ask = &pendingAsk{callID: callID, questions: questions, ch: ch}
+	pending := &pendingAsk{callID: callID, questions: questions, ch: ch}
+	rt.ask = pending
 	if rt.acceptedAsk != nil && rt.acceptedAsk.CallID != callID {
 		rt.acceptedAsk = nil
 	}
@@ -290,28 +308,32 @@ func (rt *runtime) waitAskCall(ctx context.Context, questions []AskQuestion, cal
 	if callID == "" {
 		if id := rt.peekAskCallID(); id != "" {
 			rt.mu.Lock()
-			if rt.ask != nil {
-				rt.ask.callID = id
+			if rt.ask == pending {
+				pending.callID = id
 			}
 			rt.mu.Unlock()
 		}
 	}
 	defer func() {
-		done := callID
 		rt.mu.Lock()
-		if rt.ask != nil && rt.ask.callID != "" {
-			done = rt.ask.callID
-		}
-		if done == "" {
+		if rt.ask != pending {
 			rt.mu.Unlock()
-			done = rt.peekAskCallID()
+			return
+		}
+		if pending.callID == "" {
+			rt.mu.Unlock()
+			id := rt.peekAskCallID()
 			rt.mu.Lock()
-			if rt.ask != nil && rt.ask.callID != "" {
-				done = rt.ask.callID
+			if rt.ask != pending {
+				rt.mu.Unlock()
+				return
+			}
+			if pending.callID == "" {
+				pending.callID = id
 			}
 		}
 		rt.ask = nil
-		rt.askCompletedCallID = done
+		rt.askCompletedCallID = pending.callID
 		rt.mu.Unlock()
 	}()
 
@@ -319,7 +341,13 @@ func (rt *runtime) waitAskCall(ctx context.Context, questions []AskQuestion, cal
 	case reply := <-ch:
 		return reply.answers, reply.err
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		// Preserve a human answer accepted before Stop cancelled the turn.
+		select {
+		case reply := <-ch:
+			return reply.answers, reply.err
+		default:
+			return nil, ctx.Err()
+		}
 	}
 }
 
@@ -333,6 +361,10 @@ func (rt *runtime) peekAskCallID() string {
 func (rt *runtime) signalAsk(callID string, reply askReply) error {
 	for {
 		rt.mu.Lock()
+		if !rt.running || rt.userStopped {
+			rt.mu.Unlock()
+			return ErrIdle
+		}
 		if rt.ask != nil && rt.ask.ch != nil {
 			expected := rt.ask.callID
 			ch := rt.ask.ch
@@ -352,10 +384,6 @@ func (rt *runtime) signalAsk(callID string, reply askReply) error {
 				return ErrAskMismatch
 			}
 		}
-		if !rt.running {
-			rt.mu.Unlock()
-			return ErrIdle
-		}
 		finished := rt.askCompletedCallID
 		tid := rt.turnID
 		rt.mu.Unlock()
@@ -366,13 +394,13 @@ func (rt *runtime) signalAsk(callID string, reply askReply) error {
 		}
 
 		rt.mu.Lock()
+		if !rt.running || rt.userStopped || rt.turnID != tid {
+			rt.mu.Unlock()
+			return ErrIdle
+		}
 		if rt.ask != nil && rt.ask.ch != nil {
 			rt.mu.Unlock()
 			continue
-		}
-		if !rt.running {
-			rt.mu.Unlock()
-			return ErrIdle
 		}
 		// tool_call is recorded before InvokableRun arms the channel.
 		rt.askStash = &reply

@@ -358,8 +358,11 @@ still must call the actual wait/close tools to collect or discard those results.
   wrapping the current manager generate/tool, converts that cancel into
   `InterruptedToolResult`, and leaves workers on their own contexts.
   A tool that blocks in a syscall and never looks at the context does not
-  delay that result: the call returns when the epoch or the run context is
-  cancelled, and a late tool return is discarded.
+  delay ordinary Stop or preempt: the call returns when the epoch or run is
+  cancelled, and a late tool return is discarded. During engine handoff, an
+  admitted call can still return to its original caller. The host bounds its
+  checkpoint wait independently and records unconfirmed external effects as
+  `outcome_unknown`.
   `RetractManagerSteer(seq)` drops one unread manager inbox item tagged with
   `SetSteerSeq`. `HasPendingSteers` / `TakePreempt` are how a host re-enters
   a generate that died on epoch cancel without treating a provider cancel as

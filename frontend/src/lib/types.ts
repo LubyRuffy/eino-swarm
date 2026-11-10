@@ -811,6 +811,7 @@ export interface UsageSnapshot {
 export interface MemorySettings {
   enabled: boolean
   auto_review: boolean
+  auto_dream?: boolean
   char_limit: number
   entry_max: number
   review_max_iterations: number

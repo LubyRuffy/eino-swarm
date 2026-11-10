@@ -97,7 +97,7 @@ test("a plan objective keeps its literal goal marker without activating a goal",
     && new URL(request.url()).pathname === `/api/threads/${threadID}/turns`)
   await composer(page).fill(`/plan ${objective}`)
   await composer(page).press("Enter")
-  expect((await sent).postDataJSON()).toEqual({ text: `/plan ${objective}` })
+  expect((await sent).postDataJSON()).toEqual({ text: `/plan ${objective}`, model: "mock" })
   await expect(page.getByTestId("plan-banner")).toContainText("Planning")
   await expect(page.getByTestId("goal-banner")).toHaveCount(0)
   await expect(statusBadge(page)).toContainText("Your turn", { timeout: 30_000 })

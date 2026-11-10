@@ -196,32 +196,48 @@ func (r *Registry) preemptToolResult(parent, epoch context.Context, out string, 
 	return InterruptedToolResult, nil
 }
 
-// callUntilCancel runs fn and returns when fn finishes or ctx is cancelled.
-// A tool blocked in a syscall does not observe ctx. Waiting for that return
-// is what left Stop and preempt stuck on the turn. After cancellation the
-// call may still be inside the syscall; its later result is discarded.
-func callUntilCancel(ctx context.Context, fn func() (string, error)) (string, error) {
+// callUntilCancel releases ordinary Stop and preempt without waiting for an
+// uncooperative tool. Handoff keeps the return of an already-started call;
+// the host owns a separate deadline for collecting its checkpoint.
+func callUntilCancel(ctx context.Context, finishHandoff func() bool, fn func() (string, error)) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	type result struct {
-		out string
-		err error
+		out        string
+		err        error
+		panicValue any
 	}
 	done := make(chan result, 1)
 	go func() {
-		out, err := fn()
-		done <- result{out, err}
+		var res result
+		defer func() {
+			res.panicValue = recover()
+			done <- res
+		}()
+		// Stop may have won before this goroutine was scheduled.
+		if res.err = ctx.Err(); res.err == nil {
+			res.out, res.err = fn()
+		}
 	}()
+	deliver := func(res result) (string, error) {
+		if res.panicValue != nil {
+			// Eino recovers on the caller goroutine, not the tool goroutine.
+			panic(res.panicValue)
+		}
+		return res.out, res.err
+	}
 	select {
 	case res := <-done:
-		return res.out, res.err
+		return deliver(res)
 	case <-ctx.Done():
+		if finishHandoff() {
+			return deliver(<-done)
+		}
 		select {
 		case res := <-done:
-			return res.out, res.err
+			return deliver(res)
 		default:
-			go func() { <-done }()
 			return "", ctx.Err()
 		}
 	}

@@ -71,6 +71,9 @@ export const memoryEn = {
   "settings.memory.autoReview": "Review a conversation when it finishes",
   "settings.memory.autoReviewHint":
     "A finished turn is read back so durable facts and reusable procedures are kept. A conversation outside a project keeps procedures in the shared skill library. Off means memory only changes when an agent or you write to it.",
+  "settings.memory.autoDream": "Verify and correct project skills",
+  "settings.memory.autoDreamHint":
+    "After a successful turn, checks skills from earlier automatic reviews against project history and successful tool results. The automatic review can restore a previous version when the evidence contradicts the update. Requires memory and automatic review.",
   "settings.memory.after": "After a review",
   "settings.memory.afterHint":
     "The review still runs and still writes. This only governs the line that appears after the answer.",
@@ -80,9 +83,10 @@ export const memoryEn = {
   "settings.memory.budget": "Budget",
   "settings.memory.reviewThinking": "Review thinking",
   "settings.memory.reviewThinkingHint":
-    "A separate reasoning level for automatic reviews and Review now. A review extracts rather than plans, so Default uses Low; an endpoint that rejects Default is asked again without it. A level you pick explicitly is sent as chosen. Other conversation work keeps its own setting.",
+    "A separate reasoning level for automatic reviews and Review now. Default uses Low for ordinary review and None for the verification request. If the endpoint rejects verification, ordinary review can continue. A level you pick explicitly is sent as chosen. Other conversation work keeps its own setting.",
   "settings.memory.reviewThinkingDefault": "Default (Low)",
   "settings.memory.reviewThinkingInherit": "Inherit conversation",
+  "settings.memory.reviewThinkingNone": "None",
   "settings.memory.reviewThinkingLow": "Low",
   "settings.memory.reviewThinkingMedium": "Medium",
   "settings.memory.reviewThinkingHigh": "High",

@@ -382,12 +382,7 @@ func (t *skillManageTool) InvokableRun(_ context.Context, args string, _ ...tool
 		return failure("could not read the arguments: %v", err), nil
 	}
 	action := strings.ToLower(strings.TrimSpace(a.Action))
-	// A model asked for a hyphenated name often sends a title anyway. Fixing
-	// it here is better than losing the skill to a rejected name.
-	name := strings.TrimSpace(a.Name)
-	if ValidSkillName(name) != nil {
-		name = SafeSkillName(name)
-	}
+	name := ResolveSkillToolName(a.Name)
 
 	switch action {
 	case "create":

@@ -465,8 +465,8 @@ provider carries `has_api_key` and `ready` instead.
             "web_execution": "auto",
             "result_max_chars": 40000,
             "proxy": {"http": "", "https": "", "no_proxy": ""}},
-  "memory": {"enabled": true, "auto_review": true, "char_limit": 2200,
-             "entry_max": 360, "review_max_iterations": 8,
+  "memory": {"enabled": true, "auto_review": true, "auto_dream": true,
+             "char_limit": 2200, "entry_max": 360, "review_max_iterations": 8,
              "review_reasoning_effort": "",
              "skills_index_max": 50, "notifications": "on"},
   "personality": {"instructions": ""},
@@ -487,6 +487,8 @@ provider carries `has_api_key` and `ready` instead.
 `memory.review_deduplicate_feedback` appears as `true` when the experiment is
 enabled and is omitted otherwise. A `PUT /api/settings` request that supplies
 `memory` replaces that section. Include the flag to keep the experiment on.
+`memory.auto_dream` defaults to `true`. An explicit `false` disables automatic
+skill verification. Omitting `auto_dream` from a `PUT` preserves the saved choice.
 
 ### `GET /api/clients`
 
@@ -2270,8 +2272,10 @@ actually removed that row; a lost claim reselects the oldest remaining row.
 ### `POST /api/threads/:id/interrupt` → `202`
 
 Cancels the running turn, or stops its parked worker registry after the manager
-has already ended. A running turn keeps its transcript and becomes `cancelled`;
-stopping parked workers preserves the manager's existing terminal status,
+has already ended. A running turn keeps its transcript and becomes `cancelled`.
+An outstanding `ask_user` retains its original tool call ID and receives its
+cancellation result before the turn ends. An accepted answer keeps precedence.
+Stopping parked workers preserves the manager's existing terminal status,
 including a failed scheduled check's error. `user_stop_requested` and cleanup
 remain authoritative over worker-retention receipts. `409 idle` means there is
 neither a running turn nor a parked registry to stop.

@@ -1,5 +1,18 @@
 package config
 
+import (
+	"strings"
+	"time"
+)
+
+const (
+	DefaultDreamTimeout    = 15 * time.Second
+	DefaultDreamInputBytes = 6000
+)
+
+// ReviewReasoningNone explicitly disables thinking for the turn review.
+const ReviewReasoningNone = "none"
+
 // MemoryConfig governs a project's memory: the notes carried into every turn
 // and the skill documents the agents write for themselves.
 //
@@ -13,6 +26,8 @@ type MemoryConfig struct {
 	// AutoReview runs a review after each completed turn, which is what makes
 	// memory grow without anyone being asked to maintain it.
 	AutoReview bool `yaml:"auto_review" json:"auto_review"`
+	// AutoDream verifies a previously learned skill against later task receipts.
+	AutoDream bool `yaml:"auto_dream" json:"auto_dream"`
 	// CharLimit bounds MEMORY.md. A write that would exceed it fails with the
 	// current entries attached, rather than silently dropping the oldest.
 	CharLimit int `yaml:"char_limit" json:"char_limit"`
@@ -27,9 +42,8 @@ type MemoryConfig struct {
 	// a whole index is more than one conversation.
 	ReviewMaxIterations int `yaml:"review_max_iterations" json:"review_max_iterations"`
 	// ReviewReasoningEffort is post-turn extraction's thinking level: blank
-	// (DefaultAuxiliaryReasoning), inherit (the original turn's level), low,
-	// medium or high. Unknown values are repaired to blank. No level disables
-	// thinking; inherit keeps the conversation's provider behavior.
+	// (the background default), inherit (the original turn's level), none
+	// (disable thinking), low, medium or high. Unknown values are repaired to blank.
 	ReviewReasoningEffort string `yaml:"review_reasoning_effort" json:"review_reasoning_effort"`
 	// ReviewDeduplicateFeedback omits repeated fields from the turn reviewer's
 	// aggregate refusal feedback. The experiment is off unless explicitly enabled.
@@ -47,9 +61,19 @@ type MemoryConfig struct {
 	Notifications string `yaml:"notifications" json:"notifications"`
 }
 
+func normalizeReviewReasoning(s string) string {
+	if strings.EqualFold(strings.TrimSpace(s), ReviewReasoningNone) {
+		return ReviewReasoningNone
+	}
+	return NormalizeAuxiliaryReasoning(s)
+}
+
 // ReviewEffort is the review's level and whether it is the optional
 // background default (see AuxiliaryEffort). Catalog tidy has its own policy.
 func (m MemoryConfig) ReviewEffort(inherited string) (string, bool) {
+	if normalizeReviewReasoning(m.ReviewReasoningEffort) == ReviewReasoningNone {
+		return ReviewReasoningNone, false
+	}
 	return AuxiliaryEffort(m.ReviewReasoningEffort, inherited)
 }
 

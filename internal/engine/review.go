@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
@@ -44,8 +45,10 @@ const (
 
 // reviewPool owns the reviews in flight.
 type reviewPool struct {
-	mu      sync.Mutex
-	stopped bool
+	mu        sync.Mutex
+	stopped   bool
+	dreamCtx  context.Context
+	stopDream context.CancelFunc
 	// gates serializes the reviews of one project. Two turns finishing
 	// together would otherwise read the same bounded store, each decide there
 	// is room, and one of them would lose its entry. The Memory panel's tidy
@@ -54,7 +57,10 @@ type reviewPool struct {
 	wg    sync.WaitGroup
 }
 
-func newReviewPool() reviewPool { return reviewPool{gates: map[string]chan struct{}{}} }
+func newReviewPool() reviewPool {
+	ctx, cancel := context.WithCancel(context.Background())
+	return reviewPool{gates: map[string]chan struct{}{}, dreamCtx: ctx, stopDream: cancel}
+}
 
 // begin registers a review and returns the gate to hold while it runs, or nil
 // when the engine is shutting down and nothing new should start.
@@ -81,6 +87,7 @@ func (p *reviewPool) done() { p.wg.Done() }
 func (p *reviewPool) stop(wait time.Duration) bool {
 	p.mu.Lock()
 	p.stopped = true
+	p.stopDream()
 	p.mu.Unlock()
 
 	finished := make(chan struct{})
@@ -178,7 +185,7 @@ func (e *Engine) scheduleReview(threadID string, turn *store.Turn, status string
 			}
 			return
 		}
-		e.runReviewInput(threadID, turn, pc, input, events)
+		e.runReviewInput(threadID, turn, pc, input, events, true)
 	}()
 }
 
@@ -240,7 +247,7 @@ func (e *Engine) ReviewTurn(threadID string) (*store.Turn, error) {
 				e.log.Error("memory review panicked", "turn", latest.ID, "panic", r)
 			}
 		}()
-		e.runReviewInput(threadID, latest, pc, input, events)
+		e.runReviewInput(threadID, latest, pc, input, events, false)
 	}()
 	return latest, nil
 }
@@ -256,6 +263,9 @@ type reviewOutcome struct {
 	// rather than a project's memory. Stamped here so a replay does not
 	// have to guess from the conversation's project.
 	Library bool `json:"library,omitempty"`
+	// ProjectID binds an eligible skill patch or verification to its project.
+	ProjectID string        `json:"project_id,omitempty"`
+	Dream     *dreamReceipt `json:"dream,omitempty"`
 	// Changes describes writes that landed. Available before/after snapshots
 	// keep transcript details tied to this review rather than later file edits.
 	Changes []memory.Change `json:"changes,omitempty"`
@@ -282,6 +292,7 @@ type reviewRun struct {
 	// optionalEffort marks effort as the background default rather than a
 	// chosen level; an endpoint without reasoning control may reject it.
 	optionalEffort bool
+	dream          *dreamReview
 	description    string
 	instruction    string
 	userMsg        string
@@ -326,10 +337,10 @@ func (e *Engine) runReview(threadID string, turn *store.Turn, pc *projectContext
 		// for creating writable source references into a different transcript.
 		input = reviewSourceInput{Transcript: transcript}
 	}
-	e.runReviewInput(threadID, turn, pc, input, sourceEvents)
+	e.runReviewInput(threadID, turn, pc, input, sourceEvents, false)
 }
 
-func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectContext, input reviewSourceInput, sourceEvents []store.Event) {
+func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectContext, input reviewSourceInput, sourceEvents []store.Event, automatic bool) {
 	var mu sync.Mutex
 	outcome := reviewOutcome{Notes: map[string]int{}}
 	var notes *memory.Snapshot
@@ -368,6 +379,10 @@ func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectCo
 	if turn.Status != store.TurnError {
 		instruction += "\n" + workerLifecycleGuidance + "\n"
 	}
+	userMsg := e.reviewUserMessageWithNotes(pc, input.Transcript, notes)
+	if automatic {
+		batch.dream = e.prepareDream(turn, pc, sourceEvents, input.Events)
+	}
 	effort, optionalEffort := memorySettings.ReviewEffort(turn.ReasoningEffort)
 	e.driveReviewer(reviewRun{
 		threadID:       threadID,
@@ -376,9 +391,10 @@ func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectCo
 		model:          turn.Model,
 		effort:         effort,
 		optionalEffort: optionalEffort,
+		dream:          batch.dream,
 		description:    description,
 		instruction:    instruction,
-		userMsg:        e.reviewUserMessageWithNotes(pc, input.Transcript, notes),
+		userMsg:        userMsg,
 		maxIter:        memorySettings.ReviewIterations(),
 		tools:          tools,
 		sequential:     true,
@@ -402,8 +418,46 @@ func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectCo
 		outcome.Notes = nil
 	}
 	result := outcome
+	if batch.complete && batch.dream != nil {
+		batch.dream.receipt.Status = batch.dreamStatus
+		batch.dream.receipt.InvalidReason = batch.dreamInvalidReason
+		batch.dream.receipt.Selected = batch.dreamRefs
+	}
 	mu.Unlock()
-	e.finishReview(threadID, turn, pc, result)
+	e.finishReviewWithDream(threadID, turn, pc, result, batch.dream)
+}
+
+func (e *Engine) reviewerModel(ctx context.Context, run reviewRun) (model.BaseChatModel, error) {
+	rec := e.callRecorder(run.threadID, run.turnID)
+	modelBuilder := e.pool.ReviewModelBuilder
+	if run.optionalEffort {
+		modelBuilder = e.pool.AuxiliaryModelBuilder
+	}
+	build, err := modelBuilder(ctx, run.providerID, run.model, run.effort, rec)
+	if err != nil {
+		return nil, err
+	}
+	ordinary := build(ReviewAgentID, ReviewAgentID)
+	if run.dream == nil {
+		return ordinary, nil
+	}
+	auditEffort := run.effort
+	if run.optionalEffort {
+		auditEffort = config.ReviewReasoningNone
+	}
+	// This builder cannot retry an optional effort with the audit still attached.
+	audit, err := e.pool.ReviewModelBuilder(ctx, run.providerID, run.model, auditEffort, rec)
+	if err != nil {
+		return nil, err
+	}
+	ordinaryBatch, err := (&reviewBatchTool{}).Info(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &dreamReviewModel{
+		ordinary: ordinary, first: audit(ReviewAgentID, ReviewAgentID),
+		dream: run.dream, ordinaryBatch: ordinaryBatch, optional: run.optionalEffort,
+	}, nil
 }
 
 // driveReviewer runs one ChatModelAgent with the memory tools. The caller
@@ -419,12 +473,7 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 	if strings.TrimSpace(run.description) == "" {
 		run.description = "curates this project's memory"
 	}
-	modelBuilder := e.pool.ModelBuilder
-	if run.optionalEffort {
-		modelBuilder = e.pool.AuxiliaryModelBuilder
-	}
-	builder, err := modelBuilder(ctx, run.providerID, run.model, run.effort,
-		e.callRecorder(run.threadID, run.turnID))
+	reviewer, err := e.reviewerModel(ctx, run)
 	if err != nil {
 		mu.Lock()
 		outcome.Err = publicTurnError(err)
@@ -436,7 +485,7 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 		Name:        ReviewAgentID,
 		Description: run.description,
 		Instruction: run.instruction,
-		Model:       &reviewStreamModel{inner: builder(ReviewAgentID, ReviewAgentID), completed: run.completed},
+		Model:       &reviewStreamModel{inner: reviewer, completed: run.completed},
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{Tools: run.tools, ExecuteSequentially: run.sequential},
 		},
@@ -563,8 +612,20 @@ func (e *Engine) reviewUserMessageWithNotes(pc *projectContext, transcript strin
 // fold runs even when the model never started: catalog hygiene is not a
 // function of whether this turn had something new to extract.
 func (e *Engine) finishReview(threadID string, turn *store.Turn, pc *projectContext, outcome reviewOutcome) {
-	if pc != nil && pc.library {
-		outcome.Library = true
+	e.finishReviewWithDream(threadID, turn, pc, outcome, nil)
+}
+
+func (e *Engine) finishReviewWithDream(threadID string, turn *store.Turn, pc *projectContext, outcome reviewOutcome, dream *dreamReview) {
+	if pc != nil {
+		outcome.Library = pc.library
+		if !pc.library && pc.project != nil && outcome.StopReason == "completed" && outcome.Err == "" {
+			for _, change := range outcome.Changes {
+				if change.Target == memory.ToolSkillManage && change.Action == "patch" && change.Before != nil && change.After != nil {
+					outcome.ProjectID = pc.project.ID
+					break
+				}
+			}
+		}
 	}
 	if turn.Status != store.TurnError {
 		e.applySkillFold(pc, &outcome)
@@ -575,7 +636,9 @@ func (e *Engine) finishReview(threadID string, turn *store.Turn, pc *projectCont
 	if len(outcome.Notes) == 0 {
 		outcome.Notes = nil
 	}
-	e.recordReview(threadID, turn.ID, outcome)
+	if outcome.StopReason != "completed" || dream == nil || dream.receipt.Status == "" || !e.commitDream(turn, pc, dream.candidate, &dream.receipt, &outcome) {
+		e.recordReview(threadID, turn.ID, outcome)
+	}
 }
 
 func (e *Engine) foldSkillsAfterTurn(threadID string, turn *store.Turn, pc *projectContext) {

@@ -320,8 +320,16 @@ func TestAccountCatalogDropsNonChatModelsBeforeTheDefault(t *testing.T) {
 	if pinned := src.provider("legacy-model"); pinned.Model != "legacy-model" {
 		t.Fatalf("chosen model %q", pinned.Model)
 	}
-	if ignored := src.provider("embed-model"); ignored.Model != "chat-model" {
-		t.Fatalf("an embedding pin became the conversation default: %q", ignored.Model)
+	// An explicit saved name remains the request model even when the catalog
+	// excludes it from available conversation models.
+	pinned := src.provider("embed-model")
+	if pinned.Model != "embed-model" || strings.Join(pinned.Catalog, ",") != "chat-model,legacy-model" {
+		t.Fatalf("saved model %q, available catalog %v", pinned.Model, pinned.Catalog)
+	}
+	rows := src.rows(true, "embed-model")
+	if len(rows) != 3 || rows[0].Default || rows[1].Default || rows[2].Model != "embed-model" ||
+		rows[2].Ready || !rows[2].Default || !rows[2].DefaultFollowsSetting {
+		t.Fatalf("saved hidden model should be unavailable and remain selected: %+v", rows)
 	}
 	p := New(configFor(t, true))
 	p.SetAccountSource(src)
