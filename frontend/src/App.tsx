@@ -731,6 +731,7 @@ function TranscriptPane({
   const running = useApp((s) => s.status.running || s.transcript.running)
   const historyHasMore = useApp((s) => s.historyHasMore)
   const send = useApp((s) => s.send)
+  const continueFailed = useApp((s) => s.continueFailed)
   const resendUser = useCallback(
     (text: string, seq: number) => {
       return send(text, undefined, { fromEventSeq: seq })
@@ -758,6 +759,7 @@ function TranscriptPane({
       loaded={loaded}
       onSelectAgent={onSelectAgent}
       onResendUser={resendUser}
+      onContinueFailed={continueFailed}
       onEditQueuedSteer={onEditQueuedSteer}
       findQuery={findQuery}
       findIndex={findIndex}

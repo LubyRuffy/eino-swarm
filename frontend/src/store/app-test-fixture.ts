@@ -64,6 +64,8 @@ const fake = vi.hoisted(() => ({
   compacts: [] as string[],
   reordered: [] as Array<{ ids: string[]; projectId?: string }>,
   reorderFail: false,
+  retries: [] as Array<{ id: string; turnId: string }>,
+  retryImpl: undefined as ((id: string, turnId: string) => Promise<void>) | undefined,
   logEvents: [] as Array<Record<string, unknown>>,
   logHasMore: false,
   logRoster: [] as Array<Record<string, unknown>>,
@@ -288,6 +290,14 @@ vi.mock("@/lib/api", () => {
         if (fromEventSeq) rec.fromEventSeq = fromEventSeq
         fake.started.push(rec)
         return { id: "tn_new", status: "running" }
+      },
+      continueFailedTurn: async (id: string, turnId: string) => {
+        fake.retries.push({ id, turnId })
+        if (fake.retryImpl) await fake.retryImpl(id, turnId)
+        return {
+          id: turnId, thread_id: id, seq: 1, status: "running", user_text: "",
+          final: "", provider_id: "", model: "", started_at: "", duration_ms: 0,
+        }
       },
       upload: async (id: string) => {
         fake.uploads.push(id)

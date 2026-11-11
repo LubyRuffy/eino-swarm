@@ -7434,7 +7434,7 @@ long enough for Steer; unit tests leave it unset.
 | `mobile/e2e/goal-completion.spec.ts` | English/Chinese phone path starts with a visible unfinished goal, sends a turn that completes it, hides the composer goal strip and shows one localized completion notice; leaving and reopening the conversation preserves both |
 | `mobile/e2e/scan.spec.ts` | Capacitor shell Scan QR opens a live viewfinder (four corners, a beam whose `scan-beam` animation is running, a fake-camera preview); junk paste errors; a syntactically valid URI uses the same bind path; a saved ticket shows host chips and Connecting, not the scan form; Add a PC is a sheet |
 | `e2e/clients.spec.ts` | a long local agent session opens on the live reply, **Earlier** loads the lines above it, and that reply stays on screen |
-| `e2e/output-budget.spec.ts` | an output-budget error links to Settings → Swarm and focuses Max completion tokens. Retry is visible on the failed turn, disabled while Settings is open and available for direct resend when Settings closes |
+| `e2e/output-budget.spec.ts` | an output-budget error links to Settings → Swarm and focuses Max completion tokens. Retry is visible on the failed turn, disabled while Settings is open, and posts that turn id to `/retry` when Settings closes. A refused retry leaves the error card |
 | `e2e/composer-paste.spec.ts` | a trusted paste into an empty composer lands once, and a second paste appends instead of doubling each insert |
 | `e2e/settings.spec.ts` | Settings sheet: tool catalogue on a never-saved config, round-trip through the config file, per-note memory cap, personality, pinning a title-generation model, discovering models into the default dropdown, a failed listing toasting over the open provider, switching a provider off so it leaves the composer list while the open conversation keeps that name (switching it back lists it again), **Back to app** on a short window when Swarm is long, the Add-a-provider outline inside the Models scrollport, semantic search off by default, local agent tasks hidden until Clients is enabled (empty directories, three tool groups, no task rows), Color theme / font / conversation width, directory rows tracking UI size not conversation size, chrome language switching (restored to English) |
 | `e2e/shell.spec.ts` | launch with an existing conversation stays on the home page (no row selected, no transcript), keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline (pins and the box share one slab; the join sits on that plate), Projects and Conversations sharing one left gutter (conversation titles in the icon column), collapsing Conversations so its rows stay hidden across reload, the Conversations header icon starting a conversation outside a project, an external link opening a new window instead of replacing the app, ⌘K finding a conversation by words in its body, theme switching persisted, the app-menu width control filling the pane in wide mode and restoring the reading column (also persisted), renaming a conversation and deleting it after a confirm, and dragging a Conversations row pinning that order across reload |
@@ -8069,11 +8069,15 @@ accessibility tree alongside the test result and packaged asset hashes.
 `cd frontend && ZWAI_E2E_MODEL_API_ERROR=1 npm run e2e -- api-error.spec.ts` runs the desktop Web path against a local empty-502 HTTP endpoint through the real SDK. The flag selects the API-error test group and starts the app without `--mock`. The regular offline-provider suite skips these tests. Check Chat, the same-turn Trace and Full log, return/reload persistence, three HTTP calls and two retries, and the retained screenshots/Trace JSON.
 
 `cd frontend && ZWAI_E2E_MODEL_API_ERROR=1 npm run e2e -- transcript-error-retry.spec.ts`
-uses a keyless loopback model to fail the original turn, then verifies one
-rewind request and the original model input after clicking Retry. The suite
+uses a keyless loopback model to fail the original turn, then verifies
+`POST /api/threads/:id/retry` with `{turn_id}`, the same turn id, no rewind,
+and the original user text still present in the next model request. The suite
 covers English and Chinese after reload, repeated clicks while submission
-is pending, a retained composer draft, a refused submission, historical
-lineage arriving after the log, and the absence of Retry after human Stop.
+is pending, a retained composer draft, a refused submission, a later failed
+turn that continues without deleting the earlier one, and the absence of
+Retry after human Stop. `TestRetryFailedTurnContinuesFromTheStoredToolResult`
+is the proof that a committed tool result is in the next manager request and
+the workspace effect runs once.
 Concurrent runs require independent `ZWAI_E2E_PORT`, `ZWAI_E2E_DATA_DIR` and
 `--output` paths.
 

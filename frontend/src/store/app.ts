@@ -139,6 +139,7 @@ export interface AppState extends ScheduleSlice {
   deleteThread: (id: string) => Promise<void>
   reorderThreads: (ids: string[]) => Promise<void>
   send: (text: string, images?: SendImage[], opts?: { steer?: boolean; command?: "goal" | "plan"; files?: string[]; fromEventSeq?: number; threadId?: string; historyReport?: boolean }) => Promise<boolean>
+  continueFailed: (turnId: string) => Promise<boolean>
   setGoal: (text: string, threadId?: string) => Promise<boolean>
   setPlan: (text: string, threadId?: string) => Promise<boolean>
   savePlan: (text: string) => Promise<void>
@@ -653,6 +654,36 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
 
+  continueFailed: async (turnId) => {
+    if (get().meta?.startup === "restoring") return false
+    const id = get().activeId
+    if (!id || !turnId) return false
+    const generation = openGeneration
+    try {
+      await api.continueFailedTurn(id, turnId)
+      if (openGeneration !== generation) return true
+      set((s) => {
+        const threads = setThreadRunning(s.threads, id, true)
+        if (s.activeId !== id) return { threads }
+        const elapsed = Math.max(0, s.turns.find((turn) => turn.id === turnId)?.duration_ms ?? 0)
+        const started = new Date(Date.now() - elapsed).toISOString()
+        const clock = s.status.turn_id === turnId && s.status.running && s.status.started_at
+          ? { ...s.status, awaiting_continue: false }
+          : withRunningClock(s.status, { turn_id: turnId, started_at: started, awaiting_continue: false })
+        return {
+          threads,
+          error: undefined,
+          status: clock,
+          transcript: hideFailedTurnError(s.transcript, turnId),
+        }
+      })
+      return true
+    } catch (e) {
+      if (get().activeId === id && openGeneration === generation) set({ error: message(e) })
+      return false
+    }
+  },
+
   setGoal: async (text, threadId) => {
     let id = threadId ?? await currentThread(get)
     if (!id) {
@@ -860,6 +891,28 @@ async function currentThread(get: () => AppState): Promise<string | undefined> {
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
+}
+
+function hideFailedTurnError(state: TranscriptState, turnId: string): TranscriptState {
+  const manager = state.agents[MANAGER_ID]
+  if (!manager) return { ...state, running: true }
+  return {
+    ...state,
+    running: true,
+    turns: state.turns.map((turn) =>
+      turn.id === turnId && turn.status === "error"
+        ? { ...turn, status: "running", error: undefined }
+        : turn,
+    ),
+    agents: {
+      ...state.agents,
+      [MANAGER_ID]: {
+        ...manager,
+        status: "running",
+        blocks: manager.blocks.filter((block) => !(block.kind === "error" && block.turnId === turnId)),
+      },
+    },
+  }
 }
 
 function persistChrome(state: {

@@ -23,3 +23,18 @@ it.each([
     thread_id: "thread", seq: 1, kind: "model_retry", created_at: "2026-01-01T00:00:00Z", text,
   })).toEqual([])
 })
+
+it("continues from the failed step without dropping the earlier phone blocks", () => {
+  const failed = applyEvent(applyEvent([], {
+    thread_id: "thread", turn_id: "turn", seq: 1, kind: "user_message", text: "Inspect the assigned work.", created_at: "2026-01-01T00:00:00Z",
+  }), {
+    thread_id: "thread", turn_id: "turn", seq: 2, kind: "error", err: "The service refused the request.", text: "", created_at: "2026-01-01T00:00:01Z",
+  })
+  const blocks = applyEvent(failed, {
+    thread_id: "thread", turn_id: "turn", seq: 3, kind: "failure_continued", text: "Continuing from the failed step.", created_at: "2026-01-01T00:00:02Z",
+  })
+  expect(blocks.some((block) => block.kind === "error")).toBe(false)
+  expect(blocks.some((block) => block.kind === "user" && block.text === "Inspect the assigned work.")).toBe(true)
+  expect(blocks.some((block) => block.kind === "notice" && block.text === "Continuing from the failed step." && block.turnId === "turn")).toBe(true)
+  expect(blocks.some((block) => block.kind === "turn_end")).toBe(true)
+})

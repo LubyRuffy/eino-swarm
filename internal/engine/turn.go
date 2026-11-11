@@ -54,6 +54,9 @@ type runtime struct {
 	// planImplement is this turn executing an accepted plan. The transcript
 	// records plan_implemented, not a human user_message.
 	planImplement bool
+	// failureRetry continues one failed turn from its stored context. The
+	// run records failure_continued instead of another user message.
+	failureRetry bool
 	// abandoned is set when the process is dying. The in-memory run stops,
 	// but the turn stays running in the database so the next start continues
 	// it. Distinct from interrupt(), which is a user stop.
@@ -200,6 +203,7 @@ func (rt *runtime) occupyLocked(reg *swarm.Registry, cancel context.CancelFunc, 
 	rt.acceptedAsk, rt.acceptedContinue = nil, nil
 	rt.userStopped = false
 	rt.planImplement = false
+	rt.failureRetry = false
 	rt.engine.noteTurnOccupied(rt.threadID)
 }
 
@@ -647,8 +651,14 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 		}
 	}()
 
+	failureRetry := rt.takeFailureRetry()
 	var resumeErr error
-	if resumed {
+	if failureRetry {
+		// The failed turn already stored its user message and any tool
+		// progress. Another user_message would look like a fresh send.
+		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
+			Kind: KindFailureContinued, AgentID: swarm.DefaultManagerID, Text: failureContinuedNotice})
+	} else if resumed {
 		if !e.turnHasKind(turn.ID, KindUser, snapshots...) && !e.turnHasKind(turn.ID, KindGoalContinued, snapshots...) &&
 			!e.turnHasKind(turn.ID, KindScheduleFired, snapshots...) {
 			if turn.GoalContinue {

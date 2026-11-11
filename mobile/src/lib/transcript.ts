@@ -465,6 +465,17 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
     case "schedule_cancelled":
       next.push({ id: blockId(ev), kind: "notice", text: "A wait was cancelled." })
       return next
+    case "failure_continued": {
+      const kept = next.slice()
+      for (let i = kept.length - 1; i >= 0; i--) {
+        if (kept[i].kind === "error") {
+          kept.splice(i, 1)
+          break
+        }
+      }
+      if (ev.text) kept.push({ id: blockId(ev), kind: "notice", text: ev.text, turnId: ev.turn_id })
+      return kept
+    }
     case "composer_prediction":
       return next
     default:

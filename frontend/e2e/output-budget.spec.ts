@@ -7,18 +7,16 @@ const OUTPUT_BUDGET_ERROR =
 
 test("an output-budget error opens the completion cap", async ({ page }) => {
   // The offline provider does not spend a completion budget. Replay events
-  // and turn metadata must identify the same failed human input; a displayed
-  // error alone cannot establish which original input Retry may resend.
+  // and turn metadata must identify the same failed human turn; a displayed
+  // error alone cannot establish which turn Retry may continue.
   const originalInput = "Run the check again"
   const at = new Date().toISOString()
   const submissions: Record<string, unknown>[] = []
   let sourceSeq: number | undefined
   await page.route(/\/api\/threads\/[^/]+\/turns(?:\?|$)/, async (route) => {
     if (route.request().method() === "POST") {
-      submissions.push(route.request().postDataJSON())
-      // This turn exists only in the replay fixture. Never dispatch its seq to
-      // the real engine; the boundary assertion still checks the exact resend.
-      await route.fulfill({ status: 503, json: { error: "Retry fixture refused the resend." } })
+      submissions.push({ rewind: route.request().postDataJSON() })
+      await route.fulfill({ status: 500, json: { error: "Retry must not rewind." } })
       return
     }
     if (route.request().method() !== "GET") { await route.continue(); return }
@@ -115,9 +113,13 @@ test("an output-budget error opens the completion cap", async ({ page }) => {
   await expect(transcript.getByRole("button", { name: "Retry" })).toBeEnabled()
   expect(submissions).toEqual([])
   expect(sourceSeq).toBeGreaterThan(0)
+  await page.route(/\/api\/threads\/[^/]+\/retry(?:\?|$)/, async (route) => {
+    submissions.push(route.request().postDataJSON())
+    await route.fulfill({ status: 503, json: { error: "Retry fixture refused the resend." } })
+  })
   await transcript.getByRole("button", { name: "Retry" }).click()
   await expect.poll(() => submissions.length).toBe(1)
-  expect(submissions).toEqual([{ text: originalInput, from_event_seq: sourceSeq, model: "mock" }])
+  expect(submissions).toEqual([{ turn_id: "turn-budget" }])
   await expect(page.getByText("Retry fixture refused the resend.", { exact: true })).toBeVisible()
   await expect(transcript.getByTestId("output-budget-error")).toBeVisible()
   await expect(transcript.getByTestId("user-message-editor")).toHaveCount(0)

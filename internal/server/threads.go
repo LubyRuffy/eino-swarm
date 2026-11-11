@@ -457,6 +457,32 @@ func (s *Server) continueTurn(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"continued": *req.Continue})
 }
 
+type retryFailedRequest struct {
+	TurnID string `json:"turn_id"`
+}
+
+func (s *Server) retryFailedTurn(c *gin.Context) {
+	th, ok := s.thread(c)
+	if !ok {
+		return
+	}
+	var req retryFailedRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, "could not read the request body: %v", err)
+		return
+	}
+	if strings.TrimSpace(req.TurnID) == "" {
+		badRequest(c, "turn_id is required")
+		return
+	}
+	turn, err := s.engine.RetryFailedTurn(th.ID, strings.TrimSpace(req.TurnID))
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"turn": turn})
+}
+
 func (s *Server) listTurns(c *gin.Context) {
 	th, ok := s.thread(c)
 	if !ok {

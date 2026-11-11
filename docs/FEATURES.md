@@ -81,7 +81,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-120 Conversations and projects
 
-- 失败重试：桌面和 Web 的最新一轮失败时显示「重试」。点击即确认，按原始用户消息的 `from_event_seq` 回退并立即重发原文、图片和引用，无需打开编辑框或再次发送。无可验证的原始输入时不提供入口，设置打开、回合运行、引擎恢复或本次提交进行时禁用。关联契约 `C-003`。实现 `frontend/src/components/app/transcript-error.tsx`、`frontend/src/components/app/transcript.tsx`。验证 `frontend/e2e/transcript-error-retry.spec.ts`。
+- 失败重试：桌面和 Web 的最新人类失败轮显示「重试」。点击即确认，从该轮失败时已存储的上下文继续，保留用户消息、图片和已完成的工具结果，不回退后续进度，也不打开编辑框。目标续办、定时检查、人工停止和没有可核对用户输入的失败不提供入口。设置打开、回合运行、引擎恢复或本次提交进行时禁用。关联契约 `C-003`。实现 `frontend/src/components/app/transcript-error.tsx`、`frontend/src/components/app/transcript.tsx`、`frontend/src/lib/use-retry-input.ts`、`internal/engine/retry_failed.go`。验证 `frontend/e2e/transcript-error-retry.spec.ts`、`internal/engine/retry_failed_http_test.go`。
 
 - 在项目会话中，可授权 manager 更新项目全局描述。保存后该项目后续回合使用新描述，Memory 关闭也可用。并发修改、对话移出项目或写入失败时返回拒绝回执。PC 项目编辑打开时读取当前描述，保存其他设置时省略未改动的描述。契约 `C-038`。实现 `internal/engine/project_description.go`、`internal/store/projects.go`、`frontend/src/components/app/project-dialog.tsx`。验证 `internal/engine/project_description_http_test.go`、`frontend/e2e/projects.spec.ts`。
 

@@ -78,6 +78,7 @@ export function Transcript({
   loaded,
   onSelectAgent,
   onResendUser,
+  onContinueFailed,
   findQuery = "",
   findIndex = 0,
   onFindCount,
@@ -89,6 +90,8 @@ export function Transcript({
   /** Edit-and-resend from this user_message seq: the bubble below is cleared
    *  and the turn starts again at that position. */
   onResendUser?: (text: string, seq: number) => void | Promise<boolean>
+  /** Continue the latest failed turn from the context it had when it failed. */
+  onContinueFailed?: (turnId: string) => void | Promise<boolean>
   /** Pull one unread steer into the composer. The caller retracts it. */
   onEditQueuedSteer?: (text: string, seq: number) => void
   /** Live find query. Empty means the bar is closed or idle. */
@@ -171,9 +174,8 @@ export function Transcript({
     startId: navItems[0]?.id,
   })
   const { retryInput, retryingTurn, canRetryInput } = useRetryInput({
-    enabled: Boolean(onResendUser),
-    jumpTo,
-    resend: async (text, seq) => (await onResendUser?.(text, seq)) !== false,
+    enabled: Boolean(onContinueFailed),
+    continueFailed: async (turnId) => (await onContinueFailed?.(turnId)) !== false,
   })
 
   const paintFind = useCallback(

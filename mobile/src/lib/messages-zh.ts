@@ -245,6 +245,7 @@ export const zh: Record<MessageKey, string> = {
   "notice.modelRetryResponse": "模型服务返回的响应无法解析，正在重试。",
   "notice.modelServiceResponse": "模型服务返回的响应无法解析。",
   "notice.modelRetryIdle": "模型服务停止发送数据，正在重试。",
+  "notice.failureContinued": "从失败处的上下文继续。",
   "notice.modelBackoff": "等待 {seconds} 秒后重试模型请求。",
   "notice.modelBackoffUnknown": "等待后重试模型请求。",
   "notice.scheduleAnswerBackoff": "等待 {seconds} 秒后重试未发布答复的核对。",

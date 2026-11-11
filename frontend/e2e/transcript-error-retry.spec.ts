@@ -88,8 +88,8 @@ async function reopenFailure(page: Page, id: string) {
   await page.locator(`[data-testid="thread-row"][data-id="${id}"]`).getByTestId("row-label").click()
 }
 
-/** The source failure and its direct Retry cross the real HTTP/model/store
- * boundary. Retry reuses the recorded input instead of inventing user prose. */
+/** The source failure and its Retry cross the real HTTP/model/store boundary.
+ *  Retry continues that same turn from the context it had when the call failed. */
 async function openFailure(page: Page, request: APIRequestContext, loopback: Loopback, locale = "en", cancelled = false) {
   await request.put("/api/settings", { data: { ui: { locale } } })
   const created = await request.post("/api/threads", { data: { title: `Retry terminal failure ${locale}` } })
@@ -121,6 +121,7 @@ function observeWrites(page: Page, id: string) {
     const path = new URL(incoming.url()).pathname
     if (["POST", "PATCH", "DELETE"].includes(incoming.method()) &&
       (path === `/api/threads/${id}` || path === `/api/threads/${id}/turns` ||
+        path === `/api/threads/${id}/retry` ||
         path === `/api/threads/${id}/steer` || path === `/api/threads/${id}/interrupt` ||
         path.startsWith(`/api/threads/${id}/followups`) || path.startsWith("/api/schedules"))) {
       writes.push(`${incoming.method()} ${path}`)
@@ -130,7 +131,7 @@ function observeWrites(page: Page, id: string) {
 }
 
 for (const locale of ["en", "zh"] as const) {
-  test(`Retry immediately resends the original input once after reload (${locale})`, async ({ page, request, loopback }, info) => {
+  test(`Retry continues the failed turn once after reload (${locale})`, async ({ page, request, loopback }, info) => {
     const { id, original } = await openFailure(page, request, loopback, locale)
     const transcript = page.getByTestId("transcript")
     const terminal = transcript.locator("p.stream-text").filter({ hasText: failure })
@@ -149,38 +150,41 @@ for (const locale of ["en", "zh"] as const) {
     const writes = observeWrites(page, id)
     let release!: () => void
     const held = new Promise<void>((resolve) => { release = resolve })
-    await page.route(`**/api/threads/${id}/turns`, async (route) => {
-      if (route.request().method() !== "POST") { await route.continue(); return }
+    await page.route(`**/api/threads/${id}/retry`, async (route) => {
       submissions.push(route.request().postDataJSON())
       await held
       await route.continue()
     })
     loopback.recover()
     try {
-      // Clicking Retry is the confirmation; no editor or second Send is needed.
       await retry.dblclick()
       await expect.poll(() => submissions.length).toBe(1)
-      expect(submissions).toEqual([{ text: originalText, from_event_seq: sourceSeq }])
+      expect(submissions).toEqual([{ turn_id: original.id }])
       await expect(editor).toHaveCount(0)
-      expect(writes).toEqual([`POST /api/threads/${id}/turns`])
+      expect(writes).toEqual([`POST /api/threads/${id}/retry`])
       expect(await turns(request, id)).toEqual(before)
       expect(loopback.calls).toHaveLength(beforeCalls)
       await writeFile(info.outputPath(`terminal-retry-pending-${locale}.png`), await page.screenshot(), { mode: 0o600 })
       const accepted = page.waitForResponse((response) => response.request().method() === "POST" &&
-        new URL(response.url()).pathname === `/api/threads/${id}/turns`)
+        new URL(response.url()).pathname === `/api/threads/${id}/retry`)
       release()
       expect((await accepted).ok()).toBe(true)
-      await expect.poll(async () => (await turns(request, id)).filter((turn) => turn.status === "done").length,
-        { timeout: 60_000 }).toBe(1)
+      await expect.poll(async () => (await turns(request, id)).find((turn) => turn.id === original.id)?.status,
+        { timeout: 60_000 }).toBe("done")
       const stored = await turns(request, id)
       expect(stored).toHaveLength(1)
-      expect(stored[0]).toMatchObject({ user_text: originalText, status: "done" })
-      expect(stored[0].id).not.toBe(original.id)
+      expect(stored[0]).toMatchObject({ id: original.id, user_text: originalText, status: "done" })
       expect(loopback.calls.at(-1)?.messages.filter((message) => message.role === "user")).toEqual([
         expect.objectContaining({ role: "user", content: originalText }),
       ])
+      const after = await (await request.get(`/api/trace/${original.id}`)).json()
+      expect(after.events.some((event: { kind: string }) => event.kind === "rewound")).toBe(false)
+      expect(after.events.some((event: { kind: string }) => event.kind === "error")).toBe(true)
+      expect(after.events.find((event: { kind: string }) => event.kind === "user_message")?.seq).toBe(sourceSeq)
+      expect(after.events.some((event: { kind: string }) => event.kind === "failure_continued")).toBe(true)
       await expect(transcript.getByTestId("user-message")).toHaveCount(1)
       await expect(transcript.getByTestId("user-message")).toHaveText(originalText)
+      await expect(transcript.getByText(locale === "zh" ? "从失败处的上下文继续。" : "Continuing from the failed step.")).toBeVisible()
       await expect(editor).toHaveCount(0)
       await expect(terminal).toHaveCount(0)
       await expect(retry).toHaveCount(0)
@@ -194,26 +198,24 @@ for (const locale of ["en", "zh"] as const) {
   })
 }
 
-test("Retry resends the failed input while keeping a separate unsent composer draft", async ({ page, request, loopback }) => {
+test("Retry continues the failed turn while keeping a separate unsent composer draft", async ({ page, request, loopback }) => {
   const { id, original } = await openFailure(page, request, loopback)
-  const sourceTrace = await (await request.get(`/api/trace/${original.id}`)).json()
-  const sourceSeq = sourceTrace.events.find((event: { kind: string }) => event.kind === "user_message")?.seq
   const draft = "This separate follow-up has not been submitted."
   const composer = page.getByTestId("composer-input")
   await composer.fill(draft)
   const submissions: Record<string, unknown>[] = []
-  await page.route(`**/api/threads/${id}/turns`, async (route) => {
-    if (route.request().method() === "POST") submissions.push(route.request().postDataJSON())
+  await page.route(`**/api/threads/${id}/retry`, async (route) => {
+    submissions.push(route.request().postDataJSON())
     await route.continue()
   })
   loopback.recover()
   const transcript = page.getByTestId("transcript")
   await transcript.getByTestId("transcript-error-retry").click()
-  await expect.poll(async () => (await turns(request, id)).filter((turn) => turn.status === "done").length).toBe(1)
-  expect(submissions).toEqual([{ text: originalText, from_event_seq: sourceSeq }])
+  await expect.poll(async () => (await turns(request, id)).find((turn) => turn.id === original.id)?.status).toBe("done")
+  expect(submissions).toEqual([{ turn_id: original.id }])
   await expect(composer).toHaveValue(draft)
   await expect(transcript.getByTestId("user-message-editor")).toHaveCount(0)
-  expect((await turns(request, id)).map((turn) => turn.user_text)).toEqual([originalText])
+  expect((await turns(request, id)).map((turn) => turn.id)).toEqual([original.id])
 })
 
 test("a refused Retry preserves the original failure and can be clicked again", async ({ page, request, loopback }) => {
@@ -222,13 +224,11 @@ test("a refused Retry preserves the original failure and can be clicked again", 
   const retry = transcript.getByTestId("transcript-error-retry")
   const before = await turns(request, id)
   const sourceTrace = await (await request.get(`/api/trace/${original.id}`)).json()
-  const sourceSeq = sourceTrace.events.find((event: { kind: string }) => event.kind === "user_message")?.seq
   const beforeCalls = loopback.calls.length
   loopback.recover()
   let attempts = 0
-  await page.route(`**/api/threads/${id}/turns`, async (route) => {
-    if (route.request().method() !== "POST") { await route.continue(); return }
-    expect(route.request().postDataJSON()).toEqual({ text: originalText, from_event_seq: sourceSeq })
+  await page.route(`**/api/threads/${id}/retry`, async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ turn_id: original.id })
     attempts++
     if (attempts === 1) {
       await route.fulfill({ status: 503, json: { error: "Retry submission is temporarily unavailable." } })
@@ -245,14 +245,14 @@ test("a refused Retry preserves the original failure and can be clicked again", 
   await retry.click()
   await expect.poll(() => attempts).toBe(2)
   await expect(retry).toHaveCount(0)
-  await expect.poll(async () => (await turns(request, id)).filter((turn) => turn.status === "done").length).toBe(1)
+  await expect.poll(async () => (await turns(request, id)).find((turn) => turn.id === original.id)?.status).toBe("done")
   expect((await turns(request, id)).map((turn) => turn.user_text)).toEqual([originalText])
 })
 
-test("Retry waits for legacy ancestry metadata then directly resends the original input", async ({ page, request, loopback }, info) => {
+test("Retry continues the latest failed turn and leaves the earlier turn in place", async ({ page, request, loopback }, info) => {
   const { id, original } = await openFailure(page, request, loopback)
-  // Real long history keeps the original input above the viewport. The latest
-  // legacy cue must never become the retried input simply because it is nearby.
+  // The earlier failure stays above the viewport. Retry continues the latest
+  // failed turn and does not follow historical retry_turn_id.
   const legacyText = Array.from({ length: 120 }, (_, line) => `Legacy fixture retry cue, line ${line + 1}.`).join("\n")
   const created = await request.post(`/api/threads/${id}/turns`, { data: { text: legacyText } })
   expect(created.ok()).toBe(true)
@@ -287,8 +287,14 @@ test("Retry waits for legacy ancestry metadata then directly resends the origina
       return
     }
     if (route.request().method() === "POST") {
-      submissions.push(route.request().postDataJSON())
+      submissions.push({ rewind: route.request().postDataJSON() })
+      await route.fulfill({ status: 500, json: { error: "Retry must not rewind." } })
+      return
     }
+    await route.continue()
+  })
+  await page.route(`**/api/threads/${id}/retry`, async (route) => {
+    submissions.push(route.request().postDataJSON())
     await route.continue()
   })
   try {
@@ -311,19 +317,28 @@ test("Retry waits for legacy ancestry metadata then directly resends the origina
     await expect(retry).toBeEnabled()
     await retry.click()
     await expect.poll(() => submissions.length).toBe(1)
-    expect(submissions).toEqual([{ text: originalText, from_event_seq: sourceSeq }])
-    expect(writes).toEqual([`POST /api/threads/${id}/turns`])
+    expect(submissions).toEqual([{ turn_id: legacy.id }])
+    expect(writes).toEqual([`POST /api/threads/${id}/retry`])
     await expect(transcript.getByTestId("user-message-editor")).toHaveCount(0)
-    await expect.poll(async () => (await turns(request, id)).filter((turn) => turn.status === "done").length,
-      { timeout: 60_000 }).toBe(1)
+    await expect.poll(async () => (await turns(request, id)).find((turn) => turn.id === legacy.id)?.status,
+      { timeout: 60_000 }).toBe("done")
     const stored = await turns(request, id)
-    expect(stored).toHaveLength(1)
-    expect(stored[0]).toMatchObject({ user_text: originalText, status: "done" })
-    expect(loopback.calls.at(-1)?.messages.filter((message) => message.role === "user")).toEqual([
-      expect.objectContaining({ role: "user", content: originalText }),
+    expect(stored).toHaveLength(2)
+    expect(stored.find((turn) => turn.id === original.id)).toMatchObject({ user_text: originalText, status: "error" })
+    expect(stored.find((turn) => turn.id === legacy.id)).toMatchObject({ user_text: legacyText, status: "done" })
+    expect(loopback.calls.at(-1)?.messages.filter((message) => message.role === "user").map((message) => message.content)).toEqual([
+      originalText, legacyText,
     ])
-    await expect(transcript.getByTestId("user-message")).toHaveText(originalText)
-    await writeFile(info.outputPath("terminal-retry-ancestry-resent.png"), await page.screenshot(), { mode: 0o600 })
+    const originalTrace = await (await request.get(`/api/trace/${original.id}`)).json()
+    expect(originalTrace.events.find((event: { kind: string }) => event.kind === "user_message")?.seq).toBe(sourceSeq)
+    expect(originalTrace.events.some((event: { kind: string }) => event.kind === "rewound")).toBe(false)
+    const continued = await (await request.get(`/api/trace/${legacy.id}`)).json()
+    expect(continued.events.some((event: { kind: string }) => event.kind === "failure_continued")).toBe(true)
+    expect(continued.events.some((event: { kind: string }) => event.kind === "rewound")).toBe(false)
+    await expect(transcript.getByTestId("user-message")).toHaveCount(2)
+    await expect(transcript.locator("p.stream-text").filter({ hasText: failure })).toHaveCount(1)
+    await expect(transcript.getByText("Continuing from the failed step.")).toBeVisible()
+    await writeFile(info.outputPath("terminal-retry-ancestry-continued.png"), await page.screenshot(), { mode: 0o600 })
   } finally {
     release()
   }

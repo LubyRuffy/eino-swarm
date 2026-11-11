@@ -47,6 +47,7 @@ func TestEndpointsFailCleanlyWithoutADatabase(t *testing.T) {
 		{http.MethodPatch, "/api/threads/" + id + "/followups/fu_x", map[string]any{"text": "go"}},
 		{http.MethodPost, "/api/threads/" + id + "/interrupt", nil},
 		{http.MethodPost, "/api/threads/" + id + "/continue", map[string]any{"continue": true}},
+		{http.MethodPost, "/api/threads/" + id + "/retry", map[string]any{"turn_id": "tn_dead"}},
 		{http.MethodPost, "/api/threads/" + id + "/answers", map[string]any{"text": "x"}},
 		{http.MethodPost, "/api/threads/" + id + "/plan/implement", nil},
 		{http.MethodPost, "/api/threads/" + id + "/compact", nil},

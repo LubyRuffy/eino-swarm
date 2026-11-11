@@ -13,6 +13,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   through `exec`. Old `enabled` or `disabled` entries for the four names have
   no effect.
 
+- Desktop and web **Retry** on a failed turn continues that same turn from
+  the stored context, including the user message and tool results already
+  recorded, instead of rewinding to the original user message. The stream
+  records `failure_continued`. The request is `POST /api/threads/:id/retry`.
+  (`F-120`, `C-003`)
+
 - The collaboration path draws recorded dependencies. Several unconnected
   records of the same kind collapse into one row and share a dashed arrow to
   the goal; a single unconnected record stays visible. The row shows status

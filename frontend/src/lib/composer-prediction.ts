@@ -9,6 +9,7 @@ const CLEAR_KINDS = new Set([
   "plan_implemented",
   "schedule_fired",
   "resumed",
+  "failure_continued",
   "restart_resumed",
 ])
 

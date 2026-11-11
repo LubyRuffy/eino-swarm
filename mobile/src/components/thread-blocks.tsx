@@ -239,6 +239,8 @@ function localizeNotice(text: string): string {
       return t("notice.modelRetryTransport")
     case "The model service stopped sending data. Retrying.":
       return t("notice.modelRetryIdle")
+    case "Continuing from the failed step.":
+      return t("notice.failureContinued")
     case "Checking the schedule before reporting it as arranged.":
       return t("notice.scheduleClaimCheck")
     case "Collecting delegated work before completing this turn.":

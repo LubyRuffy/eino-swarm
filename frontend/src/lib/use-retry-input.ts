@@ -14,33 +14,17 @@ function originalInput(state: RetryState, turnId: string) {
   )
 }
 
-/** Retry ancestry is explicit storage identity. Similar words never prove that
- *  an input came from the old continuation button rather than from a person. */
-function inputSource(state: RetryState, turnId: string): string | undefined {
+/** The latest failed human turn can continue. Older retry_turn_id values are
+ *  historical and do not choose a different input. */
+function continuableFailure(state: RetryState, turnId: string): boolean {
   const latest = state.transcript.turns.at(-1)
-  if (!state.activeId || latest?.id !== turnId || latest.status !== "error") return
+  if (!state.activeId || latest?.id !== turnId || latest.status !== "error") return false
   const failed = state.turns.find((turn) => turn.id === turnId)
-  if (failed && state.turns.some((turn) => turn.thread_id === state.activeId && turn.seq > failed.seq)) return
-  const seen = new Set<string>()
-  let sourceId = turnId
-  let childSeq: number | undefined
-  for (;;) {
-    if (seen.has(sourceId)) return
-    seen.add(sourceId)
-    const source = state.turns.find((turn) => turn.id === sourceId)
-    // Tail events can arrive before turn metadata. A user-shaped block may
-    // belong to a legacy retry, so it cannot prove human input ancestry alone.
-    if (!source) return
-    if (source.thread_id !== state.activeId || source.seq <= 0 || source.goal_continue || source.schedule_continue || source.schedule_run_id) return
-    if (childSeq !== undefined && source.seq >= childSeq) return
-    if (source.retry_turn_id) {
-      childSeq = source.seq
-      sourceId = source.retry_turn_id
-      continue
-    }
-    if (originalInput(state, sourceId) || state.historyHasMore) return sourceId
-    return
-  }
+  if (!failed) return false
+  if (failed.thread_id !== state.activeId || failed.seq <= 0) return false
+  if (failed.goal_continue || failed.schedule_continue || failed.schedule_run_id) return false
+  if (state.turns.some((turn) => turn.thread_id === state.activeId && turn.seq > failed.seq)) return false
+  return Boolean(originalInput(state, turnId) || state.historyHasMore)
 }
 
 function available(state: RetryState) {
@@ -48,12 +32,11 @@ function available(state: RetryState) {
     !state.status.awaiting_answer && state.meta?.startup !== "restoring" && !useSettingsSheet.getState().open
 }
 
-/** Retry is the human's confirmation to resend the original request. Reuse its
- *  recorded sequence so the existing resend path retains the original images. */
-export function useRetryInput({ enabled, jumpTo, resend }: {
+/** Retry continues the failed turn from the context it already had. It does
+ *  not resend the user message or rewind the tool progress below it. */
+export function useRetryInput({ enabled, continueFailed }: {
   enabled: boolean
-  jumpTo: (turnId: string) => void
-  resend: (text: string, seq: number) => Promise<boolean>
+  continueFailed: (turnId: string) => Promise<boolean>
 }) {
   const state = useApp(useShallow((s) => ({
     activeId: s.activeId, loaded: s.loaded, transcript: s.transcript, turns: s.turns,
@@ -62,40 +45,36 @@ export function useRetryInput({ enabled, jumpTo, resend }: {
   const [retryingTurn, setRetryingTurn] = useState<string>()
   const pending = useRef<symbol | undefined>(undefined)
   const mounted = useRef(true)
-  const current = useRef({ enabled, jumpTo, resend })
-  current.current = { enabled, jumpTo, resend }
+  const current = useRef({ enabled, continueFailed })
+  current.current = { enabled, continueFailed }
   useEffect(() => {
     mounted.current = true
     return () => { mounted.current = false }
   }, [])
 
   const canRetryInput = useCallback(
-    (turnId: string) => enabled && Boolean(inputSource(state, turnId)),
+    (turnId: string) => enabled && continuableFailure(state, turnId),
     [enabled, state],
   )
   const retryInput = useCallback(async (turnId: string) => {
     const start = useApp.getState()
-    const sourceId = inputSource(start, turnId)
-    if (!mounted.current || !current.current.enabled || pending.current || !available(start) || !sourceId) return
+    if (!mounted.current || !current.current.enabled || pending.current || !available(start) || !continuableFailure(start, turnId)) return
     const request = Symbol()
     pending.current = request
     setRetryingTurn(turnId)
     try {
-      if (!originalInput(start, sourceId)) {
-        // Missing pages cannot authorize resending API prose with an invented seq.
+      if (!originalInput(start, turnId)) {
         try {
-          if (!await start.loadUntilTurn(sourceId)) return
+          if (!await start.loadUntilTurn(turnId)) return
         } catch {
           return
         }
       }
       const latest = useApp.getState()
       if (!mounted.current || !current.current.enabled || latest.activeId !== start.activeId ||
-        latest.completionVisit !== start.completionVisit || !available(latest) || inputSource(latest, turnId) !== sourceId) return
-      const input = originalInput(latest, sourceId)
-      if (!input) return
-      current.current.jumpTo(sourceId)
-      await current.current.resend(input.text, input.seq)
+        latest.completionVisit !== start.completionVisit || !available(latest) || !continuableFailure(latest, turnId)) return
+      if (!originalInput(latest, turnId)) return
+      await current.current.continueFailed(turnId)
     } finally {
       if (pending.current === request) {
         pending.current = undefined

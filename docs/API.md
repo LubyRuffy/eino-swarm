@@ -2091,8 +2091,9 @@ adds no API/RPC parameter or error code,
 does not reinterpret ordinary quoted messages, and does not change pure-text
 command semantics (`C-009`, `C-033`).
 
-`from_event_seq`, when set, names a stored `user_message` to replace. That
-event and everything after it is deleted (later turns, their messages and
+`from_event_seq`, when set, names a stored `user_message` to replace. Failure
+Retry does not use this field; it continues the failed turn through
+`POST /api/threads/:id/retry`. The named event and everything after it is deleted (later turns, their messages and
 model-call rows, and any queued follow-up). Metadata attributed to a removed
 turn is removed even if its event preceded that turn's user message; earlier
 retained turns keep their evidence. A compact briefing whose
@@ -2333,6 +2334,27 @@ Does not resume a paused `/goal`. `400` when there is no plan body.
 {"turn": {"id": "tn_cd34…", "status": "running", "…": "…"}}
 ```
 
+### `POST /api/threads/:id/retry` → `202`
+
+Continues the latest failed human turn from the context stored when that call
+failed. Body `{"turn_id": "tn_…"}`. The same turn becomes `running` again.
+Its stored user message, images and completed tool results stay; a trailing
+tool call that never received a result is dropped before the next model
+request. No new `user_message` is written and no later history is rewound.
+The stream records `failure_continued` (`text` is
+`Continuing from the failed step.`). The chat hides that turn's error card;
+Trace keeps the error event. The turn's original provider and model are
+reused. The current `max_completion_tokens` applies to the continuation.
+
+`400` when `turn_id` is missing or blank. `409 no_failed_turn` when that id
+is not the latest failed human turn, including a goal or schedule turn, a
+cancelled turn, or a turn with no stored user message. `409 busy` while a
+turn is running. `409 restoring` while startup recovery is in progress.
+
+```json
+{"turn": {"id": "tn_cd34…", "status": "running", "…": "…"}}
+```
+
 ### `GET /api/threads/:id/turns`
 
 Every turn of the conversation, oldest first. This is what renders the
@@ -2341,10 +2363,9 @@ Every turn of the conversation, oldest first. This is what renders the
 human sends. The jump rail keys off a `user_message`, so those rows share
 the previous human tick.
 
-Historical rows with a stored `retry_turn_id` include it as a read-only
-link to the source turn. Desktop and web can follow these links to the
-original `user_message` and resend it through `from_event_seq`. New turns
-omit `retry_turn_id`. The start-turn request has no retry lineage field.
+Historical rows with a stored `retry_turn_id` include it as read-only
+lineage. Failure Retry does not follow it. New turns omit `retry_turn_id`.
+The start-turn request has no retry lineage field.
 
 ### `POST /api/threads/:id/review` → `202`
 
@@ -2482,6 +2503,7 @@ shortening only the bounded detail text.
 | `steer_preempted` | Interrupt aborted the current manager tool or generate so unread steering can land on this turn. No payload. Workers were not cancelled |
 | `cleanup` | unfinished sub-agents were stopped at the end of the turn; this is not a successful `finished` receipt. The PC view keeps them stopped after the terminal event and replay |
 | `workers_retained` | durable manager ownership receipt before a scheduled check's terminal `error`. `text` is JSON `{reason:"scheduled_check_failed",owner_kind,owner_id,worker_ids}`; `owner_kind` is `goal` (owner_id is the thread ID) or `thread_wake` (owner_id is the schedule ID), and `worker_ids` explicitly lists the still-running workers. PC live/history replay keeps only those workers' current output and pending tools active; the parent error remains visible. Internal JSON is available in Trace, not rendered as chat prose. This is neither a successful check nor a spawn/retry receipt |
+| `failure_continued` | the latest failed human turn is continuing from its stored context; `text` is `Continuing from the failed step.`. The original `user_message` and completed tool rows stay. This is not crash recovery and does not close in-flight tools |
 | `resumed` | this turn was left running by a crash or quit and is continuing; `text` is a short notice. The original `user_message` is not repeated. In-flight `tool_call` rows that never got a result are closed first (`tool_result` with `err`: `the previous process stopped`) so a killed `exec` does not keep spinning — except an unfinished `ask_user`, which is re-armed so the human can still answer. Leftover sub-agents are started again under the same `agent_id` (a second `spawned` for that id is the roster coming back, not a twin). Unread `steer` rows stay on the turn. A leftover `max_iterations` confirm is no longer pending |
 | `progress` | a pulse while the turn runs (see below); `seq` is 0, not stored |
 | `usage` | a live token snapshot after each model call (see below); `seq` is 0, not stored |

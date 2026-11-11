@@ -13,7 +13,7 @@ import { useT } from "@/lib/use-t"
 import { useApp } from "@/store/app"
 import { openSettings, useSettingsSheet } from "@/store/settings-sheet"
 
-/** Clicking Retry confirms resending the original input, without generated text. */
+/** Clicking Retry continues the failed turn from its stored context. */
 export function TranscriptError({
   text,
   turnId,

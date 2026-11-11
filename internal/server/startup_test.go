@@ -26,6 +26,7 @@ func TestRecoveryServesHistoryAndPresenceButRejectsMutations(t *testing.T) {
 		{"POST", "/api/threads/" + id + "/turns"}, {"POST", "/api/threads/" + id + "/steer"},
 		{"GET", "/api/threads/" + id + "/terminal"}, {"GET", "/api/projects/missing/terminal"},
 		{"POST", "/api/threads/" + id + "/preempt"}, {"POST", "/api/threads/" + id + "/continue"},
+		{"POST", "/api/threads/" + id + "/retry"},
 		{"POST", "/api/schedules"}, {"PATCH", "/api/schedules/missing"}, {"DELETE", "/api/schedules/missing"}, {"POST", "/api/schedules/missing/run"},
 		{"DELETE", "/api/threads/" + id}, {"PUT", "/api/settings"}, {"POST", "/api/engine/restart"},
 	} {

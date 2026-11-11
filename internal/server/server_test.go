@@ -866,6 +866,7 @@ func TestNotifyKindsAreStableAcrossTheWire(t *testing.T) {
 		{engine.KindMaxIterationsContinued, "max_iterations_continued"},
 		{engine.KindModelRetry, "model_retry"},
 		{engine.KindResumed, "resumed"},
+		{engine.KindFailureContinued, "failure_continued"},
 		{engine.KindGoal, "goal"},
 		{engine.KindGoalComplete, "goal_complete"},
 		{engine.KindGoalContinued, "goal_continued"},

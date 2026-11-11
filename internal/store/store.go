@@ -19,6 +19,10 @@ import (
 // import gorm to tell "missing" from "broken".
 var ErrNotFound = errors.New("store: not found")
 
+// ErrTurnNotFailed means a reopen found the row in some other status. The
+// update is conditional so a second retry cannot clear a turn that moved on.
+var ErrTurnNotFailed = errors.New("store: the turn is not failed")
+
 // Store owns the SQLite database.
 //
 // Sequence numbers are handed out from an in-memory counter per thread, seeded
@@ -456,6 +460,29 @@ func (s *Store) FinishTurn(id, status, final, errText string) error {
 		}
 		return nil
 	})
+}
+
+// ReopenFailedTurn puts one error turn back to running. startedAt already
+// excludes the idle gap before the click; this method does not add time.
+// ended_at has to be an expression: a nil pointer is skipped by Updates.
+func (s *Store) ReopenFailedTurn(id string, startedAt time.Time) error {
+	res := s.db.Model(&Turn{}).Where("id = ? AND status = ?", id, TurnError).Updates(map[string]any{
+		"status":     TurnRunning,
+		"error":      "",
+		"final":      "",
+		"ended_at":   gorm.Expr("NULL"),
+		"started_at": startedAt.UTC(),
+	})
+	if res.Error != nil {
+		return fmt.Errorf("store: reopen turn: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		if _, err := s.GetTurn(id); err != nil {
+			return err
+		}
+		return ErrTurnNotFailed
+	}
+	return nil
 }
 
 func (s *Store) applyTurnUpdate(id string, fields map[string]any) error {

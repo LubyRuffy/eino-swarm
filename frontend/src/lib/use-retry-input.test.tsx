@@ -7,11 +7,10 @@ import { emptyTranscript, reduceEvents, type TranscriptState } from "./transcrip
 import type { Turn } from "./types"
 import { useRetryInput } from "./use-retry-input"
 
-const jumpTo = vi.fn()
-const resend = vi.fn(async (_text: string, _seq: number) => true)
+const continueFailed = vi.fn(async (_turnId: string) => true)
 const send = vi.fn()
 const loadUntilTurn = vi.fn()
-const options = { enabled: true, jumpTo, resend }
+const options = { enabled: true, continueFailed }
 
 function turn(id = "failed", patch: Partial<Turn> = {}): Turn {
   return { id, thread_id: "thread", seq: 1, status: "error", user_text: "Original request.", final: "", provider_id: "", model: "", started_at: "2026-01-01T00:00:00Z", duration_ms: 0, ...patch }
@@ -26,28 +25,27 @@ function failed(withInput = true, id = "failed"): TranscriptState {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  resend.mockReset().mockResolvedValue(true)
+  continueFailed.mockReset().mockResolvedValue(true)
   loadUntilTurn.mockReset().mockResolvedValue(false)
   useApp.setState({ activeId: "thread", completionVisit: 1, loaded: true, transcript: failed(), turns: [turn()], status: { running: false }, historyHasMore: false, meta: undefined, send, loadUntilTurn })
   useSettingsSheet.setState({ open: false })
 })
 
-it("immediately resends the recorded input from its actual sequence without synthetic text", async () => {
+it("continues the failed turn without resending or rewinding its input", async () => {
   const transcript = failed()
   transcript.agents.manager.blocks[0].images = [{ id: "original-image", name: "input.png", mime: "image/png" }]
   useApp.setState({ transcript })
   const { result } = renderHook(() => useRetryInput(options))
   expect(result.current.canRetryInput("failed")).toBe(true)
   await act(async () => { await result.current.retryInput("failed") })
-  expect(resend).toHaveBeenCalledWith("Original request.", 1)
-  expect(jumpTo).toHaveBeenCalledWith("failed")
-  expect(jumpTo.mock.invocationCallOrder[0]).toBeLessThan(resend.mock.invocationCallOrder[0])
+  expect(continueFailed).toHaveBeenCalledWith("failed")
+  expect(continueFailed).toHaveBeenCalledTimes(1)
   expect(useApp.getState().transcript).toBe(transcript)
   expect(send).not.toHaveBeenCalled()
   expect(loadUntilTurn).not.toHaveBeenCalled()
 })
 
-it.each(["disabled", "loading", "running", "streaming", "asking", "restoring", "settings"])("does not resend the input while %s", async (mode) => {
+it.each(["disabled", "loading", "running", "streaming", "asking", "restoring", "settings"])("does not continue the failure while %s", async (mode) => {
   if (mode === "loading") useApp.setState({ loaded: false })
   if (mode === "running") useApp.setState({ status: { running: true } })
   if (mode === "streaming") useApp.setState({ transcript: { ...failed(), running: true } })
@@ -55,11 +53,9 @@ it.each(["disabled", "loading", "running", "streaming", "asking", "restoring", "
   if (mode === "restoring") useApp.setState({ meta: { startup: "restoring" } as never })
   if (mode === "settings") useSettingsSheet.setState({ open: true })
   const { result } = renderHook(() => useRetryInput({ ...options, enabled: mode !== "disabled" }))
-  // Temporary activity disables the visible action instead of removing it.
   expect(result.current.canRetryInput("failed")).toBe(mode !== "disabled")
   await act(async () => { await result.current.retryInput("failed") })
-  expect(resend).not.toHaveBeenCalled()
-  expect(jumpTo).not.toHaveBeenCalled()
+  expect(continueFailed).not.toHaveBeenCalled()
   expect(loadUntilTurn).not.toHaveBeenCalled()
   expect(send).not.toHaveBeenCalled()
 })
@@ -69,17 +65,17 @@ it.each(["done", "cancelled", "running"] as const)("does not retry a %s turn", a
   const { result } = renderHook(() => useRetryInput(options))
   expect(result.current.canRetryInput("failed")).toBe(false)
   await act(async () => { await result.current.retryInput("failed") })
-  expect(resend).not.toHaveBeenCalled()
+  expect(continueFailed).not.toHaveBeenCalled()
 })
 
-it("does not guess a missing input from another turn or from API prose", async () => {
+it("does not continue a failure that has no stored user block", async () => {
   const transcript = failed(false)
   transcript.agents.manager.blocks.unshift({ id: "older", agentId: "manager", kind: "user", text: "Other request.", turnId: "older", seq: 1, at: "" })
   useApp.setState({ transcript })
   const { result } = renderHook(() => useRetryInput(options))
   expect(result.current.canRetryInput("failed")).toBe(false)
   await act(async () => { await result.current.retryInput("failed") })
-  expect(resend).not.toHaveBeenCalled()
+  expect(continueFailed).not.toHaveBeenCalled()
 })
 
 it("does not use an old error after a newer API turn exists", async () => {
@@ -87,15 +83,15 @@ it("does not use an old error after a newer API turn exists", async () => {
   const { result } = renderHook(() => useRetryInput(options))
   expect(result.current.canRetryInput("failed")).toBe(false)
   await act(async () => { await result.current.retryInput("failed") })
-  expect(resend).not.toHaveBeenCalled()
+  expect(continueFailed).not.toHaveBeenCalled()
 })
 
-it.each([{ goal_continue: true }, { schedule_continue: true }, { schedule_run_id: "run" }])("does not turn an automatic check into a human input: %j", async (patch) => {
+it.each([{ goal_continue: true }, { schedule_continue: true }, { schedule_run_id: "run" }])("does not continue an automatic check: %j", async (patch) => {
   useApp.setState({ turns: [turn("failed", patch)] })
   const { result } = renderHook(() => useRetryInput(options))
   expect(result.current.canRetryInput("failed")).toBe(false)
   await act(async () => { await result.current.retryInput("failed") })
-  expect(resend).not.toHaveBeenCalled()
+  expect(continueFailed).not.toHaveBeenCalled()
 })
 
 it("waits for turn metadata even when its input block has already loaded", async () => {
@@ -105,13 +101,12 @@ it("waits for turn metadata even when its input block has already loaded", async
   const { result } = renderHook(() => useRetryInput(options))
   expect(result.current.canRetryInput("failed")).toBe(false)
   await act(async () => { await result.current.retryInput("failed") })
-  expect(resend).not.toHaveBeenCalled()
-  expect(jumpTo).not.toHaveBeenCalled()
+  expect(continueFailed).not.toHaveBeenCalled()
   expect(loadUntilTurn).not.toHaveBeenCalled()
   expect(send).not.toHaveBeenCalled()
 })
 
-it("loads an image-only turn and resends its actual recorded input", async () => {
+it("loads an image-only turn and continues that same turn", async () => {
   useApp.setState({ transcript: failed(false), historyHasMore: true, turns: [turn("failed", { user_text: "" })] })
   const transcript = failed()
   transcript.agents.manager.blocks[0].text = ""
@@ -121,7 +116,7 @@ it("loads an image-only turn and resends its actual recorded input", async () =>
   expect(result.current.canRetryInput("failed")).toBe(true)
   await act(async () => { await result.current.retryInput("failed") })
   expect(loadUntilTurn).toHaveBeenCalledWith("failed")
-  expect(resend).toHaveBeenCalledWith("", 1)
+  expect(continueFailed).toHaveBeenCalledWith("failed")
   expect(useApp.getState().transcript).toBe(transcript)
   expect(send).not.toHaveBeenCalled()
 })
@@ -132,10 +127,10 @@ it("refuses an API turn without a stored turn identity", async () => {
   expect(result.current.canRetryInput("failed")).toBe(false)
   await act(async () => { await result.current.retryInput("failed") })
   expect(loadUntilTurn).not.toHaveBeenCalled()
-  expect(resend).not.toHaveBeenCalled()
+  expect(continueFailed).not.toHaveBeenCalled()
 })
 
-it("loads the real input once before resending it after repeated clicks", async () => {
+it("loads the real input once before continuing after repeated clicks", async () => {
   let finish!: (found: boolean) => void
   loadUntilTurn.mockImplementation(() => new Promise<boolean>((resolve) => { finish = resolve }))
   useApp.setState({ transcript: failed(false), historyHasMore: true })
@@ -148,9 +143,8 @@ it("loads the real input once before resending it after repeated clicks", async 
   expect(loadUntilTurn).toHaveBeenCalledTimes(1)
   expect(loadUntilTurn).toHaveBeenCalledWith("failed")
   await act(async () => { useApp.setState({ transcript: failed() }); finish(true); await pending })
-  expect(resend).toHaveBeenCalledTimes(1)
-  expect(resend).toHaveBeenCalledWith("Original request.", 1)
-  expect(jumpTo).toHaveBeenCalledWith("failed")
+  expect(continueFailed).toHaveBeenCalledTimes(1)
+  expect(continueFailed).toHaveBeenCalledWith("failed")
   expect(result.current.retryingTurn).toBeUndefined()
   expect(send).not.toHaveBeenCalled()
 })
@@ -169,8 +163,7 @@ it.each(["not-found", "throws", "no-recorded-seq"])("does not invent an input wh
   })
   const { result } = renderHook(() => useRetryInput(options))
   await act(async () => { await result.current.retryInput("failed") })
-  expect(resend).not.toHaveBeenCalled()
-  expect(jumpTo).not.toHaveBeenCalled()
+  expect(continueFailed).not.toHaveBeenCalled()
   expect(result.current.retryingTurn).toBeUndefined()
 })
 
@@ -194,11 +187,10 @@ it.each(["navigation", "revisit", "running", "streaming", "later-turn", "asking"
   })
   if (mode === "disabled") rerender({ enabled: false })
   await act(async () => { finish(true); await pending })
-  expect(resend).not.toHaveBeenCalled()
-  expect(jumpTo).not.toHaveBeenCalled()
+  expect(continueFailed).not.toHaveBeenCalled()
 })
 
-it("does not resend after the transcript unmounts while loading", async () => {
+it("does not continue after the transcript unmounts while loading", async () => {
   let finish!: (found: boolean) => void
   loadUntilTurn.mockImplementation(() => new Promise<boolean>((resolve) => { finish = resolve }))
   useApp.setState({ transcript: failed(false), historyHasMore: true })
@@ -208,61 +200,75 @@ it("does not resend after the transcript unmounts while loading", async () => {
   unmount()
   useApp.setState({ transcript: failed() })
   await act(async () => { finish(true); await pending })
-  expect(resend).not.toHaveBeenCalled()
+  expect(continueFailed).not.toHaveBeenCalled()
 })
 
-it("follows recorded retry ancestry back to the human input", async () => {
+it("continues the latest failed turn and does not walk retry_turn_id", async () => {
   const transcript = failed(true, "original")
   const retry = failed(true)
-  transcript.agents.manager.blocks.push(...retry.agents.manager.blocks.map((b) => ({ ...b, seq: b.seq + 30 })))
+  transcript.agents.manager.blocks.push(...retry.agents.manager.blocks.map((block) => ({ ...block, seq: block.seq + 30 })))
   transcript.turns.push(...retry.turns)
-  useApp.setState({ transcript, turns: [turn("original"), turn("middle", { seq: 2, retry_turn_id: "original" }), turn("failed", { seq: 3, retry_turn_id: "middle" })] })
+  useApp.setState({
+    transcript,
+    turns: [turn("original"), turn("middle", { seq: 2, retry_turn_id: "original" }), turn("failed", { seq: 3, retry_turn_id: "middle" })],
+  })
   const { result } = renderHook(() => useRetryInput(options))
   expect(result.current.canRetryInput("failed")).toBe(true)
+  expect(result.current.canRetryInput("original")).toBe(false)
   await act(async () => { await result.current.retryInput("failed") })
-  expect(resend).toHaveBeenCalledWith("Original request.", 1)
-  expect(jumpTo).toHaveBeenCalledWith("original")
+  expect(continueFailed).toHaveBeenCalledWith("failed")
+  expect(send).not.toHaveBeenCalled()
 })
 
-it.each(["missing", "cycle", "cross-thread", "automatic", "forward"])("refuses a %s retry ancestry instead of resending a synthetic input", async (mode) => {
+it.each(["missing", "cycle", "cross-thread", "automatic"])("keeps retry on the latest failed turn when stored lineage is %s", async (mode) => {
   const source = turn("original")
   const current = turn("failed", { seq: 2, retry_turn_id: "original" })
   if (mode === "missing") current.retry_turn_id = "absent"
   if (mode === "cycle") source.retry_turn_id = "failed"
   if (mode === "cross-thread") source.thread_id = "other"
   if (mode === "automatic") source.goal_continue = true
-  if (mode === "forward") source.seq = 3
   useApp.setState({ turns: [source, current] })
+  const { result } = renderHook(() => useRetryInput(options))
+  expect(result.current.canRetryInput("failed")).toBe(true)
+  await act(async () => { await result.current.retryInput("failed") })
+  expect(continueFailed).toHaveBeenCalledWith("failed")
+})
+
+it("does not continue an older failure when a later turn is stored", async () => {
+  const source = turn("original", { seq: 3 })
+  const current = turn("failed", { seq: 2, retry_turn_id: "original" })
+  useApp.setState({ turns: [current, source] })
   const { result } = renderHook(() => useRetryInput(options))
   expect(result.current.canRetryInput("failed")).toBe(false)
   await act(async () => { await result.current.retryInput("failed") })
-  expect(resend).not.toHaveBeenCalled()
+  expect(continueFailed).not.toHaveBeenCalled()
 })
 
-it("does not classify human text as synthetic by matching its wording", async () => {
+it("does not classify human text as a reason to rewind", async () => {
   const transcript = failed()
   transcript.agents.manager.blocks[0].text = "请从中断处继续当前任务。"
   useApp.setState({ transcript, turns: [turn("failed", { user_text: "请从中断处继续当前任务。" })] })
   const { result } = renderHook(() => useRetryInput(options))
   expect(result.current.canRetryInput("failed")).toBe(true)
   await act(async () => { await result.current.retryInput("failed") })
-  expect(resend).toHaveBeenCalledWith("请从中断处继续当前任务。", 1)
+  expect(continueFailed).toHaveBeenCalledWith("failed")
+  expect(send).not.toHaveBeenCalled()
 })
 
 it.each([true, false])("keeps one retry pending until its submission acknowledges %s", async (accepted) => {
   let acknowledge!: (accepted: boolean) => void
-  resend.mockImplementationOnce(() => new Promise<boolean>((resolve) => { acknowledge = resolve }))
+  continueFailed.mockImplementationOnce(() => new Promise<boolean>((resolve) => { acknowledge = resolve }))
   const { result } = renderHook(() => useRetryInput(options))
   let pending!: Promise<void>
   act(() => { pending = result.current.retryInput("failed") })
-  expect(resend).toHaveBeenCalledWith("Original request.", 1)
+  expect(continueFailed).toHaveBeenCalledWith("failed")
   expect(result.current.retryingTurn).toBe("failed")
   await act(async () => { await result.current.retryInput("failed") })
-  expect(resend).toHaveBeenCalledTimes(1)
+  expect(continueFailed).toHaveBeenCalledTimes(1)
   await act(async () => { acknowledge(accepted); await pending })
   expect(result.current.retryingTurn).toBeUndefined()
   if (!accepted) {
     await act(async () => { await result.current.retryInput("failed") })
-    expect(resend).toHaveBeenCalledTimes(2)
+    expect(continueFailed).toHaveBeenCalledTimes(2)
   }
 })

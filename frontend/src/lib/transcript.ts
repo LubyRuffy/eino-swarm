@@ -713,6 +713,16 @@ export function reduceEvent(
       // per model call would bury the answer under billing.
       break
 
+    case "failure_continued": {
+      next.running = true
+      upsertTurn(next, ev.turn_id, { status: "running", error: undefined })
+      const manager = touchAgent(next, MANAGER_ID)
+      manager.status = "running"
+      manager.blocks = manager.blocks.filter((block) => !(block.kind === "error" && block.turnId === ev.turn_id))
+      if (ev.text) append(manager, block(ev, "notice", ev.text))
+      break
+    }
+
     case "done":
     case "error": {
       const failed = ev.kind === "error"

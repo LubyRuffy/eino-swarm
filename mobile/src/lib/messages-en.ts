@@ -247,6 +247,7 @@ export const en = {
   "notice.modelRetryResponse": "The model service returned a response that could not be decoded. Retrying.",
   "notice.modelServiceResponse": "the model service returned a response that could not be decoded",
   "notice.modelRetryIdle": "The model service stopped sending data. Retrying.",
+  "notice.failureContinued": "Continuing from the failed step.",
   "notice.modelBackoff": "Waiting {seconds}s before retrying the model request.",
   "notice.modelBackoffUnknown": "Waiting before retrying the model request.",
   "notice.scheduleAnswerBackoff": "Waiting {seconds}s before checking the unpublished answer again.",

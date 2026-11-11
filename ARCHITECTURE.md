@@ -2187,10 +2187,12 @@ keep a local pending row so the bubble does not blink out before the
 replacement `user_message` arrives. An image-only send has nothing to copy,
 so copy is hidden and edit still opens the box; the original images ride
 along unless new ones are attached.
-**Retry** on the latest failed desktop/Web turn uses the same rewind path.
-One click submits the original stored `user_message` text, including its
-quotation envelope, and its sequence selects the original images. Historical
-`retry_turn_id` links, when present, resolve the source turn for this action.
+**Retry** on the latest failed desktop/Web turn reopens that same turn
+(`POST /api/threads/:id/retry`). The next model request keeps the stored
+user message and completed tool results, drops a trailing tool call that
+never received a result, and does not rewind later history. The stream
+records `failure_continued`. Editing a bubble still uses `from_event_seq`.
+Historical `retry_turn_id` is read-only lineage and is not followed.
 `⌘F` finds in the open conversation rather than in the window chrome
 (`frontend/src/lib/find.ts`, `frontend/src/lib/find-dom.ts`): a floating bar
 over the transcript, CSS Custom Highlights on the live text nodes, and the

@@ -41,6 +41,9 @@ var (
 	ErrNotFound = store.ErrNotFound
 	// ErrNotRewindable means the named event is not a user_message.
 	ErrNotRewindable = errors.New("engine: only a user message can be edited and resent")
+	// ErrNoFailedTurn means Retry was asked for a conversation whose latest
+	// turn is not a failed human turn, or the named turn is not that one.
+	ErrNoFailedTurn = errors.New("engine: there is no failed turn to continue")
 )
 
 // Engine is the process-wide runtime.

@@ -37,6 +37,7 @@ const NOTICE_EXACT: Record<string, MessageKey> = {
   "Standing objective blocked: progress needs you or an external change.":
     "notice.goalBlocked",
   "Retrying after a model error.": "notice.modelRetry",
+  "Continuing from the failed step.": "notice.failureContinued",
   "Waiting before retrying the model request.": "notice.modelBackoffUnknown",
   "Waiting to check the unpublished answer again.": "notice.scheduleAnswerBackoffUnknown",
   "Answer verification is unavailable. The unpublished answer is retained.": "notice.scheduleAnswerDeferred",

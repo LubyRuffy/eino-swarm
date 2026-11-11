@@ -87,7 +87,7 @@ export function queueEvent(
   if (ev.kind === "done" || ev.kind === "error" || ev.kind === "user_message" ||
       ev.kind === "max_iterations" || ev.kind === "max_iterations_continued" || ev.kind === "workers_collection_resumed" || ev.kind === "workers_collection_declined" ||
       ev.kind === "model_retry" || ev.kind === "title" || ev.kind === "composer_prediction" ||
-      ev.kind === "resumed" || ev.kind === "goal" || ev.kind === "goal_complete" ||
+      ev.kind === "resumed" || ev.kind === "failure_continued" || ev.kind === "goal" || ev.kind === "goal_complete" ||
       ev.kind === "goal_continued" || ev.kind === "goal_capped" || ev.kind === "goal_blocked" ||
       ev.kind === "goal_edited" || ev.kind === "goal_resumed" || ev.kind === "goal_idle" || ev.kind === "goal_session" ||
       ev.kind === "compacted" ||
@@ -148,11 +148,18 @@ function flushQueued(set: StreamSet, get: StreamGet) {
       isCurrentWorkerCollectionResume(transcript.agents.manager, ev)
     const collectionDeclined = isCurrentWorkerCollectionDecline(transcript.agents.manager, ev)
     transcript = foldLiveEvent(transcript, ev)
-    if (ev.kind === "user_message" || ev.kind === "resumed") {
+    if (ev.kind === "user_message" || ev.kind === "resumed" || ev.kind === "failure_continued") {
+      const elapsed = ev.kind === "failure_continued"
+        ? Math.max(0, state.turns?.find((turn) => turn.id === ev.turn_id)?.duration_ms ?? 0)
+        : 0
+      const basis = Date.parse(ev.created_at)
+      const started = ev.kind === "failure_continued" && Number.isFinite(basis)
+        ? new Date(basis - elapsed).toISOString()
+        : ev.created_at
       status = withRunningClock(status, {
         turn_id: ev.turn_id,
-        started_at: ev.created_at,
-        awaiting_continue: ev.kind === "resumed" ? false : status.awaiting_continue,
+        started_at: started,
+        awaiting_continue: ev.kind === "user_message" ? status.awaiting_continue : false,
       })
     }
     if (ev.kind === "user_message") {

@@ -41,6 +41,7 @@ export type EventKind =
   | "session_memory"
   | "done"
   | "error"
+  | "failure_continued"
   | "resumed"
   | "restart_preparing"
   | "engine_restore"

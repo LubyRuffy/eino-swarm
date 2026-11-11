@@ -183,6 +183,7 @@ func New(opts Options) (*Server, error) {
 		api.POST("/threads/:id/followups/:fid/steer", s.steerFollowup)
 		api.POST("/threads/:id/interrupt", s.interrupt)
 		api.POST("/threads/:id/continue", s.continueTurn)
+		api.POST("/threads/:id/retry", s.retryFailedTurn)
 		api.POST("/threads/:id/answers", s.answerTurn)
 		api.POST("/threads/:id/plan/implement", s.implementPlan)
 		api.POST("/threads/:id/review", s.reviewThread)
@@ -323,6 +324,8 @@ func (s *Server) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "skipped_busy"})
 	case errors.Is(err, engine.ErrIdle):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "idle"})
+	case errors.Is(err, engine.ErrNoFailedTurn):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "no_failed_turn"})
 	case errors.Is(err, engine.ErrNoPendingSteer):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "no_steer"})
 	case errors.Is(err, engine.ErrAskMismatch):

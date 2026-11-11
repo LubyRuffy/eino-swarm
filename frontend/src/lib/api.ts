@@ -685,6 +685,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify(turnBody(text, images, files, fromEventSeq, historyReport, model)),
     }).then((r) => r.turn),
+  /** Continues the latest failed turn from the context it had when the call
+   *  failed. This does not rewind or resend the user message. */
+  continueFailedTurn: (id: string, turnId: string) =>
+    request<{ turn: Turn }>(`/api/threads/${id}/retry`, {
+      method: "POST",
+      body: JSON.stringify({ turn_id: turnId }),
+    }).then((r) => r.turn),
   /** Injects into a running turn. Idle conversations start a turn instead,
    *  so a Steer click that lost the race still lands. */
   steer: (id: string, text: string, images?: SendImage[], files?: string[], model?: string) =>
