@@ -8,6 +8,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Changed
 
+- Settings no longer shows the configured server, the self-hosted connection
+  editor, the local-agent configuration page, or the config-file path in the
+  lower left. Phone sign-in, pairing QR, bound phones and keep-awake stay.
+  The server address, authentication mode, computer name and local-agent
+  directories remain in `config.yaml` and `PUT /api/settings`.
+
 - Settings no longer lists `ls`, `tree`, `glob` or `grep`, and those tools are
   not registered. Directory listings, filename search and content search go
   through `exec`. Old `enabled` or `disabled` entries for the four names have

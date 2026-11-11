@@ -98,7 +98,8 @@ describe("RemoteTab", () => {
   it("paints a scannable QR from the pairing offer", async () => {
     const onChange = vi.fn()
     render(<RemoteTab settings={base} onChange={onChange} />)
-    expect(screen.getByText(base.remote!.hub_url)).toBeVisible()
+    expect(screen.queryByText(base.remote!.hub_url)).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Advanced / self-hosted server" })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Show pairing QR" }))
     await waitFor(() => expect(screen.getByTestId("remote-qr")).toBeInTheDocument())
     const img = screen.getByTestId("remote-qr")
@@ -110,21 +111,23 @@ describe("RemoteTab", () => {
 
   it("does not show a host token field", async () => {
     await act(async () => { render(<RemoteTab settings={base} onChange={vi.fn()} />) })
-    expect(screen.getByText(base.remote!.hub_url)).toBeVisible()
+    expect(screen.queryByText(base.remote!.hub_url)).not.toBeInTheDocument()
     expect(screen.queryByLabelText("Host Token")).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Advanced / self-hosted server" }))
-    expect(screen.getByLabelText("Event text on the phone")).toHaveValue(4000)
-    expect(screen.getByLabelText("Events on the phone")).toHaveValue(80)
+    expect(screen.queryByRole("button", { name: "Advanced / self-hosted server" })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Hub URL")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Connection sign-in")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("This computer's name")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Event text on the phone")).not.toBeInTheDocument()
     expect(screen.getByLabelText("Keep this computer awake")).toBeChecked()
-    expect(screen.getByLabelText("This computer's name")).toHaveValue("desk-one")
   })
 
   it("describes account PC selection without making a QR or manual Hub setup a prerequisite", async () => {
     await act(async () => { render(<RemoteTab settings={{ ...base, remote: { ...base.remote!, auth_mode: "account" } }} onChange={vi.fn()} />) })
     expect(screen.getByText("Sign in with the same account on your phone, then select this PC without scanning. The hub forwards ciphertext; PC conversations stay here.")).toBeVisible()
+    expect(screen.queryByText("Configured server")).not.toBeInTheDocument()
     expect(screen.queryByLabelText("Hub URL")).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Advanced / self-hosted server" }))
-    expect(screen.getByText("The official Gateway is set by default. Change this address only for another server.")).toBeVisible()
+    expect(screen.queryByRole("button", { name: "Advanced / self-hosted server" })).not.toBeInTheDocument()
+    expect(screen.queryByText("The official Gateway is set by default. Change this address only for another server.")).not.toBeInTheDocument()
     expect(screen.queryByText("Scan the QR from the phone app. The hub only forwards ciphertext; conversations stay on this PC.")).not.toBeInTheDocument()
   })
 
@@ -186,19 +189,12 @@ describe("RemoteTab", () => {
     expect(screen.getByText(/Last connected 2026-09-20T16:03:32Z/)).toBeInTheDocument()
   })
 
-  it("renames this computer without inventing a sample host label", async () => {
+  it("does not offer a computer name or server address to edit", async () => {
     const onChange = vi.fn()
-    render(<RemoteTab settings={base} onChange={onChange} />)
-    fireEvent.click(screen.getByRole("button", { name: "Advanced / self-hosted server" }))
-    await waitFor(() =>
-      expect(screen.getByLabelText("This computer's name")).toBeInTheDocument(),
-    )
-    fireEvent.change(screen.getByLabelText("This computer's name"), {
-      target: { value: "Lab bench" },
-    })
-    const next = onChange.mock.calls[0][0] as Settings
-    expect(next.remote?.display_name).toBe("Lab bench")
-    expect(JSON.stringify(next.remote)).not.toMatch(/MacBook Pro|iMac|Office|codex-apps/)
+    await act(async () => { render(<RemoteTab settings={base} onChange={onChange} />) })
+    expect(screen.queryByLabelText("This computer's name")).not.toBeInTheDocument()
+    expect(screen.queryByText("Configured server")).not.toBeInTheDocument()
+    expect(onChange).not.toHaveBeenCalled()
   })
 
   it("toggles keep-awake without inventing a sample phrase", async () => {
@@ -220,7 +216,7 @@ describe("RemoteTab", () => {
         <RemoteTab settings={base} onChange={vi.fn()} />
       </>,
     )
-    expect(screen.getByText(base.remote!.hub_url)).toBeVisible()
+    expect(screen.queryByText(base.remote!.hub_url)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Show pairing QR" }))
     const alert = await screen.findByRole("alert")
     expect(alert).toHaveTextContent("Couldn't set up the phone")

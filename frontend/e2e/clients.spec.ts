@@ -32,17 +32,12 @@ test("a long local agent session follows the latest lines and Earlier loads the 
   )
   fs.writeFileSync(path.join(dir, "s1.jsonl"), `${lines.join("\n")}\n`)
 
-  await page.goto("/")
-  await page.getByRole("button", { name: "Settings" }).click()
-  const dialog = page.getByRole("dialog")
-  await dialog.getByRole("tab", { name: "Clients" }).click()
   const empty = path.join(root, "empty")
   fs.mkdirSync(empty, { recursive: true })
-  await dialog.getByLabel("Claude directory").fill(root)
-  await dialog.getByLabel("Codex directory").fill(empty)
-  await dialog.getByLabel("Cursor directory").fill(empty)
-  await dialog.getByLabel("Show local agent tasks").click()
-  await dialog.getByRole("button", { name: "Back to app" }).click()
+  expect((await page.request.put("/api/settings", {
+    data: { clients: { enabled: true, claude_dir: root, codex_dir: empty, cursor_dir: empty } },
+  })).ok()).toBeTruthy()
+  await page.goto("/")
 
   await expect(page.getByTestId("dest-clients")).toBeVisible()
   await page.getByTestId("dest-clients").click()
@@ -69,16 +64,10 @@ test("an unchanged archive stays readable and changed local sessions refresh", a
     fs.utimesSync(file, at, at)
   }
   try {
+    expect((await page.request.put("/api/settings", {
+      data: { clients: { enabled: true, claude_dir: root, codex_dir: empty, cursor_dir: empty } },
+    })).ok()).toBeTruthy()
     await page.goto("/")
-    await page.getByRole("button", { name: "Settings" }).click()
-    const dialog = page.getByRole("dialog")
-    await dialog.getByRole("tab", { name: "Clients" }).click()
-    await dialog.getByLabel("Claude directory").fill(root)
-    await dialog.getByLabel("Codex directory").fill(empty)
-    await dialog.getByLabel("Cursor directory").fill(empty)
-    const enabled = dialog.getByLabel("Show local agent tasks")
-    if (!(await enabled.isChecked())) await enabled.click()
-    await dialog.getByRole("button", { name: "Back to app" }).click()
     await page.getByTestId("dest-clients").click()
     await expect(page.getByRole("button", { name: /archive row 599$/ })).toBeVisible()
     const catalog = await page.request.get("/api/clients")

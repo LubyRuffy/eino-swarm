@@ -785,15 +785,13 @@ and PC fingerprint in the dialog before authorizing the device. The existing
 Settings button and **Settings → Phone** controls remain available.
 
 **Settings → Phone** also shows account status and **Sign in**
-directly. For the default service, no Hub address, Host Token or authentication
-mode needs to be entered first. **Configured server** shows the address supplied
-by this PC's Go configuration, including an existing self-hosted address; the
-renderer does not compile in an official hostname. Opening Phone or expanding
-**Advanced / self-hosted server** does not start sign-in or change a saved
-connection. That advanced section contains the manual Hub, authentication and
-pairing controls for an independent server or anonymous QR use. If a login result
+directly. It does not show the configured server, and it does not offer a
+self-hosted server, Hub address, Host Token, authentication mode, computer name
+or pairing limits. The address stays in configuration; the renderer does not
+compile in an official hostname and does not let Settings change it. Opening
+Phone does not start sign-in or change a saved connection. If a login result
 and the configuration read-back are both unavailable, Phone offers **Reload
-account settings** before allowing another login or connection edit.
+account settings** before allowing another login.
 
 An authorized account uses its name's initial as a local avatar; no avatar image
 is fetched. **Signed in · PC offline** distinguishes account authorization from
@@ -819,14 +817,14 @@ again, explicitly choose **Sign in**.
 
 For anonymous QR use and connection settings, retain the existing flow:
 
-1. For anonymous pairing, open zwai **Settings → Phone → Advanced / self-hosted
-   server**, turn pairing on and keep **Connection sign-in → Independent hub
-   (legacy)**. Preserve the configured Hub or enter your own server's address.
-   Legacy remains the compatible configuration default: this PC mints its hidden
-   Host Token locally, separate from a Gateway API Key. Existing legacy
-   connections keep their mode until you explicitly change it or choose account
-   sign-in. For a managed Gateway, use the main Phone page's **Sign in with
-   Gateway** button; no manual address, token or mode selection is required. Compare
+1. Anonymous pairing uses the configured Hub and `remote.enabled` /
+   `remote.auth_mode` in `config.yaml` (or `PUT /api/settings`). Settings does
+   not show or edit those fields. Legacy remains the compatible configuration
+   default: this PC mints its hidden Host Token locally, separate from a
+   Gateway API Key. Existing legacy connections keep their mode until you
+   change the configuration or choose account sign-in. For a managed Gateway,
+   use the main Phone page's **Sign in with Gateway** button; no manual
+   address, token or mode selection is required. Compare
    the confirmation code and PC fingerprint in the browser flow, sign in, then
    explicitly authorize this PC there.
    A new account waits for administrator approval; rejected or pending accounts
@@ -835,10 +833,11 @@ For anonymous QR use and connection settings, retain the existing flow:
    authorization from the actual PC connection. A missing hub toasts over the
    sheet (× to close).
    **Keep this computer awake** stays on by default so a plugged-in host
-   does not idle-sleep while a phone still expects it. Turn it off if you
-   want the machine to sleep. **This computer's name** is what the phone
-   paints on the host chip (blank uses this machine's hostname). That same
-   name is sent when this PC registers with the hub. **Bound phones** names each device by the
+   does not idle-sleep while a phone still expects it. Turn it off in
+   Settings → Phone if you want the machine to sleep. **This computer's name**
+   is `remote.display_name` (blank uses this machine's hostname). Settings does
+   not edit it. That same name is sent when this PC registers with the hub.
+   **Bound phones** names each device by the
    model the phone reports after it connects, not only the fingerprint. The
    phone also sends that model line when it redeems the QR, so a gateway
    list can show it without reading the sealed session.
@@ -1004,8 +1003,8 @@ version/source SHA without reuploading completed platforms. See `C-010` in
 
 ## Local agent progress
 
-Settings → Clients → **Show local agent tasks** lists Claude, Codex, and Cursor
-sessions already on this machine. The leftmost navigation's Clients list groups them by tool. Each tool group folds. The first
+`clients.enabled` in `config.yaml` or `PUT /api/settings` lists Claude, Codex, and Cursor
+sessions already on this machine. Settings does not show that page. The leftmost navigation's Clients list groups them by tool. Each tool group folds. The first
 page is at most five tasks from the last three days; More shows the next five. A breathing light
 means that task is still running. Open a row and the session fills the main
 chat. The opening request stays pinned at the top. The column follows the
@@ -1013,8 +1012,8 @@ latest lines. **Earlier** loads the page above that, the same way a
 conversation does. Adjacent thinking and tool calls start collapsed, the same row as a
 conversation. The composer stays where it is and cannot be used. A paired phone
 opens the same chat with the same locked composer, the same **Earlier**
-control, and the same follow of the live tail. The switch is off until
-you turn it on. The background refresh reuses parsed rows for unchanged files,
+control, and the same follow of the live tail. The list stays off until
+`clients.enabled` is on. The background refresh reuses parsed rows for unchanged files,
 checks file metadata for changes, and publishes one sorted snapshot. Idle polls
 copy only the visible page; they do not reread every transcript or sort the
 whole archive. Changed and deleted sessions appear on the next finished refresh.

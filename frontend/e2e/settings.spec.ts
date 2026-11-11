@@ -63,18 +63,19 @@ test("a switched-off provider leaves the composer model list", async ({
   }
 })
 
-test("local agent tasks stay hidden until the switch is on", async ({ page }) => {
+test("local agent tasks stay hidden until clients are enabled in config", async ({ page, request }) => {
   await page.goto("/")
   await expect(page.getByTestId("clients-list")).toHaveCount(0)
   await page.getByRole("button", { name: "Settings" }).click()
   const dialog = page.getByRole("dialog")
-  await dialog.getByRole("tab", { name: "Clients" }).click()
-  const empty = "/tmp/zwai-e2e-clients-none"
-  await dialog.getByLabel("Claude directory").fill(empty)
-  await dialog.getByLabel("Codex directory").fill(empty)
-  await dialog.getByLabel("Cursor directory").fill(empty)
-  await dialog.getByLabel("Show local agent tasks").click()
+  await expect(dialog.getByRole("tab", { name: "Clients" })).toHaveCount(0)
+  await expect(dialog.getByLabel("Show local agent tasks")).toHaveCount(0)
+  await expect(dialog.getByText(/Stored in/)).toHaveCount(0)
   await dialog.getByRole("button", { name: "Back to app" }).click()
+  const empty = "/tmp/zwai-e2e-clients-none"
+  expect((await request.put("/api/settings", {
+    data: { clients: { enabled: true, claude_dir: empty, codex_dir: empty, cursor_dir: empty } },
+  })).ok()).toBeTruthy()
   await expect(page.getByTestId("dest-clients")).toBeVisible()
   await page.getByTestId("dest-clients").click()
   await expect(page.getByTestId("clients-list")).toBeVisible()

@@ -31,7 +31,9 @@ describe("Phone account defaults", () => {
       onAccountLogin={(newDevice) => api.startRemoteLogin(newDevice, true)} />)
     await waitFor(() => expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled())
     expect(screen.getByText("Sign in to link this PC to your account. No server address or token needs to be entered.")).toBeVisible()
-    expect(screen.getByText(origin)).toBeVisible()
+    expect(screen.queryByText(origin)).not.toBeInTheDocument()
+    expect(screen.queryByText("Configured server")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Advanced / self-hosted server" })).not.toBeInTheDocument()
     expect(screen.queryByLabelText("Hub URL")).not.toBeInTheDocument()
     expect(screen.queryByLabelText("Connection sign-in")).not.toBeInTheDocument()
     expect(screen.queryByLabelText("Host Token")).not.toBeInTheDocument()
@@ -42,18 +44,17 @@ describe("Phone account defaults", () => {
     await waitFor(() => expect(api.startRemoteLogin).toHaveBeenCalledWith(false, true))
   })
 
-  it("reveals existing self-hosted settings only through an explicit advanced action", async () => {
+  it("keeps a configured server address off the phone page", async () => {
     const custom = { ...settings, remote: { ...settings.remote!, enabled: true, hub_url: "https://self-hosted.example", display_name: "my-pc" } }
     vi.mocked(api.remoteStatus).mockResolvedValue({ ...initial, ...custom.remote! })
     const change = vi.fn()
     await act(async () => { render(<RemoteTab settings={custom} onChange={change} />) })
-    expect(screen.getByText(custom.remote.hub_url)).toBeVisible()
+    expect(screen.queryByText(custom.remote.hub_url)).not.toBeInTheDocument()
+    expect(screen.queryByText("Configured server")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Advanced / self-hosted server" })).not.toBeInTheDocument()
     expect(screen.queryByLabelText("Hub URL")).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Advanced / self-hosted server" }))
-    expect(screen.getByLabelText("Hub URL")).toHaveValue(custom.remote.hub_url)
-    expect(screen.getByLabelText("Connection sign-in")).toHaveTextContent("Independent hub")
-    fireEvent.change(screen.getByLabelText("Hub URL"), { target: { value: "https://replacement.example" } })
-    expect(change.mock.calls[0][0].remote).toMatchObject({ enabled: true, auth_mode: "independent", hub_url: "https://replacement.example", display_name: "my-pc" })
+    expect(screen.queryByLabelText("Connection sign-in")).not.toBeInTheDocument()
+    expect(change).not.toHaveBeenCalled()
     expect(api.startRemoteLogin).not.toHaveBeenCalled()
   })
 
@@ -71,22 +72,12 @@ describe("Phone account defaults", () => {
     expect(change).not.toHaveBeenCalled()
   })
 
-  it("reveals advanced fields for a settings search without changing the saved connection", async () => {
-    await act(async () => { render(<RemoteTab settings={settings} onChange={vi.fn()} query="Hub URL" />) })
-    expect(screen.getByLabelText("Hub URL")).toHaveValue(origin)
-    expect(api.startRemoteLogin).not.toHaveBeenCalled()
-  })
-
-  it("keeps the advanced editor open when a saved Hub or authentication mode changes", async () => {
+  it("does not reveal server fields when settings search asks for them", async () => {
     const change = vi.fn()
-    const view = render(<RemoteTab settings={settings} onChange={change} />)
-    fireEvent.click(screen.getByRole("button", { name: "Advanced / self-hosted server" }))
-    const updated = { ...settings, remote: { ...settings.remote!, hub_url: "https://saved-server.example", auth_mode: "account" as const } }
-    vi.mocked(api.remoteStatus).mockResolvedValue({ ...initial, ...updated.remote! })
-    await act(async () => { view.rerender(<RemoteTab settings={updated} onChange={change} />) })
-    expect(screen.getByRole("button", { name: "Advanced / self-hosted server" })).toHaveAttribute("aria-expanded", "true")
-    expect(screen.getByLabelText("Hub URL")).toHaveValue("https://saved-server.example")
-    expect(screen.getByLabelText("Connection sign-in")).toHaveTextContent("Gateway account")
+    await act(async () => { render(<RemoteTab settings={settings} onChange={change} query="Hub URL" />) })
+    expect(screen.queryByLabelText("Hub URL")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Advanced / self-hosted server" })).not.toBeInTheDocument()
+    expect(change).not.toHaveBeenCalled()
     expect(api.startRemoteLogin).not.toHaveBeenCalled()
   })
 })

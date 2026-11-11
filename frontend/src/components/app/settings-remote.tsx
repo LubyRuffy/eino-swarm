@@ -1,10 +1,8 @@
-import { ChevronDown } from "lucide-react"
-import { useEffect, useId, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
-import { SelectItem } from "@/components/ui/select"
 import { api } from "@/lib/api"
 import type {
   RemoteBinding,
@@ -29,7 +27,6 @@ import {
   Field,
   SettingsPage,
   SettingsSection,
-  SettingsChoice,
   settingsHintClass,
   settingsLabelClass,
 } from "./settings-field"
@@ -51,9 +48,8 @@ type RemoteTabProps = {
 
 export function RemoteTab(props: RemoteTabProps) {
   const remote = defaultRemoteSettings(props.settings.remote)
-  const [advanced, setAdvanced] = useState(false)
   const authority = JSON.stringify([remote.enabled, remote.hub_url, remote.auth_mode])
-  return <RemoteTabBody key={authority} {...props} advanced={advanced} onAdvancedChange={setAdvanced} />
+  return <RemoteTabBody key={authority} {...props} />
 }
 
 function RemoteTabBody({
@@ -61,12 +57,8 @@ function RemoteTabBody({
   onChange,
   query = "",
   onAccountLogin,
-  advanced,
-  onAdvancedChange,
-}: RemoteTabProps & { advanced: boolean; onAdvancedChange: (value: boolean) => void }) {
+}: RemoteTabProps) {
   const t = useT()
-  const advancedId = useId()
-  const expanded = advanced || !!query.trim()
   const remote = defaultRemoteSettings(settings.remote)
   const update = (patch: Partial<typeof remote>) =>
     onChange({ ...settings, remote: { ...remote, ...patch } })
@@ -191,12 +183,6 @@ function RemoteTabBody({
         onCancel={cancelLogin}
       />
 
-      <SettingsSection title={t("settings.remote.currentServer")}>
-        <p className={cn(settingsLabelClass, "break-all px-4 py-3")} data-settings-row="">
-          {remote.hub_url || t("settings.remote.serverDefault")}
-        </p>
-      </SettingsSection>
-
       <SettingsSection
         title={t("settings.remote.qr")}
         description={
@@ -308,112 +294,6 @@ function RemoteTabBody({
           />
         </Field>
       </SettingsSection>
-      <div className="flex flex-col gap-3">
-        <div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            data-testid="remote-advanced-toggle"
-            aria-expanded={expanded}
-            aria-controls={advancedId}
-            onClick={() => onAdvancedChange(!advanced)}
-          >
-            {t("settings.remote.advanced")}
-            <ChevronDown className={cn("size-3.5 transition-transform", expanded && "rotate-180")} />
-          </Button>
-          <p className={settingsHintClass}>{t("settings.remote.advancedHint")}</p>
-        </div>
-        <div id={advancedId} hidden={!expanded}>
-          {expanded ? (
-            <SettingsSection title={t("settings.remote.hub")}>
-              <Field
-                query={query}
-                label={t("settings.remote.enabled")}
-                hint={t("settings.remote.enabledHint")}
-              >
-                <Switch
-                  checked={remote.enabled}
-                  onCheckedChange={(v) => update({ enabled: v })}
-                />
-              </Field>
-              <SettingsChoice
-                query={query}
-                label={t("settings.remote.authMode")}
-                hint={t("settings.remote.authModeHint")}
-                value={remote.auth_mode ?? "independent"}
-                onValueChange={(value) => update({ auth_mode: value as "independent" | "account" })}
-              >
-                <SelectItem value="independent">{t("settings.remote.authIndependent")}</SelectItem>
-                <SelectItem value="account">{t("settings.remote.authAccount")}</SelectItem>
-              </SettingsChoice>
-              <Field
-                query={query}
-                label={t("settings.remote.hubUrl")}
-                hint={t("settings.remote.hubUrlHint")}
-                wide
-              >
-                <Input
-                  value={remote.hub_url}
-                  onChange={(e) => update({ hub_url: e.target.value })}
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="https://"
-                />
-              </Field>
-              <Field
-                query={query}
-                label={t("settings.remote.displayName")}
-                hint={t("settings.remote.displayNameHint")}
-                wide
-              >
-                <Input
-                  value={remote.display_name}
-                  onChange={(e) => update({ display_name: e.target.value })}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              </Field>
-              <Field
-                query={query}
-                label={t("settings.remote.threadLimit")}
-                hint={t("settings.remote.threadLimitHint")}
-              >
-                <Input
-                  type="number"
-                  min={1}
-                  value={remote.thread_limit}
-                  onChange={(e) => update({ thread_limit: Number(e.target.value) })}
-                />
-              </Field>
-              <Field
-                query={query}
-                label={t("settings.remote.eventChars")}
-                hint={t("settings.remote.eventCharsHint")}
-              >
-                <Input
-                  type="number"
-                  min={1}
-                  value={remote.event_chars}
-                  onChange={(e) => update({ event_chars: Number(e.target.value) })}
-                />
-              </Field>
-              <Field
-                query={query}
-                label={t("settings.remote.watchEvents")}
-                hint={t("settings.remote.watchEventsHint")}
-              >
-                <Input
-                  type="number"
-                  min={1}
-                  value={remote.watch_events}
-                  onChange={(e) => update({ watch_events: Number(e.target.value) })}
-                />
-              </Field>
-            </SettingsSection>
-          ) : null}
-        </div>
-      </div>
     </SettingsPage>
   )
 }

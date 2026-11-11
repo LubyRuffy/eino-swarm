@@ -1,20 +1,19 @@
 import { expect, test } from "@playwright/test"
 
-test("phone settings keeps manual connection settings behind an explicit advanced entry", async ({ page, request }) => {
-  const { settings } = await (await request.get("/api/settings")).json()
+test("phone settings hides the server address and self-hosted connection editor", async ({ page }) => {
   await page.goto("/")
   await page.getByRole("button", { name: "Settings" }).click()
   const dialog = page.getByRole("dialog")
   await dialog.getByRole("tab", { name: "Phone" }).click()
   await expect(dialog.getByRole("button", { name: "Sign in", exact: true })).toBeVisible()
-  await expect(dialog.getByText(settings.remote.hub_url, { exact: true })).toBeVisible()
+  await expect(dialog.getByText("Configured server", { exact: true })).toHaveCount(0)
+  await expect(dialog.getByRole("button", { name: "Advanced / self-hosted server", exact: true })).toHaveCount(0)
   await expect(dialog.getByLabel("Hub URL")).toHaveCount(0)
-  await dialog.getByRole("button", { name: "Advanced / self-hosted server", exact: true }).click()
-  await expect(dialog.getByLabel("Hub URL")).toHaveValue(settings.remote.hub_url)
   await expect(dialog.getByLabel("Host Token")).toHaveCount(0)
-  await expect(dialog.getByLabel("Event text on the phone")).toBeVisible()
-  await expect(dialog.getByLabel("Events on the phone")).toBeVisible()
-  await expect(dialog.getByLabel("This computer's name")).toBeVisible()
+  await expect(dialog.getByLabel("Connection sign-in")).toHaveCount(0)
+  await expect(dialog.getByLabel("Event text on the phone")).toHaveCount(0)
+  await expect(dialog.getByLabel("This computer's name")).toHaveCount(0)
+  await expect(dialog.getByText(/Stored in/)).toHaveCount(0)
   await expect(dialog.getByLabel("Keep this computer awake")).toBeVisible()
   await expect(dialog.getByText("Bound phones")).toBeVisible()
   await expect(dialog.getByText("No phones bound yet.")).toBeVisible()

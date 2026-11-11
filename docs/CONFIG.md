@@ -732,15 +732,15 @@ mode and palette are first-class config so a new window keeps them.
 
 ## `remote`
 
-Phone pairing over pairlink. Off by default. The hub URL is whatever you type
-in Settings → Phone.
+Phone pairing over pairlink. Off by default. Settings → Phone does not show
+or edit the hub URL, authentication mode, computer name or pairing limits.
 
 | key | default | meaning |
 |---|---|---|
 | `enabled` | `false` | register this PC with the hub and accept sealed RPC from bound phones |
-| `hub_url` | `https://ai.fofa.info:2440` | Gateway / pairlink hub origin. Blank uses the official default, so normal sign-in requires no server configuration; an explicit self-hosted origin is preserved and remains editable in Settings. Account mode accepts an HTTPS origin with no path/query/fragment or user info; HTTP is allowed only on loopback for local testing |
-| `auth_mode` | `independent` | `independent` keeps independent pairlink registration; `account` requires browser sign-in, administrator account approval and explicit device authorization before registration. Editable in Settings → Phone → Connection sign-in |
-| `display_name` | this machine's hostname | name a bound phone paints on its host chip. Blank seeds `os.Hostname()` (or stays empty if that fails). Editable in Settings → Phone. Clipped to 40 runes. Not a compiled label |
+| `hub_url` | `https://ai.fofa.info:2440` | Gateway / pairlink hub origin. Blank uses the official default, so normal sign-in requires no server configuration; an explicit self-hosted origin is preserved. Settings does not show or edit it; change this file or `PUT /api/settings`. Account mode accepts an HTTPS origin with no path/query/fragment or user info; HTTP is allowed only on loopback for local testing |
+| `auth_mode` | `independent` | `independent` keeps independent pairlink registration; `account` requires browser sign-in, administrator account approval and explicit device authorization before registration. Settings does not show this control; change this file or `PUT /api/settings` |
+| `display_name` | this machine's hostname | name a bound phone paints on its host chip. Blank seeds `os.Hostname()` (or stays empty if that fails). Settings does not show this field. Clipped to 40 runes. Not a compiled label |
 | `thread_limit` | `5` | how many idle recents the phone lists below In progress before More. Live rows (`list.running`) are a separate roster and do not count |
 | `summary_chars` | `280` | truncate assistant/summary text on the phone. Inbox `action` / `summary` are human one-liners (findings, a command, prose), not raw `tool_call` JSON |
 | `open_turns` | `6` | completed turns included when a thread is opened |
@@ -804,8 +804,8 @@ convert or restore private credential files automatically.
 
 ## `clients`
 
-Read-only list of local agent transcripts. Off by default. Settings → Clients
-is the switch. The left navigation and a paired phone show one group per tool. Tasks
+Read-only list of local agent transcripts. Off by default. Settings does not
+show this page; set the keys here or with `PUT /api/settings`. The left navigation and a paired phone show one group per tool. Tasks
 from the last `recent_days` are the first page, five per tool. Each tool
 group folds. More loads the next five. Opening a row reads the session
 and does not send or resume.

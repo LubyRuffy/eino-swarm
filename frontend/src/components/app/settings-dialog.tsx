@@ -1,7 +1,6 @@
 import {
   Archive,
   ArrowLeft,
-  Bot,
   Cpu,
   Library,
   Loader2,
@@ -19,7 +18,6 @@ import { MemorySettings } from "@/components/app/memory-settings"
 import { ModelsTab } from "@/components/app/model-settings"
 import { GeneralTab } from "@/components/app/settings-general"
 import { PersonalityTab } from "@/components/app/settings-personality"
-import { ClientsTab } from "@/components/app/settings-clients"
 import { BackupTab } from "@/components/app/settings-backup"
 import { RemoteTab } from "@/components/app/settings-remote"
 import { SwarmTab } from "@/components/app/settings-swarm"
@@ -30,7 +28,6 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -105,19 +102,13 @@ function sections(t: Translate) {
       id: "remote",
       label: t("settings.nav.remote"),
       icon: Smartphone,
-      keys: "phone remote pair qr hub token pairing scan awake sleep model device account sign in account gateway self-hosted advanced 手机 扫码 远程 配对 唤醒 休眠 型号 账号 登录 网关 自建 高级",
+      keys: "phone remote pair qr pairing scan awake sleep model device account sign in account gateway 手机 扫码 远程 配对 唤醒 休眠 型号 账号 登录 网关",
     },
     {
       id: "backup",
       label: t("settings.nav.backup"),
       icon: Archive,
       keys: "backup restore snapshot credentials project 备份 还原 凭据 项目",
-    },
-    {
-      id: "clients",
-      label: t("settings.nav.clients"),
-      icon: Bot,
-      keys: "clients claude codex cursor local agent tasks 客户端 本地",
     },
   ] as const
 }
@@ -429,6 +420,7 @@ export function SettingsDialog({
     >
       <DialogContent
         hideClose
+        aria-describedby={undefined}
         onPointerDownOutside={(e) => e.preventDefault()}
         className="inset-0 left-0 top-0 flex h-dvh max-h-dvh w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 shadow-none sm:rounded-none data-[state=open]:zoom-in-100"
       >
@@ -518,17 +510,6 @@ export function SettingsDialog({
                   )
                 })}
               </div>
-
-              <DialogDescription
-                className={cn(
-                  chromeTypeClass,
-                  "mt-auto px-3 pb-2 text-muted-foreground",
-                )}
-              >
-                {t("settings.storedIn", {
-                  path: meta?.data_dir ?? t("settings.storedFallback"),
-                })}
-              </DialogDescription>
             </aside>
 
             <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
@@ -625,13 +606,6 @@ export function SettingsDialog({
                     />
                   ) : null}
                   {page === "backup" ? <BackupTab query={query} /> : null}
-                  {page === "clients" ? (
-                    <ClientsTab
-                      settings={settings}
-                      onChange={apply}
-                      query={query}
-                    />
-                  ) : null}
                 </div>
               )}
             </div>

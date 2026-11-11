@@ -873,10 +873,12 @@ Host Token, secret device code or verifier is returned to the renderer.
 
 The explicit sidebar and Phone-page account actions send
 `{"enable_account":true}`. Phone presents sign-in without requiring a manual Hub,
-token or mode entry, and shows the configured server read-only; manual fields
-remain under Advanced / self-hosted server. For an initial blank configuration,
-Go supplies the effective `DefaultGatewayOrigin` in settings; an existing custom
-Hub is preserved. When account mode needs enabling, Go saves
+token or mode entry. It does not show the configured server or a self-hosted
+editor for Hub, authentication, computer name or pairing limits. For an initial
+blank configuration, Go supplies the effective `DefaultGatewayOrigin` in
+settings; an existing custom Hub is preserved and is changed through
+configuration or `PUT /api/settings`, not through the Phone page. When account
+mode needs enabling, Go saves
 `remote.enabled=true` and `remote.auth_mode="account"` against the latest
 configuration, preserves the Hub and all other fields, and reloads the host
 before starting the same flow. A failed save returns

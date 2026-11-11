@@ -689,15 +689,15 @@ still require a matching saved enabled/Hub/mode status echo. Both the rail and
 the Phone page's explicit account sign-in send `enable_account:true` to the same
 local route: when needed, Go atomically saves only `remote.enabled=true` and
 `remote.auth_mode=account`, preserves the configured Hub and other fields, reloads
-the host, then starts the existing flow. The Phone page always presents account
-status/sign-in and device connections first; its configured-server summary is
-read-only. Manual Hub, authentication and pairing controls sit in the explicit
-Advanced / self-hosted server section, which also opens for Settings search.
-Expanding it survives authority-key remounts without changing the connection.
-Go supplies `DefaultGatewayOrigin` when the configured Hub is blank; the renderer
+the host, then starts the existing flow. The Phone page presents account
+status, sign-in, pairing QR, bound phones and keep-awake. It does not show the
+configured server or a self-hosted editor for Hub, authentication, computer
+name or pairing limits, including through Settings search. Go supplies
+`DefaultGatewayOrigin` when the configured Hub is blank; the renderer
 does not hardcode an official address or infer account ownership from one.
-Merely opening Phone, the account menu or advanced controls changes neither
+Merely opening Phone or the account menu changes neither
 configuration nor authorization, and existing legacy QR connections remain usable.
+Hub, authentication mode and the computer name stay in configuration.
 
 `SettingsDialog` serializes its explicit Phone login with `SettingsPersist`:
 it drains older debounced writes before the login POST and temporarily blocks
