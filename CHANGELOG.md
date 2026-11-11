@@ -6,16 +6,6 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
-### Added
-
-- Settings, `zwai backup` / `zwai restore`, and `/api/backup` write a
-  `.zwai-backup` of all local data or of one project, and put it back. A full
-  restore replaces the data directory. A project restore adds the project, or
-  replaces that same project when asked. A running task is refused and the data
-  stays as it was. A backup without credentials keeps the keys already on this
-  machine. After a restore, desktop and web reload, and the phone drops its
-  loaded conversation list. (`F-422`, `C-044`)
-
 ### Changed
 
 - The collaboration path draws recorded dependencies. Several unconnected
@@ -27,13 +17,6 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   model stay in the detail. (`F-136`, `C-037`)
 
 ### Fixed
-
-- The iOS shell no longer asks WKWebView with a synchronous prompt whether
-  Capacitor cookies or HTTP are enabled while the page is starting. After the
-  process is killed, that prompt can stay unanswered and leave the app blank.
-  The static flags are installed before navigation. A bridge script that does
-  not match the pinned SDK stays on a native error instead of loading.
-  (`F-220`, `C-045`)
 
 - Stop and the queued-steer interrupt finish the turn when a tool is blocked
   in a syscall and does not observe cancellation. The call returns as soon as
@@ -4337,6 +4320,16 @@ were left out on purpose, so that what shipped is complete rather than broad:
 - **A native directory picker** for a project's working directory. The field
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
+
+## [0.1.74] - 2026-11-11
+
+- Settings, `zwai backup` / `zwai restore`, and `/api/backup` write a
+  `.zwai-backup` of all local data or of one project, and put it back.
+  (`F-422`, `C-044`)
+- The iOS shell installs static Capacitor cookie and HTTP flags before the
+  page starts, so killing the process and reopening no longer stays blank.
+  A bridge script that does not match the pinned SDK stays on a native error.
+  (`F-220`, `C-045`)
 
 ## [0.1.73] - 2026-11-10
 
