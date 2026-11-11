@@ -245,7 +245,7 @@ func (e *Engine) wireWorkerSurface(reg *swarm.Registry, toolset *tools.Set, pc *
 	}))
 	workers = append(workers, denyScheduleTools()...)
 	reg.SubAgentTools = workers
-	reg.WorkerPreamble = JoinPromptSections(WorkerEnvironmentPrompt(toolset.WorkspaceDir), historyPrompt(toolset, historyForWorker), pc.workerPreambleTail())
+	reg.WorkerPreamble = JoinPromptSections(WorkerEnvironmentPrompt(toolset.WorkspaceDir), ExecFileSearchPrompt(toolset.Names), historyPrompt(toolset, historyForWorker), pc.workerPreambleTail())
 	reg.ToolOutputBinder = tools.BindToolOutput
 	if reg.WorkerContextValues == nil {
 		reg.WorkerContextValues = historyWorkerContextValues

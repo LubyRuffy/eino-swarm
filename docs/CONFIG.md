@@ -485,11 +485,7 @@ a later release behaves sensibly without anyone editing their config:
 | `read` | files | on | read a text file, with paging |
 | `write` | files | on | create or overwrite |
 | `edit` | files | on | search/replace or patch edits |
-| `ls` | files | on | list a directory |
-| `tree` | files | on | directory tree with depth control |
-| `glob` | files | on | match files by pattern |
-| `grep` | files | on | search file contents |
-| `exec` | shell | on | run a shell command |
+| `exec` | shell | on | run a shell command, including directory listings, filename search and content search |
 | `web_search` | web | on | search the web (network) |
 | `web_fetch` | web | on | fetch a page and extract text (network) |
 | `python_runner` | shell | **off** | needs Python on `PATH` |
@@ -501,6 +497,10 @@ tools:
     enabled: [python_runner]    # yes to Python
 ```
 
+`ls`, `tree`, `glob` and `grep` are not in this catalog and do not appear in
+Settings. Agents list directories, find files and search file contents with
+`exec`. Names for those four tools in `enabled` or `disabled` have no effect.
+
 Turning a tool off removes it from the agents' toolset **and** from the manager's
 system prompt, so the model does not plan around a tool it cannot call.
 
@@ -508,7 +508,7 @@ system prompt, so the model does not plan around a tool it cannot call.
 |---|---|---|
 | `web_search_max_results` | `8` | results per search. More context per call, more tokens. |
 | `web_execution` | `auto` | `auto` uses the current Gateway account for Web Search/Fetch after authorization and this device while anonymous; `local` keeps both tools local; `cloud` requires a signed-in server account. Editable as **Tools → Web tools run on**. New turns capture the choice; cloud failures never fall back to local execution. |
-| `result_max_chars` | `40000` | most characters one workspace tool call (read, ls, tree, glob, grep, exec, web tools, …) puts in the model's context. A longer text result keeps its first two thirds and last third around a notice that names how many characters were omitted and asks the agent to narrow the path or pattern, filter the output, or read a range. A result stays in the conversation and is resent on every later call of the turn, so this is a per-call cost. `exec` without its own `max_output_kb` gets a per-stream capture budget of half this cap. The result cap then measures the complete JSON encoding, shortening stream text at Unicode boundaries while keeping both ends and setting `truncated`; it never cuts the JSON document. An explicit `max_output_kb` still limits capture, but does not bypass the final context cap. If metadata alone exceeds the cap, the result's `full_command` copy can also be shortened; the call arguments retain the actual command. Status, error and path metadata remain intact and form a soft minimum for an extremely small cap. Zero or negative is repaired to the default. Editable as **Tools → Tool result limit**. |
+| `result_max_chars` | `40000` | most characters one workspace tool call (read, write, edit, exec, web tools, …) puts in the model's context. A longer text result keeps its first two thirds and last third around a notice that names how many characters were omitted and asks the agent to narrow the path or pattern, filter the output, or read a range. A result stays in the conversation and is resent on every later call of the turn, so this is a per-call cost. `exec` without its own `max_output_kb` gets a per-stream capture budget of half this cap. The result cap then measures the complete JSON encoding, shortening stream text at Unicode boundaries while keeping both ends and setting `truncated`; it never cuts the JSON document. An explicit `max_output_kb` still limits capture, but does not bypass the final context cap. If metadata alone exceeds the cap, the result's `full_command` copy can also be shortened; the call arguments retain the actual command. Status, error and path metadata remain intact and form a soft minimum for an extremely small cap. Zero or negative is repaired to the default. Editable as **Tools → Tool result limit**. |
 | `proxy.http` / `proxy.https` | empty | outbound proxy for locally executed network tools (`web_search`, `web_fetch`). Cloud execution uses the Gateway's own network configuration. |
 | `proxy.no_proxy` | empty | comma-separated hosts that bypass the proxy. |
 

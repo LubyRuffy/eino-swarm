@@ -3,7 +3,9 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
+	einoexec "github.com/LubyRuffy/eino-tools/exec"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 )
@@ -34,7 +36,16 @@ func (a *advertisedParams) Info(ctx context.Context) (*schema.ToolInfo, error) {
 	if err != nil || info == nil {
 		return info, err
 	}
-	return withoutParam(info, hiddenBaseDir), nil
+	info = withoutParam(info, hiddenBaseDir)
+	if info != nil && info.Name == einoexec.ToolName {
+		copied := *info
+		const search = " List directories, find files, and search file contents with this tool."
+		if !strings.Contains(copied.Desc, search) {
+			copied.Desc = strings.TrimSpace(copied.Desc) + search
+		}
+		info = &copied
+	}
+	return info, nil
 }
 
 func (a *advertisedParams) InvokableRun(ctx context.Context, args string, opts ...tool.Option) (string, error) {

@@ -730,7 +730,7 @@ The catalog the Settings dialog lays out, plus which tools are currently active.
 ```json
 {"catalog": [{"name": "read", "title": "Read file", "summary": "…",
               "group": "files", "network": false, "default_off": false}],
- "enabled": ["edit", "exec", "glob", "grep", "ls", "read", "tree", "web_fetch", "web_search", "write"]}
+ "enabled": ["edit", "exec", "read", "web_fetch", "web_search", "write"]}
 ```
 
 `group` is `files`, `shell` or `web`. `default_off` tools (`python_runner`,

@@ -139,10 +139,19 @@ present; a message with only <selected_text> is pointing at that snippet.
 			b.WriteString("## Tools\n\nBesides the delegation tools you have: ")
 		}
 		b.WriteString(strings.Join(set.Names, ", "))
+		search := ExecFileSearchPrompt(set.Names)
 		if plannerOnly {
-			b.WriteString(".\nDiscover exact names with list_worker_tools and assign useful scopes to executors. Your coordination tools have their own registered schemas.\n\n")
+			b.WriteString(".\nDiscover exact names with list_worker_tools and assign useful scopes to executors. Your coordination tools have their own registered schemas.\n")
+			if search != "" {
+				b.WriteString("Executors list directories, find files, and search file contents with exec.\n")
+			}
+			b.WriteString("\n")
 		} else {
-			b.WriteString(".\nYour sub-agents have the same workspace tools.")
+			b.WriteString(".\n")
+			if search != "" {
+				b.WriteString(search)
+			}
+			b.WriteString("Your sub-agents have the same workspace tools.")
 			if managedExec {
 				b.WriteString("\nThis manager also has exec_status and wait_exec for its owned commands.")
 			}
@@ -274,6 +283,18 @@ or qualitative advice. One chart per comparison.
 	}
 
 	return b.String()
+}
+
+// ExecFileSearchPrompt tells an agent that has exec to list directories and
+// search files with that command. Empty when exec is not mounted, so a
+// read-only surface is not told to run a shell.
+func ExecFileSearchPrompt(names []string) string {
+	for _, name := range names {
+		if name == "exec" {
+			return "List directories, find files, and search file contents with exec.\n"
+		}
+	}
+	return ""
 }
 
 // PersonalityPrompt is the install-wide personal-preference section. Empty

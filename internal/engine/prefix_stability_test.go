@@ -47,7 +47,7 @@ func TestManagerPrefixStaysIdenticalAcrossCallsAndTurns(t *testing.T) {
 		n := calls
 		mu.Unlock()
 		if n == 1 {
-			writeContextFlowReply(w, req.Stream, map[string]any{"content": "", "tool_calls": []any{map[string]any{"index": 0, "id": "list-workspace", "type": "function", "function": map[string]any{"name": "ls", "arguments": "{}"}}}}, "tool_calls")
+			writeContextFlowReply(w, req.Stream, map[string]any{"content": "", "tool_calls": []any{map[string]any{"index": 0, "id": "list-workspace", "type": "function", "function": map[string]any{"name": "exec", "arguments": "{\"command\":\"true\"}"}}}}, "tool_calls")
 			return
 		}
 		writeContextFlowReply(w, req.Stream, map[string]any{"content": "The workspace was inspected."}, "stop")

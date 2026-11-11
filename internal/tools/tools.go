@@ -22,14 +22,10 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-tools/edit"
 	einoexec "github.com/LubyRuffy/eino-tools/exec"
-	"github.com/LubyRuffy/eino-tools/glob"
-	"github.com/LubyRuffy/eino-tools/grep"
-	"github.com/LubyRuffy/eino-tools/ls"
 	"github.com/LubyRuffy/eino-tools/netproxy"
 	"github.com/LubyRuffy/eino-tools/pythonrunner"
 	"github.com/LubyRuffy/eino-tools/read"
 	"github.com/LubyRuffy/eino-tools/screenshot"
-	"github.com/LubyRuffy/eino-tools/tree"
 	"github.com/LubyRuffy/eino-tools/webfetch"
 	"github.com/LubyRuffy/eino-tools/websearch"
 	"github.com/LubyRuffy/eino-tools/write"
@@ -63,11 +59,7 @@ var catalog = []Descriptor{
 	{Name: read.ToolName, Title: "Read file", Summary: "Read a text file, with paging for large ones.", Group: GroupFiles},
 	{Name: write.ToolName, Title: "Write file", Summary: "Create or overwrite a file.", Group: GroupFiles},
 	{Name: edit.ToolName, Title: "Edit file", Summary: "Apply search/replace or patch edits to a file.", Group: GroupFiles},
-	{Name: ls.ToolName, Title: "List directory", Summary: "List files and directories.", Group: GroupFiles},
-	{Name: tree.ToolName, Title: "Directory tree", Summary: "Show a directory tree with depth control.", Group: GroupFiles},
-	{Name: glob.ToolName, Title: "Find by pattern", Summary: "Match files with glob patterns.", Group: GroupFiles},
-	{Name: grep.ToolName, Title: "Search in files", Summary: "Search file contents for a pattern.", Group: GroupFiles},
-	{Name: einoexec.ToolName, Title: "Run command", Summary: "Run a shell command, with pipes and redirects.", Group: GroupShell},
+	{Name: einoexec.ToolName, Title: "Run command", Summary: "Run a shell command, with pipes and redirects. Also list directories, find files, and search file contents.", Group: GroupShell},
 	{Name: websearch.ToolName, Title: "Web search", Summary: "Search the web.", Group: GroupWeb, Network: true},
 	{Name: webfetch.ToolName, Title: "Fetch page", Summary: "Fetch a web page and extract its text.", Group: GroupWeb, Network: true},
 	{Name: pythonrunner.ToolName, Title: "Run Python", Summary: "Run a Python snippet. Needs Python on PATH.", Group: GroupShell, DefaultOff: true},
@@ -165,10 +157,6 @@ func buildTools(ctx context.Context, cfg *config.Config, workspaceDir, execution
 		read.ToolName:  func() (tool.BaseTool, error) { return read.New(read.Config{DefaultBaseDir: workspaceDir}) },
 		write.ToolName: func() (tool.BaseTool, error) { return write.New(write.Config{DefaultBaseDir: workspaceDir}) },
 		edit.ToolName:  func() (tool.BaseTool, error) { return edit.New(edit.Config{DefaultBaseDir: workspaceDir}) },
-		ls.ToolName:    func() (tool.BaseTool, error) { return ls.New(ls.Config{DefaultBaseDir: workspaceDir}) },
-		tree.ToolName:  func() (tool.BaseTool, error) { return tree.New(tree.Config{DefaultBaseDir: workspaceDir}) },
-		glob.ToolName:  func() (tool.BaseTool, error) { return glob.New(glob.Config{DefaultBaseDir: workspaceDir}) },
-		grep.ToolName:  func() (tool.BaseTool, error) { return grep.New(grep.Config{DefaultBaseDir: workspaceDir}) },
 		einoexec.ToolName: func() (tool.BaseTool, error) {
 			inner, err := einoexec.New(einoexec.Config{DefaultBaseDir: workspaceDir})
 			if err != nil {

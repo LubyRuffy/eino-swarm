@@ -2,18 +2,13 @@ package swarm
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
-	"github.com/LubyRuffy/eino-tools/grep"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
@@ -281,43 +276,6 @@ func TestCancelReturnsWhileAStreamingToolIsOpening(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("the late stream reader was never closed")
-	}
-}
-
-// The grep linked by this module must skip a named pipe. Opening it waits for
-// the other end, and Stop cannot finish a turn blocked in that read.
-func TestLinkedGrepSkipsNamedPipe(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "hit.txt"), []byte("needle\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := syscall.Mkfifo(filepath.Join(dir, "console.in"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	body, err := json.Marshal(map[string]string{"pattern": "needle", "path": dir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	search, err := grep.New(grep.Config{DefaultBaseDir: dir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := make(chan string, 1)
-	go func() {
-		out, runErr := search.InvokableRun(context.Background(), string(body))
-		if runErr != nil {
-			got <- "err:" + runErr.Error()
-			return
-		}
-		got <- out
-	}()
-	select {
-	case out := <-got:
-		if strings.HasPrefix(out, "err:") || !strings.Contains(out, "hit.txt") || strings.Contains(out, "console.in") {
-			t.Fatalf("linked grep = %q", out)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("linked grep blocked on a named pipe")
 	}
 }
 

@@ -150,6 +150,9 @@ func TestTurnRegistryTellsWorkersWhereTheWorkspaceIs(t *testing.T) {
 	if !strings.Contains(reg.WorkerPreamble, "The shared workspace directory is: "+set.WorkspaceDir+"\n") {
 		t.Fatalf("workers are not told the workspace %q:\n%s", set.WorkspaceDir, reg.WorkerPreamble)
 	}
+	if !strings.Contains(reg.WorkerPreamble, "search file contents with exec") {
+		t.Fatal("workers must list and search through exec")
+	}
 	if strings.Contains(strings.ToLower(reg.WorkerPreamble), "sandbox") {
 		t.Fatal("the workspace is an anchor, not a sandbox")
 	}
@@ -305,12 +308,18 @@ func TestManagerPromptOmitsToolsWhenNoneAreRegistered(t *testing.T) {
 	if strings.Contains(prompt, "## Tools") {
 		t.Fatal("an empty toolset must not advertise tools")
 	}
+	if strings.Contains(prompt, "search file contents with exec") {
+		t.Fatal("a toolset without exec must not be told to search with it")
+	}
 }
 
 func TestManagerPromptSaysWorkersShareWorkspaceTools(t *testing.T) {
 	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws", Names: []string{"exec"}}, "")
 	if !strings.Contains(prompt, "Your sub-agents have the same workspace tools") {
 		t.Fatalf("missing worker tool surface:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "List directories, find files, and search file contents with exec.") {
+		t.Fatal("directory listing and content search must go through exec")
 	}
 	if strings.Contains(prompt, "the same set") {
 		t.Fatal("the old wording implied workers had write tools")

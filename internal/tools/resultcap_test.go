@@ -4,45 +4,46 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"github.com/cloudwego/eino/components/tool"
+	"github.com/cloudwego/eino/schema"
 )
 
 const capNotice = "[tool result truncated:"
 
-// A worker listed a large directory outside the workspace and the manager's
-// context grew from 15K to 232K characters; every later call of that turn
-// resent it. A listing tool's result must stay within the configured cap and
-// tell the model how to narrow the request.
-func TestALargeListingCannotFloodTheModelsContext(t *testing.T) {
-	cfg := configFor(t)
-	cfg.Tools.ResultMaxChars = 3000
-	ws := t.TempDir()
-	big := filepath.Join(ws, "many")
-	if err := os.Mkdir(big, 0o700); err != nil {
-		t.Fatal(err)
+type fixedTextTool struct {
+	name string
+	body string
+}
+
+func (t fixedTextTool) Info(context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{Name: t.name, Desc: "fixed"}, nil
+}
+
+func (t fixedTextTool) InvokableRun(context.Context, string, ...tool.Option) (string, error) {
+	return t.body, nil
+}
+
+// A large tool result stays in the conversation and is resent on every later
+// call of the turn. Non-exec text must stay within the configured cap, keep
+// both ends, and tell the model how to narrow the request.
+func TestALargeToolResultCannotFloodTheModelsContext(t *testing.T) {
+	lines := make([]string, 400)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("entry-%04d-with-a-long-enough-name", i)
 	}
-	for i := 0; i < 400; i++ {
-		if err := os.WriteFile(filepath.Join(big, fmt.Sprintf("entry-%04d-with-a-long-enough-name.txt", i)), nil, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	set, err := Build(context.Background(), cfg, ws)
-	if err != nil {
-		t.Fatal(err)
-	}
-	out, err := find(t, set, "ls").InvokableRun(context.Background(), `{"path":"many"}`)
+	capped := wrapResultCap(fixedTextTool{name: "read", body: strings.Join(lines, "\n")}, 3000).(tool.InvokableTool)
+	out, err := capped.InvokableRun(context.Background(), `{}`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	body, _, _ := strings.Cut(out, "\n\n"+capNotice)
 	if !strings.Contains(out, capNotice) || utf8.RuneCountInString(out) > 3000+300 {
-		t.Fatalf("listing of %d runes was not capped", utf8.RuneCountInString(out))
+		t.Fatalf("result of %d runes was not capped", utf8.RuneCountInString(out))
 	}
 	if !strings.Contains(body, "entry-0000") || !strings.Contains(out, "entry-0399") {
 		t.Fatal("the cap must keep both the start and the end of the result")
@@ -51,8 +52,9 @@ func TestALargeListingCannotFloodTheModelsContext(t *testing.T) {
 		t.Fatal("the notice must tell the model how to narrow the request")
 	}
 
-	small, err := find(t, set, "ls").InvokableRun(context.Background(), `{}`)
-	if err != nil || strings.Contains(small, capNotice) {
+	smallTool := wrapResultCap(fixedTextTool{name: "read", body: "one\n"}, 3000).(tool.InvokableTool)
+	small, err := smallTool.InvokableRun(context.Background(), `{}`)
+	if err != nil || strings.Contains(small, capNotice) || small != "one\n" {
 		t.Fatalf("a small result was altered: %q err=%v", small, err)
 	}
 }

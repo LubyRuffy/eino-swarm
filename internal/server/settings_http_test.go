@@ -523,8 +523,15 @@ func TestModelsAndToolsEndpoints(t *testing.T) {
 	tools := h.json(http.MethodGet, "/api/tools", nil, http.StatusOK)
 	catalog := tools["catalog"].([]any)
 	enabled := tools["enabled"].([]any)
-	if len(catalog) < 10 {
-		t.Fatalf("the tool catalog looks truncated: %d", len(catalog))
+	if len(catalog) != 8 {
+		t.Fatalf("the tool catalog has %d entries", len(catalog))
+	}
+	for _, item := range catalog {
+		name, _ := item.(map[string]any)["name"].(string)
+		switch name {
+		case "ls", "tree", "glob", "grep":
+			t.Fatalf("settings still lists %s", name)
+		}
 	}
 	if len(enabled) == 0 || len(enabled) > len(catalog) {
 		t.Fatalf("enabled=%d catalog=%d", len(enabled), len(catalog))

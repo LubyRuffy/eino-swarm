@@ -104,6 +104,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
+- 目录列举、按文件名查找和内容搜索使用 `exec`。设置不显示 `ls`、`tree`、`glob`、`grep`，工具表也不注册这四项；已保存配置里的同名 `enabled`／`disabled` 不再生效。关联 `C-009`。证据：`internal/tools/tools.go`、`internal/tools/schema.go`、`internal/engine/prompt.go`、`internal/engine/turn.go`。
+
 - 命令托管通过 `tools.enabled: [exec_session]` 显式开启。在 macOS／Linux 的新建普通轮次中，主管通过原 `exec` 启动命令。短等后的原进程继续在后台执行，主管可先处理独立工作。引擎推送增量输出并在下一次模型请求交付已就绪的终态。主管可以按会话 ID 查询最近输出和终态，也可等待指定命令。 可另行开启 `exec_adaptive_observation`，让引擎依据同一轮次的短命令等待证据，减少后续单独命令的额外模型往返。新输出续期观察窗口，观察到期仍在运行的进程继续执行。简单的等待型 `sleep` 由引擎挂起，任一命令退出后唤醒主管，显式延时按原时长执行。相同命令连续产生相同错误时，工具拦截重试并交回原错误，供主管调整做法。Stop 和内核确认的持续进程组停滞按所有权清理。关联契约：`C-009`。证据：`internal/engine/exec_session.go`、`internal/tools/exec_session_process_unix.go`；验证：`internal/engine/exec_session_http_test.go`。
 
 - 普通主管可通过配置 YAML 或 Settings API 开启 `swarm.incremental_execution`，在实施回合加入先做小步实现、逐项验收用户要求的通用指导。默认关闭，真实任务收益需独立评测。关联 `C-009`。实现与验证见 `internal/config/config.go`、`internal/server/settings.go`、`internal/engine/incremental_execution.go`、`internal/engine/iterations.go` 以及 `internal/config/incremental_execution_test.go`、`internal/server/incremental_execution_settings_test.go`、`internal/engine/incremental_execution_http_test.go`。

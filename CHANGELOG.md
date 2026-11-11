@@ -8,6 +8,11 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Changed
 
+- Settings no longer lists `ls`, `tree`, `glob` or `grep`, and those tools are
+  not registered. Directory listings, filename search and content search go
+  through `exec`. Old `enabled` or `disabled` entries for the four names have
+  no effect.
+
 - The collaboration path draws recorded dependencies. Several unconnected
   records of the same kind collapse into one row and share a dashed arrow to
   the goal; a single unconnected record stays visible. The row shows status

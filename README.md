@@ -516,7 +516,7 @@ workflow or real-model efficiency improvement is implied by enabling it.
   The click starts the run from that message and replaces the later history.
   Retry is available when the original user message can be found and is
   disabled while Settings is open or the conversation is busy.
-- **Real tools.** File read/write/edit, `ls`/`tree`/`glob`/`grep`, shell `exec`,
+- **Real tools.** File read/write/edit, shell `exec` (also directory listings, filename search and content search),
   web search and fetch, from [eino-tools](https://github.com/LubyRuffy/eino-tools).
   The transcript shows the command or query, not the JSON envelope; a failed
   `exec` is a red error, not a grey dump. A running `exec` stays one line

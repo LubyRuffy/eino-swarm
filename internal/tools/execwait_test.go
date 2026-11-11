@@ -160,6 +160,9 @@ func TestBuiltExecInfoBiasesSleep(t *testing.T) {
 	if !strings.Contains(info.Desc, "about a third of that estimate") {
 		t.Fatalf("built exec must carry the sleep bias:\n%s", info.Desc)
 	}
+	if !strings.Contains(info.Desc, "search file contents with this tool") {
+		t.Fatalf("built exec must cover directory listing and content search:\n%s", info.Desc)
+	}
 }
 
 func TestWrapExecSleepBiasRejectsANonInvokable(t *testing.T) {

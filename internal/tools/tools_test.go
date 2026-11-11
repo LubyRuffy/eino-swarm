@@ -22,8 +22,13 @@ func TestCatalogIsConsistent(t *testing.T) {
 		}
 		seen[d.Name] = true
 	}
-	if len(seen) < 10 {
-		t.Fatalf("catalog looks truncated: %d entries", len(seen))
+	for _, name := range []string{"ls", "tree", "glob", "grep"} {
+		if seen[name] {
+			t.Fatalf("%s is still a built-in tool", name)
+		}
+	}
+	if len(seen) != 8 {
+		t.Fatalf("catalog has %d entries, want the file, shell and web tools without ls/tree/glob/grep", len(seen))
 	}
 	// the returned slice must be a copy, or a caller can corrupt the catalog
 	c := Catalog()
