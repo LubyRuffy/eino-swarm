@@ -129,6 +129,53 @@ describe("Files tab", () => {
     expect(within(pkg).queryByTitle("Delete")).not.toBeInTheDocument()
   })
 
+  it("keeps the selected directory's file-manager button visible and only shows others on hover", () => {
+    const { onReveal } = renderTab()
+    const tree = screen.getByTestId("file-tree")
+    const pkg = within(tree).getByRole("treeitem", { name: "pkg" })
+    const uploads = within(tree).getByRole("treeitem", { name: "uploads" })
+    const openPkg = within(pkg).getByRole("button", { name: "Show pkg in the file manager" })
+    const openUploads = within(uploads).getByRole("button", { name: "Show uploads in the file manager" })
+    const tokens = (el: HTMLElement) => el.className.split(/\s+/)
+    // Hidden until hover. The slot ignores clicks so it cannot open a folder the pointer has not revealed.
+    expect(tokens(openPkg)).toEqual(expect.arrayContaining([
+      "opacity-0",
+      "pointer-events-none",
+      "group-hover:opacity-100",
+      "group-hover:pointer-events-auto",
+    ]))
+    expect(tokens(openPkg)).not.toContain("opacity-100")
+    expect(tokens(openUploads)).toContain("opacity-0")
+
+    tree.focus()
+    fireEvent.keyDown(tree, { key: "Home" })
+    expect(tokens(openPkg)).toEqual(expect.arrayContaining(["opacity-100", "pointer-events-auto"]))
+    expect(tokens(openPkg)).not.toContain("opacity-0")
+    expect(tokens(openPkg)).not.toContain("pointer-events-none")
+    expect(tokens(openUploads)).toContain("opacity-0")
+    expect(tokens(openUploads)).not.toContain("opacity-100")
+
+    fireEvent.click(openPkg)
+    expect(onReveal).toHaveBeenCalledWith("pkg")
+    expect(within(tree).queryByRole("treeitem", { name: "a.go" })).not.toBeInTheDocument()
+
+    fireEvent.click(pkg)
+    expect(within(tree).getByRole("treeitem", { name: "a.go" })).toBeInTheDocument()
+    fireEvent.click(openPkg)
+    expect(onReveal).toHaveBeenCalledTimes(2)
+    expect(within(tree).getByRole("treeitem", { name: "a.go" })).toBeInTheDocument()
+  })
+
+  it("hides the directory file-manager button when the shell cannot reveal files", () => {
+    renderTab(listing, { canReveal: false })
+    const tree = screen.getByTestId("file-tree")
+    tree.focus()
+    fireEvent.keyDown(tree, { key: "Home" })
+    expect(
+      within(tree).queryByRole("button", { name: "Show pkg in the file manager" }),
+    ).not.toBeInTheDocument()
+  })
+
   it("deletes a file from the row without toggling a parent", () => {
     const { onDelete } = renderTab([
       entry("out", { dir: true }),

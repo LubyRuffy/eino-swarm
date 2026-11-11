@@ -329,6 +329,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "files.upload": "上传",
   "files.refresh": "刷新",
   "files.reveal": "在文件管理器中显示工作区",
+  "files.revealDir": "在文件管理器中显示 {name}",
   "files.filter": "筛选文件",
   "files.filterPlaceholder": "筛选文件…",
   "files.tree": "工作区文件",
@@ -789,7 +790,7 @@ export const zh: { [K in keyof typeof en]: string } = {
     "最近的用户和助手消息保持原文。更早的变成简报。",
   "settings.swarm.autoCompact": "自动压缩阈值（tokens）",
   "settings.swarm.autoCompactHint":
-    "模型没有上下文窗口时用这个数。窗口已知时按下面的百分比压缩。更早的消息折进简报。你看到的记录不变。",
+    "模型没有上下文窗口时用这个数。窗口已知时按已保存的百分比压缩。更早的消息折进简报。你看到的记录不变。",
   "settings.swarm.goalTurns": "目标自动续跑回合",
   "settings.swarm.goalTurnsHint":
     "没有新的人工消息时，运行时最多自己开多少轮去追一个未完成的 /goal。",
@@ -845,11 +846,11 @@ export const zh: { [K in keyof typeof en]: string } = {
 
   "settings.remote.title": "手机",
   "settings.remote.desc":
-    "用手机 App 扫这个码。中转只转发密文，会话留在这台电脑上。",
+    "在手机上登录同一账号，然后选择这台电脑。中转只转发密文，会话留在这台电脑上。",
   "settings.remote.hub": "中转",
-  "settings.remote.enabled": "接受手机配对",
+  "settings.remote.enabled": "这台电脑的连接",
   "settings.remote.enabledHint":
-    "打开这台电脑的手机连接。账号模式还需要登录并授权设备。",
+    "打开后，这台电脑会连接中转。关闭只停止连接，不会退出登录。",
   "settings.remote.hubUrl": "中转地址",
   "settings.remote.hubUrlHint": "默认已配置官方 Gateway，仅在使用其他服务器时修改。",
   "settings.remote.displayName": "这台电脑的名称",

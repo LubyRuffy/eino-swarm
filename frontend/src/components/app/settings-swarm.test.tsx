@@ -48,11 +48,16 @@ describe("Swarm schedule caps", () => {
       .toHaveAttribute("data-settings-key", "max_turns")
   })
 
-  it("labels the three schedule fields and shows repaired defaults", () => {
+  it("labels the visible schedule fields and hides the ticker", () => {
     render(<SwarmTab settings={base} onChange={() => undefined} />)
     expect(screen.getByLabelText("Shortest wait (seconds)")).toHaveValue(30)
-    expect(screen.getByLabelText("Ticker interval (ms)")).toHaveValue(1000)
     expect(screen.getByLabelText("Active waits at once")).toHaveValue(32)
+    expect(screen.queryByLabelText("Ticker interval (ms)")).toBeNull()
+    expect(screen.queryByLabelText("Progress pulse (seconds)")).toBeNull()
+    expect(screen.queryByLabelText("Stream coalesce (ms)")).toBeNull()
+    expect(screen.queryByLabelText("Context budget (characters)")).toBeNull()
+    expect(screen.queryByLabelText("Output reserve (tokens)")).toBeNull()
+    expect(screen.queryByLabelText("Goal auto-compact at (%)")).toBeNull()
   })
 })
 

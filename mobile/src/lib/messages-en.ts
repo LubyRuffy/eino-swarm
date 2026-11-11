@@ -59,7 +59,7 @@ export const en = {
   "scan.connecting": "Connecting",
   "scan.connectingHint": "Opening the saved link to this PC.",
   "scan.hostOffline":
-    "This PC is not on the hub. Show a new QR after the desktop reconnects.",
+    "This PC is not on the hub. Wait until the desktop is online, then try again.",
 
   "home.app": "zwai",
   "home.menu": "Menu",

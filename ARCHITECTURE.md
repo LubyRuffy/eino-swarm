@@ -638,7 +638,7 @@ must keep a live WebSocket on the hub (keepalive data frames, reconnect on
 drop). The phone does the same on its ticket socket (a quiet hub drops after
 60s). A drop paints a reconnect banner and retries the saved ticket — it
 does not unlink. Pairing HTTP can succeed with a dead socket; redeem then
-returns `host offline`. `GET /api/remote/status` `online` follows that socket. While the pairing QR is on screen, Settings → Phone re-reads `GET /api/remote/bindings` about once a second so a new phone shows up without leaving the page; a failed read leaves the list already painted. While pairing is on
+returns `host offline`. `GET /api/remote/status` `online` follows that socket. Settings → Phone loads `GET /api/remote/bindings` when the page opens and does not show a pairing QR. While pairing is on
 and `remote.keep_awake` is on (the default), `internal/wakeup` holds a
 system sleep assertion (`awake` on that same status). The assertion
 follows the config, not the socket: a hub reload must not release and
@@ -681,7 +681,15 @@ code, fingerprint and account metadata. Pending/rejected accounts do not
 register a host. Only a complete authorized receipt atomically replaces the
 private credential with its origin/account/host binding, after which the usual
 pairlink registration and WebSocket lifecycle starts. Authorization is distinct
-from `online`; 账号模式 QR creation requires both. Device flows last at most ten
+from `online`. A saved account whose computer connection is off is not shown
+as waiting to connect: the account menu and Phone page say the connection is
+off and show a switch for that saved connection, on or off, without a new
+device login. A
+recorded connect failure says the PC could not connect; only the retrying
+registration and dial failures say it keeps trying. An enabled connection
+with no recorded failure is still described as waiting. Account-mode QR
+creation on the offer API still requires both, and Settings → Phone does not
+show that QR. Device flows last at most ten
 minutes, with five-second polling and bounded retries; server rate-limit delays
 are respected. Cancel, Stop and configuration Reload cancel and join owned work,
 so late replies cannot activate a credential for a changed origin. Phone drafts
@@ -689,8 +697,12 @@ still require a matching saved enabled/Hub/mode status echo. Both the rail and
 the Phone page's explicit account sign-in send `enable_account:true` to the same
 local route: when needed, Go atomically saves only `remote.enabled=true` and
 `remote.auth_mode=account`, preserves the configured Hub and other fields, reloads
-the host, then starts the existing flow. The Phone page presents account
-status, sign-in, pairing QR, bound phones and keep-awake. It does not show the
+the host, then starts the existing flow. The Phone page presents the
+connection switch, account status and sign-in. Bound phones appear when
+connection is enabled, and also when a phone is already bound so it can be
+revoked; an empty list stays hidden while connection is off. Keep-awake appears only while phone
+connection is enabled, because the sleep assertion is held only then. It does
+not show a pairing QR: the phone signs in and selects this computer. It does not show the
 configured server or a self-hosted editor for Hub, authentication, computer
 name or pairing limits, including through Settings search. Go supplies
 `DefaultGatewayOrigin` when the configured Hub is blank; the renderer

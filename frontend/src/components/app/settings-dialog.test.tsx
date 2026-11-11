@@ -399,11 +399,11 @@ describe("Settings dialog", () => {
     }
   })
 
-  it("jumps to Swarm when search matches a swarm field", async () => {
+  it("jumps to Swarm when search matches a visible swarm field", async () => {
     const user = userEvent.setup()
     renderDialog()
     await waitSettingsLoaded()
-    await user.type(screen.getByLabelText("Search settings"), "coalesce")
+    await user.type(screen.getByLabelText("Search settings"), "manager")
     await waitFor(() =>
       expect(screen.getByRole("tab", { name: "Swarm" })).toHaveAttribute(
         "data-state",
@@ -411,7 +411,18 @@ describe("Settings dialog", () => {
       ),
     )
     expect(screen.queryByRole("tab", { name: "Models" })).toBeNull()
-    expect(screen.getByLabelText("Stream coalesce (ms)")).toBeInTheDocument()
+    expect(screen.getByLabelText("Manager tool rounds")).toBeInTheDocument()
+    expect(screen.queryByLabelText("Stream coalesce (ms)")).not.toBeInTheDocument()
+  })
+
+  it("does not reveal internal swarm timings through search", async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await waitSettingsLoaded()
+    await user.type(screen.getByLabelText("Search settings"), "coalesce")
+    expect(await screen.findByText("No matching settings.")).toBeInTheDocument()
+    expect(screen.queryByLabelText("Stream coalesce (ms)")).not.toBeInTheDocument()
+    expect(screen.queryByRole("tab", { name: "Swarm" })).not.toBeInTheDocument()
   })
 
   it("exposes compact settings on the Swarm tab", async () => {
@@ -421,13 +432,13 @@ describe("Settings dialog", () => {
     await user.click(screen.getByRole("tab", { name: "Swarm" }))
     await waitFor(() =>
       expect(
-        screen.getByLabelText("Context budget (characters)"),
+        screen.getByLabelText("Messages to keep when compacting"),
       ).toBeInTheDocument(),
     )
-    expect(
-      screen.getByLabelText("Messages to keep when compacting"),
-    ).toBeInTheDocument()
     expect(screen.getByLabelText("Auto-compact at (tokens)")).toBeInTheDocument()
+    expect(
+      screen.queryByLabelText("Context budget (characters)"),
+    ).not.toBeInTheDocument()
     expect(
       screen.queryByLabelText("Compact timeout (seconds)"),
     ).not.toBeInTheDocument()

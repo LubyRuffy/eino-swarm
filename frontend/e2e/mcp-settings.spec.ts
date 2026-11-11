@@ -17,6 +17,7 @@ test("MCP connection configuration persists and discovers the real server's tool
     await dialog.getByLabel("Environment variables (JSON object)").fill(JSON.stringify({ ZWAI_MCP_FIXTURE_SECRET: "write-only-fixture" }))
     await dialog.getByRole("button", { name: "Save connection", exact: true }).click()
     await expect(dialog.getByText(name, { exact: true })).toBeVisible()
+    await expect(dialog.getByRole("heading", { name: "Tool catalog", exact: true })).toHaveCount(0)
     await dialog.getByRole("button", { name: `Test ${name} and list tools`, exact: true }).click()
     await expect(dialog.getByText("Connected · 1 tools")).toBeVisible()
     const catalog = dialog.getByRole("region", { name: `${name} Tool catalog` })

@@ -6,13 +6,36 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+### Added
+
+- The selected directory in the desktop Files tree keeps a button that opens
+  that folder in the file manager. Hovering any directory shows the same
+  button, and it hides again when the pointer leaves an unselected directory.
+  The toolbar button still opens the workspace root. A browser does not show
+  the directory button.
+
 ### Changed
 
 - Settings no longer shows the configured server, the self-hosted connection
   editor, the local-agent configuration page, or the config-file path in the
-  lower left. Phone sign-in, pairing QR, bound phones and keep-awake stay.
-  The server address, authentication mode, computer name and local-agent
-  directories remain in `config.yaml` and `PUT /api/settings`.
+  lower left. Phone sign-in and bound phones stay. The pairing QR is not
+  shown: the phone signs in with the same account and selects this computer.
+  **Other settings** and **Keep this computer awake** stay hidden until phone
+  connection is enabled; the saved switch still defaults on and takes effect
+  only then. With phone connection off and no saved phone, **Bound phones**
+  is hidden too; a phone that is already bound stays listed so it can be
+  revoked. The server address, authentication mode, computer name and
+  local-agent directories remain in `config.yaml` and `PUT /api/settings`.
+
+- Settings hides controls that do not apply yet. Memory shows only its master
+  switch while memory is off, and hides review notifications, review thinking,
+  review rounds and skill verification while automatic review is off. Title
+  generation stays hidden while automatic naming is off. The local Web-tool
+  proxy stays hidden while those tools are forced to the server. MCP hides
+  its tool catalog until a connection has been tested. Swarm no longer shows
+  the progress pulse, stream coalesce, context-character budget, output
+  reserve, goal compact percent or schedule ticker; those values stay in
+  `config.yaml` and `PUT /api/settings`.
 
 - Settings no longer lists `ls`, `tree`, `glob` or `grep`, and those tools are
   not registered. Directory listings, filename search and content search go
@@ -34,6 +57,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   model stay in the detail. (`F-136`, `C-037`)
 
 ### Fixed
+
+- An authorized PC whose connection is turned off is no longer described as
+  waiting to connect. The account menu and Phone page say the connection is
+  off. Both show a switch for this PC's connection, whether it is on or off;
+  changing it keeps the saved account instead of starting a new device login.
+  A recorded connection failure says the PC could not connect; only an enabled
+  connection with no recorded failure is described as waiting.
 
 - Stop and the queued-steer interrupt finish the turn when a tool is blocked
   in a syscall and does not observe cancellation. The call returns as soon as

@@ -201,9 +201,11 @@ export function FilesTab({
               focused={focused === node.path}
               threadId={threadId}
               filtering={filtering}
+              canReveal={canReveal}
               onFocus={setFocused}
               onToggle={applyToggle}
               onOpen={openFile}
+              onReveal={onReveal}
               onDelete={setDoomed}
             />
           ))}
@@ -246,9 +248,11 @@ function FileRow({
   focused,
   threadId,
   filtering,
+  canReveal,
   onFocus,
   onToggle,
   onOpen,
+  onReveal,
   onDelete,
 }: {
   node: FileTreeNode
@@ -257,9 +261,11 @@ function FileRow({
   focused: boolean
   threadId?: string
   filtering: boolean
+  canReveal: boolean
   onFocus: (path: string) => void
   onToggle: (path: string) => void
   onOpen: (path: string) => void
+  onReveal: (path?: string) => void
   onDelete: (path: string) => void
 }) {
   const t = useT()
@@ -305,6 +311,24 @@ function FileRow({
         <Badge variant="outline" className="shrink-0 px-1 py-0 text-[10px]">
           {t("files.yours")}
         </Badge>
+      ) : null}
+      {node.dir && canReveal ? (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className={cn(
+            "shrink-0 opacity-0 pointer-events-none transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
+            focused && "pointer-events-auto opacity-100",
+          )}
+          title={t("files.revealDir", { name: node.name })}
+          aria-label={t("files.revealDir", { name: node.name })}
+          onClick={(e) => {
+            e.stopPropagation()
+            onReveal(node.path)
+          }}
+        >
+          <FolderOpen />
+        </Button>
       ) : null}
       {!node.dir && threadId ? (
         <div

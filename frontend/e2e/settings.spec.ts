@@ -129,7 +129,8 @@ test("settings round-trip through the config file", async ({ page }) => {
   await page.getByRole("button", { name: "Settings" }).click()
 
   const dialog = page.getByRole("dialog")
-  await expect(dialog.getByText("config.yaml")).toBeVisible()
+  await expect(dialog.getByText("Data directory", { exact: true })).toBeVisible()
+  await expect(dialog.getByText(/Stored in/)).toHaveCount(0)
 
   await dialog.getByRole("tab", { name: "Swarm" }).click()
   await expect(
@@ -440,7 +441,7 @@ test("Back to app stays on screen when Swarm is taller than the window", async (
   expect(box!.y).toBeGreaterThanOrEqual(0)
   expect(box!.y + box!.height).toBeLessThanOrEqual(700)
 
-  const last = dialog.getByLabel("Goal auto-compact at (%)")
+  const last = dialog.getByLabel("Policy check thinking")
   await last.scrollIntoViewIfNeeded()
   const lastBox = await last.boundingBox()
   const backBox = await back.boundingBox()

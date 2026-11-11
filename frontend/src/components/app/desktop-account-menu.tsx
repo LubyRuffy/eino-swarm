@@ -10,7 +10,7 @@ import {
 import { api } from "@/lib/api"
 import type { MessageKey } from "@/lib/i18n"
 import { remoteAccountName } from "@/lib/remote-account-name"
-import type { RemoteLoginStatus, RemoteStatus } from "@/lib/types"
+import { defaultRemoteSettings, type RemoteLoginStatus, type RemoteStatus } from "@/lib/types"
 import { useDesktopAccount } from "@/lib/use-remote-status"
 import { useT } from "@/lib/use-t"
 import { openSettings } from "@/store/settings-sheet"
@@ -35,7 +35,14 @@ function summaryKey(status: RemoteStatus | undefined, unavailable: boolean): Mes
   if (!status) return "desktopAccount.loading"
   if (status.auth_mode !== "account") return "desktopAccount.local"
   const state = status.login?.state ?? "signed_out"
-  if (state === "authorized") return status.online ? "desktopAccount.online" : "desktopAccount.offline"
+  if (state === "authorized") {
+    // A disabled link never dials. That is not the same as an enabled PC
+    // that is still offline, and a recorded failure is not still "waiting".
+    if (!status.enabled) return "desktopAccount.linkOff"
+    if (status.online) return "desktopAccount.online"
+    if (status.error) return "desktopAccount.connectFailed"
+    return "desktopAccount.offline"
+  }
   return summaries[state] ?? "desktopAccount.error"
 }
 
@@ -72,6 +79,11 @@ export function DesktopAccountMenu() {
     void connection.perform(action).catch(() => setFailed(true))
   }
   const start = (newDevice: boolean) => run(() => api.startRemoteLogin(newDevice, true))
+  const setConnection = (enabled: boolean) => run(async () => {
+    const current = await api.settings()
+    await api.saveSettings({ remote: { ...defaultRemoteSettings(current.remote), enabled } })
+    return api.remoteStatus()
+  })
   const logout = () => run(api.logoutRemote)
   const settings = () => {
     handoff.current = true
@@ -160,6 +172,7 @@ export function DesktopAccountMenu() {
               busy={busy}
               onStart={start}
               onCancel={() => run(api.cancelRemoteLogin)}
+              onConnectionChange={setConnection}
             />
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => { void connection.refresh() }}>

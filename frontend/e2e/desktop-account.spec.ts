@@ -137,8 +137,45 @@ test("sidebar account login shows review and account identity and shares Phone s
   await expect(settings.getByRole("tab", { name: "Phone", exact: true })).toHaveAttribute("aria-selected", "true")
   await expect(settings.getByText("Authorized. Waiting for this PC to connect to the hub.")).toBeVisible()
   account.setStatus({ ...account.getStatus(), online: true })
-  await expect(settings.getByRole("button", { name: "Show pairing QR", exact: true })).toBeEnabled()
+  await expect(settings.getByText("This PC is authorized and connected to the hub.")).toBeVisible()
+  await expect(settings.getByRole("button", { name: "Show pairing QR", exact: true })).toHaveCount(0)
   expect(account.starts).toHaveLength(1)
+})
+
+test("an authorized PC with the connection off is not described as waiting", async ({ page, request }) => {
+  const account = await fixture(page, request)
+  account.setStatus({
+    enabled: false, hub_url: hub, auth_mode: "account", online: false,
+    has_token: true, login_available: true,
+    login: { state: "authorized", username: "nosec_fixture_account_0123456789abcdef", display_name: "Fixture Account" },
+    error: "remote: authorized host connection failed",
+  })
+  const saves: unknown[] = []
+  await page.route("**/api/settings", async (route) => {
+    if (route.request().method() !== "PUT") return route.fallback()
+    const body = route.request().postDataJSON() as { remote?: { enabled?: boolean } }
+    saves.push(body)
+    account.setStatus({ ...account.getStatus(), enabled: true, error: undefined })
+    await route.fulfill({ json: { settings: {
+      tools: { disabled: [], enabled: [] }, ui: {}, search: {}, clients: {}, remote: body.remote,
+    } } })
+  })
+  await page.goto("/")
+  const menu = await accountMenu(page)
+  await expect(menu.getByText("Signed in · PC connection is off", { exact: true })).toBeVisible()
+  await expect(menu.getByText("Signed in · PC offline", { exact: true })).toHaveCount(0)
+  await menu.getByRole("menuitem", { name: "Account details", exact: true }).click()
+  const panel = page.getByTestId("desktop-account-dialog")
+  await expect(panel.getByText("Signed in, but this PC's connection is off, so it is not connecting to the hub.")).toBeVisible()
+  await expect(panel.getByText("Authorized. Waiting for this PC to connect to the hub.")).toHaveCount(0)
+  await expect(panel.getByText("remote: authorized host connection failed")).toHaveCount(0)
+  const toggle = panel.getByRole("switch", { name: "This PC's connection", exact: true })
+  await expect(toggle).not.toBeChecked()
+  await toggle.click()
+  await expect.poll(() => saves.length).toBe(1)
+  expect(saves[0]).toMatchObject({ remote: { enabled: true, hub_url: hub, auth_mode: "account" } })
+  expect(account.starts).toEqual([])
+  await expect(panel.getByText("Authorized. Waiting for this PC to connect to the hub.")).toBeVisible()
 })
 
 test("logout failure retains identity and successful logout keeps local conversations", async ({ page, request }) => {

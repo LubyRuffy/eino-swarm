@@ -117,51 +117,9 @@ export function SwarmTab({
             }
           />
         </Field>
-        <Field
-          query={query}
-          label={t("settings.swarm.pulse")}
-          hint={t("settings.swarm.pulseHint")}
-        >
-          <Input
-            type="number"
-            min={1}
-            value={settings.swarm.progress_interval_seconds}
-            onChange={(e) =>
-              update({ progress_interval_seconds: Number(e.target.value) })
-            }
-          />
-        </Field>
-        <Field
-          query={query}
-          label={t("settings.swarm.coalesce")}
-          hint={t("settings.swarm.coalesceHint")}
-        >
-          <Input
-            type="number"
-            min={1}
-            value={settings.swarm.delta_coalesce_ms}
-            onChange={(e) =>
-              update({ delta_coalesce_ms: Number(e.target.value) })
-            }
-          />
-        </Field>
       </SettingsSection>
 
       <SettingsSection title={t("settings.swarm.context")}>
-        <Field
-          query={query}
-          label={t("settings.swarm.budget")}
-          hint={t("settings.swarm.budgetHint")}
-        >
-          <Input
-            type="number"
-            min={1}
-            value={settings.swarm.context_char_budget}
-            onChange={(e) =>
-              update({ context_char_budget: Number(e.target.value) })
-            }
-          />
-        </Field>
         <Field
           query={query}
           label={t("settings.swarm.keep")}
@@ -187,20 +145,6 @@ export function SwarmTab({
             value={settings.swarm.auto_compact_tokens}
             onChange={(e) =>
               update({ auto_compact_tokens: Number(e.target.value) })
-            }
-          />
-        </Field>
-        <Field
-          query={query}
-          label={t("settings.swarm.outputReserve")}
-          hint={t("settings.swarm.outputReserveHint")}
-        >
-          <Input
-            type="number"
-            min={1}
-            value={settings.swarm.compact_output_reserve}
-            onChange={(e) =>
-              update({ compact_output_reserve: Number(e.target.value) })
             }
           />
         </Field>
@@ -247,21 +191,6 @@ export function SwarmTab({
             }
           />
         </Field>
-        <Field
-          query={query}
-          label={t("settings.swarm.goalCompactPct")}
-          hint={t("settings.swarm.goalCompactPctHint")}
-        >
-          <Input
-            type="number"
-            min={1}
-            max={100}
-            value={settings.swarm.goal_auto_compact_percent}
-            onChange={(e) =>
-              update({ goal_auto_compact_percent: Number(e.target.value) })
-            }
-          />
-        </Field>
       </SettingsSection>
 
       <SettingsSection title={t("settings.swarm.schedules")}>
@@ -276,20 +205,6 @@ export function SwarmTab({
             value={settings.swarm.schedule_min_interval_seconds ?? 30}
             onChange={(e) =>
               update({ schedule_min_interval_seconds: Number(e.target.value) })
-            }
-          />
-        </Field>
-        <Field
-          query={query}
-          label={t("settings.swarm.scheduleTick")}
-          hint={t("settings.swarm.scheduleTickHint")}
-        >
-          <Input
-            type="number"
-            min={1}
-            value={settings.swarm.schedule_tick_ms ?? 1000}
-            onChange={(e) =>
-              update({ schedule_tick_ms: Number(e.target.value) })
             }
           />
         </Field>

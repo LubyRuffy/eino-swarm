@@ -26,6 +26,7 @@ describe("MCP connection settings", () => {
   it("adds a local connection with exact argument values and clears the write-only draft after save", async () => {
     render(<MCPTab />)
     await screen.findByText(/No MCP servers yet/)
+    expect(screen.queryByRole("heading", { name: "Tool catalog" })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Add server" }))
     fireEvent.change(screen.getByLabelText("Server ID"), { target: { value: "new-local" } })
     fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "New local" } })
