@@ -4943,6 +4943,21 @@ make model-check
 python3 tools/model_check.py --fetch installed-skills-current --out /tmp/installed-skills-model
 ```
 
+## iOS startup prompt model (opt-in, `C-045`)
+
+`models/mobile/IOSStartupPrompt.tla` checks the shell's document-start decision,
+not WebKit IPC. The current case binds static Capacitor cookie and HTTP flags
+before the page runs and never waits on a startup prompt. `SyncConfigPrompt`
+restores the 7.6.9 query and must reach an unanswered prompt.
+`InstallAfterNavigation` lets the script run before those flags are bound.
+`NeverReady` is a witness that a normal launch can finish. The phone test
+executes the real 7.6.9 `native-bridge.js` and the Swift registrar:
+
+```bash
+cd mobile && npm test -- scripts/ios-bootstrap.test.ts
+python3 tools/model_check.py --fetch ios-startup-current ios-startup-sync-prompt ios-startup-install-after-navigation ios-startup-reach-ready
+```
+
 ## Backup protocol model (opt-in, `C-044`)
 
 `models/backup/DataBackup.tla` checks the backup and restore state machine, not

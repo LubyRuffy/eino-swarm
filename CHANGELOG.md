@@ -28,6 +28,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Fixed
 
+- The iOS shell no longer asks WKWebView with a synchronous prompt whether
+  Capacitor cookies or HTTP are enabled while the page is starting. After the
+  process is killed, that prompt can stay unanswered and leave the app blank.
+  The static flags are installed before navigation. A bridge script that does
+  not match the pinned SDK stays on a native error instead of loading.
+  (`F-220`, `C-045`)
+
 - Stop and the queued-steer interrupt finish the turn when a tool is blocked
   in a syscall and does not observe cancellation. The call returns as soon as
   the turn or the tool context is cancelled; a result that arrives later is

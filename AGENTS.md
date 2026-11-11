@@ -31,6 +31,12 @@ make mobile-ios-release VERSION=x.y.z # resume only this TestFlight batch
 go run ./mobile/scripts/genicons.go  # paint appicon.png into iOS/Android launcher slots
 ```
 
+iOS document-start must not use a synchronous WKWebView prompt for the static
+CapacitorCookies or CapacitorHttp flags. Capacitor 7.6.9's bridge does. After
+the process is killed, that prompt can stay unanswered and the shell stays
+blank. `IOSBootstrap` rewrites the registered script before navigation; a hash
+mismatch fails closed. Do not put those two startup prompts back.
+
 Native Mac testing starts with [原生测试最短路径](docs/NATIVE_TESTING_FAST_PATH.md):
 check inputs/admission, finish headless preparation, freeze the candidate, then
 run the affected guest scenarios serially through cleanup. It preserves the

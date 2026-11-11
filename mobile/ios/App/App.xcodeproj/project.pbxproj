@@ -19,6 +19,7 @@
 		A11F11E00000000000000003 /* BindFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11F11E00000000000000001 /* BindFlowTests.swift */; };
 		B0D7E0021FED79650016851F /* StreamBodyPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D7E0011FED79650016851F /* StreamBodyPlugin.swift */; };
 		B0D7E0041FED79650016851F /* BridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D7E0031FED79650016851F /* BridgeViewController.swift */; };
+		B00757021FED79650016851F /* IOSBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00757011FED79650016851F /* IOSBootstrap.swift */; };
 		F12200021FED79650016851F /* FileSavePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12200011FED79650016851F /* FileSavePlugin.swift */; };
 		F12200041FED79650016851F /* FileSavePayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12200031FED79650016851F /* FileSavePayload.swift */; };
 		F12200051FED79650016851F /* FileSavePayload.swift in Test Sources */ = {isa = PBXBuildFile; fileRef = F12200031FED79650016851F /* FileSavePayload.swift */; };
@@ -40,6 +41,7 @@
 		A11F11E00000000000000001 /* BindFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BindFlowTests.swift; sourceTree = "<group>"; };
 		B0D7E0011FED79650016851F /* StreamBodyPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamBodyPlugin.swift; sourceTree = "<group>"; };
 		B0D7E0031FED79650016851F /* BridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeViewController.swift; sourceTree = "<group>"; };
+		B00757011FED79650016851F /* IOSBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSBootstrap.swift; sourceTree = "<group>"; };
 		F12200011FED79650016851F /* FileSavePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSavePlugin.swift; sourceTree = "<group>"; };
 		F12200031FED79650016851F /* FileSavePayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSavePayload.swift; sourceTree = "<group>"; };
 		F12200061FED79650016851F /* FileSavePayloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSavePayloadTests.swift; sourceTree = "<group>"; };
@@ -91,6 +93,7 @@
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				C1720011FED79650016851F1 /* SceneDelegate.swift */,
 				B0D7E0031FED79650016851F /* BridgeViewController.swift */,
+				B00757011FED79650016851F /* IOSBootstrap.swift */,
 				B0D7E0011FED79650016851F /* StreamBodyPlugin.swift */,
 				F12200011FED79650016851F /* FileSavePlugin.swift */,
 				F12200031FED79650016851F /* FileSavePayload.swift */,
@@ -233,6 +236,7 @@
 				F12200021FED79650016851F /* FileSavePlugin.swift in Sources */,
 				F12200041FED79650016851F /* FileSavePayload.swift in Sources */,
 				B0D7E0041FED79650016851F /* BridgeViewController.swift in Sources */,
+				B00757021FED79650016851F /* IOSBootstrap.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

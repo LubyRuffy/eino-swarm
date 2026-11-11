@@ -2,6 +2,13 @@
 
 Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user entry points and [CHANGELOG.md](../CHANGELOG.md) for history. Contract IDs are stable.
 
+## C-045 iOS shell reads static plugin config before the page starts
+
+- 状态：active；类型：lifecycle；作用范围：iOS WKWebView 文档开始阶段的 Capacitor 启动脚本；关联功能：`F-220`, `F-210`, `F-230`。
+- 契约内容：页面开始导航前，原生壳把 CapacitorCookies 与 CapacitorHttp 的静态 enabled 值写入已注册的 document-start 启动脚本。脚本读取该值决定是否修补 cookie 与 fetch，不为这两个静态值调用同步 prompt。动态 document.cookie 的读写仍可在后续访问时走原有同步桥。Capacitor 7.6.9 二进制里的原脚本仍包含这两次启动 prompt；哈希不匹配、脚本缺失、重复或注入时机变化时拒绝导航，清掉已注册脚本，并在现有 WebView 上显示原生错误。
+- 允许行为：从后台返回不重新执行启动脚本；禁止行为：在导航之后才改脚本、保留 CapacitorCookies.isEnabled 或 CapacitorHttp 的启动 prompt、正文漂移时仍加载原脚本；失败语义：准备失败不进入无返回的白屏，结束进程后的冷启动与首次启动使用同一条路径；不变量：导航开始时启动脚本已经带上本次配置，且不含这两次静态查询；边界条件：四个 enabled 组合、脚本被改写、重复安装、只处理主 frame 的 document-start 脚本。
+- 证据：实现 `mobile/ios/App/App/IOSBootstrap.swift`, `mobile/ios/App/App/BridgeViewController.swift`；测试 `mobile/scripts/ios-bootstrap.test.ts`, `mobile/scripts/ios-bootstrap-regression.swift`；协议 `models/mobile/IOSStartupPrompt.tla`, `tools/model_check.py`；变更类型：Fixed；来源：GitHub Issue #165。
+
 ## C-044 A backup replaces data only while the engine is idle
 
 - 状态 active。范围是本机数据目录的整库备份／还原和一个项目的备份／加入／替换。关联 `F-422`。手机 `localStorage` 里的直连对话、手机 API key 和配对私钥不在备份里。

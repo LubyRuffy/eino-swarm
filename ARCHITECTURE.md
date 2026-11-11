@@ -858,6 +858,11 @@ connection URLs/user activities and later URL/universal-link callbacks through
 Capacitor's `ApplicationDelegateProxy`. It does not create another window or
 synthesize application lifecycle notifications. This is required for apps
 linked with the iOS 27 SDK to launch on iOS 27.
+`BridgeViewController.capacitorDidLoad` rewrites Capacitor 7.6.9's document-start
+bridge before `loadWebView`. The two static `CapacitorCookies.isEnabled` and
+`CapacitorHttp` prompts are replaced with `window.CapacitorNativeConfig`, which
+the shell already knows. A mismatched script is removed and navigation does not
+start. See `C-045`.
 The iOS account browser uses Capacitor 7's `popover` presentation, which presents
 from that existing bridge. Its default fullscreen helper creates a temporary
 window without a scene and cannot display the login sheet in this lifecycle.

@@ -31,6 +31,9 @@ request owner and never write to or take control of the main task.
 models/backup/DataBackup.tla checks that a backup or restore waits until the
 data directory is idle, a failed full restore rolls back, and a project
 restore cannot take another project's identity (C-044).
+models/mobile/IOSStartupPrompt.tla checks that iOS binds static cookie and HTTP
+flags before the page starts, and that the old synchronous startup prompt can
+stay unanswered (C-045).
 Every case sets its model's switch constants and states
 the expected outcome: the current design must pass every safety invariant;
 each historical or seeded behaviour must break the named invariant (checked
@@ -103,6 +106,12 @@ MODELS = {
             ("TypeOK", "VisibleBundleValidated", "ExistingBundlePreserved", "RemovedBundleHidden",
              "ReadIsProjectScoped", "LoadIsExternalOnly", "ListDisclosesMetadataOnly", "ReviewPreservesInstalled",
              "ProjectDeletionIsFinal"),
+            (),
+        ),
+        Model(
+            "ios-startup", ROOT / "models" / "mobile" / "IOSStartupPrompt.tla",
+            ("SyncConfigPrompt", "InstallAfterNavigation"),
+            ("TypeOK", "StartupPromptReturns", "ConfigBeforeScript"),
             (),
         ),
         Model(
@@ -276,6 +285,15 @@ def _askpub(name: str, source: str, switches: tuple[str, ...] = (), violates: st
 
 
 CASES: tuple[Case, ...] = (
+    _case("ios-startup-current", "iOS binds static cookie and HTTP flags before the page starts",
+          model="ios-startup"),
+    _case("ios-startup-sync-prompt",
+          "historical, shipped through v0.1.73: the startup script waits on a synchronous config prompt",
+          ("SyncConfigPrompt",), "StartupPromptReturns", model="ios-startup"),
+    _case("ios-startup-install-after-navigation",
+          "seeded: the page runs the bridge script before static config is bound",
+          ("InstallAfterNavigation",), "ConfigBeforeScript", model="ios-startup"),
+    _case("ios-startup-reach-ready", "witness", witness="NeverReady", model="ios-startup"),
     _case("backup-current", "backup and restore wait until the data directory is idle", model="backup"),
     _case("backup-while-busy", "seeded: removing the idle guard lets a transfer start during other work",
           ("AllowWhileBusy",), "RestoringImpliesIdle", model="backup"),
