@@ -154,7 +154,6 @@ func TestPreviewOfAForeignDraftScheduleAndNode(t *testing.T) {
 	if err := st.CreateTurn(&store.Turn{ID: turn.ID, ThreadID: src.thread.ID, ProjectID: owner.ID, UserText: "kept", Status: store.TurnDone}); err != nil {
 		t.Fatal(err)
 	}
-	schedule.ID = schedule.ID
 	schedule.ProjectID = owner.ID
 	schedule.ThreadID = src.thread.ID
 	schedule.Prompt = "kept-schedule"
