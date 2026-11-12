@@ -47,4 +47,19 @@ describe("account Web tool execution settings", () => {
     render(<ToolsTab settings={settings} catalog={[]} onChange={vi.fn()} query="execution" />)
     expect(screen.getByLabelText("Web tools run on")).toHaveTextContent("Server cloud")
   })
+
+  it("hides the local proxy while Web tools are forced onto the server", () => {
+    const settings = structuredClone(base)
+    settings.tools.proxy = { http: "http://127.0.0.1:9", https: "", no_proxy: "localhost" }
+    settings.tools.web_execution = "cloud"
+    render(<ToolsTab settings={settings} catalog={[]} onChange={vi.fn()} />)
+    expect(screen.queryByRole("heading", { name: "Proxy" })).toBeNull()
+    expect(screen.queryByLabelText("HTTP")).toBeNull()
+  })
+
+  it("keeps the proxy while routing can still use this device", () => {
+    render(<ToolsTab settings={base} catalog={[]} onChange={vi.fn()} />)
+    expect(screen.getByRole("heading", { name: "Proxy" })).toBeVisible()
+    expect(screen.getByLabelText("HTTP")).toBeInTheDocument()
+  })
 })

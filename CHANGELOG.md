@@ -14,23 +14,6 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   Restore, restart, and another backup still wait. `zwai backup` takes
   `--skip-active` for the same choice. (`F-422`, `C-044`)
 
-- Settings no longer shows the configured server, the self-hosted connection
-  editor, the local-agent configuration page, or the config-file path in the
-  lower left. Phone sign-in, pairing QR, bound phones and keep-awake stay.
-  The server address, authentication mode, computer name and local-agent
-  directories remain in `config.yaml` and `PUT /api/settings`.
-
-- Settings no longer lists `ls`, `tree`, `glob` or `grep`, and those tools are
-  not registered. Directory listings, filename search and content search go
-  through `exec`. Old `enabled` or `disabled` entries for the four names have
-  no effect.
-
-- Desktop and web **Retry** on a failed turn continues that same turn from
-  the stored context, including the user message and tool results already
-  recorded, instead of rewinding to the original user message. The stream
-  records `failure_continued`. The request is `POST /api/threads/:id/retry`.
-  (`F-120`, `C-003`)
-
 - The collaboration path draws recorded dependencies. Several unconnected
   records of the same kind collapse into one row and share a dashed arrow to
   the goal; a single unconnected record stays visible. The row shows status
@@ -4343,6 +4326,17 @@ were left out on purpose, so that what shipped is complete rather than broad:
 - **A native directory picker** for a project's working directory. The field
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
+
+## [0.1.75] - 2026-11-11
+
+- The selected directory in the desktop Files tree can be opened in the file
+  manager. Settings hides the fixed server, local-agent setup, pairing QR and
+  controls that do not apply yet; a signed-in PC with its connection off is
+  no longer described as waiting to connect.
+- Directory listings and filename or content search go through `exec`.
+  `ls`, `tree`, `glob` and `grep` are no longer registered.
+- Desktop and web **Retry** continues a failed turn from its stored context.
+  (`F-120`, `C-003`)
 
 ## [0.1.74] - 2026-11-11
 

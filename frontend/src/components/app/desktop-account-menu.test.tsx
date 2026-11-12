@@ -14,6 +14,9 @@ const fake = vi.hoisted(() => ({
   start: vi.fn(),
   cancel: vi.fn(),
   logout: vi.fn(),
+  settings: vi.fn(),
+  saveSettings: vi.fn(),
+  remoteStatus: vi.fn(),
 }))
 
 vi.mock("@/lib/use-remote-status", () => ({
@@ -28,6 +31,9 @@ vi.mock("@/lib/api", () => ({
     startRemoteLogin: fake.start,
     cancelRemoteLogin: fake.cancel,
     logoutRemote: fake.logout,
+    settings: fake.settings,
+    saveSettings: fake.saveSettings,
+    remoteStatus: fake.remoteStatus,
   },
 }))
 
@@ -209,7 +215,45 @@ describe("desktop account entry", () => {
       return screen.getByRole("dialog", { name: "Account" })
     })()
     expect(within(dialog).getByText("Authorized. Waiting for this PC to connect to the hub.")).toBeVisible()
+    expect(within(dialog).getByRole("switch", { name: "This PC's connection" })).toBeChecked()
     expect(within(dialog).getByText(`Account: ${name}`)).toBeVisible()
+  })
+
+  it("says an authorized connection that is off is not waiting, and turning it on keeps the saved remote", async () => {
+    const saved = {
+      enabled: false, hub_url: "https://configured.example", auth_mode: "account" as const,
+      thread_limit: 5, summary_chars: 280, open_turns: 6, event_chars: 4000, watch_events: 80,
+      keep_awake: true, display_name: "this-pc",
+    }
+    fake.status = { ...anonymous, auth_mode: "account", has_token: true, login: { state: "authorized", display_name: "Ada" } }
+    fake.settings.mockResolvedValue({ remote: saved })
+    fake.saveSettings.mockResolvedValue({})
+    fake.remoteStatus.mockResolvedValue({ ...fake.status, enabled: true })
+    render(<DestRail {...props} />)
+    const menu = openMenu()
+    expect(within(menu).getByText("Signed in · PC connection is off")).toBeVisible()
+    expect(within(menu).queryByText("Signed in · PC offline")).not.toBeInTheDocument()
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Account details" }))
+    const dialog = screen.getByRole("dialog", { name: "Account" })
+    expect(within(dialog).getByText("Signed in, but this PC's connection is off, so it is not connecting to the hub.")).toBeVisible()
+    expect(within(dialog).queryByText("Authorized. Waiting for this PC to connect to the hub.")).not.toBeInTheDocument()
+    const toggle = within(dialog).getByRole("switch", { name: "This PC's connection" })
+    expect(toggle).not.toBeChecked()
+    fireEvent.click(toggle)
+    await waitFor(() => expect(fake.saveSettings).toHaveBeenCalledWith({ remote: { ...saved, enabled: true } }))
+    expect(fake.start).not.toHaveBeenCalled()
+    expect(fake.remoteStatus).toHaveBeenCalledOnce()
+  })
+
+  it("says a recorded connection failure is not still waiting", () => {
+    fake.status = {
+      ...anonymous, enabled: true, auth_mode: "account", has_token: true, online: false,
+      error: "remote: authorized host connection failed",
+      login: { state: "authorized", display_name: "Ada" },
+    }
+    render(<DestRail {...props} />)
+    expect(within(openMenu()).getByText("Signed in · PC could not connect")).toBeVisible()
+    expect(screen.queryByText("remote: authorized host connection failed")).not.toBeInTheDocument()
   })
 
   it.each([

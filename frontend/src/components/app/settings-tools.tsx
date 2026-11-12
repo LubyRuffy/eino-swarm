@@ -110,6 +110,7 @@ export function ToolsTab({
         </SettingsSection>
       ))}
 
+      {settings.tools.web_execution === "cloud" ? null : (
       <SettingsSection
         title={tr("settings.tools.proxy")}
         description={tr("settings.tools.proxyDesc")}
@@ -164,6 +165,7 @@ export function ToolsTab({
           />
         </Field>
       </SettingsSection>
+      )}
 
       <SettingsSection title={tr("settings.tools.limits")}>
         <Field

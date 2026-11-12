@@ -881,7 +881,8 @@ shows the public confirmation code and PC fingerprint. No verification URL,
 Host Token, secret device code or verifier is returned to the renderer.
 
 The explicit sidebar and Phone-page account actions send
-`{"enable_account":true}`. Phone presents sign-in without requiring a manual Hub,
+`{"enable_account":true}`. Phone presents sign-in and a switch for this PC's
+connection without requiring a manual Hub,
 token or mode entry. It does not show the configured server or a self-hosted
 editor for Hub, authentication, computer name or pairing limits. For an initial
 blank configuration, Go supplies the effective `DefaultGatewayOrigin` in
@@ -1014,9 +1015,8 @@ a high-contrast QR of that URI.
 
 `device` and `last_seen` are what this PC learned after the phone
 connected (`hello`). They are omitted until then. No Host Token, no
-session keys. While the pairing QR is on screen, the desktop re-reads
-this list about once a second. A failed read leaves the list already
-painted.
+session keys. Settings → Phone does not show a pairing QR. It reads this
+list when the page opens.
 
 ### `POST /api/remote/bindings/:id/revoke`
 

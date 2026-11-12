@@ -69,7 +69,7 @@ test("Phone defaults offer account sign-in without requiring a server form", asy
   await expect(phone.getByLabel("Hub URL")).toHaveCount(0)
   await expect(phone.getByLabel("Connection sign-in")).toHaveCount(0)
   await expect(phone.getByLabel("Host Token")).toHaveCount(0)
-  await expect(phone.getByText("Bound phones", { exact: true })).toBeVisible()
+  await expect(phone.getByText("Bound phones", { exact: true })).toHaveCount(0)
   expect(account.starts).toEqual([])
   expect(account.writes).toEqual([])
   await page.screenshot({ path: testInfo.outputPath("phone-default.png"), animations: "disabled" })

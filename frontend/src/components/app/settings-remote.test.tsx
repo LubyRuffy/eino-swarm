@@ -1,8 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { BINDING_WATCH_MS, RemoteTab } from "./settings-remote"
-import { ToastStack } from "./toast-stack"
+import { RemoteTab } from "./settings-remote"
 import type { Settings } from "@/lib/types"
 
 vi.mock("@/lib/api", () => ({
@@ -95,18 +94,18 @@ describe("RemoteTab", () => {
     })
   })
 
-  it("paints a scannable QR from the pairing offer", async () => {
+  it("does not offer a pairing QR for binding", async () => {
     const onChange = vi.fn()
-    render(<RemoteTab settings={base} onChange={onChange} />)
+    await act(async () => { render(<RemoteTab settings={base} onChange={onChange} />) })
     expect(screen.queryByText(base.remote!.hub_url)).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Advanced / self-hosted server" })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Show pairing QR" }))
-    await waitFor(() => expect(screen.getByTestId("remote-qr")).toBeInTheDocument())
-    const img = screen.getByTestId("remote-qr")
-    expect(img).toHaveAttribute("src", "data:image/png;base64,aaaa")
-    expect(
-      (screen.getByLabelText("Pairing URI") as HTMLInputElement).value,
-    ).toMatch(/^pairlink:v1:/)
+    expect(screen.queryByRole("heading", { name: "Pairing QR" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Show pairing QR" })).not.toBeInTheDocument()
+    expect(screen.queryByText("This PC is not connected to the hub.")).not.toBeInTheDocument()
+    expect(screen.queryByText("Show a QR when this PC is online at the hub.")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("remote-qr")).not.toBeInTheDocument()
+    expect(api.remoteOffer).not.toHaveBeenCalled()
+    expect(onChange).not.toHaveBeenCalled()
   })
 
   it("does not show a host token field", async () => {
@@ -131,54 +130,6 @@ describe("RemoteTab", () => {
     expect(screen.queryByText("Scan the QR from the phone app. The hub only forwards ciphertext; conversations stay on this PC.")).not.toBeInTheDocument()
   })
 
-  it("paints a phone that binds while the pairing QR stays up", async () => {
-    vi.useFakeTimers()
-    render(<RemoteTab settings={base} onChange={vi.fn()} />)
-    await act(async () => {
-      await Promise.resolve()
-    })
-    expect(screen.getByText("No phones bound yet.")).toBeInTheDocument()
-    const before = vi.mocked(api.remoteBindings).mock.calls.length
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(BINDING_WATCH_MS * 3)
-    })
-    expect(vi.mocked(api.remoteBindings).mock.calls.length).toBe(before)
-
-    fireEvent.click(screen.getByRole("button", { name: "Show pairing QR" }))
-    await act(async () => {
-      await Promise.resolve()
-    })
-    expect(screen.getByTestId("remote-qr")).toBeInTheDocument()
-    expect(screen.getByText("No phones bound yet.")).toBeInTheDocument()
-
-    vi.mocked(api.remoteBindings).mockResolvedValue([boundPhone])
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(BINDING_WATCH_MS)
-    })
-    expect(screen.getByText("Phone 1.0 Device")).toBeInTheDocument()
-  })
-
-  it("keeps the phones already shown when a later poll fails", async () => {
-    vi.useFakeTimers()
-    render(<RemoteTab settings={base} onChange={vi.fn()} />)
-    fireEvent.click(screen.getByRole("button", { name: "Show pairing QR" }))
-    await act(async () => {
-      await Promise.resolve()
-    })
-    vi.mocked(api.remoteBindings).mockResolvedValueOnce([boundPhone])
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(BINDING_WATCH_MS)
-    })
-    expect(screen.getByText("Phone 1.0 Device")).toBeInTheDocument()
-
-    vi.mocked(api.remoteBindings).mockRejectedValueOnce(new Error("hub down"))
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(BINDING_WATCH_MS)
-    })
-    expect(screen.getByText("Phone 1.0 Device")).toBeInTheDocument()
-  })
-
   it("paints the reported phone model instead of a bare fingerprint", async () => {
     vi.mocked(api.remoteBindings).mockResolvedValue([boundPhone])
     render(<RemoteTab settings={base} onChange={vi.fn()} />)
@@ -187,6 +138,26 @@ describe("RemoteTab", () => {
     )
     expect(screen.getByText(/aa11bb22cc33dd44/)).toBeInTheDocument()
     expect(screen.getByText(/Last connected 2026-09-20T16:03:32Z/)).toBeInTheDocument()
+  })
+
+  it("hides keep-awake while phone connection is off", async () => {
+    const onChange = vi.fn()
+    const off = { ...base, remote: { ...base.remote!, enabled: false, keep_awake: true } }
+    await act(async () => { render(<RemoteTab settings={off} onChange={onChange} />) })
+    expect(screen.queryByRole("heading", { name: "Other settings" })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Keep this computer awake")).not.toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Bound phones" })).not.toBeInTheDocument()
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it("keeps a saved phone listed so it can be revoked while connection is off", async () => {
+    vi.mocked(api.remoteBindings).mockResolvedValue([boundPhone])
+    const off = { ...base, remote: { ...base.remote!, enabled: false } }
+    render(<RemoteTab settings={off} onChange={vi.fn()} />)
+    await waitFor(() =>
+      expect(screen.getByText("Phone 1.0 Device")).toBeInTheDocument(),
+    )
+    expect(screen.getByRole("button", { name: "Revoke" })).toBeInTheDocument()
   })
 
   it("does not offer a computer name or server address to edit", async () => {
@@ -208,24 +179,4 @@ describe("RemoteTab", () => {
     expect(next.remote?.keep_awake).toBe(false)
   })
 
-  it("toasts a pairing failure instead of a red line under the Phone heading", async () => {
-    vi.mocked(api.remoteOffer).mockRejectedValueOnce(new Error("hub refused"))
-    render(
-      <>
-        <ToastStack />
-        <RemoteTab settings={base} onChange={vi.fn()} />
-      </>,
-    )
-    expect(screen.queryByText(base.remote!.hub_url)).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Show pairing QR" }))
-    const alert = await screen.findByRole("alert")
-    expect(alert).toHaveTextContent("Couldn't set up the phone")
-    expect(alert).toHaveTextContent("hub refused")
-    const page =
-      screen.getByRole("heading", { name: "Phone" }).parentElement
-        ?.parentElement
-    expect(page?.textContent ?? "").not.toMatch(/hub refused/)
-    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }))
-    expect(screen.queryByRole("alert")).toBeNull()
-  })
 })

@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
 import type {
   RemoteBinding,
-  RemoteOffer,
   RemoteStatus,
   Settings,
 } from "@/lib/types"
@@ -33,10 +31,6 @@ import {
 import { RemoteLoginSection } from "./settings-remote-login"
 
 const remoteToastId = "settings:remote"
-
-/** While the pairing plate is up, a phone can bind on the hub without this
- *  page remounting. Leaving Phone was the only refresh. */
-export const BINDING_WATCH_MS = 1000
 
 type RemoteTabProps = {
   settings: Settings
@@ -65,16 +59,9 @@ function RemoteTabBody({
 
   const connection = useRemoteStatus(remote)
   const { status } = connection
-  const [offer, setOffer] = useState<RemoteOffer>()
   const [bindings, setBindings] = useState<RemoteBinding[]>([])
   const [busy, setBusy] = useState(false)
-  const [now, setNow] = useState(() => Date.now())
   const alive = useRef(true)
-  const accountMode = remote.auth_mode === "account"
-  const canPair = !accountMode || (!!status?.online && status.login?.state === "authorized" && !connection.unavailable)
-  const pairingEpoch = useRef(0)
-  const pairingAllowed = useRef(canPair)
-  pairingAllowed.current = canPair
 
   const fail = (e: unknown) =>
     toastError(errorMessage(e), {
@@ -96,55 +83,6 @@ function RemoteTabBody({
     reload()
     return () => { alive.current = false }
   }, [])
-
-  useEffect(() => {
-    if (!canPair) { pairingEpoch.current++; setOffer(undefined) }
-  }, [canPair])
-
-  useEffect(() => {
-    if (!offer?.expires_at) return
-    const id = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(id)
-  }, [offer?.expires_at])
-
-  useEffect(() => {
-    if (!offer) return
-    let stopped = false
-    const id = window.setInterval(() => {
-      if (document.hidden) return
-      void api
-        .remoteBindings()
-        .then((list) => {
-          if (!stopped) setBindings(list)
-        })
-        .catch(() => {})
-    }, BINDING_WATCH_MS)
-    return () => {
-      stopped = true
-      window.clearInterval(id)
-    }
-  }, [offer])
-
-  const remaining = offer?.expires_at
-    ? Math.max(0, Math.round((new Date(offer.expires_at).getTime() - now) / 1000))
-    : 0
-
-  const showQr = async () => {
-    if (!canPair) return
-    const owner = pairingEpoch.current
-    setBusy(true)
-    clearFail()
-    try {
-      const next = await api.remoteOffer()
-      if (!alive.current || !pairingAllowed.current || owner !== pairingEpoch.current) return
-      setOffer(next)
-      reload()
-    } catch (e) {
-      if (alive.current) { setOffer(undefined); fail(e) }
-    } finally {
-      if (alive.current) setBusy(false)
-    }
-  }
 
   const login = (newDevice: boolean) => {
     clearFail()
@@ -181,61 +119,13 @@ function RemoteTabBody({
         busy={connection.busy}
         onStart={login}
         onCancel={cancelLogin}
+        onConnectionChange={(enabled) => update({ enabled })}
+        query={query}
       />
 
-      <SettingsSection
-        title={t("settings.remote.qr")}
-        description={
-          status?.online
-            ? t("settings.remote.online", { fp: status.fingerprint ?? "" })
-            : t("settings.remote.offline")
-        }
-        action={
-          <Button
-            type="button"
-            size="sm"
-            disabled={busy || connection.busy || !canPair}
-            onClick={() => void showQr()}
-          >
-            {t("settings.remote.showQr")}
-          </Button>
-        }
-      >
-        {offer?.png && canPair ? (
-          <div className="flex flex-col items-center gap-3 px-4 py-5" data-settings-row="">
-            <div className="bg-qr-plate p-3">
-              <img
-                src={offer.png}
-                alt={t("settings.remote.qrAlt")}
-                data-testid="remote-qr"
-                className="size-64"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t("settings.remote.expires", { s: remaining })}
-            </p>
-            <label className="sr-only" htmlFor="remote-offer-uri">
-              {t("settings.remote.uri")}
-            </label>
-            <Input
-              id="remote-offer-uri"
-              readOnly
-              value={offer.uri}
-              className="font-mono text-xs"
-            />
-          </div>
-        ) : (
-          <p
-            className={cn(chromeTypeClass, "px-4 py-2.5 text-muted-foreground")}
-            data-settings-row=""
-          >
-            {t("settings.remote.qrEmpty")}
-          </p>
-        )}
-      </SettingsSection>
-
+      {remote.enabled || bindings.length > 0 ? (
       <SettingsSection title={t("settings.remote.devices")}>
-        {bindings.length === 0 || !canPair ? (
+        {bindings.length === 0 ? (
           <p
             className={cn(chromeTypeClass, "px-4 py-2.5 text-muted-foreground")}
             data-settings-row=""
@@ -281,19 +171,22 @@ function RemoteTabBody({
           ))
         )}
       </SettingsSection>
+      ) : null}
 
-      <SettingsSection title={t("settings.remote.other")}>
-        <Field
-          query={query}
-          label={t("settings.remote.keepAwake")}
-          hint={t("settings.remote.keepAwakeHint")}
-        >
-          <Switch
-            checked={remote.keep_awake}
-            onCheckedChange={(v) => update({ keep_awake: v })}
-          />
-        </Field>
-      </SettingsSection>
+      {remote.enabled ? (
+        <SettingsSection title={t("settings.remote.other")}>
+          <Field
+            query={query}
+            label={t("settings.remote.keepAwake")}
+            hint={t("settings.remote.keepAwakeHint")}
+          >
+            <Switch
+              checked={remote.keep_awake}
+              onCheckedChange={(v) => update({ keep_awake: v })}
+            />
+          </Field>
+        </SettingsSection>
+      ) : null}
     </SettingsPage>
   )
 }

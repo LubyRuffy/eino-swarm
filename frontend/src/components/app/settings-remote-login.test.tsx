@@ -43,7 +43,7 @@ describe("Account phone connection", () => {
     render(<RemoteLoginSection accountEntry enabled status={{ ...pending,
       login: { ...pending.login!, username: "previous-account" } }} unavailable busy={false}
       onStart={vi.fn()} onCancel={vi.fn()} />)
-    expect(screen.getByText("Cannot read connection status. Pairing is paused until it recovers.")).toBeVisible()
+    expect(screen.getByText("Cannot read connection status. Phone connection stays paused until it recovers.")).toBeVisible()
     expect(screen.queryByText(/previous-account/)).not.toBeInTheDocument()
     expect(screen.queryByText("ABCD-1234-EF56-7890")).not.toBeInTheDocument()
     expect(screen.queryByText("1122334455667788")).not.toBeInTheDocument()
@@ -89,7 +89,8 @@ describe("Account phone connection", () => {
     const login = await screen.findByRole("button", { name: "Sign in" })
     await waitFor(() => expect(login).toBeEnabled())
     expect(api.startRemoteLogin).not.toHaveBeenCalled()
-    expect(screen.getByRole("button", { name: "Show pairing QR" })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: "Show pairing QR" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Pairing QR" })).not.toBeInTheDocument()
     expect(screen.queryByLabelText("Host Token")).not.toBeInTheDocument()
     fireEvent.click(login)
     await screen.findByText("ABCD-1234-EF56-7890")
@@ -110,21 +111,62 @@ describe("Account phone connection", () => {
     vi.mocked(api.remoteStatus).mockResolvedValue({ ...pending, login: { ...pending.login!, state } })
     render(<RemoteTab settings={settings} onChange={vi.fn()} />)
     await screen.findByText(text)
-    expect(screen.getByRole("button", { name: "Show pairing QR" })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: "Show pairing QR" })).not.toBeInTheDocument()
     expect(api.remoteOffer).not.toHaveBeenCalled()
+  })
+
+  it("says a disabled authorized link is off and turns that saved connection on", async () => {
+    const onChange = vi.fn()
+    const off: RemoteStatus = { ...signedOut, enabled: false, has_token: true, login: { state: "authorized", username: "alice" } }
+    vi.mocked(api.remoteStatus).mockResolvedValue(off)
+    const draft = { ...settings, remote: { ...settings.remote!, enabled: false } }
+    render(<RemoteTab settings={draft} onChange={onChange} />)
+    expect(await screen.findByText("Signed in, but this PC's connection is off, so it is not connecting to the hub.")).toBeVisible()
+    expect(screen.queryByText("Authorized. Waiting for this PC to connect to the hub.")).not.toBeInTheDocument()
+    const toggle = screen.getByRole("switch", { name: "This PC's connection" })
+    expect(toggle).not.toBeChecked()
+    fireEvent.click(toggle)
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      remote: expect.objectContaining({ enabled: true, hub_url: "https://hub.example", auth_mode: "account" }),
+    }))
+    expect(api.startRemoteLogin).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["remote: authorized host registration failed", "This PC could not connect to the hub. It keeps trying."],
+    ["remote: authorized host connection failed", "This PC could not connect to the hub. It keeps trying."],
+    ["remote needs hub_url", "No hub address is configured, so this PC is not connecting."],
+    ["remote: gateway account login and approval are required", "Account authorization is not complete, so this PC is not connecting."],
+    ["remote: connection credential origin changed", "The saved credential does not match this hub, so this PC is not connected."],
+    ["dial failed at https://secret.example/token", "This PC could not connect to the hub."],
+  ] as const)("describes %s without the raw host error", (error, text) => {
+    render(<RemoteLoginSection accountEntry enabled status={{ ...signedOut, error, login: { state: "authorized", username: "alice" } }}
+      unavailable={false} busy={false} onStart={vi.fn()} onCancel={vi.fn()} />)
+    expect(screen.getByText(text)).toBeVisible()
+    expect(screen.queryByText("Authorized. Waiting for this PC to connect to the hub.")).not.toBeInTheDocument()
+    expect(screen.queryByText(error)).not.toBeInTheDocument()
   })
 
   it("distinguishes authorization from PC online and refreshes local status", async () => {
     vi.useFakeTimers()
     let state: RemoteStatus = { ...signedOut, login: { state: "authorized", username: "alice" } }
     vi.mocked(api.remoteStatus).mockImplementation(async () => state)
-    render(<RemoteTab settings={settings} onChange={vi.fn()} />)
+    const onChange = vi.fn()
+    render(<RemoteTab settings={settings} onChange={onChange} />)
     await act(async () => { await Promise.resolve() })
     expect(screen.getByText("Authorized. Waiting for this PC to connect to the hub.")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Show pairing QR" })).toBeDisabled()
+    const toggle = screen.getByRole("switch", { name: "This PC's connection" })
+    expect(toggle).toBeChecked()
+    fireEvent.click(toggle)
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      remote: expect.objectContaining({ enabled: false, hub_url: "https://hub.example", auth_mode: "account" }),
+    }))
+    expect(screen.queryByRole("heading", { name: "Pairing QR" })).not.toBeInTheDocument()
     state = { ...state, online: true, fingerprint: "1122334455667788" }
     await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
-    expect(screen.getByRole("button", { name: "Show pairing QR" })).toBeEnabled()
+    expect(screen.getByText("This PC is authorized and connected to the hub.")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Show pairing QR" })).not.toBeInTheDocument()
+    expect(api.remoteOffer).not.toHaveBeenCalled()
     expect(api.startRemoteLogin).not.toHaveBeenCalled()
   })
 
@@ -171,10 +213,10 @@ describe("Account phone connection", () => {
     await act(async () => { await Promise.resolve() })
     await act(async () => { old.resolve({ ...signedOut, online: true, login: { state: "authorized" } }); await old.promise })
     expect(screen.getByText("ABCD-1234-EF56-7890")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Show pairing QR" })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: "Show pairing QR" })).not.toBeInTheDocument()
   })
 
-  it("hides late QR offers after access is revoked and recovers a failed local status read", async () => {
+  it("keeps the pairing QR hidden while access changes and recovers a failed local status read", async () => {
     vi.useFakeTimers()
     let state: RemoteStatus = { ...signedOut, online: true, login: { state: "authorized" } }
     let failed = false
@@ -182,24 +224,22 @@ describe("Account phone connection", () => {
       if (failed) throw new Error("offline")
       return state
     })
-    const offer = deferred<Awaited<ReturnType<typeof api.remoteOffer>>>()
-    vi.mocked(api.remoteOffer).mockReturnValue(offer.promise)
     const view = render(<RemoteTab settings={settings} onChange={vi.fn()} />)
     await act(async () => { await Promise.resolve() })
-    fireEvent.click(screen.getByRole("button", { name: "Show pairing QR" }))
+    expect(screen.queryByRole("heading", { name: "Pairing QR" })).not.toBeInTheDocument()
     state = { ...state, online: false, login: { state: "access_denied" } }
     await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
-    await act(async () => { offer.resolve({ png: "data:image/png;base64,AAAA", uri: "pairlink:v1:late" }); await offer.promise })
-    state = { ...state, online: true, login: { state: "authorized" } }
-    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
     expect(screen.queryByTestId("remote-qr")).not.toBeInTheDocument()
+    expect(api.remoteOffer).not.toHaveBeenCalled()
     failed = true
     await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
-    expect(screen.getByText("Cannot read connection status. Pairing is paused until it recovers.")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Show pairing QR" })).toBeDisabled()
+    expect(screen.getByText("Cannot read connection status. Phone connection stays paused until it recovers.")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Show pairing QR" })).not.toBeInTheDocument()
     failed = false
+    state = { ...signedOut, online: true, login: { state: "authorized" } }
     await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
-    expect(screen.getByRole("button", { name: "Show pairing QR" })).toBeEnabled()
+    expect(screen.getByText("This PC is authorized and connected to the hub.")).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Pairing QR" })).not.toBeInTheDocument()
     view.unmount()
     const reads = vi.mocked(api.remoteStatus).mock.calls.length
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })

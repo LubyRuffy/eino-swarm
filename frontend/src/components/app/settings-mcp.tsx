@@ -53,9 +53,9 @@ export function MCPTab({ query = "" }: { query?: string }) {
         saving={state.busy === "save"} error={state.formError} onChange={state.setDraft}
         onSave={() => void state.save()} onCancel={state.cancel} /> : null}
 
+      {Object.keys(state.connections).length === 0 ? null : (
       <SettingsSection title={t("mcp.catalog")} description={t("mcp.catalogHint")}>
-        {Object.keys(state.connections).length === 0 ? <p data-settings-row="" className="px-4 py-4 text-sm text-muted-foreground">{t("mcp.catalogHint")}</p> :
-          state.servers.filter((server) => state.connections[server.id]).map((server) => {
+        {state.servers.filter((server) => state.connections[server.id]).map((server) => {
             const connection = state.connections[server.id]
             return <section key={server.id} aria-label={`${server.name} ${t("mcp.catalog")}`} data-settings-row="" className="px-4 py-4">
               <h4 className="text-sm font-medium">{server.name}</h4>
@@ -76,6 +76,7 @@ export function MCPTab({ query = "" }: { query?: string }) {
             </section>
           })}
       </SettingsSection>
+      )}
       <ConfirmDeleteDialog open={!!state.pendingDelete} title={t("mcp.removeConfirm")} description={t("mcp.removeDescription")}
         confirmLabel={t("mcp.delete")} cancelLabel={t("mcp.cancel")}
         onOpenChange={(open) => { if (!open) state.setPendingDelete(undefined) }}

@@ -25,6 +25,8 @@ export function MemorySettings({
   const t = useT()
   const update = (patch: Partial<Settings["memory"]>) =>
     onChange({ ...settings, memory: { ...settings.memory, ...patch } })
+  const memoryOn = settings.memory.enabled
+  const reviewOn = memoryOn && settings.memory.auto_review
 
   return (
     <SettingsPage
@@ -38,132 +40,142 @@ export function MemorySettings({
           hint={t("settings.memory.enabledHint")}
         >
           <Switch
-            checked={settings.memory.enabled}
+            checked={memoryOn}
             onCheckedChange={(enabled) => update({ enabled })}
           />
         </Field>
-        <Field
-          query={query}
-          label={t("settings.memory.autoReview")}
-          hint={t("settings.memory.autoReviewHint")}
-        >
-          <Switch
-            checked={settings.memory.auto_review}
-            disabled={!settings.memory.enabled}
-            onCheckedChange={(auto_review) => update({ auto_review })}
-          />
-        </Field>
-        <Field
-          query={query}
-          label={t("settings.memory.autoDream")}
-          hint={t("settings.memory.autoDreamHint")}
-        >
-          <Switch
-            checked={settings.memory.auto_dream === true}
-            disabled={!settings.memory.enabled || !settings.memory.auto_review}
-            onCheckedChange={(auto_dream) => update({ auto_dream })}
-          />
-        </Field>
-        <SettingsChoice
-          query={query}
-          search={[t("settings.memory.after"), "notifications", "transcript"]}
-          label={t("settings.memory.after")}
-          hint={t("settings.memory.afterHint")}
-          value={settings.memory.notifications || "on"}
-          onValueChange={(notifications) =>
-            update({ notifications: notifications as MemoryNotify })
-          }
-        >
-          <SelectItem value="on">{t("settings.memory.notifyOn")}</SelectItem>
-          <SelectItem value="verbose">
-            {t("settings.memory.notifyVerbose")}
-          </SelectItem>
-          <SelectItem value="off">{t("settings.memory.notifyOff")}</SelectItem>
-        </SettingsChoice>
+        {memoryOn ? (
+          <Field
+            query={query}
+            label={t("settings.memory.autoReview")}
+            hint={t("settings.memory.autoReviewHint")}
+          >
+            <Switch
+              checked={settings.memory.auto_review}
+              onCheckedChange={(auto_review) => update({ auto_review })}
+            />
+          </Field>
+        ) : null}
+        {reviewOn ? (
+          <>
+            <Field
+              query={query}
+              label={t("settings.memory.autoDream")}
+              hint={t("settings.memory.autoDreamHint")}
+            >
+              <Switch
+                checked={settings.memory.auto_dream === true}
+                onCheckedChange={(auto_dream) => update({ auto_dream })}
+              />
+            </Field>
+            <SettingsChoice
+              query={query}
+              search={[t("settings.memory.after"), "notifications", "transcript"]}
+              label={t("settings.memory.after")}
+              hint={t("settings.memory.afterHint")}
+              value={settings.memory.notifications || "on"}
+              onValueChange={(notifications) =>
+                update({ notifications: notifications as MemoryNotify })
+              }
+            >
+              <SelectItem value="on">{t("settings.memory.notifyOn")}</SelectItem>
+              <SelectItem value="verbose">
+                {t("settings.memory.notifyVerbose")}
+              </SelectItem>
+              <SelectItem value="off">{t("settings.memory.notifyOff")}</SelectItem>
+            </SettingsChoice>
+          </>
+        ) : null}
       </SettingsSection>
 
-      <SettingsSection title={t("settings.memory.budget")}>
-        <SettingsChoice
-          query={query}
-          label={t("settings.memory.reviewThinking")}
-          hint={t("settings.memory.reviewThinkingHint")}
-          value={settings.memory.review_reasoning_effort || "default"}
-          onValueChange={(effort) =>
-            update({ review_reasoning_effort: effort === "default" ? "" : effort })
-          }
-        >
-          <SelectItem value="default">{t("settings.memory.reviewThinkingDefault")}</SelectItem>
-          <SelectItem value="inherit">{t("settings.memory.reviewThinkingInherit")}</SelectItem>
-          <SelectItem value="none">{t("settings.memory.reviewThinkingNone")}</SelectItem>
-          <SelectItem value="low">{t("settings.memory.reviewThinkingLow")}</SelectItem>
-          <SelectItem value="medium">{t("settings.memory.reviewThinkingMedium")}</SelectItem>
-          <SelectItem value="high">{t("settings.memory.reviewThinkingHigh")}</SelectItem>
-        </SettingsChoice>
-        <Field
-          query={query}
-          label={t("settings.memory.charLimit")}
-          hint={t("settings.memory.charLimitHint")}
-        >
-          <Input
-            type="number"
-            min={200}
-            value={settings.memory.char_limit}
-            onChange={(e) => update({ char_limit: Number(e.target.value) })}
-          />
-        </Field>
-        <Field
-          query={query}
-          label={t("settings.memory.entryMax")}
-          hint={t("settings.memory.entryMaxHint")}
-        >
-          <Input
-            type="number"
-            min={80}
-            value={settings.memory.entry_max}
-            onChange={(e) => update({ entry_max: Number(e.target.value) })}
-          />
-        </Field>
-        <Field
-          query={query}
-          label={t("settings.memory.reviewRounds")}
-          hint={t("settings.memory.reviewRoundsHint")}
-        >
-          <Input
-            type="number"
-            min={1}
-            value={settings.memory.review_max_iterations}
-            onChange={(e) =>
-              update({ review_max_iterations: Number(e.target.value) })
-            }
-          />
-        </Field>
-        <Field
-          query={query}
-          label={t("settings.memory.skillStaleDays")}
-          hint={t("settings.memory.skillStaleDaysHint")}
-        >
-          <Input
-            type="number"
-            min={1}
-            value={settings.memory.skill_stale_days ?? ""}
-            onChange={(e) => update({ skill_stale_days: Number(e.target.value) })}
-          />
-        </Field>
-        <Field
-          query={query}
-          label={t("settings.memory.skillsIndex")}
-          hint={t("settings.memory.skillsIndexHint")}
-        >
-          <Input
-            type="number"
-            min={1}
-            value={settings.memory.skills_index_max}
-            onChange={(e) =>
-              update({ skills_index_max: Number(e.target.value) })
-            }
-          />
-        </Field>
-      </SettingsSection>
+      {memoryOn ? (
+        <SettingsSection title={t("settings.memory.budget")}>
+          {reviewOn ? (
+            <SettingsChoice
+              query={query}
+              label={t("settings.memory.reviewThinking")}
+              hint={t("settings.memory.reviewThinkingHint")}
+              value={settings.memory.review_reasoning_effort || "default"}
+              onValueChange={(effort) =>
+                update({ review_reasoning_effort: effort === "default" ? "" : effort })
+              }
+            >
+              <SelectItem value="default">{t("settings.memory.reviewThinkingDefault")}</SelectItem>
+              <SelectItem value="inherit">{t("settings.memory.reviewThinkingInherit")}</SelectItem>
+              <SelectItem value="none">{t("settings.memory.reviewThinkingNone")}</SelectItem>
+              <SelectItem value="low">{t("settings.memory.reviewThinkingLow")}</SelectItem>
+              <SelectItem value="medium">{t("settings.memory.reviewThinkingMedium")}</SelectItem>
+              <SelectItem value="high">{t("settings.memory.reviewThinkingHigh")}</SelectItem>
+            </SettingsChoice>
+          ) : null}
+          <Field
+            query={query}
+            label={t("settings.memory.charLimit")}
+            hint={t("settings.memory.charLimitHint")}
+          >
+            <Input
+              type="number"
+              min={200}
+              value={settings.memory.char_limit}
+              onChange={(e) => update({ char_limit: Number(e.target.value) })}
+            />
+          </Field>
+          <Field
+            query={query}
+            label={t("settings.memory.entryMax")}
+            hint={t("settings.memory.entryMaxHint")}
+          >
+            <Input
+              type="number"
+              min={80}
+              value={settings.memory.entry_max}
+              onChange={(e) => update({ entry_max: Number(e.target.value) })}
+            />
+          </Field>
+          {reviewOn ? (
+            <Field
+              query={query}
+              label={t("settings.memory.reviewRounds")}
+              hint={t("settings.memory.reviewRoundsHint")}
+            >
+              <Input
+                type="number"
+                min={1}
+                value={settings.memory.review_max_iterations}
+                onChange={(e) =>
+                  update({ review_max_iterations: Number(e.target.value) })
+                }
+              />
+            </Field>
+          ) : null}
+          <Field
+            query={query}
+            label={t("settings.memory.skillStaleDays")}
+            hint={t("settings.memory.skillStaleDaysHint")}
+          >
+            <Input
+              type="number"
+              min={1}
+              value={settings.memory.skill_stale_days ?? ""}
+              onChange={(e) => update({ skill_stale_days: Number(e.target.value) })}
+            />
+          </Field>
+          <Field
+            query={query}
+            label={t("settings.memory.skillsIndex")}
+            hint={t("settings.memory.skillsIndexHint")}
+          >
+            <Input
+              type="number"
+              min={1}
+              value={settings.memory.skills_index_max}
+              onChange={(e) =>
+                update({ skills_index_max: Number(e.target.value) })
+              }
+            />
+          </Field>
+        </SettingsSection>
+      ) : null}
     </SettingsPage>
   )
 }

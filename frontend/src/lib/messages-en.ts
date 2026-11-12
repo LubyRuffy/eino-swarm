@@ -336,6 +336,7 @@ export const en = {
   "files.upload": "Upload",
   "files.refresh": "Refresh",
   "files.reveal": "Show the workspace in the file manager",
+  "files.revealDir": "Show {name} in the file manager",
   "files.filter": "Filter files",
   "files.filterPlaceholder": "Filter files...",
   "files.tree": "Workspace files",
@@ -825,7 +826,7 @@ export const en = {
     "Recent user and assistant messages that stay verbatim. Everything older becomes the briefing.",
   "settings.swarm.autoCompact": "Auto-compact at (tokens)",
   "settings.swarm.autoCompactHint":
-    "Used when the model has no context window. A known window compacts at the percent below. Older messages are folded into a briefing. The transcript is unchanged.",
+    "Used when the model has no context window. A known window uses its saved percent. Older messages are folded into a briefing. The transcript is unchanged.",
   "settings.swarm.goalTurns": "Goal auto-continue turns",
   "settings.swarm.goalTurnsHint":
     "How many consecutive turns the runtime may start to pursue an open /goal without another human message.",
@@ -883,11 +884,11 @@ export const en = {
 
   "settings.remote.title": "Phone",
   "settings.remote.desc":
-    "Scan the QR from the phone app. The hub only forwards ciphertext; conversations stay on this PC.",
+    "Sign in with the same account on your phone, then select this PC. The hub forwards ciphertext; conversations stay on this PC.",
   "settings.remote.hub": "Hub",
-  "settings.remote.enabled": "Accept phone pairing",
+  "settings.remote.enabled": "This PC's connection",
   "settings.remote.enabledHint":
-    "Enable this PC’s phone connection. Account mode also requires sign-in and device authorization.",
+    "On, this PC connects to the hub. Off stops that connection and does not sign out.",
   "settings.remote.hubUrl": "Hub URL",
   "settings.remote.hubUrlHint":
     "The official Gateway is set by default. Change this address only for another server.",

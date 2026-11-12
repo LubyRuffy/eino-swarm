@@ -90,21 +90,46 @@ describe("Project skill verification", () => {
   it.each([
     { enabled: false, auto_review: true },
     { enabled: true, auto_review: false },
-  ])("keeps the choice while a prerequisite is off (%j)", (prerequisites) => {
+  ])("hides skill verification until memory and review are both on (%j)", (prerequisites) => {
     const onChange = vi.fn()
     const { rerender } = render(<MemorySettings
       settings={{ ...settings, memory: { ...settings.memory, ...prerequisites, auto_dream: true } }}
       onChange={onChange}
     />)
-    const toggle = () => screen.getByRole("switch", { name: "Verify and correct project skills" })
-    expect(toggle()).toBeDisabled()
-    expect(toggle()).toBeChecked()
+    expect(screen.queryByRole("switch", { name: "Verify and correct project skills" })).toBeNull()
     rerender(<MemorySettings
       settings={{ ...settings, memory: { ...settings.memory, auto_dream: true } }}
       onChange={onChange}
     />)
-    expect(toggle()).toBeEnabled()
-    expect(toggle()).toBeChecked()
+    const toggle = screen.getByRole("switch", { name: "Verify and correct project skills" })
+    expect(toggle).toBeEnabled()
+    expect(toggle).toBeChecked()
     expect(onChange).not.toHaveBeenCalled()
+  })
+})
+
+describe("Memory settings that do nothing yet", () => {
+  it("keeps only the master switch while memory is off", () => {
+    render(<MemorySettings
+      settings={{ ...settings, memory: { ...settings.memory, enabled: false, auto_review: true } }}
+      onChange={vi.fn()}
+    />)
+    expect(screen.getByRole("switch", { name: "Remember anything at all" })).toBeInTheDocument()
+    expect(screen.queryByRole("switch", { name: "Review a conversation when it finishes" })).toBeNull()
+    expect(screen.queryByRole("heading", { name: "Budget" })).toBeNull()
+    expect(screen.queryByLabelText("Per-note cap (characters)")).toBeNull()
+  })
+
+  it("hides review-only controls while automatic review is off", () => {
+    render(<MemorySettings
+      settings={{ ...settings, memory: { ...settings.memory, auto_review: false } }}
+      onChange={vi.fn()}
+    />)
+    expect(screen.getByRole("switch", { name: "Review a conversation when it finishes" })).toBeInTheDocument()
+    expect(screen.queryByLabelText("Review thinking")).toBeNull()
+    expect(screen.queryByLabelText("After a review")).toBeNull()
+    expect(screen.queryByLabelText("Review tool rounds")).toBeNull()
+    expect(screen.getByLabelText("Notes budget (characters)")).toBeInTheDocument()
+    expect(screen.getByLabelText("Skills listed in the prompt")).toBeInTheDocument()
   })
 })

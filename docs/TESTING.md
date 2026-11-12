@@ -627,8 +627,8 @@ old-configuration receipts from a new read, subsequent external changes,
 late results after changes/unmount, unknown-status recovery and failed logout.
 `settings-remote-defaults.test.tsx` verifies the initial account entry without a
 Hub/token/mode form, that a Go-supplied or self-hosted server address stays off
-the page, that search does not reveal those fields, and anonymous legacy QR use
-without automatic login or saves.
+the page, that search does not reveal those fields, and that a legacy
+configuration does not show a pairing QR or automatically claim an account.
 `settings-dialog.test.tsx` and `settings-persist.test.ts` cover draining an older
 write before account login, the short edit/leave guard, remote-only adoption
 without a second PUT, failure read-back, and a fresh load after an older account
@@ -4512,7 +4512,7 @@ deterministic and fast enough to run on every change.
 | Go unit tests | config, store, memory, provider, tools, engine, search, server, CLI, TUI, and the swarm library | `go test -race -cover -timeout 25m ./...` |
 | HTTP tests | every endpoint, SSE replay and resume, the tail log page (`GET /log`, including the live-edge roster sidecar), one worker's log (`GET /agents/:agent/log`), upload path traversal, restart recovery (leftover turns, in-flight sub-agents, and the follow-up queue continue; in-flight tools are closed), PTY terminals (`GET /terminal`, same-origin / loopback Origin, DNS-rebind Host refused, project cwd), phone pairing status/token/offer (`/api/remote/*`, token never echoed), conversation search (`GET /api/search` finds a body the title does not contain; embeddings stay off until a model is pinned), SPA freeze (a Vite rebuild of `dist/` cannot steal hashed JS from a live window; a missing `/assets/*` file is 404 text, not the HTML shell) | `go test ./internal/server/` |
 | Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (count chip at rest, hover to read/edit/drop; tagged `<selected_text>` / `<user_request>` on send; Copy message without the wire tags; the Add to chat snapshot surviving a live stream), clipboard image paste, copying transcript text when the Clipboard API refuses (copy event plant, not a silent execCommand true), file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice Run now and cancel / live waits sort first and show prompt / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `ui_font_size` / `font_size` / `content_width` / `transcript_mode` / `palette`, directory density), tail-first history pages (`thread-log` / `thread-history` / `use-history-window` / `use-turn-jump`), dismissible settings toasts, ⌘K palette body search (`thread-search` / `palette.test`, stale hits cleared while the next query is in flight), semantic-search settings (off until a model is named) | `cd frontend && npm test` |
-| End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, directory rows tracking UI size, scheduled inbox / wake banner, Phone settings QR control (pairing failure toasts over the sheet; Bound phones paints a reported model) | `cd frontend && npm run e2e` |
+| End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, directory rows tracking UI size, scheduled inbox / wake banner, Phone settings without a pairing QR (Bound phones paints a reported model) | `cd frontend && npm run e2e` |
 | Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no native override of the configurable Gateway or QR-selected Hub; offer URI parse, Noise session, scan/paste screen, live viewfinder (frame, sweeping beam, chime on a pairlink QR), saved-ticket host chips + connecting skeleton (not the scan form), multiple tickets, computer name from `hello`/`list` `host` (not the hub hostname), slim list, resume picker (live turn / last thread / parked wait), compact transcript / watch session (goal flags + waiting), ticket-socket keepalive and reconnect banner, goal/wait banners, device model line from platform+UA (`hello`), launcher is the zwai mark not Capacitor's default; Android system back pops Add a PC, then the new-conversation screen, then a conversation, and finishes only from the inbox or the unbound scan screen; inbox search filters the roster already on the phone; a project row starts a conversation in that project; Android release Gradle reads version/signing from env (no password in git); `android-release` refuses a store upload without a keystore, skips JDK 17, copies the APK to `bin/` | `cd mobile && npm test` |
 | Phone E2E | scan screen opens a live viewfinder (frame, sweeping beam, fake-camera preview) and paste of the same `pairlink:v1` URI; a saved ticket shows host chips and Connecting, not Scan QR; Add a PC is a menu sheet; New chat and a project row open the start screen, and on a 320px-wide viewport the project row and the message box stay inside it; sub-agent header counts running workers only, finished history stays grouped and opens a separate activity log without painting worker answers as manager answers; Check for updates shows fetching, then current, an install question, or the stubbed feed error | `cd mobile && npm run e2e` |
 | Phone simulators | packaged iOS/Android apps bind via paste of that URI, list the seed thread, New chat, Start; native iOS Menu shows the version without Android's update action | see `mobile/README.md` (not in `make check`) |
@@ -7188,8 +7188,10 @@ Several things are tested here, some as pure logic and some in jsdom:
   cannot replace that draft.
   Searching a Swarm-only word jumps to that
   section and hides Models. The Personality tab writes personal preferences
-  into `personality.instructions`. The Swarm tab exposes compact keep-messages,
-  the auto-compact token budget. The selected page is a `tabpanel` switch
+  into `personality.instructions`. The Swarm tab exposes compact keep-messages
+  and the auto-compact token budget. It does not show the progress pulse,
+  stream coalesce, context-character budget, output reserve, goal compact
+  percent or schedule ticker, and search for those names does not open Swarm. The selected page is a `tabpanel` switch
   (not Radix `TabsContent`, which hid every pane after settings loaded).
   Every page scrolls with `overflow-auto` and
   bottom padding, so an outline at the
@@ -7200,14 +7202,13 @@ Several things are tested here, some as pure logic and some in jsdom:
   traffic lights live there); a browser sheet has no strip. The sheet is
   `modal={false}` so Radix does not `aria-hide` the conversation underneath.
   A failed write toasts and keeps the sheet open.
-- **`src/components/app/settings-remote.tsx`**, rendered in jsdom: a pairing
-  offer paints a QR; a stored host token is never echoed; a failed offer
-  toasts over the sheet instead of a red line under Phone; **Keep this
-  computer awake** defaults on and toggles `remote.keep_awake`. A binding
-  with a reported model paints that line, not a bare fingerprint. While the
-  QR is up, the bound-phone list is re-read; a phone that appears on a later
-  read is painted, and a failed read does not clear phones already shown.
-  Before the QR, that watch does not run.
+- **`src/components/app/settings-remote.tsx`**, rendered in jsdom: Phone
+  settings do not show a pairing QR or call the offer API; a stored host
+  token is never echoed. **Keep this computer awake** stays hidden while
+  phone connection is off, and defaults on and toggles `remote.keep_awake`
+  once connection is enabled. An empty bound-phone list stays hidden while
+  connection is off; a saved binding stays listed and can be revoked. A binding with a reported model paints that line, not
+  a bare fingerprint.
   `src/lib/remote-binding.ts` is the title / last-seen join.
 - **`src/store/settings-sheet.ts`**: sidebar / ⌘, / ⌘K open General;
   a provider shortcut opens Models.
@@ -7432,7 +7433,7 @@ long enough for Steer; unit tests leave it unset.
 | `e2e/markdown.spec.ts` | the scripted answer paints a tagged `go` fence (Copy code + syntax colour), `$n$` as KaTeX, a GFM table that stays inside the conversation column (not under the side panel), and a heading rendered as a heading while the turn is still Working |
 | `e2e/goal-resume.spec.ts` | `/goal` on the mock provider completes, hides its composer strip and retains the history completion notice without clearing persisted goal/completion fields; reload and reopening keep that state, and setting a new goal displays the strip again |
 | `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled page in the main column (New task opens the right drawer, Task only — the inbox name is generated — Repeat → On an interval, Every (seconds) 60, Add wait; Agents/Files/Trace rail hidden; Expand fills the page (`data-expanded`) then Collapse restores the list), click the row to open the editor, Run now, Escape back to the conversation, unread / Open findings landing on the minted conversation whose title matches that generated name, with a `Scheduled check.` chip and no user bubble of the protocol wrapper; REST create then click-to-edit title/prompt/cadence and Save; a REST `kind=thread` wake on the open conversation showing the composer banner with Run now and Cancel wait, a breathing wait clock on the sidebar row and **Waiting** on the title bar, Cancel wait removing the chip and returning Idle, Run now starting Working, hiding the wait banner, a `Scheduled check.` chip, then Waiting again with the clock once the check finishes. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
-| `e2e/remote.spec.ts` | Settings → Phone hides the configured server, self-hosted editor, Hub URL, Host Token, connection sign-in, computer name and the config-path footer; Keep this computer awake, Bound phones empty copy and Show pairing QR stay, with no QR pixels while the hub is unset; the failure toasts over the sheet in viewport (× dismisses it). A stubbed binding paints the reported model and last-connected, not a bare fingerprint. A binding that appears on a later list read while the QR stays up is painted without leaving Phone. |
+| `e2e/remote.spec.ts` | Settings → Phone hides the configured server, self-hosted editor, Hub URL, Host Token, connection sign-in, computer name, config-path footer, pairing QR, and keep-awake while phone connection is off. An empty bound-phone list stays hidden then too. A stubbed binding paints the reported model and last-connected, not a bare fingerprint, and can still be revoked. |
 | `mobile/e2e/goal-completion.spec.ts` | English/Chinese phone path starts with a visible unfinished goal, sends a turn that completes it, hides the composer goal strip and shows one localized completion notice; leaving and reopening the conversation preserves both |
 | `mobile/e2e/scan.spec.ts` | Capacitor shell Scan QR opens a live viewfinder (four corners, a beam whose `scan-beam` animation is running, a fake-camera preview); junk paste errors; a syntactically valid URI uses the same bind path; a saved ticket shows host chips and Connecting, not the scan form; Add a PC is a sheet |
 | `e2e/clients.spec.ts` | a long local agent session opens on the live reply, **Earlier** loads the lines above it, and that reply stays on screen |
@@ -8291,7 +8292,11 @@ Directory identity regressions in `internal/engine/project_workdir_identity_test
 `frontend/src/lib/file-preview.test.ts` checks actual streamed-byte limits,
 UTF-8/binary classification, safe image MIME selection, cancellation and failed
 HTTP reads. The file-preview hook/component and Files-tab unit tests cover
-loading, refresh, conversation ownership, closing and safe text rendering,
+loading, refresh, conversation ownership, closing and safe text rendering.
+Selecting a directory keeps a file-manager button visible for that folder
+when reveal is available. Other directories carry the same button hidden
+until the row is hovered. Activating it does not expand or collapse the row,
+and the button stays absent when reveal is unavailable.
 plus image zoom limits, actual-size/fit switching, disabled loading/error
 controls and reset on refresh or changing images.
 `frontend/src/lib/documents/html-artifact.test.ts` drops SVG `href` and

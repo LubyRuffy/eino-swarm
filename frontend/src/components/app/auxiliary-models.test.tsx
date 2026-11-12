@@ -49,6 +49,15 @@ const base: Settings = {
 }
 
 describe("AuxiliaryModels", () => {
+  it("hides title generation while automatic naming is off", () => {
+    render(<AuxiliaryModels
+      settings={{ ...base, swarm: { ...base.swarm, auto_title: false, title_model: "beta" } }}
+      onChange={vi.fn()}
+    />)
+    expect(screen.queryByText("Title generation")).toBeNull()
+    expect(screen.getByText("Compact summary")).toBeTruthy()
+  })
+
   it("hides the picker when there is only one named model", () => {
     const one: Settings = {
       ...base,

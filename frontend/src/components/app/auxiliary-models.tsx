@@ -51,21 +51,23 @@ export function AuxiliaryModels({
       title={t("settings.aux.title")}
       description={t("settings.aux.desc")}
     >
-      <AuxiliaryPin
-        query={query}
-        title={t("settings.aux.titleGen")}
-        badge={t("settings.aux.badge")}
-        ariaLabel={t("settings.aux.titleAria")}
-        provider={settings.swarm.title_provider}
-        model={settings.swarm.title_model}
-        choices={listed}
-        onPin={(provider, model) =>
-          onChange({
-            ...settings,
-            swarm: { ...settings.swarm, title_provider: provider, title_model: model },
-          })
-        }
-      />
+      {settings.swarm.auto_title !== false ? (
+        <AuxiliaryPin
+          query={query}
+          title={t("settings.aux.titleGen")}
+          badge={t("settings.aux.badge")}
+          ariaLabel={t("settings.aux.titleAria")}
+          provider={settings.swarm.title_provider}
+          model={settings.swarm.title_model}
+          choices={listed}
+          onPin={(provider, model) =>
+            onChange({
+              ...settings,
+              swarm: { ...settings.swarm, title_provider: provider, title_model: model },
+            })
+          }
+        />
+      ) : null}
       <AuxiliaryPin
         query={query}
         title={t("settings.aux.compact")}

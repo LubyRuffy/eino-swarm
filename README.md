@@ -784,8 +784,8 @@ the default Gateway address comes from configuration. Compare the public code
 and PC fingerprint in the dialog before authorizing the device. The existing
 Settings button and **Settings → Phone** controls remain available.
 
-**Settings → Phone** also shows account status and **Sign in**
-directly. It does not show the configured server, and it does not offer a
+**Settings → Phone** also shows account status, **Sign in**, and a switch
+for this PC's connection. It does not show the configured server, and it does not offer a
 self-hosted server, Hub address, Host Token, authentication mode, computer name
 or pairing limits. The address stays in configuration; the renderer does not
 compile in an official hostname and does not let Settings change it. Opening
@@ -815,7 +815,7 @@ out every device or the browser account. **Cancel sign-in** only stops the
 current flow and keeps recovery proof, so it is a different action. To sign in
 again, explicitly choose **Sign in**.
 
-For anonymous QR use and connection settings, retain the existing flow:
+Phone connection:
 
 1. Anonymous pairing uses the configured Hub and `remote.enabled` /
    `remote.auth_mode` in `config.yaml` (or `PUT /api/settings`). Settings does
@@ -830,23 +830,22 @@ For anonymous QR use and connection settings, retain the existing flow:
    A new account waits for administrator approval; rejected or pending accounts
    cannot connect a PC. Approval alone does not authorize a device: return to
    the browser confirmation page and confirm it. The Phone page distinguishes
-   authorization from the actual PC connection. A missing hub toasts over the
-   sheet (× to close).
+   authorization from the actual PC connection.
    **Keep this computer awake** stays on by default so a plugged-in host
-   does not idle-sleep while a phone still expects it. Turn it off in
-   Settings → Phone if you want the machine to sleep. **This computer's name**
+   does not idle-sleep while a phone still expects it. Settings → Phone shows
+   that switch only after phone connection is enabled; until then it has no
+   effect. **This computer's name**
    is `remote.display_name` (blank uses this machine's hostname). Settings does
    not edit it. That same name is sent when this PC registers with the hub.
    **Bound phones** names each device by the
    model the phone reports after it connects, not only the fingerprint. The
-   phone also sends that model line when it redeems the QR, so a gateway
-   list can show it without reading the sealed session.
-2. Once the PC is online, **Show pairing QR**. In Gateway mode this stays
-   unavailable until the device is authorized and its hub WebSocket is online.
-   The plate is large and high-contrast. The same URI can
-   be pasted if the camera is missing. While that plate is up, **Bound phones**
-   refreshes on its own, so a phone that just bound shows up without leaving
-   the page.
+   phone also sends that model line when it connects, so a gateway
+   list can show it without reading the sealed session. While phone connection
+   is off and nothing is bound, that list stays hidden. A phone that is already
+   bound stays listed so it can be revoked.
+2. Settings → Phone does not show a pairing QR. Sign in on the phone with the
+   same account, then select this computer. **Bound phones** lists devices
+   already connected to this PC.
    If an administrator deletes this PC or revokes its connection credential,
    use **Reconnect as a new device** and confirm the action, then authorize in
    the browser again. A revoked credential stays revoked. The existing local
@@ -1077,7 +1076,10 @@ What you get:
    (`~/.zwai-swarm/workspaces/<thread-id>/`). Uploads land in `uploads/`, agent
    output lands next to it, and the **Files** tab shows a collapsible tree —
    filter at the top, directories expand like a file explorer, download on
-   hover (and, in the desktop app, "Show in Finder"). Click a file or press
+   hover. In the desktop app the toolbar opens the workspace in the file
+   manager. The selected directory keeps a button to open that folder;
+   hovering another directory shows the same button until the pointer leaves.
+   Click a file or press
    Enter to preview it. HTML opens in a sandbox without access to the app
    origin and can switch back to source. CSV and TSV open as tables. DOCX,
    XLSX, PPTX and EPUB show their saved package content; SVG stays source.

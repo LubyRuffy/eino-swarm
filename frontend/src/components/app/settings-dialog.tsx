@@ -78,7 +78,7 @@ function sections(t: Translate) {
       id: "swarm",
       label: t("settings.nav.swarm"),
       icon: Workflow,
-      keys: "sub-agent timeout rounds manager pulse coalesce compact context budget goal title concurrent stream max completion tokens output 集群 输出 上限",
+      keys: "sub-agent timeout rounds manager compact context goal title concurrent max completion tokens output 集群 输出 上限",
     },
     {
       id: "tools",
@@ -102,7 +102,7 @@ function sections(t: Translate) {
       id: "remote",
       label: t("settings.nav.remote"),
       icon: Smartphone,
-      keys: "phone remote pair qr pairing scan awake sleep model device account sign in account gateway 手机 扫码 远程 配对 唤醒 休眠 型号 账号 登录 网关",
+      keys: "phone remote pair awake sleep model device account sign in account gateway 手机 远程 配对 唤醒 休眠 型号 账号 登录 网关",
     },
     {
       id: "backup",

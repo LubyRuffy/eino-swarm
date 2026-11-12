@@ -59,7 +59,7 @@ export const zh: Record<MessageKey, string> = {
   "scan.retry": "重试",
   "scan.connecting": "正在连接",
   "scan.connectingHint": "正在打开到这台 PC 的连接。",
-  "scan.hostOffline": "这台 PC 没挂在 hub 上。等桌面重新连上后再点一次「显示配对 QR」。",
+  "scan.hostOffline": "这台 PC 没挂在中转上。等桌面重新上线后再试。",
 
   "home.app": "zwai",
   "home.menu": "菜单",

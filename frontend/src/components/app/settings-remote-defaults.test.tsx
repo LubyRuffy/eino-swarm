@@ -37,7 +37,9 @@ describe("Phone account defaults", () => {
     expect(screen.queryByLabelText("Hub URL")).not.toBeInTheDocument()
     expect(screen.queryByLabelText("Connection sign-in")).not.toBeInTheDocument()
     expect(screen.queryByLabelText("Host Token")).not.toBeInTheDocument()
-    expect(screen.getByText("Bound phones")).toBeVisible()
+    expect(screen.queryByText("Bound phones")).not.toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Other settings" })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Keep this computer awake")).not.toBeInTheDocument()
     expect(api.startRemoteLogin).not.toHaveBeenCalled()
     expect(change).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }))
@@ -58,15 +60,16 @@ describe("Phone account defaults", () => {
     expect(api.startRemoteLogin).not.toHaveBeenCalled()
   })
 
-  it("keeps anonymous QR pairing and existing legacy configuration without automatically claiming an account", async () => {
+  it("keeps existing legacy configuration without a pairing QR or an automatic account claim", async () => {
     const legacy = { ...settings, remote: { ...settings.remote!, enabled: true } }
     vi.mocked(api.remoteStatus).mockResolvedValue({ ...initial, enabled: true, has_token: true, online: true })
-    vi.mocked(api.remoteOffer).mockResolvedValue({ uri: "pairlink:v1:fixture", png: "data:image/png;base64,fixture" })
     const change = vi.fn()
     render(<RemoteTab settings={legacy} onChange={change} />)
     await act(async () => { await Promise.resolve() })
-    fireEvent.click(screen.getByRole("button", { name: "Show pairing QR" }))
-    await screen.findByTestId("remote-qr")
+    expect(screen.queryByRole("heading", { name: "Pairing QR" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Show pairing QR" })).not.toBeInTheDocument()
+    expect(api.remoteOffer).not.toHaveBeenCalled()
+    expect(screen.getByLabelText("Keep this computer awake")).toBeChecked()
     expect(screen.queryByRole("button", { name: "Reconnect as a new device" })).not.toBeInTheDocument()
     expect(api.startRemoteLogin).not.toHaveBeenCalled()
     expect(change).not.toHaveBeenCalled()
