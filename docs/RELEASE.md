@@ -1,5 +1,24 @@
 # Unified release (F-430 / C-010)
 
+Closing an Issue and publishing a platform are separate. A fix closes its
+Issue after behavior acceptance, tests, documentation and review pass and the
+complete change is integrated and pushed to main. The closing comment records
+published and pending platforms. Closed does not mean every platform has
+shipped. Pending deliveries stay in the release ledger, including closed
+Issues. The reconciliation command counts pending deliveries on every required
+platform and separates already allocated batches from fixes awaiting their
+first version. More than three main commits since the previous published
+source SHA, or an oldest accepted pending change waiting over 24 hours,
+triggers one new release batch. A current explicit urgent request can use
+`tools/release.py --urgent-reason <reason>` for aggregation and the local
+TestFlight daily policy, and it still keeps the acceptance gates. The trigger
+persists across runs and dates. Before it fires, fixes stay integrated without
+a new version. Only affected desktop and mobile platforms are published.
+Remaining platforms of an allocated batch resume that same version and source
+SHA without reuploading completed platforms. The contributor rules are in
+[AGENTS.md](../AGENTS.md). `C-010` is in [CONTRACTS](CONTRACTS.md). The
+reconciliation command is in [TESTING](TESTING.md).
+
 ## Local verification before publication
 
 Use [原生测试最短路径](NATIVE_TESTING_FAST_PATH.md) for input/admission checks,

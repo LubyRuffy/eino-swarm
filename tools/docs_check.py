@@ -9,6 +9,7 @@ REQUIRED = (
     "README.md", "ARCHITECTURE.md", "AGENTS.md", "CHANGELOG.md",
     "docs/API.md", "docs/CLI.md", "docs/CONFIG.md", "docs/DATA_MODEL.md",
     "docs/TESTING.md", "docs/FEATURES.md", "docs/CONTRACTS.md",
+    "docs/USAGE.md",
 )
 
 

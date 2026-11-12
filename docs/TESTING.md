@@ -7562,7 +7562,8 @@ or one call eating the wall clock.
 `make docs-check` checks required documents, feature and contract IDs,
 cross-references, evidence paths, and links in the current snapshots. It is
 part of `make check`; semantic correctness still requires review against
-current entry points and tests.
+current entry points and tests. The README is the entry. Day-to-day use is
+in [docs/USAGE.md](USAGE.md).
 
 ### iOS scene startup regression
 

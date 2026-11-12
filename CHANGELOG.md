@@ -18,6 +18,11 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Changed
 
+- The README is the entry point. Day-to-day use is in
+  [docs/USAGE.md](docs/USAGE.md). Phone use stays in
+  [mobile/README.md](mobile/README.md). Issue closure and release batches
+  are summarized in [docs/RELEASE.md](docs/RELEASE.md).
+
 - Backup asks when a conversation is still running. You can cancel, or leave
   those conversations out of this file and continue. They keep running on
   this machine. A later restore of the whole file does not bring them back.

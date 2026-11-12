@@ -783,7 +783,7 @@ update, in the same change:
 | how tests run, or coverage | [docs/TESTING.md](docs/TESTING.md) |
 | a module boundary or a data flow | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | the swarm library's API | [docs/LIBRARY.md](docs/LIBRARY.md) |
-| how the app is used | [README.md](README.md), including the examples |
+| how the app is used | [README.md](README.md) for the entry and the worked example; [docs/USAGE.md](docs/USAGE.md) for the rest of the user guide. Phone use stays in [mobile/README.md](mobile/README.md). Do not grow the README with per-behavior edge cases. |
 | anything | [CHANGELOG.md](CHANGELOG.md) — Added / Changed / Fixed |
 
 If documentation and code disagree, fixing the disagreement comes before any new

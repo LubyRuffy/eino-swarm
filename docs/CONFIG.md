@@ -819,7 +819,17 @@ Read-only list of local agent transcripts. Off by default. Settings does not
 show this page; set the keys here or with `PUT /api/settings`. The left navigation and a paired phone show one group per tool. Tasks
 from the last `recent_days` are the first page, five per tool. Each tool
 group folds. More loads the next five. Opening a row reads the session
-and does not send or resume.
+and does not send or resume. The opening request stays pinned at the top.
+The column follows the latest lines. **Earlier** loads the page above.
+Adjacent thinking and tool calls start collapsed, and the composer cannot
+be used. A breathing light means that task is still running. The background
+refresh reuses parsed rows for unchanged files and publishes one sorted
+snapshot. Changed and deleted sessions appear on the next finished refresh.
+A paired phone opens the same read-only chat. On iOS, the detail keeps its
+title and Back button above the task log when the inbox is pulled down. On
+the phone, More shows a loading spinner while the next page arrives; a failed
+page keeps the existing rows and More can be retried. In a Clients task,
+Android Back returns to the list. Back from the root inbox exits the app.
 
 | key | default | meaning |
 |---|---|---|

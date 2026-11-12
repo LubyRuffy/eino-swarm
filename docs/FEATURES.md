@@ -1,6 +1,6 @@
 # Feature List
 
-This is the current user-facing capability map. The code and tests named below are the authority for details; [README](../README.md), [API](API.md), [CLI](CLI.md), and [mobile README](../mobile/README.md) give usage.
+This is the current user-facing capability map. The code and tests named below are the authority for details. [README](../README.md) is the entry, [Using zwai](USAGE.md) is the day-to-day guide, and [API](API.md), [CLI](CLI.md), and [mobile README](../mobile/README.md) are the other usage surfaces.
 
 - `F-000` zwai
   - `F-100` PC conversations
