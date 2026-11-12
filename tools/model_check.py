@@ -28,9 +28,10 @@ models/skills/InstalledSkills.tla checks project-scoped skill publication,
 lookup, removal and separation from learned memory.
 models/sidechat/SideChat.tla checks that temporary replies stay within their
 request owner and never write to or take control of the main task.
-models/backup/DataBackup.tla checks that a backup or restore waits until the
-data directory is idle, a failed full restore rolls back, and a project
-restore cannot take another project's identity (C-044).
+models/backup/DataBackup.tla checks that a restore waits until the data
+directory is idle, a backup may proceed only by omitting work that stays
+running, a failed full restore rolls back, and a project restore cannot take
+another project's identity (C-044).
 models/mobile/IOSStartupPrompt.tla checks that iOS binds static cookie and HTTP
 flags before the page starts, and that the old synchronous startup prompt can
 stay unanswered (C-045).
@@ -294,7 +295,7 @@ CASES: tuple[Case, ...] = (
           "seeded: the page runs the bridge script before static config is bound",
           ("InstallAfterNavigation",), "ConfigBeforeScript", model="ios-startup"),
     _case("ios-startup-reach-ready", "witness", witness="NeverReady", model="ios-startup"),
-    _case("backup-current", "backup and restore wait until the data directory is idle", model="backup"),
+    _case("backup-current", "restore waits until idle; backup may omit work that stays running", model="backup"),
     _case("backup-while-busy", "seeded: removing the idle guard lets a transfer start during other work",
           ("AllowWhileBusy",), "RestoringImpliesIdle", model="backup"),
     _case("backup-skip-rollback", "seeded: a failed full restore keeps the half-applied snapshot and advances the generation",
@@ -302,6 +303,7 @@ CASES: tuple[Case, ...] = (
     _case("backup-foreign-identity", "seeded: a project restore writes an identity another project already owns",
           ("AllowForeignIdentity",), "ForeignUnchanged", model="backup"),
     _case("backup-reach-commit", "witness", witness="NeverCommitted", model="backup"),
+    _case("backup-reach-skip", "witness", witness="NeverOmitted", model="backup"),
     _case("side-chat-current", "side questions stay independent of the running task", model="side-chat"),
     _case("side-chat-main-send", "seeded: sending a side question queues it on the main task",
           ("UseMainSend",), "SideLeavesMainUntouched", model="side-chat"),

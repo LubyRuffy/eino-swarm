@@ -26,11 +26,12 @@ func runBackup(args []string) error {
 	output := fs.String("output", "", "backup file to write")
 	projectID := fs.String("project", "", "back up one project instead of all data")
 	omit := fs.Bool("omit-secrets", false, "leave API keys and remote credentials out of the backup")
+	skipActive := fs.Bool("skip-active", false, "leave conversations that are still running out of this backup")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"data-dir": true, "output": true, "project": true})); err != nil {
 		return usageError{err.Error()}
 	}
 	if strings.TrimSpace(*output) == "" {
-		return usageError{"usage: zwai backup --output FILE [--project ID] [--omit-secrets] [--data-dir DIR]"}
+		return usageError{"usage: zwai backup --output FILE [--project ID] [--omit-secrets] [--skip-active] [--data-dir DIR]"}
 	}
 	cfg, err := config.Load(*dataDir)
 	if err != nil {
@@ -44,7 +45,7 @@ func runBackup(args []string) error {
 	if strings.TrimSpace(*projectID) != "" {
 		kind = backup.KindProject
 	}
-	body := map[string]any{"kind": string(kind), "project_id": *projectID, "omit_secrets": *omit, "output": out}
+	body := map[string]any{"kind": string(kind), "project_id": *projectID, "omit_secrets": *omit, "skip_active": *skipActive, "output": out}
 	return attachOrRun(cfg.DataDir(), func(url string) error {
 		if _, err := postEngine(url, "/api/backup", body); err != nil {
 			return err

@@ -46,9 +46,9 @@ func Create(ctx context.Context, opt Options) (Manifest, error) {
 	var items []zipItem
 	var removeTemp func()
 	if opt.Kind == KindFull {
-		manifest, items, removeTemp, err = buildFull(ctx, conn, dataDir, opt.OmitSecrets)
+		manifest, items, removeTemp, err = buildFull(ctx, conn, dataDir, opt.OmitSecrets, opt.OmitThreads)
 	} else {
-		manifest, items, removeTemp, err = buildProject(ctx, conn, dataDir, opt.ProjectID)
+		manifest, items, removeTemp, err = buildProject(ctx, conn, dataDir, opt.ProjectID, opt.OmitThreads)
 	}
 	if removeTemp != nil {
 		defer removeTemp()
@@ -59,6 +59,9 @@ func Create(ctx context.Context, opt Options) (Manifest, error) {
 	manifest.Format = FormatVersion
 	manifest.Kind = opt.Kind
 	manifest.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	if len(opt.OmitThreads) > 0 {
+		manifest.OmittedThreads = append([]OmittedThread(nil), opt.OmitThreads...)
+	}
 	written, err := writeArchive(output, items, manifest)
 	if err != nil {
 		return Manifest{}, err
@@ -66,7 +69,7 @@ func Create(ctx context.Context, opt Options) (Manifest, error) {
 	return written, nil
 }
 
-func buildFull(ctx context.Context, conn *sql.Conn, dataDir string, omit bool) (Manifest, []zipItem, func(), error) {
+func buildFull(ctx context.Context, conn *sql.Conn, dataDir string, omit bool, skipped []OmittedThread) (Manifest, []zipItem, func(), error) {
 	db, err := tempFile(dataDir, ".backup-vacuum-*")
 	if err != nil {
 		return Manifest{}, nil, nil, err
@@ -77,6 +80,11 @@ func buildFull(ctx context.Context, conn *sql.Conn, dataDir string, omit bool) (
 		return Manifest{}, nil, nil, err
 	}
 	if err := attach(ctx, conn, "snap", db); err != nil {
+		cleanup()
+		return Manifest{}, nil, nil, err
+	}
+	if err := omitThreads(ctx, conn, "snap", omittedIDs(skipped)); err != nil {
+		detach(context.Background(), conn, "snap")
 		cleanup()
 		return Manifest{}, nil, nil, err
 	}
@@ -103,8 +111,9 @@ func buildFull(ctx context.Context, conn *sql.Conn, dataDir string, omit bool) (
 		return Manifest{}, nil, nil, err
 	}
 	items := []zipItem{{name: databaseName, path: db}, {name: config.FileName, body: raw}}
+	skip := skipSet(skipped)
 	for _, rel := range fullTrees {
-		part, err := collectTree(dataDir, rel)
+		part, err := collectTree(dataDir, rel, skip)
 		if err != nil {
 			cleanup()
 			return Manifest{}, nil, nil, err
@@ -112,7 +121,7 @@ func buildFull(ctx context.Context, conn *sql.Conn, dataDir string, omit bool) (
 		items = append(items, part...)
 	}
 	if !omit {
-		part, err := collectTree(dataDir, "remote")
+		part, err := collectTree(dataDir, "remote", nil)
 		if err != nil {
 			cleanup()
 			return Manifest{}, nil, nil, err
@@ -122,7 +131,7 @@ func buildFull(ctx context.Context, conn *sql.Conn, dataDir string, omit bool) (
 	return Manifest{IncludesSecrets: !omit, ExternalWorkdirs: external, Counts: counts}, items, cleanup, nil
 }
 
-func buildProject(ctx context.Context, conn *sql.Conn, dataDir, projectID string) (Manifest, []zipItem, func(), error) {
+func buildProject(ctx context.Context, conn *sql.Conn, dataDir, projectID string, skipped []OmittedThread) (Manifest, []zipItem, func(), error) {
 	db, err := tempFile(dataDir, ".backup-project-*")
 	if err != nil {
 		return Manifest{}, nil, nil, err
@@ -139,6 +148,9 @@ func buildProject(ctx context.Context, conn *sql.Conn, dataDir, projectID string
 		return fail(err)
 	}
 	defer detach(context.Background(), conn, "dst")
+	if err := omitThreads(ctx, conn, "dst", omittedIDs(skipped)); err != nil {
+		return fail(err)
+	}
 	counts, err := countSchema(ctx, conn, "dst")
 	if err != nil {
 		return fail(err)
@@ -156,8 +168,9 @@ func buildProject(ctx context.Context, conn *sql.Conn, dataDir, projectID string
 		return fail(err)
 	}
 	items := []zipItem{{name: databaseName, path: db}}
+	skip := skipSet(skipped)
 	for _, rel := range rels {
-		part, err := collectTree(dataDir, rel)
+		part, err := collectTree(dataDir, rel, skip)
 		if err != nil {
 			return fail(err)
 		}

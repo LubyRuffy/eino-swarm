@@ -69,6 +69,7 @@ export interface BackupRequest {
   project_id?: string
   omit_secrets?: boolean
   output?: string
+  skip_active?: boolean
 }
 
 export interface BackupManifest {
@@ -76,6 +77,7 @@ export interface BackupManifest {
   project_id?: string
   includes_secrets?: boolean
   counts?: { projects?: number; threads?: number }
+  omitted_threads?: { id: string; title: string }[]
 }
 
 export interface BackupReport {

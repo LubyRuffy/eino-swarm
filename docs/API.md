@@ -386,14 +386,23 @@ serves the settings page, these routes, and `zwai backup` / `zwai restore`.
 ### `POST /api/backup`
 
 ```json
-{ "kind": "full", "omit_secrets": false, "output": "/Users/me/zwai.zwai-backup" }
+{ "kind": "full", "omit_secrets": false, "skip_active": false, "output": "/Users/me/zwai.zwai-backup" }
 ```
 
 `kind` is `full` or `project`. A project backup also sends `project_id`.
 `omit_secrets` writes provider API keys and MCP `env` / `headers` empty and
-leaves `remote/` out. An empty `output` streams the zip as
-`attachment; filename="zwai.zwai-backup"`. A path is written by the engine, mode
-`0600`, and must be an absolute file outside the data directory.
+leaves `remote/` out. `skip_active` leaves out conversations that are still
+running: their rows, and the `inputs/`, `plans/` and `workspaces/` directory
+named with that conversation's id. The manifest then lists `omitted_threads`
+(`id`, `title`, `reason`). Those conversations keep running on this machine.
+A later full restore of this file does not bring them back. Shared project
+directories are still copied and may be mid-write. An empty `output` streams
+the zip as `attachment; filename="zwai.zwai-backup"`. A path is written by the
+engine, mode `0600`, and must be an absolute file outside the data directory.
+
+Without `skip_active`, a running conversation returns `409` `backup_busy`
+with `skippable: true` and `active` (the same `id`, `title`, `reason` fields).
+Nothing is written. Restore does not accept `skip_active`.
 
 ### `POST /api/backup/preview`
 
@@ -422,7 +431,7 @@ or the same flags as a query on an `application/octet-stream` body
 
 | status | code | meaning |
 |---|---|---|
-| 409 | `backup_busy` | a task is running, or another backup or restore has not finished |
+| 409 | `backup_busy` | a task is running, or another backup, restore, or restart has not finished. A backup response may set `skippable` and `active` so the caller can retry with `skip_active` |
 | 409 | `backup_conflict` | an identity belongs to other data; `conflicts` lists `table`, `id`, and `owner` |
 | 400 | `confirmation_required` | a full restore was not explicitly confirmed |
 | 400 | `backup_invalid` | the archive or the path cannot be used |

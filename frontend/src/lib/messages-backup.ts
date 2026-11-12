@@ -1,7 +1,7 @@
 export const backupEn = {
   "settings.nav.backup": "Backup",
   "backup.title": "Backup",
-  "backup.desc": "Save this machine's data, or put a backup back. A running task has to finish first.",
+  "backup.desc": "Save this machine's data, or put a backup back. If a task is still running, you can cancel or leave that task out of this file.",
   "backup.includeSecrets": "Include credentials",
   "backup.includeSecretsHint": "API keys, MCP secrets, and phone pairing stay in the file. Turn this off to leave them out.",
   "backup.all": "Back up all data",
@@ -23,4 +23,11 @@ export const backupEn = {
   "backup.done": "Backup written.",
   "backup.restored": "Restore finished. The app is reloading this data.",
   "backup.counts": "{projects} projects, {threads} conversations",
+  "backup.busyTitle": "Tasks are still running",
+  "backup.busyBody": "These conversations are still running, so this file will not include them. Restoring all data from this file later will not bring them back.",
+  "backup.busyCancel": "Don't back up",
+  "backup.busySkip": "Skip these tasks and back up",
+  "backup.busyTasks": "A conversation is still running. Restore waits until it finishes.",
+  "backup.busyWait": "A backup, restore, or restart is already in progress.",
+  "backup.omitted": "This backup left out conversations that were still running: {titles}. Restoring all data will not bring them back.",
 }

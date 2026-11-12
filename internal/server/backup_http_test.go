@@ -58,12 +58,55 @@ func TestBackupDownloadAndBusyTurn(t *testing.T) {
 	id := h.newThread()
 	h.json(http.MethodPost, "/api/threads/"+id+"/turns", map[string]any{"text": "look into this"}, http.StatusAccepted)
 	busy := h.json(http.MethodPost, "/api/backup/restore", map[string]any{"path": filepath.Join(t.TempDir(), "missing.zwai-backup"), "confirm": true, "replace": true}, http.StatusConflict)
-	if busy["code"] != "backup_busy" {
-		t.Fatalf("busy = %v", busy)
+	if busy["code"] != "backup_busy" || busy["skippable"] == true {
+		t.Fatalf("restore busy = %v", busy)
+	}
+	if active, _ := busy["active"].([]any); len(active) == 0 {
+		t.Fatalf("restore hid the running conversation: %v", busy)
 	}
 	stopped := h.do(http.MethodPost, "/api/threads/"+id+"/interrupt", nil)
 	stopped.Body.Close()
 	h.waitTurnDone(id)
+}
+
+func TestBackupCanSkipARunningTurn(t *testing.T) {
+	h := newHarness(t)
+	id := h.newThread()
+	h.json(http.MethodPost, "/api/threads/"+id+"/turns", map[string]any{"text": "look into this"}, http.StatusAccepted)
+	t.Cleanup(func() {
+		stopped := h.do(http.MethodPost, "/api/threads/"+id+"/interrupt", nil)
+		stopped.Body.Close()
+	})
+	out := filepath.Join(t.TempDir(), "skip.zwai-backup")
+	busy := h.json(http.MethodPost, "/api/backup", map[string]any{"kind": "full", "output": out}, http.StatusConflict)
+	if busy["code"] != "backup_busy" || busy["skippable"] != true {
+		t.Fatalf("busy = %v", busy)
+	}
+	found := false
+	for _, item := range busy["active"].([]any) {
+		row, _ := item.(map[string]any)
+		if row["id"] == id {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("active = %v", busy["active"])
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatal("refused backup wrote a file")
+	}
+	manifest := h.json(http.MethodPost, "/api/backup", map[string]any{"kind": "full", "output": out, "skip_active": true}, http.StatusOK)
+	omitted, _ := manifest["omitted_threads"].([]any)
+	if len(omitted) != 1 || omitted[0].(map[string]any)["id"] != id {
+		t.Fatalf("manifest = %v", manifest["omitted_threads"])
+	}
+	h.json(http.MethodGet, "/api/threads/"+id, nil, http.StatusOK)
+	preview := h.json(http.MethodPost, "/api/backup/preview", map[string]any{"path": out}, http.StatusOK)
+	previewManifest, _ := preview["manifest"].(map[string]any)
+	previewOmitted, _ := previewManifest["omitted_threads"].([]any)
+	if len(previewOmitted) != 1 {
+		t.Fatalf("preview = %v", previewManifest)
+	}
 }
 
 func TestBackupUploadRestoresAProjectBesideAnother(t *testing.T) {

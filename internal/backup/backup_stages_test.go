@@ -58,7 +58,7 @@ func TestStageFailuresStayOnTheFailingStep(t *testing.T) {
 		}
 	})
 	t.Run("full build stops when the snapshot cannot be read", func(t *testing.T) {
-		if _, _, cleanup, err := buildFull(ctx, closedConn(t), dir, false); err == nil {
+		if _, _, cleanup, err := buildFull(ctx, closedConn(t), dir, false, nil); err == nil {
 			if cleanup != nil {
 				cleanup()
 			}
@@ -86,7 +86,7 @@ func TestStageFailuresStayOnTheFailingStep(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer bconn.Close()
-		if _, _, _, err := buildFull(ctx, bconn, broken, false); err == nil {
+		if _, _, _, err := buildFull(ctx, bconn, broken, false, nil); err == nil {
 			t.Fatal("built with a broken config")
 		}
 	})
@@ -116,12 +116,12 @@ func TestStageFailuresStayOnTheFailingStep(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer lconn.Close()
-		if _, _, _, err := buildFull(ctx, lconn, linked, false); err == nil {
+		if _, _, _, err := buildFull(ctx, lconn, linked, false, nil); err == nil {
 			t.Fatal("built a symlink tree")
 		}
 	})
 	t.Run("project build stops on a closed database", func(t *testing.T) {
-		if _, _, _, err := buildProject(ctx, closedConn(t), dir, "pj_missing"); err == nil {
+		if _, _, _, err := buildProject(ctx, closedConn(t), dir, "pj_missing", nil); err == nil {
 			t.Fatal("built a project from a closed database")
 		}
 	})
@@ -188,7 +188,7 @@ func TestStageFailuresStayOnTheFailingStep(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = os.Remove(filepath.Join(root, "pipe")) })
-		if _, err := collectTree(dir, "inputs"); !errors.Is(err, ErrInvalid) {
+		if _, err := collectTree(dir, "inputs", nil); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("fifo: %v", err)
 		}
 	})

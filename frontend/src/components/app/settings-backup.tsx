@@ -1,8 +1,9 @@
 import { useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
-import { api, type BackupReport, type BackupRequest } from "@/lib/api"
+import { ApiError, api, type BackupReport, type BackupRequest } from "@/lib/api"
 import { chooseBackupFile, nativeBackupFileAvailable } from "@/lib/backup-file"
 import { useT } from "@/lib/use-t"
 import { useApp } from "@/store/app"
@@ -12,6 +13,25 @@ import { errorMessage, toastError } from "@/store/toasts"
 import { Field, SettingsPage, SettingsSection } from "./settings-field"
 
 type Source = { path: string; file?: undefined } | { file: File; path?: undefined }
+
+type ActiveTask = { id: string; title: string }
+
+type PendingBackup = { body: BackupRequest; name: string; tasks: ActiveTask[] }
+
+function backupActiveTasks(error: unknown): ActiveTask[] | undefined {
+  if (!(error instanceof ApiError) || error.code !== "backup_busy" || error.details?.skippable !== true) return
+  const raw = error.details.active
+  if (!Array.isArray(raw)) return
+  const tasks: ActiveTask[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue
+    const row = item as { id?: unknown; title?: unknown }
+    if (typeof row.id !== "string" || row.id === "") continue
+    const title = typeof row.title === "string" && row.title.trim() !== "" ? row.title : row.id
+    tasks.push({ id: row.id, title })
+  }
+  return tasks.length > 0 ? tasks : undefined
+}
 
 function downloadBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob)
@@ -30,6 +50,7 @@ export function BackupTab({ query }: { query: string }) {
   const [report, setReport] = useState<BackupReport>()
   const [source, setSource] = useState<Source>()
   const [note, setNote] = useState("")
+  const [choice, setChoice] = useState<PendingBackup>()
   const fileRef = useRef<HTMLInputElement>(null)
   const desktop = nativeBackupFileAvailable()
 
@@ -39,6 +60,11 @@ export function BackupTab({ query }: { query: string }) {
     try {
       await work()
     } catch (error) {
+      if (error instanceof ApiError && error.code === "backup_busy") {
+        const active = error.details?.active
+        toastError(Array.isArray(active) && active.length > 0 ? t("backup.busyTasks") : t("backup.busyWait"))
+        return
+      }
       toastError(errorMessage(error))
     } finally {
       setBusy(false)
@@ -46,17 +72,28 @@ export function BackupTab({ query }: { query: string }) {
   }
 
   const writeBackup = (body: BackupRequest, name: string) => run(async () => {
-    if (desktop) {
+    let request = body
+    if (desktop && !request.output) {
       const output = await chooseBackupFile("save", {
         title: t("backup.saveTitle"),
         buttonText: t("backup.saveButton"),
         filename: name,
       })
       if (!output) return
-      await api.backupCreate({ ...body, output })
-    } else {
-      downloadBlob(await api.backupDownload(body), name)
+      request = { ...request, output }
     }
+    try {
+      if (desktop) await api.backupCreate(request)
+      else downloadBlob(await api.backupDownload(request), name)
+    } catch (error) {
+      const tasks = backupActiveTasks(error)
+      if (tasks) {
+        setChoice({ body: request, name, tasks })
+        return
+      }
+      throw error
+    }
+    setChoice(undefined)
     setNote(t("backup.done"))
   })
 
@@ -89,6 +126,7 @@ export function BackupTab({ query }: { query: string }) {
       ? t("backup.confirmReplace")
       : t("backup.confirmAdd")
   const paths = report?.manifest.external_workdirs?.map((row) => row.path).join(", ") ?? ""
+  const omitted = report?.manifest.omitted_threads?.map((row) => row.title || row.id).join(", ") ?? ""
 
   return (
     <SettingsPage title={t("backup.title")} description={t("backup.desc")}>
@@ -159,6 +197,7 @@ export function BackupTab({ query }: { query: string }) {
             })}</p>
             <p>{report.manifest.includes_secrets ? t("backup.secretsYes") : t("backup.secretsNo")}</p>
             {paths ? <p>{t("backup.external", { paths })}</p> : null}
+            {omitted ? <p>{t("backup.omitted", { titles: omitted })}</p> : null}
             {report.action === "blocked" ? <p role="alert">{t("backup.conflicts")}</p> : (
               <Button type="button" disabled={busy} onClick={confirm}>{confirmLabel}</Button>
             )}
@@ -166,6 +205,35 @@ export function BackupTab({ query }: { query: string }) {
         ) : null}
         {note ? <p className="px-4 pb-3 text-sm" role="status">{note}</p> : null}
       </SettingsSection>
+      <Dialog open={choice !== undefined} onOpenChange={(open) => { if (!open) setChoice(undefined) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("backup.busyTitle")}</DialogTitle>
+            <DialogDescription>{t("backup.busyBody")}</DialogDescription>
+          </DialogHeader>
+          <ul className="max-h-40 overflow-auto text-sm">
+            {choice?.tasks.map((task) => <li key={task.id}>{task.title}</li>)}
+          </ul>
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={busy} onClick={() => setChoice(undefined)}>
+              {t("backup.busyCancel")}
+            </Button>
+            <Button
+              type="button"
+              disabled={busy || !choice}
+              onClick={() => {
+                if (!choice) return
+                const next = { ...choice.body, skip_active: true }
+                const name = choice.name
+                setChoice(undefined)
+                writeBackup(next, name)
+              }}
+            >
+              {t("backup.busySkip")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </SettingsPage>
   )
 }

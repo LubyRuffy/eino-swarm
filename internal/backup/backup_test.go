@@ -675,3 +675,92 @@ func writeZip(t *testing.T, path string, fill func(*zip.Writer)) {
 		t.Fatal(err)
 	}
 }
+
+func TestFullBackupLeavesOutTheNamedConversation(t *testing.T) {
+	src := seed(t)
+	out := filepath.Join(t.TempDir(), "omit.zwai-backup")
+	sqlDB, err := src.st.DB().DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := Create(context.Background(), Options{
+		DataDir: src.dir, DB: sqlDB, Kind: KindFull, Output: out,
+		OmitThreads: []OmittedThread{{ID: src.thread.ID, Title: src.thread.Title, Reason: ReasonRunning}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Counts.Threads != 1 || manifest.Counts.Projects != 2 || len(manifest.OmittedThreads) != 1 || manifest.OmittedThreads[0].ID != src.thread.ID {
+		t.Fatalf("manifest %+v", manifest)
+	}
+	if archiveHas(t, out, "workspace-out") || archiveHas(t, out, "plan-body") || archiveHas(t, out, "image-bytes") {
+		t.Fatal("omitted conversation files were copied")
+	}
+	if !archiveHas(t, out, "standalone-body") || !archiveHas(t, out, "memory-alpha") {
+		t.Fatal("backup dropped data that was not part of the running conversation")
+	}
+	if _, err := src.st.GetThread(src.thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	if readText(t, filepath.Join(src.cfg.WorkspaceDir(src.thread.ID), "out.txt")) != "workspace-out" {
+		t.Fatal("creating the backup changed the live workspace")
+	}
+	destDir := t.TempDir()
+	if _, err := config.Load(destDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Restore(context.Background(), RestoreOptions{DataDir: destDir, Path: out, Confirm: true, Replace: true}); err != nil {
+		t.Fatal(err)
+	}
+	dest, err := store.Open(filepath.Join(destDir, "zwai.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = dest.Close() })
+	if _, err := dest.GetThread(src.thread.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("omitted thread restored: %v", err)
+	}
+	if _, err := dest.GetThread(src.standalone.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(destDir, "workspaces", src.thread.ID, "out.txt")); !os.IsNotExist(err) {
+		t.Fatalf("omitted workspace restored: %v", err)
+	}
+}
+
+func TestProjectBackupLeavesOutOnlyThatConversation(t *testing.T) {
+	src := seed(t)
+	out := filepath.Join(t.TempDir(), "project.zwai-backup")
+	sqlDB, err := src.st.DB().DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := Create(context.Background(), Options{
+		DataDir: src.dir, DB: sqlDB, Kind: KindProject, ProjectID: src.project.ID, Output: out,
+		OmitThreads: []OmittedThread{{ID: src.thread.ID, Title: src.thread.Title, Reason: ReasonRunning}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Counts.Projects != 1 || manifest.Counts.Threads != 0 || len(manifest.OmittedThreads) != 1 {
+		t.Fatalf("manifest %+v", manifest)
+	}
+	if archiveHas(t, out, "workspace-out") || !archiveHas(t, out, "memory-alpha") {
+		t.Fatal("project backup kept the running conversation or dropped the project")
+	}
+	if _, err := src.st.GetThread(src.thread.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOmitThreadsRejectsABadID(t *testing.T) {
+	if err := omitThreads(context.Background(), nil, "snap", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := omitThreads(context.Background(), nil, "snap", []string{"../x"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("id err = %v", err)
+	}
+	if err := omitThreads(context.Background(), nil, "not a schema", []string{"th_ok"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("schema err = %v", err)
+	}
+}

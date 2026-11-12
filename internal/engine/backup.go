@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/backup"
@@ -12,9 +14,23 @@ import (
 )
 
 // ErrBackupBusy means a turn, a schedule fire, a restart, or another backup
-// still owns the data directory. The caller retries after that work finishes;
-// nothing was written or replaced.
+// still owns the data directory. Nothing was written or replaced.
+// A backup can be retried with SkipActive when BackupBusy.Skippable is set:
+// those conversations are left out of the archive and keep running.
+// Restore, restart, and another transfer cannot be skipped.
 var ErrBackupBusy = errors.New("engine: a backup or restore is already running, or a task is still active")
+
+// BackupBusy is ErrBackupBusy plus the conversations a backup can leave out.
+type BackupBusy struct {
+	Active []backup.OmittedThread
+	// Skippable is true only when the blocker is those conversations.
+	// A restart, a restore, or another transfer leaves it false.
+	Skippable bool
+}
+
+func (e *BackupBusy) Error() string { return ErrBackupBusy.Error() }
+
+func (e *BackupBusy) Unwrap() error { return ErrBackupBusy }
 
 // RejectIfBackup refuses a mutation while a backup or restore holds the
 // data directory. Startup recovery has its own error.
@@ -36,17 +52,32 @@ func (e *Engine) DataGeneration() (int64, error) {
 // holdBackup is the exclusive section for writing or replacing data.
 // The scheduler is paused only when it was already running, and it stays
 // paused until release so parked-worker recovery finishes first.
-func (e *Engine) holdBackup() (func(), error) {
-	if e.ActiveWork() > 0 {
-		return nil, ErrBackupBusy
-	}
+// skipActive lets a backup proceed while conversations are still running.
+// Those conversations are returned so the snapshot can leave them out.
+// Restore passes false: a full restore would otherwise delete them.
+func (e *Engine) holdBackup(skipActive bool) (func(), []backup.OmittedThread, error) {
 	if err := e.RequireReady(); err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	if busy, err := e.backupTransferBusy(); busy || err != nil {
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, nil, &BackupBusy{}
 	}
 	e.mu.Lock()
-	if e.backupRunning || e.restart.freezing || e.startupRestoring {
+	held := e.backupRunning
+	e.mu.Unlock()
+	if held {
+		return nil, nil, &BackupBusy{}
+	}
+	if active := e.backupActiveThreads(); len(active) > 0 && !skipActive {
+		return nil, nil, &BackupBusy{Active: active, Skippable: true}
+	}
+	e.mu.Lock()
+	if e.backupRunning || e.restart.freezing || e.startupRestoring || e.restart.status.Stage != "" {
 		e.mu.Unlock()
-		return nil, ErrBackupBusy
+		return nil, nil, &BackupBusy{}
 	}
 	// New turns fail at beginLifecycleAdmission. An admission that already
 	// entered is only listing or starting work, so wait for that call to
@@ -55,11 +86,19 @@ func (e *Engine) holdBackup() (func(), error) {
 	e.mu.Unlock()
 	if err := e.waitBackupAdmissions(); err != nil {
 		e.finishBackup(false)
-		return nil, err
+		return nil, nil, err
 	}
-	if e.ActiveWork() > 0 {
+	if busy, err := e.backupTransferBusy(); busy || err != nil {
 		e.finishBackup(false)
-		return nil, ErrBackupBusy
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, nil, &BackupBusy{}
+	}
+	active := e.backupActiveThreads()
+	if len(active) > 0 && !skipActive {
+		e.finishBackup(false)
+		return nil, nil, &BackupBusy{Active: active, Skippable: true}
 	}
 
 	e.schedMu.Lock()
@@ -68,7 +107,67 @@ func (e *Engine) holdBackup() (func(), error) {
 	if wasRunning {
 		e.StopScheduler()
 	}
-	return func() { e.finishBackup(wasRunning) }, nil
+	var omitted []backup.OmittedThread
+	if skipActive {
+		omitted = active
+	}
+	return func() { e.finishBackup(wasRunning) }, omitted, nil
+}
+
+// backupTransferBusy is a restart, a restore, or startup recovery.
+// Those cannot be left out of a snapshot: the process is already replacing
+// the data directory. backupRunning is not included; the caller holds it.
+func (e *Engine) backupTransferBusy() (bool, error) {
+	if err := e.RequireReady(); err != nil {
+		return false, err
+	}
+	e.mu.Lock()
+	busy := e.restart.freezing || e.startupRestoring || e.restart.status.Stage != ""
+	e.mu.Unlock()
+	return busy, nil
+}
+
+// backupActiveThreads is every conversation whose turn or workers are still
+// in this process. A future wake is not one of them. The list is what a
+// backup can leave out; it is not a reason to stop the conversation.
+func (e *Engine) backupActiveThreads() []backup.OmittedThread {
+	var out []backup.OmittedThread
+	for _, rt := range e.snapshotRuntimes() {
+		st := rt.status()
+		if !st.Running && st.Workers == 0 {
+			continue
+		}
+		reason := backup.ReasonRunning
+		if st.AwaitingAnswer {
+			reason = backup.ReasonAsking
+		} else if !st.Running {
+			reason = backup.ReasonWorkers
+		}
+		out = append(out, backup.OmittedThread{
+			ID:     st.ThreadID,
+			Title:  e.backupThreadTitle(st.ThreadID),
+			Reason: reason,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+func (e *Engine) backupThreadTitle(id string) string {
+	title := id
+	if e.store != nil {
+		if thread, err := e.store.GetThread(id); err == nil {
+			title = strings.Join(strings.Fields(thread.Title), " ")
+		}
+	}
+	if title == "" {
+		return id
+	}
+	runes := []rune(title)
+	if len(runes) > 200 {
+		return string(runes[:200])
+	}
+	return title
 }
 
 func (e *Engine) waitBackupAdmissions() error {
@@ -105,7 +204,7 @@ func (e *Engine) openPool() (*sql.DB, error) {
 
 // BackupData writes one archive through the engine's open database.
 func (e *Engine) BackupData(ctx context.Context, opt backup.Options) (backup.Manifest, error) {
-	release, err := e.holdBackup()
+	release, omitted, err := e.holdBackup(opt.SkipActive)
 	if err != nil {
 		return backup.Manifest{}, err
 	}
@@ -116,6 +215,13 @@ func (e *Engine) BackupData(ctx context.Context, opt backup.Options) (backup.Man
 	}
 	opt.DataDir = e.cfg.DataDir()
 	opt.DB = db
+	// The caller names a choice, not a list of conversations. Only the
+	// threads still running inside this hold are left out of the snapshot.
+	if opt.SkipActive {
+		opt.OmitThreads = omitted
+	} else {
+		opt.OmitThreads = nil
+	}
 	return backup.Create(ctx, opt)
 }
 
@@ -139,7 +245,7 @@ func (e *Engine) PreviewBackup(ctx context.Context, path string) (backup.Report,
 // what the process cached from the old files. A parked-worker recovery that
 // cannot resume is logged; the restored data stays.
 func (e *Engine) RestoreBackup(ctx context.Context, opt backup.RestoreOptions) (backup.Manifest, error) {
-	release, err := e.holdBackup()
+	release, _, err := e.holdBackup(false)
 	if err != nil {
 		return backup.Manifest{}, err
 	}

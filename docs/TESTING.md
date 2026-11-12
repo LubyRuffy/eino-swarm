@@ -4962,12 +4962,14 @@ python3 tools/model_check.py --fetch ios-startup-current ios-startup-sync-prompt
 
 `models/backup/DataBackup.tla` checks the backup and restore state machine, not
 SQLite and not the rest of the engine. The current case keeps three properties:
-a backup or restore cannot start while work is active or another transfer is
-unfinished; a failed full restore leaves the generation unchanged and the
-snapshot restored; a project restore cannot write an identity another project
-holds. `AllowWhileBusy`, `SkipRollback`, and `AllowForeignIdentity` each remove
-one of those guards, and TLC must find that case. `NeverCommitted` is a witness
-that a successful restore is reachable. `make model-check` includes the cases.
+a restore cannot start while work is active, and a backup can start then only
+by recording that work as omitted from the snapshot; a failed full restore
+leaves the generation unchanged and the snapshot restored; a project restore
+cannot write an identity another project holds. `AllowWhileBusy`,
+`SkipRollback`, and `AllowForeignIdentity` each remove one of those guards,
+and TLC must find that case. `NeverCommitted` is a witness that a successful
+restore is reachable. `NeverOmitted` is a witness that a backup can leave
+running work out of the snapshot. `make model-check` includes the cases.
 
 ## Lifecycle protocol model (opt-in, `C-001` / `C-027`)
 

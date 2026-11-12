@@ -12,13 +12,13 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 ## C-044 A backup replaces data only while the engine is idle
 
 - 状态 active。范围是本机数据目录的整库备份／还原和一个项目的备份／加入／替换。关联 `F-422`。手机 `localStorage` 里的直连对话、手机 API key 和配对私钥不在备份里。
-- 备份、整库还原和项目还原都要求没有活跃任务，并且不在 restoring、restarting 或另一次备份／还原中。进行中的操作返回 `409`，代码 `backup_busy`，数据不变。日程触发在操作期间暂停。
+- 还原、重启、恢复中，或另一次备份／还原未结束时，不能开始备份或还原。进行中的操作返回 `409`，代码 `backup_busy`，数据不变。有对话仍在运行时，备份同样返回这个代码，并列出这些对话（`active`：`id`、`title`、`reason`）。调用方可以不备份，也可以用 `skip_active` 继续：新的回合和日程触发先停住，当时仍在运行的对话不写入这份归档（该对话的库行，以及 `inputs/`、`plans/`、`workspaces/` 下以其 id 为名的目录），清单写入 `omitted_threads`。这些对话在本机继续运行，不被中断。整库还原这份归档不会把它们带回来。项目目录、女娲记录和其它对话按快照复制；被跳过的对话如果正在写共享的项目目录，这些文件可能不完整。还原不能跳过正在运行的对话。日程触发在备份或还原期间暂停。
 - 整库还原必须显式确认。先在同卷留下当前库和相关目录的快照，再在现有 SQLite 连接上替换用户表，不关闭数据库、不释放引擎租约。然后替换文件。任一步失败，库和文件回到快照。进程在提交之后、改名完成之前退出时，这次还原不保证原子。
 - 项目还原默认加入：备份中的项目、对话、日程和女娲身份在本机都不存在时整包插入。目标项目已存在时，只有显式替换才先删除该项目由 zwai 创建的库行和目录，再写入备份；用户自选的外部工作目录不删除，也不在目录缺失时改指向另一个目录。任一身份属于别的项目或独立对话时整次拒绝，代码 `backup_conflict`，不改写这些身份，也不合并 `MEMORY.md`。数据库和该项目的文件一起成功或一起退回。
 - `--omit-secrets` 或不勾选凭据时，备份里的 API key、MCP 秘密写空，并且不含 `remote/`。还原这种备份时，用目标机器上已有的非空 API key、MCP 秘密覆盖备份里的空值，并保留目标机器的 `remote/`。目标机器从未保存过配置时，空配置是成功，不是错误。
 - 成功还原把数据目录外的单调 `data-generation` 加一。该文件不进入备份，旧备份不能把它倒拨。`GET /api/meta` 返回 `data_generation`。桌面和 Web 看到变化后重新加载。手机在同一次连接的轮询里发现代际变化后清空已加载对话列表再拉第一页；第一次读到的数字只作为基线。
 - 不进入备份：`engine.lock`、`engine.json`、`engine.log`、`diagnostics/`、`releases/`、`ios-signing/`、WAL／SHM、`data-generation`。用户自选的外部 `workdir` 只记录路径。无项目的独立对话只随整库备份迁移。
-- 实现 `internal/backup`。验证 `internal/backup/backup_test.go`、`internal/engine/backup_test.go`、`internal/server/backup_http_test.go`、`models/backup/DataBackup.tla`。有界模型只检查这个状态机：有活跃工作不能进入备份或还原，整库失败不改变代际且快照已恢复，项目还原不能写入另一个项目持有的身份。来源：GitHub Issue #164。
+- 实现 `internal/backup`。验证 `internal/backup/backup_test.go`、`internal/engine/backup_test.go`、`internal/server/backup_http_test.go`、`frontend/src/components/app/settings-backup.test.tsx`、`models/backup/DataBackup.tla`。有界模型只检查这个状态机：还原不能在有活跃工作时进入；备份只有在把这些工作标成已跳过时才能在它们仍活跃时进入，否则违反 `RestoringImpliesIdle`。整库失败不改变代际且快照已恢复。项目还原不能写入另一个项目持有的身份。来源：GitHub Issue #164。
 
 ## C-043 External skill packages have an independent catalog
 

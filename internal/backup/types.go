@@ -36,8 +36,27 @@ var ErrConfirm = errors.New("backup: confirmation required")
 // Kind is a full data-directory backup or one project.
 type Kind string
 
+// Why a conversation was left out of one archive. The values travel in the
+// manifest and in the 409 body, so renaming one is a wire change.
+const (
+	ReasonRunning = "running"
+	ReasonAsking  = "asking"
+	ReasonWorkers = "workers"
+)
+
+// OmittedThread is a conversation that was still running when this archive
+// was written. The archive does not contain it. A later full restore of
+// this file will not bring it back.
+type OmittedThread struct {
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Reason string `json:"reason,omitempty"`
+}
+
 // Options selects what Create writes. DB is the engine's open pool when the
 // engine is running; a nil DB opens the data directory's database and closes it.
+// SkipActive is not read here. The engine turns that choice into OmitThreads
+// after it has seen which conversations are actually running.
 type Options struct {
 	DataDir     string
 	DB          *sql.DB
@@ -45,6 +64,8 @@ type Options struct {
 	ProjectID   string
 	OmitSecrets bool
 	Output      string
+	SkipActive  bool
+	OmitThreads []OmittedThread
 }
 
 // ExternalWorkdir is a project path the archive records and does not copy.
@@ -72,6 +93,7 @@ type Manifest struct {
 	IncludesSecrets  bool              `json:"includes_secrets"`
 	ProjectID        string            `json:"project_id,omitempty"`
 	ExternalWorkdirs []ExternalWorkdir `json:"external_workdirs,omitempty"`
+	OmittedThreads   []OmittedThread   `json:"omitted_threads,omitempty"`
 	Counts           Counts            `json:"counts"`
 	SHA256           map[string]string `json:"sha256"`
 }

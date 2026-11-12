@@ -14,9 +14,13 @@ import (
 // counter; those stay put so a restore cannot rewind them or drop the lease.
 var fullTrees = []string{"inputs", "plans", "workspaces", "library", "projects"}
 
-func collectTree(dataDir, rel string) ([]zipItem, error) {
+func collectTree(dataDir, rel string, skip map[string]struct{}) ([]zipItem, error) {
 	if err := failNext(); err != nil {
 		return nil, err
+	}
+	rel = filepath.ToSlash(rel)
+	if skippedThreadPath(rel, skip) {
+		return nil, nil
 	}
 	root := filepath.Join(dataDir, filepath.FromSlash(rel))
 	info, err := os.Lstat(root)
@@ -34,6 +38,23 @@ func collectTree(dataDir, rel string) ([]zipItem, error) {
 		if err != nil {
 			return err
 		}
+		itemRel, err := filepath.Rel(dataDir, path)
+		if err != nil {
+			return err
+		}
+		itemRel = filepath.ToSlash(itemRel)
+		if itemRel == "." || strings.HasPrefix(itemRel, "../") {
+			return invalidf("path %s", itemRel)
+		}
+		// A conversation left out of the snapshot must not contribute a
+		// half-written workspace either. Skip the directory before a
+		// symlink inside it can fail the rest of the archive.
+		if skippedThreadPath(itemRel, skip) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		info, err := d.Info()
 		if err != nil {
 			return err
@@ -43,14 +64,6 @@ func collectTree(dataDir, rel string) ([]zipItem, error) {
 		}
 		if !info.IsDir() && !info.Mode().IsRegular() {
 			return invalidf("unsupported file %s", path)
-		}
-		itemRel, err := filepath.Rel(dataDir, path)
-		if err != nil {
-			return err
-		}
-		itemRel = filepath.ToSlash(itemRel)
-		if itemRel == "." || strings.HasPrefix(itemRel, "../") {
-			return invalidf("path %s", itemRel)
 		}
 		name := filesPrefix + itemRel
 		if info.IsDir() {
@@ -64,6 +77,39 @@ func collectTree(dataDir, rel string) ([]zipItem, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+// skippedThreadPath is a conversation's own inputs, plan or workspace.
+// Project directories stay: they are shared with conversations that are
+// still written into the archive.
+func skippedThreadPath(rel string, skip map[string]struct{}) bool {
+	if len(skip) == 0 {
+		return false
+	}
+	parts := strings.Split(rel, "/")
+	if len(parts) < 2 {
+		return false
+	}
+	switch parts[0] {
+	case "inputs", "plans", "workspaces":
+		_, ok := skip[parts[1]]
+		return ok
+	default:
+		return false
+	}
+}
+
+func skipSet(threads []OmittedThread) map[string]struct{} {
+	if len(threads) == 0 {
+		return nil
+	}
+	out := make(map[string]struct{}, len(threads))
+	for _, thread := range threads {
+		if thread.ID != "" {
+			out[thread.ID] = struct{}{}
+		}
+	}
+	return out
 }
 
 type fileSnap struct {

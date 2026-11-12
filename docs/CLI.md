@@ -7,7 +7,7 @@ zwai engine [--addr HOST:PORT] [--data-dir DIR] [--mock]
 zwai tui  [--task "..."] [--goal "..."] [--plan "..."] [--model NAME] [--reasoning LEVEL] [--workspace DIR] [--data-dir DIR] [--mock]
 zwai trace <turn-id|conversation-id> [--full] [--data-dir DIR]
 zwai config [path|init|show] [--data-dir DIR]
-zwai backup --output FILE [--project ID] [--omit-secrets] [--data-dir DIR]
+zwai backup --output FILE [--project ID] [--omit-secrets] [--skip-active] [--data-dir DIR]
 zwai restore FILE [--replace | --replace-project] [--data-dir DIR]
 zwai version | help
 ```
@@ -420,14 +420,18 @@ raw response bodies and graph paths, masks credentials, and bounds the cause.
 ## `zwai backup` and `zwai restore`
 
 ```
-zwai backup --output FILE [--project ID] [--omit-secrets] [--data-dir DIR]
+zwai backup --output FILE [--project ID] [--omit-secrets] [--skip-active] [--data-dir DIR]
 zwai restore FILE [--replace | --replace-project] [--data-dir DIR]
 ```
 
 `backup` writes every local conversation, project, config, and generated file
 into `FILE`. `--project` writes only that project. `--omit-secrets` leaves API
-keys and MCP secrets empty and omits `remote/`. The output has to be an
-absolute path outside the data directory. The file mode is `0600`.
+keys and MCP secrets empty and omits `remote/`. `--skip-active` leaves out
+conversations that are still running, including their `inputs/`, `plans/` and
+`workspaces/` directories, and records them in the manifest. They keep running
+on this machine. A later full restore of that file does not bring them back.
+The output has to be an absolute path outside the data directory. The file
+mode is `0600`.
 
 `restore` puts that file back. A full backup replaces the data directory and
 needs `--replace`; without it the command prints a preview and exits `2`. A
@@ -438,10 +442,11 @@ exist on this machine.
 
 When an engine is running, both commands call that engine and do not open
 `zwai.db` themselves. When it is stopped, this process takes the lease and uses
-the same package. A running task returns an error and leaves the data as it was.
+the same package. A running task makes `backup` return an error unless
+`--skip-active` is set. `restore` still waits until nothing is running.
 Copying the data directory is still valid while the engine is stopped; prefer
-these commands while it is running, because they wait until it is idle and
-take a consistent database snapshot.
+these commands while it is running, because they take a consistent database
+snapshot and can leave a running conversation out of that snapshot.
 
 ## `zwai config`
 

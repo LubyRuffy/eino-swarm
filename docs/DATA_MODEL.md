@@ -888,7 +888,10 @@ $ZWAI_HOME (default ~/.zwai-swarm)/
 `data-generation` is a decimal integer, mode `0600`. It starts absent, which
 clients read as `0`. Each committed restore writes the next value by renaming
 a temporary file. The file is not copied into a `.zwai-backup` archive, so
-restoring an older backup cannot move the count backwards. See `C-044`.
+restoring an older backup cannot move the count backwards. A backup taken
+while conversations are still running can omit those conversations and their
+`inputs/`, `plans/` and `workspaces/` directories; the manifest lists them in
+`omitted_threads`. The live rows and files stay. See `C-044`.
 
 `engine.lock` is an `flock` held by the one process that may open
 `zwai.db`. `engine.json` is rewritten atomically when that process starts

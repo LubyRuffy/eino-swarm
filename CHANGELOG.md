@@ -8,6 +8,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Changed
 
+- Backup asks when a conversation is still running. You can cancel, or leave
+  those conversations out of this file and continue. They keep running on
+  this machine. A later restore of the whole file does not bring them back.
+  Restore, restart, and another backup still wait. `zwai backup` takes
+  `--skip-active` for the same choice. (`F-422`, `C-044`)
+
 - Settings no longer shows the configured server, the self-hosted connection
   editor, the local-agent configuration page, or the config-file path in the
   lower left. Phone sign-in, pairing QR, bound phones and keep-awake stay.

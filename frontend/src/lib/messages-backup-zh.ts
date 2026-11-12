@@ -1,7 +1,7 @@
 export const backupZh = {
   "settings.nav.backup": "备份",
   "backup.title": "备份",
-  "backup.desc": "保存这台机器上的数据，或把一份备份放回来。正在进行的任务要先结束。",
+  "backup.desc": "保存这台机器上的数据，或把一份备份放回来。有任务还在进行时，可以不备份，也可以跳过这些任务继续备份。",
   "backup.includeSecrets": "包含凭据",
   "backup.includeSecretsHint": "API key、MCP 秘密和手机配对会写入文件。取消后这些内容留空。",
   "backup.noProject": "先在侧栏选中一个项目。",
@@ -23,4 +23,11 @@ export const backupZh = {
   "backup.done": "备份已写好。",
   "backup.restored": "还原完成。正在重新加载这份数据。",
   "backup.counts": "{projects} 个项目，{threads} 个对话",
+  "backup.busyTitle": "有任务还在进行",
+  "backup.busyBody": "这些对话还在进行，不会写入这份备份。以后用这份文件做整库还原，也带不回它们。",
+  "backup.busyCancel": "不备份",
+  "backup.busySkip": "跳过这些任务并备份",
+  "backup.busyTasks": "有对话还在进行。还原要等它结束。",
+  "backup.busyWait": "正在备份、还原或重启，请等它结束。",
+  "backup.omitted": "这份备份跳过了当时还在进行的对话：{titles}。整库还原不会带回它们。",
 }

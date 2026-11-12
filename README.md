@@ -1420,8 +1420,11 @@ engines without this API use bounded compatibility recovery. See
 ```
 
 Settings → Backup writes a `.zwai-backup` file, and `zwai backup` /
-`zwai restore` do the same thing from the command line. Use that while the app
-is running. Copying this directory still works when the engine is stopped.
+`zwai restore` do the same thing from the command line. If a conversation is
+still running, the page lets you cancel or leave that conversation out of
+this file; `zwai backup --skip-active` is the same choice. Restore waits
+until nothing is running. Use these commands while the app is running.
+Copying this directory still works when the engine is stopped.
 See [docs/CLI.md](docs/CLI.md).
 
 Deleting a conversation deletes its workspace when zwai created it; a

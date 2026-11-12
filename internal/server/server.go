@@ -303,7 +303,17 @@ func (s *Server) fail(c *gin.Context, err error) {
 		s.missingRecord(c, "not_found", "The requested record was not found. Refresh and try again.",
 			gin.H{"record_id": c.Param("id")})
 	case errors.Is(err, engine.ErrBackupBusy):
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "backup_busy"})
+		body := gin.H{"error": err.Error(), "code": "backup_busy"}
+		var busy *engine.BackupBusy
+		if errors.As(err, &busy) && busy != nil && len(busy.Active) > 0 {
+			body["active"] = busy.Active
+			// Only a backup can leave those conversations out. Restore
+			// would delete them from the machine, so it stays idle-only.
+			if busy.Skippable && c.FullPath() == "/api/backup" {
+				body["skippable"] = true
+			}
+		}
+		c.JSON(http.StatusConflict, body)
 	case errors.Is(err, backup.ErrConflict):
 		body := gin.H{"error": err.Error(), "code": "backup_conflict"}
 		if conflicts := backup.ConflictsOf(err); len(conflicts) > 0 {

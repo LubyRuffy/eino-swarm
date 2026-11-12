@@ -20,6 +20,7 @@ type backupRequest struct {
 	ProjectID   string `json:"project_id"`
 	OmitSecrets bool   `json:"omit_secrets"`
 	Output      string `json:"output"`
+	SkipActive  bool   `json:"skip_active"`
 }
 
 type restoreRequest struct {
@@ -55,6 +56,7 @@ func (s *Server) postBackup(c *gin.Context) {
 		ProjectID:   req.ProjectID,
 		OmitSecrets: req.OmitSecrets,
 		Output:      output,
+		SkipActive:  req.SkipActive,
 	})
 	if err != nil {
 		s.fail(c, err)

@@ -65,7 +65,7 @@ func TestSmallFailuresCoverTheRemainingChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(parent, 0o755) })
-	if _, err := collectTree(parent, "child"); err == nil {
+	if _, err := collectTree(parent, "child", nil); err == nil {
 		t.Fatal("read a directory without permission")
 	}
 	link := filepath.Join(t.TempDir(), "link")
@@ -432,10 +432,10 @@ func TestFileSnapshotRestoreAndRejectedTrees(t *testing.T) {
 	if err := os.Symlink(t.TempDir(), link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := collectTree(dir, "library"); !errors.Is(err, ErrInvalid) {
+	if _, err := collectTree(dir, "library", nil); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("symlink tree: %v", err)
 	}
-	if items, err := collectTree(dir, "does-not-exist"); err != nil || items != nil {
+	if items, err := collectTree(dir, "does-not-exist", nil); err != nil || items != nil {
 		t.Fatalf("missing tree %+v %v", items, err)
 	}
 	fifoDir := filepath.Join(dir, "plans")

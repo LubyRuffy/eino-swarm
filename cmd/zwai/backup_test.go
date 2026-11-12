@@ -47,10 +47,10 @@ func TestBackupCommandUsesTheRunningEngine(t *testing.T) {
 	}
 	out := filepath.Join(t.TempDir(), "out.zwai-backup")
 	var stdout, stderr bytes.Buffer
-	if code := dispatch([]string{"backup", "--data-dir", abs, "--output", out, "--omit-secrets"}, &stdout, &stderr); code != 0 {
+	if code := dispatch([]string{"backup", "--data-dir", abs, "--output", out, "--omit-secrets", "--skip-active"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("code %d stderr %s", code, stderr.String())
 	}
-	if seen["output"] != out || seen["omit_secrets"] != true {
+	if seen["output"] != out || seen["omit_secrets"] != true || seen["skip_active"] != true {
 		t.Fatalf("request = %v", seen)
 	}
 	if _, err := os.Stat(filepath.Join(abs, "zwai.db")); !os.IsNotExist(err) {

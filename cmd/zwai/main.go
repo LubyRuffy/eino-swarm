@@ -158,8 +158,8 @@ usage:
   zwai config [path|init|show] [--data-dir DIR]
         where the configuration lives, and what is in it (default: show)
 
-  zwai backup --output FILE [--project ID] [--omit-secrets] [--data-dir DIR]
-        write a backup of all local data, or of one project
+  zwai backup --output FILE [--project ID] [--omit-secrets] [--skip-active] [--data-dir DIR]
+        write a backup of all local data, or of one project; --skip-active leaves running conversations out
 
   zwai restore FILE [--replace | --replace-project] [--data-dir DIR]
         put a backup back; --replace is required for all data
