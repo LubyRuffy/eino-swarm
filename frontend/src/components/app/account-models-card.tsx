@@ -1,3 +1,9 @@
+import { useState } from "react"
+
+import { Button } from "@/components/ui/button"
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
 import { SelectItem } from "@/components/ui/select"
 import { accountKindTally, accountModelsProblem, officialModelLock, type AccountKindKey } from "@/lib/account-models"
 import type { MessageKey } from "@/lib/i18n"
@@ -21,6 +27,7 @@ export function AccountModelsCard({
   query?: string
 }) {
   const t = useT()
+  const [leaveOfficial, setLeaveOfficial] = useState(false)
   const account = useApp((s) => s.meta?.account_models)
   const problem = accountModelsProblem(account)
   const ready = account?.state === "ready"
@@ -29,6 +36,18 @@ export function AccountModelsCard({
   const source = settings.models.default_source ?? "account"
   const officialOnly = officialModelLock(account)
   const presentation = settings.models.account_presentation === "full" ? "full" : "official"
+  const choosePresentation = (next: string) => {
+    const value = next === "full" ? "full" : "official"
+    if (value === presentation) return
+    if (value === "full") {
+      setLeaveOfficial(true)
+      return
+    }
+    onChange({
+      ...settings,
+      models: { ...settings.models, account_presentation: value },
+    })
+  }
   const kindText: Record<AccountKindKey, MessageKey> = {
     chat: "accountModels.kind.chat",
     unclassified: "accountModels.kind.unclassified",
@@ -62,18 +81,38 @@ export function AccountModelsCard({
           label={t("accountModels.presentationTitle")}
           value={presentation}
           ariaLabel={t("accountModels.presentationTitle")}
-          onValueChange={(next) =>
-            onChange({
-              ...settings,
-              models: {
-                ...settings.models,
-                account_presentation: next === "full" ? "full" : "official",
-              },
-            })}
+          onValueChange={choosePresentation}
         >
           <SelectItem value="official">{t("accountModels.presentationOfficial")}</SelectItem>
           <SelectItem value="full">{t("accountModels.presentationFull")}</SelectItem>
         </SettingsChoice>
+      ) : null}
+      {leaveOfficial ? (
+        <Dialog open onOpenChange={setLeaveOfficial}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>{t("accountModels.presentationLeaveTitle")}</DialogTitle>
+              <DialogDescription>{t("accountModels.presentationLeaveBody")}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setLeaveOfficial(false)}>
+                {t("accountModels.presentationLeaveCancel")}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  setLeaveOfficial(false)
+                  onChange({
+                    ...settings,
+                    models: { ...settings.models, account_presentation: "full" },
+                  })
+                }}
+              >
+                {t("accountModels.presentationLeaveConfirm")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       ) : null}
       {ready && ownReady && !officialOnly ? (
         <SettingsChoice

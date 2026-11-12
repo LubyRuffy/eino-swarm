@@ -82,7 +82,8 @@ automatically open another browser or claim to cancel an OS action already sent.
 When bootstrap includes `models.profile`, Chat shows that server's name and
 sends the alias `account`. It does not call `/v1/models`. **Models** offers
 **Official model** or **All models**; the choice is stored on this phone and
-defaults to Official model. The guidance text is not stored, and the workspace
+defaults to Official model. Choosing All models asks first, because this
+phone's own model services do not have the account's online capabilities. The guidance text is not stored, and the workspace
 tool allowlist is applied by a PC engine turn rather than by direct chat.
 A paired phone has no second switch: it receives the PC's already filtered
 catalog. Signing out drops the profile.

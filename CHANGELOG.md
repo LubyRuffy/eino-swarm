@@ -33,6 +33,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Changed
 
+- Choosing All models asks for confirmation. The prompt says this machine's
+  own model services do not have the account's online capabilities. Staying
+  on the official model leaves the switch unchanged. (`F-172`, `C-046`)
+
 - The README is the entry point. Day-to-day use is in
   [docs/USAGE.md](docs/USAGE.md). Phone use stays in
   [mobile/README.md](mobile/README.md). Issue closure and release batches
