@@ -179,6 +179,15 @@ class PendingBatchTests(unittest.TestCase):
         self.assertEqual(result["issues"], [])
         self.assertFalse(result["allocate_new_version"])
 
+    def test_missing_windows_field_does_not_require_a_windows_release(self):
+        result = self.audit([1], commits=4)
+        self.assertNotIn("windows", result["platforms_to_release"])
+
+    def test_windows_additional_scope_is_its_own_platform(self):
+        result = self.audit([], extra_numbers=[7], commits=4, extra_platform="macos",
+            additional_platforms={"windows": {"source_shas": ["desktop-sha"], "status": "pending"}})
+        self.assertEqual(result["platforms_to_release"], ["macos", "windows"])
+
     def test_alias_reports_do_not_become_new_distinct_fixes(self):
         result = self.audit([], extra_numbers=[1, 2, 3], alias=True)
         self.assertEqual(result["issues"], [])

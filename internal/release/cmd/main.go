@@ -21,7 +21,7 @@ func publish(args []string) error {
 	version := flags.String("version", "", "release version, major.minor.patch")
 	dir := flags.String("dir", "bin", "directory containing the zip and apk")
 	check := flags.Bool("check", false, "validate the version and gh, then exit")
-	platform := flags.String("platform", "", "installer platform: android or macos; empty requires both")
+	platform := flags.String("platform", "", "installer platform: android, macos, or windows; empty requires the apk and a mac zip")
 	target := flags.String("target", "", "verified full main source SHA")
 	if err := flags.Parse(args); err != nil {
 		return err

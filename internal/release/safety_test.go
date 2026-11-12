@@ -2,6 +2,7 @@ package release
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -43,10 +44,26 @@ func TestPlatformAssetsAllowIndependentDelivery(t *testing.T) {
 			t.Fatalf("%s: %v %v", platform, files, err)
 		}
 	}
-	for _, args := range [][3]string{{dir, "bad", "android"}, {dir, "1.2.3", "ios"}, {t.TempDir(), "1.2.3", "android"}, {t.TempDir(), "1.2.3", "macos"}} {
+	for _, args := range [][3]string{{dir, "bad", "android"}, {dir, "1.2.3", "ios"}, {t.TempDir(), "1.2.3", "android"}, {t.TempDir(), "1.2.3", "macos"}, {t.TempDir(), "1.2.3", "windows"}} {
 		if _, err := platformAssets(args[0], args[1], args[2]); err == nil {
 			t.Fatal(args)
 		}
+	}
+}
+
+func TestWindowsReleaseRequiresBothArchitectures(t *testing.T) {
+	dir := t.TempDir()
+	for _, arch := range []string{"amd64", "arm64"} {
+		if _, err := platformAssets(dir, "1.2.3", "windows"); err == nil {
+			t.Fatal("one windows zip was enough")
+		}
+		if err := os.WriteFile(filepath.Join(dir, "zwai-1.2.3-windows-"+arch+".zip"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files, err := platformAssets(dir, "1.2.3", "windows")
+	if err != nil || len(files) != 2 {
+		t.Fatalf("%v %v", files, err)
 	}
 }
 

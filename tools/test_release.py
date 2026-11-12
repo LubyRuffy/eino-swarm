@@ -11,6 +11,7 @@ class MakeEntryTests(unittest.TestCase):
         makefile = (root / 'Makefile').read_text()
         self.assertIn('python3 tools/release.py', makefile)
         self.assertIn('mobile-ios-release:', makefile)
+        self.assertIn('windows-release:', makefile)
 
 
 import os

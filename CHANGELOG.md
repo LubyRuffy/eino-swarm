@@ -8,6 +8,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Added
 
+- Windows amd64 and arm64 desktop zips. `make windows-release VERSION=x.y.z`
+  cross-compiles both, and a release batch that lists windows uploads
+  `zwai-<version>-windows-amd64.zip` and `zwai-<version>-windows-arm64.zip`.
+  Each zip contains `zwai.exe`. The in-app updater still installs only the
+  Mac app. The Windows desktop window needs the WebView2 runtime.
+  (`F-430`, `C-010`)
+
 - A signed-in server can publish an official model profile. The composer shows
   the server's name, requests use the alias `account`, and that source can
   append guidance and narrow workspace tools. Settings → Models can switch

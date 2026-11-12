@@ -27,7 +27,8 @@ help:
 	@echo "make mobile-android  open the Android app in Android Studio"
 	@echo "make mobile-android-release  Android APK/AAB into bin/"
 	@echo "make desktop-release  macOS zwai.app zip into bin/ (darwin host)"
-	@echo "make release      publish only affected, pending Mac/Android/iOS platforms"
+	@echo "make windows-release  Windows amd64 and arm64 zwai.exe zips into bin/"
+	@echo "make release      publish only affected, pending Mac/Windows/Android/iOS platforms"
 	@echo "make check      formatting, vet, test, e2e"
 	@echo "make docs-check  validate feature and contract references"
 	@echo "make eval EVAL_PROVIDER=<id>  opt-in task evals against a real model (not in check)"
@@ -96,6 +97,13 @@ mobile-android: mobile-sync
 .PHONY: desktop-release
 desktop-release: frontend
 	go run ./internal/desktop/pack -version "$(VERSION)" -o bin
+
+# Cross-compiles both Windows desktop zips. CGO stays off; the host does not
+# need a Windows SDK. The desktop window still needs WebView2 on the machine
+# that runs it. In-app update does not install these zips.
+.PHONY: windows-release
+windows-release: frontend
+	go run ./internal/desktop/winpack -version "$(VERSION)" -o bin
 
 # One allocated batch/version; only required platforms run, with independent gates.
 .PHONY: release release-check mobile-ios-release

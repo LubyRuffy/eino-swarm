@@ -23,6 +23,12 @@ func DarwinAssetName(version, arch string) string {
 	return "zwai-" + Canonical(version) + "-darwin-" + arch + ".zip"
 }
 
+// WindowsAssetName is the zip attached to a release for one Windows arch.
+// The zip's only file is zwai.exe. The desktop updater does not install it.
+func WindowsAssetName(version, arch string) string {
+	return "zwai-" + Canonical(version) + "-windows-" + arch + ".zip"
+}
+
 // Canonical strips a leading v and keeps the numeric triple, or "" when
 // the string is not a release version. A dirty git describe is not one.
 func Canonical(raw string) string {

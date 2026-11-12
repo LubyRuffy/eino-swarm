@@ -212,7 +212,8 @@ make mobile-ios-release VERSION=x.y.z  # resume only TestFlight, same version/SH
 ```
 
 `make release` serially publishes only the batch's still-required platforms
-in macOS → Android → iOS order. If both desktop and mobile changed, macOS zip
+in macOS → Android → iOS → Windows order. Windows is in that list only when
+the batch workset includes it. If both desktop and mobile changed, macOS zip
 and sideload APK go to the same GitHub tag; iOS goes to the configured TestFlight
 internal/external groups. Each platform has an independent gate: failure or
 waiting on one does not suppress the other platforms. Any unfinished platform
@@ -237,6 +238,13 @@ is frozen at its tag SHA. Missing remote assets are appended; same-name assets
 require identical SHA-256 and are skipped. No published attachment is replaced.
 
 `make desktop-release` and `make mobile-android-release` remain local builders.
+`make windows-release VERSION=x.y.z` is the local Windows builder. It writes
+`bin/zwai-<version>-windows-amd64.zip` and `bin/zwai-<version>-windows-arm64.zip`.
+Each zip's only file is `zwai.exe` for that architecture. The command
+cross-compiles from macOS or Linux with CGO disabled; it does not need a
+Windows SDK. Upload is still `tools/release.py --platform windows` through
+`make release` when the batch lists windows. The running Windows desktop
+needs the WebView2 runtime. The in-app updater does not install these zips.
 Only the unified release entry uploads. AAB stays on the local Android builder;
 the GitHub channel uses APK. The desktop updater still installs its own host
 architecture. `make mobile-ios` continues to open Xcode for development.

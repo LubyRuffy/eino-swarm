@@ -40,6 +40,9 @@ go run ./cmd/zwai desktop
 
 # or the same app in your browser
 go run ./cmd/zwai web
+
+# Windows amd64 and arm64 zips, cross-compiled. See docs/CLI.md.
+make windows-release VERSION=x.y.z
 ```
 
 First launch writes `~/.zwai-swarm/config.yaml`. Until a model can answer, the

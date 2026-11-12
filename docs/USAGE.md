@@ -868,8 +868,11 @@ updates** checks immediately. A launch-command failure restores the previous
 app and leaves its window open. Two engines using different data directories
 still share one installer lock for this app. A competing install reports busy.
 Separate app bundles can update independently. Installation requires
-confirmation. Windows, Linux, and unversioned development builds have no
-update installer in this channel.
+confirmation. Windows amd64 and arm64 builds are separate downloads,
+`zwai-<version>-windows-<arch>.zip`, each containing `zwai.exe`. Replace the
+old program with that file yourself. The desktop window needs the WebView2
+runtime. The in-app updater does not install Windows or Linux builds, and an
+unversioned development build has no installer in this channel.
 
 Android sideload builds offer **Update** on the phone and install from GitHub
 Releases. iOS beta builds update through TestFlight. The app does not show
