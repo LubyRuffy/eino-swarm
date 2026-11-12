@@ -35,6 +35,9 @@ describe("MCP connection settings", () => {
     fireEvent.change(screen.getByLabelText("Environment variables (JSON object)"), { target: { value: '{"TOKEN":"private-token"}' } })
     fireEvent.click(screen.getByRole("button", { name: "Save connection" }))
     await screen.findByText("New local")
+    const row = screen.getByText("New local").closest("[data-settings-row]")
+    expect(row?.querySelector("[data-mcp-status='on']")).toHaveClass("text-done")
+    expect(row?.querySelector("[data-mcp-status='unchecked']")).toHaveClass("text-muted-foreground")
     expect(api.saveMCPServer).toHaveBeenCalledWith(expect.objectContaining({
       name: "New local", args: ["--path", "a b "], env: { TOKEN: "private-token" }, enabled: true,
     }), true)
@@ -168,7 +171,12 @@ describe("MCP connection settings", () => {
     const catalog = screen.getByRole("region", { name: "Local tools Tool catalog" })
     fireEvent.click(within(catalog).getByText("lookup"))
     expect(within(catalog).getByText("Read a record")).toBeVisible()
-    expect(within(catalog).getByText(/"properties"/)).toHaveTextContent('"id"')
+    const schema = catalog.querySelector("pre")
+    expect(schema).toHaveTextContent('"properties"')
+    expect(schema).toHaveTextContent('"id"')
+    expect(document.querySelector("[data-mcp-status='off']")).toHaveClass("text-muted-foreground")
+    expect(document.querySelector("[data-mcp-status='connected']")).toHaveClass("text-done")
+    await waitFor(() => expect(schema?.querySelector("[style*='--shiki-light']")).toBeTruthy(), { timeout: 5000 })
     expect(api.inspectMCPServer).toHaveBeenCalledWith("local", expect.any(AbortSignal))
   })
 
@@ -179,6 +187,7 @@ describe("MCP connection settings", () => {
     const inspect = await screen.findByRole("button", { name: "Test Local tools and list tools" })
     fireEvent.click(inspect)
     expect(await screen.findByRole("alert")).toHaveTextContent("connection refused")
+    expect(document.querySelector("[data-mcp-status='failed']")).toHaveClass("text-destructive")
     await waitFor(() => expect(inspect).toBeEnabled())
     fireEvent.click(inspect)
     await screen.findByText("This server has no tools.")
@@ -205,6 +214,7 @@ describe("MCP connection settings", () => {
     vi.mocked(api.inspectMCPServer).mockReturnValue(new Promise((resolve) => { finish = resolve }))
     const view = render(<MCPTab />)
     fireEvent.click(await screen.findByRole("button", { name: "Test Local tools and list tools" }))
+    expect(document.querySelector("[data-mcp-status='checking']")).toHaveClass("text-running")
     const signal = vi.mocked(api.inspectMCPServer).mock.calls[0][1]!
     expect(signal.aborted).toBe(false)
     view.unmount()

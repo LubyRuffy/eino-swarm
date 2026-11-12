@@ -52,6 +52,9 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   The form does not ask for an id, and it does not rewrite the name, command,
   arguments or URL. (`F-176`, `C-041`)
 
+- Settings → MCP marks enabled and connection state in color, and highlights
+  a tool's input schema. (`F-176`)
+
 - The README is the entry point. Day-to-day use is in
   [docs/USAGE.md](docs/USAGE.md). Phone use stays in
   [mobile/README.md](mobile/README.md). Issue closure and release batches

@@ -1,13 +1,32 @@
-import { ChevronDown, ChevronRight, Loader2, Pencil, Plus, Plug, Trash2 } from "lucide-react"
+import { ChevronDown, ChevronRight, Circle, Loader2, Pencil, Plus, Plug, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Disclosure } from "@/components/ui/collapsible"
+import { HighlightedLines } from "@/lib/highlighted-lines"
 import { mcpTransportKey } from "@/lib/mcp-settings"
+import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
 import { useMCPSettings } from "@/store/mcp-settings"
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog"
 import { MCPServerEditor } from "./mcp-server-editor"
 import { SettingsPage, SettingsSection, settingsHintClass, settingsMatch } from "./settings-field"
+
+type MCPMark = "on" | "off" | "connected" | "failed" | "checking" | "unchecked"
+
+function markTone(mark: MCPMark) {
+  if (mark === "on" || mark === "connected") return "text-done"
+  if (mark === "failed") return "text-destructive"
+  if (mark === "checking") return "text-running"
+  return "text-muted-foreground"
+}
+
+function StatusMark({ mark }: { mark: MCPMark }) {
+  const tone = markTone(mark)
+  if (mark === "checking") {
+    return <Loader2 aria-hidden data-mcp-status={mark} className={cn("size-3 shrink-0 animate-spin", tone)} />
+  }
+  return <Circle aria-hidden data-mcp-status={mark} className={cn("size-2.5 shrink-0 fill-current", tone)} />
+}
 
 export function MCPTab({ query = "" }: { query?: string }) {
   const t = useT()
@@ -27,16 +46,22 @@ export function MCPTab({ query = "" }: { query?: string }) {
             state.servers.filter((server) => settingsMatch(query, "mcp", server.name, t(mcpTransportKey(server.transport)))).map((server) => {
               const connection = state.connections[server.id]
               const checking = state.busy === `inspect:${server.id}`
+              const connectionMark: MCPMark = checking ? "checking" : connection?.error ? "failed" : connection?.catalog ? "connected" : "unchecked"
+              const connectionLabel = checking ? t("mcp.checking") : connection?.error ? t("mcp.connectionFailed") :
+                connection?.catalog ? t("mcp.connected", { count: connection.catalog.tools.length }) : t("mcp.notChecked")
               return <div key={server.id} data-settings-row="" className="flex flex-wrap items-center gap-3 px-4 py-4">
                 <div className="min-w-0 flex-1">
                   <p className="break-words text-sm font-medium">{server.name}</p>
                   <p className={settingsHintClass}>{t(mcpTransportKey(server.transport))}</p>
-                  <p role="status" className={settingsHintClass}>
-                    {checking ? t("mcp.checking") : connection?.error ? t("mcp.connectionFailed") :
-                      connection?.catalog ? t("mcp.connected", { count: connection.catalog.tools.length }) : t("mcp.notChecked")}
+                  <p role="status" className={cn(settingsHintClass, "flex items-center gap-1.5", markTone(connectionMark))}>
+                    <StatusMark mark={connectionMark} />
+                    {connectionLabel}
                   </p>
                 </div>
-                <Badge variant={server.enabled ? "outline" : "default"}>{t(server.enabled ? "mcp.enabled" : "mcp.disabled")}</Badge>
+                <Badge variant={server.enabled ? "success" : "default"}>
+                  <StatusMark mark={server.enabled ? "on" : "off"} />
+                  {t(server.enabled ? "mcp.enabled" : "mcp.disabled")}
+                </Badge>
                 <Button type="button" size="icon" variant="ghost" disabled={!!state.busy || !!state.draft}
                   aria-label={t("mcp.inspectName", { name: server.name })} title={t("mcp.inspect")}
                   onClick={() => void state.inspect(server.id)}>
@@ -71,7 +96,9 @@ export function MCPTab({ query = "" }: { query?: string }) {
                       {tool.original_name ? <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{tool.name}</p> : null}
                       {tool.description ? <p className="mt-2 whitespace-pre-wrap break-words text-sm text-muted-foreground">{tool.description}</p> : null}
                       <p className="mt-3 text-xs text-muted-foreground">{t("mcp.schema")}</p>
-                      <pre className="mt-1 max-h-64 overflow-auto rounded-md bg-muted p-3 font-mono text-xs">{JSON.stringify(tool.input_schema ?? {}, null, 2)}</pre>
+                      <pre className="mt-1 max-h-64 overflow-auto rounded-md bg-muted p-3 font-mono text-xs">
+                        <HighlightedLines text={JSON.stringify(tool.input_schema ?? {}, null, 2)} lang="json" />
+                      </pre>
                     </Disclosure>)}</div>}
                 </> : <p className={settingsHintClass}>{t("mcp.checking")}</p>}
             </section>

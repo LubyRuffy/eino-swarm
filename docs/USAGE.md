@@ -952,7 +952,9 @@ Open **Settings → MCP** on Desktop or Web to add a local stdio command or a
 remote Streamable HTTP/SSE server. Enter a display name and the connection.
 The app assigns the id and leaves the name, command, arguments and URL as
 typed. Save the connection, then choose **Test connection and list tools**. You can inspect a disabled server before enabling
-it. A failed inspection stays visible and can be retried.
+it. A failed inspection stays visible and can be retried. The row uses one
+colored mark for enabled or disabled, and another for the latest check.
+Opening a tool highlights its input schema.
 
 Enabled servers add two namespaced Agent tools: `list_tools` and `call_tool`.
 They connect only when called, so an unavailable server does not hold up
