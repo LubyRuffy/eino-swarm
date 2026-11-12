@@ -256,6 +256,8 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 					&managedExecDelivery{sessions: execSessions, adaptive: adaptiveExecObservation, reg: reg, acc: acc},
 					&modelRequestCloseout{pool: e.pool, providerID: turn.ProviderID})
 			}
+			// Last, so a switch flipped during this turn still reaches this request.
+			middlewares = append(middlewares, e.liveToolOffer())
 			answerCtx := context.WithValue(ctx, scheduleAnswerBufferContextKey{}, answer)
 			runInstruction := instruction
 			if completeRecoveryInput {

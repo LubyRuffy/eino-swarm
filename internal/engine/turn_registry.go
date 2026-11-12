@@ -38,5 +38,21 @@ func (e *Engine) newTurnRegistry(builder swarm.ModelBuilder, toolset *tools.Set,
 			return e.workerConfigurationForTag(ctx, ownerTurn.ThreadID, tag)
 		}
 	}
+	e.installLiveToolOffer(reg)
 	return reg
+}
+
+// installLiveToolOffer gives every worker its own filter. Nuwa handlers stay
+// outside it; each spawn reads the switches again on its next model request.
+func (e *Engine) installLiveToolOffer(reg *swarm.Registry) {
+	config := reg.WorkerConfiguration()
+	previous := config.WorkerMiddlewares
+	config.WorkerMiddlewares = func(id swarm.AgentIdentity) []adk.ChatModelAgentMiddleware {
+		var out []adk.ChatModelAgentMiddleware
+		if previous != nil {
+			out = append(out, previous(id)...)
+		}
+		return append(out, e.liveToolOffer())
+	}
+	reg.ConfigureWorkers(config)
 }

@@ -1,7 +1,7 @@
 export const mcpEN = {
   "settings.nav.mcp": "MCP",
   "mcp.title": "MCP servers",
-  "mcp.description": "Connect external tools to your agents. Saved changes apply when the next toolset is created; running turns keep their existing tools.",
+  "mcp.description": "Connect external tools to your agents. Unchecking a server removes it from the next model request, including a turn already running. A server switched on after that turn started is mounted on the next turn.",
   "mcp.servers": "Connections",
   "mcp.add": "Add server",
   "mcp.empty": "No MCP servers yet. Add a local command or a remote server to get started.",
@@ -64,7 +64,7 @@ export const mcpEN = {
 export const mcpZH: { [K in keyof typeof mcpEN]: string } = {
   "settings.nav.mcp": "MCP",
   "mcp.title": "MCP 服务",
-  "mcp.description": "为 Agent 接入外部工具。保存的更改在下次创建工具集时生效；正在运行的任务保留原有工具。",
+  "mcp.description": "为 Agent 接入外部工具。取消勾选后，下一次模型请求不再使用该服务器，包括正在进行的回合。本回合开始后才打开的服务器，要到下一回合才会挂上。",
   "mcp.servers": "连接配置",
   "mcp.add": "添加服务",
   "mcp.empty": "还没有 MCP 服务。添加本地命令或远程服务即可开始。",

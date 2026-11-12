@@ -1,6 +1,7 @@
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { SelectItem } from "@/components/ui/select"
+import { catalogToolOn, withCatalogTool } from "@/lib/tool-toggle"
 import type { Settings, ToolDescriptor } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
@@ -30,27 +31,10 @@ export function ToolsTab({
   const tr = useT()
   // The config records exceptions rather than the whole list, so a tool added
   // in a later release keeps its own default instead of silently arriving off.
-  const isOn = (t: ToolDescriptor) =>
-    t.default_off
-      ? settings.tools.enabled.includes(t.name)
-      : !settings.tools.disabled.includes(t.name)
+  const isOn = (t: ToolDescriptor) => catalogToolOn(t, settings.tools)
 
   const toggle = (t: ToolDescriptor, on: boolean) => {
-    const disabled = new Set(settings.tools.disabled)
-    const enabled = new Set(settings.tools.enabled)
-    if (t.default_off) {
-      on ? enabled.add(t.name) : enabled.delete(t.name)
-    } else {
-      on ? disabled.delete(t.name) : disabled.add(t.name)
-    }
-    onChange({
-      ...settings,
-      tools: {
-        ...settings.tools,
-        disabled: [...disabled],
-        enabled: [...enabled],
-      },
-    })
+    onChange({ ...settings, tools: withCatalogTool(t, on, settings.tools) })
   }
 
   const groups = [...new Set(catalog.map((t) => t.group))]

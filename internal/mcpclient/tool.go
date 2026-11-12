@@ -19,6 +19,28 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// ProxyNames are the two model-facing tools one configured server contributes.
+func ProxyNames(serverID string) (list, call string) {
+	return toolName(serverID, "list_tools"), toolName(serverID, "call_tool")
+}
+
+// ProxyOffered reports whether a model-facing name belongs to an enabled server.
+// Names this process did not mint for a configured server stay offered.
+func ProxyOffered(servers []config.MCPServer, name string) bool {
+	matched := false
+	for _, server := range servers {
+		list, call := ProxyNames(server.ID)
+		if name != list && name != call {
+			continue
+		}
+		matched = true
+		if server.Enabled {
+			return true
+		}
+	}
+	return !matched
+}
+
 func toolName(server, name string) string {
 	slug := func(s string) string {
 		var b strings.Builder

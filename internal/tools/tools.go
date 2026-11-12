@@ -109,6 +109,17 @@ func active(cfg config.ToolsConfig, d Descriptor) bool {
 	return !cfg.IsDisabled(d.Name)
 }
 
+// Offered reports whether a catalog tool is currently switched on.
+// A name outside the catalog stays offered; lifecycle tools are not catalog entries.
+func Offered(cfg config.ToolsConfig, name string) bool {
+	for _, d := range catalog {
+		if d.Name == name {
+			return active(cfg, d)
+		}
+	}
+	return true
+}
+
 // Set is one conversation's assembled toolset.
 type Set struct {
 	// Tools is what gets registered on the agents.

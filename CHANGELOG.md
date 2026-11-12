@@ -6,6 +6,16 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+### Added
+
+- The composer has a Tools menu for the built-in catalog and each configured
+  MCP server. The same switches as Settings are checked by default, except
+  tools that are off until enabled. Clearing a check is saved immediately and
+  the next model request omits that tool, including a turn that is already
+  running. A tool or server that was off when the turn started is mounted on
+  the next turn. A call that still arrives after the switch returns
+  `tool_switched_off` and does not run. (`F-130`, `F-176`, `C-009`, `C-041`)
+
 ### Changed
 
 - Backup asks when a conversation is still running. You can cancel, or leave

@@ -78,6 +78,12 @@ must remain bound to their first session entry: reload, idle eviction or
 connection failure returns `session_expired`, without a silent reconnect or
 replay. A later toolset may reconnect/discover; no test may assume the idle cache
 guarantees continuous state between tool calls.
+`internal/engine/tool_offer_http_test.go` drives a real manager turn through
+Registry, ADK and the offline model adapter: unchecking `web_search` and an MCP
+server removes them from the next request, checking them again restores them,
+and enabling `python_runner` after the turn started does not mount it.
+`frontend/e2e/composer-tools.spec.ts` clears Read file and one MCP server from
+the composer, reloads, and restores the original tool settings.
 
 The SDK HTTP progress regression holds the final response until the client
 observes the matched notification. It also checks that progress cannot cross

@@ -65,3 +65,19 @@ func TestConfiguredMCPToolsExecuteThroughRealTransports(t *testing.T) {
 		})
 	}
 }
+
+func TestProxyOfferedFollowsTheServerSwitch(t *testing.T) {
+	list, call := ProxyNames("desk")
+	otherList, _ := ProxyNames("other")
+	servers := []config.MCPServer{{ID: "desk", Enabled: true}, {ID: "other", Enabled: false}}
+	if !ProxyOffered(servers, list) || !ProxyOffered(servers, call) || ProxyOffered(servers, otherList) {
+		t.Fatalf("enabled desk=%t/%t disabled other=%t", ProxyOffered(servers, list), ProxyOffered(servers, call), ProxyOffered(servers, otherList))
+	}
+	if !ProxyOffered(servers, "ask_user") || !ProxyOffered(nil, list) {
+		t.Fatal("names this process did not mint for a configured server stay offered")
+	}
+	servers[0].Enabled = false
+	if ProxyOffered(servers, list) || ProxyOffered(servers, call) {
+		t.Fatal("a disabled server's proxies stay in the request")
+	}
+}

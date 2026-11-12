@@ -82,6 +82,18 @@ func TestDefaultsAreOnExceptOptInTools(t *testing.T) {
 	}
 }
 
+func TestOfferedKeepsLifecycleNamesAndFollowsCatalogDefaults(t *testing.T) {
+	cfg := configFor(t).Tools
+	if !Offered(cfg, "read") || Offered(cfg, "python_runner") || !Offered(cfg, "ask_user") {
+		t.Fatalf("defaults: read=%t python=%t ask=%t", Offered(cfg, "read"), Offered(cfg, "python_runner"), Offered(cfg, "ask_user"))
+	}
+	cfg.Disabled = []string{"read"}
+	cfg.Enabled = []string{"python_runner"}
+	if Offered(cfg, "read") || !Offered(cfg, "python_runner") || !Offered(cfg, "spawn_agent") {
+		t.Fatalf("switches: read=%t python=%t spawn=%t", Offered(cfg, "read"), Offered(cfg, "python_runner"), Offered(cfg, "spawn_agent"))
+	}
+}
+
 func TestToggleTools(t *testing.T) {
 	cfg := configFor(t)
 	cfg.Tools.Disabled = []string{"exec", "web_search"}

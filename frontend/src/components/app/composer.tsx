@@ -9,6 +9,7 @@ import { ComposerAttachments } from "@/components/app/composer-attachments"
 import { ComposerDropOverlay } from "@/components/app/composer-drop-overlay"
 import { ComposerImages } from "@/components/app/composer-images"
 import { ComposerQuotes } from "@/components/app/composer-quotes"
+import { ComposerTools } from "@/components/app/composer-tools"
 import { ModelPicker } from "@/components/app/model-picker"
 import { GoalBanner } from "@/components/app/goal-banner"
 import { PlanBanner } from "@/components/app/plan-banner"
@@ -827,6 +828,8 @@ export function Composer({
               onRefresh={onRefreshModels}
               onEdit={onEditProviders}
             />
+
+            <ComposerTools disabled={readOnly} />
 
             {reasoningLevels.length > 0 ? (
               <Select

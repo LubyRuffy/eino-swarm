@@ -501,8 +501,14 @@ tools:
 Settings. Agents list directories, find files and search file contents with
 `exec`. Names for those four tools in `enabled` or `disabled` have no effect.
 
-Turning a tool off removes it from the agents' toolset **and** from the manager's
-system prompt, so the model does not plan around a tool it cannot call.
+The composer Tools menu and Settings → Tools write these same lists as soon as
+a box changes. The next model request omits a tool that is off, including a
+request in a turn that is already running. A call that still arrives returns
+`tool_switched_off` and does not run the original tool. Checking a tool this
+turn already mounted puts it back on the following request. A tool that was off
+when the turn started is mounted when the next turn builds its toolset; that
+next turn also rebuilds the manager prompt. Until then, the prompt for the
+current turn can still name a tool that was unchecked.
 
 | key | default | meaning |
 |---|---|---|
@@ -597,7 +603,11 @@ Invalid configuration or failed persistence leaves the saved configuration intac
 MCP uses its own `/api/mcp` endpoints; ordinary Settings saves do not replace it.
 
 Enabled servers add two namespaced Agent proxies, `list_tools` and `call_tool`,
-to subsequent toolsets. Constructing a toolset performs no connection or command
+to toolsets built while the server is enabled. The composer Tools menu writes
+the same `enabled` flag as Settings → MCP. Unchecking a server removes both
+proxies from the next model request, including a turn already running. A server
+switched on after the turn started is mounted when the next turn builds its
+toolset. Constructing a toolset performs no connection or command
 startup. The first actual list/call connects using the running tool's cancellation
 context; a connection/discovery error is a failed tool result and leaves built-in
 tools available. `list_tools` accepts optional `name` for one exact remote schema,

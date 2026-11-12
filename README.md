@@ -77,6 +77,13 @@ workflow or real-model efficiency improvement is implied by enabling it.
   stays intact with an error until those items are sent separately or removed.
   Draft text and quotes share a 1 MiB limit; up to 32 attachments share 256 MiB,
   with the existing eight images / 8 MiB per-image vision limits.
+- **The composer can turn tools off for the next request.** Tools, next to the
+  model, lists the built-in catalog and each configured MCP server. A tool that
+  is on by default starts checked; Python and screenshot stay off until you
+  check them. Clearing a box saves immediately. The next model request omits
+  that tool, including a turn that is already running. Checking a tool this
+  turn already had brings it back on the next request. A tool or server that
+  was off when the turn started is added when the next turn builds its tools.
 - **The empty composer can suggest a next step.** After a visible reply, one
   likely next message appears as the placeholder. Tab inserts it for editing;
   Enter is what sends it. Settings → Swarm → Suggest a next step turns the
@@ -1542,7 +1549,11 @@ visible and can be retried explicitly.
 Enabled servers add two namespaced Agent tools: `list_tools` discovers the remote
 catalog and `call_tool` invokes a listed name with its arguments. They connect
 only when called, so an unavailable server does not hold up starting a turn or
-using built-in tools. Calls and results appear in the conversation and Trace.
+using built-in tools. The composer Tools menu and Settings → MCP share the
+server's enabled switch. Unchecking it removes both proxies from the next model
+request, including a turn already running. A server that was off when the turn
+started is mounted when the next turn builds its tools. Calls and results appear
+in the conversation and Trace.
 Plan and Nuwa read-only toolsets do not mount MCP tools. Other Nuwa turns make
 them available to workers while keeping the planner's toolset separate. Catalogs can be paged
 or filtered by exact tool name; if one schema still exceeds the configured tool

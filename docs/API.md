@@ -746,6 +746,19 @@ The catalog the Settings dialog lays out, plus which tools are currently active.
 `screenshot`) need something zwai does not ship and must be switched on
 explicitly.
 
+The composer Tools menu reads this catalog together with `GET /api/mcp` and
+`GET /api/settings`. A built-in checkbox is `PUT /api/settings` with the full
+`tools` object: `disabled` / `enabled` are the exception lists above, and the
+other tool fields already stored are sent back unchanged. An MCP checkbox is
+`PUT /api/mcp/:id` with `enabled` changed and `env` / `headers` omitted, so the
+saved private maps stay. The save is immediate. The next manager or worker
+model request uses the published switches, including a turn that has already
+started. A tool or server that was off when that turn built its toolset is
+included when the next turn builds one. A call that still arrives for a switch
+that is now off returns a tool result `{"ok":false,"code":"tool_switched_off","tool":"<name>"}`
+and does not execute the original tool. Provider cloud `builtin_tools` are not
+in this menu.
+
 ### `GET /api/mcp`
 
 Read the configured external MCP servers without connecting to them. This is
