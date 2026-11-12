@@ -94,7 +94,7 @@ export function PhoneApp() {
   const [locale, setLocaleTick] = useState(getLocale())
   const [hosts, setHosts] = useState(() => loadSavedLinks())
   const [personalProviders, setProviders] = useState(() => loadProviders())
-  const providers = [...account.providers, ...personalProviders]
+  const providers = account.officialOnly ? account.providers : [...account.providers, ...personalProviders]
   const [surface, setSurface] = useState<"hosts" | "chat">(() =>
     loadProviders().length > 0 && loadSavedLinks().length === 0 ? "chat" : "hosts",
   )
@@ -724,6 +724,9 @@ export function PhoneApp() {
   const modelSheet = modelsOpen ? (
     <ProviderSheet
       providers={providers}
+      hasProfile={account.hasProfile}
+      presentation={account.presentation}
+      onPresentation={account.setPresentation}
       onClose={() => setModelsOpen(false)}
       onChange={commitProviders}
     />

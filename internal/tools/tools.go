@@ -83,6 +83,16 @@ func ReplayableResult(name string) bool {
 	return false
 }
 
+// KnownWorkspaceTool reports whether name is one of the built-in workspace tools.
+func KnownWorkspaceTool(name string) bool {
+	for _, d := range catalog {
+		if d.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // Catalog returns every tool this build can construct, in a stable order.
 func Catalog() []Descriptor {
 	out := make([]Descriptor, len(catalog))

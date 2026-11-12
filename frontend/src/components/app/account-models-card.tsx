@@ -1,5 +1,5 @@
 import { SelectItem } from "@/components/ui/select"
-import { accountKindTally, accountModelsProblem, type AccountKindKey } from "@/lib/account-models"
+import { accountKindTally, accountModelsProblem, officialModelLock, type AccountKindKey } from "@/lib/account-models"
 import type { MessageKey } from "@/lib/i18n"
 import type { Settings } from "@/lib/types"
 import { useT } from "@/lib/use-t"
@@ -27,6 +27,8 @@ export function AccountModelsCard({
   const tally = accountKindTally(account?.kinds)
   const ownReady = settings.models.providers.some((p) => p.ready && p.enabled !== false)
   const source = settings.models.default_source ?? "account"
+  const officialOnly = officialModelLock(account)
+  const presentation = settings.models.account_presentation === "full" ? "full" : "official"
   const kindText: Record<AccountKindKey, MessageKey> = {
     chat: "accountModels.kind.chat",
     unclassified: "accountModels.kind.unclassified",
@@ -55,7 +57,25 @@ export function AccountModelsCard({
         </div>
         {ready ? null : <AccountSignIn />}
       </div>
-      {ready && ownReady ? (
+      {account?.profile ? (
+        <SettingsChoice
+          label={t("accountModels.presentationTitle")}
+          value={presentation}
+          ariaLabel={t("accountModels.presentationTitle")}
+          onValueChange={(next) =>
+            onChange({
+              ...settings,
+              models: {
+                ...settings.models,
+                account_presentation: next === "full" ? "full" : "official",
+              },
+            })}
+        >
+          <SelectItem value="official">{t("accountModels.presentationOfficial")}</SelectItem>
+          <SelectItem value="full">{t("accountModels.presentationFull")}</SelectItem>
+        </SettingsChoice>
+      ) : null}
+      {ready && ownReady && !officialOnly ? (
         <SettingsChoice
           label={t("accountModels.defaultTitle")}
           value={source}
@@ -70,7 +90,7 @@ export function AccountModelsCard({
           <SelectItem value="provider">{t("accountModels.defaultProvider")}</SelectItem>
         </SettingsChoice>
       ) : null}
-      {ready && !ownReady ? (
+      {ready && !ownReady && !officialOnly ? (
         <SettingsRow label={t("accountModels.defaultTitle")} hint={t("accountModels.defaultNeedsOwn")} />
       ) : null}
     </SettingsSection>

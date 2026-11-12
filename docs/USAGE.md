@@ -88,6 +88,15 @@ are available. An existing setup with a working provider keeps starting on it
 (`models.default_source`). An own provider is marked default only when new
 conversations start on it.
 
+When the signed-in server publishes an official profile, the composer shows
+that server's name and does not open the model menu. Settings → Models offers
+**Official model** or **All models** on the account card. Official model hides
+this machine's own providers, auxiliary models and embedding names. All models
+brings them back. A conversation that already uses one of them keeps that
+choice and uses it again after the switch. The official name and the request
+alias stay on the server; this setting does not reveal or select the real
+model id. Signing out clears the profile.
+
 ## Composer
 
 The composer saves text, quotations, original files and pasted images together

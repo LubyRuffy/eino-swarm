@@ -20,6 +20,10 @@ export type DirectProvider = {
   timeoutSeconds: number
   /** False hides this endpoint from the composer. Missing on an old row means on. */
   enabled?: boolean
+  /** Official profile name. When set, the catalog is not expanded by model id. */
+  displayLabel?: string
+  /** The composer shows displayLabel and does not open the model menu. */
+  locked?: boolean
 }
 
 export function mintID(prefix: string): string {
@@ -69,8 +73,21 @@ export function providerChoices(rows: DirectProvider[]): ModelChoice[] {
   const out: ModelChoice[] = []
   for (const row of rows) {
     if (row.enabled === false) continue
-    const names = unique([row.model, ...row.catalog])
     const label = row.label.trim() || row.id
+    if (row.displayLabel) {
+      out.push({
+        provider_id: row.id,
+        provider_label: row.displayLabel,
+        label: row.displayLabel,
+        model: row.model.trim(),
+        default: true,
+        default_follows_setting: true,
+        ready: true,
+        locked: row.locked,
+      })
+      continue
+    }
+    const names = unique([row.model, ...row.catalog])
     for (const name of names) {
       out.push({
         provider_id: row.id,

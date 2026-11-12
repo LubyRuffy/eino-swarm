@@ -61,9 +61,13 @@ type ModelsConfig struct {
 	// AccountModel is the conversation model a new chat uses on the server
 	// account. Empty keeps the first conversational name. It is a name, not
 	// the gateway: provider id, and it is ignored when that name is no longer
-	// a conversation model.
-	AccountModel string     `yaml:"account_model,omitempty" json:"account_model,omitempty"`
-	Providers    []Provider `yaml:"providers" json:"providers"`
+	// a conversation model. A published official profile does not send it.
+	AccountModel string `yaml:"account_model,omitempty" json:"account_model,omitempty"`
+	// AccountPresentation is official or full. Official hides the model list
+	// while an account profile is published. Absent means official and is not
+	// written back over an older file until a save sets it.
+	AccountPresentation string     `yaml:"account_presentation,omitempty" json:"account_presentation,omitempty"`
+	Providers           []Provider `yaml:"providers" json:"providers"`
 }
 
 // SwarmConfig bounds the agent swarm.

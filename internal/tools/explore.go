@@ -1,11 +1,12 @@
 package tools
 
 import (
+	"strings"
+
 	"github.com/LubyRuffy/eino-tools/edit"
 	einoexec "github.com/LubyRuffy/eino-tools/exec"
 	"github.com/LubyRuffy/eino-tools/pythonrunner"
 	"github.com/LubyRuffy/eino-tools/write"
-	"strings"
 )
 
 // MutatingCatalogNames are workspace tools that change files or run
@@ -18,6 +19,31 @@ func MutatingCatalogNames() []string {
 		einoexec.ToolName,
 		pythonrunner.ToolName,
 	}
+}
+
+// AllowWorkspace keeps catalog tools named in allow and drops every other
+// workspace or MCP tool already on the set. Coordination tools are added
+// later, so they are not part of this cut. A name the local switches already
+// removed stays removed.
+func AllowWorkspace(set *Set, allow []string) *Set {
+	if set == nil {
+		return nil
+	}
+	keep := make(map[string]bool, len(allow))
+	for _, name := range allow {
+		keep[name] = true
+	}
+	out := &Set{WorkspaceDir: set.WorkspaceDir}
+	for i, name := range set.Names {
+		if !keep[name] || strings.HasPrefix(name, "mcp_") {
+			continue
+		}
+		out.Names = append(out.Names, name)
+		if i < len(set.Tools) {
+			out.Tools = append(out.Tools, set.Tools[i])
+		}
+	}
+	return out
 }
 
 // ExploreOnly returns a copy of set with mutating catalog tools removed.

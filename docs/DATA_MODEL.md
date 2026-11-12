@@ -285,8 +285,8 @@ allowance. The table is not a chat event and not a Settings value. See
 | `title` | text | placeholder from the first message, then a generated name from that opening line when the user did not supply one |
 | `title_auto` | bool | true while the engine still owns the title. A user rename or a landed generated name clears it so a later namer cannot overwrite the sidebar |
 | `project_id` | text, indexed | the project this conversation belongs to; empty for a standalone one. It decides where the tools work and what the prompt carries. Empty lists the shared skill library (`library/skills/`) in the prompt and reviews new procedures into that library |
-| `provider_id` | text | which configured provider this conversation uses |
-| `model` | text | the name this conversation sends; empty follows the provider's default so a Settings change applies until someone picks in the composer |
+| `provider_id` | text | which configured provider this conversation uses. Official presentation does not rewrite a stored own provider |
+| `model` | text | the name this conversation sends; empty follows the provider's default so a Settings change applies until someone picks in the composer. While official presentation is on, a stored own name stays here and the turn sends the alias `account` instead |
 | `reasoning_effort` | text | this conversation's thinking level (``, `low`, `medium`, `high`); empty means the model's own default. Switchable in the composer, applied from the next turn |
 | `web_execution` | text | optional conversation Web-tool location: empty inherits PC global Tools; `auto`, `local`, `cloud` apply from the next turn. Phone changes never edit the PC global setting |
 | `goal` | text | standing objective from `/goal`. Empty means none. Injected into later turns until changed or cleared |
@@ -507,7 +507,7 @@ The `id` is the handle the whole troubleshooting story hangs off: the UI shows i
 | `user_text` | what was asked. On `goal_continue` / `schedule_continue` this is the protocol prompt the model saw, not a human send |
 | `final` | the manager's final answer |
 | `error` | why it failed, when it did |
-| `provider_id`, `model` | what actually ran, not what is configured now — settings change |
+| `provider_id`, `model` | what actually ran, not what is configured now — settings change. An official-source turn stores the alias `account` here even when the conversation row still names an own provider |
 | `reasoning_effort` | the thinking level this turn ran with, so a trace shows what produced the answer |
 | `web_execution` | captured Web-tool preference at turn start; restoration and parked workers use it before later conversation/global settings. Old rows remain empty and use the current inherited policy |
 | `nuwa_enabled` | collaboration mode captured at turn start; later project edits do not change this turn or its workers |
@@ -571,7 +571,7 @@ stream still walks forward.
 | `source_thread_id`, `source_turn_id` | optional runtime-bound origin of a `task_message`; old events omit these columns |
 | `agent_id` | `manager` or a sub-agent |
 | `role` | for `spawned`, the sub-agent's role |
-| `text` | the payload. For `spawned` this is the worker's system prompt (host snapshot plus the task). Older rows stored the role name here; `role` is the reliable role field. For `tool_result` this is the tool's stdout with newlines kept (clipped at 64k runes), not a one-line summary |
+| `text` | the payload. For `spawned` this is the worker's system prompt (host snapshot plus the task). Older rows stored the role name here; `role` is the reliable role field. For `tool_result` this is the tool's stdout with newlines kept (clipped at 64k runes), not a one-line summary. For `account_profile` it is JSON with the official name, alias, tool allowlist and guidance length, never the guidance text |
 | `tool_call_id` | pairs `tool_call` with `tool_result` (and live `tool_delta`); agents issue several at once and they finish out of order |
 | `message_id` | optional identity of one streamed model output. Worker checkpoints across manager turns retain it; a new model round or restored stream gets another identity. Legacy rows remain empty. It does not replace event seq or tool-call identity |
 | `err` | set on `error` and on a failed `finished` |

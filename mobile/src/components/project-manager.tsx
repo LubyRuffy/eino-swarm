@@ -153,7 +153,7 @@ export function ProjectManager({ link, projects, onSaved, onClose }: {
                     <select className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2 text-base" value={value} onChange={(e) => pickModel(role, e.target.value)}>
                       <option value="" disabled>{t("projects.defaultModels")}</option>
                       {value && !models.some((m) => modelKey(m.provider_id, m.model) === value) ? <option value={value}>{draft[`nuwa_${role}_model`]} · {t("projects.unavailable")}</option> : null}
-                      {models.map((m) => <option key={modelKey(m.provider_id, m.model)} value={modelKey(m.provider_id, m.model)}>{m.provider_label || m.provider_id} · {m.model}</option>)}
+                      {models.map((m) => <option key={modelKey(m.provider_id, m.model)} value={modelKey(m.provider_id, m.model)}>{m.provider_label || m.provider_id} · {m.label || m.model}</option>)}
                     </select>
                   </label>
                 })}

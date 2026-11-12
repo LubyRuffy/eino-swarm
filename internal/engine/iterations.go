@@ -129,8 +129,9 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		executionGuidance = incrementalExecutionInstruction
 	}
 	managedExecIndex := rt.managedExecToolIndex(turn, th, toolset, resumed)
+	tail := applyAccountInstruction(managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID), turn.NuwaEnabled), e.pool.AccountInstruction(turn.ProviderID))
 	instruction := managerPrompt(toolset, JoinPromptSections(historyPrompt(toolset, audience), taskCoordinationPrompt, executionGuidance,
-		managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID), turn.NuwaEnabled), humanReply, rt.finalGoalWorkerSection(th)), turn.NuwaEnabled, managedExecIndex >= 0)
+		tail, humanReply, rt.finalGoalWorkerSection(th)), turn.NuwaEnabled, managedExecIndex >= 0)
 	// Fresh slice: pc.managerTools may return the workspace toolset's
 	// backing array, and appending complete_goal / block_goal in place
 	// would hand them to every sub-agent.

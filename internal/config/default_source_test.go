@@ -100,6 +100,42 @@ func TestExplicitDefaultSourceChoiceSurvivesReload(t *testing.T) {
 	}
 }
 
+func TestAbsentPresentationMeansOfficialAndIsNotWrittenBack(t *testing.T) {
+	clearModelEnv(t)
+	dir := writeConfigFile(t, "models:\n  default: own\n  providers:\n    - id: own\n")
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Models.AccountPresentation != "" || cfg.Models.Presentation() != AccountPresentationOfficial {
+		t.Fatalf("absent presentation = %q (%s)", cfg.Models.AccountPresentation, cfg.Models.Presentation())
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, FileName))
+	if err != nil || strings.Contains(string(raw), "account_presentation") {
+		t.Fatalf("loading an old file wrote the presentation: %s %v", raw, err)
+	}
+}
+
+func TestFullPresentationSurvivesReload(t *testing.T) {
+	clearModelEnv(t)
+	dir := writeConfigFile(t, "models:\n  default: own\n  account_presentation: full\n  providers:\n    - id: own\n")
+	cfg, err := Load(dir)
+	if err != nil || cfg.Models.Presentation() != AccountPresentationFull {
+		t.Fatalf("full presentation = %q, %v", cfg.Models.AccountPresentation, err)
+	}
+}
+
+func TestUnknownPresentationIsRejected(t *testing.T) {
+	clearModelEnv(t)
+	dir := writeConfigFile(t, "models:\n  account_presentation: somewhere\n")
+	if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "account_presentation") {
+		t.Fatalf("unknown presentation accepted: %v", err)
+	}
+	if (ModelsConfig{AccountPresentation: "somewhere"}).Presentation() != AccountPresentationOfficial {
+		t.Fatal("an unreadable switch was not treated as official")
+	}
+}
+
 func TestUnknownDefaultSourceIsRejectedRatherThanGuessed(t *testing.T) {
 	clearModelEnv(t)
 	dir := writeConfigFile(t, "models:\n  default_source: gateway\n")

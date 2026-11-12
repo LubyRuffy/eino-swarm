@@ -44,6 +44,27 @@ export function accountKindTally(kinds?: AccountModels["kinds"]): Array<{ key: A
   })
 }
 
+/** Official presentation is the one-name lock. Full, or no profile, keeps the list. */
+export function officialModelLock(account?: AccountModels): boolean {
+  return Boolean(account?.profile && account.profile.presentation !== "full")
+}
+
+/** The conversation model Settings shows for the server. A saved name stays
+ *  even after it leaves the list. Empty follows the listed default.
+ *  A profile label replaces a saved name the list no longer contains, so a
+ *  previous vendor id is not shown. */
+export function accountChoiceLabel(models: ModelInfo[], chosen?: string): string {
+  const rows = accountModelRows(models)
+  const want = chosen?.trim() ?? ""
+  const match = want ? rows.find((row) => row.model === want) : undefined
+  const row = match ?? (want ? undefined : rows.find((item) => item.default) ?? rows[0])
+  if (row?.label && row.label !== row.model) return row.label
+  const branded = rows[0]
+  if (want && !match && branded?.label && branded.label !== branded.model) return branded.label
+  if (want) return want
+  return row?.model ?? ""
+}
+
 /** The conversation model Settings shows for the server. A saved name stays
  *  even after it leaves the list. Empty follows the listed default. */
 export function effectiveAccountModel(models: ModelInfo[], chosen?: string): string {

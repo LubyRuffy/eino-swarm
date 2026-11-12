@@ -35,6 +35,16 @@ describe("default model source in a settings save", () => {
       { ...base, models: { ...base.models, default_source: "provider" } }, undefined, base,
     )
     expect(chosen.models?.default_source).toBe("provider")
+    const presented = persistPayload(
+      { ...base, models: { ...base.models, account_presentation: "full" } }, undefined, base,
+    )
+    expect(presented.models?.account_presentation).toBe("full")
+    const untouched = persistPayload(
+      { ...base, models: { ...base.models, account_presentation: "official", providers: [{ ...provider, model: "other" }] } },
+      undefined,
+      { ...base, models: { ...base.models, account_presentation: "official" } },
+    )
+    expect(untouched.models && "account_presentation" in untouched.models).toBe(false)
 
     const named = persistPayload(
       { ...base, models: { ...base.models, account_model: "second" } }, undefined, base,

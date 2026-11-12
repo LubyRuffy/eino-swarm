@@ -99,6 +99,8 @@ export function Composer({
   const ready = hasDraft && !disabled && !pending
   const showStop = Boolean(onStop && stopLabel && (pending || !hasDraft))
   const showTools = models.length > 0 || reasoningLevels.length > 0 || catalogBusy || Boolean(onRefreshModels)
+  const lockedModel = models.length === 1 && Boolean(models[0]?.locked)
+  const modelText = choiceLabel(models, pick) || t("composer.model")
 
   // The conversation's selection arrives after catalog. A local edit is not
   // overwritten until those props themselves change.
@@ -328,13 +330,13 @@ export function Composer({
             type="button"
             aria-label={t("composer.model")}
             aria-describedby={modelTextId}
-            title={modelUnavailable(models, pick) ? t("composer.modelUnavailable") : undefined}
-            data-unavailable={modelUnavailable(models, pick) ? "true" : undefined}
-            className={`h-8 w-0 min-w-0 flex-1 truncate rounded-full bg-muted px-2 text-left text-xs ${modelUnavailable(models, pick) ? "text-muted-foreground" : "text-foreground"}`}
+            title={!lockedModel && modelUnavailable(models, pick) ? t("composer.modelUnavailable") : undefined}
+            data-unavailable={!lockedModel && modelUnavailable(models, pick) ? "true" : undefined}
+            className={`h-8 w-0 min-w-0 flex-1 truncate rounded-full bg-muted px-2 text-left text-xs ${!lockedModel && modelUnavailable(models, pick) ? "text-muted-foreground" : "text-foreground"}`}
             disabled={disabled || pending}
-            onClick={() => setModelPickerOpen(true)}
+            onClick={() => { if (!lockedModel) setModelPickerOpen(true) }}
           >
-            <span id={modelTextId}>{pick.model || t("composer.model")}</span>
+            <span id={modelTextId}>{modelText}</span>
           </button>
         ) : null}
         {reasoningLevels.length > 0 ? (
@@ -355,7 +357,7 @@ export function Composer({
         ) : null}
         {showTools ? null : <span className="flex-1" />}
       </div>
-      {modelPickerOpen ? (
+      {modelPickerOpen && !lockedModel ? (
         <ModelPicker
           models={models}
           providerId={pick.providerId}
@@ -381,8 +383,9 @@ function chosen(
   model: string,
   current?: { providerId: string; model: string },
 ) {
-  if (providerId && model) return { providerId, model }
   const rows = models.filter((row) => row.model)
+  if (rows.length === 1 && rows[0].locked) return { providerId: rows[0].provider_id, model: rows[0].model }
+  if (providerId && model) return { providerId, model }
   // A known provider that left the catalog was switched off. Keep the
   // conversation on it instead of silently sending the next endpoint.
   const stillListed = !providerId || rows.some((row) => row.provider_id === providerId)
@@ -403,6 +406,12 @@ function chosen(
     rows.find((row) => row.default) ??
     rows[0]
   return { providerId: hit?.provider_id ?? providerId, model: hit?.model ?? model }
+}
+
+function choiceLabel(models: ModelChoice[], pick: { providerId: string; model: string }) {
+  const row = models.find((item) => item.provider_id === pick.providerId && item.model === pick.model)
+    ?? (models.length === 1 ? models[0] : undefined)
+  return row?.label || pick.model
 }
 
 function modelUnavailable(models: ModelChoice[], pick: { providerId: string; model: string }) {

@@ -21,6 +21,11 @@ describe("account model source isolation", () => {
     localStorage.setItem("zwai.phone.providers", JSON.stringify([{ ...privateProvider, id: 12 }, privateProvider]))
     expect(loadProviders().map((p) => p.id)).toEqual(["p-private"])
   })
+  it("publishes one official name instead of the catalog ids", () => {
+    const choices = providerChoices([{ ...managed, displayLabel: "Partner model", model: "account", catalog: ["vendor-secret-model"], locked: true }])
+    expect(choices).toEqual([expect.objectContaining({ provider_id: "gateway:account-one", label: "Partner model", model: "account", locked: true })])
+    expect(JSON.stringify(choices)).not.toContain("vendor-secret-model")
+  })
   it("keeps identically named models in separate source identities", () => {
     const choices = providerChoices([privateProvider, managed])
     expect(choices.map((c) => [c.provider_id, c.model])).toEqual([["p-private", "same-model"], ["gateway:account-one", "same-model"]])

@@ -53,13 +53,19 @@ func modelViews(eng *engine.Engine) []ModelView {
 		if !info.Ready && !(info.Default && info.DefaultFollowsSetting) {
 			continue
 		}
+		label := info.Label
+		if label == info.Model {
+			label = ""
+		}
 		out = append(out, ModelView{
 			ProviderID:            info.ProviderID,
 			ProviderLabel:         info.ProviderLabel,
+			Label:                 label,
 			Model:                 info.Model,
 			Default:               info.Default,
 			DefaultFollowsSetting: info.DefaultFollowsSetting,
 			Ready:                 info.Ready,
+			Locked:                eng.Providers().OfficialOnly(),
 		})
 	}
 	if len(out) == 0 {

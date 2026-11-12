@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest"
 
 import {
-  accountKindTally, accountModelRows, accountModelsProblem, accountModelsStale,
-  effectiveAccountModel, embeddingModelChoices, serverStartsConversations, showWelcome,
+  accountChoiceLabel, accountKindTally, accountModelRows, accountModelsProblem, accountModelsStale,
+  effectiveAccountModel, embeddingModelChoices, officialModelLock, serverStartsConversations, showWelcome,
 } from "./account-models"
 import type { AccountModels, Meta, ModelInfo } from "./types"
 
@@ -77,6 +77,13 @@ describe("account model rows", () => {
     expect(effectiveAccountModel(models, "")).toBe("first")
     expect(effectiveAccountModel(models, "second")).toBe("second")
     expect(effectiveAccountModel(models, "missing")).toBe("missing")
+    const branded = [{ ...row("account"), label: "Partner model" }]
+    expect(accountChoiceLabel(branded, "vendor-secret-model")).toBe("Partner model")
+    expect(accountChoiceLabel(branded, "")).toBe("Partner model")
+    expect(accountChoiceLabel(models, "missing")).toBe("missing")
+    expect(officialModelLock({ state: "ready", models: 1, profile: { presentation: "official", instruction: false } })).toBe(true)
+    expect(officialModelLock({ state: "ready", models: 1, profile: { presentation: "full", instruction: false } })).toBe(false)
+    expect(officialModelLock(account("ready"))).toBe(false)
     expect(embeddingModelChoices({
       state: "ready", models: 1, source_id: "gateway:a", label: "Server",
       kinds: { chat: 0, embedding: 1, ocr: 0, decisions: 0, other: 0, unclassified: 0, embedding_models: ["embed-a", "embed-a"] },

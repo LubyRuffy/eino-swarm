@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { api } from "@/lib/api"
-import { accountModelRows, effectiveAccountModel, serverStartsConversations } from "@/lib/account-models"
+import { accountChoiceLabel, accountModelRows, officialModelLock, serverStartsConversations } from "@/lib/account-models"
 import { chromeTypeClass } from "@/lib/chrome-type"
 import { firstByteTimeoutSettingsKey } from "@/lib/first-byte-timeout"
 import { formatTokens, mergeModelContext } from "@/lib/usage"
@@ -65,7 +65,8 @@ export function ModelsTab({
   const account = useApp((s) => s.meta?.account_models)
   const listed = useApp((s) => s.models)
   const accountReady = account?.state === "ready" && account.models > 0
-  const serverStarts = serverStartsConversations(settings.models.default_source, accountReady)
+  const officialOnly = officialModelLock(account)
+  const serverStarts = serverStartsConversations(settings.models.default_source, accountReady) && !officialOnly
   const [busy, setBusy] = useState<string>()
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set([
     ...Object.keys(toolsErrors),
@@ -167,10 +168,10 @@ export function ModelsTab({
       description={t("settings.models.desc")}
     >
       <AccountModelsCard settings={settings} onChange={onChange} query={query} />
-      <AuxiliaryModels settings={settings} onChange={onChange} query={query} />
-      <SearchSettingsPanel settings={settings} onChange={onChange} query={query} />
+      {officialOnly ? null : <AuxiliaryModels settings={settings} onChange={onChange} query={query} />}
+      {officialOnly ? null : <SearchSettingsPanel settings={settings} onChange={onChange} query={query} />}
 
-      <SettingsSection
+      {officialOnly ? null : <SettingsSection
         title={t("accountModels.ownTitle")}
         description={noOwnProvider(settings) ? t("accountModels.ownEmpty") : t("accountModels.ownDesc")}
       >
@@ -219,9 +220,9 @@ export function ModelsTab({
             onToolsDraftChange={(text) => onToolsDraftChange?.(p.id, text)}
           />
         ))}
-      </SettingsSection>
+      </SettingsSection>}
 
-      {settingsMatch(query, t("settings.models.add"), "provider") ? (
+      {!officialOnly && settingsMatch(query, t("settings.models.add"), "provider") ? (
         <Button
           type="button"
           variant="outline"
@@ -299,7 +300,7 @@ function ServerDefaultRow({
 }) {
   const t = useT()
   const rows = accountModelRows(models)
-  const current = effectiveAccountModel(models, accountModel)
+  const current = accountChoiceLabel(models, accountModel)
   const [open, setOpen] = useState(false)
   const shown = open || (query.trim() !== "" && rows.some((row) => settingsMatch(query, row.model)))
   if (!settingsMatch(
@@ -360,7 +361,7 @@ function ServerDefaultRow({
                   <button
                     type="button"
                     aria-pressed={selected}
-                    aria-label={row.model}
+                    aria-label={row.label || row.model}
                     className="rounded-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                     onClick={() => onModel(row.model)}
                   >

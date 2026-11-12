@@ -450,7 +450,21 @@ receipt status as distinct from live server grants. Browser
 fixtures do not establish native iOS/Android transport or Mac WebView acceptance;
 record those separately when running the packaged clients.
 
-## Official server account models (`F-171`, `C-040`, `C-009`)
+## Official server account models (`F-171`, `F-172`, `C-040`, `C-046`, `C-009`)
+
+An official profile is checked without a real model. `internal/remote/account_profile_test.go`
+rejects an over-limit profile before any catalog is published and checks that
+a valid profile skips the catalog request. `internal/engine/account_profile_test.go`
+sends the alias `account`, leaves a stored own provider in place, appends the
+guidance only on that source, and drops a locally disabled tool even when the
+allowlist names it. `internal/server/account_models_http_test.go` checks that
+`/api/models`, meta and a later sign-out do not reveal the fixture's vendor
+model id or the guidance text. `frontend/e2e/official-profile.spec.ts` shows
+the locked name and the Settings switch. `mobile/src/lib/gateway-account.test.ts`
+strips the guidance and does not request `/v1/models`.
+`models/account/DefaultSourceChoice.tla` adds `OfficialStartsOnServer` and
+`OfficialHidesOwnProviders`; `make model-check` includes the cases that break
+each one.
 
 `internal/engine/nuwa_account_default_http_test.go` starts a real Nuwa manager
 against account and private HTTP routes that expose the same model name. It
@@ -7104,7 +7118,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   (`--sidebar-row-height` from UI chrome size, not rem) with a 2px stack gap so the
   selected pill floats; row menus stay `icon-xs` so they cannot pad the
   list out. Content font size must not shrink that directory; UI size grows it
-  (12px chrome → 26px row, 13 → 28, 16 → 34). Clicking Pinned, Projects,
+  (12px chrome → 26px row, 14 → 30, 16 → 34). Conversation small / medium /
+  large are 16 / 18 / 20px. The document root stays 14px,
+  so conversation size cannot rescale rem chrome. Clicking Pinned, Projects,
   or Conversations folds that section (`aria-expanded`);
   a reload keeps the fold. A project folder and Conversations show at most
   five conversations from the last seven days; **Show more** reveals

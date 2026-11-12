@@ -32,6 +32,20 @@ type AccountSource struct {
 	names   []string
 	windows map[string]int
 	types   map[string]string
+	// profiled replaces the catalog with one official alias. The fields below
+	// are empty for an ordinary catalog.
+	profiled bool
+	profile  accountProfile
+}
+
+// accountProfile is the memory-only official agreement. Instruction is never
+// copied into a log line or a settings payload.
+type accountProfile struct {
+	label       string
+	instruction string
+	tools       []string
+	restrict    bool
+	window      int
 }
 
 // ModelKinds counts the server's classification. Empty type is unclassified.
@@ -139,6 +153,17 @@ func (s *AccountSource) Kinds() ModelKinds {
 }
 
 func (s *AccountSource) provider(preferred string) config.Provider {
+	if s.profiled {
+		windows := map[string]int{}
+		if s.profile.window > 0 {
+			windows[config.OfficialModelAlias] = s.profile.window
+		}
+		return config.Provider{
+			ID: s.id, Label: s.profile.label, BaseURL: s.baseURL, APIKey: s.token,
+			Model: config.OfficialModelAlias, Catalog: []string{config.OfficialModelAlias},
+			ContextWindow: s.profile.window, ModelContext: windows,
+		}
+	}
 	names := s.conversationalNames()
 	windows := make(map[string]int, len(names))
 	for _, name := range names {
@@ -166,6 +191,9 @@ func (p *Pool) ConversationDefault(id string) (name string, followsSetting bool,
 		id = p.DefaultProviderID()
 	}
 	if src := p.account.Load(); src != nil && id == src.ID() {
+		if src.profiled {
+			return config.OfficialModelAlias, true, true
+		}
 		if preferred := p.accountModel(); preferred != "" {
 			return preferred, true, true
 		}
@@ -186,6 +214,9 @@ func ParseCatalog(raw []byte) (Catalog, error) { return parseModelCatalog(raw) }
 // paint a different model as selected. An empty preferred marks the current
 // first conversation name, and that mark does not follow a setting.
 func (s *AccountSource) rows(isDefault bool, preferred string) []Info {
+	if s.profiled {
+		return []Info{s.profileRow(isDefault)}
+	}
 	names := s.conversationalNames()
 	preferred = strings.TrimSpace(preferred)
 	follows := preferred != ""
@@ -250,6 +281,9 @@ func (p *Pool) AccountSourceID() string {
 // one can start a chat, otherwise the configured default provider.
 func (p *Pool) DefaultProviderID() string {
 	m := p.cfg.ModelsSnapshot()
+	if src := p.account.Load(); src != nil && src.profiled && m.Presentation() != config.AccountPresentationFull {
+		return src.ID()
+	}
 	if m.DefaultSource != config.DefaultSourceProvider {
 		if src := p.account.Load(); src != nil && len(src.conversationalNames()) > 0 {
 			return src.ID()
@@ -258,13 +292,23 @@ func (p *Pool) DefaultProviderID() string {
 	return m.Default
 }
 
+// OfficialOnly reports that a published profile currently hides every other
+// model. Sends use the official alias and the stored provider is left as it is.
+func (p *Pool) OfficialOnly() bool {
+	if p == nil || p.cfg == nil {
+		return false
+	}
+	src := p.account.Load()
+	return src != nil && src.profiled && p.cfg.ModelsSnapshot().Presentation() != config.AccountPresentationFull
+}
+
 // equal reports whether two projections would behave identically. A periodic
 // refresh that finds nothing new must not drop the shared client every time.
 func (s *AccountSource) equal(o *AccountSource) bool {
 	if s == nil || o == nil {
 		return s == o
 	}
-	if s.id != o.id || s.label != o.label || s.baseURL != o.baseURL || s.token != o.token || len(s.names) != len(o.names) || len(s.windows) != len(o.windows) || len(s.types) != len(o.types) {
+	if s.id != o.id || s.label != o.label || s.baseURL != o.baseURL || s.token != o.token || len(s.names) != len(o.names) || len(s.windows) != len(o.windows) || len(s.types) != len(o.types) || !s.sameProfile(o) {
 		return false
 	}
 	for i, name := range s.names {

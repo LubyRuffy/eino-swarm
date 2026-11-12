@@ -130,6 +130,27 @@ describe("gateway account shell", () => {
     expect(document.body.textContent).not.toContain(session.token)
   })
 
+  it("shows the official name and does not ask for model ids", async () => {
+    const marker = "profile guidance marker 1842"
+    mocks.account = {
+      ...mocks.account, status: "authorized", session,
+      bootstrap: { ...bootstrap, models: { ...bootstrap.models, profile: { label: "Partner model", instruction: marker, tools: ["read"] } } },
+    }
+    render(<App />)
+    await screen.findByRole("tab", { name: "Chat" })
+    expect(mocks.discover).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent("Partner model")
+    fireEvent.click(screen.getByRole("button", { name: "Model" }))
+    expect(screen.queryByRole("dialog", { name: "Model" })).not.toBeInTheDocument()
+    expect(document.body.textContent).not.toContain("shared-model")
+    expect(document.body.textContent).not.toContain(marker)
+    fireEvent.click(screen.getByRole("button", { name: "Menu" }))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Models" }))
+    expect(screen.getByRole("radio", { name: "Official model" })).toBeChecked()
+    expect(screen.queryByRole("button", { name: "Add a model" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("radio", { name: "All models" }))
+  })
+
   it("opens default-server sign-in without asking for server configuration and Android Back closes its overlay", async () => {
     render(<App />)
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }))

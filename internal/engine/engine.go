@@ -345,7 +345,7 @@ func (e *Engine) RenameThread(id, title string) error {
 // default stays empty, so changing it still applies. composerModel is the name
 // on the button; without one, the current first conversation name is kept.
 func (e *Engine) rememberShownModel(th *store.Thread, composerModel string) error {
-	if th == nil || strings.TrimSpace(th.Model) != "" {
+	if th == nil || e.pool.OfficialOnly() || strings.TrimSpace(th.Model) != "" {
 		return nil
 	}
 	name, follows, ok := e.pool.ConversationDefault(th.ProviderID)
@@ -370,6 +370,11 @@ func (e *Engine) rememberShownModel(th *store.Thread, composerModel string) erro
 // turn on. An empty model follows that provider's user-configured default; a
 // set model is the name the composer picked.
 func (e *Engine) SetThreadProvider(id, providerID, model string) error {
+	// Official presentation sends the alias without rewriting the conversation's
+	// stored provider, so switching back to the full list restores it.
+	if e.pool.OfficialOnly() {
+		return nil
+	}
 	prov, err := e.pool.ResolveModel(providerID, model)
 	if err != nil {
 		return err

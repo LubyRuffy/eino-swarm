@@ -491,6 +491,14 @@ export interface AccountModels {
   /** Runtime provider id for this account. Not an endpoint. */
   source_id?: string
   kinds?: AccountModelKinds
+  /** Present only while the server published an official-model agreement.
+   *  The instruction text is not included. */
+  profile?: {
+    presentation: "official" | "full"
+    instruction: boolean
+    restrict_tools?: boolean
+    tools?: string[]
+  }
 }
 
 export interface ToolDescriptor {
@@ -607,6 +615,8 @@ export interface Settings {
     default_source?: ModelSource
     /** Conversation model used when new chats start on the server account. */
     account_model?: string
+    /** official hides the model list while an account profile is published. */
+    account_presentation?: "official" | "full"
     providers: ProviderSettings[]
   }
   swarm: SwarmLimits
@@ -636,7 +646,13 @@ export type ProviderSettingsWrite = Omit<ProviderSettings, "timeout_seconds"> & 
 export type SettingsPatch = Omit<Partial<Settings>, "models" | "swarm" | "ui"> & {
   /** The server keeps every field a patch leaves out. */
   ui?: Partial<UISettings>
-  models?: { default: string; default_source?: ModelSource; account_model?: string; providers: ProviderSettingsWrite[] }
+  models?: {
+    default: string
+    default_source?: ModelSource
+    account_model?: string
+    account_presentation?: "official" | "full"
+    providers: ProviderSettingsWrite[]
+  }
   swarm?: Omit<SwarmLimits, "agent_timeout_seconds"> & { agent_timeout_seconds?: number }
 }
 

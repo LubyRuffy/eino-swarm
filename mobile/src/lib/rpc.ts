@@ -106,10 +106,14 @@ export type ThreadGroup = {
 export type ModelChoice = {
   provider_id: string
   provider_label?: string
+  /** Shown instead of model when the server named the row. */
+  label?: string
   model: string
   default?: boolean
   default_follows_setting?: boolean
   ready?: boolean
+  /** The only row while official presentation hides the list. */
+  locked?: boolean
 }
 
 export type ProjectSettings = {

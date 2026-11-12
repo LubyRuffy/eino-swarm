@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { GatewayAccountScreen } from "@/components/gateway-account-screen"
 import type { PcWebSnapshot } from "@/components/pc-web-execution-status"
 import { installAndroidBack } from "@/lib/android-back"
+import { loadAccountPresentation, saveAccountPresentation, type AccountPresentation } from "@/lib/account-presentation"
+import { OFFICIAL_MODEL_ALIAS } from "@/lib/gateway-account"
 import type { DirectProvider } from "@/lib/direct-provider"
 import { t } from "@/lib/i18n"
 import type { GatewayHost } from "@/lib/gateway-account"
@@ -19,8 +21,12 @@ type PhoneAccount = {
   empty?: ReactNode
   /** The signed-in account's computers, for the Add a PC sheet to list first. */
   pcs?: { hosts: GatewayHost[]; connect: (id: string) => Promise<void> }
+  hasProfile?: boolean
+  officialOnly?: boolean
+  presentation?: AccountPresentation
+  setPresentation?: (value: AccountPresentation) => void
 }
-export const PhoneAccountContext = createContext<PhoneAccount>({ providers: [] })
+export const PhoneAccountContext = createContext<PhoneAccount>({ providers: [], presentation: "official" })
 export const usePhoneAccount = () => useContext(PhoneAccountContext)
 
 export function GatewayAccountShell({ children }: { children: ReactNode }) {
@@ -32,22 +38,45 @@ export function GatewayAccountShell({ children }: { children: ReactNode }) {
   const [modelBusy, setModelBusy] = useState(false)
   const [catalogRevision, setCatalogRevision] = useState(0)
   const source = gatewayProvider(account.status === "authorized" ? account.session : null, account.bootstrap ?? null)
+  const profile = account.bootstrap?.models.profile
+  const [presentation, setPresentationState] = useState<AccountPresentation>(() => loadAccountPresentation())
+  const setPresentation = (value: AccountPresentation) => {
+    saveAccountPresentation(value)
+    setPresentationState(value)
+  }
+  const officialOnly = Boolean(profile && presentation !== "full")
   const authority = source ? source.id + "\x00" + source.apiKey : ""
   useEffect(() => {
     let active = true
     setModelError(false)
-    setModelBusy(Boolean(source))
+    setModelBusy(Boolean(source) && !profile)
     if (!source) return () => { active = false }
+    if (profile) {
+      setCatalog({ authority, names: [OFFICIAL_MODEL_ALIAS] })
+      return () => { active = false }
+    }
     void discoverModels(source).then((names) => {
       if (active) setCatalog({ authority, names })
     }).catch(() => {
       if (active) { setCatalog({ authority, names: [] }); setModelError(true) }
     }).finally(() => { if (active) setModelBusy(false) })
     return () => { active = false }
-  }, [authority, catalogRevision])
-  const providers = useMemo(() => source && catalog.authority === authority && catalog.names.length
-    ? [{ ...source, catalog: catalog.names, model: catalog.names[0] }]
-    : [], [authority, catalog, source?.label])
+  }, [authority, catalogRevision, profile?.label])
+  const providers = useMemo(() => {
+    if (source && profile) {
+      return [{
+        ...source,
+        label: profile.label,
+        displayLabel: profile.label,
+        model: OFFICIAL_MODEL_ALIAS,
+        catalog: [OFFICIAL_MODEL_ALIAS],
+        locked: officialOnly,
+      }]
+    }
+    return source && catalog.authority === authority && catalog.names.length
+      ? [{ ...source, catalog: catalog.names, model: catalog.names[0] }]
+      : []
+  }, [authority, catalog, officialOnly, profile, source])
   const restricted = ["checking", "authorization_pending", "account_pending", "account_rejected"].includes(account.status) || Boolean(account.session && account.status === "access_denied")
   useEffect(() => {
     if (!open || restricted) return
@@ -77,7 +106,7 @@ export function GatewayAccountShell({ children }: { children: ReactNode }) {
   const screen = <GatewayAccountScreen account={account} providers={providers} modelBusy={modelBusy}
     modelError={modelError} pcWeb={dialog?.pcWeb} onClose={restricted ? undefined : () => setDialog(undefined)} onConnect={connect} onRefresh={refresh} onOpenChat={openChat} />
   return (
-    <PhoneAccountContext.Provider value={{ providers, gatewaySourceID: account.status === "authorized" ? account.bootstrap?.models.source_id ?? "" : "", openAccount: (pcWeb) => setDialog({ pcWeb }), empty: account.status === "authorized" ? <GatewayAccountScreen account={account} providers={providers} modelBusy={modelBusy} modelError={modelError} onConnect={connect} onRefresh={refresh} onOpenChat={openChat} onOtherWays={otherWays} /> : undefined, pcs: account.status === "authorized" ? { hosts: account.hosts, connect } : undefined }}>
+    <PhoneAccountContext.Provider value={{ providers, hasProfile: Boolean(profile), officialOnly, presentation, setPresentation, gatewaySourceID: account.status === "authorized" ? account.bootstrap?.models.source_id ?? "" : "", openAccount: (pcWeb) => setDialog({ pcWeb }), empty: account.status === "authorized" ? <GatewayAccountScreen account={account} providers={providers} modelBusy={modelBusy} modelError={modelError} onConnect={connect} onRefresh={refresh} onOpenChat={openChat} onOtherWays={otherWays} /> : undefined, pcs: account.status === "authorized" ? { hosts: account.hosts, connect } : undefined }}>
       {restricted ? screen : <div className="h-full min-h-0" inert={open || undefined} aria-hidden={open || undefined}>{children}</div>}
       {open && !restricted ? <div role="dialog" aria-modal="true" aria-label={t("account.title")} className="fixed inset-0 z-50 bg-background pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)]">{screen}</div> : null}
     </PhoneAccountContext.Provider>

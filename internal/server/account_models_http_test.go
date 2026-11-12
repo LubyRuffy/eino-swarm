@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,8 +29,10 @@ const (
 // pool ignores account models by design.
 type accountHarness struct {
 	*harness
-	gateway *httptest.Server
-	catalog string
+	gateway     *httptest.Server
+	catalog     string
+	profile     any
+	catalogHits atomic.Int32
 }
 
 func newAccountHarness(t *testing.T, signedIn bool) *accountHarness {
@@ -41,14 +45,19 @@ func newAccountHarness(t *testing.T, signedIn bool) *accountHarness {
 	ah.gateway = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/client/desktop/v1/bootstrap":
+			models := map[string]any{
+				"source_id": accountSourceID, "source_kind": "gateway", "label": "Server", "execution": "desktop",
+				"api_base_url": origin + "/client/desktop/v1", "catalog_url": origin + "/client/desktop/v1/models", "api_access_enabled": true,
+			}
+			if ah.profile != nil {
+				models["profile"] = ah.profile
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
-				"user": map[string]any{"id": strings.Repeat("2", 32), "username": "account", "display_name": "Account Name"},
-				"models": map[string]any{
-					"source_id": accountSourceID, "source_kind": "gateway", "label": "Server", "execution": "desktop",
-					"api_base_url": origin + "/client/desktop/v1", "catalog_url": origin + "/client/desktop/v1/models", "api_access_enabled": true,
-				},
+				"user":   map[string]any{"id": strings.Repeat("2", 32), "username": "account", "display_name": "Account Name"},
+				"models": models,
 			}})
 		case "/client/desktop/v1/models":
+			ah.catalogHits.Add(1)
 			_, _ = io.WriteString(w, ah.catalog)
 		default:
 			http.NotFound(w, r)
@@ -298,4 +307,107 @@ func TestWelcomeDismissalIsIndependentOfOtherUISettings(t *testing.T) {
 	if got := ah.json(http.MethodGet, "/api/meta", nil, http.StatusOK)["locale"]; got != "zh" {
 		t.Fatalf("dismissal reset the language: %v", got)
 	}
+}
+
+func TestSettingsKeepTheAccountPresentation(t *testing.T) {
+	ah := newAccountHarness(t, true)
+	ah.waitAccount(remote.AccountReady)
+	provider := map[string]any{"id": "default", "label": "Main", "base_url": "http://endpoint.invalid/v1", "model": "m", "api_key": "k", "timeout_seconds": 60}
+	save := func(extra map[string]any) map[string]any {
+		models := map[string]any{"default": "default", "providers": []map[string]any{provider}}
+		for k, v := range extra {
+			models[k] = v
+		}
+		return ah.json(http.MethodPut, "/api/settings", map[string]any{"models": models}, http.StatusOK)
+	}
+	presentation := func(settings map[string]any) any {
+		return settings["settings"].(map[string]any)["models"].(map[string]any)["account_presentation"]
+	}
+	if got := presentation(save(nil)); got != config.AccountPresentationOfficial {
+		t.Fatalf("absent presentation = %v", got)
+	}
+	if strings.Contains(string(mustRead(t, ah.app.Config.Path())), "account_presentation") {
+		t.Fatal("an omitted presentation was written into the config file")
+	}
+	if got := presentation(save(map[string]any{"account_presentation": "full"})); got != config.AccountPresentationFull {
+		t.Fatalf("explicit full presentation = %v", got)
+	}
+	if got := presentation(save(nil)); got != config.AccountPresentationFull {
+		t.Fatalf("a later save reset the presentation: %v", got)
+	}
+	ah.json(http.MethodPut, "/api/settings", map[string]any{"models": map[string]any{
+		"default": "default", "account_presentation": "somewhere", "providers": []map[string]any{provider},
+	}}, http.StatusBadRequest)
+}
+
+func TestOfficialProfileHidesTheCatalogAcrossTheAPI(t *testing.T) {
+	ah := newAccountHarness(t, false)
+	ah.catalog = `{"object":"list","data":[{"id":"vendor-secret-model"}]}`
+	ah.profile = map[string]any{
+		"label": "Partner model", "instruction": "profile guidance marker 1842",
+		"tools": []string{"read", "exec"}, "context_window": 32000,
+	}
+	ah.signIn()
+	ah.app.Remote.Reload()
+	ah.waitAccount(remote.AccountReady)
+	if ah.catalogHits.Load() != 0 {
+		t.Fatalf("a profile still fetched the catalog %d times", ah.catalogHits.Load())
+	}
+	models := ah.raw("/api/models")
+	meta := ah.raw("/api/meta")
+	for _, body := range []string{models, meta} {
+		if strings.Contains(body, "vendor-secret-model") || strings.Contains(body, "profile guidance marker 1842") {
+			t.Fatalf("official response leaked a vendor id or the instruction: %s", body)
+		}
+	}
+	got := ah.json(http.MethodGet, "/api/models", nil, http.StatusOK)
+	rows, _ := got["models"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("models = %v", got["models"])
+	}
+	row := rows[0].(map[string]any)
+	if row["model"] != config.OfficialModelAlias || row["label"] != "Partner model" || row["source"] != "account" {
+		t.Fatalf("official row = %v", row)
+	}
+	account := ah.json(http.MethodGet, "/api/meta", nil, http.StatusOK)["account_models"].(map[string]any)
+	profile, _ := account["profile"].(map[string]any)
+	if account["models"] != float64(1) || account["label"] != "Partner model" || profile["presentation"] != "official" || profile["instruction"] != true {
+		t.Fatalf("account meta = %v", account)
+	}
+	tools, _ := profile["tools"].([]any)
+	if profile["restrict_tools"] != true || len(tools) != 2 {
+		t.Fatalf("profile tools = %v", profile)
+	}
+
+	provider := map[string]any{"id": "default", "label": "Main", "base_url": "http://endpoint.invalid/v1", "model": "own-model", "api_key": "k", "timeout_seconds": 60}
+	ah.json(http.MethodPut, "/api/settings", map[string]any{"models": map[string]any{
+		"default": "default", "account_presentation": "full", "providers": []map[string]any{provider},
+	}}, http.StatusOK)
+	full := ah.raw("/api/models")
+	if strings.Contains(full, "vendor-secret-model") || !strings.Contains(full, "own-model") || !strings.Contains(full, config.OfficialModelAlias) {
+		t.Fatalf("full list = %s", full)
+	}
+	account = ah.json(http.MethodGet, "/api/meta", nil, http.StatusOK)["account_models"].(map[string]any)
+	if account["profile"].(map[string]any)["presentation"] != "full" {
+		t.Fatalf("presentation did not follow settings: %v", account["profile"])
+	}
+
+	if err := os.Remove(filepath.Join(ah.app.Config.RemoteDir(), "host_token")); err != nil {
+		t.Fatal(err)
+	}
+	ah.app.Remote.Reload()
+	ah.waitAccount(remote.AccountSignedOut)
+	signedOut := ah.raw("/api/meta")
+	if strings.Contains(signedOut, "Partner model") || strings.Contains(signedOut, "profile guidance marker 1842") {
+		t.Fatalf("sign-out kept the profile: %s", signedOut)
+	}
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }

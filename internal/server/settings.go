@@ -90,10 +90,11 @@ func (s *Server) getMeta(c *gin.Context) {
 type settingsView struct {
 	Server config.ServerConfig `json:"server"`
 	Models struct {
-		Default       string         `json:"default"`
-		DefaultSource string         `json:"default_source"`
-		AccountModel  string         `json:"account_model,omitempty"`
-		Providers     []providerView `json:"providers"`
+		Default             string         `json:"default"`
+		DefaultSource       string         `json:"default_source"`
+		AccountModel        string         `json:"account_model,omitempty"`
+		AccountPresentation string         `json:"account_presentation,omitempty"`
+		Providers           []providerView `json:"providers"`
 	} `json:"models"`
 	Swarm       config.SwarmConfig       `json:"swarm"`
 	Tools       config.ToolsConfig       `json:"tools"`
@@ -138,6 +139,7 @@ func toSettingsView(cfg *config.Config) settingsView {
 	v.Models.Default = cfg.Models.Default
 	v.Models.DefaultSource = cfg.Models.DefaultSource
 	v.Models.AccountModel = cfg.Models.AccountModel
+	v.Models.AccountPresentation = cfg.Models.Presentation()
 	for _, p := range cfg.Models.Providers {
 		catalog := p.Catalog
 		if catalog == nil {
@@ -212,7 +214,9 @@ type putSettingsRequest struct {
 		DefaultSource *string `json:"default_source"`
 		// Absent keeps the stored conversation model. Empty clears it.
 		AccountModel *string `json:"account_model"`
-		Providers    []struct {
+		// Absent keeps the stored presentation. Empty means official.
+		AccountPresentation *string `json:"account_presentation"`
+		Providers           []struct {
 			APIMode                 *string           `json:"api_mode"`
 			BuiltinTools            *[]map[string]any `json:"builtin_tools"`
 			ID                      string            `json:"id"`
@@ -407,7 +411,11 @@ func (s *Server) putSettings(c *gin.Context) {
 			if req.Models.AccountModel != nil {
 				accountModel = *req.Models.AccountModel
 			}
-			next.Models = config.ModelsConfig{Default: req.Models.Default, DefaultSource: source, AccountModel: accountModel, Providers: providers}
+			presentation := cfg.Models.AccountPresentation
+			if req.Models.AccountPresentation != nil {
+				presentation = *req.Models.AccountPresentation
+			}
+			next.Models = config.ModelsConfig{Default: req.Models.Default, DefaultSource: source, AccountModel: accountModel, AccountPresentation: presentation, Providers: providers}
 		}
 
 		*cfg = next

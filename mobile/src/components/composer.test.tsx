@@ -179,6 +179,29 @@ describe("Composer", () => {
     )
   })
 
+  it("shows one official name and sends its alias without opening the list", () => {
+    setLocale("en")
+    const onSubmit = vi.fn()
+    render(
+      <Composer
+        label="Message"
+        sendLabel="Send"
+        providerId="own"
+        model="saved-model"
+        models={[{ provider_id: "gateway:owner", provider_label: "Partner model", label: "Partner model", model: "account", locked: true, default: true }]}
+        onSubmit={onSubmit}
+      />,
+    )
+    const button = screen.getByRole("button", { name: "Model" })
+    expect(button).toHaveTextContent("Partner model")
+    expect(button).not.toHaveTextContent("saved-model")
+    fireEvent.click(button)
+    expect(screen.queryByRole("dialog", { name: "Model" })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "hi" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    expect(onSubmit).toHaveBeenCalledWith("hi", expect.objectContaining({ providerId: "gateway:owner", model: "account" }))
+  })
+
   it("keeps a chat on a provider the catalog no longer lists", () => {
     setLocale("en")
     const onSubmit = vi.fn()

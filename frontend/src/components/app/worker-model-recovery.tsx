@@ -38,7 +38,7 @@ export function WorkerModelRecovery({ turnId }: { turnId?: string }) {
     <div className="mt-2" data-testid="worker-model-recovery">
       <p>{t("transcript.workerRecoveryHint")}</p>
       <Button type="button" size="sm" className="mt-2" disabled={unavailable || pending || !selected || result?.ok} onClick={() => void repair()}>
-        {pending ? t("transcript.workerRecoverySaving") : t("transcript.workerRecoveryAction", { model: selected?.model ?? t("transcript.workerRecoverySelect") })}
+        {pending ? t("transcript.workerRecoverySaving") : t("transcript.workerRecoveryAction", { model: selected?.label || selected?.model || t("transcript.workerRecoverySelect") })}
       </Button>
       {result ? <p role="status" className="mt-1">{result.text}</p> : null}
     </div>

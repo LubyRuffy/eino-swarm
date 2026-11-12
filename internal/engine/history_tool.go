@@ -48,7 +48,11 @@ func (e *Engine) conversationToolsForExecution(ctx context.Context, th *store.Th
 	if err != nil {
 		return nil, err
 	}
-	if e.mcp != nil && !th.PlanMode && !readOnly {
+	restrict, allow := e.pool.AccountToolPolicy(th.ProviderID)
+	if restrict {
+		set = tools.AllowWorkspace(set, allow)
+	}
+	if e.mcp != nil && !th.PlanMode && !readOnly && !restrict {
 		cfg := e.cfg.Snapshot()
 		external, err := e.mcp.Tools(ctx, cfg.MCP.Servers, set.WorkspaceDir, cfg.Tools.ToolResultLimit())
 		if err != nil {

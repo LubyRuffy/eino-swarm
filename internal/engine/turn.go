@@ -387,7 +387,10 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 		return nil, err
 	}
 	var executorProvider, executorModel string
-	if pc != nil && pc.project != nil && pc.project.NuwaEnabled && nuwaPairSaved(pc.project) {
+	if e.pool.OfficialOnly() {
+		executorProvider = prov.ID
+		executorModel = prov.Model
+	} else if pc != nil && pc.project != nil && pc.project.NuwaEnabled && nuwaPairSaved(pc.project) {
 		// The saved pair is the manager and the new-role executor for this
 		// turn. A model that left the ready catalog stops the turn here,
 		// before a model request can run on some other name.
@@ -441,6 +444,7 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 	if err := e.store.CreateTurn(turn); err != nil {
 		return nil, err
 	}
+	e.recordAccountProfile(threadID, turn)
 	if in.ContinueSchedule && in.ScheduleRunID != "" {
 		if err := e.bindScheduledTurn(turn); err != nil {
 			_ = e.store.FinishTurn(turn.ID, store.TurnError, "", err.Error())
@@ -616,6 +620,7 @@ func (e *Engine) Interrupt(threadID string) error {
 // KindSteer and KindCleanup are engine-level event kinds, alongside the ones
 // the swarm library emits.
 const (
+	KindAccountProfile         = "account_profile"
 	KindSteer                  = "steer"
 	KindSteerRetracted         = "steer_retracted"
 	KindSteerRevised           = "steer_revised"
@@ -627,6 +632,21 @@ const (
 	KindMaxIterationsContinued = "max_iterations_continued"
 	KindResumed                = "resumed"
 )
+
+func (e *Engine) recordAccountProfile(threadID string, turn *store.Turn) {
+	if e == nil || e.pool == nil || turn == nil {
+		return
+	}
+	trace, ok := e.pool.AccountProfileTrace(turn.ProviderID)
+	if !ok {
+		return
+	}
+	body, err := json.Marshal(trace)
+	if err != nil {
+		return
+	}
+	e.record(store.Event{ThreadID: threadID, TurnID: turn.ID, Kind: KindAccountProfile, Text: string(body)})
+}
 
 func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan struct{},
 	turn *store.Turn, reg *swarm.Registry, toolset *tools.Set, pc *projectContext,

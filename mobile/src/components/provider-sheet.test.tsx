@@ -187,6 +187,32 @@ describe("ProviderSheet", () => {
     expect(screen.queryByRole("button", { name: t("chat.removeName", { name: "Server" }) })).not.toBeInTheDocument()
   })
 
+  it("keeps personal endpoints hidden until every model is requested", () => {
+    setLocale("en")
+    const onPresentation = vi.fn()
+    render(
+      <ProviderSheet
+        providers={[
+          { ...draft({ id: "gateway:owner", label: "Server", model: "account", sourceKind: "gateway" }), displayLabel: "Partner model" },
+          draft({ id: "p-1", label: "Desk" }),
+        ]}
+        hasProfile
+        presentation="official"
+        onPresentation={onPresentation}
+        onChange={vi.fn()}
+        onClose={vi.fn()}
+        discover={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole("radiogroup", { name: "Model list" })).toBeInTheDocument()
+    expect(screen.getByText("Partner model")).toBeInTheDocument()
+    expect(screen.queryByText("Desk")).not.toBeInTheDocument()
+    expect(screen.queryByText("account")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: t("chat.add") })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("radio", { name: "All models" }))
+    expect(onPresentation).toHaveBeenCalledWith("full")
+  })
+
   it("lets Android Back cancel a pending removal", () => {
     setLocale("en")
     const base = vi.fn(() => true)

@@ -13,6 +13,8 @@ import { loadOrCreateIdentity, loadSavedLinks, removeLink, saveLink, type SavedL
 // Official builds have a working default; self-hosted installations can override it.
 export const DEFAULT_GATEWAY_ORIGIN = "https://ai.fofa.info:2440"
 export const GATEWAY_ACCOUNT_EVENT = "zwai.gateway.account"
+export const OFFICIAL_MODEL_ALIAS = "account"
+const workspaceToolNames = new Set(["read", "write", "edit", "exec", "web_search", "web_fetch", "python_runner", "screenshot"])
 const ORIGIN_KEY = "zwai.phone.gateway.origin"
 const SESSION_KEY = "zwai.phone.gateway.session"
 const PENDING_KEY = "zwai.phone.gateway.pending"
@@ -23,10 +25,11 @@ export type GatewayUser = { id: string; username: string; display_name?: string;
 export type GatewayDevice = { id: string; expires_at: string; name?: string; platform?: string }
 export type GatewaySession = { origin: string; token: string; user: GatewayUser; device: GatewayDevice }
 export type GatewayHost = { id: string; name: string; hostname: string; display_name?: string; version: string; online: boolean; enabled: boolean; owner_user_id?: string; host_pub?: string; host_fp?: string }
+export type GatewayModelProfile = { label: string; tools?: string[]; context_window?: number }
 export type GatewayBootstrap = {
   user: GatewayUser
   device: GatewayDevice
-  models: { source_id: string; source_kind: "gateway"; label: string; execution: "phone"; api_base_url: string; catalog_url: string; api_access_enabled: boolean }
+  models: { source_id: string; source_kind: "gateway"; label: string; execution: "phone"; api_base_url: string; catalog_url: string; api_access_enabled: boolean; profile?: GatewayModelProfile }
   pairlink: { enabled: boolean; hub_url: string; redeem_url: string; websocket_url: string; info_url: string }
   heartbeat_interval: number
   presence_ttl: number
@@ -260,6 +263,44 @@ function validateBootstrap(origin: string, bootstrap: GatewayBootstrap, session:
     [bootstrap.pairlink.info_url, origin + "/pairlink/v1/info"], [bootstrap.pairlink.websocket_url, origin.replace(/^http/, "ws") + "/pairlink/v1/ws"],
   ]
   if (expected.some(([value, target]) => value !== target)) throw new GatewayError(0, "invalid_gateway_response")
+  const profile = acceptAccountProfile(bootstrap.models.profile)
+  if (profile) bootstrap.models.profile = profile
+  else delete bootstrap.models.profile
+}
+
+// acceptAccountProfile checks the official agreement and returns it without
+// the instruction. Direct chat does not apply that text, and it is not kept.
+function acceptAccountProfile(raw: unknown): GatewayModelProfile | undefined {
+  if (raw == null) return undefined
+  if (typeof raw !== "object" || Array.isArray(raw)) throw new GatewayError(0, "invalid_gateway_response")
+  const body = raw as Record<string, unknown>
+  const label = typeof body.label === "string" ? body.label.trim() : ""
+  if (!label || [...label].length > 64) throw new GatewayError(0, "invalid_gateway_response")
+  if ("instruction" in body) {
+    if (typeof body.instruction !== "string" || new TextEncoder().encode(body.instruction.trim()).length > 8192) {
+      throw new GatewayError(0, "invalid_gateway_response")
+    }
+  }
+  let tools: string[] | undefined
+  if ("tools" in body) {
+    if (!Array.isArray(body.tools)) throw new GatewayError(0, "invalid_gateway_response")
+    const seen = new Set<string>()
+    tools = []
+    for (const item of body.tools) {
+      const name = typeof item === "string" ? item.trim() : ""
+      if (!workspaceToolNames.has(name) || seen.has(name)) throw new GatewayError(0, "invalid_gateway_response")
+      seen.add(name)
+      tools.push(name)
+    }
+  }
+  if (body.context_window != null && (typeof body.context_window !== "number" || !Number.isInteger(body.context_window) || body.context_window <= 0)) {
+    throw new GatewayError(0, "invalid_gateway_response")
+  }
+  return {
+    label,
+    ...(tools ? { tools } : {}),
+    ...(typeof body.context_window === "number" ? { context_window: body.context_window } : {}),
+  }
 }
 
 export async function logoutGatewaySession(session: GatewaySession, fetcher: typeof fetch = gatewayFetch) {

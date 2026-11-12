@@ -140,6 +140,57 @@ describe("Gateway account authority", () => {
     expect(seen).toHaveLength(2)
   })
 
+  it("keeps an official name without its instruction or a model catalog request", async () => {
+    const marker = "profile guidance marker 1842"
+    const bootstrap = {
+      user: { ...session.user, approval_status: "approved" }, device: session.device,
+      models: {
+        source_id: "gateway:source", source_kind: "gateway", label: "服务器", execution: "phone",
+        api_base_url: origin + "/v1", catalog_url: origin + "/v1/models", api_access_enabled: true,
+        profile: { label: "Partner model", instruction: marker, tools: [" read ", "exec"], context_window: 8192 },
+      },
+      pairlink: { enabled: true, hub_url: origin, redeem_url: origin + "/pairlink/v1/pairings/redeem", websocket_url: "wss://gateway.example.test/pairlink/v1/ws", info_url: origin + "/pairlink/v1/info" },
+      heartbeat_interval: 30, presence_ttl: 90,
+    }
+    const seen: string[] = []
+    const fetcher = vi.fn(async (input) => {
+      const url = String(input)
+      seen.push(url)
+      if (url.endsWith("/auth/me")) return ok({ user: bootstrap.user, device: session.device })
+      if (url.endsWith("/bootstrap")) return ok(bootstrap)
+      if (url.includes("/link-hosts")) return new Response(JSON.stringify({ data: [], meta: { total: 0 } }))
+      return ok({ ok: true })
+    }) as typeof fetch
+    const state = await refreshGatewaySession(session, fetcher)
+    expect(state.bootstrap?.models.profile).toEqual({ label: "Partner model", tools: ["read", "exec"], context_window: 8192 })
+    expect(JSON.stringify(state.bootstrap)).not.toContain(marker)
+    expect(seen.some((url) => url.includes("/v1/models"))).toBe(false)
+  })
+
+  it.each([
+    [{ label: "" }],
+    [{ label: "x".repeat(65) }],
+    [{ label: "Partner model", instruction: "x".repeat(8193) }],
+    [{ label: "Partner model", tools: null }],
+    [{ label: "Partner model", tools: ["spawn_agent"] }],
+    [{ label: "Partner model", tools: ["read", "read"] }],
+    [{ label: "Partner model", context_window: 0 }],
+  ])("rejects an unusable official profile %#", async (profile) => {
+    const bootstrap = {
+      user: session.user, device: session.device,
+      models: { source_id: "gateway:source", source_kind: "gateway", label: "服务器", execution: "phone", api_base_url: origin + "/v1", catalog_url: origin + "/v1/models", api_access_enabled: true, profile },
+      pairlink: { enabled: true, hub_url: origin, redeem_url: origin + "/pairlink/v1/pairings/redeem", websocket_url: "wss://gateway.example.test/pairlink/v1/ws", info_url: origin + "/pairlink/v1/info" },
+      heartbeat_interval: 30, presence_ttl: 90,
+    }
+    const fetcher = vi.fn(async (input) => {
+      const url = String(input)
+      if (url.endsWith("/auth/me")) return ok({ user: session.user, device: session.device })
+      if (url.endsWith("/bootstrap")) return ok(bootstrap)
+      return ok({ ok: true })
+    }) as typeof fetch
+    await expect(refreshGatewaySession(session, fetcher)).rejects.toThrow("invalid_gateway_response")
+  })
+
   it("does not accept another Mobile identity or authenticate a closed session", async () => {
     const foreign = vi.fn(async () => ok({ user: { ...session.user, id: "other" }, device: session.device })) as typeof fetch
     await expect(refreshGatewaySession(session, foreign)).rejects.toThrow("session_expired")

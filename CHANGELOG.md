@@ -8,6 +8,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Added
 
+- A signed-in server can publish an official model profile. The composer shows
+  the server's name, requests use the alias `account`, and that source can
+  append guidance and narrow workspace tools. Settings → Models can switch
+  between Official model and All models. A direct phone chat uses the same
+  name and switch; a paired phone follows the PC's filtered catalog.
+  (`F-172`, `F-171`, `C-046`, `C-040`)
+
 - The composer has a Tools menu for the built-in catalog and each configured
   MCP server. The same switches as Settings are checked by default, except
   tools that are off until enabled. Clearing a check is saved immediately and

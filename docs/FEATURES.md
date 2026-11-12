@@ -19,6 +19,7 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-160` Trace and diagnostics
     - `F-170` Settings and providers
     - `F-171` Official server first: sign-in, welcome and account models
+    - `F-172` Official model profile
     - `F-175` Provider cloud built-in tools
     - `F-176` External MCP tools
     - `F-180` PC text quoting
@@ -292,7 +293,16 @@ This is the current user-facing capability map. The code and tests named below a
 - 对话模型：服务器或自配目录带 `model_type` 时，输入框和手机选择器只列出 `chat` 与未分类的旧模型；`embedding`、`ocr`、`decisions` 不进入可选对话模型目录，也不会被自动选为新会话默认模型。目录没有该字段时保持原列表，不按名称推断。已经选中被隐藏模型的对话保留原名；显式保存为账号默认的名称被隐藏时，选择器将它标为不可用，请求仍沿用该名称。账号目录仍保留全部分类：官方卡片用类型计数代替模型名列表；嵌入模型选择器只列出 `embedding`；只有嵌入等非对话模型时账号仍为 `ready`，新会话回落到自配服务。
 - 模型来源：账号目录在登录／注销后及每 10 分钟刷新，只有账号变化才重新读取。`models.default_source`（`account`／`provider`）决定新会话先用谁：新配置默认 `account`，账号没有可对话模型时回落到 `models.default`；已有可用默认 provider 的旧配置或首启 `OPENAI_*` 迁移为 `provider`，升级不改变原用户的行为。`models.account_model` 记住服务器上的默认对话模型。非空时未指定模型的会话跟随它；名称离开目录后仍显示为不可用，请求继续使用该名称。空值时新建会话记下当时的第一个可对话名称，目录随后重排不再改变这次选择；已有的空模型会话在下次发送时记下输入框上的名称。省略保存时保留原值，过长拒绝。账号目录就绪后，「自己的模型服务」里的「服务器模型」展开后列出可对话模型；目录给出上下文长度时显示在模型名旁，只读。点选写入该字段，用「默认 / 设为默认」选择新对话来源；自配行的「默认」只在来源是 `provider` 且该行是 `models.default` 时出现。官方卡片上的「新对话默认使用」写同一个来源字段，简介按类型计数。账号模型没有编辑、密钥或端点输入；注销或失去权限后，已选账号模型的会话得到稳定的 `account_login_required`，不会改走同名自配服务。
 - 手机侧的登录优先首页、自动连接唯一在线电脑见 `F-211`；手机直连服务器模型见 `F-230`。
-- 同一条一 id 排障路径不变：账号模型的 turn 以 `gateway:` provider id 前缀标识来源，Trace 不新增事件类型，也不记录凭据。
+- 同一条一 id 排障路径不变：账号模型的 turn 以 `gateway:` provider id 前缀标识来源，普通目录不新增事件类型，也不记录凭据。服务器下发官方档案时的名称、别名和工具名单见 `F-172`。
+
+### F-172 Official model profile
+
+- 目的：服务器可以只给一个官方名称，由它按账号解析真实模型，并为本机回合附加指导、收窄工作区工具。使用者：已登录官方服务器的 PC 与手机用户；入口：Gateway bootstrap 的可选 `models.profile`，Settings → Models 的「模型列表」，手机直连的同一开关；输入：服务器给出的名称、可选指导、工作区工具允许名单和可选上下文长度，以及本机 `models.account_presentation`；输出：输入框只显示该名称，发往 Gateway 的模型字段为协议别名 `account`，官方来源的回合在固定主管规则之后、人格和项目指令之前追加指导，并按允许名单与本机开关的交集挂载工作区工具；前置条件：档案通过现有 bootstrap 校验；失败表现：空名称、名称超过 64 个字符、指导超过 8 KiB、未知或无法识别的重复工具名、非正数上下文长度使账号进入 `unavailable` / `unsafe_response`，不发布半份目录。关联契约：`C-046`、`C-040`；关联功能：`F-171`、`F-230`。
+- 没有 `profile` 的账号保持 `F-171` 的目录。档案只存在内存，不写入 `config.yaml`，不进入 `models.providers`。`label` 由服务器提供，客户端不写死品牌或模型名。客户端不请求、不保存、不转发对话模型 id。更换服务器上的真实模型不需要新的客户端，也不改已有会话。
+- `models.account_presentation` 缺省为 `official`，也可为 `full`。空值表示 `official`，在用户明确保存之前不写回旧配置。`official` 时输入框不打开模型菜单；设置不列出服务器模型徽章、自配服务、辅助模型和账号嵌入模型名。新会话和发送走官方别名。会话上原来保存的自配 provider 保留，切回 `full` 后继续使用。`full` 恢复自配服务、辅助模型和本机嵌入选择；官方来源仍是一行档案名称。只有选中官方来源的回合才追加指导并应用工具名单。
+- 工具名单是 `read`、`write`、`edit`、`exec`、`web_search`、`web_fetch`、`python_runner`、`screenshot` 的子集。它只作用于官方来源，并与本机已有开关取交集。`spawn_agent`、提问、日程、目标和记忆保持挂载。名单存在时该回合不挂 MCP。缺省该字段表示不额外限制；空数组表示不挂工作区工具。`context_window` 缺省时沿用未知窗口。
+- 已配对手机执行在 PC 上，目录由 PC 过滤，不再做第二套开关。手机直连使用同一份 bootstrap，并在本机保存同一个展示开关，默认 `official`。直连只显示名称并发送别名 `account`；指导正文不保存在手机上，工作区工具名单由 PC 引擎执行。退出登录或档案消失后，内存中的指导、工具名单和别名绑定一并清除。此前写在 `models.account_model` 里的具体名称保留，但档案生效期间不显示、不发送。
+- `GET /api/meta` 的 `account_models.profile` 只含 `presentation`、是否有指导、以及在名单存在时的工具名。指导正文不进入 meta、设置、普通历史或单独事件。Trace 的 `account_profile` 记录名称、别名、工具名单和指导长度。实现证据：`internal/remote/account_profile.go`、`internal/provider/account_profile.go`、`internal/engine/prompt.go`、`internal/engine/history_tool.go`、`frontend/src/components/app/account-models-card.tsx`、`frontend/src/components/app/model-picker.tsx`、`mobile/src/lib/gateway-account.ts`、`mobile/src/components/provider-sheet.tsx`、`models/account/DefaultSourceChoice.tla`。验证：`internal/remote/account_profile_test.go`、`internal/provider/account_profile_test.go`、`internal/engine/account_profile_test.go`、`internal/server/account_models_http_test.go`、`frontend/src/components/app/account-models-card.test.tsx`、`frontend/e2e/official-profile.spec.ts`、`mobile/src/lib/gateway-account.test.ts`、`mobile/src/components/gateway-account-shell.test.tsx`。
 
 ### F-175 Provider cloud built-in tools
 

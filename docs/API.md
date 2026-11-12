@@ -275,6 +275,14 @@ endpoint:
 | `no_access` | signed in but the account may not use the model API |
 | `unavailable` | signed in but the catalog could not be used; `reason` is one of `rejected`, `unsupported`, `network`, `gateway`, `unsafe_response`, `no_models` |
 
+When the server's bootstrap includes `models.profile`, `account_models.profile`
+is present. It carries `presentation` (`official` or `full`), `instruction`
+(true when the server supplied guidance), and, only when a workspace allowlist
+was supplied, `restrict_tools: true` plus the allowed tool names. The guidance
+text itself is not in this object. `official` is the default. `label` is then
+the server's display name, and `models` counts the one official row rather
+than the hidden catalog. See [F-172](FEATURES.md#f-172-official-model-profile).
+
 `label`, `username` and `display_name` are present once known. The catalog is
 refreshed after sign-in/out and periodically; a reload that does not change the
 account does not refetch it. The offline provider (`--mock`) never reaches a
@@ -571,7 +579,11 @@ typeface.
 `models.default_source` (`account` or `provider`) chooses whose models a new
 conversation starts on; omitting it keeps the stored value (the model list is
 saved from many places that do not know it) and any other value is rejected with
-`400`. `ui.welcome_dismissed` is a boolean with the same omitted-keeps rule, so a
+`400`. `models.account_presentation` is `official` or `full`. Omitting it keeps
+the stored value. An empty stored value means `official` and is not written
+back until an explicit save. Any other value is `400`. It only changes what
+this client shows while an official profile is active; it does not select the
+server's real model. `ui.welcome_dismissed` is a boolean with the same omitted-keeps rule, so a
 language-only write cannot bring the first-run welcome back. The runtime account
 projection is not part of the settings: provider ids starting with `gateway:`
 are reserved and rejected.
@@ -648,7 +660,11 @@ conversation can still select it, and a turn already on it keeps running.
 ```
 
 `source` is `account` for the signed-in server's models and `provider` for the
-user's own endpoints. Account rows come first, their `provider_id` is
+user's own endpoints. While an official profile is in `official` presentation,
+this list is one account row: `label` is the server's name and `model` is the
+alias `account`. The catalog's real model ids are not returned. `full` keeps
+the user's own rows and still returns that one official row instead of the
+real ids. Account rows come first, their `provider_id` is
 `gateway:<32 hex>`, and they exist only while the account is signed in and its
 catalog is ready (they are never in `config.yaml`; no credential or endpoint is
 returned). A conversation that stored such an id and finds the account gone
@@ -2502,6 +2518,7 @@ shortening only the bounded detail text.
 | kind | meaning |
 |---|---|
 | `user_message` | the request that started this turn. `images` is `{id,name,mime}[]` when the send carried pasted vision input; never the pixels |
+| `account_profile` | one official-source turn recorded the active profile. `text` is JSON `{label,alias,tools,restrict_tools,instruction_bytes}`. `tools` is present only when an allowlist was supplied. The guidance text is not stored. A later personal-provider turn does not emit it |
 | `history_report_requested` | an explicit source-report choice owned by this turn and saved before model execution; no model-generated prose or authorization. Trace-only engine receipt, not a chat row |
 | `history_read_started` | host-owned admission to a `query_history` read attempt, before the reader returns any bytes; `text` is the original arguments and `tool_call_id` is retained when available. Not a successful read, complete coverage or execution receipt, and it does not select the report protocol. Trace-only engine receipt, not a chat row |
 | `history_registry_inherited` | host-observed reuse/restoration of actual Registry worker state; `source_turn_id` identifies an earlier turn in this conversation. Saved before successor occupation, idempotent and used to inherit read/request state; it neither changes worker authorship nor makes an unrelated fresh Registry inherit history mode. Trace-only engine receipt, not a chat row |
@@ -3605,7 +3622,7 @@ a browser cookie or Gateway API Key is not substituted:
 | POST | `/auth/mobile/start` | Name, platform, version, `device_pub`, candidate token and S256 challenge; returns public browser URI and private device code |
 | POST | `/auth/mobile/poll` | Device code and verifier; reports pending/rejected/authorized/denied/expired |
 | GET | `/auth/me` | Current account and exact Mobile session |
-| GET | `/bootstrap` | Approved account's source identity, model API URLs, Pairlink URLs and heartbeat interval |
+| GET | `/bootstrap` | Approved account's source identity, model API URLs, Pairlink URLs and heartbeat interval. Optional `models.profile` names one official model |
 | POST | `/heartbeat` | Refresh server-observed presence, independently of PC connectivity |
 | GET | `/link-hosts` | Paginated same-account PCs (`data` array plus `meta`); owned entries expose `owner_user_id` and full `host_pub` for exact pairing reconciliation |
 | POST | `/link-hosts/:id/connect` | Selected PC, authenticated public key and labels; returns `data:{binding_id,ticket,host_pub,session_id}` without QR |
@@ -3619,6 +3636,19 @@ Standard `/v1/models` and `/v1/chat/completions` use the same Mobile Bearer afte
 approval and API authorization, retaining the Gateway's Key/account model and
 quota enforcement. PC RPC never receives the Mobile credential or phone-private
 provider secrets. See the Gateway API documentation for the authoritative wire.
+
+`models.profile`, when present, is `{label, instruction?, tools?, context_window?}`.
+`label` is the only official name. `instruction` is guidance for a PC-engine
+turn and is not kept by the phone. `tools` is a subset of `read`, `write`,
+`edit`, `exec`, `web_search`, `web_fetch`, `python_runner` and `screenshot`;
+a missing field does not add a restriction, `[]` allows none of those tools,
+and JSON `null` is rejected. `context_window` is an optional positive integer.
+An empty or over-long label, guidance over 8 KiB, an unknown or repeated tool,
+or a non-positive window rejects the bootstrap as `invalid_gateway_response`.
+A valid profile is not followed by a `/v1/models` discovery. Direct chat sends
+the alias `account` and shows `label`. The phone stores `official` or `full`
+locally (`zwai.phone.account.presentation`); a paired phone uses the PC's
+filtered catalog instead, where a row may add `label` and `locked`.
 
 Automatic reconciliation calls the existing Connect route only for already
 saved anonymous PCs whose full `host_pub`, complete Hub base endpoint and

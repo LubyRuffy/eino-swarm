@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { ModelPicker } from "./model-picker"
-import type { ModelInfo } from "@/lib/types"
+import type { Meta, ModelInfo } from "@/lib/types"
+import { useApp } from "@/store/app"
 
 HTMLElement.prototype.scrollIntoView = function () {}
 class ResizeObserverStub {
@@ -151,5 +152,28 @@ describe("ModelPicker", () => {
     fireEvent.click(screen.getByRole("button", { name: "Model" }))
     const headings = Array.from(document.querySelectorAll("[cmdk-group-heading]")).map((n) => n.textContent)
     expect(headings).toEqual(["Server", "One", "Two"])
+  })
+
+  it("shows the official name and does not open a menu", () => {
+    useApp.setState({
+      meta: {
+        version: "test", mode: "desktop", mock: false, configured: true, default_provider: "",
+        reasoning_levels: [], data_dir: "", capabilities: {}, swarm: {} as Meta["swarm"],
+        account_models: {
+          state: "ready", models: 1, label: "Partner model",
+          profile: { presentation: "official", instruction: true },
+        },
+      },
+    })
+    const onChange = vi.fn()
+    render(<ModelPicker models={models} providerId="a" model="vendor-secret-model" onChange={onChange} />)
+    const button = screen.getByRole("button", { name: "Model" })
+    expect(button).toHaveTextContent("Partner model")
+    expect(button).not.toHaveAttribute("aria-haspopup")
+    expect(screen.queryByText("vendor-secret-model")).toBeNull()
+    fireEvent.click(button)
+    expect(screen.queryByPlaceholderText("Search models")).toBeNull()
+    expect(onChange).not.toHaveBeenCalled()
+    useApp.setState({ meta: undefined })
   })
 })

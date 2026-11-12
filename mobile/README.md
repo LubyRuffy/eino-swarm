@@ -79,6 +79,14 @@ Version-read and browser-launch acknowledgements each stop waiting after fifteen
 seconds or Sign out. A failed launch can be retried explicitly; the app does not
 automatically open another browser or claim to cancel an OS action already sent.
 
+When bootstrap includes `models.profile`, Chat shows that server's name and
+sends the alias `account`. It does not call `/v1/models`. **Models** offers
+**Official model** or **All models**; the choice is stored on this phone and
+defaults to Official model. The guidance text is not stored, and the workspace
+tool allowlist is applied by a PC engine turn rather than by direct chat.
+A paired phone has no second switch: it receives the PC's already filtered
+catalog. Signing out drops the profile.
+
 Server model sources are ephemeral, named by Gateway/account identity and never
 stored in personal endpoint settings. Identically named server and phone models
 remain distinct choices. Existing conversations retain the selected source;

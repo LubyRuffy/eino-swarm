@@ -11,11 +11,13 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command"
+import { officialModelLock } from "@/lib/account-models"
 import { displayedModel, groupModels, modelChoiceId } from "@/lib/models"
 import { chromeTypeClass } from "@/lib/chrome-type"
 import type { ModelInfo } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
+import { useApp } from "@/store/app"
 
 export function ModelPicker({
   models,
@@ -43,6 +45,8 @@ export function ModelPicker({
   disabled?: boolean
 }) {
   const t = useT()
+  const account = useApp((s) => s.meta?.account_models)
+  const locked = officialModelLock(account)
   const [open, setOpen] = useState(false)
   const [dialogMenu, setDialogMenu] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -56,7 +60,9 @@ export function ModelPicker({
   const followsDefault = Boolean(defaultLabel && !providerId && !model)
   const selected = followsDefault ? undefined : displayedModel(models, providerId, model)
   const unavailable = Boolean((model?.trim() && !selected) || (selected && !selected.ready))
-  const label = followsDefault ? defaultLabel : selected?.label || selected?.model || model?.trim() || t("model.fallback")
+  const label = locked
+    ? account?.label || t("model.fallback")
+    : followsDefault ? defaultLabel : selected?.label || selected?.model || model?.trim() || t("model.fallback")
 
   useLayoutEffect(() => {
     if (!open || disabled || !wrapRef.current || !menuRef.current) return
@@ -185,7 +191,7 @@ export function ModelPicker({
   // on that page and closes when a pointerdown reaches the document, so a click
   // on a model would land on the dialog and leave the saved choice unchanged.
   const menu =
-    open && !disabled && typeof document !== "undefined"
+    open && !disabled && !locked && typeof document !== "undefined"
       ? createPortal(
           <div
             ref={menuRef}
@@ -217,10 +223,10 @@ export function ModelPicker({
         disabled={disabled}
         id={id}
         aria-label={accessibleName ?? t("composer.model")}
-        aria-expanded={open && !disabled}
-        aria-haspopup="listbox"
-        title={unavailable ? t("model.unavailable") : undefined}
-        data-unavailable={unavailable ? "true" : undefined}
+        aria-expanded={locked ? undefined : open && !disabled}
+        aria-haspopup={locked ? undefined : "listbox"}
+        title={locked ? undefined : unavailable ? t("model.unavailable") : undefined}
+        data-unavailable={!locked && unavailable ? "true" : undefined}
         className={cn(
           "inline-flex h-7 max-w-[min(100%,14rem)] items-center gap-1.5 rounded-md px-2 hover:bg-accent disabled:opacity-50",
           chromeTypeClass,
@@ -228,12 +234,13 @@ export function ModelPicker({
           open && "bg-accent",
         )}
         onClick={() => {
+          if (locked) return
           setDialogMenu(Boolean(wrapRef.current?.closest("[role='dialog']")))
           setOpen((v) => !v)
         }}
       >
         <span className="truncate">{label}</span>
-        <ChevronDown className="size-3.5 text-muted-foreground" />
+        {locked ? null : <ChevronDown className="size-3.5 text-muted-foreground" />}
       </button>
       {menu}
     </div>

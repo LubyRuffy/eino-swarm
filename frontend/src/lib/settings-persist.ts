@@ -44,6 +44,9 @@ export function persistPayload(
         ? { default_source: next.models.default_source } : {}),
       ...(next.models.account_model !== baseline.models.account_model
         ? { account_model: next.models.account_model ?? "" } : {}),
+      ...(next.models.account_presentation !== baseline.models.account_presentation
+        && next.models.account_presentation !== undefined
+        ? { account_presentation: next.models.account_presentation } : {}),
       providers: next.models.providers.map((provider): ProviderSettingsWrite => {
         const previous = baseline.models.providers.find((p) => p.id === provider.id)
         const row: ProviderSettingsWrite = { ...provider }

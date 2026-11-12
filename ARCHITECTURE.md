@@ -570,6 +570,20 @@ back when a stored `gateway:` id has no source. The projection exists only in
 memory: `internal/config` rejects the reserved prefix in `models.providers`, and
 `models.default_source` (`account`/`provider`, migrated from the old
 default-provider rule) picks which one a new conversation starts on.
+An optional bootstrap `models.profile` replaces that catalog with one alias,
+`account`. The profile's label, guidance, workspace-tool allowlist and optional
+context window stay on the in-memory source. `models.account_presentation`
+(`official` by default, or `full`) is the only persisted switch. Official
+presentation resolves every conversation send to the alias without rewriting a
+stored own provider. Full presentation leaves own providers alone and still
+resolves a turn whose provider is the account source to the alias. Guidance is
+appended after the fixed manager prompt and before personality and project
+instructions, only for that source. The allowlist intersects the local tool
+switches and, when present, leaves MCP unmounted; coordination tools stay.
+`/api/meta.account_models.profile` reports the presentation, whether guidance
+exists, and the allowlist names. The guidance text is recorded only as a length
+on the `account_profile` trace event.
+
 `/api/meta.configured` counts a ready account, so a signed-in person is not
 shown the setup banner. The desktop welcome (`welcome-gate.tsx`) is gated by
 `ui.welcome_dismissed`; `frontend/src/lib/account-models.ts` holds the pure

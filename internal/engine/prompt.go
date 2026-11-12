@@ -297,6 +297,26 @@ func ExecFileSearchPrompt(names []string) string {
 	return ""
 }
 
+// AccountInstructionPrompt is guidance from the signed-in service. Empty
+// text yields empty. It sits after the fixed manager rules and before
+// personality and project instructions, and it does not replace those rules.
+func AccountInstructionPrompt(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	return "## Account\n\nThe signed-in service adds this guidance. It does not replace the rules above. If a later project instruction conflicts, follow the project.\n\n" + text + "\n"
+}
+
+// applyAccountInstruction places that guidance ahead of the personality and
+// project tail. A blank note leaves the tail unchanged.
+func applyAccountInstruction(extra, note string) string {
+	if strings.TrimSpace(note) == "" {
+		return extra
+	}
+	return JoinPromptSections(AccountInstructionPrompt(note), extra)
+}
+
 // PersonalityPrompt is the install-wide personal-preference section. Empty
 // text yields empty: a blank setting must not occupy prompt tokens. The
 // wrapper is task-agnostic. User text is appended verbatim. It is meant to

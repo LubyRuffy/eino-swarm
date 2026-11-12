@@ -184,9 +184,16 @@ func (p *Pool) Resolve(id string) (config.Provider, error) {
 // ResolveModel is Resolve plus a per-conversation override. Empty model
 // means the provider's configured default (and, offline, MockModelName).
 func (p *Pool) ResolveModel(id, model string) (config.Provider, error) {
+	if p.OfficialOnly() {
+		return p.account.Load().provider(""), nil
+	}
 	prov, err := p.Resolve(id)
 	if err != nil {
 		return config.Provider{}, err
+	}
+	if src := p.account.Load(); src != nil && src.profiled && prov.ID == src.ID() {
+		prov.Model = config.OfficialModelAlias
+		return prov, nil
 	}
 	if m := strings.TrimSpace(model); m != "" {
 		prov.Model = m
@@ -228,7 +235,10 @@ const MockContextWindow = 128000
 // An endpoint switched off in Settings is omitted. Lookup still resolves it,
 // so a conversation that already picked it keeps running.
 func (p *Pool) List() []Info {
-	rows := listModels(p.cfg.Snapshot(), p.mock)
+	var rows []Info
+	if !p.OfficialOnly() {
+		rows = listModels(p.cfg.Snapshot(), p.mock)
+	}
 	src := p.account.Load()
 	if src == nil {
 		return rows

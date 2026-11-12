@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { installAndroidBack } from "@/lib/android-back"
+import type { AccountPresentation } from "@/lib/account-presentation"
 import {
   blankProvider,
   isPersonalProvider,
@@ -24,14 +25,22 @@ export function ProviderSheet({
   onClose,
   onChange,
   discover = discoverModels,
+  hasProfile = false,
+  presentation = "official",
+  onPresentation,
 }: {
   providers: DirectProvider[]
   onClose: () => void
   onChange: (next: DirectProvider[]) => void
   discover?: typeof discoverModels
+  hasProfile?: boolean
+  presentation?: AccountPresentation
+  onPresentation?: (value: AccountPresentation) => void
 }) {
+  const official = hasProfile && presentation !== "full"
+  const listed = official ? providers.filter((row) => !isPersonalProvider(row)) : providers
   const [editing, setEditing] = useState<DirectProvider | null>(
-    providers.length === 0 ? blankProvider() : null,
+    providers.length === 0 && !official ? blankProvider() : null,
   )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
@@ -64,6 +73,10 @@ export function ProviderSheet({
       }),
     [pendingRemove],
   )
+  useEffect(() => {
+    if (!official) return
+    setEditing((current) => (current && isPersonalProvider(current) ? null : current))
+  }, [official])
 
   const save = () => {
     if (!editing || !isPersonalProvider(editing)) return
@@ -281,10 +294,16 @@ export function ProviderSheet({
           </form>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-5 pb-5">
+            {hasProfile ? (
+              <div role="radiogroup" aria-label={t("account.presentationTitle")} className="flex gap-2">
+                <button type="button" role="radio" aria-checked={presentation !== "full"} className="h-9 flex-1 rounded-md border border-input bg-background text-sm" onClick={() => onPresentation?.("official")}>{t("account.presentationOfficial")}</button>
+                <button type="button" role="radio" aria-checked={presentation === "full"} className="h-9 flex-1 rounded-md border border-input bg-background text-sm" onClick={() => onPresentation?.("full")}>{t("account.presentationFull")}</button>
+              </div>
+            ) : null}
             <ul className="flex flex-col gap-2">
-              {providers.map((row) => {
+              {listed.map((row) => {
                 const personal = isPersonalProvider(row)
-                const name = row.label || row.id
+                const name = row.displayLabel || row.label || row.id
                 const armed = pendingRemove === row.id
                 return (
                   <li key={row.id} className="flex flex-col gap-2 rounded-xl bg-muted px-3 py-2">
@@ -361,16 +380,18 @@ export function ProviderSheet({
                 )
               })}
             </ul>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setPendingRemove(null)
-                setEditing(blankProvider())
-              }}
-            >
-              {t("chat.add")}
-            </Button>
+            {official ? null : (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setPendingRemove(null)
+                  setEditing(blankProvider())
+                }}
+              >
+                {t("chat.add")}
+              </Button>
+            )}
           </div>
         )}
       </div>

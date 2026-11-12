@@ -61,6 +61,9 @@ type AccountModelsState struct {
 	// SourceID is the runtime provider id (gateway:<hex>). It is not an endpoint.
 	SourceID string               `json:"source_id,omitempty"`
 	Kinds    *provider.ModelKinds `json:"kinds,omitempty"`
+	// Profile is set only while the server published an official-model agreement.
+	// It carries no instruction text.
+	Profile *accountProfileState `json:"profile,omitempty"`
 }
 
 // AccountModels projects the signed-in server account's models into the
@@ -125,8 +128,17 @@ func (a *AccountModels) State() AccountModelsState {
 		return AccountModelsState{State: AccountSignedOut}
 	}
 	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.state
+	state := a.state
+	a.mu.RUnlock()
+	if state.Profile != nil && a.cfg != nil {
+		copied := *state.Profile
+		copied.Presentation = a.cfg.ModelsSnapshot().Presentation()
+		if copied.Tools != nil {
+			copied.Tools = append([]string(nil), copied.Tools...)
+		}
+		state.Profile = &copied
+	}
+	return state
 }
 
 // Trigger asks the background loop to refresh now. It never blocks and may be
@@ -349,6 +361,20 @@ func (a *AccountModels) fetch(ctx context.Context, id accountIdentity) accountOu
 		s.State, s.Label = AccountNoAccess, boot.label
 		return accountOutcome{state: s}
 	}
+	if boot.profile != nil {
+		source, err := provider.NewAccountProfile(boot.sourceID, boot.apiBaseURL, id.token, *boot.profile)
+		if err != nil {
+			return fail(AccountUnavailable, AccountReasonUnsafe, false)
+		}
+		s := who
+		s.State, s.Label, s.Models = AccountReady, boot.profile.Label, 1
+		s.SourceID = source.ID()
+		kinds := source.Kinds()
+		s.Kinds = &kinds
+		view := profileState(*boot.profile, a.cfg.ModelsSnapshot().Presentation())
+		s.Profile = &view
+		return accountOutcome{state: s, source: source}
+	}
 	raw, err = a.get(ctx, boot.catalogURL, id.token)
 	if err != nil {
 		return classifyAccountError(err, who)
@@ -429,19 +455,21 @@ func boundCatalog(cat provider.Catalog) provider.Catalog {
 type accountBootstrap struct {
 	sourceID, label, apiBaseURL, catalogURL string
 	access                                  bool
+	profile                                 *provider.AccountProfile
 }
 
 func parseAccountBootstrap(raw []byte, origin string) (accountBootstrap, error) {
 	var envelope struct {
 		Data struct {
 			Models struct {
-				SourceID         string `json:"source_id"`
-				SourceKind       string `json:"source_kind"`
-				Label            string `json:"label"`
-				Execution        string `json:"execution"`
-				APIBaseURL       string `json:"api_base_url"`
-				CatalogURL       string `json:"catalog_url"`
-				APIAccessEnabled bool   `json:"api_access_enabled"`
+				SourceID         string          `json:"source_id"`
+				SourceKind       string          `json:"source_kind"`
+				Label            string          `json:"label"`
+				Execution        string          `json:"execution"`
+				APIBaseURL       string          `json:"api_base_url"`
+				CatalogURL       string          `json:"catalog_url"`
+				APIAccessEnabled bool            `json:"api_access_enabled"`
+				Profile          json.RawMessage `json:"profile"`
 			} `json:"models"`
 		} `json:"data"`
 	}
@@ -464,6 +492,11 @@ func parseAccountBootstrap(raw []byte, origin string) (accountBootstrap, error) 
 		return accountBootstrap{}, errAccountResponse
 	}
 	out.apiBaseURL, out.catalogURL = strings.TrimRight(m.APIBaseURL, "/"), m.CatalogURL
+	profile, err := parseAccountProfile(m.Profile)
+	if err != nil {
+		return accountBootstrap{}, err
+	}
+	out.profile = profile
 	return out, nil
 }
 

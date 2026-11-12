@@ -108,6 +108,26 @@ describe("server models on the Models page", () => {
     expect(onChange.mock.calls[0][0].models.providers).toHaveLength(1)
   })
 
+  it("keeps the official name until the person asks for every model", async () => {
+    fake.status = signedIn
+    useApp.setState({
+      meta: meta({
+        state: "ready", models: 1, label: "Partner model",
+        profile: { presentation: "official", instruction: true, restrict_tools: true, tools: ["read"] },
+      }),
+      models: [{ ...row("gateway:x", "account", "account"), label: "Partner model", default: true, default_follows_setting: true }],
+    })
+    const onChange = vi.fn()
+    render(<ModelsTab settings={settings({ account_model: "vendor-secret-model" })} onChange={onChange} />)
+    expect(screen.queryByText("Your own model services")).toBeNull()
+    expect(screen.queryByText("vendor-secret-model")).toBeNull()
+    expect(screen.getByRole("combobox", { name: "Model list" })).toHaveTextContent("Official model")
+    fireEvent.click(screen.getByRole("combobox", { name: "Model list" }))
+    fireEvent.click(await screen.findByRole("option", { name: "All models" }))
+    expect(onChange.mock.calls[0][0].models.account_presentation).toBe("full")
+    expect(onChange.mock.calls[0][0].models.account_model).toBe("vendor-secret-model")
+  })
+
   it("counts models by type and lets the server row pick the conversation default", () => {
     fake.status = signedIn
     useApp.setState({

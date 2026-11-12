@@ -119,7 +119,7 @@ export function ModelPicker({
                     className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm active:bg-accent ${row.ready === false ? "text-muted-foreground" : "text-foreground"}`}
                     onClick={() => onSelect(row.provider_id, row.model)}
                   >
-                    <span className="min-w-0 flex-1 break-all">{row.model}</span>
+                    <span className="min-w-0 flex-1 break-all">{row.label || row.model}</span>
                     {selected ? <Check className="size-4 shrink-0 text-primary" aria-hidden /> : null}
                   </button>
                 )

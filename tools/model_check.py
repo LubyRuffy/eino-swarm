@@ -20,8 +20,9 @@ manager commentary before it enters the event stream.
 models/account/AccountCatalog.tla checks that a published account catalog
 belongs to the current credential (C-040).
 models/account/DefaultSourceChoice.tla checks that the Settings default badge
-is the source a new conversation starts on, and that a ready server catalog
-is a selectable row (C-040).
+is the source a new conversation starts on, that a ready server catalog
+is a selectable row, and that official presentation starts on the server
+without listing own providers (C-040, C-046).
 models/provider/RouteRecovery.tla checks that confirmed route refusals stop
 after a consecutive cap instead of waiting forever or buying model retries (C-029).
 models/skills/InstalledSkills.tla checks project-scoped skill publication,
@@ -136,8 +137,8 @@ MODELS = {
         ),
         Model(
             "default-source", ROOT / "models" / "account" / "DefaultSourceChoice.tla",
-            ("BadgeIgnoresSource", "ServerChoiceHidden"),
-            ("TypeOK", "BadgeMatchesStart", "ServerChoiceVisible"),
+            ("BadgeIgnoresSource", "ServerChoiceHidden", "OfficialKeepsOwnProviders", "OfficialListsOwnProviders"),
+            ("TypeOK", "BadgeMatchesStart", "ServerChoiceVisible", "OfficialStartsOnServer", "OfficialHidesOwnProviders"),
             (),
         ),
         Model(
@@ -383,10 +384,15 @@ CASES: tuple[Case, ...] = (
           ("BadgeIgnoresSource",), "BadgeMatchesStart", model="default-source"),
     _case("default-source-choice-hidden", "a ready server catalog had no selectable default row beside the own providers",
           ("ServerChoiceHidden",), "ServerChoiceVisible", model="default-source"),
+    _case("default-source-official-keeps-own", "official presentation still started a new conversation on the stored own provider",
+          ("OfficialKeepsOwnProviders",), "OfficialStartsOnServer", model="default-source"),
+    _case("default-source-official-lists-own", "official presentation still offered the own providers beside the official model",
+          ("OfficialListsOwnProviders",), "OfficialHidesOwnProviders", model="default-source"),
     *(_case(name, "witness", witness=witness, model="default-source") for name, witness in (
         ("default-source-reach-ready", "NeverReady"),
         ("default-source-reach-provider", "NeverProvider"),
         ("default-source-reach-server", "NeverServerStart"),
+        ("default-source-reach-official", "NeverOfficial"),
     )),
     _case("manager-commentary-current", "admit ordinary commentary before its tool",
           model="manager-commentary"),

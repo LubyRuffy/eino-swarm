@@ -12,11 +12,43 @@ const (
 	// DefaultSourceProvider starts them on the default configured provider.
 	DefaultSourceProvider = "provider"
 
+	// AccountPresentationOfficial shows one server-named model and sends the
+	// official alias. AccountPresentationFull also lists the user's own
+	// providers. Empty is official.
+	AccountPresentationOfficial = "official"
+	AccountPresentationFull     = "full"
+
+	// OfficialModelAlias is the only model name a profiled account sends.
+	// The server resolves it for the signed-in account.
+	OfficialModelAlias = "account"
+
 	// AccountSourcePrefix opens every id of a model source projected from the
 	// signed-in account. Those sources exist only at runtime, so a configured
 	// provider may not use the prefix.
 	AccountSourcePrefix = "gateway:"
 )
+
+// ParseAccountPresentation validates the local official-model switch.
+// Empty means official.
+func ParseAccountPresentation(raw string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", AccountPresentationOfficial:
+		return AccountPresentationOfficial, nil
+	case AccountPresentationFull:
+		return AccountPresentationFull, nil
+	default:
+		return "", errors.New("account_presentation must be official or full")
+	}
+}
+
+// Presentation is the stored switch, with an absent value meaning official.
+func (m ModelsConfig) Presentation() string {
+	parsed, err := ParseAccountPresentation(m.AccountPresentation)
+	if err != nil {
+		return AccountPresentationOfficial
+	}
+	return parsed
+}
 
 // ParseDefaultSource validates a stored or submitted default model source.
 // Empty means "not chosen yet" and is settled by settleDefaultSource.
@@ -42,6 +74,15 @@ func (c *Config) validateDefaultSource() error {
 	if len(c.Models.AccountModel) > maxAccountModelLen {
 		return errors.New("account_model is too long")
 	}
+	presentation, err := ParseAccountPresentation(c.Models.AccountPresentation)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(c.Models.AccountPresentation) == "" {
+		c.Models.AccountPresentation = ""
+		return nil
+	}
+	c.Models.AccountPresentation = presentation
 	return nil
 }
 

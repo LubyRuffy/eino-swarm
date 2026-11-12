@@ -62,6 +62,57 @@ func TestPhoneCatalogShowsAMissingAccountDefaultAsUnavailable(t *testing.T) {
 	}
 }
 
+func TestPhoneCatalogLocksTheOfficialName(t *testing.T) {
+	e := accountPhoneEngine(t, "vendor-secret-model")
+	src, err := provider.NewAccountProfile(accountModelsSourceID, "https://account.invalid/v1", "token", provider.AccountProfile{
+		Label: "Partner model", Instruction: "secret guidance", Tools: []string{"read"}, RestrictTools: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Providers().SetAccountSource(src)
+	rows := modelViews(e)
+	if len(rows) != 1 || rows[0].Model != config.OfficialModelAlias || rows[0].Label != "Partner model" || !rows[0].Locked {
+		t.Fatalf("phone catalog: %+v", rows)
+	}
+	th, err := e.CreateThread("", "endpoint", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := e.Store().GetThread(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := applySelection(e, th.ID, Request{ProviderID: accountModelsSourceID, Model: config.OfficialModelAlias}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := e.Store().GetThread(th.ID)
+	if err != nil || after.ProviderID != before.ProviderID || after.Model != before.Model {
+		t.Fatalf("official send rewrote the stored provider: before %+v after %+v %v", before, after, err)
+	}
+	if err := e.Config().Update(func(c *config.Config) error {
+		c.Models.AccountPresentation = config.AccountPresentationFull
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var sawOwn, sawOfficial bool
+	for _, row := range modelViews(e) {
+		if row.Model == "vendor-secret-model" || row.Locked {
+			t.Fatalf("full catalog leaked or stayed locked: %+v", row)
+		}
+		if row.Model == "own-model" {
+			sawOwn = true
+		}
+		if row.Model == config.OfficialModelAlias && row.Label == "Partner model" {
+			sawOfficial = true
+		}
+	}
+	if !sawOwn || !sawOfficial {
+		t.Fatalf("full phone catalog = %+v", modelViews(e))
+	}
+}
+
 func TestPhonePinsTheShownCatalogFallback(t *testing.T) {
 	e := accountPhoneEngine(t, "first-model", "shown-model")
 	th, err := e.CreateThread("", accountModelsSourceID, "")
