@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"io"
 	"maps"
 	"net/http"
 	"slices"
@@ -98,6 +99,37 @@ func (s *Server) putMCP(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"server": mcpView(server)})
+}
+
+func (s *Server) importMCP(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
+	raw, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid MCP configuration", "code": "invalid_mcp"})
+		return
+	}
+	err = s.engine.UpdateConfig(func(cfg *config.Config) error {
+		merged, err := config.ApplyMCPJSON(cfg.MCP.Servers, raw)
+		if err != nil {
+			return err
+		}
+		cfg.MCP.Servers = merged
+		return nil
+	})
+	if err != nil {
+		var invalid *config.MCPJSONError
+		if errors.As(err, &invalid) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": invalid.Error(), "code": "invalid_mcp"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save MCP configuration", "code": "mcp_save_failed"})
+		return
+	}
+	servers := []mcpServerView{}
+	for _, server := range s.engine.Config().Snapshot().MCP.Servers {
+		servers = append(servers, mcpView(server))
+	}
+	c.JSON(http.StatusOK, gin.H{"servers": servers})
 }
 
 func (s *Server) deleteMCP(c *gin.Context) {

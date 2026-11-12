@@ -6,6 +6,7 @@ import { MCPTab } from "./settings-mcp"
 
 vi.mock("@/lib/api", () => ({ api: {
   mcpServers: vi.fn(), saveMCPServer: vi.fn(), deleteMCPServer: vi.fn(), inspectMCPServer: vi.fn(),
+  importMCPServers: vi.fn(),
 } }))
 
 const saved: MCPServerView = {
@@ -21,6 +22,7 @@ describe("MCP connection settings", () => {
     }))
     vi.mocked(api.deleteMCPServer).mockReset().mockResolvedValue({})
     vi.mocked(api.inspectMCPServer).mockReset().mockResolvedValue({ tools: [] })
+    vi.mocked(api.importMCPServers).mockReset().mockResolvedValue([])
   })
 
   it("adds a local connection with exact argument values and clears the write-only draft after save", async () => {
@@ -221,5 +223,38 @@ describe("MCP connection settings", () => {
     expect(signal.aborted).toBe(true)
     await act(async () => finish({ tools: [{ name: "late" }] }))
     expect(screen.queryByText("late")).toBeNull()
+  })
+
+  it("applies JSON text without showing saved credentials", async () => {
+    vi.mocked(api.mcpServers).mockResolvedValue([saved])
+    vi.mocked(api.importMCPServers).mockResolvedValue([{ ...saved, name: "Renamed", command: "next" }])
+    render(<MCPTab />)
+    await screen.findByText("Local tools")
+    fireEvent.click(screen.getByRole("button", { name: "Edit JSON" }))
+    const text = screen.getByLabelText<HTMLTextAreaElement>("MCP JSON")
+    expect(text.value).toContain('"command": "runner"')
+    expect(text.value).not.toContain("TOKEN")
+    expect(screen.getByRole("button", { name: "Add server" })).toBeDisabled()
+    const content = '{"mcpServers":{"local":{"command":"next","args":["--serve"]}}}'
+    fireEvent.change(text, { target: { value: content } })
+    fireEvent.click(screen.getByRole("button", { name: "Apply JSON" }))
+    await screen.findByText("Renamed")
+    expect(api.importMCPServers).toHaveBeenCalledWith(content)
+    expect(screen.queryByLabelText("MCP JSON")).toBeNull()
+    expect(document.body).not.toHaveTextContent("TOKEN")
+  })
+
+  it("keeps the JSON text when apply fails", async () => {
+    vi.mocked(api.mcpServers).mockResolvedValue([saved])
+    vi.mocked(api.importMCPServers).mockRejectedValueOnce(new Error("mcp: invalid JSON"))
+    render(<MCPTab />)
+    await screen.findByText("Local tools")
+    fireEvent.click(screen.getByRole("button", { name: "Edit JSON" }))
+    fireEvent.click(screen.getByRole("button", { name: "Apply JSON" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("mcp: invalid JSON")
+    expect(screen.getByLabelText("MCP JSON")).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(screen.queryByLabelText("MCP JSON")).toBeNull()
+    expect(api.importMCPServers).toHaveBeenCalledOnce()
   })
 })

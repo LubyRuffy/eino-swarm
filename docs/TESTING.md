@@ -63,6 +63,13 @@ horizontal overflow.
 redaction, omission/empty-map semantics, atomic save failure, disabled-server
 inspection, missing IDs and `If-None-Match: *` create conflicts. A conflict must
 preserve the other saved server and its private configuration, not replace it.
+`internal/config/mcpjson_test.go` applies a `mcpServers` document: one-line
+commands become argv without a shell, omitted credentials stay, and a rejected
+document does not change the saved server or include the rejected secret in the
+error. The HTTP import route covers the same redaction, a partial clear, an
+oversized body and a failed save. The browser spec pastes one document, checks
+the split command and the hidden credential, then edits the text again without
+clearing that credential.
 `internal/mcpclient/manager_test.go` and `proxy_test.go` use actual
 stdio/Streamable HTTP/SSE transports for discovery/calls, pure construction,
 credential/workspace identity, session expiry, paging and concurrent connection

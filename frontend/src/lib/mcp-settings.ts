@@ -62,6 +62,34 @@ export function assignMCPServerID(
   throw new Error("mcp id allocation failed")
 }
 
+function quoteMCPCommandToken(command: string): string {
+  if (!/[\s"'\\]/.test(command)) return command
+  return `"${command.replace(/[\\"]/g, (char) => `\\${char}`)}"`
+}
+
+// The text uses the same mcpServers object other clients edit directly.
+// Credentials stay out of it. A program path with spaces and no arguments is
+// quoted so applying the text does not split the path.
+export function mcpServersDocument(servers: MCPServerView[]): string {
+  const mcpServers: Record<string, Record<string, unknown>> = {}
+  for (const server of servers) {
+    const entry: Record<string, unknown> = {}
+    if (server.name !== server.id) entry.name = server.name
+    if (server.transport === "stdio") {
+      entry.type = "stdio"
+      entry.command = server.args.length === 0 ? quoteMCPCommandToken(server.command) : server.command
+      entry.args = server.args
+    } else {
+      entry.type = server.transport === "sse" ? "sse" : "http"
+      entry.url = server.url
+    }
+    entry.enabled = server.enabled
+    if (server.timeout_seconds) entry.timeout_seconds = server.timeout_seconds
+    mcpServers[server.id] = entry
+  }
+  return JSON.stringify({ mcpServers }, null, 2)
+}
+
 export function mcpTransportKey(transport: MCPTransport): "mcp.stdio" | "mcp.http" | "mcp.sse" {
   if (transport === "streamable_http") return "mcp.http"
   if (transport === "sse") return "mcp.sse"

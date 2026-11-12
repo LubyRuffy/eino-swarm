@@ -831,6 +831,49 @@ using the same redacted shape as GET, after atomic `config.yaml` persistence.
 Invalid input returns `400 invalid_mcp`; failed persistence returns
 `500 mcp_save_failed` without publishing the candidate configuration.
 
+### `POST /api/mcp/import`
+
+Apply one JSON document in a single configuration update. The body is the
+document, up to 1 MiB, not a wrapper. Settings → MCP → Edit JSON posts the
+textarea here. Either of these shapes is accepted, and `servers` may be an
+object with the same entry fields as `mcpServers`:
+
+```json
+{"mcpServers":{"local":{"command":"server","args":["--stdio"]}}}
+```
+
+```json
+{"servers":[{"id":"local","name":"Local","transport":"stdio","command":"server","args":["--stdio"]}]}
+```
+
+The two keys cannot appear together. Any other top-level key is rejected.
+
+Entries are added or updated. Servers absent from the document stay, including
+their credentials. A key that is already an id updates that server. Otherwise
+one saved display name matches. Otherwise a key of 1–32 letters, digits,
+underscores or hyphens becomes the new id, and any other name receives a new
+id. One document cannot select the same server twice. Two saved servers with
+the same name are rejected rather than guessed.
+
+`command` and `args`, or `url`, replace that server's launch fields. `type`
+may be `stdio`, `sse`, `http` or `streamableHttp`; `transport` accepts the
+stored values `stdio`, `sse` and `streamable_http`. A URL with no type uses
+Streamable HTTP. Omitted `enabled` / `disabled` and `timeout_seconds` keep the
+saved values; a new server is enabled and uses the default timeout. Omitted or
+null `env` and `headers` keep the saved maps, and `{}` clears one map.
+
+A command written as one line, with arguments omitted or `[]`, is split into
+the program and its arguments. Quotes group one argument. A program path that
+contains spaces and has no separate arguments is written in quotes. This split
+does not start a shell: a pipe, redirection or unquoted `$` is rejected.
+`envFile` and `cwd` are rejected and are not read.
+
+Success returns `200 {"servers":[...]}` with the whole list in the redacted GET
+shape. Invalid JSON or an invalid entry returns `400 invalid_mcp` and leaves
+the saved servers unchanged. The error names the rule; it does not include a
+credential, URL or command. Failed persistence returns `500 mcp_save_failed`
+and does not publish the document.
+
 ### `DELETE /api/mcp/:id`
 
 Delete the saved server and return `200 {"deleted":true}`. Missing IDs return

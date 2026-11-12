@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { assignMCPServerID, createMCPDraft, mcpDraftInput, mcpTransportKey } from "./mcp-settings"
+import { mcpEN } from "./messages-mcp"
+import { assignMCPServerID, createMCPDraft, mcpDraftInput, mcpServersDocument, mcpTransportKey, type MCPServerView } from "./mcp-settings"
 
 describe("MCP configuration drafts", () => {
   it("keeps saved credentials write-only and preserves them when unchanged", () => {
@@ -43,5 +44,30 @@ describe("MCP configuration drafts", () => {
     expect(mcpTransportKey("stdio")).toBe("mcp.stdio")
     expect(mcpTransportKey("streamable_http")).toBe("mcp.http")
     expect(mcpTransportKey("sse")).toBe("mcp.sse")
+  })
+
+  it("writes the saved connections as editable text without credentials", () => {
+    const local: MCPServerView = {
+      id: "local", name: "Local tools", transport: "stdio", command: "runner", args: ["--serve"],
+      url: "", enabled: true, timeout_seconds: 30, env_keys: ["TOKEN"], header_keys: ["Authorization"],
+    }
+    const spaced: MCPServerView = {
+      id: "spaced", name: "spaced", transport: "stdio", command: "/opt/My Server", args: [],
+      url: "", enabled: true, timeout_seconds: 0, env_keys: [], header_keys: [],
+    }
+    const remote: MCPServerView = {
+      id: "remote", name: "remote", transport: "sse", command: "", args: [],
+      url: "https://example.invalid/mcp", enabled: false, timeout_seconds: 0, env_keys: [], header_keys: [],
+    }
+    expect(JSON.parse(mcpServersDocument([local, spaced, remote]))).toEqual({
+      mcpServers: {
+        local: { name: "Local tools", type: "stdio", command: "runner", args: ["--serve"], enabled: true, timeout_seconds: 30 },
+        spaced: { type: "stdio", command: "\"/opt/My Server\"", args: [], enabled: true },
+        remote: { type: "sse", url: "https://example.invalid/mcp", enabled: false },
+      },
+    })
+    const text = `${mcpServersDocument([])}\n${JSON.stringify(mcpEN)}`
+    expect(text).not.toContain("context7")
+    expect(text).not.toContain("playwright")
   })
 })

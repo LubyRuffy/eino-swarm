@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Circle, Loader2, Pencil, Plus, Plug, Trash2 } from "lucide-react"
+import { Braces, ChevronDown, ChevronRight, Circle, Loader2, Pencil, Plus, Plug, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Disclosure } from "@/components/ui/collapsible"
@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
 import { useMCPSettings } from "@/store/mcp-settings"
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog"
+import { MCPJSONEditor } from "./mcp-json-editor"
 import { MCPServerEditor } from "./mcp-server-editor"
 import { SettingsPage, SettingsSection, settingsHintClass, settingsMatch } from "./settings-field"
 
@@ -31,11 +32,16 @@ function StatusMark({ mark }: { mark: MCPMark }) {
 export function MCPTab({ query = "" }: { query?: string }) {
   const t = useT()
   const state = useMCPSettings()
+  const locked = !!state.busy || !!state.draft || state.jsonText !== undefined
   return (
     <SettingsPage title={t("mcp.title")} description={t("mcp.description")}>
       <SettingsSection title={t("mcp.servers")} action={
-        <Button type="button" variant="outline" size="sm" disabled={!!state.busy || !!state.draft || state.loading || !!state.loadError}
-          onClick={() => state.edit()}><Plus className="size-4" />{t("mcp.add")}</Button>
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" size="sm" disabled={locked || state.loading || !!state.loadError}
+            onClick={() => state.openJSON()}><Braces className="size-4" />{t("mcp.json")}</Button>
+          <Button type="button" variant="outline" size="sm" disabled={locked || state.loading || !!state.loadError}
+            onClick={() => state.edit()}><Plus className="size-4" />{t("mcp.add")}</Button>
+        </div>
       }>
         {state.loading ? <p role="status" data-settings-row="" className="px-4 py-4 text-sm text-muted-foreground">{t("mcp.loading")}</p> :
           state.loadError ? <div role="alert" data-settings-row="" className="flex items-center justify-between gap-3 px-4 py-3">
@@ -62,14 +68,14 @@ export function MCPTab({ query = "" }: { query?: string }) {
                   <StatusMark mark={server.enabled ? "on" : "off"} />
                   {t(server.enabled ? "mcp.enabled" : "mcp.disabled")}
                 </Badge>
-                <Button type="button" size="icon" variant="ghost" disabled={!!state.busy || !!state.draft}
+                <Button type="button" size="icon" variant="ghost" disabled={locked}
                   aria-label={t("mcp.inspectName", { name: server.name })} title={t("mcp.inspect")}
                   onClick={() => void state.inspect(server.id)}>
                   {checking ? <Loader2 className="size-4 animate-spin" /> : <Plug className="size-4" />}
                 </Button>
-                <Button type="button" size="icon" variant="ghost" disabled={!!state.busy || !!state.draft}
+                <Button type="button" size="icon" variant="ghost" disabled={locked}
                   aria-label={t("mcp.edit", { name: server.name })} onClick={() => state.edit(server)}><Pencil className="size-4" /></Button>
-                <Button type="button" size="icon" variant="ghost" disabled={!!state.busy || !!state.draft}
+                <Button type="button" size="icon" variant="ghost" disabled={locked}
                   aria-label={t("mcp.remove", { name: server.name })} onClick={() => state.setPendingDelete(server)}><Trash2 className="size-4" /></Button>
               </div>
             })}
@@ -78,6 +84,8 @@ export function MCPTab({ query = "" }: { query?: string }) {
       {state.draft ? <MCPServerEditor draft={state.draft} saved={state.servers.find((server) => server.id === state.editing)}
         saving={state.busy === "save"} error={state.formError} onChange={state.setDraft}
         onSave={() => void state.save()} onCancel={state.cancel} /> : null}
+      {state.jsonText !== undefined ? <MCPJSONEditor text={state.jsonText} saving={state.busy === "json"} error={state.formError}
+        onChange={state.setJsonText} onApply={() => void state.applyJSON()} onCancel={state.cancelJSON} /> : null}
 
       {Object.keys(state.connections).length === 0 ? null : (
       <SettingsSection title={t("mcp.catalog")} description={t("mcp.catalogHint")}>

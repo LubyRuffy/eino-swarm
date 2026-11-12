@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { api } from "@/lib/api"
-import { assignMCPServerID, createMCPDraft, MCPDraftError, mcpDraftInput, type MCPDraft, type MCPServerInput, type MCPServerView, type MCPToolCatalog } from "@/lib/mcp-settings"
+import { assignMCPServerID, createMCPDraft, MCPDraftError, mcpDraftInput, mcpServersDocument, type MCPDraft, type MCPServerInput, type MCPServerView, type MCPToolCatalog } from "@/lib/mcp-settings"
 import { useT } from "@/lib/use-t"
 import { errorMessage, toastError } from "./toasts"
 
@@ -15,6 +15,7 @@ export function useMCPSettings() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
   const [draft, setDraft] = useState<MCPDraft>()
+  const [jsonText, setJsonText] = useState<string>()
   const [editing, setEditing] = useState<string>()
   const [pendingDelete, setPendingDelete] = useState<MCPServerView>()
   const [busy, setBusy] = useState("")
@@ -55,13 +56,21 @@ export function useMCPSettings() {
   }, [load])
 
   const edit = (server?: MCPServerView) => {
-    if (busyRef.current) return
+    if (busyRef.current || jsonText !== undefined) return
     setEditing(server?.id)
     setDraft(createMCPDraft(server))
     setFormError("")
   }
 
   const cancel = () => { setDraft(undefined); setFormError("") }
+
+  const openJSON = () => {
+    if (busyRef.current || draft || jsonText !== undefined) return
+    setJsonText(mcpServersDocument(servers))
+    setFormError("")
+  }
+
+  const cancelJSON = () => { setJsonText(undefined); setFormError("") }
 
   const save = async () => {
     if (!draft || busyRef.current) return
@@ -103,6 +112,28 @@ export function useMCPSettings() {
       if (alive.current) {
         setFormError(errorMessage(error))
         toastError(errorMessage(error), { title: t("mcp.saveFailed") })
+      }
+    } finally {
+      busyRef.current = false
+      if (alive.current) setBusy("")
+    }
+  }
+
+  const applyJSON = async () => {
+    if (jsonText === undefined || busyRef.current) return
+    busyRef.current = true
+    setBusy("json")
+    setFormError("")
+    try {
+      const saved = await api.importMCPServers(jsonText)
+      if (!alive.current) return
+      setServers(saved)
+      setConnections({})
+      setJsonText(undefined)
+    } catch (error) {
+      if (alive.current) {
+        setFormError(errorMessage(error))
+        toastError(errorMessage(error), { title: t("mcp.applyFailed") })
       }
     } finally {
       busyRef.current = false
@@ -155,6 +186,7 @@ export function useMCPSettings() {
   }
 
   return { servers, loading, loadError, load, draft, setDraft, editing, edit, cancel, save,
+    jsonText, setJsonText, openJSON, cancelJSON, applyJSON,
     pendingDelete, setPendingDelete, remove, busy, formError, connections, inspect, expandedTools,
     setToolExpanded: (key: string, open: boolean) => setExpandedTools((current) => ({ ...current, [key]: open })) }
 }

@@ -956,6 +956,14 @@ it. A failed inspection stays visible and can be retried. The row uses one
 colored mark for enabled or disabled, and another for the latest check.
 Opening a tool highlights its input schema.
 
+**Edit JSON** opens the same connections as text. The text uses the
+`mcpServers` object other clients use, so a document can be pasted there.
+Entries in the text are added or updated. A connection that is not in the text
+stays. Saved credential values are not shown; leave `env` and `headers` out to
+keep them, or use `{}` to clear one map. A command written on one line is split
+into the program and its arguments and is not run through a shell. The form is
+still there for editing one connection.
+
 Enabled servers add two namespaced Agent tools: `list_tools` and `call_tool`.
 They connect only when called, so an unavailable server does not hold up
 starting a turn. The composer Tools menu and Settings → MCP share the

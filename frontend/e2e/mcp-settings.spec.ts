@@ -72,3 +72,57 @@ test("MCP connection configuration persists and discovers the real server's tool
     if (id) await request.delete(`/api/mcp/${encodeURIComponent(id)}`)
   }
 })
+
+test("MCP JSON text adds a one-line command and keeps its credential hidden", async ({ page, request }) => {
+  const name = `json-${Date.now()}`
+  const fixture = resolve("../tools/mcp_fixture.py")
+  const content = JSON.stringify({
+    mcpServers: {
+      [name]: { command: `python3 ${fixture}`, env: { ZWAI_MCP_FIXTURE_SECRET: "write-only-json" } },
+    },
+  })
+  let id = ""
+  try {
+    await page.goto("/")
+    await page.getByRole("button", { name: "Settings", exact: true }).click()
+    const dialog = page.getByRole("dialog")
+    await dialog.getByRole("tab", { name: "MCP", exact: true }).click()
+    await dialog.getByRole("button", { name: "Edit JSON", exact: true }).click()
+    const editor = dialog.getByLabel("MCP JSON")
+    await expect(editor).toHaveAttribute("spellcheck", "false")
+    await editor.fill(content)
+    await page.setViewportSize({ width: 820, height: 900 })
+    expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true)
+    await dialog.getByRole("button", { name: "Apply JSON", exact: true }).click()
+    await expect(dialog.getByText(name, { exact: true })).toBeVisible()
+    await expect(editor).toBeHidden()
+    const list = await (await request.get("/api/mcp")).json()
+    const saved = list.servers.find((server: { name: string }) => server.name === name)
+    expect(saved.command).toBe("python3")
+    expect(saved.args).toEqual([fixture])
+    expect(saved.env_keys).toEqual(["ZWAI_MCP_FIXTURE_SECRET"])
+    expect(JSON.stringify(saved)).not.toContain("write-only-json")
+    id = saved.id
+    await dialog.getByRole("button", { name: `Test ${name} and list tools`, exact: true }).click()
+    await expect(dialog.getByText("Connected · 1 tools")).toBeVisible()
+    await dialog.getByRole("button", { name: "Edit JSON", exact: true }).click()
+    const exported = dialog.getByLabel("MCP JSON")
+    await expect(exported).not.toHaveValue(/write-only-json/)
+    const document = JSON.parse(await exported.inputValue())
+    document.mcpServers[id].name = `${name} saved`
+    await exported.fill(JSON.stringify(document))
+    await dialog.getByRole("button", { name: "Apply JSON", exact: true }).click()
+    await expect(dialog.getByText(`${name} saved`, { exact: true })).toBeVisible()
+    const preserved = await (await request.get("/api/mcp")).json()
+    expect(preserved.servers.find((server: { id: string }) => server.id === id).env_keys).toEqual(["ZWAI_MCP_FIXTURE_SECRET"])
+    await dialog.getByRole("button", { name: `Remove ${name} saved`, exact: true }).click()
+    await page.getByRole("button", { name: "Remove server", exact: true }).click()
+    await expect(dialog.getByText(`${name} saved`, { exact: true })).toBeHidden()
+  } finally {
+    if (!id) {
+      const list = await (await request.get("/api/mcp")).json()
+      id = list.servers.find((server: { name: string }) => server.name === name || server.name === `${name} saved`)?.id ?? ""
+    }
+    if (id) await request.delete(`/api/mcp/${encodeURIComponent(id)}`)
+  }
+})

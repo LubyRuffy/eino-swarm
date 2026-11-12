@@ -521,6 +521,8 @@ export const api = {
       method: "PUT", body: JSON.stringify(server),
       ...(createOnly ? { headers: { "If-None-Match": "*" } } : {}),
     }).then((r) => r.server),
+  importMCPServers: (content: string) =>
+    request<{ servers: MCPServerView[] }>("/api/mcp/import", { method: "POST", body: content }).then((r) => r.servers),
   deleteMCPServer: (id: string) =>
     request<unknown>(`/api/mcp/${encodeURIComponent(id)}`, { method: "DELETE" }),
   inspectMCPServer: (id: string, signal?: AbortSignal) =>

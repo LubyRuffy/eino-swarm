@@ -8,6 +8,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Added
 
+- Settings → MCP can edit connections as JSON text. The text uses the same
+  `mcpServers` object as other clients. Entries in the text are added or
+  updated, and connections that are not in the text stay, including saved
+  credentials. A command written on one line is split into the program and its
+  arguments and is not run through a shell. The single-connection form remains.
+  (`F-176`, `C-041`)
+
 - Windows amd64 and arm64 desktop zips. `make windows-release VERSION=x.y.z`
   cross-compiles both, and a release batch that lists windows uploads
   `zwai-<version>-windows-amd64.zip` and `zwai-<version>-windows-arm64.zip`.

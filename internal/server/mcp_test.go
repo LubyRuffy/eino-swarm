@@ -148,6 +148,74 @@ func TestMCPCreateCannotOverwriteAnExistingConnectionFromAnotherWindow(t *testin
 	}
 }
 
+func TestMCPJSONImportMergesTheDocumentAndKeepsPrivateValues(t *testing.T) {
+	h := newHarness(t)
+	h.json(http.MethodPut, "/api/mcp/kept", map[string]any{
+		"name": "Kept", "transport": "stdio", "command": "original", "enabled": false,
+		"env": map[string]string{"TOKEN": "secret-value"},
+	}, http.StatusOK)
+	document := map[string]any{"mcpServers": map[string]any{
+		"Kept": map[string]any{"command": "next", "args": []string{"--new"}},
+		"added": map[string]any{
+			"command": "tool --flag",
+			"env":     map[string]string{"ADDED": "secret-value"},
+		},
+	}}
+	resp := h.do(http.MethodPost, "/api/mcp/import", document)
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || strings.Contains(string(raw), "secret-value") || !strings.Contains(string(raw), "ADDED") {
+		t.Fatalf("status=%d body=%s", resp.StatusCode, raw)
+	}
+	servers := h.app.Config.Snapshot().MCP.Servers
+	if len(servers) != 2 || servers[0].ID != "kept" || servers[0].Command != "next" || servers[0].Env["TOKEN"] != "secret-value" || servers[0].Enabled {
+		t.Fatalf("kept server: %+v", servers)
+	}
+	if servers[1].ID != "added" || servers[1].Command != "tool" || len(servers[1].Args) != 1 || servers[1].Args[0] != "--flag" || servers[1].Env["ADDED"] != "secret-value" {
+		t.Fatalf("added server: %+v", servers[1])
+	}
+	cleared := map[string]any{"mcpServers": map[string]any{"added": map[string]any{"command": "tool", "args": []string{"--flag"}, "env": map[string]string{}}}}
+	h.json(http.MethodPost, "/api/mcp/import", cleared, http.StatusOK)
+	if len(h.app.Config.Snapshot().MCP.Servers[1].Env) != 0 || h.app.Config.Snapshot().MCP.Servers[0].Env["TOKEN"] != "secret-value" {
+		t.Fatal("clearing one server changed another credential")
+	}
+}
+
+func TestMCPJSONImportRejectsTheDocumentWithoutPublishingIt(t *testing.T) {
+	h := newHarness(t)
+	h.json(http.MethodPut, "/api/mcp/kept", map[string]any{"name": "Kept", "transport": "stdio", "command": "original", "env": map[string]string{"TOKEN": "secret-value"}}, http.StatusOK)
+	rejected := [][]byte{
+		[]byte(`{"mcpServers":{"bad":{"url":"http://user:secret-value@example.invalid/mcp"}}}`),
+		[]byte(`{"TOKEN":"secret-value"`),
+	}
+	for _, body := range rejected {
+		req := httptest.NewRequest(http.MethodPost, "/api/mcp/import", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		h.app.Server.Handler().ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusBadRequest || strings.Contains(recorder.Body.String(), "secret-value") {
+			t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+		}
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/mcp/import", bytes.NewReader(bytes.Repeat([]byte("a"), 1<<20+1)))
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	h.app.Server.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusBadRequest || strings.Contains(recorder.Body.String(), strings.Repeat("a", 32)) {
+		t.Fatalf("oversized status=%d", recorder.Code)
+	}
+	if len(h.app.Config.Snapshot().MCP.Servers) != 1 || h.app.Config.Snapshot().MCP.Servers[0].Command != "original" || h.app.Config.Snapshot().MCP.Servers[0].Env["TOKEN"] != "secret-value" {
+		t.Fatal("rejected import published")
+	}
+	if err := os.Mkdir(filepath.Join(h.app.Config.DataDir(), "config.yaml.tmp"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	h.json(http.MethodPost, "/api/mcp/import", map[string]any{"mcpServers": map[string]any{"added": map[string]any{"command": "tool"}}}, http.StatusInternalServerError)
+	if len(h.app.Config.Snapshot().MCP.Servers) != 1 || h.app.Config.Snapshot().MCP.Servers[0].Command != "original" {
+		t.Fatal("failed save published")
+	}
+}
+
 func TestMCPRejectsInvalidServersBeforeSaving(t *testing.T) {
 	h := newHarness(t)
 	for _, input := range []map[string]any{

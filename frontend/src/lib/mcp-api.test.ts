@@ -22,4 +22,14 @@ describe("MCP configuration API writes", () => {
       method: "PUT", headers: { "Content-Type": "application/json" },
     }))
   })
+
+  it("posts MCP JSON text without wrapping it again", async () => {
+    const fetcher = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ servers: [] })))
+    vi.stubGlobal("fetch", fetcher)
+    const content = '{"mcpServers":{"local":{"command":"server","args":[]}}}'
+    await api.importMCPServers(content)
+    expect(fetcher).toHaveBeenLastCalledWith("/api/mcp/import", expect.objectContaining({
+      method: "POST", body: content, headers: { "Content-Type": "application/json" },
+    }))
+  })
 })

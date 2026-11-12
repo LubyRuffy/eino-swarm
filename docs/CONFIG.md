@@ -607,6 +607,33 @@ editor shows existing key names, leaves blank JSON fields unchanged, and uses
 Invalid configuration or failed persistence leaves the saved configuration intact.
 MCP uses its own `/api/mcp` endpoints; ordinary Settings saves do not replace it.
 
+**Edit JSON** is the same configuration as one text document, in the
+`mcpServers` object used by other clients. The single-server form remains the
+way to edit one connection. The text starts from the saved connections and
+does not include credential values. Applying it adds or updates the entries in
+the text; a connection that is not in the text stays, including its saved
+credentials. Leave `env` or `headers` out to keep those values, and use `{}`
+to clear one map.
+
+```json
+{
+  "mcpServers": {
+    "local": {
+      "command": "server",
+      "args": ["--stdio"]
+    }
+  }
+}
+```
+
+A command written as one line, with `args` omitted or empty, is split into the
+program and its arguments. Quotes group one argument. The split does not start
+a shell. A program path that contains spaces and has no separate arguments is
+quoted in the text. `envFile` and `cwd` are rejected and are not read. A URL
+with no `type` uses Streamable HTTP; `type` may also be `stdio`, `sse`, `http`
+or `streamableHttp`. Omitted `enabled` and `timeout_seconds` keep their saved
+values. An invalid document changes nothing.
+
 Enabled servers add two namespaced Agent proxies, `list_tools` and `call_tool`,
 to toolsets built while the server is enabled. The composer Tools menu writes
 the same `enabled` flag as Settings → MCP. Unchecking a server removes both
