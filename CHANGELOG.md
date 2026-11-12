@@ -41,6 +41,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   server. Turning one off still takes effect on the next model request.
   (`F-130`, `F-176`)
 
+- Settings → MCP assigns each connection id and shows the display name.
+  The form does not ask for an id, and it does not rewrite the name, command,
+  arguments or URL. (`F-176`, `C-041`)
+
 - The README is the entry point. Day-to-day use is in
   [docs/USAGE.md](docs/USAGE.md). Phone use stays in
   [mobile/README.md](mobile/README.md). Issue closure and release batches

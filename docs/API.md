@@ -812,8 +812,9 @@ must use the private maps for credentials.
 
 ### `PUT /api/mcp/:id`
 
-Create or replace one server's ordinary fields. The path supplies its stable ID;
-other servers keep their configuration. To create without replacing an existing
+Create or replace one server's ordinary fields. The path supplies its stable ID.
+Settings allocates that id for a new connection and does not ask for one;
+callers of this API still choose the path id. Other servers keep their configuration. To create without replacing an existing
 ID, send `If-None-Match: *` (the UI uses this for Add server). The serialized
 configuration update checks absence before changing anything; an existing ID
 returns `412 mcp_exists`, preserving its ordinary and private fields. Without

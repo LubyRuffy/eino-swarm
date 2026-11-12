@@ -28,7 +28,7 @@ describe("MCP connection settings", () => {
     await screen.findByText(/No MCP servers yet/)
     expect(screen.queryByRole("heading", { name: "Tool catalog" })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Add server" }))
-    fireEvent.change(screen.getByLabelText("Server ID"), { target: { value: "new-local" } })
+    expect(screen.queryByLabelText("Server ID")).toBeNull()
     fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "New local" } })
     fireEvent.change(screen.getByLabelText("Command"), { target: { value: "runner" } })
     fireEvent.change(screen.getByLabelText("Arguments (JSON array)"), { target: { value: '["--path","a b "]' } })
@@ -36,8 +36,11 @@ describe("MCP connection settings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save connection" }))
     await screen.findByText("New local")
     expect(api.saveMCPServer).toHaveBeenCalledWith(expect.objectContaining({
-      id: "new-local", args: ["--path", "a b "], env: { TOKEN: "private-token" }, enabled: true,
+      name: "New local", args: ["--path", "a b "], env: { TOKEN: "private-token" }, enabled: true,
     }), true)
+    const created = vi.mocked(api.saveMCPServer).mock.calls[0][0]
+    expect(created.id).toMatch(/^[a-f0-9]{32}$/)
+    expect(document.body).not.toHaveTextContent(created.id)
     expect(screen.queryByLabelText("Environment variables (JSON object)")).toBeNull()
     expect(document.body).not.toHaveTextContent("private-token")
   })
@@ -46,7 +49,7 @@ describe("MCP connection settings", () => {
     vi.mocked(api.mcpServers).mockResolvedValue([saved])
     render(<MCPTab />)
     fireEvent.click(await screen.findByRole("button", { name: "Edit Local tools" }))
-    expect(screen.getByLabelText("Server ID")).toBeDisabled()
+    expect(screen.queryByLabelText("Server ID")).toBeNull()
     expect(screen.getByLabelText("Environment variables (JSON object)")).toHaveValue("")
     expect(screen.getByText(/Saved keys: TOKEN/)).toBeVisible()
     fireEvent.change(screen.getByLabelText("Arguments (JSON array)"), { target: { value: "[1]" } })
@@ -56,6 +59,7 @@ describe("MCP connection settings", () => {
     fireEvent.change(screen.getByLabelText("Arguments (JSON array)"), { target: { value: "[]" } })
     fireEvent.click(screen.getByRole("button", { name: "Save connection" }))
     await waitFor(() => expect(api.saveMCPServer).toHaveBeenCalledOnce())
+    expect(vi.mocked(api.saveMCPServer).mock.calls[0][0].id).toBe("local")
     expect(vi.mocked(api.saveMCPServer).mock.calls[0][0]).not.toHaveProperty("env")
     expect(vi.mocked(api.saveMCPServer).mock.calls[0][0]).not.toHaveProperty("headers")
     expect(vi.mocked(api.saveMCPServer).mock.calls[0][1]).toBe(false)
@@ -65,18 +69,29 @@ describe("MCP connection settings", () => {
     render(<MCPTab />)
     await screen.findByText(/No MCP servers yet/)
     fireEvent.click(screen.getByRole("button", { name: "Add server" }))
-    fireEvent.change(screen.getByLabelText("Server ID"), { target: { value: "remote" } })
-    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Remote tools" } })
+    const name = screen.getByLabelText("Display name")
+    expect(name).toHaveAttribute("autocorrect", "off")
+    expect(name).toHaveAttribute("autocapitalize", "off")
+    expect(name).toHaveAttribute("spellcheck", "false")
+    fireEvent.change(name, { target: { value: "Remote tools" } })
     fireEvent.click(screen.getByLabelText("Transport"))
     fireEvent.click(screen.getByRole("option", { name: "Streamable HTTP" }))
     expect(screen.queryByLabelText("Command")).toBeNull()
-    fireEvent.change(screen.getByLabelText("Server URL"), { target: { value: "https://tools.invalid/mcp" } })
-    fireEvent.change(screen.getByLabelText("Request headers (JSON object)"), { target: { value: '{"Authorization":"private"}' } })
+    const url = screen.getByLabelText("Server URL")
+    expect(url).toHaveAttribute("type", "text")
+    expect(url).toHaveAttribute("autocorrect", "off")
+    expect(url).toHaveAttribute("spellcheck", "false")
+    fireEvent.change(url, { target: { value: "https://tools.invalid/mcp" } })
+    const headers = screen.getByLabelText("Request headers (JSON object)")
+    expect(headers).toHaveAttribute("autocorrect", "off")
+    expect(headers).toHaveAttribute("spellcheck", "false")
+    fireEvent.change(headers, { target: { value: '{"Authorization":"private"}' } })
     fireEvent.click(screen.getByRole("button", { name: "Save connection" }))
     await screen.findByText("Remote tools")
     expect(api.saveMCPServer).toHaveBeenCalledWith(expect.objectContaining({
-      transport: "streamable_http", url: "https://tools.invalid/mcp", headers: { Authorization: "private" },
+      name: "Remote tools", transport: "streamable_http", url: "https://tools.invalid/mcp", headers: { Authorization: "private" },
     }), true)
+    expect(vi.mocked(api.saveMCPServer).mock.calls[0][0].id).toMatch(/^[a-f0-9]{32}$/)
   })
 
   it("keeps an editor after save failure so the user can retry", async () => {
@@ -92,19 +107,53 @@ describe("MCP connection settings", () => {
     await screen.findByText("Revised local")
   })
 
-  it("does not overwrite an existing connection from the new-connection editor", async () => {
-    vi.mocked(api.mcpServers).mockResolvedValue([saved])
+  it("assigns a new id beside an existing connection and keeps the typed name", async () => {
+    const existing = { ...saved, id: "srv-kept" }
+    vi.mocked(api.mcpServers).mockResolvedValue([existing])
     render(<MCPTab />)
     fireEvent.click(await screen.findByRole("button", { name: "Add server" }))
-    fireEvent.change(screen.getByLabelText("Server ID"), { target: { value: saved.id } })
-    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Another server" } })
+    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "remote.example" } })
     fireEvent.change(screen.getByLabelText("Command"), { target: { value: "other-runner" } })
     expect(screen.getByRole("button", { name: "Edit Local tools" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Remove Local tools" })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "Save connection" }))
-    expect(screen.getByRole("alert")).toHaveTextContent("That server ID already exists.")
-    expect(api.saveMCPServer).not.toHaveBeenCalled()
-    expect(screen.getByLabelText("Command")).toHaveValue("other-runner")
+    await screen.findByText("remote.example")
+    expect(screen.getByText("Local tools")).toBeVisible()
+    const [input, createOnly] = vi.mocked(api.saveMCPServer).mock.calls[0]
+    expect(createOnly).toBe(true)
+    expect(input.name).toBe("remote.example")
+    expect(input.id).toMatch(/^[a-f0-9]{32}$/)
+    expect(input.id).not.toBe(existing.id)
+    expect(document.body).not.toHaveTextContent(input.id)
+    expect(document.body).not.toHaveTextContent(existing.id)
+  })
+
+  it("hides an internal id from the list and from settings search", async () => {
+    vi.mocked(api.mcpServers).mockResolvedValue([{ ...saved, id: "srv-hidden", name: "Desk" }])
+    const view = render(<MCPTab />)
+    expect(await screen.findByText("Desk")).toBeVisible()
+    expect(screen.getByText("Local command (stdio)")).toBeVisible()
+    expect(document.body).not.toHaveTextContent("srv-hidden")
+    view.rerender(<MCPTab query="srv-hidden" />)
+    expect(screen.queryByText("Desk")).toBeNull()
+    view.rerender(<MCPTab query="stdio" />)
+    expect(screen.getByText("Desk")).toBeVisible()
+  })
+
+  it("retries a new connection with the same id and does not rewrite the name", async () => {
+    vi.mocked(api.saveMCPServer).mockRejectedValueOnce(new Error("storage unavailable"))
+    render(<MCPTab />)
+    await screen.findByText(/No MCP servers yet/)
+    fireEvent.click(screen.getByRole("button", { name: "Add server" }))
+    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "remote.example" } })
+    fireEvent.change(screen.getByLabelText("Command"), { target: { value: "runner" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save connection" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("storage unavailable")
+    expect(screen.getByLabelText("Display name")).toHaveValue("remote.example")
+    const first = vi.mocked(api.saveMCPServer).mock.calls[0][0].id
+    fireEvent.click(screen.getByRole("button", { name: "Save connection" }))
+    await screen.findByText("remote.example")
+    expect(vi.mocked(api.saveMCPServer).mock.calls[1][0]).toMatchObject({ id: first, name: "remote.example" })
   })
 
   it("tests even disabled connections and shows discovered descriptions and input schemas", async () => {

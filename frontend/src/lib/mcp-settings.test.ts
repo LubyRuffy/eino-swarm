@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { createMCPDraft, mcpDraftInput } from "./mcp-settings"
+import { assignMCPServerID, createMCPDraft, mcpDraftInput, mcpTransportKey } from "./mcp-settings"
 
 describe("MCP configuration drafts", () => {
   it("keeps saved credentials write-only and preserves them when unchanged", () => {
@@ -29,5 +29,19 @@ describe("MCP configuration drafts", () => {
     }
     expect(() => mcpDraftInput({ ...draft, args: "not json" })).toThrow()
     expect(() => mcpDraftInput({ ...draft, args: "[1]" })).toThrow()
+  })
+
+  it("assigns an internal id without using the display name", () => {
+    expect(assignMCPServerID("kept-id", ["other"], () => { throw new Error("unused") })).toBe("kept-id")
+    expect(assignMCPServerID("remote.example", [], () => Uint8Array.of(0xbb))).toBe("bb")
+    expect(assignMCPServerID("aa", ["aa"], () => Uint8Array.of(0xbb))).toBe("bb")
+    let attempt = 0
+    expect(assignMCPServerID("", ["aa"], () => Uint8Array.of(attempt++ === 0 ? 0xaa : 0xbb))).toBe("bb")
+    expect(assignMCPServerID("", [], () => new Uint8Array(16).fill(0x0f))).toBe("0f".repeat(16))
+    expect(assignMCPServerID("", [])).toMatch(/^[a-f0-9]{32}$/)
+    expect(() => assignMCPServerID("", [], () => new Uint8Array())).toThrow(/allocation failed/)
+    expect(mcpTransportKey("stdio")).toBe("mcp.stdio")
+    expect(mcpTransportKey("streamable_http")).toBe("mcp.http")
+    expect(mcpTransportKey("sse")).toBe("mcp.sse")
   })
 })

@@ -164,9 +164,6 @@ export function ComposerTools({ disabled }: { disabled?: boolean }) {
           >
             <span className="min-w-0">
               <span className="block">{server.name || server.id}</span>
-              {server.name && server.name !== server.id ? (
-                <span className="block font-mono text-muted-foreground">{server.id}</span>
-              ) : null}
             </span>
           </DropdownMenuCheckboxItem>
         ))}

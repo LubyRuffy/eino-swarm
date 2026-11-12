@@ -312,7 +312,7 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-176 External MCP tools
 
 - 目的：接入用户配置的外部 MCP 工具并查看工具目录；使用者：PC Desktop/Web 用户；入口：Settings → MCP、`/api/mcp` 管理／inspect API，以及对话工具记录和 Trace。
-- 输入：唯一服务器 ID、名称、stdio command/args/env 或 Streamable HTTP/SSE URL/headers、启用状态和超时；输出：持久化连接配置、脱敏字段、工具原名、描述／输入 Schema，以及实际调用结果。前置条件：命令或远程服务可用，模型支持函数工具；本机命令使用会话工作区作为 cwd，保留应用访问权限。
+- 输入：显示名称、stdio command/args/env 或 Streamable HTTP/SSE URL/headers、启用状态和超时。设置表单不收集 ID，也不改写已输入文本；新建时分配唯一 ID，编辑保持原 ID。配置文件和 API 仍以该 ID 标识服务器。输出：持久化连接配置、脱敏字段、工具原名、描述／输入 Schema，以及实际调用结果。前置条件：命令或远程服务可用，模型支持函数工具；本机命令使用会话工作区作为 cwd，保留应用访问权限。
 - 配置读取不连接；显式 inspect 建立临时连接，禁用服务器也可检查。Settings 在完成一次检查（含失败）之前不展示工具目录。启用项在工具表中提供命名空间 `list_tools`／`call_tool` 代理，构造不做外部I/O；实际工具调用才按可取消上下文连接，list支持名称筛选／分页，call使用远端工具名和arguments。输入框「工具」与 Settings 共用 `enabled`：关掉开关后，下一次模型请求不再带这两个代理，包括正在进行的回合；本回合开始后才启用的服务器，下一回合才挂上。代理绑定配置快照及首次session；plan 和 Nuwa read-only 不挂 MCP。配置变更、断线或闲置cache淘汰使旧代理返回session_expired，不自动重连／重放；后续turn重建工具表。连接／目录失败为失败工具结果且保留内置工具；每个server/configuration最多保留8个闲置workspace session，不保证调用间保留。
 - MCP 代理描述引导模型先查可能匹配的服务器目录并优先使用匹配工具。模型应遵循用户明确指定的路径。采用技能中保存的命令行或直连 API 备用路径时，以本轮目录或调用结果为依据，并遵守现有授权边界。
 - env/headers 值通过 HTTP 只写，读取仅返回 key；空编辑保留、`{}` 清除，普通 command/args/URL 可见。仅支持 tools，不含 resources、prompts 或 OAuth 登录。关联契约：`C-041`、`C-009`、`C-012`。

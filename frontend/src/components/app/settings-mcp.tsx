@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Loader2, Pencil, Plus, Plug, Trash2 } from "
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Disclosure } from "@/components/ui/collapsible"
+import { mcpTransportKey } from "@/lib/mcp-settings"
 import { useT } from "@/lib/use-t"
 import { useMCPSettings } from "@/store/mcp-settings"
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog"
@@ -23,13 +24,13 @@ export function MCPTab({ query = "" }: { query?: string }) {
             <Button type="button" variant="outline" onClick={() => void state.load()}>{t("mcp.retry")}</Button>
           </div> : state.servers.length === 0 ?
             <p data-settings-row="" className="px-4 py-6 text-sm text-muted-foreground">{t("mcp.empty")}</p> :
-            state.servers.filter((server) => settingsMatch(query, "mcp", server.name, server.id, server.transport)).map((server) => {
+            state.servers.filter((server) => settingsMatch(query, "mcp", server.name, t(mcpTransportKey(server.transport)))).map((server) => {
               const connection = state.connections[server.id]
               const checking = state.busy === `inspect:${server.id}`
               return <div key={server.id} data-settings-row="" className="flex flex-wrap items-center gap-3 px-4 py-4">
                 <div className="min-w-0 flex-1">
                   <p className="break-words text-sm font-medium">{server.name}</p>
-                  <p className={settingsHintClass}>{server.id} · {server.transport}</p>
+                  <p className={settingsHintClass}>{t(mcpTransportKey(server.transport))}</p>
                   <p role="status" className={settingsHintClass}>
                     {checking ? t("mcp.checking") : connection?.error ? t("mcp.connectionFailed") :
                       connection?.catalog ? t("mcp.connected", { count: connection.catalog.tools.length }) : t("mcp.notChecked")}

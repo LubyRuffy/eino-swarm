@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { api } from "@/lib/api"
-import { createMCPDraft, MCPDraftError, mcpDraftInput, type MCPDraft, type MCPServerInput, type MCPServerView, type MCPToolCatalog } from "@/lib/mcp-settings"
+import { assignMCPServerID, createMCPDraft, MCPDraftError, mcpDraftInput, type MCPDraft, type MCPServerInput, type MCPServerView, type MCPToolCatalog } from "@/lib/mcp-settings"
 import { useT } from "@/lib/use-t"
 import { errorMessage, toastError } from "./toasts"
 
@@ -68,18 +68,23 @@ export function useMCPSettings() {
     let input: MCPServerInput
     try {
       input = mcpDraftInput(draft)
-      if (!input.id.trim() || !input.name.trim() ||
-        !(input.transport === "stdio" ? input.command.trim() : input.url.trim())) {
-        setFormError(t("mcp.required"))
-        return
-      }
-      if (editing === undefined && servers.some((server) => server.id === input.id.trim())) {
-        setFormError(t("mcp.duplicateID"))
-        return
-      }
     } catch (error) {
       setFormError(t(error instanceof MCPDraftError && error.field === "args" ? "mcp.invalidArgs" : "mcp.invalidSecrets"))
       return
+    }
+    if (!input.name.trim() || !(input.transport === "stdio" ? input.command.trim() : input.url.trim())) {
+      setFormError(t("mcp.required"))
+      return
+    }
+    if (editing === undefined) {
+      try {
+        const id = assignMCPServerID(input.id, servers.map((server) => server.id))
+        input = { ...input, id }
+        if (draft.id !== id) setDraft({ ...draft, id })
+      } catch {
+        setFormError(t("mcp.saveFailed"))
+        return
+      }
     }
     busyRef.current = true
     setBusy("save")

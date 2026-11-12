@@ -38,6 +38,36 @@ export class MCPDraftError extends Error {
   }
 }
 
+const mcpServerIDPattern = /^[a-zA-Z0-9_-]{1,32}$/
+
+function randomMCPIDBytes(): Uint8Array {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  return bytes
+}
+
+// Settings assigns the id. A retry keeps the id already stored on the draft;
+// anything else, including a display name, is not an id.
+export function assignMCPServerID(
+  current: string,
+  used: Iterable<string>,
+  nextBytes: () => Uint8Array = randomMCPIDBytes,
+): string {
+  const taken = new Set(used)
+  if (mcpServerIDPattern.test(current) && !taken.has(current)) return current
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const id = [...nextBytes()].map((byte) => byte.toString(16).padStart(2, "0")).join("")
+    if (mcpServerIDPattern.test(id) && !taken.has(id)) return id
+  }
+  throw new Error("mcp id allocation failed")
+}
+
+export function mcpTransportKey(transport: MCPTransport): "mcp.stdio" | "mcp.http" | "mcp.sse" {
+  if (transport === "streamable_http") return "mcp.http"
+  if (transport === "sse") return "mcp.sse"
+  return "mcp.stdio"
+}
+
 export function createMCPDraft(server?: MCPServerView): MCPDraft {
   return {
     id: server?.id ?? "", name: server?.name ?? "", enabled: server?.enabled ?? true,

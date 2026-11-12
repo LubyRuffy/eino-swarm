@@ -585,7 +585,11 @@ mcp:
 ```
 
 Each `id` is unique and contains 1–32 ASCII letters, digits, underscores or
-hyphens. `name` is the display label. `transport` is `stdio`, `streamable_http`
+hyphens. Settings assigns a new id when a connection is added and keeps that
+id when the connection is edited. The form asks for the display name and the
+connection details; it does not show the id or rewrite typed text. `name` is
+the label shown in Settings and the composer Tools menu. Config files and the
+HTTP API still address a server by `id`. `transport` is `stdio`, `streamable_http`
 or `sse`; stdio uses `command` and an argument array without a shell, while
 remote transports use an HTTP(S) `url` and optional `headers`. URLs must have
 no user info or fragment. `timeout_seconds` accepts 0–3600; zero or omission

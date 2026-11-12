@@ -946,8 +946,9 @@ machine. Settings does not show that page. The behavior of the list is in
 ## External MCP tools
 
 Open **Settings → MCP** on Desktop or Web to add a local stdio command or a
-remote Streamable HTTP/SSE server. Save its connection, then choose **Test
-connection and list tools**. You can inspect a disabled server before enabling
+remote Streamable HTTP/SSE server. Enter a display name and the connection.
+The app assigns the id and leaves the name, command, arguments and URL as
+typed. Save the connection, then choose **Test connection and list tools**. You can inspect a disabled server before enabling
 it. A failed inspection stays visible and can be retried.
 
 Enabled servers add two namespaced Agent tools: `list_tools` and `call_tool`.
