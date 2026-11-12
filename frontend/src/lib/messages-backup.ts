@@ -21,6 +21,8 @@ export const backupEn = {
   "backup.confirmAdd": "Add project from backup",
   "backup.confirmReplace": "Replace this project with the backup",
   "backup.done": "Backup written.",
+  "backup.doneLinks": "Backup written. {n} symbolic links were left out.",
+  "backup.skippedLinks": "Symbolic links were left out: {n}.",
   "backup.restored": "Restore finished. The app is reloading this data.",
   "backup.counts": "{projects} projects, {threads} conversations",
   "backup.busyTitle": "Tasks are still running",
@@ -30,4 +32,9 @@ export const backupEn = {
   "backup.busyTasks": "A conversation is still running. Restore waits until it finishes.",
   "backup.busyWait": "A backup, restore, or restart is already in progress.",
   "backup.omitted": "This backup left out conversations that were still running: {titles}. Restoring all data will not bring them back.",
+  "backup.progressLabel": "Backup progress",
+  "backup.progressSnapshot": "Copying the database…",
+  "backup.progressFiles": "Reading files · {n}",
+  "backup.progressArchive": "Writing the backup · {percent}%",
+  "backup.progressRestore": "Restoring…",
 }

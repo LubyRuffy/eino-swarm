@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/LubyRuffy/eino-swarm/internal/backup"
@@ -28,6 +29,10 @@ type restoreRequest struct {
 	Replace        bool   `json:"replace"`
 	ReplaceProject bool   `json:"replace_project"`
 	Confirm        bool   `json:"confirm"`
+}
+
+func (s *Server) getBackupProgress(c *gin.Context) {
+	c.JSON(http.StatusOK, s.engine.BackupProgress())
 }
 
 func (s *Server) postBackup(c *gin.Context) {
@@ -67,6 +72,9 @@ func (s *Server) postBackup(c *gin.Context) {
 		return
 	}
 	c.Header("Content-Disposition", `attachment; filename="zwai.zwai-backup"`)
+	if manifest.SkippedSymlinks > 0 {
+		c.Header("X-Zwai-Skipped-Symlinks", strconv.Itoa(manifest.SkippedSymlinks))
+	}
 	c.File(output)
 }
 

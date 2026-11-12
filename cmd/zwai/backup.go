@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -47,9 +48,11 @@ func runBackup(args []string) error {
 	}
 	body := map[string]any{"kind": string(kind), "project_id": *projectID, "omit_secrets": *omit, "skip_active": *skipActive, "output": out}
 	return attachOrRun(cfg.DataDir(), func(url string) error {
-		if _, err := postEngine(url, "/api/backup", body); err != nil {
+		written, err := postEngine(url, "/api/backup", body)
+		if err != nil {
 			return err
 		}
+		reportSkippedLinks(skippedLinksOf(written))
 		fmt.Println(out)
 		return nil
 	}, func() error {
@@ -58,11 +61,13 @@ func runBackup(args []string) error {
 			return err
 		}
 		defer closeDB()
-		if _, err := backup.Create(context.Background(), backup.Options{
+		manifest, err := backup.Create(context.Background(), backup.Options{
 			DataDir: cfg.DataDir(), DB: db, Kind: kind, ProjectID: *projectID, OmitSecrets: *omit, Output: out,
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
+		reportSkippedLinks(manifest.SkippedSymlinks)
 		fmt.Println(out)
 		return nil
 	})
@@ -197,6 +202,20 @@ func discoverEngine(dataDir string) (lease.Record, error) {
 		return lease.Discover(dataDir, true)
 	}
 	return rec, err
+}
+
+func reportSkippedLinks(n int) {
+	if n > 0 {
+		fmt.Fprintf(os.Stderr, "left out %d symbolic links\n", n)
+	}
+}
+
+func skippedLinksOf(body map[string]any) int {
+	n, ok := body["skipped_symlinks"].(float64)
+	if !ok || n <= 0 {
+		return 0
+	}
+	return int(n)
 }
 
 func openLocalDB(dataDir string) (*sql.DB, func(), error) {

@@ -1,11 +1,11 @@
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
-import { ApiError, api, type BackupReport, type BackupRequest } from "@/lib/api"
+import { ApiError, api, type BackupProgress, type BackupReport, type BackupRequest } from "@/lib/api"
 import { chooseBackupFile, nativeBackupFileAvailable } from "@/lib/backup-file"
-import { useT } from "@/lib/use-t"
+import { useT, type Translate } from "@/lib/use-t"
 import { useApp } from "@/store/app"
 import { useProjects } from "@/store/projects"
 import { errorMessage, toastError } from "@/store/toasts"
@@ -17,6 +17,19 @@ type Source = { path: string; file?: undefined } | { file: File; path?: undefine
 type ActiveTask = { id: string; title: string }
 
 type PendingBackup = { body: BackupRequest; name: string; tasks: ActiveTask[] }
+
+function backupPercent(progress: BackupProgress): number | undefined {
+  if (progress.total <= 0) return
+  return Math.min(100, Math.round((progress.done / progress.total) * 100))
+}
+
+function backupProgressText(progress: BackupProgress, t: Translate): string {
+  if (progress.phase === "files") return t("backup.progressFiles", { n: progress.done })
+  if (progress.phase === "restore") return t("backup.progressRestore")
+  const percent = backupPercent(progress)
+  if (progress.phase === "archive" && percent !== undefined) return t("backup.progressArchive", { percent })
+  return t("backup.progressSnapshot")
+}
 
 function backupActiveTasks(error: unknown): ActiveTask[] | undefined {
   if (!(error instanceof ApiError) || error.code !== "backup_busy" || error.details?.skippable !== true) return
@@ -51,8 +64,28 @@ export function BackupTab({ query }: { query: string }) {
   const [source, setSource] = useState<Source>()
   const [note, setNote] = useState("")
   const [choice, setChoice] = useState<PendingBackup>()
+  const [activity, setActivity] = useState<"" | "backup" | "restore">("")
+  const [progress, setProgress] = useState<BackupProgress>({ running: false, done: 0, total: 0 })
   const fileRef = useRef<HTMLInputElement>(null)
   const desktop = nativeBackupFileAvailable()
+
+  useEffect(() => {
+    if (activity === "") return
+    let stop = false
+    const tick = () => {
+      void api.backupProgress().then((next) => {
+        if (!stop && next.running && next.phase) setProgress(next)
+      }).catch(() => {
+        // The stage already on screen stays until this transfer finishes.
+      })
+    }
+    const id = window.setInterval(tick, 400)
+    tick()
+    return () => {
+      stop = true
+      window.clearInterval(id)
+    }
+  }, [activity])
 
   const run = async (work: () => Promise<void>) => {
     setBusy(true)
@@ -82,19 +115,32 @@ export function BackupTab({ query }: { query: string }) {
       if (!output) return
       request = { ...request, output }
     }
+    setActivity("backup")
+    setProgress({ running: true, phase: "snapshot", done: 0, total: 0 })
     try {
-      if (desktop) await api.backupCreate(request)
-      else downloadBlob(await api.backupDownload(request), name)
-    } catch (error) {
-      const tasks = backupActiveTasks(error)
-      if (tasks) {
-        setChoice({ body: request, name, tasks })
-        return
+      let skipped = 0
+      try {
+        if (desktop) {
+          const written = await api.backupCreate(request)
+          skipped = written.skipped_symlinks ?? 0
+        } else {
+          const downloaded = await api.backupDownload(request)
+          downloadBlob(downloaded.blob, name)
+          skipped = downloaded.skippedSymlinks
+        }
+      } catch (error) {
+        const tasks = backupActiveTasks(error)
+        if (tasks) {
+          setChoice({ body: request, name, tasks })
+          return
+        }
+        throw error
       }
-      throw error
+      setChoice(undefined)
+      setNote(skipped > 0 ? t("backup.doneLinks", { n: skipped }) : t("backup.done"))
+    } finally {
+      setActivity("")
     }
-    setChoice(undefined)
-    setNote(t("backup.done"))
   })
 
   const showReport = (next: BackupReport, picked: Source) => {
@@ -106,18 +152,24 @@ export function BackupTab({ query }: { query: string }) {
     if (!report || !source || report.action === "blocked") return
     const replace = report.action === "replace-all"
     const replaceProject = report.action === "replace-project"
-    if (source.path) {
-      await api.backupRestore({
-        path: source.path,
-        confirm: true,
-        replace,
-        replace_project: replaceProject,
-      })
-    } else if (source.file) {
-      await api.backupRestoreFile(source.file, { replace, replace_project: replaceProject })
+    setActivity("restore")
+    setProgress({ running: true, phase: "restore", done: 0, total: 0 })
+    try {
+      if (source.path) {
+        await api.backupRestore({
+          path: source.path,
+          confirm: true,
+          replace,
+          replace_project: replaceProject,
+        })
+      } else if (source.file) {
+        await api.backupRestoreFile(source.file, { replace, replace_project: replaceProject })
+      }
+      setNote(t("backup.restored"))
+      await useApp.getState().syncThreads()
+    } finally {
+      setActivity("")
     }
-    setNote(t("backup.restored"))
-    await useApp.getState().syncThreads()
   })
 
   const confirmLabel = report?.action === "replace-all"
@@ -198,12 +250,30 @@ export function BackupTab({ query }: { query: string }) {
             <p>{report.manifest.includes_secrets ? t("backup.secretsYes") : t("backup.secretsNo")}</p>
             {paths ? <p>{t("backup.external", { paths })}</p> : null}
             {omitted ? <p>{t("backup.omitted", { titles: omitted })}</p> : null}
+            {report.manifest.skipped_symlinks ? <p>{t("backup.skippedLinks", { n: report.manifest.skipped_symlinks })}</p> : null}
             {report.action === "blocked" ? <p role="alert">{t("backup.conflicts")}</p> : (
               <Button type="button" disabled={busy} onClick={confirm}>{confirmLabel}</Button>
             )}
           </div>
         ) : null}
-        {note ? <p className="px-4 pb-3 text-sm" role="status">{note}</p> : null}
+        {activity ? (
+          <div className="grid gap-2 px-4 pb-3">
+            <div
+              className="h-1 overflow-hidden rounded-full bg-muted"
+              role="progressbar"
+              aria-label={t("backup.progressLabel")}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={backupPercent(progress)}
+            >
+              <div
+                className={backupPercent(progress) === undefined ? "h-full animate-pulse bg-primary" : "h-full bg-primary transition-[width] duration-300"}
+                style={backupPercent(progress) === undefined ? undefined : { width: `${backupPercent(progress)}%` }}
+              />
+            </div>
+            <p className="text-sm" role="status">{backupProgressText(progress, t)}</p>
+          </div>
+        ) : note ? <p className="px-4 pb-3 text-sm" role="status">{note}</p> : null}
       </SettingsSection>
       <Dialog open={choice !== undefined} onOpenChange={(open) => { if (!open) setChoice(undefined) }}>
         <DialogContent>

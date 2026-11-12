@@ -430,6 +430,12 @@ keys and MCP secrets empty and omits `remote/`. `--skip-active` leaves out
 conversations that are still running, including their `inputs/`, `plans/` and
 `workspaces/` directories, and records them in the manifest. They keep running
 on this machine. A later full restore of that file does not bring them back.
+A symbolic link inside the copied directories is left out. The command does
+not follow the link and does not store it. `skipped_symlinks` in the manifest
+is the count. When that count is greater than zero, the command prints it on
+stderr. If one of the copied category directories is itself a symbolic link,
+the backup stops.
+
 The output has to be an absolute path outside the data directory. The file
 mode is `0600`.
 

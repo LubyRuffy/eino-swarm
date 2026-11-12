@@ -891,7 +891,9 @@ a temporary file. The file is not copied into a `.zwai-backup` archive, so
 restoring an older backup cannot move the count backwards. A backup taken
 while conversations are still running can omit those conversations and their
 `inputs/`, `plans/` and `workspaces/` directories; the manifest lists them in
-`omitted_threads`. The live rows and files stay. See `C-044`.
+`omitted_threads`. The live rows and files stay. A symbolic link inside a
+copied tree is left out of the archive and is not followed; the manifest
+counts those links in `skipped_symlinks`. See `C-044`.
 
 `engine.lock` is an `flock` held by the one process that may open
 `zwai.db`. `engine.json` is rewritten atomically when that process starts

@@ -189,9 +189,55 @@ func (e *Engine) waitBackupAdmissions() error {
 func (e *Engine) finishBackup(resumeScheduler bool) {
 	e.mu.Lock()
 	e.backupRunning = false
+	e.backupGen++
+	e.backupPhase = ""
+	e.backupDone = 0
+	e.backupTotal = 0
 	e.mu.Unlock()
 	if resumeScheduler {
 		e.StartScheduler()
+	}
+}
+
+// watchBackup publishes phase until finishBackup. Reports from an older
+// transfer are ignored, so a slow copy cannot paint progress onto the next one.
+func (e *Engine) watchBackup(ctx context.Context, phase backup.Phase) context.Context {
+	e.mu.Lock()
+	e.backupGen++
+	gen := e.backupGen
+	e.backupPhase = phase
+	e.backupDone = 0
+	e.backupTotal = 0
+	e.mu.Unlock()
+	return backup.WithReporter(ctx, func(p backup.Progress) {
+		e.noteBackup(gen, p)
+	})
+}
+
+func (e *Engine) noteBackup(gen uint64, p backup.Progress) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if gen != e.backupGen || !e.backupRunning {
+		return
+	}
+	e.backupPhase = p.Phase
+	e.backupDone = p.Done
+	e.backupTotal = p.Total
+}
+
+// BackupProgress is the transfer the settings page is waiting on.
+// Running is false when nothing is being written or restored.
+func (e *Engine) BackupProgress() backup.Progress {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !e.backupRunning {
+		return backup.Progress{}
+	}
+	return backup.Progress{
+		Running: true,
+		Phase:   e.backupPhase,
+		Done:    e.backupDone,
+		Total:   e.backupTotal,
 	}
 }
 
@@ -209,6 +255,7 @@ func (e *Engine) BackupData(ctx context.Context, opt backup.Options) (backup.Man
 		return backup.Manifest{}, err
 	}
 	defer release()
+	ctx = e.watchBackup(ctx, backup.PhaseSnapshot)
 	db, err := e.openPool()
 	if err != nil {
 		return backup.Manifest{}, err
@@ -250,6 +297,7 @@ func (e *Engine) RestoreBackup(ctx context.Context, opt backup.RestoreOptions) (
 		return backup.Manifest{}, err
 	}
 	defer release()
+	ctx = e.watchBackup(ctx, backup.PhaseRestore)
 	db, err := e.openPool()
 	if err != nil {
 		return backup.Manifest{}, err

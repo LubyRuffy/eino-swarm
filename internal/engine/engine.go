@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/LubyRuffy/eino-swarm/internal/backup"
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/mcpclient"
 	"github.com/LubyRuffy/eino-swarm/internal/memory"
@@ -64,8 +65,13 @@ type Engine struct {
 	startupRestoring bool
 	// backupRunning is the exclusive backup or restore. New turns, schedule
 	// fires and another transfer wait until it finishes; the data directory
-	// is being snapshotted or replaced.
+	// is being snapshotted or replaced. backupGen drops a progress report
+	// that arrives after this transfer has finished.
 	backupRunning   bool
+	backupGen       uint64
+	backupPhase     backup.Phase
+	backupDone      int64
+	backupTotal     int64
 	restoreProgress RestoreProgress
 	restoreMu       sync.Mutex
 

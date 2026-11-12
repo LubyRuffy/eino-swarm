@@ -62,7 +62,7 @@ func Create(ctx context.Context, opt Options) (Manifest, error) {
 	if len(opt.OmitThreads) > 0 {
 		manifest.OmittedThreads = append([]OmittedThread(nil), opt.OmitThreads...)
 	}
-	written, err := writeArchive(output, items, manifest)
+	written, err := writeArchive(ctx, output, items, manifest)
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -75,6 +75,7 @@ func buildFull(ctx context.Context, conn *sql.Conn, dataDir string, omit bool, s
 		return Manifest{}, nil, nil, err
 	}
 	cleanup := func() { _ = os.Remove(db) }
+	reportProgress(ctx, Progress{Phase: PhaseSnapshot})
 	if err := vacuumInto(ctx, conn, db); err != nil {
 		cleanup()
 		return Manifest{}, nil, nil, err
@@ -112,8 +113,11 @@ func buildFull(ctx context.Context, conn *sql.Conn, dataDir string, omit bool, s
 	}
 	items := []zipItem{{name: databaseName, path: db}, {name: config.FileName, body: raw}}
 	skip := skipSet(skipped)
+	var seen int64
+	var links int
+	reportProgress(ctx, Progress{Phase: PhaseFiles})
 	for _, rel := range fullTrees {
-		part, err := collectTree(dataDir, rel, skip)
+		part, err := collectTree(ctx, dataDir, rel, skip, &seen, &links)
 		if err != nil {
 			cleanup()
 			return Manifest{}, nil, nil, err
@@ -121,14 +125,14 @@ func buildFull(ctx context.Context, conn *sql.Conn, dataDir string, omit bool, s
 		items = append(items, part...)
 	}
 	if !omit {
-		part, err := collectTree(dataDir, "remote", nil)
+		part, err := collectTree(ctx, dataDir, "remote", nil, &seen, &links)
 		if err != nil {
 			cleanup()
 			return Manifest{}, nil, nil, err
 		}
 		items = append(items, part...)
 	}
-	return Manifest{IncludesSecrets: !omit, ExternalWorkdirs: external, Counts: counts}, items, cleanup, nil
+	return Manifest{IncludesSecrets: !omit, ExternalWorkdirs: external, Counts: counts, SkippedSymlinks: links}, items, cleanup, nil
 }
 
 func buildProject(ctx context.Context, conn *sql.Conn, dataDir, projectID string, skipped []OmittedThread) (Manifest, []zipItem, func(), error) {
@@ -141,6 +145,7 @@ func buildProject(ctx context.Context, conn *sql.Conn, dataDir, projectID string
 		cleanup()
 		return Manifest{}, nil, nil, err
 	}
+	reportProgress(ctx, Progress{Phase: PhaseSnapshot})
 	if err := exportProject(ctx, conn, projectID, db); err != nil {
 		return fail(err)
 	}
@@ -169,14 +174,17 @@ func buildProject(ctx context.Context, conn *sql.Conn, dataDir, projectID string
 	}
 	items := []zipItem{{name: databaseName, path: db}}
 	skip := skipSet(skipped)
+	var seen int64
+	var links int
+	reportProgress(ctx, Progress{Phase: PhaseFiles})
 	for _, rel := range rels {
-		part, err := collectTree(dataDir, rel, skip)
+		part, err := collectTree(ctx, dataDir, rel, skip, &seen, &links)
 		if err != nil {
 			return fail(err)
 		}
 		items = append(items, part...)
 	}
-	return Manifest{ProjectID: projectID, IncludesSecrets: false, ExternalWorkdirs: external, Counts: counts}, items, cleanup, nil
+	return Manifest{ProjectID: projectID, IncludesSecrets: false, ExternalWorkdirs: external, Counts: counts, SkippedSymlinks: links}, items, cleanup, nil
 }
 
 func tempFile(dir, pattern string) (string, error) {

@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,7 +15,7 @@ import (
 // counter; those stay put so a restore cannot rewind them or drop the lease.
 var fullTrees = []string{"inputs", "plans", "workspaces", "library", "projects"}
 
-func collectTree(dataDir, rel string, skip map[string]struct{}) ([]zipItem, error) {
+func collectTree(ctx context.Context, dataDir, rel string, skip map[string]struct{}, seen *int64, skippedLinks *int) ([]zipItem, error) {
 	if err := failNext(); err != nil {
 		return nil, err
 	}
@@ -30,6 +31,9 @@ func collectTree(dataDir, rel string, skip map[string]struct{}) ([]zipItem, erro
 	if err != nil {
 		return nil, err
 	}
+	// The category directory itself is a link. Leaving it out would drop
+	// that whole tree and still report success. Following it would copy
+	// some other directory into the archive.
 	if info.Mode()&os.ModeSymlink != 0 {
 		return nil, invalidf("symlink %s", rel)
 	}
@@ -47,8 +51,7 @@ func collectTree(dataDir, rel string, skip map[string]struct{}) ([]zipItem, erro
 			return invalidf("path %s", itemRel)
 		}
 		// A conversation left out of the snapshot must not contribute a
-		// half-written workspace either. Skip the directory before a
-		// symlink inside it can fail the rest of the archive.
+		// half-written workspace either.
 		if skippedThreadPath(itemRel, skip) {
 			if d.IsDir() {
 				return filepath.SkipDir
@@ -59,8 +62,14 @@ func collectTree(dataDir, rel string, skip map[string]struct{}) ([]zipItem, erro
 		if err != nil {
 			return err
 		}
+		// A link inside the tree stays on disk and out of the archive.
+		// Following it can copy a file from outside this data directory.
+		// Storing it would let a later restore write through the link.
 		if info.Mode()&os.ModeSymlink != 0 {
-			return invalidf("symlink %s", path)
+			if skippedLinks != nil {
+				*skippedLinks++
+			}
+			return nil
 		}
 		if !info.IsDir() && !info.Mode().IsRegular() {
 			return invalidf("unsupported file %s", path)
@@ -71,6 +80,10 @@ func collectTree(dataDir, rel string, skip map[string]struct{}) ([]zipItem, erro
 			return nil
 		}
 		items = append(items, zipItem{name: name, path: path})
+		if seen != nil {
+			*seen++
+			reportProgress(ctx, Progress{Phase: PhaseFiles, Done: *seen})
+		}
 		return nil
 	})
 	if err != nil {

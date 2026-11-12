@@ -1,11 +1,13 @@
 package server_test
 
 import (
+	"archive/zip"
 	"bytes"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -67,6 +69,57 @@ func TestBackupDownloadAndBusyTurn(t *testing.T) {
 	stopped := h.do(http.MethodPost, "/api/threads/"+id+"/interrupt", nil)
 	stopped.Body.Close()
 	h.waitTurnDone(id)
+}
+
+func TestBackupLeavesAWorkspaceSymlinkOut(t *testing.T) {
+	h := newHarness(t)
+	meta := h.json(http.MethodGet, "/api/meta", nil, http.StatusOK)
+	dir, _ := meta["data_dir"].(string)
+	if dir == "" {
+		t.Fatal("meta hid the data directory")
+	}
+	lab := filepath.Join(dir, "workspaces", "th_link", "lab")
+	if err := os.MkdirAll(filepath.Join(lab, "bin"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(lab, "notes.txt"), []byte("lab-notes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "python")
+	if err := os.WriteFile(outside, []byte("interpreter-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(lab, "bin", "python")); err != nil {
+		t.Fatal(err)
+	}
+	resp := h.do(http.MethodPost, "/api/backup", map[string]any{"kind": "full"})
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	if resp.Header.Get("X-Zwai-Skipped-Symlinks") != "1" {
+		t.Fatalf("header = %q", resp.Header.Get("X-Zwai-Skipped-Symlinks"))
+	}
+	reader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawNotes bool
+	for _, file := range reader.File {
+		if strings.Contains(file.Name, "bin/python") {
+			t.Fatalf("archive stored the link %s", file.Name)
+		}
+		if strings.HasSuffix(file.Name, "notes.txt") {
+			sawNotes = true
+		}
+	}
+	if !sawNotes {
+		t.Fatal("archive dropped the regular file")
+	}
 }
 
 func TestBackupCanSkipARunningTurn(t *testing.T) {
@@ -158,5 +211,13 @@ func TestBackupUploadRestoresAProjectBesideAnother(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dest.app.Engine.Config().DataDir(), "zwai.db")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestBackupProgressIsIdleWhenNothingIsTransferring(t *testing.T) {
+	h := newHarness(t)
+	body := h.json(http.MethodGet, "/api/backup/progress", nil, http.StatusOK)
+	if body["running"] == true || body["phase"] != nil || body["done"] != float64(0) {
+		t.Fatalf("progress = %v", body)
 	}
 }

@@ -247,3 +247,36 @@ func TestBackupDoesNotSkipARestart(t *testing.T) {
 		t.Fatal("backup wrote a file during restart")
 	}
 }
+
+func TestBackupProgressClearsWhenTheTransferFinishes(t *testing.T) {
+	e := newTestEngineAt(t, t.TempDir())
+	out := filepath.Join(t.TempDir(), "full.zwai-backup")
+	if _, err := e.BackupData(context.Background(), backup.Options{Kind: backup.KindFull, Output: out}); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.BackupProgress(); got.Running || got.Phase != "" || got.Done != 0 || got.Total != 0 {
+		t.Fatalf("progress lingered: %+v", got)
+	}
+}
+
+func TestStaleBackupProgressDoesNotReplaceTheNextTransfer(t *testing.T) {
+	e := newTestEngineAt(t, t.TempDir())
+	e.mu.Lock()
+	e.backupRunning = true
+	e.backupGen = 2
+	e.backupPhase = backup.PhaseSnapshot
+	e.mu.Unlock()
+	e.noteBackup(1, backup.Progress{Phase: backup.PhaseArchive, Done: 9, Total: 9})
+	if got := e.BackupProgress(); got.Phase != backup.PhaseSnapshot || got.Done != 0 || !got.Running {
+		t.Fatalf("stale report changed the current transfer: %+v", got)
+	}
+	e.noteBackup(2, backup.Progress{Phase: backup.PhaseArchive, Done: 4, Total: 8})
+	if got := e.BackupProgress(); !got.Running || got.Phase != backup.PhaseArchive || got.Done != 4 || got.Total != 8 {
+		t.Fatalf("current report: %+v", got)
+	}
+	e.finishBackup(false)
+	e.noteBackup(2, backup.Progress{Phase: backup.PhaseArchive, Done: 8, Total: 8})
+	if got := e.BackupProgress(); got.Running || got.Phase != "" || got.Done != 0 {
+		t.Fatalf("finished transfer published again: %+v", got)
+	}
+}

@@ -65,7 +65,7 @@ func TestSmallFailuresCoverTheRemainingChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(parent, 0o755) })
-	if _, err := collectTree(parent, "child", nil); err == nil {
+	if _, err := collectTree(context.Background(), parent, "child", nil, nil, nil); err == nil {
 		t.Fatal("read a directory without permission")
 	}
 	link := filepath.Join(t.TempDir(), "link")
@@ -432,10 +432,10 @@ func TestFileSnapshotRestoreAndRejectedTrees(t *testing.T) {
 	if err := os.Symlink(t.TempDir(), link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := collectTree(dir, "library", nil); !errors.Is(err, ErrInvalid) {
+	if _, err := collectTree(context.Background(), dir, "library", nil, nil, nil); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("symlink tree: %v", err)
 	}
-	if items, err := collectTree(dir, "does-not-exist", nil); err != nil || items != nil {
+	if items, err := collectTree(context.Background(), dir, "does-not-exist", nil, nil, nil); err != nil || items != nil {
 		t.Fatalf("missing tree %+v %v", items, err)
 	}
 	fifoDir := filepath.Join(dir, "plans")
@@ -506,19 +506,19 @@ func TestReadOnlyDirectoryAndCancelledOpenStopBeforeWriting(t *testing.T) {
 		t.Fatal("read a directory as the generation")
 	}
 
-	manifest, err := writeArchive(filepath.Join(ro, "out.zwai-backup"), nil, Manifest{})
+	manifest, err := writeArchive(context.Background(), filepath.Join(ro, "out.zwai-backup"), nil, Manifest{})
 	if err == nil {
 		t.Fatalf("wrote into a read-only directory: %+v", manifest)
 	}
 	missing := filepath.Join(t.TempDir(), "missing-src.zwai-backup")
-	if _, err := writeArchive(missing, []zipItem{{name: "database.db", path: filepath.Join(t.TempDir(), "absent")}}, Manifest{Kind: KindFull}); err == nil {
+	if _, err := writeArchive(context.Background(), missing, []zipItem{{name: "database.db", path: filepath.Join(t.TempDir(), "absent")}}, Manifest{Kind: KindFull}); err == nil {
 		t.Fatal("archived a missing file")
 	}
 	blocked := filepath.Join(t.TempDir(), "blocked")
 	if err := os.Mkdir(blocked, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writeArchive(blocked, []zipItem{{name: "database.db", body: []byte("db")}}, Manifest{Kind: KindFull}); err == nil {
+	if _, err := writeArchive(context.Background(), blocked, []zipItem{{name: "database.db", body: []byte("db")}}, Manifest{Kind: KindFull}); err == nil {
 		t.Fatal("renamed a backup onto a directory")
 	}
 }

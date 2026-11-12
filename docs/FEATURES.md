@@ -499,8 +499,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-422 Local backup and restore
 
-- 入口：设置 → 备份；`zwai backup` / `zwai restore`；`POST /api/backup`、`/api/backup/preview`、`/api/backup/restore`。整库备份可整份还原。项目备份可加入现有数据，或在明确确认后替换同一个项目。关联契约：`C-044`。
-- 有对话还在进行时，备份会先询问：可以不备份，也可以跳过这些对话继续。跳过的对话不进入这份文件，整库还原也带不回它们；本机上的对话继续运行。还原、重启或另一次备份／还原仍要等待。还原失败回到还原前的库和文件。成功还原后 `data_generation` 加一，桌面／Web 重新加载，手机清空已加载对话列表再拉第一页。
+- 入口：设置 → 备份；`zwai backup` / `zwai restore`；`POST /api/backup`、`GET /api/backup/progress`、`/api/backup/preview`、`/api/backup/restore`。整库备份可整份还原。项目备份可加入现有数据，或在明确确认后替换同一个项目。关联契约：`C-044`。
+- 有对话还在进行时，备份会先询问：可以不备份，也可以跳过这些对话继续。跳过的对话不进入这份文件，整库还原也带不回它们；本机上的对话继续运行。还原、重启或另一次备份／还原仍要等待。备份和还原进行时，设置页显示进度：复制数据库、已读取的文件数、归档已写入的比例。进度接口只读，不开始或结束传输。目录中的符号链接不进入归档，页面会说明留下了多少个；被复制的类别目录本身是符号链接时，这次备份失败。还原失败回到还原前的库和文件。成功还原后 `data_generation` 加一，桌面／Web 重新加载，手机清空已加载对话列表再拉第一页。
 - 实现证据：`internal/backup`、`internal/engine/backup.go`、`internal/server/backup.go`、`cmd/zwai/backup.go`、`frontend/src/components/app/settings-backup.tsx`、`internal/backup/backup_test.go`、`internal/engine/backup_test.go`、`internal/server/backup_http_test.go`、`cmd/zwai/backup_test.go`、`frontend/e2e/backup.spec.ts`、`models/backup/DataBackup.tla`。来源：GitHub Issue #164。
 
 ### F-421 External Agent Skills packages

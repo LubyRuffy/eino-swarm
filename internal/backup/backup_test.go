@@ -645,21 +645,76 @@ func TestBackupRejectsUnsafeArchives(t *testing.T) {
 		t.Fatalf("zip bomb: %v", err)
 	}
 
-	live := seed(t)
-	target := filepath.Join(live.cfg.ProjectMemoryDir(live.project.ID), "link")
-	if err := os.Symlink(live.external, target); err != nil {
+}
+
+func TestWorkspaceSymlinkDoesNotFailTheBackup(t *testing.T) {
+	src := seed(t)
+	lab := filepath.Join(src.cfg.WorkspaceDir(src.standalone.ID), "lab")
+	writeText(t, filepath.Join(lab, "notes.txt"), "lab-notes")
+	outside := filepath.Join(t.TempDir(), "python")
+	writeText(t, outside, "interpreter-bytes")
+	pythonLink := filepath.Join(lab, "bin", "python")
+	if err := os.MkdirAll(filepath.Dir(pythonLink), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	sqlDB, err := live.st.DB().DB()
+	if err := os.Symlink(outside, pythonLink); err != nil {
+		t.Fatal(err)
+	}
+	secretDir := t.TempDir()
+	writeText(t, filepath.Join(secretDir, "secret.txt"), "secret-bytes")
+	dirLink := filepath.Join(lab, "outside")
+	if err := os.Symlink(secretDir, dirLink); err != nil {
+		t.Fatal(err)
+	}
+	broken := filepath.Join(lab, "broken")
+	if err := os.Symlink(filepath.Join(t.TempDir(), "missing"), broken); err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := src.st.DB().DB()
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := filepath.Join(t.TempDir(), "refused.zwai-backup")
-	if _, err := Create(context.Background(), Options{DataDir: live.dir, DB: sqlDB, Kind: KindProject, ProjectID: live.project.ID, Output: out}); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("symlink in the data directory: %v", err)
+	out := filepath.Join(t.TempDir(), "links.zwai-backup")
+	manifest, err := Create(context.Background(), Options{DataDir: src.dir, DB: sqlDB, Kind: KindFull, Output: out})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(out); !os.IsNotExist(err) {
-		t.Fatal("refused backup was written")
+	if manifest.SkippedSymlinks != 3 {
+		t.Fatalf("skipped symlinks = %d, want 3", manifest.SkippedSymlinks)
+	}
+	if !archiveHas(t, out, "lab-notes") || !archiveHas(t, out, `"skipped_symlinks": 3`) {
+		t.Fatal("archive dropped the regular file or the skip count")
+	}
+	for _, needle := range []string{"interpreter-bytes", "secret-bytes", "bin/python", "lab/outside", "lab/broken"} {
+		if archiveHas(t, out, needle) {
+			t.Fatalf("archive contains %s", needle)
+		}
+	}
+	if target, err := os.Readlink(pythonLink); err != nil || target != outside {
+		t.Fatalf("backup changed the link: %v %q", err, target)
+	}
+	if readText(t, outside) != "interpreter-bytes" {
+		t.Fatal("backup changed the link target")
+	}
+
+	destDir := t.TempDir()
+	if _, err := config.Load(destDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Restore(context.Background(), RestoreOptions{DataDir: destDir, Path: out, Confirm: true, Replace: true}); err != nil {
+		t.Fatal(err)
+	}
+	restored := filepath.Join(destDir, "workspaces", src.standalone.ID, "lab")
+	if readText(t, filepath.Join(restored, "notes.txt")) != "lab-notes" {
+		t.Fatal("restore dropped the regular file")
+	}
+	for _, name := range []string{"bin/python", "outside", "broken"} {
+		if _, err := os.Lstat(filepath.Join(restored, name)); !os.IsNotExist(err) {
+			t.Fatalf("restore created %s: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(destDir, "secret.txt")); !os.IsNotExist(err) {
+		t.Fatal("restore wrote the link target")
 	}
 }
 
@@ -762,5 +817,65 @@ func TestOmitThreadsRejectsABadID(t *testing.T) {
 	}
 	if err := omitThreads(context.Background(), nil, "not a schema", []string{"th_ok"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("schema err = %v", err)
+	}
+}
+
+func TestCreateTellsTheCallerHowFarTheBackupHasGot(t *testing.T) {
+	// A backup that only returns when the zip is finished looks frozen.
+	// The page needs the database copy, the file count, and the bytes
+	// written, including a tick while a large file is still being copied.
+	src := seed(t)
+	writeText(t, filepath.Join(src.cfg.WorkspaceDir(src.thread.ID), "large.bin"), strings.Repeat("x", 300<<10))
+	sqlDB, err := src.st.DB().DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reportProgress(nil, Progress{})
+	if got := WithReporter(nil, nil); got == nil {
+		t.Fatal("nil reporter dropped the context")
+	}
+	var got []Progress
+	ctx := WithReporter(context.Background(), func(p Progress) { got = append(got, p) })
+	out := filepath.Join(t.TempDir(), "progress.zwai-backup")
+	if _, err := Create(ctx, Options{DataDir: src.dir, DB: sqlDB, Kind: KindFull, Output: out}); err != nil {
+		t.Fatal(err)
+	}
+	var sawSnapshot, sawFiles, sawArchive, sawPartial bool
+	var files int64
+	var archiveDone, archiveTotal int64
+	for _, p := range got {
+		switch p.Phase {
+		case PhaseSnapshot:
+			if sawFiles || sawArchive {
+				t.Fatalf("snapshot after a later stage: %+v", got)
+			}
+			sawSnapshot = true
+		case PhaseFiles:
+			if !sawSnapshot || sawArchive {
+				t.Fatalf("files out of order: %+v", got)
+			}
+			if p.Done < files {
+				t.Fatalf("file count went backwards: %+v", got)
+			}
+			files = p.Done
+			sawFiles = true
+		case PhaseArchive:
+			if !sawSnapshot {
+				t.Fatalf("archive before snapshot: %+v", got)
+			}
+			if p.Total <= 0 || p.Done < archiveDone || p.Done > p.Total {
+				t.Fatalf("archive progress: %+v", p)
+			}
+			if p.Done > 0 && p.Done < p.Total {
+				sawPartial = true
+			}
+			archiveDone, archiveTotal = p.Done, p.Total
+			sawArchive = true
+		default:
+			t.Fatalf("phase %q", p.Phase)
+		}
+	}
+	if !sawSnapshot || !sawFiles || !sawArchive || !sawPartial || files == 0 || archiveDone != archiveTotal {
+		t.Fatalf("snapshot=%v files=%d archive=%d/%d partial=%v reports=%d", sawSnapshot, files, archiveDone, archiveTotal, sawPartial, len(got))
 	}
 }

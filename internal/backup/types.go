@@ -94,6 +94,7 @@ type Manifest struct {
 	ProjectID        string            `json:"project_id,omitempty"`
 	ExternalWorkdirs []ExternalWorkdir `json:"external_workdirs,omitempty"`
 	OmittedThreads   []OmittedThread   `json:"omitted_threads,omitempty"`
+	SkippedSymlinks  int               `json:"skipped_symlinks,omitempty"`
 	Counts           Counts            `json:"counts"`
 	SHA256           map[string]string `json:"sha256"`
 }

@@ -122,8 +122,10 @@ one engine per data directory. Closing a window does not stop a running turn.
 ```
 
 Settings → Backup and `zwai backup` / `zwai restore` write a `.zwai-backup`
-file. If a conversation is still running, you can cancel or leave it out of
-this file (`zwai backup --skip-active`). Restore waits until nothing is running.
+file. The page shows progress while the copy is running. Symbolic links
+inside the copied directories are left out, and the page says how many.
+If a conversation is still running, you can cancel or leave it out of this file
+(`zwai backup --skip-active`). Restore waits until nothing is running.
 Use these commands while the app is running. Copying the directory still works
 when the engine is stopped.
 

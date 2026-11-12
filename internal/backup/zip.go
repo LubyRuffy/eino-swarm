@@ -2,6 +2,7 @@ package backup
 
 import (
 	"archive/zip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -84,7 +85,11 @@ type zipItem struct {
 	dir  bool
 }
 
-func writeArchive(dest string, items []zipItem, manifest Manifest) (Manifest, error) {
+// progressStride is how often a large file moves the archive bar. Small
+// files still move it once, when that file has been copied.
+const progressStride = 256 << 10
+
+func writeArchive(ctx context.Context, dest string, items []zipItem, manifest Manifest) (Manifest, error) {
 	if err := failNext(); err != nil {
 		return Manifest{}, err
 	}
@@ -104,6 +109,9 @@ func writeArchive(dest string, items []zipItem, manifest Manifest) (Manifest, er
 	}()
 	zw := zip.NewWriter(f)
 	hashes := make(map[string]string, len(items))
+	total := archiveBytes(items)
+	var done int64
+	reportProgress(ctx, Progress{Phase: PhaseArchive, Total: total})
 	for _, item := range items {
 		name, err := safeZipPath(item.name)
 		if err != nil {
@@ -111,12 +119,20 @@ func writeArchive(dest string, items []zipItem, manifest Manifest) (Manifest, er
 			_ = f.Close()
 			return Manifest{}, err
 		}
-		sum, err := writeItem(zw, name, item)
+		size := itemBytes(item)
+		base := done
+		sum, err := writeItem(zw, name, item, func(copied int64) {
+			if copied < size {
+				reportProgress(ctx, Progress{Phase: PhaseArchive, Done: base + copied, Total: total})
+			}
+		})
 		if err != nil {
 			_ = zw.Close()
 			_ = f.Close()
 			return Manifest{}, err
 		}
+		done = base + size
+		reportProgress(ctx, Progress{Phase: PhaseArchive, Done: done, Total: total})
 		if !item.dir {
 			hashes[name] = sum
 		}
@@ -128,7 +144,7 @@ func writeArchive(dest string, items []zipItem, manifest Manifest) (Manifest, er
 		_ = f.Close()
 		return Manifest{}, err
 	}
-	if _, err := writeItem(zw, manifestName, zipItem{name: manifestName, body: raw}); err != nil {
+	if _, err := writeItem(zw, manifestName, zipItem{name: manifestName, body: raw}, nil); err != nil {
 		_ = zw.Close()
 		_ = f.Close()
 		return Manifest{}, err
@@ -150,7 +166,48 @@ func writeArchive(dest string, items []zipItem, manifest Manifest) (Manifest, er
 	return manifest, nil
 }
 
-func writeItem(zw *zip.Writer, name string, item zipItem) (string, error) {
+func archiveBytes(items []zipItem) int64 {
+	var total int64
+	for _, item := range items {
+		total += itemBytes(item)
+	}
+	return total
+}
+
+func itemBytes(item zipItem) int64 {
+	if item.dir {
+		return 0
+	}
+	if item.path == "" {
+		return int64(len(item.body))
+	}
+	info, err := os.Stat(item.path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+type copyCounter struct {
+	w    io.Writer
+	n    int64
+	next int64
+	on   func(int64)
+}
+
+func (c *copyCounter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	if n > 0 {
+		c.n += int64(n)
+		if c.on != nil && c.n >= c.next {
+			c.on(c.n)
+			c.next = c.n + progressStride
+		}
+	}
+	return n, err
+}
+
+func writeItem(zw *zip.Writer, name string, item zipItem, onCopy func(int64)) (string, error) {
 	h := &zip.FileHeader{Name: name, Method: zip.Deflate, Modified: time.Now().UTC()}
 	if item.dir {
 		if !strings.HasSuffix(h.Name, "/") {
@@ -167,7 +224,10 @@ func writeItem(zw *zip.Writer, name string, item zipItem) (string, error) {
 		return "", err
 	}
 	hash := sha256.New()
-	dst := io.MultiWriter(w, hash)
+	var dst io.Writer = io.MultiWriter(w, hash)
+	if onCopy != nil {
+		dst = &copyCounter{w: dst, next: progressStride, on: onCopy}
+	}
 	if item.path != "" {
 		in, err := os.Open(item.path)
 		if err != nil {

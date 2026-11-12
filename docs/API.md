@@ -404,13 +404,33 @@ running: their rows, and the `inputs/`, `plans/` and `workspaces/` directory
 named with that conversation's id. The manifest then lists `omitted_threads`
 (`id`, `title`, `reason`). Those conversations keep running on this machine.
 A later full restore of this file does not bring them back. Shared project
-directories are still copied and may be mid-write. An empty `output` streams
+directories are still copied and may be mid-write. A symbolic link inside a
+copied directory is left out of the archive. The request does not follow the
+link and does not store it. `skipped_symlinks` in the manifest is the number
+left out, and the field is omitted when that number is zero. A streamed
+response also sends `X-Zwai-Skipped-Symlinks` when the number is greater than
+zero. If a copied category directory (`inputs`, `plans`, `workspaces`,
+`library`, `projects`, or `remote`) is itself a symbolic link, the request
+fails with `400` `backup_invalid` and writes nothing. An empty `output` streams
 the zip as `attachment; filename="zwai.zwai-backup"`. A path is written by the
 engine, mode `0600`, and must be an absolute file outside the data directory.
 
 Without `skip_active`, a running conversation returns `409` `backup_busy`
 with `skippable: true` and `active` (the same `id`, `title`, `reason` fields).
 Nothing is written. Restore does not accept `skip_active`.
+
+While a backup or restore is running, the settings page reads
+`GET /api/backup/progress`. The response is `{ "running": false }` when
+nothing is transferring. During a transfer it is:
+
+```json
+{ "running": true, "phase": "archive", "done": 4096, "total": 8192 }
+```
+
+`phase` is `snapshot` (database copy; `total` is 0), `files` (`done` is the
+number of files read), `archive` (`done` and `total` are uncompressed bytes),
+or `restore`. A missed poll does not change the transfer. The route stays
+readable while the transfer holds the data directory.
 
 ### `POST /api/backup/preview`
 

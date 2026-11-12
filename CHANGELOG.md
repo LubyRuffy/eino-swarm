@@ -23,12 +23,25 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   the next turn. A call that still arrives after the switch returns
   `tool_switched_off` and does not run. (`F-130`, `F-176`, `C-009`, `C-041`)
 
+### Fixed
+
+- A symbolic link inside a backed-up directory no longer makes the backup
+  fail. The link stays on disk, the archive leaves it out, and the other
+  files are still written. The manifest counts them in `skipped_symlinks`,
+  and the settings page reports that count. A copied category directory that
+  is itself a link still stops the backup. (`F-422`, `C-044`)
+
 ### Changed
 
 - The README is the entry point. Day-to-day use is in
   [docs/USAGE.md](docs/USAGE.md). Phone use stays in
   [mobile/README.md](mobile/README.md). Issue closure and release batches
   are summarized in [docs/RELEASE.md](docs/RELEASE.md).
+
+- Backup and restore show progress while they run, so a long copy does not
+  look frozen. The page says when it is copying the database, how many files
+  it has read, and what fraction of the archive is written. `GET /api/backup/progress`
+  is that reading; it does not start or stop the transfer. (`F-422`, `C-044`)
 
 - Backup asks when a conversation is still running. You can cancel, or leave
   those conversations out of this file and continue. They keep running on

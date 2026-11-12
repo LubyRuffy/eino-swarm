@@ -76,6 +76,7 @@ export interface BackupManifest {
   kind: string
   project_id?: string
   includes_secrets?: boolean
+  skipped_symlinks?: number
   counts?: { projects?: number; threads?: number }
   omitted_threads?: { id: string; title: string }[]
 }
@@ -86,6 +87,13 @@ export interface BackupReport {
   }
   conflicts: { table: string; id: string; owner?: string }[]
   action: "replace-all" | "add-project" | "replace-project" | "blocked"
+}
+
+export interface BackupProgress {
+  running: boolean
+  phase?: "snapshot" | "files" | "archive" | "restore"
+  done: number
+  total: number
 }
 
 export interface BackupRestoreRequest {
@@ -396,9 +404,16 @@ export const api = {
   backupCreate: (body: BackupRequest) =>
     request<BackupManifest>("/api/backup", { method: "POST", body: JSON.stringify(body) }),
 
+  backupProgress: () => request<BackupProgress>("/api/backup/progress"),
+
   backupDownload: async (body: BackupRequest) => {
     const res = await requestResponse("/api/backup", { method: "POST", body: JSON.stringify(body) })
-    return res.blob()
+    const raw = res.headers.get("X-Zwai-Skipped-Symlinks")
+    const parsed = raw ? Number(raw) : 0
+    return {
+      blob: await res.blob(),
+      skippedSymlinks: Number.isInteger(parsed) && parsed > 0 ? parsed : 0,
+    }
   },
 
   backupPreview: (body: { path: string }) =>

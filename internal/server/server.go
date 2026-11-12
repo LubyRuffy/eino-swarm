@@ -118,6 +118,7 @@ func New(opts Options) (*Server, error) {
 		api.GET("/settings", s.getSettings)
 		api.PUT("/settings", s.putSettings)
 		api.POST("/backup", s.postBackup)
+		api.GET("/backup/progress", s.getBackupProgress)
 		api.POST("/backup/preview", s.postBackupPreview)
 		api.POST("/backup/restore", s.postBackupRestore)
 		api.GET("/clients", s.getClients)

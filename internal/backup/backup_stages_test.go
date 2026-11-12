@@ -188,7 +188,7 @@ func TestStageFailuresStayOnTheFailingStep(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = os.Remove(filepath.Join(root, "pipe")) })
-		if _, err := collectTree(dir, "inputs", nil); !errors.Is(err, ErrInvalid) {
+		if _, err := collectTree(context.Background(), dir, "inputs", nil, nil, nil); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("fifo: %v", err)
 		}
 	})
@@ -207,7 +207,7 @@ func TestStageFailuresStayOnTheFailingStep(t *testing.T) {
 	t.Run("archive writes refuse a file used as a directory", func(t *testing.T) {
 		parent := filepath.Join(t.TempDir(), "file")
 		writeText(t, parent, "x")
-		if _, err := writeArchive(filepath.Join(parent, "out.zwai-backup"), nil, Manifest{}); err == nil {
+		if _, err := writeArchive(context.Background(), filepath.Join(parent, "out.zwai-backup"), nil, Manifest{}); err == nil {
 			t.Fatal("created a directory through a file")
 		}
 		if _, err := openArchive(parent); !errors.Is(err, ErrInvalid) {

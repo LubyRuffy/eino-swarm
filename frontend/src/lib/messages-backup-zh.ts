@@ -21,6 +21,8 @@ export const backupZh = {
   "backup.confirmAdd": "从备份加入项目",
   "backup.confirmReplace": "用备份替换此项目",
   "backup.done": "备份已写好。",
+  "backup.doneLinks": "备份已写好。有 {n} 个符号链接没有复制。",
+  "backup.skippedLinks": "有 {n} 个符号链接没有复制。",
   "backup.restored": "还原完成。正在重新加载这份数据。",
   "backup.counts": "{projects} 个项目，{threads} 个对话",
   "backup.busyTitle": "有任务还在进行",
@@ -30,4 +32,9 @@ export const backupZh = {
   "backup.busyTasks": "有对话还在进行。还原要等它结束。",
   "backup.busyWait": "正在备份、还原或重启，请等它结束。",
   "backup.omitted": "这份备份跳过了当时还在进行的对话：{titles}。整库还原不会带回它们。",
+  "backup.progressLabel": "备份进度",
+  "backup.progressSnapshot": "正在复制数据库…",
+  "backup.progressFiles": "正在读取文件 · {n}",
+  "backup.progressArchive": "正在写入备份 · {percent}%",
+  "backup.progressRestore": "正在还原…",
 }
