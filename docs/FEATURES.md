@@ -510,6 +510,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
+- Windows amd64 与 arm64 桌面 zip：入口是 `make windows-release`，以及批次工作集包含 windows 时的 `tools/release.py`。两份 zip 的唯一文件都是对应架构的 `zwai.exe`；缺一、不是 zip、或 PE 机器类型与文件名不符时不上传。没有 windows 字段的旧台账行不会因此变成待发布。应用内更新仍只安装 macOS zip。关联契约：`C-010`；实现证据：`internal/desktop/winpack`、`internal/update/version.go`、`internal/release/publish.go`、`tools/release.py`、`tools/test_release_windows.py`。
+
 - 初始原生 readiness 对已完整落证且精确匹配当前调用的 `AXRole`／`kAXErrorCannotComplete` 可在原共享期限内重新取得完整 snapshot；失败图不进入窗口／输入证明，其他未知与输入失败不重试。helper 保留严格 Role／Children 首错和当前进程 AX 消息默认上限。关联契约：`C-031`；证据：`tools/native_macos_smoke.py`、`tools/native_macos_ax.m`、`tools/test_native_macos_initial_observation.py`；来源：Issue #135。
 
 - 已分配未公开批次可在 main 后续前进时，从包含完整冻结工作集的原源码恢复同一版本；发布入口验证分配／范围／祖先身份，保留原生、安装包、签名、State 和远端版本门禁。新分配仍使用最新完整 main；后续改动不进入旧批次。关联契约：`C-010`；证据：`tools/release.py`、`tools/test_release_public_recovery.py`、`docs/RELEASE.md`；来源：Issue #134。

@@ -125,11 +125,17 @@ and matching native acceptance; previous-version evidence never transfers.
 The 25–35 minute healthy-environment target remains unmeasured for this entry.
 
 `make release VERSION=x.y.z` publishes only the allocated batch's outstanding
-required platforms in order:
+required platforms in macOS → Android → iOS → Windows order. Windows is required only when the workset lists
+it; older ledger rows without a windows field do not gain one. The Windows
+build cross-compiles both architectures with CGO disabled and does not run a
+Windows desktop session. The in-app updater still installs only the Mac zip.
+The machine that runs `zwai.exe` needs the WebView2 runtime for the desktop
+window.
 
 | Platform | Build/sign | Destination | Completion |
 |---|---|---|---|
 | macOS | `make desktop-release` | GitHub `vX.Y.Z`, host architecture zip | ZIP 有 Finder 图标资源与 plist 引用，远端 SHA-256 匹配 |
+| Windows | `make windows-release` | same GitHub Release, amd64 and arm64 zips | 两份 zip 都只有根上的 `zwai.exe`，PE 机器类型与文件名一致，远端 SHA-256 匹配 |
 | Android | APK-only `make mobile-android-release` | same GitHub Release | remote SHA-256 matches |
 | iOS | Capacitor sync, `xcodebuild archive/exportArchive`, distribution signature/profile, `xcrun altool` | existing App Store Connect app | all configured groups attached, VALID, internal READY_FOR_BETA_TESTING and external IN_BETA_TESTING; any review submission must be APPROVED |
 

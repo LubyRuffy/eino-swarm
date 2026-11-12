@@ -1,6 +1,8 @@
-// Package release publishes one GitHub Release that carries both the Mac
-// desktop zip and the Android sideload APK. Either file missing is a
-// failed release, not a partial success. Platform retries can upload one installer.
+// Package release publishes one GitHub Release that carries the Mac
+// desktop zip, the Android sideload APK, and, when that platform is
+// selected, both Windows desktop zips. A missing file for the selected
+// platform is a failed release, not a partial success. Platform retries
+// can upload one platform's installer set.
 package release
 
 import (
@@ -150,6 +152,17 @@ func platformAssets(dir, version, platform string) ([]string, error) {
 			return nil, err
 		}
 		return []string{file}, nil
+	}
+	if platform == "windows" {
+		var files []string
+		for _, arch := range []string{"amd64", "arm64"} {
+			file := filepath.Join(dir, update.WindowsAssetName(version, arch))
+			if _, err := os.Stat(file); err != nil {
+				return nil, fmt.Errorf("windows zip missing: %s", file)
+			}
+			files = append(files, file)
+		}
+		return files, nil
 	}
 	if platform != "macos" {
 		return nil, fmt.Errorf("unknown platform %q", platform)

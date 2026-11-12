@@ -68,7 +68,7 @@ if unallocated:
             raise SystemExit("Extra platform scope does not match the unallocated batch")
         for platform, entry in next_batch["additional_platforms"].items():
             shas = entry.get("source_shas", [])
-            if platform not in ("macos", "android", "ios") or not shas:
+            if platform not in ("macos", "android", "ios", "windows") or not shas:
                 raise SystemExit(f"Invalid extra platform scope: {platform}")
             for sha in shas:
                 subprocess.run(["git", "merge-base", "--is-ancestor", baseline, sha], cwd=repo, check=True)
@@ -90,8 +90,14 @@ if unallocated:
             raise SystemExit(f"Issue #{number}: acceptance time lacks timezone")
         oldest = moment if oldest is None or moment < oldest else oldest
 age_hours = (datetime.now(timezone.utc) - oldest.astimezone(timezone.utc)).total_seconds() / 3600 if oldest else 0
-platforms = [p for p in ("macos", "android", "ios") if p in additional or any(
-    rows[n].get(p) not in delivered for n in unallocated)]
+def issue_platform_pending(row, platform):
+    if platform == "windows" and platform not in row:
+        return False
+    return row.get(platform) not in delivered
+
+
+platforms = [p for p in ("macos", "android", "ios", "windows") if p in additional or any(
+    issue_platform_pending(rows[n], p) for n in unallocated)]
 qualified = bool(platforms) and (commit_count > 3 or age_hours > 24)
 preallocated = bool(state["pending_new_batch"].get("version")) and not locked
 print(json.dumps({

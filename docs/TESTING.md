@@ -4691,6 +4691,14 @@ swaps `zwai.app` before reopening. `internal/update/apply_recovery_test.go` prov
 only the required platform assets, and fails when a required asset is absent
 after upload. `internal/desktop/pack` refuses a
 non-release version so `make desktop-release` cannot stamp a dirty describe.
+`internal/desktop/winpack` refuses the same kind of version and writes both
+`zwai-<version>-windows-amd64.zip` and `zwai-<version>-windows-arm64.zip`; a
+failed second architecture removes the first zip from that attempt.
+`tools/test_release_windows.py` rejects a Windows zip that is not one
+`zwai.exe` of the named PE machine, and a ledger row without windows does not
+become a required platform. The cross-compile itself is checked by
+`GOOS=windows GOARCH=amd64` and `GOARCH=arm64` with `CGO_ENABLED=0`; those
+commands do not open a Windows desktop.
 `TestMacReleaseZipContainsFinderIcon` checks the installable ZIP's icon
 resource and plist reference; `TestFinderIconMatchesTheRuntimeDockMark` asks
 macOS to decode the ICNS and compares it with the runtime mark, so changing

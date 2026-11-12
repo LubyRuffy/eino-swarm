@@ -291,11 +291,14 @@ func (bytesCloser) Close() error { return nil }
 func ioNopCloserBytes(r *bytes.Reader) bytesCloser { return bytesCloser{r} }
 
 func TestHostArchAndFeedErrors(t *testing.T) {
-	if archFor("linux", "amd64") != "" || archFor("darwin", "386") != "" {
+	if archFor("linux", "amd64") != "" || archFor("darwin", "386") != "" || archFor("windows", "amd64") != "" || archFor("windows", "arm64") != "" {
 		t.Fatal("only darwin arm64 and amd64 install")
 	}
-	if archFor("darwin", "arm64") != "arm64" || system("linux", "amd64") != "other" || system("darwin", "amd64") != "darwin" {
+	if archFor("darwin", "arm64") != "arm64" || system("linux", "amd64") != "other" || system("windows", "arm64") != "other" || system("darwin", "amd64") != "darwin" {
 		t.Fatal("system class drifted")
+	}
+	if WindowsAssetName("v1.2.3", "amd64") != "zwai-1.2.3-windows-amd64.zip" || WindowsAssetName("nope", "arm64") != "zwai--windows-arm64.zip" {
+		t.Fatal(WindowsAssetName("v1.2.3", "amd64"))
 	}
 	if HostArch() == "" && hostOS() == "darwin" {
 		t.Fatal("host os and arch disagree")

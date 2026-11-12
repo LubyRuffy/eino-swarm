@@ -20,7 +20,12 @@ DELIVERED = {'published', 'published_remote_verified', 'published_previous_relea
 
 
 def delivery_complete(row):
-    return all(row.get(platform) in DELIVERED for platform in ('android', 'macos', 'ios', 'server'))
+    platforms = ['android', 'macos', 'ios', 'server']
+    # A missing windows field is not a pending Windows delivery. Older rows
+    # predate that platform and must stay complete on their original ends.
+    if 'windows' in row:
+        platforms.append('windows')
+    return all(row.get(platform) in DELIVERED for platform in platforms)
 
 
 def delivery_batch(delivery, version, source_sha=None):
@@ -126,7 +131,7 @@ def allocated_unpublished_source(root, version, source_sha, delivery, platforms)
             or any(type(number) is not int or number <= 0 for number in issues)
             or len(issues) != len(set(issues))
             or not isinstance(required, list) or not required
-            or any(not isinstance(p, str) or p not in {'macos', 'android', 'ios'} for p in required)
+            or any(not isinstance(p, str) or p not in {'macos', 'android', 'ios', 'windows'} for p in required)
             or len(required) != len(set(required))
             or not isinstance(work, dict)
             or 'active_issue' not in delivery or delivery['active_issue'] is not None
@@ -251,9 +256,43 @@ def home():
     return Path(os.environ.get('ZWAI_HOME', Path.home() / '.zwai-swarm'))
 
 
+def windows_release_files(root, version):
+    return [root / 'bin' / f'zwai-{version}-windows-{arch}.zip' for arch in ('amd64', 'arm64')]
+
+
+def pe_machine(exe):
+    if len(exe) < 0x40 or exe[:2] != b'MZ':
+        raise ValueError('Windows installer is not a PE executable')
+    offset = int.from_bytes(exe[0x3C:0x40], 'little')
+    if offset < 0x40 or offset + 6 > len(exe) or exe[offset:offset + 4] != b'PE\0\0':
+        raise ValueError('Windows installer is not a PE executable')
+    return int.from_bytes(exe[offset + 4:offset + 6], 'little')
+
+
+def validate_windows_zip(path):
+    """Both Windows zips contain one zwai.exe of the architecture in the name."""
+    name = Path(path).name
+    match = re.fullmatch(r'zwai-\d+\.\d+\.\d+-windows-(amd64|arm64)\.zip', name)
+    if not match:
+        raise ValueError('Windows installer name must identify amd64 or arm64')
+    try:
+        with zipfile.ZipFile(path) as archive:
+            names = [info.filename for info in archive.infolist() if not info.is_dir()]
+            if names != ['zwai.exe']:
+                raise ValueError('Windows installer must contain only zwai.exe')
+            exe = archive.read('zwai.exe')
+    except zipfile.BadZipFile as error:
+        raise ValueError('Windows installer is not a zip') from error
+    machines = {'amd64': 0x8664, 'arm64': 0xAA64}
+    if pe_machine(exe) != machines[match.group(1)]:
+        raise ValueError(f'Windows installer is not a {match.group(1)} executable')
+
+
 def github_platform(root, version, source_sha, platform, state, *, urgent_reason=None):
     if platform == 'android':
         files = [root / 'bin' / f'zwai-{version}-android.apk']
+    elif platform == 'windows':
+        files = windows_release_files(root, version)
     else:
         machine = run(['uname', '-m'])
         arch = {'arm64': 'arm64', 'x86_64': 'amd64'}.get(machine)
@@ -293,13 +332,21 @@ def github_platform(root, version, source_sha, platform, state, *, urgent_reason
                     or not asset.is_file() or sha256(asset) != native.get('asset_sha256')):
                 raise ValueError('The accepted macOS package is missing or differs from native-window evidence')
         else:
-            target = 'desktop-release' if platform == 'macos' else 'mobile-android-release'
+            if platform == 'macos':
+                target = 'desktop-release'
+            elif platform == 'windows':
+                target = 'windows-release'
+            else:
+                target = 'mobile-android-release'
             env = dict(os.environ, ANDROID_ARTIFACT='apk')
             run(['make', target, f'VERSION={version}'], cwd=root, env=env)
             if run(['git', 'status', '--porcelain'], cwd=root):
                 raise ValueError('Build changed tracked source; refusing upload')
         if platform == 'macos':
             validate_macos_zip(files[0])
+        elif platform == 'windows':
+            for path in files:
+                validate_windows_zip(path)
     if source_preflight(root, version, (platform,), urgent_reason=urgent_reason) != source_sha:
         raise ValueError('Source changed during platform build')
     run(['go', 'run', './internal/release/cmd', '-version', version, '-dir', str(root / 'bin'),
@@ -323,7 +370,7 @@ def record_installer(version, source_sha, platform, result):
         row = delivery['issues'][str(number)]
         row['version'] = row['batch_version'] = version
         row['release_source_sha'] = source_sha
-        if row.get(platform) not in NOT_REQUIRED:
+        if (platform != 'windows' or platform in row) and row.get(platform) not in NOT_REQUIRED:
             row[platform] = 'published'
             row[f'{platform}_delivery'] = dict(result, source_sha=source_sha, version=version)
         row['delivery_complete'] = delivery_complete(row)
@@ -333,18 +380,24 @@ def record_installer(version, source_sha, platform, result):
 
 
 def release_notes(root, version, state):
-    if not any(state.get(p, {}).get('status') == 'published' for p in ('macos', 'android')):
+    if not any(state.get(p, {}).get('status') == 'published' for p in ('macos', 'android', 'windows')):
         return
     body = json.loads(run(['gh', 'release', 'view', 'v' + version, '--json', 'body'], cwd=root))['body']
     start, end = '<!-- zwai-platform-delivery -->', '<!-- /zwai-platform-delivery -->'
     body = re.sub(re.escape(start) + r'.*?' + re.escape(end), '', body, flags=re.S).rstrip()
     required = batch_platforms(version, pending_only=False)
     rows = [f"- {p}: {state.get(p, {}).get('status', 'pending') if required is None or p in required else 'not_required'}"
-            for p in ('macos', 'android', 'ios')]
+            for p in ('macos', 'android', 'ios', 'windows')]
     notes = root / 'bin' / 'release-notes.md'
     notes.parent.mkdir(parents=True, exist_ok=True)
     notes.write_text(body + '\n\n' + start + '\n' + '\n'.join(rows) + '\n' + end + '\n')
     run(['gh', 'release', 'edit', 'v' + version, '--notes-file', str(notes)], cwd=root)
+
+
+def issue_needs_platform(row, platform, excluded):
+    if platform == 'windows' and platform not in row:
+        return False
+    return row.get(platform) not in excluded
 
 
 def batch_platforms(version, pending_only, *, delivery=None):
@@ -354,8 +407,8 @@ def batch_platforms(version, pending_only, *, delivery=None):
     if not batch or not batch.get('issues'):
         return None
     excluded = DELIVERED if pending_only else NOT_REQUIRED
-    return [platform for platform in ('macos', 'android', 'ios') if (
-        any(delivery.get('issues', {}).get(str(number), {}).get(platform) not in excluded
+    return [platform for platform in ('macos', 'android', 'ios', 'windows') if (
+        any(issue_needs_platform(delivery.get('issues', {}).get(str(number), {}), platform, excluded)
             for number in batch['issues'])
         or batch.get('additional_platforms', {}).get(platform, {}).get('status', 'not_required') not in excluded)]
 
@@ -442,7 +495,7 @@ def execute(root, version, selected, state_path, check=False, *, urgent_reason=N
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--version', required=True)
-    parser.add_argument('--platform', choices=['all', 'macos', 'android', 'ios'], default='all')
+    parser.add_argument('--platform', choices=['all', 'macos', 'android', 'ios', 'windows'], default='all')
     parser.add_argument('--check', action='store_true', help='read-only source, signing and remote checks')
     parser.add_argument('--verify', action='store_true', help='local resumable checks/package only; never publish')
     parser.add_argument('--plan', action='store_true', help='print the local verification plan without running it')
