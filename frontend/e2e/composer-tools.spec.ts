@@ -2,7 +2,7 @@ import { expect, test, type APIRequestContext } from "@playwright/test"
 
 import { freshConversation, reloadOpenConversation } from "./session"
 
-test("the composer can remove a built-in tool and an MCP server before the next request", async ({ page, request }) => {
+test("the composer can remove a built-in tool and an MCP server before the next request", async ({ page, request }, info) => {
   const id = `e2e-tools-${Date.now()}`
   const original = await (await request.get("/api/settings")).json()
   try {
@@ -20,6 +20,9 @@ test("the composer can remove a built-in tool and an MCP server before the next 
     const desk = page.getByRole("menuitemcheckbox", { name: "Composer desk" })
     await expect(read).toHaveAttribute("aria-checked", "true")
     await expect(desk).toHaveAttribute("aria-checked", "true")
+    await expect(read.locator("[role=switch]")).toHaveAttribute("data-state", "checked")
+    await expect(desk.locator("[role=switch]")).toHaveAttribute("data-state", "checked")
+    await page.screenshot({ path: info.outputPath("composer-tools-switches.png"), animations: "disabled" })
     await read.click()
     await expect.poll(async () => {
       const settings = await (await request.get("/api/settings")).json()
@@ -34,7 +37,9 @@ test("the composer can remove a built-in tool and an MCP server before the next 
     await reloadOpenConversation(page)
     await page.getByRole("button", { name: "Tools", exact: true }).click()
     await expect(page.getByRole("menuitemcheckbox", { name: "Read file (read)" })).toHaveAttribute("aria-checked", "false")
+    await expect(page.getByRole("menuitemcheckbox", { name: "Read file (read)" }).locator("[role=switch]")).toHaveAttribute("data-state", "unchecked")
     await expect(page.getByRole("menuitemcheckbox", { name: "Composer desk" })).toHaveAttribute("aria-checked", "false")
+    await expect(page.getByRole("menuitemcheckbox", { name: "Composer desk" }).locator("[role=switch]")).toHaveAttribute("data-state", "unchecked")
   } finally {
     await restoreTools(request, original.settings?.tools)
     await request.delete(`/api/mcp/${encodeURIComponent(id)}`)

@@ -174,7 +174,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "reason.medium": "中思考",
   "reason.high": "高思考",
   "composer.tools": "工具",
-  "composer.toolsHint": "下一次模型请求就按这里的选择发送。取消勾选会立刻生效，包括正在进行的回合。",
+  "composer.toolsHint": "下一次模型请求就按这里的选择发送。关掉开关会立刻生效，包括正在进行的回合。",
   "composer.toolsFiles": "文件",
   "composer.toolsShell": "命令",
   "composer.toolsWeb": "网络",

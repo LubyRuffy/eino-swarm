@@ -53,6 +53,9 @@ describe("Composer tool switches", () => {
     expect(read).toHaveAttribute("aria-checked", "true")
     expect(python).toHaveAttribute("aria-checked", "false")
     expect(desk).toHaveAttribute("aria-checked", "true")
+    expect(read.querySelector("[role=switch]")).toHaveAttribute("data-state", "checked")
+    expect(python.querySelector("[role=switch]")).toHaveAttribute("data-state", "unchecked")
+    expect(read.querySelector("svg")).toBeNull()
     expect(screen.getByText(/next model request/)).toBeVisible()
 
     await user.click(read)

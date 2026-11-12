@@ -105,7 +105,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
-- 桌面/Web 输入框的「工具」列出内置目录和已配置的 MCP 服务器。默认开启的目录项为勾选，`python_runner` 与 `screenshot` 默认不勾选；新 MCP 服务器按已保存的 `enabled` 显示。勾选变化立即写入与设置页相同的 `tools.disabled`／`tools.enabled` 或 `mcp.servers[].enabled`。下一次主管或 worker 的模型请求按这个选择发送，正在进行的回合也一样。本回合已经挂载的工具重新勾选后，下一次请求恢复。本回合开始时未挂载的工具或服务器，要到下一回合重建工具表才出现。开关关掉后仍到达的调用返回 `tool_switched_off`，不执行原工具。当前回合的系统提示仍可能提到刚关掉的工具。手机没有这个菜单，主机配置仍作用于之后的模型请求。提供商云端 `builtin_tools` 不在此菜单。关联 `C-009`、`C-041`、`F-176`。证据：`internal/engine/tool_offer.go`、`internal/engine/tool_offer_test.go`、`internal/engine/tool_offer_http_test.go`、`frontend/src/components/app/composer-tools.tsx`、`frontend/src/lib/tool-toggle.ts`、`frontend/src/components/app/composer-tools.test.tsx`、`frontend/e2e/composer-tools.spec.ts`。
+- 桌面/Web 输入框的「工具」列出内置目录和已配置的 MCP 服务器。默认开启的目录项开关打开，`python_runner` 与 `screenshot` 默认关闭；新 MCP 服务器按已保存的 `enabled` 显示。开关变化立即写入与设置页相同的 `tools.disabled`／`tools.enabled` 或 `mcp.servers[].enabled`。下一次主管或 worker 的模型请求按这个选择发送，正在进行的回合也一样。本回合已经挂载的工具重新打开后，下一次请求恢复。本回合开始时未挂载的工具或服务器，要到下一回合重建工具表才出现。开关关掉后仍到达的调用返回 `tool_switched_off`，不执行原工具。当前回合的系统提示仍可能提到刚关掉的工具。手机没有这个菜单，主机配置仍作用于之后的模型请求。提供商云端 `builtin_tools` 不在此菜单。关联 `C-009`、`C-041`、`F-176`。证据：`internal/engine/tool_offer.go`、`internal/engine/tool_offer_test.go`、`internal/engine/tool_offer_http_test.go`、`frontend/src/components/app/composer-tools.tsx`、`frontend/src/lib/tool-toggle.ts`、`frontend/src/components/app/composer-tools.test.tsx`、`frontend/e2e/composer-tools.spec.ts`。
 
 - 目录列举、按文件名查找和内容搜索使用 `exec`。设置不显示 `ls`、`tree`、`glob`、`grep`，工具表也不注册这四项；已保存配置里的同名 `enabled`／`disabled` 不再生效。关联 `C-009`。证据：`internal/tools/tools.go`、`internal/tools/schema.go`、`internal/engine/prompt.go`、`internal/engine/turn.go`。
 
@@ -313,7 +313,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 目的：接入用户配置的外部 MCP 工具并查看工具目录；使用者：PC Desktop/Web 用户；入口：Settings → MCP、`/api/mcp` 管理／inspect API，以及对话工具记录和 Trace。
 - 输入：唯一服务器 ID、名称、stdio command/args/env 或 Streamable HTTP/SSE URL/headers、启用状态和超时；输出：持久化连接配置、脱敏字段、工具原名、描述／输入 Schema，以及实际调用结果。前置条件：命令或远程服务可用，模型支持函数工具；本机命令使用会话工作区作为 cwd，保留应用访问权限。
-- 配置读取不连接；显式 inspect 建立临时连接，禁用服务器也可检查。Settings 在完成一次检查（含失败）之前不展示工具目录。启用项在工具表中提供命名空间 `list_tools`／`call_tool` 代理，构造不做外部I/O；实际工具调用才按可取消上下文连接，list支持名称筛选／分页，call使用远端工具名和arguments。输入框「工具」与 Settings 共用 `enabled`：取消勾选后，下一次模型请求不再带这两个代理，包括正在进行的回合；本回合开始后才启用的服务器，下一回合才挂上。代理绑定配置快照及首次session；plan 和 Nuwa read-only 不挂 MCP。配置变更、断线或闲置cache淘汰使旧代理返回session_expired，不自动重连／重放；后续turn重建工具表。连接／目录失败为失败工具结果且保留内置工具；每个server/configuration最多保留8个闲置workspace session，不保证调用间保留。
+- 配置读取不连接；显式 inspect 建立临时连接，禁用服务器也可检查。Settings 在完成一次检查（含失败）之前不展示工具目录。启用项在工具表中提供命名空间 `list_tools`／`call_tool` 代理，构造不做外部I/O；实际工具调用才按可取消上下文连接，list支持名称筛选／分页，call使用远端工具名和arguments。输入框「工具」与 Settings 共用 `enabled`：关掉开关后，下一次模型请求不再带这两个代理，包括正在进行的回合；本回合开始后才启用的服务器，下一回合才挂上。代理绑定配置快照及首次session；plan 和 Nuwa read-only 不挂 MCP。配置变更、断线或闲置cache淘汰使旧代理返回session_expired，不自动重连／重放；后续turn重建工具表。连接／目录失败为失败工具结果且保留内置工具；每个server/configuration最多保留8个闲置workspace session，不保证调用间保留。
 - MCP 代理描述引导模型先查可能匹配的服务器目录并优先使用匹配工具。模型应遵循用户明确指定的路径。采用技能中保存的命令行或直连 API 备用路径时，以本轮目录或调用结果为依据，并遵守现有授权边界。
 - env/headers 值通过 HTTP 只写，读取仅返回 key；空编辑保留、`{}` 清除，普通 command/args/URL 可见。仅支持 tools，不含 resources、prompts 或 OAuth 登录。关联契约：`C-041`、`C-009`、`C-012`。
 - 长调用可在折叠的工作区和展开的工具记录中查看最新远端进度。收到服务端通知前，Desktop/Web 显示等待提示。配对手机可在工具记录查看收到的进度。调用结束后显示最终结果。实现和验证：`internal/mcpclient/progress.go`、`internal/mcpclient/progress_test.go`、`frontend/e2e/mcp-progress.spec.ts`。

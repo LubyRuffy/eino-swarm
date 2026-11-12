@@ -177,7 +177,7 @@ export const en = {
   "reason.medium": "Medium thinking",
   "reason.high": "High thinking",
   "composer.tools": "Tools",
-  "composer.toolsHint": "Sent on the next model request. Unchecking removes a tool immediately, including during a running turn.",
+  "composer.toolsHint": "Sent on the next model request. Turning a switch off removes that tool immediately, including during a running turn.",
   "composer.toolsFiles": "Files",
   "composer.toolsShell": "Shell",
   "composer.toolsWeb": "Web",

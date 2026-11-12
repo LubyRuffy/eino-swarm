@@ -16,10 +16,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   (`F-172`, `F-171`, `C-046`, `C-040`)
 
 - The composer has a Tools menu for the built-in catalog and each configured
-  MCP server. The same switches as Settings are checked by default, except
-  tools that are off until enabled. Clearing a check is saved immediately and
-  the next model request omits that tool, including a turn that is already
-  running. A tool or server that was off when the turn started is mounted on
+  MCP server. Each row is a sliding switch. Tools that are on by default start
+  on; tools that are off until enabled stay off. Turning one off is saved
+  immediately, and the next model request omits that tool, including a turn
+  that is already running. A tool or server that was off when the turn started is mounted on
   the next turn. A call that still arrives after the switch returns
   `tool_switched_off` and does not run. (`F-130`, `F-176`, `C-009`, `C-041`)
 
@@ -36,6 +36,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 - Choosing All models asks for confirmation. The prompt says this machine's
   own model services do not have the account's online capabilities. Staying
   on the official model leaves the switch unchanged. (`F-172`, `C-046`)
+
+- The composer Tools menu uses a sliding switch on each built-in tool and MCP
+  server. Turning one off still takes effect on the next model request.
+  (`F-130`, `F-176`)
 
 - The README is the entry point. Day-to-day use is in
   [docs/USAGE.md](docs/USAGE.md). Phone use stays in

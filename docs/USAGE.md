@@ -115,12 +115,12 @@ removed. Draft text and quotes share a 1 MiB limit. Up to 32 attachments share
 256 MiB. Vision input is at most eight images, 8 MiB each.
 
 **Tools**, next to the model, lists the built-in catalog and each configured
-MCP server. A tool that is on by default starts checked; Python and screenshot
-stay off until you check them. Clearing a box saves immediately. The next
-model request omits that tool, including a turn that is already running.
-Checking a tool this turn already had brings it back on the next request. A
-tool or server that was off when the turn started is added when the next turn
-builds its tools. A call that still arrives after the switch returns
+MCP server. Each row is a switch. A tool that is on by default starts on;
+Python and screenshot stay off until you turn them on. Turning one off saves
+immediately. The next model request omits that tool, including a turn that is
+already running. Turning a tool this turn already had back on brings it back
+on the next request. A tool or server that was off when the turn started is
+added when the next turn builds its tools. A call that still arrives after the switch returns
 `tool_switched_off` and does not run.
 
 After a visible reply, one likely next message can appear as the placeholder.
