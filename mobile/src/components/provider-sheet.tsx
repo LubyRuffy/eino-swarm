@@ -45,6 +45,7 @@ export function ProviderSheet({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [pendingRemove, setPendingRemove] = useState<string | null>(null)
+  const [leaveOfficial, setLeaveOfficial] = useState(false)
 
   const commit = (next: DirectProvider[]) => {
     onChange(saveProviders(next))
@@ -64,14 +65,28 @@ export function ProviderSheet({
     setEditing((current) => (current?.id === id ? null : current))
   }
 
+  const choosePresentation = (next: AccountPresentation) => {
+    if (next === presentation) return
+    if (next === "full") {
+      setLeaveOfficial(true)
+      return
+    }
+    setLeaveOfficial(false)
+    onPresentation?.(next)
+  }
+
   useEffect(
     () =>
       installAndroidBack(() => {
+        if (leaveOfficial) {
+          setLeaveOfficial(false)
+          return true
+        }
         if (!pendingRemove) return false
         setPendingRemove(null)
         return true
       }),
-    [pendingRemove],
+    [leaveOfficial, pendingRemove],
   )
   useEffect(() => {
     if (!official) return
@@ -296,8 +311,18 @@ export function ProviderSheet({
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-5 pb-5">
             {hasProfile ? (
               <div role="radiogroup" aria-label={t("account.presentationTitle")} className="flex gap-2">
-                <button type="button" role="radio" aria-checked={presentation !== "full"} className="h-9 flex-1 rounded-md border border-input bg-background text-sm" onClick={() => onPresentation?.("official")}>{t("account.presentationOfficial")}</button>
-                <button type="button" role="radio" aria-checked={presentation === "full"} className="h-9 flex-1 rounded-md border border-input bg-background text-sm" onClick={() => onPresentation?.("full")}>{t("account.presentationFull")}</button>
+                <button type="button" role="radio" aria-checked={presentation !== "full"} className="h-9 flex-1 rounded-md border border-input bg-background text-sm" onClick={() => choosePresentation("official")}>{t("account.presentationOfficial")}</button>
+                <button type="button" role="radio" aria-checked={presentation === "full"} className="h-9 flex-1 rounded-md border border-input bg-background text-sm" onClick={() => choosePresentation("full")}>{t("account.presentationFull")}</button>
+              </div>
+            ) : null}
+            {leaveOfficial ? (
+              <div role="alertdialog" aria-labelledby="leave-official-title" aria-describedby="leave-official-body" className="flex flex-col gap-3 rounded-xl border border-input p-3">
+                <p id="leave-official-title" className="text-sm font-medium">{t("account.presentationLeaveTitle")}</p>
+                <p id="leave-official-body" className="text-sm text-muted-foreground">{t("account.presentationLeaveBody")}</p>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" className="flex-1" onClick={() => setLeaveOfficial(false)}>{t("account.presentationLeaveCancel")}</Button>
+                  <Button type="button" className="flex-1" onClick={() => { setLeaveOfficial(false); onPresentation?.("full") }}>{t("account.presentationLeaveConfirm")}</Button>
+                </div>
               </div>
             ) : null}
             <ul className="flex flex-col gap-2">

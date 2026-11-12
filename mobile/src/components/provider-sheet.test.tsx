@@ -210,7 +210,64 @@ describe("ProviderSheet", () => {
     expect(screen.queryByText("account")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: t("chat.add") })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("radio", { name: "All models" }))
+    expect(onPresentation).not.toHaveBeenCalled()
+    const warning = screen.getByRole("alertdialog", { name: "Switch to all models?" })
+    expect(warning).toHaveTextContent("do not have this account's online capabilities")
+    fireEvent.click(screen.getByRole("button", { name: "Stay on the official model" }))
+    expect(onPresentation).not.toHaveBeenCalled()
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("radio", { name: "All models" }))
+    fireEvent.click(screen.getByRole("button", { name: "Switch" }))
     expect(onPresentation).toHaveBeenCalledWith("full")
+  })
+
+  it("returns to the official model without asking, and Back dismisses the warning", () => {
+    setLocale("en")
+    const onPresentation = vi.fn()
+    const base = vi.fn(() => true)
+    const restore = installAndroidBack(base)
+    render(
+      <ProviderSheet
+        providers={[draft({ id: "p-1", label: "Desk" })]}
+        hasProfile
+        presentation="full"
+        onPresentation={onPresentation}
+        onChange={vi.fn()}
+        onClose={vi.fn()}
+        discover={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole("radio", { name: "Official model" }))
+    expect(onPresentation).toHaveBeenCalledWith("official")
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+    restore()
+  })
+
+  it("lets Android Back dismiss the switch warning before changing models", () => {
+    setLocale("en")
+    const onPresentation = vi.fn()
+    const base = vi.fn(() => true)
+    const restore = installAndroidBack(base)
+    render(
+      <ProviderSheet
+        providers={[draft({ id: "p-1", label: "Desk" })]}
+        hasProfile
+        presentation="official"
+        onPresentation={onPresentation}
+        onChange={vi.fn()}
+        onClose={vi.fn()}
+        discover={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole("radio", { name: "All models" }))
+    expect(screen.getByRole("alertdialog", { name: "Switch to all models?" })).toBeInTheDocument()
+    act(() => {
+      expect(window.__zwaiAndroidBack?.()).toBe(true)
+    })
+    expect(base).not.toHaveBeenCalled()
+    expect(onPresentation).not.toHaveBeenCalled()
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+    restore()
   })
 
   it("lets Android Back cancel a pending removal", () => {
