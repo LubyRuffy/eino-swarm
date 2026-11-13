@@ -49,7 +49,7 @@ describe("MCP configuration drafts", () => {
   it("writes the saved connections as editable text without credentials", () => {
     const local: MCPServerView = {
       id: "local", name: "Local tools", transport: "stdio", command: "runner", args: ["--serve"],
-      url: "", enabled: true, timeout_seconds: 30, env_keys: ["TOKEN"], header_keys: ["Authorization"],
+      url: "", enabled: true, timeout_seconds: 30, disabled_tools: ["lookup"], env_keys: ["TOKEN"], header_keys: ["Authorization"],
     }
     const spaced: MCPServerView = {
       id: "spaced", name: "spaced", transport: "stdio", command: "/opt/My Server", args: [],
@@ -61,7 +61,7 @@ describe("MCP configuration drafts", () => {
     }
     expect(JSON.parse(mcpServersDocument([local, spaced, remote]))).toEqual({
       mcpServers: {
-        local: { name: "Local tools", type: "stdio", command: "runner", args: ["--serve"], enabled: true, timeout_seconds: 30 },
+        local: { name: "Local tools", type: "stdio", command: "runner", args: ["--serve"], enabled: true, timeout_seconds: 30, disabled_tools: ["lookup"] },
         spaced: { type: "stdio", command: "\"/opt/My Server\"", args: [], enabled: true },
         remote: { type: "sse", url: "https://example.invalid/mcp", enabled: false },
       },

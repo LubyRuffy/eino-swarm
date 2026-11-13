@@ -11,6 +11,7 @@ import { ComposerTools } from "./composer-tools"
 
 vi.mock("@/lib/api", () => ({ api: {
   tools: vi.fn(), mcpServers: vi.fn(), settings: vi.fn(), saveSettings: vi.fn(), saveMCPServer: vi.fn(),
+  inspectMCPServer: vi.fn(),
 } }))
 
 const catalog: ToolDescriptor[] = [
@@ -21,7 +22,11 @@ const catalog: ToolDescriptor[] = [
 
 const server: MCPServerView = {
   id: "desk", name: "Desk", transport: "stdio", command: "runner", args: ["--serve"],
-  url: "", enabled: true, timeout_seconds: 30, env_keys: ["TOKEN"], header_keys: [],
+  url: "", enabled: true, timeout_seconds: 30, disabled_tools: [], env_keys: ["TOKEN"], header_keys: [],
+}
+
+const hidden: MCPServerView = {
+  ...server, id: "off", name: "Hidden", enabled: false, env_keys: [],
 }
 
 function toolSettings(patch: Partial<Settings["tools"]> = {}): Settings["tools"] {
@@ -35,9 +40,10 @@ describe("Composer tool switches", () => {
   beforeEach(() => {
     useApp.setState({ locale: "en" })
     vi.mocked(api.tools).mockReset().mockResolvedValue({ catalog, enabled: ["read", "web_search"] })
-    vi.mocked(api.mcpServers).mockReset().mockResolvedValue([server])
+    vi.mocked(api.mcpServers).mockReset().mockResolvedValue([server, hidden])
     vi.mocked(api.settings).mockReset().mockResolvedValue({ tools: toolSettings() } as Settings)
     vi.mocked(api.saveSettings).mockReset().mockImplementation(async (patch) => ({ tools: patch.tools } as Settings))
+    vi.mocked(api.inspectMCPServer).mockReset().mockResolvedValue({ tools: [{ name: "lookup", description: "Look up" }] })
     vi.mocked(api.saveMCPServer).mockReset().mockImplementation(async (input: MCPServerInput) => ({
       ...server, ...input, env_keys: server.env_keys, header_keys: [],
     }))
@@ -49,13 +55,18 @@ describe("Composer tool switches", () => {
     await user.click(screen.getByRole("button", { name: "Tools" }))
     const read = await screen.findByRole("menuitemcheckbox", { name: "Read file (read)" })
     const python = screen.getByRole("menuitemcheckbox", { name: "Run Python (python_runner)" })
-    const desk = screen.getByRole("menuitemcheckbox", { name: "Desk" })
+    const lookup = await screen.findByRole("menuitemcheckbox", { name: "Desk (lookup)" })
     expect(read).toHaveAttribute("aria-checked", "true")
     expect(python).toHaveAttribute("aria-checked", "false")
-    expect(desk).toHaveAttribute("aria-checked", "true")
-    expect(desk).not.toHaveTextContent("desk")
+    expect(lookup).toHaveAttribute("aria-checked", "true")
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Desk" })).toBeNull()
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Hidden" })).toBeNull()
+    expect(screen.getByText("Servers switched off in Settings are not listed.")).toBeVisible()
+    expect(api.inspectMCPServer).toHaveBeenCalledWith("desk", expect.any(AbortSignal))
+    expect(api.inspectMCPServer).not.toHaveBeenCalledWith("off", expect.anything())
     expect(read.querySelector("[role=switch]")).toHaveAttribute("data-state", "checked")
     expect(python.querySelector("[role=switch]")).toHaveAttribute("data-state", "unchecked")
+    expect(lookup.querySelector("[role=switch]")).toHaveAttribute("data-state", "checked")
     expect(read.querySelector("svg")).toBeNull()
     expect(screen.getByText(/next model request/)).toBeVisible()
 
@@ -68,12 +79,21 @@ describe("Composer tool switches", () => {
     }))
     expect(read).toHaveAttribute("aria-checked", "false")
 
-    await user.click(desk)
+    await user.click(lookup)
     await waitFor(() => expect(api.saveMCPServer).toHaveBeenCalledWith(expect.objectContaining({
-      id: "desk", enabled: false, command: "runner", args: ["--serve"],
+      id: "desk", enabled: true, command: "runner", args: ["--serve"], disabled_tools: ["lookup"],
     })))
-    expect(api.saveMCPServer).toHaveBeenCalledWith(expect.not.objectContaining({ env: expect.anything() }))
-    expect(desk).toHaveAttribute("aria-checked", "false")
+    expect(api.saveMCPServer).toHaveBeenCalledWith(expect.not.objectContaining({ env: expect.anything(), headers: expect.anything() }))
+    expect(lookup).toHaveAttribute("aria-checked", "false")
+  })
+
+  it("shows a load failure instead of inventing remote tools", async () => {
+    vi.mocked(api.inspectMCPServer).mockRejectedValueOnce(new Error("offline"))
+    const user = userEvent.setup()
+    render(<ComposerTools />)
+    await user.click(screen.getByRole("button", { name: "Tools" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not list tools")
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Desk (lookup)" })).toBeNull()
   })
 
   it("keeps the previous check when the save fails", async () => {

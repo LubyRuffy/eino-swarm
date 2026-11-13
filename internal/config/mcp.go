@@ -32,6 +32,10 @@ type MCPServer struct {
 	Headers        map[string]string `yaml:"headers,omitempty" json:"-"`
 	Enabled        bool              `yaml:"enabled" json:"enabled"`
 	TimeoutSeconds int               `yaml:"timeout_seconds" json:"timeout_seconds"`
+	// DisabledTools are remote tool names the composer switched off. An empty
+	// list leaves every discovered tool available. This does not disable the
+	// server, and it is not part of the session fingerprint.
+	DisabledTools []string `yaml:"disabled_tools,omitempty" json:"disabled_tools,omitempty"`
 }
 
 // Timeout bounds connection, discovery and each tool call independently.
@@ -82,19 +86,67 @@ func (s MCPServer) Validate() error {
 			return fmt.Errorf("mcp: invalid request header")
 		}
 	}
+	if _, err := cleanMCPDisabledTools(s.DisabledTools); err != nil {
+		return err
+	}
+	return nil
+}
+
+const maxMCPDisabledTools = 256
+
+// cleanMCPDisabledTools keeps the first occurrence of each remote name.
+// Names are not checked against a live catalog: the server may be offline,
+// and a tool that later disappears stays recorded until the user turns it on.
+func cleanMCPDisabledTools(names []string) ([]string, error) {
+	if len(names) > maxMCPDisabledTools {
+		return nil, fmt.Errorf("mcp: too many disabled tools")
+	}
+	if len(names) == 0 {
+		return []string{}, nil
+	}
+	out := make([]string, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		if name == "" || len(name) > maxMCPDisabledTools || strings.ContainsRune(name, 0) {
+			return nil, fmt.Errorf("mcp: invalid disabled tool name")
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out, nil
+}
+
+// NormalizeDisabledTools returns the stored remote-tool exceptions. Callers
+// that publish a server use it so duplicates are not written twice.
+func NormalizeDisabledTools(names []string) ([]string, error) {
+	return cleanMCPDisabledTools(names)
+}
+
+func (s *MCPServer) normalizeDisabledTools() error {
+	cleaned, err := NormalizeDisabledTools(s.DisabledTools)
+	if err != nil {
+		return err
+	}
+	s.DisabledTools = cleaned
 	return nil
 }
 
 func (c *Config) validateMCP() error {
 	seen := make(map[string]bool, len(c.MCP.Servers))
-	for _, s := range c.MCP.Servers {
-		if err := s.Validate(); err != nil {
+	for i := range c.MCP.Servers {
+		if err := c.MCP.Servers[i].normalizeDisabledTools(); err != nil {
 			return err
 		}
-		if seen[s.ID] {
+		if err := c.MCP.Servers[i].Validate(); err != nil {
+			return err
+		}
+		if seen[c.MCP.Servers[i].ID] {
 			return fmt.Errorf("mcp: duplicate server id")
 		}
-		seen[s.ID] = true
+		seen[c.MCP.Servers[i].ID] = true
 	}
 	return nil
 }

@@ -81,3 +81,80 @@ func TestProxyOfferedFollowsTheServerSwitch(t *testing.T) {
 		t.Fatal("a disabled server's proxies stay in the request")
 	}
 }
+
+func TestToolSwitchesDoNotChangeTheMCPSessionFingerprint(t *testing.T) {
+	base := config.MCPServer{ID: "desk", Transport: "stdio", Command: "tool", Enabled: true}
+	switched := base
+	switched.DisabledTools = []string{"lookup"}
+	if fingerprint(base) != fingerprint(switched) {
+		t.Fatal("a remote tool switch would retire the server session")
+	}
+	switched.Command = "other"
+	if fingerprint(base) == fingerprint(switched) {
+		t.Fatal("a connection change must still retire the session")
+	}
+}
+
+func TestSwitchedOffRemoteToolIsOmittedAndNotExecuted(t *testing.T) {
+	(*Manager)(nil).UseRemoteSwitches(nil)
+	if (*Manager)(nil).remoteDisabled("desk", "lookup") || (*externalTool)(nil).switchedOff("lookup") {
+		t.Fatal("a missing manager hid a tool")
+	}
+	kept := withoutSwitchedOffTools([]ToolDescriptor{
+		{Name: "visible", OriginalName: "hidden"},
+		{Name: "kept", OriginalName: "kept"},
+	}, func(name string) bool { return name == "hidden" })
+	if len(kept) != 1 || kept[0].Name != "kept" {
+		t.Fatalf("catalog filter: %+v", kept)
+	}
+	if got := switchedOffRemoteResult(`say "hi"`); got != `{"ok":false,"code":"tool_switched_off","tool":"say \"hi\""}` {
+		t.Fatalf("refusal: %s", got)
+	}
+
+	s, calls := testServer(t, "streamable_http")
+	m := NewManager()
+	t.Cleanup(m.Close)
+	current := []config.MCPServer{s}
+	m.UseRemoteSwitches(func() []config.MCPServer { return current })
+	if m.remoteDisabled("desk", "") || m.remoteDisabled("missing", "lookup") || m.remoteDisabled(s.ID, "lookup") {
+		t.Fatal("an unnamed, unknown or still-enabled tool was treated as off")
+	}
+	set, err := m.Tools(t.Context(), []config.MCPServer{s}, t.TempDir(), 10000)
+	if err != nil || len(set) != 2 {
+		t.Fatalf("mount %d %v", len(set), err)
+	}
+	list := set[0].(tool.InvokableTool)
+	call := set[1].(tool.InvokableTool)
+	listed, err := list.InvokableRun(t.Context(), `{}`)
+	if err != nil || !strings.Contains(listed, `"name":"lookup"`) {
+		t.Fatalf("list: %s %v", listed, err)
+	}
+	out, err := call.InvokableRun(t.Context(), `{"name":"lookup","arguments":{}}`)
+	if err != nil || calls.Load() != 1 || strings.Contains(out, `"error"`) {
+		t.Fatalf("call: %s %v count=%d", out, err, calls.Load())
+	}
+
+	off := s
+	off.DisabledTools = []string{"lookup"}
+	current = []config.MCPServer{off}
+	m.Reload(current)
+	listed, err = list.InvokableRun(t.Context(), `{}`)
+	if err != nil || strings.Contains(listed, `"name":"lookup"`) {
+		t.Fatalf("switched-off tool stayed in the catalog: %s %v", listed, err)
+	}
+	listed, err = list.InvokableRun(t.Context(), `{"name":"lookup"}`)
+	if err != nil || strings.Contains(listed, `"name":"lookup"`) {
+		t.Fatalf("named list still returned the switched-off tool: %s %v", listed, err)
+	}
+	out, err = call.InvokableRun(t.Context(), `{"name":"lookup","arguments":{"key":"alpha"}}`)
+	if err != nil || calls.Load() != 1 || strings.Contains(out, "session_expired") || !strings.Contains(out, `"code":"tool_switched_off"`) || !strings.Contains(out, `"tool":"lookup"`) {
+		t.Fatalf("refused call: %s %v count=%d", out, err, calls.Load())
+	}
+
+	current = []config.MCPServer{s}
+	m.Reload(current)
+	out, err = call.InvokableRun(t.Context(), `{"name":"lookup","arguments":{}}`)
+	if err != nil || calls.Load() != 2 || strings.Contains(out, "tool_switched_off") {
+		t.Fatalf("turning the tool back on did not restore the same session: %s %v count=%d", out, err, calls.Load())
+	}
+}

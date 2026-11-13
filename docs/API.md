@@ -782,18 +782,22 @@ The catalog the Settings dialog lays out, plus which tools are currently active.
 `screenshot`) need something zwai does not ship and must be switched on
 explicitly.
 
-The composer Tools menu reads this catalog together with `GET /api/mcp` and
-`GET /api/settings`. A built-in checkbox is `PUT /api/settings` with the full
-`tools` object: `disabled` / `enabled` are the exception lists above, and the
-other tool fields already stored are sent back unchanged. An MCP checkbox is
-`PUT /api/mcp/:id` with `enabled` changed and `env` / `headers` omitted, so the
-saved private maps stay. The save is immediate. The next manager or worker
-model request uses the published switches, including a turn that has already
-started. A tool or server that was off when that turn built its toolset is
-included when the next turn builds one. A call that still arrives for a switch
-that is now off returns a tool result `{"ok":false,"code":"tool_switched_off","tool":"<name>"}`
-and does not execute the original tool. Provider cloud `builtin_tools` are not
-in this menu.
+The composer Tools menu reads this catalog together with `GET /api/mcp`,
+`GET /api/settings`, and `POST /api/mcp/:id/inspect` for each enabled server.
+A built-in switch is `PUT /api/settings` with the full `tools` object:
+`disabled` / `enabled` are the exception lists above, and the other tool
+fields already stored are sent back unchanged. A remote MCP tool switch is
+`PUT /api/mcp/:id` with `disabled_tools` replaced and `enabled` left as saved.
+`env` / `headers` are omitted, so the saved private maps stay. The menu does
+not change `enabled`. The save is immediate. The next manager or worker model
+request uses the published built-in switches, including a turn that has
+already started. `list_tools` omits a remote name in `disabled_tools`, and
+`call_tool` for that name returns
+`{"ok":false,"code":"tool_switched_off","tool":"<remote name>"}` without
+running it. A built-in tool or server that was off when that turn built its
+toolset is included when the next turn builds one. Provider cloud
+`builtin_tools` are not in this menu. An inspect failure lists no invented
+tools and does not disable the server.
 
 ### `GET /api/mcp`
 
@@ -820,8 +824,14 @@ configuration update checks absence before changing anything; an existing ID
 returns `412 mcp_exists`, preserving its ordinary and private fields. Without
 this header, PUT remains an upsert for compatibility. Send `name`, `transport`, `command`,
 `args` (string array), `url`, `enabled` and `timeout_seconds`, plus optional
-`env`/`headers` objects containing string values. Omitted or null private maps
-preserve an existing map; `{}` clears it; a supplied object replaces it.
+`env`/`headers` objects containing string values and an optional
+`disabled_tools` string array. Omitted or null private maps preserve an
+existing map; `{}` clears it; a supplied object replaces it. Omitted or null
+`disabled_tools` preserves the saved remote-tool exceptions; `[]` clears them;
+a supplied array replaces them. Names must be non-empty, at most 256 bytes,
+without a null byte, and at most 256 names. Duplicates are stored once.
+Invalid names return `400` and do not publish. This list does not change
+`enabled` and does not retire the server session.
 
 `stdio` requires a command. `streamable_http` and `sse` require an HTTP(S) URL
 without user info or fragment. IDs contain 1–32 ASCII letters, digits,

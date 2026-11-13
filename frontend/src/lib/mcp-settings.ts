@@ -9,6 +9,7 @@ export interface MCPServerView {
   url: string
   enabled: boolean
   timeout_seconds: number
+  disabled_tools?: string[]
   env_keys: string[]
   header_keys: string[]
 }
@@ -24,7 +25,7 @@ export interface MCPToolCatalog {
   tools: Array<{ name: string; original_name?: string; description?: string; input_schema?: unknown }>
 }
 
-export interface MCPDraft extends Omit<MCPServerInput, "args" | "env" | "headers"> {
+export interface MCPDraft extends Omit<MCPServerInput, "args" | "env" | "headers" | "disabled_tools"> {
   args: string
   env: string
   headers: string
@@ -85,6 +86,7 @@ export function mcpServersDocument(servers: MCPServerView[]): string {
     }
     entry.enabled = server.enabled
     if (server.timeout_seconds) entry.timeout_seconds = server.timeout_seconds
+    if (server.disabled_tools && server.disabled_tools.length > 0) entry.disabled_tools = server.disabled_tools
     mcpServers[server.id] = entry
   }
   return JSON.stringify({ mcpServers }, null, 2)

@@ -114,14 +114,17 @@ stays intact and shows an error until those items are sent separately or
 removed. Draft text and quotes share a 1 MiB limit. Up to 32 attachments share
 256 MiB. Vision input is at most eight images, 8 MiB each.
 
-**Tools**, next to the model, lists the built-in catalog and each configured
-MCP server. Each row is a switch. A tool that is on by default starts on;
-Python and screenshot stay off until you turn them on. Turning one off saves
-immediately. The next model request omits that tool, including a turn that is
-already running. Turning a tool this turn already had back on brings it back
-on the next request. A tool or server that was off when the turn started is
-added when the next turn builds its tools. A call that still arrives after the switch returns
-`tool_switched_off` and does not run.
+**Tools**, next to the model, lists the built-in catalog and the remote tools
+of each MCP server that is enabled in Settings. The menu opens above the
+composer. Each row is a switch. A tool that is on by default starts on;
+Python and screenshot stay off until you turn them on. A remote tool starts
+on. Turning one off saves immediately and does not disable the server. The
+next model request omits that built-in tool, or leaves that remote name out
+of `list_tools` and refuses `call_tool`, including a turn that is already
+running. Turning a built-in tool this turn already had back on brings it back
+on the next request. A built-in tool or server that was off when the turn
+started is added when the next turn builds its tools. A call that still
+arrives after the switch returns `tool_switched_off` and does not run.
 
 After a visible reply, one likely next message can appear as the placeholder.
 Tab inserts it; Enter sends it. **Settings → Swarm → Suggest a next step**
@@ -966,8 +969,9 @@ still there for editing one connection.
 
 Enabled servers add two namespaced Agent tools: `list_tools` and `call_tool`.
 They connect only when called, so an unavailable server does not hold up
-starting a turn. The composer Tools menu and Settings → MCP share the
-server's enabled switch. Plan and Nuwa read-only toolsets do not mount MCP
+starting a turn. Settings → MCP owns the server's enabled switch. The
+composer Tools menu lists that server's remote tools and can switch each one
+off without disabling the server. Plan and Nuwa read-only toolsets do not mount MCP
 tools. Other Nuwa turns make them available to workers and keep the planner's
 toolset separate. If a captured session is closed, old tools return
 `session_expired` without reconnecting. Continue with a new turn. Keep secrets

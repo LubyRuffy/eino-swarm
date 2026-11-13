@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -85,5 +86,48 @@ func TestMCPConfigRejectsInvalidPrivateEntriesWithoutEchoingThem(t *testing.T) {
 	}
 	if _, err := Load(dir); err == nil {
 		t.Fatal("invalid file loaded")
+	}
+}
+
+func TestMCPDisabledToolNamesRoundTripWithoutAliasing(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := MCPServer{ID: "local", Transport: "stdio", Command: "command", DisabledTools: []string{"lookup", "lookup", "search"}}
+	if err := cfg.Update(func(c *Config) error { c.MCP.Servers = []MCPServer{s}; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	snap := cfg.Snapshot()
+	snap.MCP.Servers[0].DisabledTools[0] = "changed"
+	stored := cfg.MCP.Servers[0].DisabledTools
+	if len(stored) != 2 || stored[0] != "lookup" || stored[1] != "search" {
+		t.Fatalf("stored switches: %v", stored)
+	}
+	reloaded, err := Load(dir)
+	if err != nil || len(reloaded.MCP.Servers[0].DisabledTools) != 2 || reloaded.MCP.Servers[0].DisabledTools[1] != "search" {
+		t.Fatalf("reloaded: %+v %v", reloaded.MCP.Servers, err)
+	}
+	bad := s
+	bad.DisabledTools = []string{"bad\x00"}
+	if err := cfg.Update(func(c *Config) error { c.MCP.Servers = []MCPServer{bad}; return nil }); err == nil || strings.Contains(err.Error(), "bad") {
+		t.Fatalf("validation=%v", err)
+	}
+	if cfg.MCP.Servers[0].DisabledTools[0] != "lookup" {
+		t.Fatal("rejected switch published")
+	}
+	many := make([]string, maxMCPDisabledTools+1)
+	for i := range many {
+		many[i] = fmt.Sprintf("tool-%d", i)
+	}
+	bad.DisabledTools = many
+	if err := cfg.Update(func(c *Config) error { c.MCP.Servers = []MCPServer{bad}; return nil }); err == nil {
+		t.Fatal("accepted too many tool switches")
+	}
+	blank := s
+	blank.DisabledTools = []string{""}
+	if err := blank.Validate(); err == nil {
+		t.Fatal("accepted an empty tool name")
 	}
 }

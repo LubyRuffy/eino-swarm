@@ -635,11 +635,15 @@ or `streamableHttp`. Omitted `enabled` and `timeout_seconds` keep their saved
 values. An invalid document changes nothing.
 
 Enabled servers add two namespaced Agent proxies, `list_tools` and `call_tool`,
-to toolsets built while the server is enabled. The composer Tools menu writes
-the same `enabled` flag as Settings → MCP. Unchecking a server removes both
-proxies from the next model request, including a turn already running. A server
+to toolsets built while the server is enabled. Settings → MCP writes `enabled`.
+The composer Tools menu does not. It stores remote names the user switched off
+in `disabled_tools` (default empty, so every discovered tool is available).
+`list_tools` omits those names, and `call_tool` for one of them returns
+`tool_switched_off` without running it, including during a running turn.
+Changing `disabled_tools` does not retire the server session. A server
 switched on after the turn started is mounted when the next turn builds its
-toolset. Constructing a toolset performs no connection or command
+toolset. A name in `disabled_tools` is not checked against a live catalog.
+Constructing a toolset performs no connection or command
 startup. The first actual list/call connects using the running tool's cancellation
 context; a connection/discovery error is a failed tool result and leaves built-in
 tools available. `list_tools` accepts optional `name` for one exact remote schema,

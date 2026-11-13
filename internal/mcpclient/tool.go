@@ -126,6 +126,29 @@ func (t *externalTool) failure(code string) string {
 	return jsonResult(map[string]any{"error": &Error{Code: code, ServerID: t.holder.server.ID}})
 }
 
+func (t *externalTool) switchedOff(name string) bool {
+	if t == nil || t.holder == nil || t.holder.manager == nil {
+		return false
+	}
+	return t.holder.manager.remoteDisabled(t.holder.server.ID, name)
+}
+
+func switchedOffRemoteResult(name string) string {
+	encoded, _ := json.Marshal(name)
+	return `{"ok":false,"code":"tool_switched_off","tool":` + string(encoded) + `}`
+}
+
+func withoutSwitchedOffTools(tools []ToolDescriptor, off func(string) bool) []ToolDescriptor {
+	selected := make([]ToolDescriptor, 0, len(tools))
+	for _, remote := range tools {
+		if off(remote.Name) || off(remote.OriginalName) {
+			continue
+		}
+		selected = append(selected, remote)
+	}
+	return selected
+}
+
 func (t *externalTool) InvokableRun(ctx context.Context, args string, _ ...tool.Option) (string, error) {
 	if ctx.Err() != nil {
 		return t.failure("cancelled"), nil
@@ -148,6 +171,9 @@ func (t *externalTool) InvokableRun(ctx context.Context, args string, _ ...tool.
 	}
 	if !t.list && (json.Unmarshal([]byte(args), &request) != nil || request.Name == "" || request.Arguments == nil) {
 		return t.failure("invalid_arguments"), nil
+	}
+	if !t.list && t.switchedOff(request.Name) {
+		return switchedOffRemoteResult(request.Name), nil
 	}
 	started := time.Now()
 	e, err := t.holder.acquire()
@@ -172,14 +198,15 @@ func (t *externalTool) InvokableRun(ctx context.Context, args string, _ ...tool.
 		return t.failure(code), nil
 	}
 	if t.list {
-		selected := catalog.Tools
+		selected := withoutSwitchedOffTools(catalog.Tools, t.switchedOff)
 		if listing.Name != "" {
-			selected = []ToolDescriptor{}
-			for _, d := range catalog.Tools {
+			matched := []ToolDescriptor{}
+			for _, d := range selected {
 				if d.Name == listing.Name {
-					selected = append(selected, d)
+					matched = append(matched, d)
 				}
 			}
+			selected = matched
 		}
 		total := len(selected)
 		offset := min(listing.Offset, total)

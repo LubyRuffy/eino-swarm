@@ -1002,14 +1002,19 @@ remaining sessions. Cache eviction or connection failure can also close an entry
 Existing tools then return `session_expired`: they never silently reconnect a
 stateful server or replay an uncertain call. A later turn rebuilds its toolset;
 there is no promise that a session survives between tool calls. The composer
-and Settings publish the same built-in exception lists and MCP `enabled` flag
-immediately. `liveToolOffer` is the last manager middleware, and each worker
-gets its own instance: the next model request keeps only tools this turn
-already mounted that those switches still allow. An empty filtered list stays
-non-nil so ADK does not restore the original tool list. A call that arrives
-after the switch returns `tool_switched_off` and does not run. A catalog tool
-or MCP server that was off when the turn built its toolset is mounted on the
-next turn, which is also when the manager prompt is rebuilt. Different
+and Settings publish the same built-in exception lists immediately. Settings
+owns each MCP server's `enabled` flag. The composer lists that server's remote
+tools and stores switched-off names on `disabled_tools`. Those names stay out
+of `list_tools`, and `call_tool` for one of them returns `tool_switched_off`
+without connecting or running it, including during a running turn. That switch
+does not retire the server session. `liveToolOffer` is the last manager
+middleware, and each worker gets its own instance: the next model request
+keeps only built-in tools this turn already mounted that those switches still
+allow. An empty filtered list stays non-nil so ADK does not restore the
+original tool list. A call that arrives after a built-in switch returns
+`tool_switched_off` and does not run. A catalog tool or MCP server that was
+off when the turn built its toolset is mounted on the next turn, which is
+also when the manager prompt is rebuilt. Different
 workspaces do not share local command state. This boundary supports MCP tools
 only, without resource/prompt mounting or an OAuth flow. It neither grants a
 remote server authority over the host nor treats tool descriptions as user

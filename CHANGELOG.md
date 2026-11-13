@@ -29,13 +29,16 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   name and switch; a paired phone follows the PC's filtered catalog.
   (`F-172`, `F-171`, `C-046`, `C-040`)
 
-- The composer has a Tools menu for the built-in catalog and each configured
-  MCP server. Each row is a sliding switch. Tools that are on by default start
-  on; tools that are off until enabled stay off. Turning one off is saved
-  immediately, and the next model request omits that tool, including a turn
-  that is already running. A tool or server that was off when the turn started is mounted on
-  the next turn. A call that still arrives after the switch returns
-  `tool_switched_off` and does not run. (`F-130`, `F-176`, `C-009`, `C-041`)
+- The composer has a Tools menu for the built-in catalog and, under each
+  enabled MCP server, that server's remote tools. Each row is a sliding
+  switch. The menu opens above the composer. Tools that are on by default
+  start on; tools that are off until enabled stay off. A remote tool starts
+  on. Turning one off is saved immediately. The next model request omits that
+  built-in tool, or leaves that remote name out of `list_tools` and refuses
+  `call_tool`, including a turn that is already running. A built-in tool or
+  MCP server that was off when the turn started is mounted on the next turn.
+  A call that still arrives after the switch returns `tool_switched_off` and
+  does not run. (`F-130`, `F-176`, `C-009`, `C-041`)
 
 ### Fixed
 
@@ -51,9 +54,9 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   own model services do not have the account's online capabilities. Staying
   on the official model leaves the switch unchanged. (`F-172`, `C-046`)
 
-- The composer Tools menu uses a sliding switch on each built-in tool and MCP
-  server. Turning one off still takes effect on the next model request.
-  (`F-130`, `F-176`)
+- The composer Tools menu uses a sliding switch on each built-in tool and
+  each remote MCP tool. The menu sits above the composer. Turning a remote
+  tool off does not disable its server. (`F-130`, `F-176`)
 
 - Settings → MCP assigns each connection id and shows the display name.
   The form does not ask for an id, and it does not rewrite the name, command,

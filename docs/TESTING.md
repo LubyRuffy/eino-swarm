@@ -89,8 +89,14 @@ guarantees continuous state between tool calls.
 Registry, ADK and the offline model adapter: unchecking `web_search` and an MCP
 server removes them from the next request, checking them again restores them,
 and enabling `python_runner` after the turn started does not mount it.
-`frontend/e2e/composer-tools.spec.ts` clears Read file and one MCP server from
-the composer, reloads, and restores the original tool settings.
+`internal/engine/mcp_remote_switch_test.go` and
+`internal/mcpclient/manager_test.go` keep one mounted server and switch a
+single remote tool off: `list_tools` omits it, `call_tool` returns
+`tool_switched_off` without executing, and turning it back on uses the same
+session. `frontend/e2e/composer-tools.spec.ts` checks the open menu sits above
+the composer, shows an enabled server's tools rather than a server switch,
+leaves a Settings-disabled server out, clears Read file, reloads, and restores
+the original tool settings.
 
 The SDK HTTP progress regression holds the final response until the client
 observes the matched notification. It also checks that progress cannot cross
@@ -110,7 +116,7 @@ python3 -B -m unittest discover -s tools -p 'test_native_macos_mcp*.py'
 ```
 
 The browser suite drives create/edit, private-field preservation, validation,
-connection/catalog expansion and removal. Run the default user-visible E2E suite
+connection/catalog expansion, JSON text import and removal. Run the default user-visible E2E suite
 as well, with its own port/data/output and no concurrent rebuild of its served
 `dist`. A transport or browser test does not accept a native desktop window.
 

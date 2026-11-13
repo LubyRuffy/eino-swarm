@@ -230,3 +230,41 @@ func TestMCPRejectsInvalidServersBeforeSaving(t *testing.T) {
 	h.json(http.MethodPost, "/api/mcp/missing/inspect", nil, http.StatusNotFound)
 	h.json(http.MethodPut, "/api/mcp/bad.id", map[string]any{"transport": "stdio", "command": "unused"}, http.StatusBadRequest)
 }
+
+func TestMCPToolSwitchSurvivesAServerEditThatOmitsIt(t *testing.T) {
+	h := newHarness(t)
+	h.json(http.MethodPut, "/api/mcp/desk", map[string]any{
+		"name": "Desk", "transport": "stdio", "command": "tool", "args": []string{},
+		"enabled": true, "disabled_tools": []string{"lookup", "lookup"},
+	}, http.StatusOK)
+	stored := h.app.Config.Snapshot().MCP.Servers[0].DisabledTools
+	if len(stored) != 1 || stored[0] != "lookup" {
+		t.Fatalf("stored switches: %v", stored)
+	}
+	h.json(http.MethodPut, "/api/mcp/desk", map[string]any{
+		"name": "Renamed", "transport": "stdio", "command": "tool", "args": []string{}, "enabled": true,
+	}, http.StatusOK)
+	server := h.app.Config.Snapshot().MCP.Servers[0]
+	if server.Name != "Renamed" || len(server.DisabledTools) != 1 || server.DisabledTools[0] != "lookup" {
+		t.Fatalf("server edit cleared the tool switch: %+v", server)
+	}
+	body := h.json(http.MethodGet, "/api/mcp", nil, http.StatusOK)
+	raw, err := json.Marshal(body)
+	if err != nil || !strings.Contains(string(raw), `"disabled_tools":["lookup"]`) || strings.Contains(string(raw), `"enabled":false`) {
+		t.Fatalf("catalog: %s %v", raw, err)
+	}
+	h.json(http.MethodPut, "/api/mcp/desk", map[string]any{
+		"name": "Renamed", "transport": "stdio", "command": "tool", "args": []string{},
+		"enabled": true, "disabled_tools": []string{},
+	}, http.StatusOK)
+	if len(h.app.Config.Snapshot().MCP.Servers[0].DisabledTools) != 0 {
+		t.Fatal("explicit clear ignored")
+	}
+	h.json(http.MethodPut, "/api/mcp/desk", map[string]any{
+		"name": "Renamed", "transport": "stdio", "command": "tool", "enabled": true,
+		"disabled_tools": []string{""},
+	}, http.StatusBadRequest)
+	if len(h.app.Config.Snapshot().MCP.Servers[0].DisabledTools) != 0 {
+		t.Fatal("rejected switch published")
+	}
+}

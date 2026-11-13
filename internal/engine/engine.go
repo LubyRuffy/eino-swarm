@@ -140,7 +140,7 @@ func NewWithAnswerRecoveryClock(cfg *config.Config, st *store.Store, pool *provi
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Engine{
+	e := &Engine{
 		cfg:                 cfg,
 		store:               st,
 		pool:                pool,
@@ -157,6 +157,13 @@ func NewWithAnswerRecoveryClock(cfg *config.Config, st *store.Store, pool *provi
 		predictions:         newPredictionPool(),
 		answerRecoveryClock: timing.OrReal(clock),
 	}
+	e.mcp.UseRemoteSwitches(func() []config.MCPServer {
+		if e.cfg == nil {
+			return nil
+		}
+		return e.cfg.Snapshot().MCP.Servers
+	})
+	return e
 }
 
 // Config exposes the live configuration, which the settings endpoints mutate.

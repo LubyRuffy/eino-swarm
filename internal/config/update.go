@@ -43,6 +43,7 @@ func (c *Config) clone() *Config {
 		server.Args = slices.Clone(server.Args)
 		server.Env = maps.Clone(server.Env)
 		server.Headers = maps.Clone(server.Headers)
+		server.DisabledTools = slices.Clone(server.DisabledTools)
 		next.MCP.Servers[i] = server
 	}
 	return &next

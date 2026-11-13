@@ -47,8 +47,9 @@ func (s *Server) getMCP(c *gin.Context) {
 
 type putMCPRequest struct {
 	config.MCPServer
-	Env     *map[string]string `json:"env"`
-	Headers *map[string]string `json:"headers"`
+	Env           *map[string]string `json:"env"`
+	Headers       *map[string]string `json:"headers"`
+	DisabledTools *[]string          `json:"disabled_tools"`
 }
 
 func (s *Server) putMCP(c *gin.Context) {
@@ -66,6 +67,14 @@ func (s *Server) putMCP(c *gin.Context) {
 	if req.Headers != nil {
 		server.Headers = maps.Clone(*req.Headers)
 	}
+	if req.DisabledTools != nil {
+		cleaned, err := config.NormalizeDisabledTools(*req.DisabledTools)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "invalid_mcp"})
+			return
+		}
+		server.DisabledTools = cleaned
+	}
 	if err := server.Validate(); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "invalid_mcp"})
 		return
@@ -81,6 +90,9 @@ func (s *Server) putMCP(c *gin.Context) {
 			}
 			if req.Headers == nil {
 				server.Headers = cfg.MCP.Servers[index].Headers
+			}
+			if req.DisabledTools == nil {
+				server.DisabledTools = slices.Clone(cfg.MCP.Servers[index].DisabledTools)
 			}
 		}
 		if index < 0 {

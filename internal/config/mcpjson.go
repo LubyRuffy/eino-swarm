@@ -30,20 +30,22 @@ type mcpJSONSource struct {
 }
 
 type parsedMCPServer struct {
-	id         string
-	idSet      bool
-	name       string
-	transport  string
-	command    string
-	args       []string
-	argsSet    bool
-	env        map[string]string
-	envSet     bool
-	url        string
-	headers    map[string]string
-	headersSet bool
-	enabled    *bool
-	timeout    *int
+	id               string
+	idSet            bool
+	name             string
+	transport        string
+	command          string
+	args             []string
+	argsSet          bool
+	env              map[string]string
+	envSet           bool
+	url              string
+	headers          map[string]string
+	headersSet       bool
+	enabled          *bool
+	timeout          *int
+	disabledTools    []string
+	disabledToolsSet bool
 }
 
 // ApplyMCPJSON adds or updates the servers in a Cursor-style document.
@@ -151,6 +153,7 @@ func cloneMCPServers(servers []MCPServer) []MCPServer {
 			}
 			server.Headers = headers
 		}
+		server.DisabledTools = append([]string(nil), server.DisabledTools...)
 		out[i] = server
 	}
 	return out
@@ -325,6 +328,9 @@ func parseMCPServerEntry(raw json.RawMessage) (parsedMCPServer, error) {
 	if parsed.timeout, err = optionalJSONInt(obj, "timeout_seconds"); err != nil {
 		return parsedMCPServer{}, err
 	}
+	if parsed.disabledTools, parsed.disabledToolsSet, err = parseJSONStringList(obj, "disabled_tools"); err != nil {
+		return parsedMCPServer{}, err
+	}
 	return parsed, nil
 }
 
@@ -375,6 +381,14 @@ func (p parsedMCPServer) apply(current *MCPServer, create bool) error {
 		current.Headers = p.headers
 	} else if create {
 		current.Headers = nil
+	}
+	if p.disabledToolsSet {
+		current.DisabledTools = append([]string(nil), p.disabledTools...)
+	} else if create {
+		current.DisabledTools = nil
+	}
+	if err := current.normalizeDisabledTools(); err != nil {
+		return mcpJSONError("mcp: disabled_tools must be a list of tool names")
 	}
 	return current.Validate()
 }
@@ -453,11 +467,7 @@ func resolveStdioCommand(command string, args []string, argsSet bool) (string, [
 		if len(argv) == 0 || strings.TrimSpace(argv[0]) == "" {
 			return "", nil, mcpJSONError("mcp: stdio requires a command")
 		}
-		rest := argv[1:]
-		if rest == nil {
-			rest = []string{}
-		}
-		return argv[0], rest, nil
+		return argv[0], argv[1:], nil
 	}
 	if command == "" {
 		return "", nil, mcpJSONError("mcp: stdio requires a command")
@@ -701,6 +711,18 @@ func parseJSONArgs(raw json.RawMessage, present bool) ([]string, bool, error) {
 		args = append(args, text)
 	}
 	return args, true, nil
+}
+
+func parseJSONStringList(obj map[string]json.RawMessage, key string) ([]string, bool, error) {
+	raw, ok := obj[key]
+	if !ok || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, false, nil
+	}
+	var names []string
+	if err := json.Unmarshal(bytes.TrimSpace(raw), &names); err != nil {
+		return nil, false, mcpJSONError("mcp: disabled_tools must be a JSON array of strings")
+	}
+	return names, true, nil
 }
 
 func parseJSONStringMap(obj map[string]json.RawMessage, key, kind string) (map[string]string, bool, error) {

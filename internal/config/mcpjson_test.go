@@ -1,7 +1,9 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -161,6 +163,31 @@ func TestMCPJSONImportRejectsUnsafeOrAmbiguousTextWithoutEchoingIt(t *testing.T)
 		`{"servers":[{"id":"bad.id","command":"tool"}]}`,
 		`{"mcpServers":{"a":{"command":"tool"},"a":{"command":"other"}}}`,
 		`{"mcpServers":{"Kept":{"command":"one"},"alias":{"name":"Kept","command":"two"}}}`,
+		" \n ",
+		`{}`,
+		`{"mcpServers":null}`,
+		`{"servers":null}`,
+		`{"mcpServers":{"a":{"type":"stdio","url":"https://example.invalid/mcp"}}}`,
+		`{"mcpServers":{"a":{"command":"   "}}}`,
+		`{"mcpServers":{"a":{"command":"\"\""}}}`,
+		`{"mcpServers":{"a":{"name":"  ","command":"tool"}}}`,
+		`{"mcpServers":{"a":[]}}`,
+		`{"servers":["nope"]}`,
+		`{"mcpServers":{"a":{"id":1,"command":"tool"}}}`,
+		`{"mcpServers":{"a":{"name":1,"command":"tool"}}}`,
+		`{"mcpServers":{"a":{"type":1,"command":"tool"}}}`,
+		`{"mcpServers":{"a":{"transport":1,"command":"tool"}}}`,
+		`{"mcpServers":{"a":{"transport":"socket","command":"tool"}}}`,
+		`{"mcpServers":{"a":{"command":1}}}`,
+		`{"mcpServers":{"a":{"url":1}}}`,
+		`{"mcpServers":{"a":{"command":"tool","enabled":1}}}`,
+		`{"mcpServers":{"a":{"command":"tool","disabled":"no"}}}`,
+		`{"mcpServers":{"a":{"command":"tool","args":{}}}}`,
+		`{"mcpServers":{"a":{"command":"tool","env":[]}}}`,
+		`{"mcpServers":{"a":{"command":"tool","headers":[]}}}`,
+		`{"mcpServers":{"a":{"command":"tool","timeout_seconds":1.5}}}`,
+		`{"servers":[{"id":"fixed","name":"One","command":"a"},{"id":"fixed","name":"Two","command":"b"}]}`,
+		`{"servers":[{"id":"kept","name":"One","command":"a"},{"id":"kept","name":"Two","command":"b"}]}`,
 	} {
 		_, err := ApplyMCPJSON(existing, []byte(raw))
 		var invalid *MCPJSONError
@@ -180,5 +207,102 @@ func TestMCPJSONImportRejectsUnsafeOrAmbiguousTextWithoutEchoingIt(t *testing.T)
 	}
 	if ambiguous[0].Command != "a" || ambiguous[1].Command != "b" {
 		t.Fatal("ambiguous match wrote a server")
+	}
+}
+
+func TestMCPJSONImportCoversLabelsNullFieldsAndCommandSplits(t *testing.T) {
+	_, err := ApplyMCPJSON(nil, []byte(`{"mcpServers":{"":{"command":"tool"}}}`))
+	if err == nil || !strings.Contains(err.Error(), "server") {
+		t.Fatalf("empty key: %v", err)
+	}
+	long := strings.Repeat("n", 70)
+	_, err = ApplyMCPJSON(nil, []byte(`{"mcpServers":{`+strconv.Quote(long)+`:{"url":"not a url"}}}`))
+	if err == nil || strings.Contains(err.Error(), long) || !strings.Contains(err.Error(), long[:64]) {
+		t.Fatalf("long label: %v", err)
+	}
+	_, err = ApplyMCPJSON(nil, []byte("{\"mcpServers\":{\"line\\nbad\":{\"command\":\"tool | echo\"}}}"))
+	if err == nil || strings.Contains(err.Error(), "\n") || !strings.Contains(err.Error(), "line bad") {
+		t.Fatalf("control label: %q", err)
+	}
+
+	kept := []MCPServer{{ID: "aa", Name: "Desk", Transport: "stdio", Command: "old", Args: []string{}, Enabled: true}}
+	_, err = ApplyMCPJSON(kept, []byte(`{"mcpServers":{"Desk":{"command":"next"},"aa":{"name":"Other","command":"next"}}}`))
+	if err == nil || !strings.Contains(err.Error(), "duplicate server") || kept[0].Command != "old" {
+		t.Fatalf("claimed id: %v %+v", err, kept[0])
+	}
+
+	next, err := ApplyMCPJSON(nil, []byte(`{"mcpServers":{"plain":{"command":"tool","args":null,"envFile":null,"cwd":null}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next[0].Command != "tool" || len(next[0].Args) != 0 || next[0].Env != nil {
+		t.Fatalf("null optional fields: %+v", next[0])
+	}
+
+	argv, err := splitCommandLine(`"a\"b"`)
+	if err != nil || len(argv) != 1 || argv[0] != `a"b` {
+		t.Fatalf("escaped quote: %v %q", err, argv)
+	}
+	for _, line := range []string{`"a\`, "\"a\\\n\"", "\"a\nb\"", `a\`, "a\\\n"} {
+		if _, err := splitCommandLine(line); err == nil {
+			t.Fatalf("accepted %q", line)
+		}
+	}
+	for _, raw := range [][]byte{[]byte(`{`), []byte(`[]`), []byte(`{"a":`), []byte(`{"a":1`)} {
+		if _, err := parseMCPServerObject(raw); err == nil {
+			t.Fatalf("accepted object %s", raw)
+		}
+	}
+	for _, raw := range [][]byte{[]byte(`]`), []byte(`[`), []byte(`[}`)} {
+		if _, err := parseMCPServerArray(raw); err == nil {
+			t.Fatalf("accepted array %s", raw)
+		}
+	}
+	if _, err := parseMCPServerEntry([]byte(`{`)); err == nil {
+		t.Fatal("accepted a truncated entry")
+	}
+	if _, _, err := optionalJSONString(map[string]json.RawMessage{"id": []byte(`"unterminated`)}, "id"); err == nil {
+		t.Fatal("accepted an unterminated string")
+	}
+	if _, _, err := parseJSONArgs([]byte(`[`), true); err == nil {
+		t.Fatal("accepted a truncated argument array")
+	}
+	if _, _, err := parseJSONStringMap(map[string]json.RawMessage{"env": []byte(`{`)}, "env", "environment variables"); err == nil {
+		t.Fatal("accepted a truncated environment object")
+	}
+	if _, err := inferMCPTransport("other", "", ""); err == nil {
+		t.Fatal("accepted an unknown transport")
+	}
+	_, _, _, err = matchMCPServer(nil, map[int]bool{}, map[string]bool{"taken": true}, mcpJSONSource{hasKey: true, key: "taken"}, parsedMCPServer{name: "Fresh"})
+	if err == nil || !strings.Contains(err.Error(), "duplicate server") {
+		t.Fatalf("created id: %v", err)
+	}
+}
+
+func TestMCPJSONKeepsToolSwitchesUnlessTheDocumentReplacesThem(t *testing.T) {
+	existing := []MCPServer{{
+		ID: "desk", Name: "Desk", Transport: "stdio", Command: "tool", Enabled: true,
+		DisabledTools: []string{"lookup"},
+	}}
+	got, err := ApplyMCPJSON(existing, []byte(`{"mcpServers":{"desk":{"command":"tool"}}}`))
+	if err != nil || len(got) != 1 || len(got[0].DisabledTools) != 1 || got[0].DisabledTools[0] != "lookup" {
+		t.Fatalf("omitted switch: %+v %v", got, err)
+	}
+	got[0].DisabledTools[0] = "changed"
+	if existing[0].DisabledTools[0] != "lookup" {
+		t.Fatal("import shared the saved switch list")
+	}
+	got, err = ApplyMCPJSON(existing, []byte(`{"mcpServers":{"desk":{"command":"tool","disabled_tools":["search","search"]}}}`))
+	if err != nil || len(got[0].DisabledTools) != 1 || got[0].DisabledTools[0] != "search" {
+		t.Fatalf("replaced switch: %+v %v", got, err)
+	}
+	if _, err := ApplyMCPJSON(existing, []byte(`{"mcpServers":{"desk":{"command":"tool","disabled_tools":"lookup"}}}`)); err == nil {
+		t.Fatal("accepted a tool switch that is not a list")
+	}
+	if _, err := ApplyMCPJSON(existing, []byte(`{"mcpServers":{"desk":{"command":"tool","disabled_tools":["bad\u0000"]}}}`)); err == nil {
+		t.Fatal("accepted a broken tool name")
+	}
+	if existing[0].DisabledTools[0] != "lookup" {
+		t.Fatal("rejected document changed the saved switch")
 	}
 }

@@ -20,3 +20,15 @@ export function withCatalogTool(tool: ToolDescriptor, on: boolean, tools: ToolSe
   else disabled.add(tool.name)
   return { ...tools, disabled: [...disabled], enabled: [...enabled] }
 }
+
+/** A remote MCP tool is on until its name is stored on that server. */
+export function mcpToolOn(disabled: readonly string[] | undefined, name: string): boolean {
+  return !(disabled ?? []).includes(name)
+}
+
+/** One remote tool switch, without the server's other exceptions. */
+export function withMCPTool(disabled: readonly string[] | undefined, name: string, on: boolean): string[] {
+  const next = (disabled ?? []).filter((item) => item !== name)
+  if (!on) next.push(name)
+  return next
+}

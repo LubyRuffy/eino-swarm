@@ -47,6 +47,7 @@ type Manager struct {
 	closed      bool
 	entries     map[string]*entry
 	current     map[string]bool
+	switches    func() []config.MCPServer
 	inspections sync.WaitGroup
 	log         *slog.Logger
 }
@@ -63,12 +64,51 @@ func NewManager(loggers ...*slog.Logger) *Manager {
 }
 
 func fingerprint(s config.MCPServer) string {
+	// A remote-tool switch must not retire the session. list/call read the
+	// live switch source; the session stays bound to the connection.
+	s.DisabledTools = nil
 	// Env and Headers are intentionally excluded from MCPServer's JSON view.
 	raw, _ := json.Marshal(struct {
 		Server       config.MCPServer
 		Env, Headers map[string]string
 	}{s, s.Env, s.Headers})
 	return fmt.Sprintf("%x", sha256.Sum256(raw))
+}
+
+// UseRemoteSwitches publishes the current per-tool switches. A nil source
+// leaves every remote tool available. The callback runs on list and call,
+// outside Manager.mu, so it can read configuration without deadlocking Reload.
+func (m *Manager) UseRemoteSwitches(source func() []config.MCPServer) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	m.switches = source
+	m.mu.Unlock()
+}
+
+func (m *Manager) remoteDisabled(serverID, name string) bool {
+	if m == nil || name == "" {
+		return false
+	}
+	m.mu.Lock()
+	source := m.switches
+	m.mu.Unlock()
+	if source == nil {
+		return false
+	}
+	for _, server := range source() {
+		if server.ID != serverID {
+			continue
+		}
+		for _, off := range server.DisabledTools {
+			if off == name {
+				return true
+			}
+		}
+		return false
+	}
+	return false
 }
 
 func (m *Manager) acquire(s config.MCPServer, workspace string) (*entry, error) {
@@ -241,5 +281,6 @@ func cloneServer(s config.MCPServer) config.MCPServer {
 	s.Args = slices.Clone(s.Args)
 	s.Env = maps.Clone(s.Env)
 	s.Headers = maps.Clone(s.Headers)
+	s.DisabledTools = slices.Clone(s.DisabledTools)
 	return s
 }
