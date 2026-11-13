@@ -106,6 +106,35 @@ func TestFOFAInstallOmitsTheModeAndRejectsCustomModelsUntilLocal(t *testing.T) {
 	if again["code"] == "login_required" {
 		t.Fatalf("local still required a sign-in: %v", again)
 	}
+
+	restored := h.json(http.MethodPut, "/api/settings", map[string]any{
+		"product": map[string]any{"mode": "fofa"},
+	}, http.StatusOK)
+	if restored["settings"].(map[string]any)["product"].(map[string]any)["mode"] != "fofa" {
+		t.Fatalf("restore = %v", restored["settings"])
+	}
+	raw, err = os.ReadFile(a.Config.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "product:") {
+		t.Fatalf("fofa wrote product:\n%s", raw)
+	}
+	if meta = h.json(http.MethodGet, "/api/meta", nil, http.StatusOK); meta["product_mode"] != "fofa" {
+		t.Fatalf("meta after restore = %v", meta["product_mode"])
+	}
+	blocked := h.json(http.MethodPut, "/api/settings", map[string]any{
+		"models": map[string]any{
+			"default": "default",
+			"providers": []map[string]any{{
+				"id": "default", "label": "Other", "base_url": "http://other.example/v1",
+				"model": "m", "timeout_seconds": 30,
+			}},
+		},
+	}, http.StatusForbidden)
+	if blocked["code"] != "custom_models_disabled" {
+		t.Fatalf("model edit after restore = %v", blocked)
+	}
 }
 
 func mustJSON(t *testing.T, v any) string {

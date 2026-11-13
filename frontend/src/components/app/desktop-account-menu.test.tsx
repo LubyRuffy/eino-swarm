@@ -379,13 +379,15 @@ describe("desktop account entry", () => {
     expect(fake.saveSettings).toHaveBeenCalledTimes(1)
   })
 
-  it("leaves an install that is already local unchanged", () => {
+  it("writes fofa after three more clicks when the install is local", async () => {
     useApp.setState({ meta: { product_mode: "local" } as Meta })
     render(<DestRail {...props} />)
     const portrait = within(openAccount()).getByTestId("account-portrait")
     fireEvent.click(portrait)
     fireEvent.click(portrait)
-    fireEvent.click(portrait)
     expect(fake.saveSettings).not.toHaveBeenCalled()
+    fireEvent.click(portrait)
+    await waitFor(() => expect(fake.saveSettings).toHaveBeenCalledWith({ product: { mode: "fofa" } }))
+    expect(fake.saveSettings).toHaveBeenCalledTimes(1)
   })
 })

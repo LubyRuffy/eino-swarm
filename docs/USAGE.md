@@ -66,8 +66,9 @@ project wins.
 
 A new install does not list **Settings → Models** and the composer has no model
 menu. Work asks you to sign in first. Those model controls appear after
-`product.mode: local` is set in the config file. See [Configuration](CONFIG.md).
-The key is absent until then.
+`product.mode: local` is set in the config file, or after three clicks on the
+portrait in account details. Another three clicks hides them again. See
+[Configuration](CONFIG.md). The key is absent while the install is FOFA.
 
 **Settings → Models** is base URL, API key, discover, and the default. The
 switch on a provider row shows that endpoint in the composer; off hides it

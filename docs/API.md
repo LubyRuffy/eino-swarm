@@ -603,7 +603,8 @@ typeface.
 
 `product.mode` is `fofa` or `local`. Omitting `product` keeps the stored value.
 `fofa` and an empty mode are the default and are not written into the file.
-`local` is written. Any other value is `400` with `invalid_product_mode`.
+`local` is written. The desktop account portrait sends `local` or `fofa` on
+each third click. Any other value is `400` with `invalid_product_mode`.
 `GET /api/meta` reports the resolved value as `product_mode` (`fofa` or `local`).
 `GET /api/settings` does the same under `product.mode`. While the resolved mode
 is `fofa`, a `models` section that is not identical to what is stored, and

@@ -157,8 +157,8 @@ default on load, so a partially hand-edited file always starts.
 model menu. Custom provider edits and model discovery are refused. `local`
 shows those controls and accepts provider edits. There is no Settings row for
 this key. Set `product.mode: local` in the file, or click the portrait in the
-desktop account-details dialog three times in a row; that writes `local` and
-does not switch back. A hand edit is read on the next load.
+desktop account-details dialog three times in a row. Another three clicks
+writes `fofa` and the key is omitted again. A hand edit is read on the next load.
 
 ## `server`
 

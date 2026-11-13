@@ -308,7 +308,7 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-173 FOFA install and local model controls
 
 - 目的：新安装默认是 FOFA。使用者必须登录后才能开始工作，不能改本机自配模型；切到 LOCAL 后，模型设置和输入框里的模型切换才出现。使用者：PC 用户，以及已配对、在这台 PC 上执行的手机；入口：账号详情里的头像、`config.yaml` 的 `product.mode`、`PUT /api/settings` 的 `product`；输入：空、`fofa` 或 `local`；输出：`GET /api/meta` 的 `product_mode` 恒为 `fofa` 或 `local`；前置条件：没有该键就是 FOFA；失败表现：FOFA 下改模型或发现模型返回 `403` `custom_models_disabled`，未登录就开始工作返回 `403` `login_required`，其它取值在读取或保存时拒绝。关联契约：`C-047`、`C-040`；关联功能：`F-170`、`F-171`、`F-220`。
-- 配置文件默认不写 `product`。`fofa` 与空值在保存时同样省略。只有 `local` 会写入。设置里没有这一项。桌面账号详情对话框里有头像（图片、名字首字或默认人像）。连续三次点击写入 `local` 并刷新 meta，已经是 `local` 时不再写。这不是来回切换。改回 FOFA 只能再改配置文件。
+- 配置文件默认不写 `product`。`fofa` 与空值在保存时同样省略。只有 `local` 会写入。设置里没有这一项。桌面账号详情对话框里有头像（图片、名字首字或默认人像）。连续三次点击在 `local` 与 `fofa` 之间切换并刷新 meta。写回 `fofa` 后键再次省略。手改配置文件在下次加载时生效。
 - FOFA 隐藏 Settings 的 Models 和 PC 输入框的模型菜单。已配对手机上属于这台 PC 的新对话和会话也隐藏模型按钮。手机直连自己的模型不走这个开关。未登录时欢迎不再提供「使用自己的模型服务」或「稍后再说」，登录提示不挡住账号按钮。`--mock` 不要求登录，但仍拒绝改模型。Stop 和回答问题保持可用。已保存的自配 provider 留在文件里，切到 LOCAL 后还在。
 - 实现证据：`internal/config/product.go`、`internal/server/product_mode.go`、`internal/server/settings.go`、`internal/remote/host.go`、`frontend/src/components/app/desktop-account-menu.tsx`、`frontend/src/components/app/welcome-gate.tsx`、`frontend/src/components/app/composer.tsx`、`mobile/src/components/composer.tsx`。验证：`internal/config/product_test.go`、`internal/server/product_mode_http_test.go`、`internal/remote/product_gate_test.go`、`frontend/src/components/app/desktop-account-menu.test.tsx`、`frontend/src/components/app/welcome-gate.test.tsx`、`frontend/src/components/app/composer.test.tsx`、`frontend/e2e/product-mode.spec.ts`。
 

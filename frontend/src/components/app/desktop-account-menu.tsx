@@ -105,9 +105,10 @@ export function DesktopAccountMenu() {
     if (clicks.current < 3) return
     clicks.current = 0
     window.clearTimeout(clickTimer.current)
-    if (unlocking.current || useApp.getState().meta?.product_mode === "local") return
+    if (unlocking.current) return
+    const mode = useApp.getState().meta?.product_mode === "local" ? "fofa" : "local"
     unlocking.current = true
-    void api.saveSettings({ product: { mode: "local" } })
+    void api.saveSettings({ product: { mode } })
       .then(() => refreshMetaAndModels())
       .catch((error) => toastError(errorMessage(error)))
       .finally(() => { unlocking.current = false })

@@ -45,4 +45,20 @@ test("three clicks on the account portrait reveal model controls", async ({ page
   await expect(page.getByLabel("Model")).toBeVisible()
   await page.getByRole("button", { name: "Settings" }).click()
   await expect(page.getByRole("dialog").getByRole("tab", { name: "Models" })).toBeVisible()
+  await page.getByRole("button", { name: "Back to app" }).click()
+
+  await page.getByRole("button", { name: "Account" }).click()
+  await page.getByRole("menuitem", { name: /Sign in|Account details/ }).click()
+  const restored = page.getByTestId("desktop-account-dialog").getByTestId("account-portrait")
+  await restored.click()
+  await restored.click()
+  await restored.click()
+  await expect.poll(async () => {
+    const meta = await (await request.get("/api/meta")).json()
+    return meta.product_mode
+  }).toBe("fofa")
+  await page.getByTestId("desktop-account-dialog").getByRole("button", { name: "Close" }).click()
+  await expect(page.getByLabel("Model")).toHaveCount(0)
+  await page.getByRole("button", { name: "Settings" }).click()
+  await expect(page.getByRole("dialog").getByRole("tab", { name: "Models" })).toHaveCount(0)
 })
