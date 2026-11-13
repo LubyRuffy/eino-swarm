@@ -17,7 +17,9 @@ import { useTerminal } from "@/store/terminal"
 
 /** Settings is a full-page sheet. Keeping `open` off AppShell's state is
  *  the difference between painting the conversation and not: a setState
- *  there used to re-parse a 10k-block transcript on the same click. */
+ *  there used to re-parse a 10k-block transcript on the same click.
+ *  The tree stays mounted, and useCoveredTranscript stops streamed tokens
+ *  from reconciling it until the sheet closes. */
 export function SettingsIdleChrome({ children }: { children: ReactNode }) {
   const open = useSettingsSheet((s) => s.open)
   return (

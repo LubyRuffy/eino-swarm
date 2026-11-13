@@ -60,7 +60,7 @@ import { useSideChat } from "@/store/app-side-chat"
 import { useTraceFocus } from "@/store/trace-focus"
 import { projectOf, useProjects } from "@/store/projects"
 import { useTerminal } from "@/store/terminal"
-import { openSettings, useSettingsSheet } from "@/store/settings-sheet"
+import { openSettings, useCoveredTranscript, useSettingsSheet } from "@/store/settings-sheet"
 import { errorMessage, toastError, useToasts } from "@/store/toasts"
 
 export function App() {
@@ -727,7 +727,7 @@ function TranscriptPane({
 }) {
   const activeId = useApp((s) => s.activeId)
   const loaded = useApp((s) => s.loaded)
-  const transcript = useApp((s) => s.transcript)
+  const transcript = useCoveredTranscript()
   const running = useApp((s) => s.status.running || s.transcript.running)
   const historyHasMore = useApp((s) => s.historyHasMore)
   const send = useApp((s) => s.send)
@@ -916,7 +916,7 @@ function AppPanel({
   onTabChange: (tab: PanelTab) => void
   focusSkill?: { projectId: string; name?: string }
 }) {
-  const transcript = useApp((s) => s.transcript)
+  const transcript = useCoveredTranscript()
   const selectedAgent = useApp((s) => s.selectedAgent)
   const selectAgent = useApp((s) => s.selectAgent)
   const files = useApp((s) => s.files)

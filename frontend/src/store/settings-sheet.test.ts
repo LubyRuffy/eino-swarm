@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import { closeSettings, openSettings, useSettingsSheet } from "./settings-sheet"
+import { closeSettings, openSettings, transcriptWhileCovered, useSettingsSheet } from "./settings-sheet"
+import type { TranscriptState } from "@/lib/transcript"
 
 const closed = {
   open: false,
@@ -40,5 +41,17 @@ describe("settings sheet", () => {
     expect(useSettingsSheet.getState()).toEqual({ ...closed, open: true })
     closeSettings()
     expect(useSettingsSheet.getState()).toEqual(closed)
+  })
+
+  it("holds the painted conversation while Settings covers it", () => {
+    const held: { current: TranscriptState | undefined } = { current: undefined }
+    const first = { lastSeq: 1 } as TranscriptState
+    const second = { lastSeq: 2 } as TranscriptState
+    expect(transcriptWhileCovered(false, first, held)).toBe(first)
+    expect(held.current).toBeUndefined()
+    expect(transcriptWhileCovered(true, first, held)).toBe(first)
+    expect(transcriptWhileCovered(true, second, held)).toBe(first)
+    expect(transcriptWhileCovered(false, second, held)).toBe(second)
+    expect(held.current).toBeUndefined()
   })
 })

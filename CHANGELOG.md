@@ -61,6 +61,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Fixed
 
+- Settings stays responsive while a conversation is still producing output.
+  The hidden conversation keeps the snapshot it had when Settings opened, and
+  catches up when Settings closes. (`F-170`)
+
 - Settings → Tools → Edit JSON colors the document with the same JSON syntax
   highlighting as a tool schema. The text stays editable. (`F-176`)
 
