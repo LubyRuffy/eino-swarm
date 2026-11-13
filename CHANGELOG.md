@@ -29,9 +29,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   name and switch; a paired phone follows the PC's filtered catalog.
   (`F-172`, `F-171`, `C-046`, `C-040`)
 
-- The composer has a Tools menu for the built-in catalog and, under each
-  enabled MCP server, that server's remote tools. Each row is a sliding
-  switch. The menu opens above the composer. Tools that are on by default
+- The composer has a Tools menu. Built-in tools are one group, and each
+  enabled MCP connection is its own group. A filter box narrows the list.
+  Each row is a sliding switch, clear of the scrollbar. The menu opens above
+  the composer. Tools that are on by default
   start on; tools that are off until enabled stay off. A remote tool starts
   on. Turning one off is saved immediately. The next model request omits that
   built-in tool, or leaves that remote name out of `list_tools` and refuses
@@ -54,9 +55,14 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   own model services do not have the account's online capabilities. Staying
   on the official model leaves the switch unchanged. (`F-172`, `C-046`)
 
-- The composer Tools menu uses a sliding switch on each built-in tool and
-  each remote MCP tool. The menu sits above the composer. Turning a remote
-  tool off does not disable its server. (`F-130`, `F-176`)
+- The composer Tools menu uses a compact sliding switch on each built-in
+  tool and each remote MCP tool. The menu sits above the composer. Turning a
+  remote tool off does not disable its server. Built-in tools share one
+  group and start open. Each enabled MCP connection is its own group and
+  starts folded. A filter box narrows the list and opens matching groups.
+  A tool's name and description appear when the pointer is over its
+  information icon. The switches stay clear of the scrollbar.
+  (`F-130`, `F-176`)
 
 - Settings → MCP assigns each connection id and shows the display name.
   The form does not ask for an id, and it does not rewrite the name, command,

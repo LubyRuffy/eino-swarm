@@ -29,7 +29,14 @@ test("the composer tool menu clears the input and lists MCP tools rather than se
     const read = page.getByRole("menuitemcheckbox", { name: "Read file (read)" })
     await expect(read).toHaveAttribute("aria-checked", "true")
     await expect(read.locator("[role=switch]")).toHaveAttribute("data-state", "checked")
-    await expect(menu.getByText("Composer desk", { exact: true })).toBeVisible()
+    await expect(menu.getByRole("button", { name: "Built-in" })).toHaveAttribute("aria-expanded", "true")
+    await expect(menu.getByRole("button", { name: "Composer desk" })).toHaveAttribute("aria-expanded", "false")
+    await expect(menu.getByRole("group", { name: "Built-in" })).toBeVisible()
+    await expect(menu.getByRole("group", { name: "Composer desk" })).toBeVisible()
+    await expect(menu.getByText("read", { exact: true })).toHaveCount(0)
+    await menu.getByRole("button", { name: "Details for Read file" }).hover()
+    await expect(page.getByRole("tooltip")).toContainText("Read a text file")
+    await expect(menu.getByText("Files", { exact: true })).toHaveCount(0)
     await expect(menu.getByRole("menuitemcheckbox", { name: "Composer desk" })).toHaveCount(0)
     await expect(menu.getByText("Hidden desk")).toHaveCount(0)
     await expect(menu.getByRole("alert")).toHaveText("Could not list tools")
@@ -38,6 +45,28 @@ test("the composer tool menu clears the input and lists MCP tools rather than se
     expect(menuBox).toBeTruthy()
     expect(composerBox).toBeTruthy()
     expect(menuBox!.y + menuBox!.height).toBeLessThanOrEqual(composerBox!.y + 1)
+    const fit = await read.locator("[role=switch]").evaluate((node) => {
+      const sw = node.getBoundingClientRect()
+      const list = node.closest("[data-testid=composer-tools-list]") as HTMLElement
+      const listBox = list.getBoundingClientRect()
+      const menu = node.closest("[data-testid=composer-tools-menu]")!.getBoundingClientRect()
+      return {
+        gutter: getComputedStyle(list).scrollbarGutter,
+        clearOfBar: listBox.left + list.clientWidth - sw.right,
+        clearOfMenu: menu.right - sw.right,
+        height: sw.height,
+      }
+    })
+    expect(fit.gutter).toBe("stable")
+    expect(fit.clearOfBar).toBeGreaterThanOrEqual(4)
+    expect(fit.clearOfMenu).toBeGreaterThanOrEqual(8)
+    expect(fit.height).toBeLessThan(15)
+    const filter = menu.getByRole("textbox", { name: "Filter tools" })
+    await filter.fill("python")
+    await expect(menu.getByRole("menuitemcheckbox", { name: "Read file (read)" })).toHaveCount(0)
+    await expect(menu.getByRole("menuitemcheckbox", { name: "Run Python (python_runner)" })).toBeVisible()
+    await filter.fill("")
+    await expect(read).toBeVisible()
     await page.screenshot({ path: info.outputPath("composer-tools-switches.png"), animations: "disabled" })
     await read.click()
     await expect.poll(async () => {

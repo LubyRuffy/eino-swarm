@@ -782,7 +782,13 @@ The catalog the Settings dialog lays out, plus which tools are currently active.
 `screenshot`) need something zwai does not ship and must be switched on
 explicitly.
 
-The composer Tools menu reads this catalog together with `GET /api/mcp`,
+The composer Tools menu shows this catalog as one group, open by default, and
+each enabled MCP connection as its own group, folded by default. A heading
+folds its group. Its filter matches a tool title, a tool name, or a connection
+name, opens groups that match, and does not change the requests below. The
+name and summary stay off the row until the pointer is over the information
+icon. The menu reads this
+catalog together with `GET /api/mcp`,
 `GET /api/settings`, and `POST /api/mcp/:id/inspect` for each enabled server.
 A built-in switch is `PUT /api/settings` with the full `tools` object:
 `disabled` / `enabled` are the exception lists above, and the other tool

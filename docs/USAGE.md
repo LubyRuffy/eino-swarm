@@ -114,9 +114,14 @@ stays intact and shows an error until those items are sent separately or
 removed. Draft text and quotes share a 1 MiB limit. Up to 32 attachments share
 256 MiB. Vision input is at most eight images, 8 MiB each.
 
-**Tools**, next to the model, lists the built-in catalog and the remote tools
-of each MCP server that is enabled in Settings. The menu opens above the
-composer. Each row is a switch. A tool that is on by default starts on;
+**Tools**, next to the model, puts the built-in catalog in one group and
+each MCP connection that is enabled in Settings in its own group. A group
+heading folds its tools. Built-in tools start open; each MCP connection
+starts folded. A filter box matches a tool title, a tool name, or a
+connection name, and opens the groups that match. The menu opens above the
+composer, and each switch stays clear of the scrollbar. Each row is a
+compact switch. The tool name and description sit behind an information
+icon; they appear when the pointer is over that icon. A tool that is on by default starts on;
 Python and screenshot stay off until you turn them on. A remote tool starts
 on. Turning one off saves immediately and does not disable the server. The
 next model request omits that built-in tool, or leaves that remote name out

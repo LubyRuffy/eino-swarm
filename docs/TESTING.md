@@ -94,9 +94,11 @@ and enabling `python_runner` after the turn started does not mount it.
 single remote tool off: `list_tools` omits it, `call_tool` returns
 `tool_switched_off` without executing, and turning it back on uses the same
 session. `frontend/e2e/composer-tools.spec.ts` checks the open menu sits above
-the composer, shows an enabled server's tools rather than a server switch,
-leaves a Settings-disabled server out, clears Read file, reloads, and restores
-the original tool settings.
+the composer, keeps each compact switch clear of the scrollbar, groups
+built-in tools together and starts them open, starts each MCP connection
+folded, filters by name, shows an enabled connection as its own group rather
+than a server switch, leaves a Settings-disabled server out, clears Read file,
+reloads, and restores the original tool settings.
 
 The SDK HTTP progress regression holds the final response until the client
 observes the matched notification. It also checks that progress cannot cross

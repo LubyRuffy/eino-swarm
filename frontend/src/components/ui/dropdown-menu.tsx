@@ -95,6 +95,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
   >
     <span className="min-w-0 flex-1">{children}</span>
     <Switch
+      size="sm"
       checked={checked === true}
       tabIndex={-1}
       aria-hidden

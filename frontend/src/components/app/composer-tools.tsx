@@ -1,4 +1,4 @@
-import { Wrench } from "lucide-react"
+import { ChevronRight, Info, Wrench } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -6,26 +6,71 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { api } from "@/lib/api"
-import { composerToolsMenuPlacement } from "@/lib/composer-menu"
+import { composerToolsMenuPlacement, filterRemoteTools, toolHoverText, toolMenuMatches, toolMenuQuery } from "@/lib/composer-menu"
+import { cn } from "@/lib/utils"
 import type { MCPServerView } from "@/lib/mcp-settings"
 import { catalogToolOn, mcpToolOn, withCatalogTool, withMCPTool } from "@/lib/tool-toggle"
 import type { Settings, ToolDescriptor } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 
-const groups = ["files", "shell", "web"] as const
+type RemoteTool = { name: string; description: string }
+type RemoteCatalog = { status: "loading" | "ready" | "error"; tools: RemoteTool[] }
 
-type RemoteCatalog = { status: "loading" | "ready" | "error"; tools: Array<{ name: string }> }
+function ToolHint({ label, text }: { label: string; text: string }) {
+  if (!text.trim()) return null
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          className="shrink-0 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerUp={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") event.stopPropagation()
+          }}
+        >
+          <Info className="size-3" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="z-[90] max-w-64 whitespace-pre-line text-left">{text}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function GroupToggle({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      className="flex w-full items-center gap-1 rounded-sm px-2 py-1.5 text-left text-xs font-medium text-foreground hover:bg-accent"
+      onClick={onToggle}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") event.stopPropagation()
+      }}
+    >
+      <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
+      <span className="truncate">{label}</span>
+    </button>
+  )
+}
 
 /** Built-in tools and each remote MCP tool, sent on the next model request. */
 export function ComposerTools({ disabled }: { disabled?: boolean }) {
   const t = useT()
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const filterRef = useRef<HTMLInputElement>(null)
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState("")
+  const [folded, setFolded] = useState<Record<string, boolean>>({})
   const [placement, setPlacement] = useState({ sideOffset: 8, maxHeight: 320 })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -54,6 +99,7 @@ export function ComposerTools({ disabled }: { disabled?: boolean }) {
 
   useEffect(() => {
     if (!open) return
+    filterRef.current?.focus()
     measure()
     const box = triggerRef.current?.closest("[data-composer-box]")
     if (!box) return
@@ -85,7 +131,9 @@ export function ComposerTools({ disabled }: { disabled?: boolean }) {
       void api.inspectMCPServer(server.id, controller.signal)
         .then((found) => {
           if (inspectRevision.current !== rev || controller.signal.aborted) return
-          const tools = (found.tools ?? []).flatMap((tool) => tool.name ? [{ name: tool.name }] : [])
+          const tools = (found.tools ?? []).flatMap((tool) => tool.name
+            ? [{ name: tool.name, description: tool.description?.trim() ?? "" }]
+            : [])
           setRemote((current) => ({ ...current, [server.id]: { status: "ready", tools } }))
         })
         .catch(() => {
@@ -160,21 +208,41 @@ export function ComposerTools({ disabled }: { disabled?: boolean }) {
     })
   }
 
-  const groupTitle = (group: string) => {
-    if (group === "files") return t("composer.toolsFiles")
-    if (group === "shell") return t("composer.toolsShell")
-    if (group === "web") return t("composer.toolsWeb")
-    return group
+  const groupOpen = (id: string, fallback: boolean) => {
+    if (Object.hasOwn(folded, id)) return folded[id]
+    if (toolMenuQuery(query) !== "") return true
+    return fallback
+  }
+  const toggleGroup = (id: string, fallback: boolean) => {
+    setFolded((current) => {
+      const open = Object.hasOwn(current, id) ? current[id] : toolMenuQuery(query) !== "" || fallback
+      return { ...current, [id]: !open }
+    })
   }
 
+  const builtin = catalog.filter((tool) => toolMenuMatches(query, [tool.title, tool.name]))
   const enabledServers = servers.filter((server) => server.enabled)
+  const waiting = enabledServers.some((server) => remote[server.id]?.status === "loading")
+  const remoteGroups = enabledServers.flatMap((server) => {
+    const found = remote[server.id]
+    const label = server.name || server.id
+    const filtered = filterRemoteTools(found?.tools ?? [], query, label, server.id)
+    const pending = found?.status !== "ready"
+    const showPending = pending && (toolMenuQuery(query) === "" || toolMenuMatches(query, [label, server.id]))
+    if (!filtered.shown && !showPending) return []
+    return [{ server, label, found, tools: filtered.tools }]
+  })
+  const showNoMatch = toolMenuQuery(query) !== "" && builtin.length === 0 && remoteGroups.length === 0 && !waiting && !loading
 
   return (
     <DropdownMenu open={open} onOpenChange={(next) => {
       if (next) measure()
       setOpen(next)
       if (next) load()
-      else stopInspects()
+      else {
+        stopInspects()
+        setQuery("")
+      }
     }}>
       <DropdownMenuTrigger asChild>
         <Button
@@ -198,74 +266,102 @@ export function ComposerTools({ disabled }: { disabled?: boolean }) {
         sideOffset={placement.sideOffset}
         style={{ maxHeight: placement.maxHeight }}
         data-testid="composer-tools-menu"
-        className="z-[80] w-72 overflow-y-auto"
+        className="z-[80] grid w-80 grid-rows-[auto_minmax(0,1fr)] overflow-hidden p-0"
       >
-        <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("composer.toolsHint")}</p>
-        {error ? <p role="alert" className="px-2 pb-1 text-xs text-destructive">{error}</p> : null}
-        {loading && catalog.length === 0 ? (
-          <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("composer.toolsLoading")}</p>
-        ) : null}
-        {groups.map((group) => {
-          const rows = catalog.filter((tool) => tool.group === group)
-          if (rows.length === 0 || !toolSettings) return null
-          return (
-            <div key={group}>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>{groupTitle(group)}</DropdownMenuLabel>
-              {rows.map((tool) => (
+        <div className="space-y-1.5 border-b px-2 py-2">
+          <Input
+            ref={filterRef}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") event.stopPropagation()
+            }}
+            placeholder={t("composer.toolsSearch")}
+            aria-label={t("composer.toolsSearch")}
+            autoComplete="off"
+            className="h-8 px-2 text-xs"
+          />
+          <p className="px-0.5 text-xs text-muted-foreground">{t("composer.toolsHint")}</p>
+          {error ? <p role="alert" className="px-0.5 text-xs text-destructive">{error}</p> : null}
+        </div>
+        {/* Reserve the scrollbar so it cannot paint over the switch. */}
+        <TooltipProvider delayDuration={200}>
+        <div
+          data-testid="composer-tools-list"
+          className="min-h-0 overflow-y-auto px-1 py-1 pe-3"
+          style={{ scrollbarGutter: "stable" }}
+        >
+          {loading && catalog.length === 0 ? (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("composer.toolsLoading")}</p>
+          ) : null}
+          {showNoMatch ? (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("composer.toolsNoMatch")}</p>
+          ) : null}
+          {builtin.length > 0 && toolSettings ? (
+            <div role="group" aria-label={t("composer.toolsBuiltin")}>
+              <GroupToggle
+                label={t("composer.toolsBuiltin")}
+                open={groupOpen("builtin", true)}
+                onToggle={() => toggleGroup("builtin", true)}
+              />
+              {groupOpen("builtin", true) ? builtin.map((tool) => (
                 <DropdownMenuCheckboxItem
                   key={tool.name}
                   checked={catalogToolOn(tool, toolSettings)}
                   onCheckedChange={(on) => toggleTool(tool, on)}
                   onSelect={(event) => event.preventDefault()}
                   aria-label={`${tool.title} (${tool.name})`}
+                  className="w-full min-w-0 py-1 pr-3"
                 >
-                  <span className="min-w-0">
-                    <span className="block">{tool.title}</span>
-                    <span className="block font-mono text-muted-foreground">{tool.name}</span>
+                  <span className="flex min-w-0 items-center gap-1">
+                    <span className="truncate">{tool.title}</span>
+                    <ToolHint label={t("composer.toolsDetail", { name: tool.title })} text={toolHoverText(tool.name, tool.summary)} />
                   </span>
                 </DropdownMenuCheckboxItem>
-              ))}
+              )) : null}
             </div>
-          )
-        })}
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>{t("composer.toolsMCP")}</DropdownMenuLabel>
-        {servers.length === 0 && !loading ? (
-          <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("composer.toolsNoMCP")}</p>
-        ) : null}
-        {enabledServers.map((server) => {
-          const found = remote[server.id]
-          const label = server.name || server.id
-          return (
-            <div key={server.id}>
-              <DropdownMenuLabel className="text-foreground">{label}</DropdownMenuLabel>
-              {found?.status === "loading" ? (
-                <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("composer.toolsLoading")}</p>
-              ) : null}
-              {found?.status === "error" ? (
-                <p role="alert" className="px-2 py-1.5 text-xs text-destructive">{t("composer.toolsMCPFailed")}</p>
-              ) : null}
-              {found?.status === "ready" && found.tools.length === 0 ? (
-                <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("composer.toolsMCPEmpty")}</p>
-              ) : null}
-              {found?.tools.map((tool) => (
-                <DropdownMenuCheckboxItem
-                  key={`${server.id}:${tool.name}`}
-                  checked={mcpToolOn(server.disabled_tools, tool.name)}
-                  onCheckedChange={(on) => toggleRemote(server, tool.name, on)}
-                  onSelect={(event) => event.preventDefault()}
-                  aria-label={`${label} (${tool.name})`}
-                >
-                  <span className="block truncate font-mono">{tool.name}</span>
-                </DropdownMenuCheckboxItem>
-              ))}
-            </div>
-          )
-        })}
-        {servers.some((server) => !server.enabled) ? (
-          <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("composer.toolsMCPOff")}</p>
-        ) : null}
+          ) : null}
+          {servers.length === 0 && !loading && toolMenuQuery(query) === "" ? (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("composer.toolsNoMCP")}</p>
+          ) : null}
+          {remoteGroups.map(({ server, label, found, tools }, index) => {
+            const open = groupOpen(server.id, false)
+            return (
+              <div key={server.id} role="group" aria-label={label}>
+                {builtin.length > 0 || index > 0 ? <DropdownMenuSeparator /> : null}
+                <GroupToggle label={label} open={open} onToggle={() => toggleGroup(server.id, false)} />
+                {open && found?.status === "loading" ? (
+                  <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("composer.toolsLoading")}</p>
+                ) : null}
+                {found?.status === "error" ? (
+                  <p role="alert" className="px-2 py-1.5 text-xs text-destructive">{t("composer.toolsMCPFailed")}</p>
+                ) : null}
+                {open && found?.status === "ready" && found.tools.length === 0 ? (
+                  <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("composer.toolsMCPEmpty")}</p>
+                ) : null}
+                {open ? tools.map((tool) => (
+                  <DropdownMenuCheckboxItem
+                    key={`${server.id}:${tool.name}`}
+                    checked={mcpToolOn(server.disabled_tools, tool.name)}
+                    onCheckedChange={(on) => toggleRemote(server, tool.name, on)}
+                    onSelect={(event) => event.preventDefault()}
+                    aria-label={`${label} (${tool.name})`}
+                    className="w-full min-w-0 py-1 pr-3"
+                  >
+                    <span className="flex min-w-0 items-center gap-1">
+                      <span className="truncate font-mono">{tool.name}</span>
+                      <ToolHint label={t("composer.toolsDetail", { name: tool.name })} text={tool.description} />
+                    </span>
+                  </DropdownMenuCheckboxItem>
+                )) : null}
+              </div>
+            )
+          })}
+          {toolMenuQuery(query) === "" && servers.some((server) => !server.enabled) ? (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("composer.toolsMCPOff")}</p>
+          ) : null}
+        </div>
+        </TooltipProvider>
       </DropdownMenuContent>
     </DropdownMenu>
   )
