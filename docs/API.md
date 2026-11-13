@@ -284,7 +284,8 @@ the server's display name, and `models` counts the one official row rather
 than the hidden catalog. See [F-172](FEATURES.md#f-172-official-model-profile).
 
 `label`, `username`, `display_name` and `avatar_url` are present once known.
-`avatar_url` is a public http(s) image address with no userinfo or fragment.
+`avatar_url` is a public http(s) image address on `fofa.info` or a subdomain,
+with no userinfo or fragment.
 It is omitted when the server has no safe address. The catalog is
 refreshed after sign-in/out and periodically; a reload that does not change the
 account does not refetch it. The offline provider (`--mock`) never reaches a
@@ -965,7 +966,7 @@ In account mode, optional `login` contains `state` and public metadata only:
 The optional `login.display_name` and `login.avatar_url` are saved with the
 authorized device receipt. `avatar_url` is a public image address, not an
 identity. A later sign-in that omits it, or sends an address that is not a
-safe absolute http(s) URL, keeps the previously accepted address for that
+safe absolute http(s) URL on `fofa.info` or one of its subdomains, keeps the previously accepted address for that
 same account. The account button requests it with no referrer and shows the
 name initial when the picture is missing or fails to load.
 Desktop shows this account name in its menu and Phone settings. A receipt from

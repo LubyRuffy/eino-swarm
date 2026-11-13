@@ -95,7 +95,7 @@ describe("gateway account shell", () => {
   })
 
   it("shows a public avatar without sending a referrer and falls back to the initial", () => {
-    const picture = "https://images.example.test/a.png?v=1"
+    const picture = "https://images.fofa.info/a.png?v=1"
     mocks.account = {
       ...mocks.account, status: "authorized",
       session: { ...session, user: { ...session.user, display_name: "林小明", avatar_url: picture } },

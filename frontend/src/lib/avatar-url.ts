@@ -1,8 +1,13 @@
 import type { AccountModels, RemoteLoginStatus } from "./types"
 
-// A public image address only. The same rule as the private desktop receipt:
-// absolute http(s), no userinfo, fragment, whitespace, control character or
-// backslash, and at most 2048 bytes. The query string stays.
+// The only registrable domain an account picture may come from. Subdomains
+// belong to that site; every other host stays unrequested.
+const avatarTrustedRoot = "fofa.info"
+
+// A public image address on fofa.info only. The same rule as the private
+// desktop receipt: absolute http(s), no userinfo, fragment, whitespace,
+// control character or backslash, and at most 2048 bytes. The query string
+// stays.
 export function acceptAvatarURL(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined
   const value = raw.trim()
@@ -11,8 +16,15 @@ export function acceptAvatarURL(raw: unknown): string | undefined {
   if (/[ \t\r\n\\#\u0000-\u001F\u007F]/.test(value) || [...value].some((char) => /\s/u.test(char))) return undefined
   let url: URL
   try { url = new URL(value) } catch { return undefined }
-  if (url.username || url.password || url.hash || !url.hostname || (url.protocol !== "https:" && url.protocol !== "http:")) return undefined
+  if (url.username || url.password || url.hash || !url.hostname || (url.protocol !== "https:" && url.protocol !== "http:") || !avatarHostTrusted(url.hostname)) return undefined
   return value
+}
+
+function avatarHostTrusted(hostname: string): boolean {
+  const labels = hostname.toLowerCase().replace(/\.$/, "").split(".")
+  const root = avatarTrustedRoot.split(".")
+  if (labels.length < 2 || labels.some((label) => label === "")) return false
+  return labels.at(-2) === root[0] && labels.at(-1) === root[1]
 }
 
 export function accountAvatarURL(login?: RemoteLoginStatus, models?: AccountModels): string | undefined {
