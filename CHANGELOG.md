@@ -24,7 +24,7 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   load leaves the name or its initial in place. Mail and access keys are not
   stored. (`F-210`, `F-211`, `C-006`)
 
-- Settings → MCP can edit connections as JSON text. The text uses the same
+- Settings → Tools can edit connections as JSON text. The text uses the same
   `mcpServers` object as other clients. Entries in the text are added or
   updated, and connections that are not in the text stay, including saved
   credentials. A command written on one line is split into the program and its
@@ -61,7 +61,7 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Fixed
 
-- Settings → MCP → Edit JSON colors the document with the same JSON syntax
+- Settings → Tools → Edit JSON colors the document with the same JSON syntax
   highlighting as a tool schema. The text stays editable. (`F-176`)
 
 - A symbolic link inside a backed-up directory no longer makes the backup
@@ -80,7 +80,11 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   phone that does not send `directory` sees only the workspace root.
   (`F-140`, `F-224`, `C-020`)
 
-- Settings → MCP mounts each enabled remote tool as its own function when the
+- MCP connections, direct load, and Edit JSON are on Settings → Tools. There is
+  no separate MCP section. Edit JSON still uses the whole right-hand page.
+  (`F-176`, `C-041`)
+
+- Settings → Tools mounts each enabled remote tool as its own function when the
   schemas about to be mounted stay within `mcp.direct_load_percent` of the
   model context window. The default is 5. Zero always keeps the two catalog
   proxies. An unknown window uses `swarm.auto_compact_tokens`. The catalog is
@@ -95,7 +99,7 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   Opening one hides the other, so the two panels cannot cover the same spot.
   (`F-130`)
 
-- Settings → MCP → Edit JSON uses the whole right-hand settings page for the
+- Settings → Tools → Edit JSON uses the whole right-hand settings page for the
   document. Cancel or Apply returns to the connection list. (`F-176`)
 
 - The empty conversation screen has a larger heading, a narrower balanced lead
@@ -134,11 +138,11 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   information icon. The switches stay clear of the scrollbar.
   (`F-130`, `F-176`)
 
-- Settings → MCP assigns each connection id and shows the display name.
+- Settings → Tools assigns each connection id and shows the display name.
   The form does not ask for an id, and it does not rewrite the name, command,
   arguments or URL. (`F-176`, `C-041`)
 
-- Settings → MCP marks enabled and connection state in color, and highlights
+- Settings → Tools marks enabled and connection state in color, and highlights
   a tool's input schema. (`F-176`)
 
 - The README is the entry point. Day-to-day use is in
@@ -271,7 +275,7 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   Capacitor. The iOS sign-in browser presents from that scene so its login
   sheet remains visible after the migration.
 
-- Added Desktop/Web Settings → MCP for local stdio and remote Streamable HTTP/SSE
+- Added Desktop/Web MCP servers on Settings → Tools for local stdio and remote Streamable HTTP/SSE
   tool servers, write-only environment/header credentials, explicit connection
   inspection and tool/schema catalogs. Enabled servers provide namespaced lazy
   discovery/call proxies to subsequent toolsets, with ordinary results and Trace;

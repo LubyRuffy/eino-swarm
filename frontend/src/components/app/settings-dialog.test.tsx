@@ -20,6 +20,8 @@ vi.mock("@/lib/api", () => ({
     settings: vi.fn(),
     tools: vi.fn(),
     saveSettings: vi.fn(),
+    mcpServers: vi.fn(),
+    mcpPolicy: vi.fn(),
     remoteStatus: vi.fn(),
     remoteOffer: vi.fn(),
     saveRemoteToken: vi.fn(),
@@ -116,6 +118,8 @@ describe("Settings dialog", () => {
     vi.mocked(api.settings).mockReset()
     vi.mocked(api.settings).mockResolvedValue(base)
     vi.mocked(api.tools).mockResolvedValue({ catalog: [], enabled: [] })
+    vi.mocked(api.mcpServers).mockResolvedValue([])
+    vi.mocked(api.mcpPolicy).mockResolvedValue(5)
     vi.mocked(api.saveSettings).mockReset()
     vi.mocked(api.saveSettings).mockResolvedValue(base)
     vi.mocked(api.remoteStatus).mockResolvedValue({
@@ -371,6 +375,22 @@ describe("Settings dialog", () => {
   // scrollport. overflow-y-auto leaves TabsContent's overflow-hidden in
   // place, and with no bottom padding the 1px border is clipped.
   // Swarm used to skip the scrollport, so Save left the window.
+  it("keeps MCP connections on the Tools page", async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await waitSettingsLoaded()
+    expect(screen.queryByRole("tab", { name: "MCP" })).toBeNull()
+    await user.click(screen.getByRole("tab", { name: "Tools" }))
+    expect(await screen.findByRole("heading", { name: "Tools" })).toBeVisible()
+    expect(screen.getByRole("heading", { name: "MCP servers" })).toBeVisible()
+    await user.clear(screen.getByLabelText("Search settings"))
+    await user.type(screen.getByLabelText("Search settings"), "stdio")
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Tools" })).toHaveAttribute("data-state", "active"),
+    )
+    expect(screen.getByRole("heading", { name: "MCP servers" })).toBeVisible()
+  })
+
   it("lets every tab scroll inside a full-page sheet", async () => {
     renderDialog()
     await waitSettingsLoaded()

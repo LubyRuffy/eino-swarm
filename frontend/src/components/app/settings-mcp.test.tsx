@@ -262,6 +262,28 @@ describe("MCP connection settings", () => {
     expect(api.importMCPServers).toHaveBeenCalledOnce()
   })
 
+  it("keeps the surrounding tools page until JSON fills the pane", async () => {
+    vi.mocked(api.mcpServers).mockResolvedValue([saved])
+    render(<MCPTab leading={<h2>Built-in tools</h2>} />)
+    expect(await screen.findByRole("heading", { name: "Built-in tools" })).toBeVisible()
+    expect(screen.getByRole("heading", { name: "MCP servers" })).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Edit JSON" }))
+    expect(screen.getByRole("heading", { name: "JSON configuration" })).toBeVisible()
+    expect(screen.queryByRole("heading", { name: "Built-in tools" })).toBeNull()
+    expect(screen.queryByRole("heading", { name: "MCP servers" })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(screen.getByRole("heading", { name: "Built-in tools" })).toBeVisible()
+    expect(screen.getByRole("heading", { name: "MCP servers" })).toBeVisible()
+  })
+
+  it("hides MCP connections when the search is only about built-in tools", async () => {
+    vi.mocked(api.mcpServers).mockResolvedValue([saved])
+    render(<MCPTab query="proxy" leading={<h2>Built-in tools</h2>} />)
+    expect(await screen.findByRole("heading", { name: "Built-in tools" })).toBeVisible()
+    expect(screen.queryByRole("heading", { name: "MCP servers" })).toBeNull()
+    expect(screen.queryByText("Local tools")).toBeNull()
+  })
+
   it("saves the direct-load percent without changing connections", async () => {
     render(<MCPTab />)
     const input = await screen.findByLabelText("Direct load (%)")

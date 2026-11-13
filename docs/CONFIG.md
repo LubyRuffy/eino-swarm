@@ -579,8 +579,8 @@ See the "Full access" note in the [README](../README.md).
 
 ## External MCP servers
 
-Desktop and Web **Settings → MCP** manage external tool servers separately from
-built-in tools and provider cloud tools. No MCP server is configured by default.
+Desktop and Web **Settings → Tools** manage external tool servers on the same
+page as built-in tools, separately from provider cloud tools. No MCP server is configured by default.
 Opening Settings reads configuration; **Test connection and list tools** explicitly opens a short
 connection, lists the server's tools and closes it. Inspection does not execute a
 tool and is available even while that server is disabled.
@@ -649,7 +649,7 @@ with no `type` uses Streamable HTTP; `type` may also be `stdio`, `sse`, `http`
 or `streamableHttp`. Omitted `enabled` and `timeout_seconds` keep their saved
 values. An invalid document changes nothing.
 
-`direct_load_percent` is 0–100 and defaults to 5. Settings → MCP edits it.
+`direct_load_percent` is 0–100 and defaults to 5. Settings → Tools edits it.
 `0` always keeps the two catalog proxies. After a turn is admitted, and before
 its first model request, zwai estimates the tokens in the MCP schemas it would
 mount (remote name, description and JSON schema only; built-in tools are not
@@ -681,7 +681,7 @@ is skipped and recorded; the other tools on that server stay. Direct mode does
 not also mount `list_tools` and `call_tool`. A call connects with that call's
 cancellation context. The same server shares one session.
 
-Settings → MCP writes `enabled`. The composer Tools menu does not. It stores
+Settings → Tools writes `enabled`. The composer Tools menu does not. It stores
 remote names the user switched off in `disabled_tools` (default empty, so every
 discovered tool is available). A direct tool with that name is omitted from the
 next model request. On the catalog proxies, `list_tools` omits it and

@@ -46,6 +46,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 ## C-041 Explicit MCP servers keep private configuration and scoped sessions
 
 - 状态：active；类型：security / lifecycle / compatibility；作用范围：`mcp.servers`、独立 MCP CRUD／inspect API、Desktop/Web 设置和会话工具表；关联功能：`F-176`、`F-130`、`F-170`。
+- 入口：Desktop/Web 的连接、直接挂载比例和 JSON 编辑在 Settings → Tools，没有单独的 MCP 导航。打开这一页只读取配置。
 - 配置身份：服务器 ID 唯一，格式为 1–32 ASCII 字母／数字／下划线／连字符；按 ID 保存仅替换该项。设置表单不收集、不展示 ID，新建时分配 ID，编辑保持原 ID，并按原样提交名称、命令、参数和 URL。列表和输入框工具菜单向用户显示名称。API 与配置文件仍以 ID 为身份。UI 新建发送 `If-None-Match: *`，串行配置更新中已存在同 ID 则返回412／mcp_exists且保留普通／私有字段；无此 header 的 PUT 保持 upsert 兼容。无默认外部服务器，打开设置只读，不自动执行命令或连接远端。支持 stdio、Streamable HTTP、SSE；URL 不接受 user info 或 fragment；本机命令按参数数组启动，不经 shell。
 - 私有值：env/headers 保存于 mode0600 的 config.yaml，HTTP 读取仅返回排序的 key。PUT 省略或 null 保留对应 map，空对象清除，非空对象完整替换。普通 command/args/URL 可读，凭据应使用私有 map。普通 Settings 保存不能覆盖 MCP；校验／持久化失败不发布候选。
 - JSON 文本：`POST /api/mcp/import` 与 Settings 的 Edit JSON 在一次事务中新增或更新文档里的服务器；文档未提到的服务器及其凭据不变。键是已有 ID 时更新该 ID；否则匹配唯一显示名称；再否则合法键作为新 ID，其他名称分配新 ID。同一文档不能指向同一服务器两次，多个同名已保存服务器拒绝而不是猜测。`enabled`／`disabled` 与 `timeout_seconds` 省略时更新保留原值，新建为启用和 0。`disabled_tools` 省略或 null 保留已保存的远端工具例外，显式数组替换并去重；非法名字或超过 256 项拒绝整份文档。env／headers 省略或 null 保留，`{}` 清除。仅有 URL 时为 Streamable HTTP；`type` 还可为 stdio、sse、http、streamableHttp。stdio 的一行 `command` 在参数省略或为空时拆成程序和参数，引号成组，不启动 shell；管道、重定向和未加引号的 `$` 拒绝。带空格且没有独立参数的程序路径写成带引号的命令。`envFile` 与 `cwd` 拒绝且不读取。非法文档不发布。响应仍只含凭据键名，错误不含凭据、URL 或命令文本。

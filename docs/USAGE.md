@@ -968,7 +968,8 @@ machine. Settings does not show that page. The behavior of the list is in
 
 ## External MCP tools
 
-Open **Settings → MCP** on Desktop or Web to add a local stdio command or a
+Open **Settings → Tools** on Desktop or Web. MCP connections are on that
+page, under the built-in tools. Add a local stdio command or a
 remote Streamable HTTP/SSE server. Enter a display name and the connection.
 The app assigns the id and leaves the name, command, arguments and URL as
 typed. Save the connection, then choose **Test connection and list tools**. You can inspect a disabled server before enabling
@@ -1000,7 +1001,7 @@ with a query to find a name, then with that exact name for the full schema.
 The description tells the model to query this catalog before a local command
 or a direct API call. The server's title is not a reason to skip it.
 
-Settings → MCP owns the server's enabled switch. The composer Tools menu lists
+Settings → Tools owns the server's enabled switch. The composer Tools menu lists
 that server's remote tools and can switch each one off without disabling the
 server. A tool switched off during a turn leaves the next request. Plan and
 Nuwa read-only toolsets do not mount MCP tools. Other Nuwa turns make the

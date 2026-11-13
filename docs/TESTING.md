@@ -177,7 +177,7 @@ python3 -B tools/native_macos_mcp.py --case --candidate "$FROZEN_MCP_INPUTS" \
 ```
 
 API setup creates one disabled harmless stdio fixture (`tools/mcp_fixture.py`).
-Actual window actions open Settings → MCP, open and save the existing connection,
+Actual window actions open Settings → Tools, open and save the existing connection,
 inspect it, and expand its tool/schema. Readback checks the exact server fields
 and unchanged private configuration bytes/mode0600; private values must not appear
 in the form. The expanded schema needs native AX text intersecting the actual

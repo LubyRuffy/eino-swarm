@@ -165,7 +165,7 @@ def run(context):
     config_before = config_path.read_bytes()
     helper(context, deadline, "controls", "reload")
     press(context, deadline, "Settings")
-    press(context, deadline, "MCP")
+    press(context, deadline, "Tools")
     row = wait_view(context, deadline, lambda row: name in visible_text(row), "native MCP server list")
     save_window(context, deadline, "mcp-01-connections", row)
     press(context, deadline, "Edit " + name)

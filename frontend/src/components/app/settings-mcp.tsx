@@ -1,19 +1,40 @@
+import type { ReactNode } from "react"
 import { Braces, ChevronDown, ChevronRight, Circle, Loader2, Pencil, Plus, Plug, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Disclosure } from "@/components/ui/collapsible"
 import { HighlightedLines } from "@/lib/highlighted-lines"
-import { mcpTransportKey } from "@/lib/mcp-settings"
+import { mcpTransportKey, type MCPServerView } from "@/lib/mcp-settings"
+import { useT, type Translate } from "@/lib/use-t"
 import { cn } from "@/lib/utils"
-import { useT } from "@/lib/use-t"
 import { useMCPSettings } from "@/store/mcp-settings"
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog"
 import { MCPJSONEditor } from "./mcp-json-editor"
 import { MCPServerEditor } from "./mcp-server-editor"
 import { SettingsPage, SettingsRow, SettingsSection, settingsHintClass, settingsMatch } from "./settings-field"
 
+/** Search words for connections, transports and the old MCP page. */
+export const mcpSettingsSearch =
+  "mcp server external tools stdio streamable http sse connection command environment headers MCP 服务 外部工具 连接 命令 环境变量 请求头"
+
 type MCPMark = "on" | "off" | "connected" | "failed" | "checking" | "unchecked"
+
+function mcpBlockVisible(query: string, servers: MCPServerView[], t: Translate) {
+  if (settingsMatch(
+    query,
+    mcpSettingsSearch,
+    t("mcp.title"),
+    t("mcp.description"),
+    t("mcp.directLoad"),
+    t("mcp.directLoadHint"),
+    t("mcp.servers"),
+    t("mcp.empty"),
+    t("mcp.catalog"),
+    t("mcp.catalogHint"),
+  )) return true
+  return servers.some((server) => settingsMatch(query, server.name, t(mcpTransportKey(server.transport))))
+}
 
 function markTone(mark: MCPMark) {
   if (mark === "on" || mark === "connected") return "text-done"
@@ -30,15 +51,20 @@ function StatusMark({ mark }: { mark: MCPMark }) {
   return <Circle aria-hidden data-mcp-status={mark} className={cn("size-2.5 shrink-0 fill-current", tone)} />
 }
 
-export function MCPTab({ query = "" }: { query?: string }) {
+export function MCPTab({ query = "", leading }: { query?: string; leading?: ReactNode }) {
   const t = useT()
   const state = useMCPSettings()
   const locked = !!state.busy || !!state.draft || state.jsonText !== undefined
+  // The JSON document is the whole right-hand pane. Leaving the tools list
+  // above it collapses the editor.
   if (state.jsonText !== undefined) {
     return <MCPJSONEditor text={state.jsonText} saving={state.busy === "json"} error={state.formError}
       onChange={state.setJsonText} onApply={() => void state.applyJSON()} onCancel={state.cancelJSON} />
   }
   return (
+    <>
+    {leading}
+    {mcpBlockVisible(query, state.servers, t) ? (
     <SettingsPage title={t("mcp.title")} description={t("mcp.description")}>
       <SettingsSection title={t("mcp.directLoad")}>
         <SettingsRow label={t("mcp.directLoad")} hint={t("mcp.directLoadHint")} htmlFor="mcp-direct-load">
@@ -129,5 +155,7 @@ export function MCPTab({ query = "" }: { query?: string }) {
         onOpenChange={(open) => { if (!open) state.setPendingDelete(undefined) }}
         onConfirm={() => { if (state.pendingDelete) void state.remove(state.pendingDelete.id) }} />
     </SettingsPage>
+    ) : null}
+    </>
   )
 }

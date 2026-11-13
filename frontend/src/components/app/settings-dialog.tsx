@@ -5,7 +5,6 @@ import {
   Library,
   Loader2,
   Palette,
-  Plug,
   Search,
   Smartphone,
   UserRound,
@@ -22,7 +21,7 @@ import { BackupTab } from "@/components/app/settings-backup"
 import { RemoteTab } from "@/components/app/settings-remote"
 import { SwarmTab } from "@/components/app/settings-swarm"
 import { ToolsTab } from "@/components/app/settings-tools"
-import { MCPTab } from "@/components/app/settings-mcp"
+import { MCPTab, mcpSettingsSearch } from "@/components/app/settings-mcp"
 import { SettingsPage, SettingsSection, settingsMatch } from "@/components/app/settings-field"
 import { Button } from "@/components/ui/button"
 import {
@@ -84,13 +83,7 @@ function sections(t: Translate) {
       id: "tools",
       label: t("settings.nav.tools"),
       icon: Wrench,
-      keys: "proxy http https search fetch exec shell 工具 代理",
-    },
-    {
-      id: "mcp",
-      label: t("settings.nav.mcp"),
-      icon: Plug,
-      keys: "mcp server external tools stdio streamable http sse connection command environment headers MCP 服务 外部工具 连接 命令 环境变量 请求头",
+      keys: `proxy http https search fetch exec shell 工具 代理 ${mcpSettingsSearch}`,
     },
     {
       id: "memory",
@@ -572,14 +565,18 @@ export function SettingsDialog({
                     />
                   ) : null}
                   {page === "tools" ? (
-                    <ToolsTab
-                      settings={settings}
-                      catalog={catalog}
-                      onChange={apply}
+                    <MCPTab
                       query={query}
+                      leading={
+                        <ToolsTab
+                          settings={settings}
+                          catalog={catalog}
+                          onChange={apply}
+                          query={query}
+                        />
+                      }
                     />
                   ) : null}
-                  {page === "mcp" ? <MCPTab query={query} /> : null}
                   {page === "memory" ? (
                     <MemorySettings
                       settings={settings}

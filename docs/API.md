@@ -883,7 +883,7 @@ Invalid input returns `400 invalid_mcp`; failed persistence returns
 ### `POST /api/mcp/import`
 
 Apply one JSON document in a single configuration update. The body is the
-document, up to 1 MiB, not a wrapper. Settings → MCP → Edit JSON posts the
+document, up to 1 MiB, not a wrapper. Settings → Tools → Edit JSON posts the
 textarea here. Either of these shapes is accepted, and `servers` may be an
 object with the same entry fields as `mcpServers`:
 
