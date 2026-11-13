@@ -5,6 +5,12 @@ import { setLocale } from "@/lib/i18n"
 import { Composer } from "./composer"
 
 describe("Composer", () => {
+  it("hides the model control when the paired PC is in the default product mode", () => {
+    setLocale("en")
+    render(<Composer label="Message" sendLabel="Send" onSubmit={vi.fn()} hideModel models={[{ provider_id: "p", model: "one", default: true }]} />)
+    expect(screen.queryByRole("button", { name: "Model" })).toBeNull()
+  })
+
   it("sends the trimmed text and clears the box", () => {
     setLocale("en")
     const onSubmit = vi.fn()

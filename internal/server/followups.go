@@ -38,6 +38,9 @@ func (s *Server) enqueueFollowup(c *gin.Context) {
 		badRequest(c, "could not read the request body: %v", err)
 		return
 	}
+	if s.rejectSignedOut(c) {
+		return
+	}
 	f, err := s.engine.EnqueueFollowup(th.ID, req.Text)
 	if err != nil {
 		s.fail(c, err)
@@ -79,6 +82,9 @@ func (s *Server) requeueFollowup(c *gin.Context) {
 func (s *Server) steerFollowup(c *gin.Context) {
 	th, ok := s.thread(c)
 	if !ok {
+		return
+	}
+	if s.rejectSignedOut(c) {
 		return
 	}
 	turn, err := s.engine.SteerFollowup(th.ID, c.Param("fid"))

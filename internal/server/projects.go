@@ -509,6 +509,9 @@ func (s *Server) reviewThread(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if s.rejectSignedOut(c) {
+		return
+	}
 	turn, err := s.engine.ReviewTurn(th.ID)
 	if err != nil {
 		s.fail(c, err)

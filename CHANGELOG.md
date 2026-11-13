@@ -8,6 +8,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Added
 
+- The install mode is `product.mode`. A missing key means FOFA: sign in before
+  work, no Settings → Models section, and no composer model menu. Custom
+  provider edits and discovery are refused. `local` is written only when set,
+  from the config file or by clicking the portrait in the desktop account
+  details three times. That writes `local` and does not switch back. There is
+  no Settings control for the mode. (`F-173`, `C-047`)
+
 - A signed-in account can show the public avatar published by Gateway
   `avatar_url` when its host is `fofa.info`, `nosec.org`, `baimaohui.net`, or a subdomain of one of those roots.
   Desktop keeps a safe address with the private device receipt

@@ -229,6 +229,7 @@ export type EngineStartup = {
   startup?: "restoring" | "ready"
   restore?: { completed: number; total: number; failed?: number }
   data_generation?: number
+  product_mode?: "fofa" | "local"
 }
 
 export type PcWebExecutionStatus = {

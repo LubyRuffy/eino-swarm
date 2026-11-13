@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from "vitest"
 
 import { Composer } from "./composer"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import type { Meta } from "@/lib/types"
+import { useApp } from "@/store/app"
 import { api } from "@/lib/api"
 import { IME_KEYCODE } from "@/lib/ime"
 import { formatQuotedMessage } from "@/lib/quote"
@@ -71,6 +73,16 @@ describe("Composer model switcher", () => {
   it("stays a switcher when only one model is ready", () => {
     renderComposer()
     expect(screen.getByLabelText("Model")).toBeTruthy()
+  })
+
+  it("hides the switch while this install is in the default product mode", () => {
+    act(() => { useApp.setState({ meta: { product_mode: "fofa" } as Meta }) })
+    try {
+      renderComposer()
+      expect(screen.queryByLabelText("Model")).toBeNull()
+    } finally {
+      act(() => { useApp.setState({ meta: undefined }) })
+    }
   })
 })
 

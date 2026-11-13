@@ -87,6 +87,30 @@ func New(eng *engine.Engine, cfg *config.Config, log *slog.Logger) *Host {
 	return h
 }
 
+// phoneAllows is the paired-phone gate for this install. Mock can still run
+// a scripted turn. FOFA never accepts a provider change from the phone.
+func (h *Host) phoneAllows() (bool, bool) {
+	if h == nil || h.eng == nil || h.cfg == nil {
+		return true, true
+	}
+	mock := false
+	if pool := h.eng.Providers(); pool != nil {
+		mock = pool.IsMock()
+	}
+	return installAllows(mock, h.cfg.Snapshot().Product.FOFA(), h.AccountModels().State)
+}
+
+func installAllows(mock, fofa bool, accountState string) (bool, bool) {
+	if !fofa {
+		return true, true
+	}
+	if mock {
+		return true, false
+	}
+	signedIn := accountState != "" && accountState != AccountSignedOut
+	return signedIn, false
+}
+
 // AccountModels is the state of the signed-in account's model access.
 func (h *Host) AccountModels() AccountModelsState {
 	if h == nil {

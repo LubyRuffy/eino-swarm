@@ -7438,7 +7438,11 @@ npx playwright test e2e/shell.spec.ts -g "settings"
 
 Playwright starts the real server itself (`go run ./cmd/zwai web --mock --no-open`),
 so a run exercises the whole stack: gin, the engine, SQLite, SSE and the built
-front end.
+front end. The launcher writes `product.mode: local` into that run's data
+directory before start, because a fresh file is FOFA and would hide the Models
+tab the existing specs open. `ZWAI_E2E_FOFA=1` skips that seed and runs
+`e2e/product-mode.spec.ts` only. Go harnesses that edit models set the same
+local value in memory; `config.Default` stays FOFA.
 
 Concurrent Playwright commands must isolate all three resources: server port
 (`ZWAI_E2E_PORT`), application data (`ZWAI_E2E_DATA_DIR`) and artifacts

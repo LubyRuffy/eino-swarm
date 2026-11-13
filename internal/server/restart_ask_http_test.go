@@ -380,6 +380,7 @@ func newRestartAskHTTPHarness(t *testing.T, dir, endpoint string) (*harness, fun
 	cfg.Models.Providers[0].BaseURL = endpoint
 	cfg.Models.Providers[0].APIKey = ""
 	cfg.Models.Providers[0].Model = "offline-restart-question"
+	cfg.Product.Mode = config.ProductModeLocal
 	cfg.Swarm.AutoTitle = false
 	cfg.Memory.AutoReview = false
 	st, err := store.Open(cfg.DBPath())

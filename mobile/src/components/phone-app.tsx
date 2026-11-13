@@ -123,6 +123,7 @@ export function PhoneApp() {
   const [loadingMore, setLoadingMore] = useState(false)
   const { models, levels, catalogBusy, refreshModels, refreshBusy, refreshError, webExecutionStatus, predictionsEnabled } = useModelCatalog(link)
   const startup = useEngineStartup(link)
+  const hidePcModel = startup?.product_mode === "fofa"
   const restoring = startup?.startup === "restoring"
   const [composerPending, setComposerPending] = useState(false)
   const [view, setView] = useState<PhoneView>(emptyView())
@@ -800,6 +801,7 @@ export function PhoneApp() {
             onRefreshModels={refreshModels}
             refreshBusy={refreshBusy}
             refreshError={refreshError}
+            hideModel={hidePcModel}
             restoring={restoring}
             pending={composerPending}
             onSelectHost={selectHost}
@@ -846,6 +848,7 @@ export function PhoneApp() {
             onRefreshModels={refreshModels}
             refreshBusy={refreshBusy}
             refreshError={refreshError}
+            hideModel={hidePcModel}
             onTune={(next) => void tuneThread(detail.id, next)}
             onBack={() => void closeThread()}
             onOpenAccount={openPcAccount}

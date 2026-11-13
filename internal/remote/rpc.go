@@ -42,6 +42,7 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req R
 			return mapErr(req.ID, path, sessionID, genErr)
 		}
 		resp.DataGeneration = &generation
+		resp.ProductMode = eng.Config().Snapshot().Product.Resolved()
 		resp.WebExecutionSupported = true
 		webStatus := tools.DescribeWebExecution(eng.Config())
 		resp.WebExecutionStatus = &webStatus

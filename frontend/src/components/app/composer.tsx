@@ -206,6 +206,7 @@ export function Composer({
   )
   const prediction = useApp((s) => s.transcript.prediction)
   const predictionsOn = useApp((s) => predictionsEnabled(s.meta?.swarm?.composer_predictions))
+  const hideModels = useApp((s) => s.meta?.product_mode) === "fofa"
   const [dismissedPredictionTurn, setDismissedPredictionTurn] = useState<string | undefined>(undefined)
   const durable = useComposerDraft(draftKey)
   const [localText, setLocalText] = useState("")
@@ -824,14 +825,16 @@ export function Composer({
               <TooltipContent>{t("composer.attachHint")}</TooltipContent>
             </Tooltip>
 
-            <ModelPicker
-              models={models}
-              providerId={provider}
-              model={model}
-              onChange={onModelChange}
-              onRefresh={onRefreshModels}
-              onEdit={onEditProviders}
-            />
+            {hideModels ? null : (
+              <ModelPicker
+                models={models}
+                providerId={provider}
+                model={model}
+                onChange={onModelChange}
+                onRefresh={onRefreshModels}
+                onEdit={onEditProviders}
+              />
+            )}
 
             <ComposerTools
               disabled={readOnly}

@@ -87,6 +87,9 @@ export function ConfiguredBanner({ onConfigure }: { onConfigure: () => void }) {
   const t = useT()
   const meta = useApp((s) => s.meta)
   if (!meta || meta.configured) return null
+  const fofa = meta.product_mode === "fofa"
+  const state = meta.account_models?.state
+  if (fofa && (!state || state === "signed_out")) return null
   // The server account leads; a model service of your own stays one click away.
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border bg-running/10 px-4 py-2 text-sm">
@@ -95,9 +98,11 @@ export function ConfiguredBanner({ onConfigure }: { onConfigure: () => void }) {
         {t("banner.unconfigured")}
       </span>
       <AccountSignIn compact />
-      <Button size="sm" variant="outline" onClick={onConfigure}>
-        {t("banner.configure")}
-      </Button>
+      {fofa ? null : (
+        <Button size="sm" variant="outline" onClick={onConfigure}>
+          {t("banner.configure")}
+        </Button>
+      )}
     </div>
   )
 }

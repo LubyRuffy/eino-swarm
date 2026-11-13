@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { DestRail } from "./dest-rail"
-import type { RemoteStatus } from "@/lib/types"
+import type { Meta, RemoteStatus } from "@/lib/types"
+import { useApp } from "@/store/app"
 import { useSettingsSheet } from "@/store/settings-sheet"
 
 const fake = vi.hoisted(() => ({
@@ -17,6 +18,8 @@ const fake = vi.hoisted(() => ({
   settings: vi.fn(),
   saveSettings: vi.fn(),
   remoteStatus: vi.fn(),
+  meta: vi.fn(async () => ({ product_mode: "local" })),
+  models: vi.fn(async () => ({ models: [] })),
 }))
 
 vi.mock("@/lib/use-remote-status", () => ({
@@ -34,6 +37,8 @@ vi.mock("@/lib/api", () => ({
     settings: fake.settings,
     saveSettings: fake.saveSettings,
     remoteStatus: fake.remoteStatus,
+    meta: fake.meta,
+    models: fake.models,
   },
 }))
 
@@ -81,6 +86,8 @@ beforeEach(() => {
   fake.start.mockResolvedValue({ ...anonymous, auth_mode: "account", enabled: true, login: { state: "authorization_pending" } })
   fake.cancel.mockResolvedValue({ ...anonymous, login: { state: "cancelled" } })
   fake.logout.mockResolvedValue({ ...anonymous, auth_mode: "account", login: { state: "signed_out" } })
+  fake.saveSettings.mockResolvedValue({})
+  useApp.setState({ meta: undefined })
   useSettingsSheet.setState({ open: false, section: "general" })
 })
 
@@ -357,5 +364,28 @@ describe("desktop account entry", () => {
     expect(useSettingsSheet.getState()).toMatchObject({ open: true, section: "remote" })
     await act(async () => {})
     expect(screen.queryByRole("dialog", { name: "Account" })).not.toBeInTheDocument()
+  })
+
+  it("shows a portrait in account details and writes local after three clicks", async () => {
+    render(<DestRail {...props} />)
+    const dialog = openAccount()
+    const portrait = within(dialog).getByTestId("account-portrait")
+    expect(portrait.querySelector("svg")).toBeTruthy()
+    fireEvent.click(portrait)
+    fireEvent.click(portrait)
+    expect(fake.saveSettings).not.toHaveBeenCalled()
+    fireEvent.click(portrait)
+    await waitFor(() => expect(fake.saveSettings).toHaveBeenCalledWith({ product: { mode: "local" } }))
+    expect(fake.saveSettings).toHaveBeenCalledTimes(1)
+  })
+
+  it("leaves an install that is already local unchanged", () => {
+    useApp.setState({ meta: { product_mode: "local" } as Meta })
+    render(<DestRail {...props} />)
+    const portrait = within(openAccount()).getByTestId("account-portrait")
+    fireEvent.click(portrait)
+    fireEvent.click(portrait)
+    fireEvent.click(portrait)
+    expect(fake.saveSettings).not.toHaveBeenCalled()
   })
 })

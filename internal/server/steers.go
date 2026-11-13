@@ -12,6 +12,9 @@ func (s *Server) preempt(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if s.rejectSignedOut(c) {
+		return
+	}
 	if err := s.engine.Preempt(th.ID); err != nil {
 		s.fail(c, err)
 		return

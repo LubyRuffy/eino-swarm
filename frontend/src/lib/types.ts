@@ -539,6 +539,8 @@ export interface Meta {
   /** Chrome language: system, en, or zh. Kept next to `ui` so older clients
    *  that only read this field still pin the dictionary. */
   locale?: string
+  /** fofa hides model settings and the composer switch. Absent is not fofa. */
+  product_mode?: "fofa" | "local"
   ui?: UISettings
   /** Shells holding a presence connection. Empty when this process has none. */
   clients?: PresenceClient[]
@@ -655,6 +657,8 @@ export type SettingsPatch = Omit<Partial<Settings>, "models" | "swarm" | "ui"> &
     providers: ProviderSettingsWrite[]
   }
   swarm?: Omit<SwarmLimits, "agent_timeout_seconds"> & { agent_timeout_seconds?: number }
+  /** Writes local into the install. Omitted leaves the stored mode alone. */
+  product?: { mode: "fofa" | "local" }
 }
 
 /** Read-only local agent transcripts. Blank directories are filled on save. */

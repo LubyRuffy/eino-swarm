@@ -372,8 +372,9 @@ export function SettingsDialog({
     }
   }
 
+  const productMode = useApp((s) => s.meta?.product_mode)
   const visibleNav = nav.filter((s) =>
-    settingsMatch(query, s.label, s.keys),
+    settingsMatch(query, s.label, s.keys) && !(productMode === "fofa" && s.id === "models"),
   )
   // Radix used to fire an empty value when the panes were not TabsContent.
   // An unknown id paints a blank sheet with no rail highlight.

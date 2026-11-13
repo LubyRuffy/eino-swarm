@@ -102,6 +102,7 @@ func (h *Host) serveLink(owner *hostLinkGroup, peer string, active *hostLink, l 
 	}
 	h.log.Info("remote device linked", "path", l.Path(), "session", l.SessionID())
 	pump := newLinkPump(h.eng, cfg, l)
+	pump.allow = h.phoneAllows
 	// A watch may already be waiting for sendMu when cancellation wins. Check
 	// after that lock too, before entering the old Link's transport. A write
 	// already in the dependency remains governed by its own write deadline.

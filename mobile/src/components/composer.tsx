@@ -51,6 +51,7 @@ export function Composer({
   refreshBusy,
   refreshError,
   onTune,
+  hideModel = false,
 }: {
   label: string
   prediction?: ComposerPrediction
@@ -77,6 +78,7 @@ export function Composer({
   refreshBusy?: boolean
   refreshError?: string
   onTune?: (next: { providerId: string; model: string; reasoning: string }) => void
+  hideModel?: boolean
 }) {
   const [dismissedPrediction, setDismissedPrediction] = useState<string>()
   const [text, setText] = useState("")
@@ -98,7 +100,8 @@ export function Composer({
   const quotedCommand = command?.id === "goal" || command?.id === "plan"
   const ready = hasDraft && !disabled && !pending
   const showStop = Boolean(onStop && stopLabel && (pending || !hasDraft))
-  const showTools = models.length > 0 || reasoningLevels.length > 0 || catalogBusy || Boolean(onRefreshModels)
+  const showModel = !hideModel && (models.length > 0 || catalogBusy || Boolean(onRefreshModels))
+  const showTools = showModel || reasoningLevels.length > 0
   const lockedModel = models.length === 1 && Boolean(models[0]?.locked)
   const modelText = choiceLabel(models, pick) || t("composer.model")
 
@@ -320,12 +323,12 @@ export function Composer({
         >
           <Paperclip className="size-4" aria-hidden />
         </button>
-        {catalogBusy && models.length === 0 ? (
+        {showModel && catalogBusy && models.length === 0 ? (
           <div aria-busy="true" className="h-8 min-w-24 flex-1 animate-pulse rounded-full bg-muted motion-reduce:animate-none">
             <span className="sr-only">{t("composer.loading")}</span>
           </div>
         ) : null}
-        {models.length > 0 || onRefreshModels ? (
+        {showModel && (models.length > 0 || onRefreshModels) ? (
           <button
             type="button"
             aria-label={t("composer.model")}
@@ -357,7 +360,7 @@ export function Composer({
         ) : null}
         {showTools ? null : <span className="flex-1" />}
       </div>
-      {modelPickerOpen && !lockedModel ? (
+      {showModel && modelPickerOpen && !lockedModel ? (
         <ModelPicker
           models={models}
           providerId={pick.providerId}

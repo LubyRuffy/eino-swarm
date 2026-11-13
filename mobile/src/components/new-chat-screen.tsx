@@ -29,6 +29,7 @@ export function NewChatScreen({
   onRefreshModels,
   refreshBusy,
   refreshError,
+  hideModel,
   pending,
   restoring,
   onSelectHost,
@@ -50,6 +51,7 @@ export function NewChatScreen({
   onRefreshModels?: () => void | Promise<void>
   refreshBusy?: boolean
   refreshError?: string
+  hideModel?: boolean
   pending?: boolean
   restoring?: boolean
   onSelectHost: (fingerprint: string) => void
@@ -129,6 +131,7 @@ export function NewChatScreen({
         onRefreshModels={onRefreshModels}
         refreshBusy={refreshBusy}
         refreshError={refreshError}
+        hideModel={hideModel}
         onSubmit={(text, extra) => (extra ? onStart(text, project, extra) : onStart(text, project))}
       />
     </main>

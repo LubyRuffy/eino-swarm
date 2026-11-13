@@ -86,6 +86,9 @@ func (s *Server) createSchedule(c *gin.Context) {
 		badRequest(c, "could not read the request body: %v", err)
 		return
 	}
+	if s.rejectSignedOut(c) {
+		return
+	}
 	row, err := s.engine.CreateSchedule(engine.ScheduleInput{
 		Kind:           req.Kind,
 		ThreadID:       req.ThreadID,
@@ -159,6 +162,9 @@ func (s *Server) deleteSchedule(c *gin.Context) {
 }
 
 func (s *Server) runScheduleNow(c *gin.Context) {
+	if s.rejectSignedOut(c) {
+		return
+	}
 	turn, err := s.engine.RunScheduleNow(c.Param("id"))
 	if err != nil {
 		s.fail(c, err)

@@ -8,6 +8,8 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { api } from "@/lib/api"
+import { errorMessage, toastError } from "@/store/toasts"
+import { refreshMetaAndModels } from "@/store/app-models"
 import { accountAvatarURL } from "@/lib/avatar-url"
 import type { MessageKey } from "@/lib/i18n"
 import { remoteAccountName } from "@/lib/remote-account-name"
@@ -62,6 +64,11 @@ export function DesktopAccountMenu() {
   const managed = status?.auth_mode === "account"
   const login = managed ? status.login : undefined
   const models = useApp((s) => s.meta?.account_models)
+  const fofa = useApp((s) => s.meta?.product_mode) === "fofa"
+  const clicks = useRef(0)
+  const clickTimer = useRef<number | undefined>(undefined)
+  const unlocking = useRef(false)
+  useEffect(() => () => window.clearTimeout(clickTimer.current), [])
   const [pictureFailed, setPictureFailed] = useState(false)
   const authorized = !unavailable && login?.state === "authorized"
   const signingOut = login?.state === "signing_out"
@@ -91,6 +98,20 @@ export function DesktopAccountMenu() {
     return api.remoteStatus()
   })
   const logout = () => run(api.logoutRemote)
+  const onPortraitClick = () => {
+    clicks.current += 1
+    window.clearTimeout(clickTimer.current)
+    clickTimer.current = window.setTimeout(() => { clicks.current = 0 }, 1200)
+    if (clicks.current < 3) return
+    clicks.current = 0
+    window.clearTimeout(clickTimer.current)
+    if (unlocking.current || useApp.getState().meta?.product_mode === "local") return
+    unlocking.current = true
+    void api.saveSettings({ product: { mode: "local" } })
+      .then(() => refreshMetaAndModels())
+      .catch((error) => toastError(errorMessage(error)))
+      .finally(() => { unlocking.current = false })
+  }
   const settings = () => {
     handoff.current = true
     setOpen(false)
@@ -172,7 +193,23 @@ export function DesktopAccountMenu() {
               <DialogTitle>{t("desktopAccount.title")}</DialogTitle>
               <DialogDescription>{t("desktopAccount.description")}</DialogDescription>
             </DialogHeader>
-            <p className="text-sm text-muted-foreground">{t("desktopAccount.localHint")}</p>
+            <div className="flex justify-center">
+              <button
+                type="button"
+                data-testid="account-portrait"
+                aria-label={accountName || undefined}
+                tabIndex={-1}
+                className="flex size-16 items-center justify-center overflow-hidden rounded-full bg-muted text-foreground"
+                onClick={onPortraitClick}
+              >
+                {picture && !pictureFailed ? (
+                  <img src={picture} alt="" referrerPolicy="no-referrer" className="size-full object-cover" onError={() => setPictureFailed(true)} />
+                ) : initial ? (
+                  <span className="text-xl font-medium">{initial}</span>
+                ) : <UserRound className="size-7" />}
+              </button>
+            </div>
+            {fofa ? null : <p className="text-sm text-muted-foreground">{t("desktopAccount.localHint")}</p>}
             {failed ? <p role="alert" className="text-sm text-destructive">{t("desktopAccount.actionFailed")}</p> : null}
             <RemoteLoginSection
               accountEntry

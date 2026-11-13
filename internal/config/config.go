@@ -37,6 +37,8 @@ type Config struct {
 	Remote      RemoteConfig      `yaml:"remote" json:"remote"`
 	Search      SearchConfig      `yaml:"search" json:"search"`
 	Clients     ClientsConfig     `yaml:"clients" json:"clients"`
+	// Product is omitted while the install stays on the default FOFA behavior.
+	Product ProductConfig `yaml:"product,omitempty" json:"product,omitempty"`
 
 	// dataDir is where this config was loaded from. Not serialized: the file
 	// cannot meaningfully record its own location.
@@ -631,6 +633,9 @@ func Load(dataDir string) (*Config, error) {
 	if err := cfg.validateMCP(); err != nil {
 		return nil, err
 	}
+	if err := cfg.validateProduct(); err != nil {
+		return nil, err
+	}
 	cfg.normalize()
 
 	if os.IsNotExist(err) {
@@ -682,6 +687,7 @@ func firstEnv(keys ...string) string {
 // normalize repairs a hand-edited or partially-filled config so the rest of
 // the process never has to second-guess it.
 func (c *Config) normalize() {
+	c.normalizeProduct()
 	d := Default()
 	if strings.TrimSpace(c.Server.Addr) == "" {
 		c.Server.Addr = d.Server.Addr
@@ -920,6 +926,9 @@ func (c *Config) save() error {
 		return err
 	}
 	if err := c.validateMCP(); err != nil {
+		return err
+	}
+	if err := c.validateProduct(); err != nil {
 		return err
 	}
 	if strings.TrimSpace(c.dataDir) == "" {

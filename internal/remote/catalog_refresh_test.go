@@ -29,6 +29,8 @@ func catalogEngine(t *testing.T, rows ...config.Provider) *engine.Engine {
 	if len(rows) > 0 {
 		cfg.Models.Default = rows[0].ID
 	}
+	// Catalog refresh is a provider edit. The default install refuses it.
+	cfg.Product.Mode = config.ProductModeLocal
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}

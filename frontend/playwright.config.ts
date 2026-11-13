@@ -21,12 +21,14 @@ const generationInterruption = process.env.ZWAI_E2E_GENERATION_INTERRUPTION === 
 const projectHistory = process.env.ZWAI_E2E_PROJECT_HISTORY === "1"
 const nuwa = process.env.ZWAI_E2E_NUWA === "1"
 const mcpProgress = process.env.ZWAI_E2E_MCP_PROGRESS === "1"
+const fofaMode = process.env.ZWAI_E2E_FOFA === "1"
 const loopbackModel = reasoningFields || workerCompletion || scheduleAnswer || modelAPIError || workerRoster || goalSchedule || goalPause || humanWakePolicy || memoryReview || builtinTools || workerOwnership || generationInterruption || projectHistory || nuwa || mcpProgress
+const seedLocal = fofaMode ? "" : `printf '%s\\n' 'product:' '  mode: local' > ${dataDir}/config.yaml && `
 
 export default defineConfig({
   testDir: "./e2e",
   globalSetup: "./e2e/engine-presence.ts",
-  testMatch: mcpProgress ? "mcp-progress.spec.ts" : nuwa ? "nuwa.spec.ts" : reasoningFields ? "reasoning-fields.spec.ts" : workerCompletion ? "worker-completion.spec.ts" : scheduleAnswer ? "schedule-answer.spec.ts" : generationInterruption ? "generation-interruption.spec.ts" : workerOwnership ? "schedule-worker-ownership.spec.ts" : builtinTools ? "builtin-tools.spec.ts" : memoryReview ? "memory-review.spec.ts" : modelAPIError ? ["api-error.spec.ts", "route-recovery.spec.ts", "transcript-error-retry.spec.ts"] : workerRoster ? "worker-roster-history.spec.ts" : goalPause ? "goal-pause.spec.ts" : goalSchedule ? "goal-schedule.spec.ts" : humanWakePolicy ? "human-wake-policy.spec.ts" : projectHistory ? "project-history.spec.ts" : undefined,
+  testMatch: fofaMode ? "product-mode.spec.ts" : mcpProgress ? "mcp-progress.spec.ts" : nuwa ? "nuwa.spec.ts" : reasoningFields ? "reasoning-fields.spec.ts" : workerCompletion ? "worker-completion.spec.ts" : scheduleAnswer ? "schedule-answer.spec.ts" : generationInterruption ? "generation-interruption.spec.ts" : workerOwnership ? "schedule-worker-ownership.spec.ts" : builtinTools ? "builtin-tools.spec.ts" : memoryReview ? "memory-review.spec.ts" : modelAPIError ? ["api-error.spec.ts", "route-recovery.spec.ts", "transcript-error-retry.spec.ts"] : workerRoster ? "worker-roster-history.spec.ts" : goalPause ? "goal-pause.spec.ts" : goalSchedule ? "goal-schedule.spec.ts" : humanWakePolicy ? "human-wake-policy.spec.ts" : projectHistory ? "project-history.spec.ts" : undefined,
   timeout: 90_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
@@ -45,7 +47,7 @@ export default defineConfig({
     // web server first, so a setup hook would delete the directory the server
     // had already opened.
     // Workers pause so wait_agents stays pending long enough to Steer.
-    command: `rm -rf ${dataDir} && ZWAI_MOCK_WORKER_DELAY_MS=1500 ZWAI_MOCK_SCHEDULE_ACK=${scheduledAck} go run ../cmd/zwai web --addr 127.0.0.1:${port} --no-open ${loopbackModel ? "" : "--mock"} --data-dir ${dataDir}`,
+    command: `rm -rf ${dataDir} && mkdir -p ${dataDir} && ${seedLocal}ZWAI_MOCK_WORKER_DELAY_MS=1500 ZWAI_MOCK_SCHEDULE_ACK=${scheduledAck} go run ../cmd/zwai web --addr 127.0.0.1:${port} --no-open ${loopbackModel ? "" : "--mock"} --data-dir ${dataDir}`,
     env: loopbackModel ? { OPENAI_BASE_URL: "", OPENAI_API_KEY: "", OPENAI_MODEL: "" } : undefined,
     url: `http://127.0.0.1:${port}/api/meta`,
     // Never reuse: a server left over from a previous run holds an open handle

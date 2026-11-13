@@ -64,6 +64,11 @@ stays the same.
 project's instruction is the business context; when the two conflict, the
 project wins.
 
+A new install does not list **Settings → Models** and the composer has no model
+menu. Work asks you to sign in first. Those model controls appear after
+`product.mode: local` is set in the config file. See [Configuration](CONFIG.md).
+The key is absent until then.
+
 **Settings → Models** is base URL, API key, discover, and the default. The
 switch on a provider row shows that endpoint in the composer; off hides it
 from the model list without dropping a conversation that already uses it.

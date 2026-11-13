@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { SettingsDialog } from "./settings-dialog"
 import { ToastStack } from "./toast-stack"
 import { defaultAppearance } from "@/lib/appearance"
-import { defaultRemoteSettings, type RemoteStatus, type Settings } from "@/lib/types"
+import { defaultRemoteSettings, type Meta, type RemoteStatus, type Settings } from "@/lib/types"
+import { useApp } from "@/store/app"
 
 class ResizeObserverStub {
   observe() {}
@@ -124,6 +125,15 @@ describe("Settings dialog", () => {
       online: false,
     })
     vi.mocked(api.remoteBindings).mockResolvedValue([])
+    useApp.setState({ meta: undefined })
+  })
+
+  it("hides Models while this install is in the default product mode", async () => {
+    useApp.setState({ meta: { product_mode: "fofa" } as Meta })
+    renderDialog()
+    await waitSettingsLoaded()
+    expect(screen.queryByRole("tab", { name: "Models" })).toBeNull()
+    expect(screen.getByRole("tab", { name: "General" })).toBeVisible()
   })
 
   it("drains an earlier save before account login and does not rewrite enabled account settings", async () => {

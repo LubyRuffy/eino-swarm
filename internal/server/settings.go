@@ -36,6 +36,7 @@ type metaView struct {
 	Capabilities    map[string]bool           `json:"capabilities"`
 	Swarm           config.SwarmConfig        `json:"swarm"`
 	Locale          string                    `json:"locale"`
+	ProductMode     string                    `json:"product_mode"`
 	UI              config.UIConfig           `json:"ui"`
 	Clients         []PresenceClient          `json:"clients"`
 	DataGeneration  int64                     `json:"data_generation"`
@@ -78,6 +79,7 @@ func (s *Server) getMeta(c *gin.Context) {
 		},
 		Swarm:          cfg.Swarm,
 		Locale:         cfg.UI.Locale,
+		ProductMode:    cfg.Product.Resolved(),
 		UI:             cfg.UI,
 		Clients:        clients,
 		DataGeneration: generation,
@@ -105,6 +107,9 @@ type settingsView struct {
 	Remote      config.RemoteConfig      `json:"remote"`
 	Search      config.SearchConfig      `json:"search"`
 	Clients     config.ClientsConfig     `json:"clients"`
+	Product     struct {
+		Mode string `json:"mode"`
+	} `json:"product"`
 }
 
 type providerView struct {
@@ -136,6 +141,7 @@ func toSettingsView(cfg *config.Config) settingsView {
 	v.Remote = cfg.Remote
 	v.Search = cfg.Search
 	v.Clients = cfg.Clients
+	v.Product.Mode = cfg.Product.Resolved()
 	v.Models.Default = cfg.Models.Default
 	v.Models.DefaultSource = cfg.Models.DefaultSource
 	v.Models.AccountModel = cfg.Models.AccountModel
@@ -243,6 +249,7 @@ type putSettingsRequest struct {
 	Remote      *config.RemoteConfig      `json:"remote"`
 	Search      *config.SearchConfig      `json:"search"`
 	Clients     *config.ClientsConfig     `json:"clients"`
+	Product     *config.ProductConfig     `json:"product"`
 }
 
 // putMemorySettings preserves the verifier setting when older clients save
@@ -340,6 +347,9 @@ func (s *Server) putSettings(c *gin.Context) {
 		if req.Clients != nil {
 			next.Clients = *req.Clients
 		}
+		if req.Product != nil {
+			next.Product.Mode = req.Product.Mode
+		}
 		if req.Models != nil {
 			existing := map[string]config.Provider{}
 			for _, p := range cfg.Models.Providers {
@@ -416,6 +426,9 @@ func (s *Server) putSettings(c *gin.Context) {
 				presentation = *req.Models.AccountPresentation
 			}
 			next.Models = config.ModelsConfig{Default: req.Models.Default, DefaultSource: source, AccountModel: accountModel, AccountPresentation: presentation, Providers: providers}
+			if next.Product.FOFA() && !config.SameModelSettings(cfg.Models, next.Models) {
+				return errCustomModelsDisabled
+			}
 		}
 
 		*cfg = next
@@ -453,6 +466,9 @@ type discoverModelsRequest struct {
 }
 
 func (s *Server) discoverModels(c *gin.Context) {
+	if s.rejectCustomModels(c) {
+		return
+	}
 	var req discoverModelsRequest
 	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
 		badRequest(c, "could not read the request body: %v", err)

@@ -146,6 +146,20 @@ clients:
 Any key you leave out, set to zero or set to an empty string is repaired with its
 default on load, so a partially hand-edited file always starts.
 
+## `product`
+
+| key | default | meaning |
+|---|---|---|
+| `mode` | absent, which means `fofa` | `fofa` or `local`. Absent and `fofa` are the same and are not written. `local` is written. Any other value is rejected on load and on save. |
+
+`fofa` is the install people get. Work waits until an account is signed in
+(`--mock` does not), Settings has no Models section, and the composer has no
+model menu. Custom provider edits and model discovery are refused. `local`
+shows those controls and accepts provider edits. There is no Settings row for
+this key. Set `product.mode: local` in the file, or click the portrait in the
+desktop account-details dialog three times in a row; that writes `local` and
+does not switch back. A hand edit is read on the next load.
+
 ## `server`
 
 | key | default | meaning |

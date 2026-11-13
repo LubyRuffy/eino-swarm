@@ -48,6 +48,7 @@ export function ThreadScreen({
   onRefreshModels,
   refreshBusy,
   refreshError,
+  hideModel,
   onTune,
   onStop,
   onAnswer,
@@ -82,6 +83,7 @@ export function ThreadScreen({
   onRefreshModels?: () => void | Promise<void>
   refreshBusy?: boolean
   refreshError?: string
+  hideModel?: boolean
   onTune?: (next: { providerId: string; model: string; reasoning: string }) => void
   onStop: () => void
   onAnswer: (text: string) => void | Promise<void>
@@ -516,6 +518,7 @@ export function ThreadScreen({
         onRefreshModels={onRefreshModels}
         refreshBusy={refreshBusy}
         refreshError={refreshError}
+        hideModel={hideModel}
         onTune={onTune}
         onSubmit={asking ? onAnswer : onSend}
       /> : null}

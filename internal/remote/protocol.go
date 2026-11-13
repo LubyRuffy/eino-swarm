@@ -130,6 +130,7 @@ type Response struct {
 	Startup               string                  `json:"startup,omitempty"`
 	Restore               *engine.RestoreProgress `json:"restore,omitempty"`
 	DataGeneration        *int64                  `json:"data_generation,omitempty"`
+	ProductMode           string                  `json:"product_mode,omitempty"`
 	V                     int                     `json:"v"`
 	ID                    string                  `json:"id"`
 	OK                    bool                    `json:"ok"`

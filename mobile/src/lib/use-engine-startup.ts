@@ -17,14 +17,13 @@ export function useEngineStartup(link: RemoteLink | null): EngineStartup | undef
         if (r.code === "unknown_op") { unsupported = true; return }
         if (r.ok) link.webExecutionSupported = r.web_execution_supported === true
         if (r.ok && (r.startup === "restoring" || r.startup === "ready")) {
-          setSnapshot({
-            link,
-            value: {
-              startup: r.startup,
-              restore: r.restore,
-              data_generation: typeof r.data_generation === "number" ? r.data_generation : undefined,
-            },
-          })
+          const value: EngineStartup = {
+            startup: r.startup,
+            restore: r.restore,
+            data_generation: typeof r.data_generation === "number" ? r.data_generation : undefined,
+          }
+          if (r.product_mode === "fofa" || r.product_mode === "local") value.product_mode = r.product_mode
+          setSnapshot({ link, value })
         }
       } catch {
         // Loss of metadata is not readiness. Keep the last acknowledged state.

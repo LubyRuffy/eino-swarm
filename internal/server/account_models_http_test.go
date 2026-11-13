@@ -74,6 +74,7 @@ func newAccountHarness(t *testing.T, signedIn bool) *accountHarness {
 	if err := a.Config.Update(func(c *config.Config) error {
 		c.Remote.AuthMode = config.RemoteAuthAccount
 		c.Remote.HubURL = origin
+		c.Product.Mode = config.ProductModeLocal
 		return nil
 	}); err != nil {
 		t.Fatal(err)

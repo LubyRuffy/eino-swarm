@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/backup"
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/remote"
 	"github.com/LubyRuffy/eino-swarm/internal/search"
@@ -355,6 +356,10 @@ func (s *Server) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, store.ErrInvalidCompletionSeq):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "bad_request"})
+	case errors.Is(err, errCustomModelsDisabled):
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "code": "custom_models_disabled"})
+	case errors.Is(err, config.ErrInvalidProductMode):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "invalid_product_mode"})
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}

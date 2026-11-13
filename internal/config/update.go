@@ -135,4 +135,7 @@ func (c *Config) publish(n *Config) {
 	if c.Clients != n.Clients {
 		c.Clients = n.Clients
 	}
+	if c.Product != n.Product {
+		c.Product = n.Product
+	}
 }

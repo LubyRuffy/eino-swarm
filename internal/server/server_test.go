@@ -17,6 +17,7 @@ import (
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/app"
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/server"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
@@ -43,6 +44,12 @@ func newHarness(t *testing.T) *harness {
 	})
 	if err != nil {
 		t.Fatalf("app.New: %v", err)
+	}
+	if err := a.Config.Update(func(c *config.Config) error {
+		c.Product.Mode = config.ProductModeLocal
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 	a.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	ts := httptest.NewServer(a.Server.Handler())

@@ -19,10 +19,18 @@ export function accountModelsProblem(account?: AccountModels): MessageKey | unde
   return reasons[account.reason ?? ""] ?? "accountModels.reason.unknown"
 }
 
-/** First-run welcome: nothing can run yet and the person has not answered. */
+/** First-run welcome: nothing can run yet and the person has not answered.
+ *  A FOFA install uses the sign-in gate instead of offering another model. */
 export function showWelcome(meta?: Meta): boolean {
-  if (!meta || meta.startup === "restoring") return false
+  if (!meta || meta.startup === "restoring" || meta.product_mode === "fofa") return false
   return !meta.configured && !meta.ui?.welcome_dismissed
+}
+
+/** FOFA with nobody signed in. The account button stays reachable behind it. */
+export function showLoginGate(meta?: Meta): boolean {
+  if (!meta || meta.startup === "restoring" || meta.product_mode !== "fofa") return false
+  const state = meta.account_models?.state
+  return !state || state === "signed_out"
 }
 
 /** The models the server account supplies, in the order the server sent.

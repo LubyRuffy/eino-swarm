@@ -34,6 +34,9 @@ func (s *Server) askSideChat(c *gin.Context) {
 		s.fail(c, engine.ErrInvalidSideChat)
 		return
 	}
+	if s.rejectSignedOut(c) {
+		return
+	}
 
 	select {
 	case s.sideChats <- struct{}{}:

@@ -50,6 +50,17 @@ beforeEach(() => {
 })
 
 describe("first-run welcome", () => {
+  it("asks a default install to sign in and leaves the account button usable", () => {
+    useApp.setState({ meta: meta({ product_mode: "fofa", configured: false }) })
+    render(<WelcomeGate />)
+    expect(screen.getByTestId("login-required")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Sign in to the official server" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Not now" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Use my own model service" })).toBeNull()
+    fireEvent.keyDown(screen.getByTestId("login-required"), { key: "Escape" })
+    expect(screen.getByTestId("login-required")).toBeTruthy()
+  })
+
   it("leads with the server account and keeps the own-service path beside it", () => {
     render(<WelcomeGate />)
     const dialog = screen.getByRole("dialog", { name: "Welcome to zwai" })

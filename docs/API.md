@@ -250,6 +250,7 @@ Client startup metadata. During recovery, clients poll it until `startup` is `re
              "goal_session_max_iterations": 40, "goal_auto_compact_percent": 80,
              "schedule_min_interval_seconds": 30, "schedule_tick_ms": 1000,
              "schedule_max_active": 32, "policy_reasoning_effort": ""},
+  "product_mode": "fofa",
   "locale": "system",
   "ui": {"locale": "system", "font": "system", "ui_font_size": "medium",
          "content_font": "ui", "font_size": "ui", "code_font": "mono",
@@ -261,7 +262,8 @@ Client startup metadata. During recovery, clients poll it until `startup` is `re
 
 `configured` is true when a model can answer: the offline provider, a configured
 provider with a usable endpoint, **or** a signed-in server account whose models
-are ready. `default_provider` is the provider id a new conversation uses
+are ready. `product_mode` is `fofa` or `local`; see `PUT /api/settings`.
+`default_provider` is the provider id a new conversation uses
 (`gateway:<hex>` when the account's models are the chosen default source, see
 `models.default_source`). `account_models` is what the local UI may know about
 the signed-in server account's model access; it never carries a credential or an
@@ -598,6 +600,21 @@ conversation column. Unknown locale values become `system`; unknown `font` /
 `medium` / `comfortable` / `user` / `zwai`. `content_font` blank is `ui`; `code_font` blank is `mono`.
 Omitted ui fields keep what is stored, so a language PUT cannot reset the
 typeface.
+
+`product.mode` is `fofa` or `local`. Omitting `product` keeps the stored value.
+`fofa` and an empty mode are the default and are not written into the file.
+`local` is written. Any other value is `400` with `invalid_product_mode`.
+`GET /api/meta` reports the resolved value as `product_mode` (`fofa` or `local`).
+`GET /api/settings` does the same under `product.mode`. While the resolved mode
+is `fofa`, a `models` section that is not identical to what is stored, and
+`POST /api/models/discover`, are `403` with `custom_models_disabled`. The stored
+providers stay. A request that sets `local` in the same body may change models.
+While `fofa` and the account state is missing or `signed_out`, turn, steer,
+continue, retry, compact, follow-up, side chat, review, schedule create and
+run, preempt, plan implement, and goal resume are `403` with `login_required`.
+`pending`, `ready`, `no_access`, and `unavailable` count as signed in. Stop and
+answer stay available. `--mock` does not require a sign-in. A server built
+without the account component has no sign-in state to require.
 
 `models.default_source` (`account` or `provider`) chooses whose models a new
 conversation starts on; omitting it keeps the stored value (the model list is

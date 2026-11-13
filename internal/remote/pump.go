@@ -46,6 +46,10 @@ type LinkPump struct {
 	watching string
 	watchWG  sync.WaitGroup
 	stage    *Staging
+	// allow is nil for callers that are not a product install. Production
+	// sets it from the host. work is false when a FOFA install is signed out;
+	// models is false when that install cannot change providers.
+	allow func() (work bool, models bool)
 
 	catalogMu     sync.Mutex
 	catalogCancel context.CancelFunc
@@ -99,6 +103,9 @@ func (p *LinkPump) Dispatch(msg []byte) {
 		p.reply(fail("", p.path, p.sessionID, "bad_request", "not json"))
 		return
 	}
+	if !p.permit(req) {
+		return
+	}
 	switch strings.TrimSpace(req.Op) {
 	case OpWatch:
 		p.reply(p.startWatch(req))
@@ -113,6 +120,26 @@ func (p *LinkPump) Dispatch(msg []byte) {
 	default:
 		p.reply(HandleWith(p.eng, p.cfg, p.stage, req, p.path, p.sessionID))
 	}
+}
+
+func (p *LinkPump) permit(req Request) bool {
+	if p == nil || p.allow == nil {
+		return true
+	}
+	work, models := p.allow()
+	switch strings.TrimSpace(req.Op) {
+	case OpTune, OpRefreshCatalog:
+		if !models {
+			p.reply(fail(req.ID, p.path, p.sessionID, "custom_models_disabled", "Model settings cannot be changed in this mode."))
+			return false
+		}
+	case OpStart, OpSend, OpSteer, OpContinue, OpRunNow, OpResumeGoal, OpPreempt, OpFollowupSteer:
+		if !work {
+			p.reply(fail(req.ID, p.path, p.sessionID, "login_required", "Sign in before using this install."))
+			return false
+		}
+	}
+	return true
 }
 
 func (p *LinkPump) touchDevice(label string) {

@@ -232,6 +232,9 @@ func (s *Server) patchThread(c *gin.Context) {
 		if req.Model != nil {
 			model = *req.Model
 		}
+		if (providerID != th.ProviderID || model != th.Model) && s.rejectCustomModels(c) {
+			return
+		}
 		if err := s.engine.SetThreadProvider(th.ID, providerID, model); err != nil {
 			s.fail(c, err)
 			return
@@ -262,6 +265,9 @@ func (s *Server) patchThread(c *gin.Context) {
 		}
 	}
 	if req.GoalResume != nil && *req.GoalResume {
+		if s.rejectSignedOut(c) {
+			return
+		}
 		if _, err := s.engine.ResumeThreadGoal(th.ID); err != nil {
 			s.fail(c, err)
 			return
@@ -367,6 +373,9 @@ func (s *Server) startTurn(c *gin.Context) {
 	// Steer must not rewind: ordinary Enter while idle falls through to
 	// StartTurn without this field. Only this endpoint is "edit and resend".
 	in.FromEventSeq = req.FromEventSeq
+	if s.rejectSignedOut(c) {
+		return
+	}
 	turn, err := s.engine.StartTurnInput(th.ID, in)
 	if err != nil {
 		s.fail(c, err)
@@ -397,6 +406,9 @@ func (s *Server) steer(c *gin.Context) {
 	in, err := req.input()
 	if err != nil {
 		s.fail(c, err)
+		return
+	}
+	if s.rejectSignedOut(c) {
 		return
 	}
 	err = s.engine.SteerInput(th.ID, in)
@@ -450,6 +462,9 @@ func (s *Server) continueTurn(c *gin.Context) {
 		badRequest(c, "continue must be true or false")
 		return
 	}
+	if s.rejectSignedOut(c) {
+		return
+	}
 	if err := s.engine.ContinueTurn(th.ID, *req.Continue); err != nil {
 		s.fail(c, err)
 		return
@@ -473,6 +488,9 @@ func (s *Server) retryFailedTurn(c *gin.Context) {
 	}
 	if strings.TrimSpace(req.TurnID) == "" {
 		badRequest(c, "turn_id is required")
+		return
+	}
+	if s.rejectSignedOut(c) {
 		return
 	}
 	turn, err := s.engine.RetryFailedTurn(th.ID, strings.TrimSpace(req.TurnID))
@@ -499,6 +517,9 @@ func (s *Server) listTurns(c *gin.Context) {
 func (s *Server) compactThread(c *gin.Context) {
 	th, ok := s.thread(c)
 	if !ok {
+		return
+	}
+	if s.rejectSignedOut(c) {
 		return
 	}
 	th, err := s.engine.CompactThread(th.ID)
