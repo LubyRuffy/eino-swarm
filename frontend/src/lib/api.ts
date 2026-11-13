@@ -516,6 +516,15 @@ export const api = {
 
   mcpServers: (signal?: AbortSignal) =>
     request<{ servers: MCPServerView[] }>("/api/mcp", { signal }).then((r) => r.servers),
+  mcpPolicy: (signal?: AbortSignal) =>
+    request<{ direct_load_percent?: number }>("/api/mcp", { signal }).then(
+      (r) => r.direct_load_percent ?? 5,
+    ),
+  saveMCPPolicy: (percent: number) =>
+    request<{ direct_load_percent: number }>("/api/mcp/policy", {
+      method: "PUT",
+      body: JSON.stringify({ direct_load_percent: percent }),
+    }).then((r) => r.direct_load_percent),
   saveMCPServer: (server: MCPServerInput, createOnly = false) =>
     request<{ server: MCPServerView }>(`/api/mcp/${encodeURIComponent(server.id)}`, {
       method: "PUT", body: JSON.stringify(server),

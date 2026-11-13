@@ -114,7 +114,9 @@ a later invocation. The assignment leaves project instructions, delegation and
 ordinary worker prompts as before.
 
 A delegating agent can call `list_worker_tools` to discover the available worker
-tool catalog, including configured MCP tools. Discovery does not mount these
+tool catalog, including the MCP tools mounted for that turn. Those names are
+individual remote functions when the catalog fits the direct-load percent, and
+the catalog proxies otherwise. Discovery does not mount these
 tools on the manager. Workers retain the full optional catalog allowed by their
 configuration even though the manager's own tool surface excludes execution.
 For a new role, `spawn_agent` accepts an optional `tool_names` array of exact

@@ -2,12 +2,14 @@ import type { Block } from "./transcript"
 import { block } from "./transcript-blocks"
 import type { SwarmEvent } from "./types"
 
-/** Engine admission receipts for original-history reads and report mode.
- *  Their text is raw tool arguments: evidence for Trace, never a chat row. */
+/** Engine receipts kept for Trace. History rows carry raw tool arguments;
+ *  mcp_catalog and account_profile carry diagnostic JSON. None of them is a chat row. */
 const ENGINE_RECEIPT_KINDS = new Set([
   "history_read_started",
   "history_report_requested",
   "history_registry_inherited",
+  "mcp_catalog",
+  "account_profile",
 ])
 
 /** Rows that live on the manager as quiet blocks so the Trace tab's Full log

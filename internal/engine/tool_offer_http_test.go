@@ -96,6 +96,7 @@ func TestUncheckedToolsLeaveTheNextModelRequest(t *testing.T) {
 	if err := e.cfg.Update(func(cfg *config.Config) error {
 		cfg.Memory.Enabled, cfg.Memory.AutoReview, cfg.Memory.AutoDream = false, false, false
 		cfg.Swarm.AutoTitle, cfg.Swarm.ComposerPredictions = false, false
+		cfg.MCP.DirectLoadPercent = 0
 		cfg.MCP.Servers = []config.MCPServer{{
 			ID: "desk", Name: "Desk", Transport: "stdio", Command: "true", Enabled: true,
 		}}

@@ -975,14 +975,27 @@ keep them, or use `{}` to clear one map. A command written on one line is split
 into the program and its arguments and is not run through a shell. The form is
 still there for editing one connection.
 
-Enabled servers add two namespaced Agent tools: `list_tools` and `call_tool`.
-They connect only when called, so an unavailable server does not hold up
-starting a turn. Settings → MCP owns the server's enabled switch. The
-composer Tools menu lists that server's remote tools and can switch each one
-off without disabling the server. Plan and Nuwa read-only toolsets do not mount MCP
-tools. Other Nuwa turns make them available to workers and keep the planner's
-toolset separate. If a captured session is closed, old tools return
-`session_expired` without reconnecting. Continue with a new turn. Keep secrets
+**Direct load (%)** defaults to 5. While the tool definitions about to be
+mounted stay within that percent of the model context window, each remote tool
+is a function the model can call. `0` always keeps catalog search. An unknown
+window uses the same token budget as automatic compaction. Listing happens
+after a turn has started, so an unavailable server does not hold up sending,
+and Stop cancels a list still in progress. A catalog already saved for that
+connection is reused without connecting.
+
+Above the percent, the server keeps two namespaced Agent tools, `list_tools`
+and `call_tool`. Their descriptions include the tool names. Ask `list_tools`
+with a query to find a name, then with that exact name for the full schema.
+The description tells the model to query this catalog before a local command
+or a direct API call. The server's title is not a reason to skip it.
+
+Settings → MCP owns the server's enabled switch. The composer Tools menu lists
+that server's remote tools and can switch each one off without disabling the
+server. A tool switched off during a turn leaves the next request. Plan and
+Nuwa read-only toolsets do not mount MCP tools. Other Nuwa turns make the
+mounted names available to workers and keep the planner's toolset separate.
+If a captured session is closed, old tools return `session_expired` without
+reconnecting. Continue with a new turn. Keep secrets
 in the write-only environment and header fields. Blank preserves the saved
 map. `{}` clears it. Local commands run with the conversation workspace as
 their working directory and retain the application's filesystem access. This

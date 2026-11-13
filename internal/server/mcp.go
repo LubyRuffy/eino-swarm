@@ -42,7 +42,30 @@ func (s *Server) getMCP(c *gin.Context) {
 	for _, server := range s.engine.Config().Snapshot().MCP.Servers {
 		servers = append(servers, mcpView(server))
 	}
-	c.JSON(http.StatusOK, gin.H{"servers": servers})
+	c.JSON(http.StatusOK, gin.H{
+		"servers":             servers,
+		"direct_load_percent": s.engine.Config().Snapshot().MCP.DirectLoadPercent,
+	})
+}
+
+func (s *Server) putMCPPolicy(c *gin.Context) {
+	var req struct {
+		DirectLoadPercent int `json:"direct_load_percent"`
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
+	if c.ShouldBindJSON(&req) != nil || req.DirectLoadPercent < 0 || req.DirectLoadPercent > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid MCP configuration", "code": "invalid_mcp"})
+		return
+	}
+	err := s.engine.UpdateConfig(func(cfg *config.Config) error {
+		cfg.MCP.DirectLoadPercent = req.DirectLoadPercent
+		return nil
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save MCP configuration", "code": "mcp_save_failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"direct_load_percent": req.DirectLoadPercent})
 }
 
 type putMCPRequest struct {

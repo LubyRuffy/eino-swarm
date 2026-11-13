@@ -129,6 +129,7 @@ func New(opts Options) (*Server, error) {
 		api.GET("/tools", s.getTools)
 		api.GET("/mcp", s.getMCP)
 		api.POST("/mcp/import", s.importMCP)
+		api.PUT("/mcp/policy", s.putMCPPolicy)
 		api.PUT("/mcp/:id", s.putMCP)
 		api.DELETE("/mcp/:id", s.deleteMCP)
 		api.POST("/mcp/:id/inspect", s.inspectMCP)

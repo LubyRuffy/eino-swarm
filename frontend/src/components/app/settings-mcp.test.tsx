@@ -5,7 +5,7 @@ import type { MCPServerInput, MCPServerView, MCPToolCatalog } from "@/lib/mcp-se
 import { MCPTab } from "./settings-mcp"
 
 vi.mock("@/lib/api", () => ({ api: {
-  mcpServers: vi.fn(), saveMCPServer: vi.fn(), deleteMCPServer: vi.fn(), inspectMCPServer: vi.fn(),
+  mcpServers: vi.fn(), mcpPolicy: vi.fn(), saveMCPPolicy: vi.fn(), saveMCPServer: vi.fn(), deleteMCPServer: vi.fn(), inspectMCPServer: vi.fn(),
   importMCPServers: vi.fn(),
 } }))
 
@@ -17,6 +17,8 @@ const saved: MCPServerView = {
 describe("MCP connection settings", () => {
   beforeEach(() => {
     vi.mocked(api.mcpServers).mockReset().mockResolvedValue([])
+    vi.mocked(api.mcpPolicy).mockReset().mockResolvedValue(5)
+    vi.mocked(api.saveMCPPolicy).mockReset().mockImplementation(async (percent: number) => percent)
     vi.mocked(api.saveMCPServer).mockReset().mockImplementation(async (input: MCPServerInput) => ({
       ...input, env_keys: Object.keys(input.env ?? {}), header_keys: Object.keys(input.headers ?? {}),
     }))
@@ -234,7 +236,9 @@ describe("MCP connection settings", () => {
     const text = screen.getByLabelText<HTMLTextAreaElement>("MCP JSON")
     expect(text.value).toContain('"command": "runner"')
     expect(text.value).not.toContain("TOKEN")
-    expect(screen.getByRole("button", { name: "Add server" })).toBeDisabled()
+    await waitFor(() => expect(text.parentElement?.querySelector("pre [style*='--shiki-light']")).toBeTruthy())
+    expect(screen.queryByRole("button", { name: "Add server" })).toBeNull()
+    expect(screen.queryByText("Local tools")).toBeNull()
     const content = '{"mcpServers":{"local":{"command":"next","args":["--serve"]}}}'
     fireEvent.change(text, { target: { value: content } })
     fireEvent.click(screen.getByRole("button", { name: "Apply JSON" }))
@@ -256,5 +260,15 @@ describe("MCP connection settings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
     expect(screen.queryByLabelText("MCP JSON")).toBeNull()
     expect(api.importMCPServers).toHaveBeenCalledOnce()
+  })
+
+  it("saves the direct-load percent without changing connections", async () => {
+    render(<MCPTab />)
+    const input = await screen.findByLabelText("Direct load (%)")
+    expect(input).toHaveValue(5)
+    fireEvent.change(input, { target: { value: "0" } })
+    fireEvent.blur(input)
+    await waitFor(() => expect(api.saveMCPPolicy).toHaveBeenCalledWith(0))
+    expect(api.saveMCPServer).not.toHaveBeenCalled()
   })
 })

@@ -13,10 +13,27 @@ const DefaultMCPTimeoutSeconds = 60
 // DefaultMCPToolPageSize is the list_tools proxy's optional per-call limit.
 const DefaultMCPToolPageSize = 10
 
+// DefaultMCPDirectLoadPercent mounts each remote tool directly while its
+// schema stays within this percent of the context window. Zero always uses
+// the two catalog proxies.
+const DefaultMCPDirectLoadPercent = 5
+
 // MCPConfig lists explicitly configured external tool servers. No server is
 // seeded from the environment or connected merely by opening settings.
 type MCPConfig struct {
-	Servers []MCPServer `yaml:"servers" json:"servers"`
+	// DirectLoadPercent is 0–100. Zero keeps progressive disclosure. A missing
+	// value stays at the default because Load unmarshals over Default.
+	DirectLoadPercent int         `yaml:"direct_load_percent" json:"direct_load_percent"`
+	Servers           []MCPServer `yaml:"servers" json:"servers"`
+}
+
+// FitsDirectLoad reports whether schema tokens fit in percent of budget.
+// A non-positive percent or budget always stays on the catalog proxies.
+func FitsDirectLoad(percent, budget, schemaTokens int) bool {
+	if percent <= 0 || budget <= 0 || schemaTokens < 0 {
+		return false
+	}
+	return int64(schemaTokens)*100 <= int64(budget)*int64(percent)
 }
 
 // MCPServer is one local command or remote endpoint. Env and Headers are
@@ -135,6 +152,9 @@ func (s *MCPServer) normalizeDisabledTools() error {
 }
 
 func (c *Config) validateMCP() error {
+	if c.MCP.DirectLoadPercent < 0 || c.MCP.DirectLoadPercent > 100 {
+		return fmt.Errorf("mcp: direct_load_percent must be between 0 and 100")
+	}
 	seen := make(map[string]bool, len(c.MCP.Servers))
 	for i := range c.MCP.Servers {
 		if err := c.MCP.Servers[i].normalizeDisabledTools(); err != nil {

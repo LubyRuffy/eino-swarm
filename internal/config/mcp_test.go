@@ -131,3 +131,32 @@ func TestMCPDisabledToolNamesRoundTripWithoutAliasing(t *testing.T) {
 		t.Fatal("accepted an empty tool name")
 	}
 }
+
+func TestMCPDirectLoadPercentDefaultsToFiveAndKeepsExplicitZero(t *testing.T) {
+	cfg, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.MCP.DirectLoadPercent != DefaultMCPDirectLoadPercent {
+		t.Fatalf("missing key published %d", cfg.MCP.DirectLoadPercent)
+	}
+	if err := cfg.Update(func(c *Config) error { c.MCP.DirectLoadPercent = 0; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := Load(cfg.DataDir())
+	if err != nil || reloaded.MCP.DirectLoadPercent != 0 {
+		t.Fatalf("explicit zero: %d %v", reloaded.MCP.DirectLoadPercent, err)
+	}
+	if err := cfg.Update(func(c *Config) error { c.MCP.DirectLoadPercent = 101; return nil }); err == nil {
+		t.Fatal("accepted a percent above 100")
+	}
+	if cfg.Snapshot().MCP.DirectLoadPercent != 0 {
+		t.Fatal("rejected percent was published")
+	}
+	if err := cfg.Update(func(c *Config) error { c.MCP.DirectLoadPercent = -1; return nil }); err == nil {
+		t.Fatal("accepted a negative percent")
+	}
+	if !FitsDirectLoad(5, 100, 5) || FitsDirectLoad(5, 100, 6) || FitsDirectLoad(0, 100, 0) || FitsDirectLoad(5, 0, 0) {
+		t.Fatal("direct-load comparison changed")
+	}
+}

@@ -44,9 +44,11 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   the composer. Tools that are on by default
   start on; tools that are off until enabled stay off. A remote tool starts
   on. Turning one off is saved immediately. The next model request omits that
-  built-in tool, or leaves that remote name out of `list_tools` and refuses
-  `call_tool`, including a turn that is already running. A built-in tool or
-  MCP server that was off when the turn started is mounted on the next turn.
+  built-in tool. A remote tool that was mounted directly is omitted too; when
+  the server is still on catalog proxies, the name leaves `list_tools` and
+  `call_tool` is refused. Either way the call does not run, including a turn
+  that is already running. A built-in tool, MCP server, or remote tool that
+  was off when the turn started is mounted on the next turn.
   A call that still arrives after the switch returns `tool_switched_off` and
   does not run. (`F-130`, `F-176`, `C-009`, `C-041`)
 
@@ -59,6 +61,17 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   is itself a link still stops the backup. (`F-422`, `C-044`)
 
 ### Changed
+
+- Settings → MCP mounts each enabled remote tool as its own function when the
+  schemas about to be mounted stay within `mcp.direct_load_percent` of the
+  model context window. The default is 5. Zero always keeps the two catalog
+  proxies. An unknown window uses `swarm.auto_compact_tokens`. The catalog is
+  read after the turn is admitted and Stop can cancel it; a saved catalog does
+  not connect. Above the threshold, or when listing fails, the proxies stay
+  and include the tool names. `list_tools` accepts a query and returns a full
+  schema only for an exact name. Switching a tool off removes it from the next
+  request. Restoring a worker keeps the names that turn mounted.
+  (`F-176`, `C-041`)
 
 - Choosing All models asks for confirmation. The prompt says this machine's
   own model services do not have the account's online capabilities. Staying

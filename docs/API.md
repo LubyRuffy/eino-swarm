@@ -800,11 +800,12 @@ fields already stored are sent back unchanged. A remote MCP tool switch is
 `env` / `headers` are omitted, so the saved private maps stay. The menu does
 not change `enabled`. The save is immediate. The next manager or worker model
 request uses the published built-in switches, including a turn that has
-already started. `list_tools` omits a remote name in `disabled_tools`, and
-`call_tool` for that name returns
+already started. A directly mounted remote function with that name is left
+out of the next request. On the catalog proxies, `list_tools` omits a remote
+name in `disabled_tools`, and `call_tool` for that name returns
 `{"ok":false,"code":"tool_switched_off","tool":"<remote name>"}` without
-running it. A built-in tool or server that was off when that turn built its
-toolset is included when the next turn builds one. Provider cloud
+running it. A built-in tool, server, or remote tool that was off when that
+turn built its toolset is included when the next turn builds one. Provider cloud
 `builtin_tools` are not in this menu. An inspect failure lists no invented
 tools and does not disable the server.
 
@@ -814,14 +815,25 @@ Read the configured external MCP servers without connecting to them. This is
 separate from the built-in `/api/tools` catalog and `/api/settings` payload.
 
 ```json
-{"servers":[{"id":"local-tools","name":"Local tools","transport":"stdio",
+{"direct_load_percent":5,
+ "servers":[{"id":"local-tools","name":"Local tools","transport":"stdio",
  "command":"/absolute/path/to/mcp-server","args":[],"url":"","enabled":true,
  "timeout_seconds":60,"env_keys":["ACCESS_TOKEN"],"header_keys":[]}]}
 ```
 
-`env_keys` and `header_keys` are sorted names only; `env` and `headers` values are
-never returned. Command, arguments and URL are ordinary visible fields; callers
-must use the private maps for credentials.
+`direct_load_percent` is the saved 0–100 threshold. `5` is the default. `0`
+keeps catalog proxies for every server. `env_keys` and `header_keys` are sorted
+names only; `env` and `headers` values are never returned. Command, arguments
+and URL are ordinary visible fields; callers must use the private maps for
+credentials.
+
+### `PUT /api/mcp/policy`
+
+Replace only `mcp.direct_load_percent`. The body is
+`{"direct_load_percent":5}`. A value outside 0–100 returns `400 invalid_mcp`
+and does not publish. Success returns `200 {"direct_load_percent":5}` after
+the atomic configuration save. Failed persistence returns `500 mcp_save_failed`
+without the candidate. This route does not replace `servers`.
 
 ### `PUT /api/mcp/:id`
 
@@ -912,9 +924,12 @@ connection. This works for disabled servers and does not invoke listed tools.
 ```
 
 `name` is the server's remote tool name; `original_name` retains that same name.
-Agent toolsets expose separate namespaced `list_tools`/`call_tool` proxies;
-`call_tool.name` uses the listed remote name. Inspection returns the full catalog,
-while the model's list proxy supports exact-name selection and paging. Inspection
+A successful inspection also refreshes that server's catalog cache. When the
+turn's schema estimate fits `direct_load_percent`, each listed tool is its own
+function and `call_tool` is not mounted. Otherwise the toolset exposes
+namespaced `list_tools`/`call_tool` proxies; `call_tool.name` uses the listed
+remote name, and `list_tools` accepts `query` plus exact-name selection and
+paging. Inspection returns the full catalog. Inspection
 uses the configured connection/discovery timeout. A missing ID returns `404`; connection or discovery failure returns
 `502 mcp_connection_failed` with a generic configuration hint and a safe typed
 `reason` such as `connection_failed`, `discovery_failed` or `invalid_schema`.
@@ -2608,6 +2623,7 @@ shortening only the bounded detail text.
 |---|---|
 | `user_message` | the request that started this turn. `images` is `{id,name,mime}[]` when the send carried pasted vision input; never the pixels |
 | `account_profile` | one official-source turn recorded the active profile. `text` is JSON `{label,alias,tools,restrict_tools,instruction_bytes}`. `tools` is present only when an allowlist was supplied. The guidance text is not stored. A later personal-provider turn does not emit it |
+| `mcp_catalog` | this turn froze how external MCP tools are mounted. `text` is JSON `{mode,percent,window,budget,schema_tokens,servers}`. `mode` is `direct` only when every enabled server was mounted as individual functions; otherwise `progressive`. `window` is the selected model's context window and may be `0`. `budget` is the denominator actually used. Each server has `id`, `mode`, optional `error`, `remotes` and `skipped`. No endpoint, credential or schema body. The same JSON is the restore source under `mcp-mounts/` |
 | `history_report_requested` | an explicit source-report choice owned by this turn and saved before model execution; no model-generated prose or authorization. Trace-only engine receipt, not a chat row |
 | `history_read_started` | host-owned admission to a `query_history` read attempt, before the reader returns any bytes; `text` is the original arguments and `tool_call_id` is retained when available. Not a successful read, complete coverage or execution receipt, and it does not select the report protocol. Trace-only engine receipt, not a chat row |
 | `history_registry_inherited` | host-observed reuse/restoration of actual Registry worker state; `source_turn_id` identifies an earlier turn in this conversation. Saved before successor occupation, idempotent and used to inherit read/request state; it neither changes worker authorship nor makes an unrelated fresh Registry inherit history mode. Trace-only engine receipt, not a chat row |

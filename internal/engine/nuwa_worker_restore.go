@@ -103,6 +103,10 @@ func (e *Engine) workerConfigurationForTag(ctx context.Context, threadID, tag st
 	if err != nil {
 		return swarm.WorkerConfig{}, err
 	}
+	set, err = e.applyMCPSurface(ctx, turn, set, true)
+	if err != nil {
+		return swarm.WorkerConfig{}, err
+	}
 	if turn.NuwaReadOnly {
 		set = tools.ExploreOnly(set)
 	}

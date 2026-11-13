@@ -12,6 +12,7 @@ export interface MCPConnectionState {
 export function useMCPSettings() {
   const t = useT()
   const [servers, setServers] = useState<MCPServerView[]>([])
+  const [directLoadPercent, setDirectLoadPercent] = useState(5)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
   const [draft, setDraft] = useState<MCPDraft>()
@@ -32,8 +33,14 @@ export function useMCPSettings() {
     setLoading(true)
     setLoadError("")
     try {
-      const loaded = await api.mcpServers(controller.signal)
-      if (!controller.signal.aborted) setServers(loaded)
+      const [loaded, percent] = await Promise.all([
+        api.mcpServers(controller.signal),
+        api.mcpPolicy(controller.signal),
+      ])
+      if (!controller.signal.aborted) {
+        setServers(loaded)
+        setDirectLoadPercent(percent)
+      }
     } catch (error) {
       if (!controller.signal.aborted) {
         setLoadError(errorMessage(error))
@@ -66,6 +73,7 @@ export function useMCPSettings() {
 
   const openJSON = () => {
     if (busyRef.current || draft || jsonText !== undefined) return
+    setPendingDelete(undefined)
     setJsonText(mcpServersDocument(servers))
     setFormError("")
   }
@@ -185,7 +193,17 @@ export function useMCPSettings() {
     }
   }
 
-  return { servers, loading, loadError, load, draft, setDraft, editing, edit, cancel, save,
+  const saveDirectLoad = async (percent: number) => {
+    if (!Number.isInteger(percent) || percent < 0 || percent > 100) return
+    try {
+      const saved = await api.saveMCPPolicy(percent)
+      if (alive.current) setDirectLoadPercent(saved)
+    } catch (error) {
+      if (alive.current) toastError(errorMessage(error), { title: t("mcp.saveFailed") })
+    }
+  }
+
+  return { servers, directLoadPercent, setDirectLoadPercent, saveDirectLoad, loading, loadError, load, draft, setDraft, editing, edit, cancel, save,
     jsonText, setJsonText, openJSON, cancelJSON, applyJSON,
     pendingDelete, setPendingDelete, remove, busy, formError, connections, inspect, expandedTools,
     setToolExpanded: (key: string, open: boolean) => setExpandedTools((current) => ({ ...current, [key]: open })) }

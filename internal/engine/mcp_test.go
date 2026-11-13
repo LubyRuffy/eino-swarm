@@ -22,7 +22,7 @@ import (
 
 func checkMCPRouteGuidance(t *testing.T, description string) {
 	t.Helper()
-	for _, rule := range []string{"inspect its current tool catalog", "unless the user specifies another route", "A past failure alone does not justify bypassing"} {
+	for _, rule := range []string{"query this catalog", "The server title is not evidence", "unless the user specifies another route", "A past failure alone does not justify bypassing"} {
 		if !strings.Contains(description, rule) {
 			t.Errorf("MCP tool description is missing routing guidance %q", rule)
 		}
@@ -212,7 +212,7 @@ func TestMCPToolsReachManagerAndWorkerAtTheRealModelBoundary(t *testing.T) {
 				if !manager {
 					switch workerSteps.Add(1) {
 					case 1:
-						nuwaValidationTool(w, request, "worker-list", list, "{}")
+						nuwaValidationTool(w, request, "worker-list", list, `{"name":"inspect_record"}`)
 					case 2:
 						checkCatalog("worker-list")
 						nuwaValidationTool(w, request, "worker-mcp", call, `{"name":"inspect_record","arguments":{"key":"record"}}`)
@@ -226,7 +226,7 @@ func TestMCPToolsReachManagerAndWorkerAtTheRealModelBoundary(t *testing.T) {
 				}
 				switch managerStep {
 				case 1:
-					nuwaValidationTool(w, request, "manager-list", list, "{}")
+					nuwaValidationTool(w, request, "manager-list", list, `{"name":"inspect_record"}`)
 				case 2:
 					checkCatalog("manager-list")
 					nuwaValidationTool(w, request, "manager-mcp", call, `{"name":"inspect_record","arguments":{"key":"record"}}`)
@@ -271,6 +271,7 @@ func TestMCPToolsReachManagerAndWorkerAtTheRealModelBoundary(t *testing.T) {
 				e.cfg.Models.Providers = append(e.cfg.Models.Providers, config.Provider{ID: workerProvider, BaseURL: endpoint.URL + "/worker/v1", Model: workerModel})
 				selectedRef = nuwaModelRef(workerProvider, workerModel)
 			}
+			e.cfg.MCP.DirectLoadPercent = 0
 			e.cfg.MCP.Servers = []config.MCPServer{server}
 			e.pool = provider.New(e.cfg)
 			projectID := ""
@@ -356,12 +357,12 @@ func TestPlanningMCPCommandFixture(t *testing.T) {
 func TestPlanningAndReadOnlyRestorationDoNotStartOrAdvertiseMCP(t *testing.T) {
 	e, _ := newScheduleCompletionHTTPEngine(t, func(w http.ResponseWriter, _ *http.Request, _ int, request scheduleCompletionRequest) {
 		for _, msg := range request.Messages {
-			if strings.Contains(msg.Content, "inspect its current tool catalog") {
+			if strings.Contains(msg.Content, "query this catalog") {
 				t.Error("planning received routing guidance for an unmounted MCP tool")
 			}
 		}
 		for _, offered := range request.Tools {
-			if strings.HasPrefix(offered.Function.Name, "mcp_") || strings.Contains(offered.Function.Description, "inspect its current tool catalog") {
+			if strings.HasPrefix(offered.Function.Name, "mcp_") || strings.Contains(offered.Function.Description, "query this catalog") {
 				t.Error("planning exposed external MCP capability")
 			}
 		}

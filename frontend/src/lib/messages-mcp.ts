@@ -63,6 +63,8 @@ export const mcpEN = {
   "mcp.catalogHint": "Test a saved connection to discover its tools. Testing may start its local server command.",
   "mcp.noTools": "This server has no tools.",
   "mcp.schema": "Input schema",
+  "mcp.directLoad": "Direct load (%)",
+  "mcp.directLoadHint": "Mount each remote tool when its schema stays within this percent of the context window. 0 always uses catalog search. The default is 5.",
 } as const
 
 export const mcpZH: { [K in keyof typeof mcpEN]: string } = {
@@ -130,4 +132,6 @@ export const mcpZH: { [K in keyof typeof mcpEN]: string } = {
   "mcp.catalogHint": "测试已保存的连接以发现工具。测试可能启动对应的本地服务命令。",
   "mcp.noTools": "此服务没有工具。",
   "mcp.schema": "输入参数定义",
+  "mcp.directLoad": "直接挂载（%）",
+  "mcp.directLoadHint": "即将挂载的工具定义不超过上下文窗口的这个百分比时，每个远端工具都是可直接调用的函数。0 始终使用目录查询。默认是 5。",
 }

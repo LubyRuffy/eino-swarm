@@ -968,15 +968,28 @@ return only environment/header key names. Serialized candidate updates preserve
 private maps when omitted and publish only after the atomic configuration save.
 Opening Settings does not establish MCP connections.
 
-`internal/mcpclient` adapts stdio, Streamable HTTP and SSE through two static,
-namespaced Eino proxies per enabled server: `list_tools` and `call_tool`.
-Constructing a conversation toolset snapshots configuration/workspace without
-external I/O; it cannot start a command or wait on discovery during turn admission,
-restoration or parked-worker setup. The first actual proxy invocation connects
-under its running tool's cancellation context. The shared holder binds that first
-entry, so later calls cannot silently reset server state. List output carries
-remote names, descriptions and input schemas with optional exact-name filtering
-or paging (default 10). Call accepts a discovered remote name and arguments.
+`internal/mcpclient` adapts stdio, Streamable HTTP and SSE. Admission still
+builds two static namespaced proxies per enabled server and performs no
+external I/O, including during restoration or parked-worker setup. After
+admission, and before the first model request, `direct_load_percent` (default
+5) decides the surface from the tokens in the MCP schemas about to be mounted.
+Within that percent of the model window — or of `auto_compact_tokens` when the
+window is unknown — each enabled remote tool is its own function and the
+proxies are not mounted. Above it, or when listing fails, the two proxies
+remain and their descriptions carry a name-and-one-line index. `list_tools`
+then accepts `query`; a full input schema is returned only for an exact name.
+The catalog is cached by connection fingerprint under `mcp-catalogs/` and
+contains no environment or header values. A cache hit does not connect. The
+list uses the turn's cancellable context, so Stop cancels it before the model
+runs. The decision is frozen for that turn in `mcp-mounts/` and a `mcp_catalog`
+event. A later turn decides again. Restoring an already dispatched worker
+rebuilds the names stored with that decision.
+
+The first actual invocation, direct or proxied, connects under its running
+tool's cancellation context. Tools from one server share a holder, which binds
+that first entry, so later calls cannot silently reset server state. A proxied
+call accepts a discovered remote name and arguments. Paging stays at the
+default of 10.
 
 Local commands use the captured workspace as cwd with the application's normal
 access. Plan and Nuwa read-only toolsets exclude MCP before construction. A
@@ -1006,9 +1019,11 @@ stateful server or replay an uncertain call. A later turn rebuilds its toolset;
 there is no promise that a session survives between tool calls. The composer
 and Settings publish the same built-in exception lists immediately. Settings
 owns each MCP server's `enabled` flag. The composer lists that server's remote
-tools and stores switched-off names on `disabled_tools`. Those names stay out
-of `list_tools`, and `call_tool` for one of them returns `tool_switched_off`
-without connecting or running it, including during a running turn. That switch
+tools and stores switched-off names on `disabled_tools`. A directly mounted
+function with that name is removed from the next model request. On the catalog
+proxies, the name stays out of `list_tools`, and `call_tool` for it returns
+`tool_switched_off` without connecting or running it, including during a
+running turn. That switch
 does not retire the server session. `liveToolOffer` is the last manager
 middleware, and each worker gets its own instance: the next model request
 keeps only built-in tools this turn already mounted that those switches still

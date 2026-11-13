@@ -89,7 +89,7 @@ func TestNuwaPlannerDelegatesExecutionToolsAtModelHTTP(t *testing.T) {
 				if receipt := nuwaValidationReceipt(request, "separation-worker-write"); receipt == "" || strings.Contains(receipt, `"error"`) {
 					t.Errorf("worker did not receive a successful write receipt: %s", receipt)
 				}
-				call("separation-worker-list", list, struct{}{})
+				call("separation-worker-list", list, map[string]string{"name": "inspect_record"})
 			case 4:
 				if !strings.Contains(nuwaValidationReceipt(request, "separation-worker-list"), "input_schema") {
 					t.Error("worker did not receive the remote MCP schema")
@@ -192,6 +192,7 @@ func TestNuwaPlannerDelegatesExecutionToolsAtModelHTTP(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Swarm.AutoTitle = false
 	e.cfg.Models = config.ModelsConfig{Default: account, Providers: []config.Provider{{ID: account, BaseURL: endpoint.URL, Model: planner, Catalog: []string{planner, executor}}}}
+	e.cfg.MCP.DirectLoadPercent = 0
 	e.cfg.MCP.Servers = []config.MCPServer{server}
 	e.pool = provider.New(e.cfg)
 	workspace := t.TempDir()
@@ -269,6 +270,7 @@ func TestNuwaPlannerCannotExecuteModelAuthoredWorkAtHTTP(t *testing.T) {
 				e.cfg.Swarm.AutoTitle = false
 				e.cfg.Models.Providers[0].BaseURL = endpoint.URL
 				e.cfg.Models.Providers[0].Model = "separation-control"
+				e.cfg.MCP.DirectLoadPercent = 0
 				e.cfg.MCP.Servers = []config.MCPServer{server}
 				e.pool = provider.New(e.cfg)
 				workspace := t.TempDir()

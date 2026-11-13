@@ -10,5 +10,9 @@ import (
 // InspectMCP tests a server with an ephemeral session anchored at the data
 // directory. It neither mounts tools on a running turn nor changes its snapshot.
 func (e *Engine) InspectMCP(ctx context.Context, server config.MCPServer) (mcpclient.Catalog, error) {
-	return e.mcp.Inspect(ctx, server, e.cfg.DataDir())
+	catalog, err := e.mcp.Inspect(ctx, server, e.cfg.DataDir())
+	if err == nil {
+		e.mcp.RememberCatalog(server, catalog)
+	}
+	return catalog, err
 }

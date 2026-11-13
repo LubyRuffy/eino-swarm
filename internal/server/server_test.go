@@ -849,6 +849,7 @@ func TestNotifyKindsAreStableAcrossTheWire(t *testing.T) {
 	// The engine's own kinds sit in the same column of the same table and are
 	// matched by the same front end, so renaming one is just as breaking.
 	for _, tc := range []struct{ got, want string }{
+		{engine.KindMCPCatalog, "mcp_catalog"},
 		{engine.KindAccountProfile, "account_profile"},
 		{engine.KindUser, "user_message"},
 		{engine.KindReasoning, "reasoning"},

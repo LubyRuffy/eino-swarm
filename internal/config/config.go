@@ -517,6 +517,7 @@ func Default() *Config {
 			ScheduleTickMS:             DefaultScheduleTickMS,
 			ScheduleMaxActive:          DefaultScheduleMaxActive,
 		},
+		MCP: MCPConfig{DirectLoadPercent: DefaultMCPDirectLoadPercent},
 		Tools: ToolsConfig{
 			WebExecution:        WebExecutionAuto,
 			Disabled:            []string{},

@@ -27,7 +27,8 @@ const events: SwarmEvent[] = [
   event(5, "tool_result", { text: '{"ok":true}', tool_call_id: "read" }),
   event(6, "history_registry_inherited", { agent_id: "" }),
   event(7, "agent_message", { text: "the answer" }),
-  event(8, "done", { text: "the answer" }),
+  event(8, "mcp_catalog", { text: '{"mode":"direct","percent":5}' }),
+  event(9, "done", { text: "the answer" }),
 ]
 
 describe("engine history receipts", () => {
@@ -39,6 +40,8 @@ describe("engine history receipts", () => {
     expect(container.textContent).not.toContain("history_read_started")
     expect(container.textContent).not.toContain("history_report_requested")
     expect(container.textContent).not.toContain("history_registry_inherited")
+    expect(container.textContent).not.toContain("mcp_catalog")
+    expect(container.textContent).not.toContain('"mode":"direct"')
     expect(screen.queryAllByTestId("memory-notice")).toHaveLength(0)
     expect(state.agentOrder).toEqual(["manager"])
   })
@@ -51,6 +54,8 @@ describe("engine history receipts", () => {
     expect(log).toHaveTextContent("history_read_started")
     expect(log).toHaveTextContent("history_report_requested")
     expect(log).toHaveTextContent("history_registry_inherited")
+    expect(log).toHaveTextContent("mcp_catalog")
+    expect(log).toHaveTextContent('"mode":"direct"')
     expect(log).toHaveTextContent("%needle%")
   })
 })

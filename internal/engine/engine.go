@@ -157,6 +157,9 @@ func NewWithAnswerRecoveryClock(cfg *config.Config, st *store.Store, pool *provi
 		predictions:         newPredictionPool(),
 		answerRecoveryClock: timing.OrReal(clock),
 	}
+	if cfg != nil {
+		e.mcp.SetCatalogDir(cfg.DataDir())
+	}
 	e.mcp.UseRemoteSwitches(func() []config.MCPServer {
 		if e.cfg == nil {
 			return nil

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -266,5 +267,27 @@ func TestMCPToolSwitchSurvivesAServerEditThatOmitsIt(t *testing.T) {
 	}, http.StatusBadRequest)
 	if len(h.app.Config.Snapshot().MCP.Servers[0].DisabledTools) != 0 {
 		t.Fatal("rejected switch published")
+	}
+}
+
+func TestMCPDirectLoadPercentIsEditableWithoutReplacingServers(t *testing.T) {
+	h := newHarness(t)
+	body := h.json(http.MethodGet, "/api/mcp", nil, http.StatusOK)
+	if body["direct_load_percent"] != float64(config.DefaultMCPDirectLoadPercent) {
+		t.Fatalf("default percent: %#v", body["direct_load_percent"])
+	}
+	h.json(http.MethodPut, "/api/mcp/local", map[string]any{
+		"name": "Local", "transport": "stdio", "command": "tool", "enabled": true,
+	}, http.StatusOK)
+	saved := h.json(http.MethodPut, "/api/mcp/policy", map[string]any{"direct_load_percent": 0}, http.StatusOK)
+	if saved["direct_load_percent"] != float64(0) || h.app.Config.Snapshot().MCP.DirectLoadPercent != 0 {
+		t.Fatalf("explicit zero was not saved: %#v", saved)
+	}
+	if len(h.app.Config.Snapshot().MCP.Servers) != 1 || h.app.Config.Snapshot().MCP.Servers[0].Command != "tool" {
+		t.Fatal("policy save replaced the server")
+	}
+	h.json(http.MethodPut, "/api/mcp/policy", map[string]any{"direct_load_percent": 101}, http.StatusBadRequest)
+	if h.app.Config.Snapshot().MCP.DirectLoadPercent != 0 {
+		t.Fatal("rejected percent was published")
 	}
 }

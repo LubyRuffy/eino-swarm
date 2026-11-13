@@ -78,9 +78,20 @@ through Registry/ADK and the real model HTTP adapter, with mode exclusions,
 snapshots and ordinary tool Trace. `internal/tools/mcp_resultcap_test.go` preserves
 both remote `isError` and adapter error identities below the output-budget floor.
 Toolset construction must not perform external I/O during turn admission,
-restoration or parked-worker setup. The two static proxy tools connect only during
-actual runtime calls. List supports exact-name selection/paging and call uses the
-listed remote name. Connection waiters must respond to cancellation. Proxy tools
+restoration or parked-worker setup. `internal/engine/mcp_mount_test.go` covers
+the post-admission decision: a small catalog is mounted as remote functions
+with no catalog proxies, an estimate over `auto_compact_tokens` when the
+window is unknown keeps the indexed proxies, percent 0 does not dial, Stop
+still cancels an unresponsive list before the model, a failed list keeps the
+turn on the proxies, switching one direct tool off removes it from the next
+request, and restoring a worker keeps the stored names. A missing catalog does
+not silently replace those names with the other pair.
+`internal/mcpclient/catalog_test.go` checks the mode-0600 cache, the query
+versus exact-schema list, and that a direct tool connects only when called.
+The two static proxy tools connect only during actual runtime calls. List
+supports query, exact-name selection and paging; an unfiltered page omits
+input schemas. Call uses the listed remote name. Connection waiters must
+respond to cancellation. Proxy tools
 must remain bound to their first session entry: reload, idle eviction or
 connection failure returns `session_expired`, without a silent reconnect or
 replay. A later toolset may reconnect/discover; no test may assume the idle cache
@@ -93,7 +104,8 @@ and enabling `python_runner` after the turn started does not mount it.
 `internal/mcpclient/manager_test.go` keep one mounted server and switch a
 single remote tool off: `list_tools` omits it, `call_tool` returns
 `tool_switched_off` without executing, and turning it back on uses the same
-session. `frontend/e2e/composer-tools.spec.ts` checks the open menu sits above
+session. A directly mounted name follows the same switch on the next model
+request and does not run. `frontend/e2e/composer-tools.spec.ts` checks the open menu sits above
 the composer, keeps each compact switch clear of the scrollbar, groups
 built-in tools together and starts them open, starts each MCP connection
 folded, filters by name, shows an enabled connection as its own group rather

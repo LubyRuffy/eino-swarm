@@ -17,18 +17,18 @@ import (
 )
 
 type entry struct {
-	gate                        chan struct{}
-	server                      config.MCPServer
-	workspace, fingerprint, key string
-	ctx                         context.Context
-	cancel                      context.CancelFunc
-	uses                        int  // Manager.mu
-	broken                      bool // Manager.mu
-	session                     *mcp.ClientSession
-	catalog                     Catalog
-	failed                      bool // gate; a failed initialization is never replayed on this entry
-	progressMu                  sync.Mutex
-	progress                    map[string]*activeProgress
+	gate                                    chan struct{}
+	server                                  config.MCPServer
+	workspace, fingerprint, key, catalogDir string
+	ctx                                     context.Context
+	cancel                                  context.CancelFunc
+	uses                                    int  // Manager.mu
+	broken                                  bool // Manager.mu
+	session                                 *mcp.ClientSession
+	catalog                                 Catalog
+	failed                                  bool // gate; a failed initialization is never replayed on this entry
+	progressMu                              sync.Mutex
+	progress                                map[string]*activeProgress
 }
 
 // Waiting for somebody else's initialization does not own its connection.
@@ -95,9 +95,19 @@ func (e *entry) connect(caller context.Context) (*mcp.ClientSession, Catalog, er
 			transport = &mcp.StreamableClientTransport{Endpoint: e.server.URL, HTTPClient: client, MaxRetries: -1}
 		}
 	}
+	catalogDir := e.catalogDir
+	fingerprint := e.fingerprint
 	client := mcp.NewClient(&mcp.Implementation{Name: "zwai", Version: "1"}, &mcp.ClientOptions{
 		Logger:                      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		ProgressNotificationHandler: e.handleProgress,
+		// A live session drops the saved catalog. The current turn keeps the
+		// tools it already mounted; the next turn lists again.
+		ToolListChangedHandler: func(context.Context, *mcp.ToolListChangedRequest) {
+			if catalogDir == "" || fingerprint == "" {
+				return
+			}
+			_ = os.Remove(catalogPath(catalogDir, fingerprint))
+		},
 	})
 	session, err := client.Connect(ctx, transport, nil)
 	if err != nil {
@@ -117,8 +127,8 @@ func (e *entry) connect(caller context.Context) (*mcp.ClientSession, Catalog, er
 		seen[remote.Name] = true
 		d := ToolDescriptor{Name: remote.Name, OriginalName: remote.Name, Description: remote.Description, InputSchema: remote.InputSchema}
 		if _, err := toolInfo(d); err != nil {
-			_ = session.Close()
-			return nil, Catalog{}, &Error{Code: "invalid_schema", ServerID: e.server.ID}
+			catalog.Skipped = append(catalog.Skipped, remote.Name)
+			continue
 		}
 		catalog.Tools = append(catalog.Tools, d)
 	}

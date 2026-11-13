@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/LubyRuffy/eino-swarm/internal/mcpclient"
 	"github.com/LubyRuffy/eino-swarm/internal/tools"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
@@ -35,7 +34,7 @@ func (e *Engine) toolOfferAllowed(name string) bool {
 		return true
 	}
 	snap := e.cfg.Snapshot()
-	return tools.Offered(snap.Tools, name) && mcpclient.ProxyOffered(snap.MCP.Servers, name)
+	return tools.Offered(snap.Tools, name) && e.mcpOffered(snap.MCP.Servers, name)
 }
 
 func (o *liveToolOffer) BeforeModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, _ *adk.ModelContext) (context.Context, *adk.ChatModelAgentState, error) {

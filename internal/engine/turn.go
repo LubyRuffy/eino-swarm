@@ -620,6 +620,9 @@ func (e *Engine) Interrupt(threadID string) error {
 // KindSteer and KindCleanup are engine-level event kinds, alongside the ones
 // the swarm library emits.
 const (
+	// KindMCPCatalog freezes which MCP names this turn mounted. Restore
+	// rebuilds those names and does not choose a new tool surface.
+	KindMCPCatalog             = "mcp_catalog"
 	KindAccountProfile         = "account_profile"
 	KindSteer                  = "steer"
 	KindSteerRetracted         = "steer_retracted"
@@ -731,6 +734,16 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 		}
 	}
 	managerAdmitted := runErr == nil
+	if managerAdmitted {
+		next, err := e.applyMCPSurface(ctx, turn, toolset, resumed)
+		if err != nil {
+			runErr = err
+			managerAdmitted = false
+		} else if next != toolset {
+			toolset = next
+			e.republishWorkerSurface(reg, toolset, pc, turn)
+		}
+	}
 	if managerAdmitted {
 		res, runErr = rt.runManager(ctx, turn, reg, acc, toolset, pc, messages, resumed, snapshots...)
 	}

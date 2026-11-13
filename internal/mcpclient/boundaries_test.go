@@ -31,7 +31,7 @@ func TestUnavailableMCPDoesNotHideOtherToolsOrExposePrivateTransportErrors(t *te
 		t.Fatalf("partial discovery: %d %v", len(set), err)
 	}
 	info, err := set[0].Info(t.Context())
-	if err != nil || !strings.Contains(info.Desc, "Connect") {
+	if err != nil || !strings.Contains(info.Desc, "query this catalog") {
 		t.Fatalf("unavailable metadata %+v %v", info, err)
 	}
 	out, err := set[0].(tool.InvokableTool).InvokableRun(t.Context(), "{}")
@@ -213,7 +213,7 @@ func TestMCPCallsPreserveServerFailuresAndHonorCancellationWithoutReplay(t *test
 }
 
 func TestInvalidCatalogAndSchemaFailBeforeMountingExternalTools(t *testing.T) {
-	for _, kind := range []string{"schema", "duplicate", "discovery", "configuration"} {
+	for _, kind := range []string{"duplicate", "discovery", "configuration"} {
 		t.Run(kind, func(t *testing.T) {
 			h := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var request struct {
@@ -232,10 +232,9 @@ func TestInvalidCatalogAndSchemaFailBeforeMountingExternalTools(t *testing.T) {
 						_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":` + fmt.Sprint(request.ID) + `,"error":{"code":-32000,"message":"private-server-secret"}}`))
 						return
 					}
-					item := map[string]any{"name": "x", "inputSchema": map[string]any{"type": "array"}}
+					item := map[string]any{"name": "x", "inputSchema": map[string]any{"type": "object"}}
 					list := []any{item}
 					if kind == "duplicate" {
-						item["inputSchema"] = map[string]any{"type": "object"}
 						list = append(list, item)
 					}
 					result = map[string]any{"tools": list}

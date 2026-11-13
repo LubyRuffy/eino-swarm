@@ -575,7 +575,7 @@ stream still walks forward.
 | `source_thread_id`, `source_turn_id` | optional runtime-bound origin of a `task_message`; old events omit these columns |
 | `agent_id` | `manager` or a sub-agent |
 | `role` | for `spawned`, the sub-agent's role |
-| `text` | the payload. For `spawned` this is the worker's system prompt (host snapshot plus the task). Older rows stored the role name here; `role` is the reliable role field. For `tool_result` this is the tool's stdout with newlines kept (clipped at 64k runes), not a one-line summary. For `account_profile` it is JSON with the official name, alias, tool allowlist and guidance length, never the guidance text |
+| `text` | the payload. For `spawned` this is the worker's system prompt (host snapshot plus the task). Older rows stored the role name here; `role` is the reliable role field. For `tool_result` this is the tool's stdout with newlines kept (clipped at 64k runes), not a one-line summary. For `account_profile` it is JSON with the official name, alias, tool allowlist and guidance length, never the guidance text. For `mcp_catalog` it is the frozen MCP mount decision: mode, percent, window, budget, schema token count and per-server id/mode/error/remotes/skipped, never an endpoint, credential or schema body |
 | `tool_call_id` | pairs `tool_call` with `tool_result` (and live `tool_delta`); agents issue several at once and they finish out of order |
 | `message_id` | optional identity of one streamed model output. Worker checkpoints across manager turns retain it; a new model round or restored stream gets another identity. Legacy rows remain empty. It does not replace event seq or tool-call identity |
 | `err` | set on `error` and on a failed `finished` |

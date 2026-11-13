@@ -21,12 +21,15 @@ type ToolDescriptor struct {
 	Name         string `json:"name"`
 	OriginalName string `json:"original_name"`
 	Description  string `json:"description"`
-	InputSchema  any    `json:"input_schema"`
+	InputSchema  any    `json:"input_schema,omitempty"`
 }
 
 type Catalog struct {
 	ServerID string           `json:"server_id"`
 	Tools    []ToolDescriptor `json:"tools"`
+	// Skipped are remote names whose schema cannot be a function. They stay
+	// out of the model tool list and do not fail the rest of the catalog.
+	Skipped []string `json:"skipped,omitempty"`
 }
 
 // Error deliberately omits transport errors: those may contain credentials,
@@ -50,6 +53,8 @@ type Manager struct {
 	switches    func() []config.MCPServer
 	inspections sync.WaitGroup
 	log         *slog.Logger
+	catalogDir  string
+	direct      map[string]directBinding
 }
 
 const maxIdleSessions = 8
@@ -144,7 +149,7 @@ func (m *Manager) acquire(s config.MCPServer, workspace string) (*entry, error) 
 		}
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
-	e := &entry{server: s, workspace: workspace, fingerprint: fp, key: key, ctx: ctx, cancel: cancel, uses: 1, gate: make(chan struct{}, 1)}
+	e := &entry{server: s, workspace: workspace, fingerprint: fp, key: key, catalogDir: m.catalogDir, ctx: ctx, cancel: cancel, uses: 1, gate: make(chan struct{}, 1)}
 	m.entries[key] = e
 	return e, nil
 }

@@ -41,23 +41,32 @@ func ProxyOffered(servers []config.MCPServer, name string) bool {
 	return !matched
 }
 
-func toolName(server, name string) string {
-	slug := func(s string) string {
-		var b strings.Builder
-		for _, r := range s {
-			if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' {
-				b.WriteRune(r)
-			} else {
-				b.WriteByte('_')
-			}
-			if b.Len() >= 18 {
-				break
-			}
+func slug(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
 		}
-		return b.String()
+		if b.Len() >= 18 {
+			break
+		}
 	}
+	return b.String()
+}
+
+func toolName(server, name string) string {
 	hash := sha256.Sum256([]byte(server + "\x00" + name))
 	return fmt.Sprintf("mcp_%s_%s_%x", slug(server), slug(name), hash[:6])
+}
+
+// DirectToolName is the model-facing function for one remote tool. Its hash
+// input is distinct from list_tools and call_tool, so a remote tool with one
+// of those names does not collide with the catalog proxies.
+func DirectToolName(server, remote string) string {
+	hash := sha256.Sum256([]byte(server + "\x00direct\x00" + remote))
+	return fmt.Sprintf("mcp_%s_%s_%x", slug(server), slug(remote), hash[:6])
 }
 
 func toolInfo(d ToolDescriptor) (*schema.ToolInfo, error) {
@@ -101,9 +110,10 @@ func (h *sessionHolder) acquire() (*entry, error) {
 type externalTool struct {
 	holder *sessionHolder
 	list   bool
+	index  string
 }
 
-const mcpRouteGuidance = "When this server may cover the request, inspect its current tool catalog and prefer a matching MCP tool unless the user specifies another route. Before reusing a saved shell or direct API fallback, verify that the current catalog has no match or the current attempt failed, and that the alternate route is authorized. A past failure alone does not justify bypassing this server. "
+const mcpRouteGuidance = "Before a local command or a direct API call, query this catalog for the task. The server title is not evidence that no tool matches. Prefer a matching MCP tool unless the user specifies another route. A past failure alone does not justify bypassing this server. "
 
 func (t *externalTool) Info(context.Context) (*schema.ToolInfo, error) {
 	name := "call_tool"
@@ -111,14 +121,22 @@ func (t *externalTool) Info(context.Context) (*schema.ToolInfo, error) {
 	input := map[string]any{"type": "object", "properties": map[string]any{"name": map[string]any{"type": "string", "description": "Exact remote name returned by this server's list_tools proxy."}, "arguments": map[string]any{"type": "object", "description": "Arguments conforming to the remote tool's input_schema."}}, "required": []string{"name", "arguments"}}
 	if t.list {
 		name = "list_tools"
-		description = fmt.Sprintf("Connect to this configured MCP server and list tool names, descriptions and JSON input schemas without executing a remote tool. Inspect this result before using this server's call_tool proxy. Use offset/limit to page (default limit %d), or name to retrieve one exact tool schema. If a result is truncated, narrow to one name; an individual schema that still exceeds the result budget requires increasing tools.result_max_chars in Settings.", config.DefaultMCPToolPageSize)
-		input = map[string]any{"type": "object", "properties": map[string]any{"name": map[string]any{"type": "string", "description": "Optional exact remote tool name; returns only that tool's complete schema."}, "offset": map[string]any{"type": "integer", "minimum": 0, "description": "First tool index in the stable discovered catalogue."}, "limit": map[string]any{"type": "integer", "minimum": 1, "description": fmt.Sprintf("Maximum tools to return; default %d.", config.DefaultMCPToolPageSize)}}}
+		description = fmt.Sprintf("Query this configured MCP server's tool catalog without executing a remote tool. A query returns matching names and descriptions. Pass name to retrieve one complete JSON input schema before using this server's call_tool proxy. Use offset/limit to page (default limit %d). If a result is truncated, narrow the query or one name; an individual schema that still exceeds the result budget requires increasing tools.result_max_chars in Settings.", config.DefaultMCPToolPageSize)
+		input = map[string]any{"type": "object", "properties": map[string]any{
+			"query":  map[string]any{"type": "string", "description": "Optional case-insensitive match against remote names and descriptions. Omit it to list the enabled catalog."},
+			"name":   map[string]any{"type": "string", "description": "Optional exact remote tool name; returns only that tool's complete schema."},
+			"offset": map[string]any{"type": "integer", "minimum": 0, "description": "First tool index in the filtered catalogue."},
+			"limit":  map[string]any{"type": "integer", "minimum": 1, "description": fmt.Sprintf("Maximum tools to return; default %d.", config.DefaultMCPToolPageSize)},
+		}}
 	}
 	label := t.holder.server.Name
 	if label == "" {
 		label = t.holder.server.ID
 	}
 	description = fmt.Sprintf("MCP server %q (id %q). %s%s", label, t.holder.server.ID, mcpRouteGuidance, description)
+	if t.index != "" {
+		description += " Enabled tools: " + t.index + "."
+	}
 	return toolInfo(ToolDescriptor{Name: toolName(t.holder.server.ID, name), Description: description, InputSchema: input})
 }
 
@@ -162,6 +180,7 @@ func (t *externalTool) InvokableRun(ctx context.Context, args string, _ ...tool.
 		Arguments map[string]json.RawMessage `json:"arguments"`
 	}
 	var listing struct {
+		Query  string `json:"query"`
 		Name   string `json:"name"`
 		Offset int    `json:"offset"`
 		Limit  *int   `json:"limit"`
@@ -202,11 +221,13 @@ func (t *externalTool) InvokableRun(ctx context.Context, args string, _ ...tool.
 		if listing.Name != "" {
 			matched := []ToolDescriptor{}
 			for _, d := range selected {
-				if d.Name == listing.Name {
+				if d.Name == listing.Name || d.OriginalName == listing.Name {
 					matched = append(matched, d)
 				}
 			}
 			selected = matched
+		} else {
+			selected = filterToolQuery(selected, listing.Query)
 		}
 		total := len(selected)
 		offset := min(listing.Offset, total)
@@ -215,12 +236,19 @@ func (t *externalTool) InvokableRun(ctx context.Context, args string, _ ...tool.
 			limit = *listing.Limit
 		}
 		end := offset + min(limit, total-offset)
+		page := append([]ToolDescriptor(nil), selected[offset:end]...)
+		if listing.Name == "" {
+			for i := range page {
+				page[i].InputSchema = nil
+			}
+		}
+		t.holder.manager.RememberCatalog(t.holder.server, catalog)
 		return jsonResult(struct {
 			Catalog
 			Total  int  `json:"total"`
 			Offset int  `json:"offset"`
 			More   bool `json:"more"`
-		}{Catalog{ServerID: catalog.ServerID, Tools: selected[offset:end]}, total, offset, end < total}), nil
+		}{Catalog{ServerID: catalog.ServerID, Tools: page}, total, offset, end < total}), nil
 	}
 	found := false
 	for _, remote := range catalog.Tools {

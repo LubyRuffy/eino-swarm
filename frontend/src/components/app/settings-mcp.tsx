@@ -1,6 +1,7 @@
 import { Braces, ChevronDown, ChevronRight, Circle, Loader2, Pencil, Plus, Plug, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Disclosure } from "@/components/ui/collapsible"
 import { HighlightedLines } from "@/lib/highlighted-lines"
 import { mcpTransportKey } from "@/lib/mcp-settings"
@@ -10,7 +11,7 @@ import { useMCPSettings } from "@/store/mcp-settings"
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog"
 import { MCPJSONEditor } from "./mcp-json-editor"
 import { MCPServerEditor } from "./mcp-server-editor"
-import { SettingsPage, SettingsSection, settingsHintClass, settingsMatch } from "./settings-field"
+import { SettingsPage, SettingsRow, SettingsSection, settingsHintClass, settingsMatch } from "./settings-field"
 
 type MCPMark = "on" | "off" | "connected" | "failed" | "checking" | "unchecked"
 
@@ -33,8 +34,20 @@ export function MCPTab({ query = "" }: { query?: string }) {
   const t = useT()
   const state = useMCPSettings()
   const locked = !!state.busy || !!state.draft || state.jsonText !== undefined
+  if (state.jsonText !== undefined) {
+    return <MCPJSONEditor text={state.jsonText} saving={state.busy === "json"} error={state.formError}
+      onChange={state.setJsonText} onApply={() => void state.applyJSON()} onCancel={state.cancelJSON} />
+  }
   return (
     <SettingsPage title={t("mcp.title")} description={t("mcp.description")}>
+      <SettingsSection title={t("mcp.directLoad")}>
+        <SettingsRow label={t("mcp.directLoad")} hint={t("mcp.directLoadHint")} htmlFor="mcp-direct-load">
+          <Input id="mcp-direct-load" type="number" min={0} max={100} inputMode="numeric"
+            value={state.directLoadPercent}
+            onChange={(event) => state.setDirectLoadPercent(Number(event.target.value))}
+            onBlur={(event) => void state.saveDirectLoad(Number(event.currentTarget.value))} />
+        </SettingsRow>
+      </SettingsSection>
       <SettingsSection title={t("mcp.servers")} action={
         <div className="flex gap-2">
           <Button type="button" variant="outline" size="sm" disabled={locked || state.loading || !!state.loadError}
@@ -43,12 +56,12 @@ export function MCPTab({ query = "" }: { query?: string }) {
             onClick={() => state.edit()}><Plus className="size-4" />{t("mcp.add")}</Button>
         </div>
       }>
-        {state.loading ? <p role="status" data-settings-row="" className="px-4 py-4 text-sm text-muted-foreground">{t("mcp.loading")}</p> :
+        {state.loading ? <p role="status" data-settings-row="" className="px-4 py-4 text-(length:--chrome-font-size) text-muted-foreground">{t("mcp.loading")}</p> :
           state.loadError ? <div role="alert" data-settings-row="" className="flex items-center justify-between gap-3 px-4 py-3">
-            <p className="text-sm text-destructive">{t("mcp.loadFailed")}: {state.loadError}</p>
+            <p className="text-(length:--chrome-font-size) text-destructive">{t("mcp.loadFailed")}: {state.loadError}</p>
             <Button type="button" variant="outline" onClick={() => void state.load()}>{t("mcp.retry")}</Button>
           </div> : state.servers.length === 0 ?
-            <p data-settings-row="" className="px-4 py-6 text-sm text-muted-foreground">{t("mcp.empty")}</p> :
+            <p data-settings-row="" className="px-4 py-6 text-(length:--chrome-font-size) text-muted-foreground">{t("mcp.empty")}</p> :
             state.servers.filter((server) => settingsMatch(query, "mcp", server.name, t(mcpTransportKey(server.transport)))).map((server) => {
               const connection = state.connections[server.id]
               const checking = state.busy === `inspect:${server.id}`
@@ -57,7 +70,7 @@ export function MCPTab({ query = "" }: { query?: string }) {
                 connection?.catalog ? t("mcp.connected", { count: connection.catalog.tools.length }) : t("mcp.notChecked")
               return <div key={server.id} data-settings-row="" className="flex flex-wrap items-center gap-3 px-4 py-4">
                 <div className="min-w-0 flex-1">
-                  <p className="break-words text-sm font-medium">{server.name}</p>
+                  <p className="break-words text-(length:--chrome-font-size) font-medium">{server.name}</p>
                   <p className={settingsHintClass}>{t(mcpTransportKey(server.transport))}</p>
                   <p role="status" className={cn(settingsHintClass, "flex items-center gap-1.5", markTone(connectionMark))}>
                     <StatusMark mark={connectionMark} />
@@ -84,16 +97,14 @@ export function MCPTab({ query = "" }: { query?: string }) {
       {state.draft ? <MCPServerEditor draft={state.draft} saved={state.servers.find((server) => server.id === state.editing)}
         saving={state.busy === "save"} error={state.formError} onChange={state.setDraft}
         onSave={() => void state.save()} onCancel={state.cancel} /> : null}
-      {state.jsonText !== undefined ? <MCPJSONEditor text={state.jsonText} saving={state.busy === "json"} error={state.formError}
-        onChange={state.setJsonText} onApply={() => void state.applyJSON()} onCancel={state.cancelJSON} /> : null}
 
       {Object.keys(state.connections).length === 0 ? null : (
       <SettingsSection title={t("mcp.catalog")} description={t("mcp.catalogHint")}>
         {state.servers.filter((server) => state.connections[server.id]).map((server) => {
             const connection = state.connections[server.id]
             return <section key={server.id} aria-label={`${server.name} ${t("mcp.catalog")}`} data-settings-row="" className="px-4 py-4">
-              <h4 className="text-sm font-medium">{server.name}</h4>
-              {connection.error ? <p role="alert" className="mt-2 break-words text-sm text-destructive">{connection.error}</p> :
+              <h4 className="text-(length:--chrome-font-size) font-medium">{server.name}</h4>
+              {connection.error ? <p role="alert" className="mt-2 break-words text-(length:--chrome-font-size) text-destructive">{connection.error}</p> :
                 connection.catalog ? <>
                   {connection.catalog.server_name ? <p className={settingsHintClass}>{connection.catalog.server_name} {connection.catalog.server_version}</p> : null}
                   {connection.catalog.tools.length === 0 ? <p className={settingsHintClass}>{t("mcp.noTools")}</p> :
@@ -102,7 +113,7 @@ export function MCPTab({ query = "" }: { query?: string }) {
                       onOpenChange={(open) => state.setToolExpanded(`${server.id}:${tool.name}`, open)}
                       summary={<>{state.expandedTools[`${server.id}:${tool.name}`] ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}<span className="font-mono">{tool.original_name ?? tool.name}</span></>}>
                       {tool.original_name ? <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{tool.name}</p> : null}
-                      {tool.description ? <p className="mt-2 whitespace-pre-wrap break-words text-sm text-muted-foreground">{tool.description}</p> : null}
+                      {tool.description ? <p className="mt-2 whitespace-pre-wrap break-words text-(length:--chrome-font-size) text-muted-foreground">{tool.description}</p> : null}
                       <p className="mt-3 text-xs text-muted-foreground">{t("mcp.schema")}</p>
                       <pre className="mt-1 max-h-64 overflow-auto rounded-md bg-muted p-3 font-mono text-xs">
                         <HighlightedLines text={JSON.stringify(tool.input_schema ?? {}, null, 2)} lang="json" />

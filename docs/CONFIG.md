@@ -573,6 +573,7 @@ tool and is available even while that server is disabled.
 
 ```yaml
 mcp:
+    direct_load_percent: 5
     servers:
         - id: local-tools
           name: Local tools
@@ -634,23 +635,62 @@ with no `type` uses Streamable HTTP; `type` may also be `stdio`, `sse`, `http`
 or `streamableHttp`. Omitted `enabled` and `timeout_seconds` keep their saved
 values. An invalid document changes nothing.
 
-Enabled servers add two namespaced Agent proxies, `list_tools` and `call_tool`,
-to toolsets built while the server is enabled. Settings → MCP writes `enabled`.
-The composer Tools menu does not. It stores remote names the user switched off
-in `disabled_tools` (default empty, so every discovered tool is available).
-`list_tools` omits those names, and `call_tool` for one of them returns
-`tool_switched_off` without running it, including during a running turn.
-Changing `disabled_tools` does not retire the server session. A server
-switched on after the turn started is mounted when the next turn builds its
-toolset. A name in `disabled_tools` is not checked against a live catalog.
-Constructing a toolset performs no connection or command
-startup. The first actual list/call connects using the running tool's cancellation
-context; a connection/discovery error is a failed tool result and leaves built-in
-tools available. `list_tools` accepts optional `name` for one exact remote schema,
-or nonnegative `offset` and positive `limit` for paging (default limit 10).
-`call_tool` takes a listed remote `name` and an `arguments` object. Catalog output
-uses the same tool-result budget; narrow a truncated page, or increase
-`tools.result_max_chars` if one schema still exceeds it.
+`direct_load_percent` is 0–100 and defaults to 5. Settings → MCP edits it.
+`0` always keeps the two catalog proxies. After a turn is admitted, and before
+its first model request, zwai estimates the tokens in the MCP schemas it would
+mount (remote name, description and JSON schema only; built-in tools are not
+included). The estimate uses the same counter as context compression, so CJK
+text is not treated as four characters per token. When that estimate is within
+the percent of the selected model's context window, each enabled remote tool is
+its own function. An unknown window (`0`) uses `swarm.auto_compact_tokens` as
+the denominator. Above the percent, or when listing that server fails, the
+server keeps `list_tools` and `call_tool`, and those descriptions include the
+enabled tool names and a one-line summary. A long index is truncated and says
+to query further.
+
+A fresh catalog is listed on the turn's cancellable context. Stop cancels that
+list and does not call the model. A catalog saved for the current connection
+fingerprint is reused with no connection. The cache file is
+`mcp-catalogs/<fingerprint>.json` in the data directory, mode `0600`, and holds
+names, descriptions and schemas only. Settings inspection, a successful
+in-turn list, and `notifications/tools/list_changed` on an open session update
+it. A list change does not alter the tools already mounted for the current
+turn. The decision for a turn is frozen in `mcp-mounts/<turn id>.json` and in
+the `mcp_catalog` Trace event. Neither record contains the endpoint or
+credentials.
+
+Direct function names are a safe form of `mcp_<server id>_<remote tool>`, with
+a hash suffix when the name would be too long or collide with a proxy. The
+description keeps the server's display name and the original remote name.
+Arguments are the remote `input_schema`. One schema that cannot be a function
+is skipped and recorded; the other tools on that server stay. Direct mode does
+not also mount `list_tools` and `call_tool`. A call connects with that call's
+cancellation context. The same server shares one session.
+
+Settings → MCP writes `enabled`. The composer Tools menu does not. It stores
+remote names the user switched off in `disabled_tools` (default empty, so every
+discovered tool is available). A direct tool with that name is omitted from the
+next model request. On the catalog proxies, `list_tools` omits it and
+`call_tool` returns `tool_switched_off` without running it, including during a
+running turn. Changing `disabled_tools` does not retire the server session.
+Turning a name back on restores it on the next request when this turn already
+mounted it. A server or remote tool that was off when the turn started is
+mounted when the next turn builds its toolset. A name in `disabled_tools` is
+not checked against a live catalog. Constructing the admission toolset performs
+no connection or command startup. A connection or discovery error leaves the
+built-in tools available and keeps that server on the catalog proxies; the
+Trace records the failure class, not the endpoint. `list_tools` accepts an
+optional `query` (matching names and descriptions, without schemas), `name` for
+one exact remote schema, or nonnegative `offset` and positive `limit` for
+paging (default limit 10). `call_tool` takes a listed remote `name` and an
+`arguments` object. Catalog output uses the same tool-result budget; narrow a
+truncated page, or increase `tools.result_max_chars` if one schema still
+exceeds it.
+
+Before a local command or a direct API call, the catalog proxy tells the model
+to query this catalog for the task. The server title is not evidence that no
+tool matches. A matching MCP tool is preferred unless the user specifies
+another route. A past failure alone does not justify bypassing the server.
 
 Running MCP calls show progress when the server sends standard
 [`notifications/progress`](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/progress)

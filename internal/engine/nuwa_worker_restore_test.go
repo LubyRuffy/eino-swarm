@@ -85,6 +85,7 @@ func TestNuwaParkedWorkerRestoresOriginalModelAndModeAtHTTPBoundary(t *testing.T
 			}))
 			t.Cleanup(endpoint.Close)
 			e = newTestEngine(t)
+			e.cfg.MCP.DirectLoadPercent = 0
 			e.cfg.MCP.Servers = []config.MCPServer{{ID: "external", Transport: "stdio", Command: os.Args[0], Args: []string{"-test.run=^TestPlanningMCPCommandFixture$"}, Env: map[string]string{"ZWAI_MCP_PLANNING_RECEIPT": externalReceipt}, Enabled: true}}
 			e.cfg.Swarm.AutoTitle = false
 			e.cfg.Models.Default = "restore-fixture"
