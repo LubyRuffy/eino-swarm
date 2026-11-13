@@ -254,7 +254,7 @@ describe("Gateway account authority", () => {
   })
 
   it("keeps a public avatar and never stores mail or an access key", async () => {
-    const picture = "https://images.example.test/a.png?sig=1"
+    const picture = "https://images.fofa.info/a.png?sig=1"
     saveGatewaySession({ ...session, user: { ...session.user, avatar_url: picture, email: "private@example.test", key: "private-nosec-key" } } as GatewaySession)
     expect(loadGatewaySession()).toEqual({ ...session, user: { ...session.user, avatar_url: picture } })
     expect(localStorage.getItem("zwai.phone.gateway.session")).not.toContain("private")

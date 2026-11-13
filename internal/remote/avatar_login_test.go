@@ -14,7 +14,7 @@ import (
 )
 
 func TestALaterLoginKeepsTheSavedAvatarWhenTheNewAddressIsOmitted(t *testing.T) {
-	const kept = "https://images.example.test/kept.png?v=1"
+	const kept = "https://images.fofa.info/kept.png?v=1"
 	for _, tc := range []struct {
 		name   string
 		userID string

@@ -52,7 +52,7 @@ async function noOverflow(page: Page) {
 }
 
 test("user center shows a public avatar without a referrer", async ({ page }) => {
-  const picture = "https://images.example.test/a.png?v=1"
+  const picture = "https://images.fofa.info/a.png?v=1"
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64")
   const pictured = { ...user, display_name: "林小明", avatar_url: picture }
   await page.addInitScript(({ origin, token, user, device }) => {
@@ -72,7 +72,7 @@ test("user center shows a public avatar without a referrer", async ({ page }) =>
 })
 
 test("user center keeps the name initial when a public avatar cannot load", async ({ page }) => {
-  const picture = "https://images.example.test/missing.png"
+  const picture = "https://images.fofa.info/missing.png"
   const pictured = { ...user, display_name: "林小明", avatar_url: picture }
   await page.addInitScript(({ origin, token, user, device }) => {
     localStorage.setItem("zwai.phone.gateway.session", JSON.stringify({ origin, token, user, device }))

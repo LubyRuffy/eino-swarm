@@ -220,7 +220,7 @@ describe("desktop account entry", () => {
   })
 
   it("shows a public avatar and returns to the initial when the image cannot load", () => {
-    const picture = "https://images.example.test/a.png?sig=a+b&v=1"
+    const picture = "https://images.fofa.info/a.png?sig=a+b&v=1"
     fake.status = {
       ...anonymous, enabled: true, auth_mode: "account", has_token: true,
       login: { state: "authorized", display_name: "Ada", avatar_url: picture },

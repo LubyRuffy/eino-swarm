@@ -22,12 +22,12 @@ func TestRememberRemoteAvatarURLReplacesOnlyTheCurrentAccountPicture(t *testing.
 	receipt := RemoteCredential{
 		Token: token, Origin: origin, Authorized: true,
 		HostID: strings.Repeat("c", 32), UserID: user, Username: "account", DisplayName: "Account",
-		AvatarURL: "https://images.example.test/first.png",
+		AvatarURL: "https://images.fofa.info/first.png",
 	}
 	if err := cfg.ActivateRemoteToken(path, receipt); err != nil {
 		t.Fatal(err)
 	}
-	next := "https://images.example.test/next.png?v=1"
+	next := "https://images.fofa.info/next.png?v=1"
 	if err := cfg.RememberRemoteAvatarURL(origin, token, user, "  "+next+"  "); err != nil {
 		t.Fatal(err)
 	}
@@ -35,12 +35,12 @@ func TestRememberRemoteAvatarURLReplacesOnlyTheCurrentAccountPicture(t *testing.
 	if err != nil || saved.AvatarURL != next || saved.Token != token || saved.DisplayName != "Account" {
 		t.Fatalf("picture update changed the receipt: %+v %v", saved, err)
 	}
-	for _, rejected := range []string{"", "javascript:alert(1)", "https://user:secret@images.example.test/a.png"} {
+	for _, rejected := range []string{"", "javascript:alert(1)", "https://user:secret@images.fofa.info/a.png"} {
 		if err := cfg.RememberRemoteAvatarURL(origin, token, user, rejected); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := cfg.RememberRemoteAvatarURL(origin, token, strings.Repeat("d", 32), "https://images.example.test/other.png"); err != nil {
+	if err := cfg.RememberRemoteAvatarURL(origin, token, strings.Repeat("d", 32), "https://images.fofa.info/other.png"); err != nil {
 		t.Fatal(err)
 	}
 	saved, err = cfg.ReadRemoteCredential()
@@ -50,34 +50,45 @@ func TestRememberRemoteAvatarURLReplacesOnlyTheCurrentAccountPicture(t *testing.
 }
 
 func TestAcceptedAvatarURLKeepsAPublicHTTPAddress(t *testing.T) {
-	const picture = "https://images.example.test/a.png?sig=a+b&v=1"
+	const picture = "https://images.fofa.info/a.png?sig=a+b&v=1"
 	if got := AcceptedAvatarURL("  " + picture + "  "); got != picture {
 		t.Fatalf("query string = %q", got)
 	}
-	if got := AcceptedAvatarURL("http://images.example.test/thumb.jpg"); got != "http://images.example.test/thumb.jpg" {
+	if got := AcceptedAvatarURL("http://images.fofa.info/thumb.jpg"); got != "http://images.fofa.info/thumb.jpg" {
 		t.Fatalf("http address = %q", got)
 	}
-	long := "https://images.example.test/" + strings.Repeat("a", 2048-len("https://images.example.test/"))
+	if got := AcceptedAvatarURL("https://fofa.info/a.png"); got != "https://fofa.info/a.png" {
+		t.Fatalf("apex address = %q", got)
+	}
+	if got := AcceptedAvatarURL("https://CDN.Images.Fofa.Info/a.png"); got != "https://CDN.Images.Fofa.Info/a.png" {
+		t.Fatalf("subdomain address = %q", got)
+	}
+	long := "https://images.fofa.info/" + strings.Repeat("a", 2048-len("https://images.fofa.info/"))
 	if len(long) != 2048 || AcceptedAvatarURL(long) != long {
 		t.Fatal("a 2048-byte public address must be kept")
 	}
 }
 
 func TestAcceptedAvatarURLDropsUnsafeAddresses(t *testing.T) {
-	long := "https://images.example.test/" + strings.Repeat("a", 2049-len("https://images.example.test/"))
+	long := "https://images.fofa.info/" + strings.Repeat("a", 2049-len("https://images.fofa.info/"))
 	for _, raw := range []string{
 		"",
 		"   ",
 		"javascript:alert(1)",
-		"HTTPS://images.example.test/a.png",
-		"https://user:secret@images.example.test/a.png",
-		"https://images.example.test/a.png#fragment",
-		"https://images.example.test/a b.png",
-		"https://images.example.test/a\u00a0b.png",
-		"https://images.example.test/a\nb.png",
-		"https://images.example.test/a\x00b.png",
-		"https://images.example.test/a\\b.png",
+		"HTTPS://images.fofa.info/a.png",
+		"https://user:secret@images.fofa.info/a.png",
+		"https://images.fofa.info/a.png#fragment",
+		"https://images.fofa.info/a b.png",
+		"https://images.fofa.info/a\u00a0b.png",
+		"https://images.fofa.info/a\nb.png",
+		"https://images.fofa.info/a\x00b.png",
+		"https://images.fofa.info/a\\b.png",
 		"/a.png",
+		"https://images.example.test/a.png",
+		"https://notfofa.info/a.png",
+		"https://fofa.info.evil.com/a.png",
+		"https://i.nosec.org/a.png",
+		"https://127.0.0.1/a.png",
 		long,
 	} {
 		if got := AcceptedAvatarURL(raw); got != "" {
@@ -85,7 +96,7 @@ func TestAcceptedAvatarURLDropsUnsafeAddresses(t *testing.T) {
 		}
 	}
 	// A query is not a fragment. The hash character itself is never an address.
-	if got := AcceptedAvatarURL("https://images.example.test/a.png?next=1"); got == "" {
+	if got := AcceptedAvatarURL("https://images.fofa.info/a.png?next=1"); got == "" {
 		t.Fatal("a query must remain")
 	}
 }

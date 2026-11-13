@@ -561,8 +561,8 @@ func TestTypedCatalogPublishesKindsAndHidesThemFromTheComposer(t *testing.T) {
 
 func TestAccountPictureFollowsTheBootstrapAndKeepsASavedAddress(t *testing.T) {
 	g := newAccountGateway(t)
-	const savedPicture = "https://images.example.test/saved.png"
-	const nextPicture = "https://images.example.test/next.png?v=1"
+	const savedPicture = "https://images.fofa.info/saved.png"
+	const nextPicture = "https://images.fofa.info/next.png?v=1"
 	am, _, cfg := accountModelsFixture(t, g)
 	credential, err := cfg.ReadRemoteCredential()
 	if err != nil {
