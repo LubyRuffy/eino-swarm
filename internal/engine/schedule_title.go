@@ -34,7 +34,8 @@ func (e *Engine) kickScheduleTitle(row *store.Schedule) {
 	}
 	// Pin the namer endpoint before the goroutine. Tests (and PUT
 	// /settings) copy e.cfg; reading it from the namer races that write.
-	providerID, model = e.cfg.SwarmSnapshot().ResolveTitle(providerID, model)
+	fallbackProvider, fallbackModel := e.cfg.SwarmSnapshot().ResolveTitle(providerID, model)
+	providerID, model = e.applyRoleModel(providerID, "title", fallbackProvider, fallbackModel)
 	origin := strings.TrimSpace(row.OriginThreadID)
 	if origin == "" {
 		origin = strings.TrimSpace(row.ThreadID)

@@ -86,7 +86,7 @@ export function queueEvent(
   queued.push(ev)
   if (ev.kind === "done" || ev.kind === "error" || ev.kind === "user_message" ||
       ev.kind === "max_iterations" || ev.kind === "max_iterations_continued" || ev.kind === "workers_collection_resumed" || ev.kind === "workers_collection_declined" ||
-      ev.kind === "model_retry" || ev.kind === "title" || ev.kind === "composer_prediction" ||
+      ev.kind === "model_retry" || ev.kind === "title" || ev.kind === "decision" || ev.kind === "composer_prediction" ||
       ev.kind === "resumed" || ev.kind === "failure_continued" || ev.kind === "goal" || ev.kind === "goal_complete" ||
       ev.kind === "goal_continued" || ev.kind === "goal_capped" || ev.kind === "goal_blocked" ||
       ev.kind === "goal_edited" || ev.kind === "goal_resumed" || ev.kind === "goal_idle" || ev.kind === "goal_session" ||

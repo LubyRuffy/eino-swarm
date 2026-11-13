@@ -23,17 +23,18 @@ func (s *Service) Search(ctx context.Context, q string, limit int) (Result, erro
 	if err != nil {
 		return res, err
 	}
-	if !s.semantic() {
+	providerID, model, on := s.embeddingChoice()
+	if !on {
 		res.Hits = clipHits(mergeHits(fts, nil, nil), limit)
 		return res, nil
 	}
-	vecs, err := s.embed.Embed(ctx, s.providerID(), s.pinModel(), []string{q})
+	vecs, err := s.embed.Embed(ctx, providerID, model, []string{q})
 	if err != nil || len(vecs) != 1 || len(vecs[0]) == 0 {
 		s.log.Warn("embedding the query failed; falling back to keywords", "err", err)
 		res.Hits = clipHits(mergeHits(fts, nil, nil), limit)
 		return res, nil
 	}
-	sem, err := s.store.SearchSimilarChunks(s.pinModel(), vecs[0], limit)
+	sem, err := s.store.SearchSimilarChunks(model, vecs[0], limit)
 	if err != nil {
 		return res, err
 	}
@@ -58,7 +59,8 @@ func clipHits(hits []Hit, limit int) []Hit {
 }
 
 func (s *Service) embedThread(ctx context.Context, id string) error {
-	if !s.semantic() {
+	providerID, model, on := s.embeddingChoice()
+	if !on {
 		return nil
 	}
 	th, err := s.store.GetThread(id)
@@ -72,7 +74,6 @@ func (s *Service) embedThread(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	model := s.pinModel()
 	parts := passagesFor(th, msgs)
 	keep := make([]string, 0, len(parts))
 	pending := make([]passage, 0, len(parts))
@@ -89,7 +90,7 @@ func (s *Service) embedThread(ctx context.Context, id string) error {
 		for i, p := range pending {
 			texts[i] = p.Text
 		}
-		vecs, err := s.embed.Embed(ctx, s.providerID(), model, texts)
+		vecs, err := s.embed.Embed(ctx, providerID, model, texts)
 		if err != nil {
 			return err
 		}

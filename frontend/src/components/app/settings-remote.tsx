@@ -74,14 +74,18 @@ function RemoteTabBody({
     void connection.refresh()
     void api
       .remoteBindings()
-      .then((list) => { if (alive.current) setBindings(list) })
+      .then((list) => {
+        if (alive.current) setBindings(list)
+      })
       .catch(() => {})
   }
 
   useEffect(() => {
     alive.current = true
     reload()
-    return () => { alive.current = false }
+    return () => {
+      alive.current = false
+    }
   }, [])
 
   const login = (newDevice: boolean) => {

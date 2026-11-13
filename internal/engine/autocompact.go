@@ -64,7 +64,8 @@ func (e *Engine) newAutoCompact(threadID, turnID string, th *store.Thread) *auto
 		keep:      e.cfg.SwarmSnapshot().CompactKeep(),
 	}
 	if th != nil {
-		ac.providerID, ac.modelName = e.cfg.SwarmSnapshot().ResolveCompact(th.ProviderID, th.Model)
+		fbProvider, fbModel := e.cfg.SwarmSnapshot().ResolveCompact(th.ProviderID, th.Model)
+		ac.providerID, ac.modelName = e.applyRoleModel(th.ProviderID, "compact", fbProvider, fbModel)
 	}
 	return ac
 }

@@ -177,6 +177,7 @@ func New(opts Options) (*Server, error) {
 		api.POST("/threads/:id/turns", s.startTurn)
 		api.POST("/threads/:id/steer", s.steer)
 		api.POST("/threads/:id/side-chat", s.askSideChat)
+		api.POST("/threads/:id/decision", s.decideThread)
 		api.POST("/threads/:id/preempt", s.preempt)
 		api.DELETE("/threads/:id/steers/:seq", s.retractSteer)
 		api.PATCH("/threads/:id/steers/:seq", s.reviseSteer)

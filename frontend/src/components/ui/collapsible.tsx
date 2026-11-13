@@ -33,7 +33,7 @@ export function Disclosure({
         aria-expanded={open}
         aria-invalid={failed || undefined}
         className={cn(
-          "flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+          "flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 py-1 text-left text-(length:--chrome-font-size) transition-colors hover:bg-accent/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
           failed
             ? "text-destructive hover:text-destructive"
             : "text-muted-foreground hover:text-foreground",

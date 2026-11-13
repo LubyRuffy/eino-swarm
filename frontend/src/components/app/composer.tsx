@@ -17,6 +17,8 @@ import { ScheduleBanner } from "@/components/app/schedule-banner"
 import { QueueTray } from "@/components/app/queue-tray"
 import { SlashMenu } from "@/components/app/slash-menu"
 import { Badge } from "@/components/ui/badge"
+import { api } from "@/lib/api"
+import { toastError } from "@/store/toasts"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -207,6 +209,8 @@ export function Composer({
   const prediction = useApp((s) => s.transcript.prediction)
   const predictionsOn = useApp((s) => predictionsEnabled(s.meta?.swarm?.composer_predictions))
   const hideModels = useApp((s) => s.meta?.product_mode) === "fofa"
+  const decisionOn = useApp((s) => s.meta?.product_mode === "fofa" && s.meta.account_models?.roles?.some((role) => role.id === "decisions" && role.enabled) === true)
+  const [deciding, setDeciding] = useState(false)
   const [dismissedPredictionTurn, setDismissedPredictionTurn] = useState<string | undefined>(undefined)
   const durable = useComposerDraft(draftKey)
   const [localText, setLocalText] = useState("")
@@ -841,6 +845,25 @@ export function Composer({
               open={composerMenu === "tools"}
               onOpenChange={(next) => showComposerMenu("tools", next)}
             />
+
+            {decisionOn ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={readOnly || deciding || !onResolveThread}
+                onClick={() => {
+                  if (!onResolveThread) return
+                  setDeciding(true)
+                  void onResolveThread()
+                    .then((id) => (id ? api.decideThread(id) : undefined))
+                    .catch((err: unknown) => toastError(err instanceof Error ? err.message : t("composer.decisionFailed")))
+                    .finally(() => setDeciding(false))
+                }}
+              >
+                {t("composer.decision")}
+              </Button>
+            ) : null}
 
             {reasoningLevels.length > 0 ? (
               <Select

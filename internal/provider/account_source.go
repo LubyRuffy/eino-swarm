@@ -36,6 +36,15 @@ type AccountSource struct {
 	// are empty for an ordinary catalog.
 	profiled bool
 	profile  accountProfile
+	roles    []AccountRole
+}
+
+// AccountRole is a read-only server switch. ID is the model name a FOFA
+// client sends. Label is display-only.
+type AccountRole struct {
+	ID      string `json:"id"`
+	Enabled bool   `json:"enabled"`
+	Label   string `json:"label"`
 }
 
 // accountProfile is the memory-only official agreement. Instruction is never
@@ -106,7 +115,43 @@ func (s AccountSource) GoString() string { return s.String() }
 // conversationalNames is what a new chat can start on: chat, plus rows the
 // server never classified. preferred selects one of those names when it is
 // still in the list; otherwise the first one remains the default.
+// SetRoles records the server's fixed roles. A non-empty list replaces the
+// conversation catalog with the conversation role.
+func (s *AccountSource) SetRoles(roles []AccountRole) {
+	if s == nil {
+		return
+	}
+	s.roles = append([]AccountRole(nil), roles...)
+}
+
+// Roles is a copy of the server role list. Nil means this server has no roles.
+func (s *AccountSource) Roles() []AccountRole {
+	if s == nil || len(s.roles) == 0 {
+		return nil
+	}
+	return append([]AccountRole(nil), s.roles...)
+}
+
+// Role reports whether this source is in role mode and whether that role is on.
+func (s *AccountSource) Role(id string) (enabled, configured bool) {
+	if s == nil || len(s.roles) == 0 {
+		return false, false
+	}
+	for _, role := range s.roles {
+		if role.ID == id {
+			return role.Enabled, true
+		}
+	}
+	return false, true
+}
+
 func (s *AccountSource) conversationalNames() []string {
+	if len(s.roles) > 0 {
+		if enabled, _ := s.Role("conversation"); enabled {
+			return []string{"conversation"}
+		}
+		return nil
+	}
 	out := make([]string, 0, len(s.names))
 	for _, name := range s.names {
 		if conversationalModelType(s.types[name]) {
@@ -276,6 +321,32 @@ func (p *Pool) AccountSourceID() string {
 	return ""
 }
 
+// AccountRole reports the signed-in source's role when providerID is that source.
+func (p *Pool) AccountRole(providerID, role string) (enabled, configured bool) {
+	src := p.account.Load()
+	if src == nil || src.ID() != strings.TrimSpace(providerID) {
+		return false, false
+	}
+	return src.Role(role)
+}
+
+// AccountEmbedding is the semantic-search target while the server published roles.
+// configured is false for an ordinary catalog, including a signed-out pool.
+func (p *Pool) AccountEmbedding() (providerID, model string, enabled, configured bool) {
+	src := p.account.Load()
+	if src == nil {
+		return "", "", false, false
+	}
+	on, configured := src.Role("embedding")
+	if !configured {
+		return "", "", false, false
+	}
+	if !on {
+		return "", "", false, true
+	}
+	return src.ID(), "embedding", true, true
+}
+
 // DefaultProviderID is the provider a new conversation starts on: the
 // account's conversation models when that is the chosen source and at least
 // one can start a chat, otherwise the configured default provider.
@@ -323,6 +394,14 @@ func (s *AccountSource) equal(o *AccountSource) bool {
 	}
 	for name, kind := range s.types {
 		if o.types[name] != kind {
+			return false
+		}
+	}
+	if len(s.roles) != len(o.roles) {
+		return false
+	}
+	for i, role := range s.roles {
+		if o.roles[i] != role {
 			return false
 		}
 	}

@@ -8,6 +8,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Added
 
+- FOFA reads six fixed server model roles when the account bootstrap includes
+  them. The account details show each switch and name, and those controls
+  cannot be edited. Conversation requests use `conversation`. Naming and
+  compact follow `conversation` while their own roles are off. Embedding, OCR
+  and decisions run only while those roles are on. LOCAL keeps the ordinary
+  catalog. (`F-173`)
+
 - The install mode is `product.mode`. A missing key means FOFA: sign in before
   work, no Settings → Models section, and no composer model menu. Custom
   provider edits and discovery are refused. `local` is written only when set,
@@ -128,6 +135,18 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 - The Scheduled list's empty line lines up with its section title, and the
   Memory panel's hint paragraphs have looser line spacing.
+
+- Tool call rows in the transcript follow the UI font size (the Disclosure
+  trigger and the name and summary spans all used a fixed 13 px or text-sm).
+
+- Transcript reasoning header, inline shell commands, context meter label,
+  Backup restore list, and Skills dialog alerts also follow the UI font size.
+  Agent sub-transcript text in the right-hand panel uses the content font size.
+
+- Inputs, text areas, labels, the command palette and dialog descriptions use
+  the UI font size, so a form control no longer reads smaller than the button
+  beside it. The ask card, error notices, welcome page, skill dialogs, Memory,
+  Nuwa and conversation schedules follow the same size.
 
 - Choosing All models asks for confirmation. The prompt says this machine's
   own model services do not have the account's online capabilities. Staying

@@ -71,14 +71,14 @@ export function ToolRow({ block, reveal, defaultCollapsed = false }: {
             <Terminal className="size-3.5 shrink-0" />
           )}
           <span className={cn(
-            "shrink-0 font-mono text-[13px] text-foreground",
+            "shrink-0 font-mono text-(length:--chrome-font-size) text-foreground",
             mcpProgress !== undefined && "max-w-1/2 truncate",
           )}>{tool.name}</span>
           {tool.pending ? (
             <MarqueeText
               text={pendingSummary}
               active
-              className={view.failed ? "text-[13px] text-destructive" : "text-[13px] text-muted-foreground"}
+              className={view.failed ? "text-(length:--chrome-font-size) text-destructive" : "text-(length:--chrome-font-size) text-muted-foreground"}
             />
           ) : command ? (
             <span className="min-w-0 flex-1 overflow-hidden">
@@ -87,7 +87,7 @@ export function ToolRow({ block, reveal, defaultCollapsed = false }: {
           ) : (
             <MarqueeText
               text={summary}
-              className={view.failed ? "text-[13px] text-destructive" : "text-[13px] text-muted-foreground"}
+              className={view.failed ? "text-(length:--chrome-font-size) text-destructive" : "text-(length:--chrome-font-size) text-muted-foreground"}
             />
           )}
           {view.diff ? (

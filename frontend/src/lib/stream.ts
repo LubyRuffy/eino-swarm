@@ -50,6 +50,7 @@ export const KINDS = [
   "model_retry",
   "model_backoff",
   "title",
+  "decision",
   "composer_prediction",
   "session_memory",
   "done",

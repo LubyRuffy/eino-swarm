@@ -159,7 +159,8 @@ func (e *Engine) runTitle(threadID string, turn *store.Turn, userText, final str
 	defer cancel()
 	ctx = provider.WithoutRouteRecovery(ctx)
 
-	providerID, model := e.cfg.SwarmSnapshot().ResolveTitle(turn.ProviderID, turn.Model)
+	fallbackProvider, fallbackModel := e.cfg.SwarmSnapshot().ResolveTitle(turn.ProviderID, turn.Model)
+	providerID, model := e.applyRoleModel(turn.ProviderID, "title", fallbackProvider, fallbackModel)
 	builder, err := e.pool.ModelBuilder(ctx, providerID, model, "", e.callRecorder(threadID, turn.ID))
 	if err != nil {
 		e.recordTitle(threadID, turn.ID, "", err.Error())

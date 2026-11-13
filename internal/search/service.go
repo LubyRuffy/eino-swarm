@@ -131,7 +131,7 @@ func (s *Service) Reload() {
 		s.mu.Unlock()
 		return
 	}
-	model := strings.TrimSpace(s.cfg.Search.EmbeddingModel)
+	_, model, _ := s.embeddingChoice()
 	s.mu.Lock()
 	changed := s.pin != model
 	s.pin = model
@@ -152,7 +152,34 @@ func (s *Service) Reload() {
 }
 
 func (s *Service) semantic() bool {
-	return s.cfg != nil && s.cfg.Search.SemanticEnabled() && s.embed != nil
+	_, _, on := s.embeddingChoice()
+	return on
+}
+
+// embeddingChoice is the endpoint semantic search may call. A FOFA install
+// whose server published roles uses the embedding role and ignores the local
+// embedding settings. Other installs keep the saved search settings.
+func (s *Service) embeddingChoice() (providerID, model string, on bool) {
+	if s == nil || s.cfg == nil || s.embed == nil {
+		return "", "", false
+	}
+	if s.cfg.Product.FOFA() {
+		if chooser, ok := s.embed.(interface {
+			AccountEmbedding() (string, string, bool, bool)
+		}); ok {
+			id, name, enabled, configured := chooser.AccountEmbedding()
+			if configured {
+				if !enabled || id == "" || name == "" {
+					return "", "", false
+				}
+				return id, name, true
+			}
+		}
+	}
+	if !s.cfg.Search.SemanticEnabled() {
+		return "", "", false
+	}
+	return s.providerID(), strings.TrimSpace(s.cfg.Search.EmbeddingModel), true
 }
 
 func (s *Service) enqueue(id string) {

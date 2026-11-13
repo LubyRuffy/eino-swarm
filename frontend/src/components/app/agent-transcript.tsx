@@ -16,13 +16,13 @@ export function AgentTranscript({ agent }: { agent: AgentState }) {
   if (blocks.length === 0) {
     if (agent.result?.trim()) {
       return (
-        <div className="md px-3 py-2 text-[13px]">
+        <div className="md px-3 py-2 text-(length:--ui-font-size)">
           <MemoMarkdown text={agent.result} />
         </div>
       )
     }
     return (
-      <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+      <p className="px-3 py-6 text-center text-(length:--chrome-font-size) text-muted-foreground">
         {t("transcript.agentEmpty")}
       </p>
     )
@@ -31,7 +31,7 @@ export function AgentTranscript({ agent }: { agent: AgentState }) {
     <div className="space-y-1 px-1 py-2">
       {blocks.map((b) =>
         b.kind === "answer" ? (
-          <div key={b.id} className="md px-2 text-[13px]">
+          <div key={b.id} className="md px-2 text-(length:--ui-font-size)">
             <MemoMarkdown text={b.text} streaming={b.streaming} />
           </div>
         ) : b.kind === "reasoning" ? (

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -65,6 +66,9 @@ type AccountModelsState struct {
 	// Profile is set only while the server published an official-model agreement.
 	// It carries no instruction text.
 	Profile *accountProfileState `json:"profile,omitempty"`
+	// Roles is set only for a FOFA install whose server published fixed roles.
+	// The controls are read-only. An old server omits the field.
+	Roles []provider.AccountRole `json:"roles,omitempty"`
 }
 
 // AccountModels projects the signed-in server account's models into the
@@ -338,11 +342,27 @@ func (a *AccountModels) apply(fetched accountIdentity, o accountOutcome) Account
 	} else {
 		a.publishedToken, a.publishedOrigin = "", ""
 	}
-	if o.state != a.state {
+	if !sameAccountState(o.state, a.state) {
 		a.log.Info("account models", "state", o.state.State, "reason", o.state.Reason, "models", o.state.Models)
 	}
 	a.state = o.state
 	return a.state
+}
+
+func sameAccountState(a, b AccountModelsState) bool {
+	ar, br := a.Roles, b.Roles
+	a.Roles, b.Roles = nil, nil
+	return a.State == b.State &&
+		a.Reason == b.Reason &&
+		a.Label == b.Label &&
+		a.Username == b.Username &&
+		a.DisplayName == b.DisplayName &&
+		a.AvatarURL == b.AvatarURL &&
+		a.Models == b.Models &&
+		a.SourceID == b.SourceID &&
+		a.Kinds == b.Kinds &&
+		a.Profile == b.Profile &&
+		slices.Equal(ar, br)
 }
 
 func (a *AccountModels) fetch(ctx context.Context, id accountIdentity) accountOutcome {
@@ -365,6 +385,9 @@ func (a *AccountModels) fetch(ctx context.Context, id accountIdentity) accountOu
 		s := who
 		s.State, s.Label = AccountNoAccess, boot.label
 		return accountOutcome{state: s}
+	}
+	if a.cfg != nil && a.cfg.Product.FOFA() && len(boot.roles) > 0 {
+		return fetchRoles(boot, id.token, who)
 	}
 	if boot.profile != nil {
 		source, err := provider.NewAccountProfile(boot.sourceID, boot.apiBaseURL, id.token, *boot.profile)
@@ -406,7 +429,42 @@ func (a *AccountModels) fetch(ctx context.Context, id accountIdentity) accountOu
 	return accountOutcome{state: s, source: source}
 }
 
-// classifyAccountError separates a login that must be redone, access the
+func fetchRoles(boot accountBootstrap, token string, who AccountModelsState) accountOutcome {
+	fail := func(state, reason string) accountOutcome {
+		s := who
+		s.State, s.Reason = state, reason
+		return accountOutcome{state: s}
+	}
+	conversation := false
+	for _, role := range boot.roles {
+		if role.ID == "conversation" && role.Enabled {
+			conversation = true
+		}
+	}
+	roles := append([]provider.AccountRole(nil), boot.roles...)
+	if !conversation {
+		s := who
+		s.State, s.Reason, s.Label = AccountNoAccess, AccountReasonNoModels, boot.label
+		s.Roles = roles
+		return accountOutcome{state: s}
+	}
+	source, err := provider.NewAccountSource(boot.sourceID, boot.label, boot.apiBaseURL, token, provider.Catalog{
+		Names: []string{"conversation"},
+		Types: map[string]string{"conversation": "chat"},
+	})
+	if err != nil {
+		return fail(AccountUnavailable, AccountReasonUnsafe)
+	}
+	source.SetRoles(roles)
+	s := who
+	s.State, s.Label, s.Models = AccountReady, boot.label, 1
+	s.SourceID = source.ID()
+	kinds := source.Kinds()
+	s.Kinds = &kinds
+	s.Roles = roles
+	return accountOutcome{state: s, source: source}
+}
+
 // account does not have, a server that lacks the feature, and plain outages.
 func classifyAccountError(err error, who AccountModelsState) accountOutcome {
 	state := func(state, reason string, transient bool) accountOutcome {
@@ -462,6 +520,7 @@ type accountBootstrap struct {
 	access                                  bool
 	userID, avatarURL                       string
 	profile                                 *provider.AccountProfile
+	roles                                   []provider.AccountRole
 }
 
 // withPicture adopts a bootstrap avatar only for this same account. A missing
@@ -498,6 +557,7 @@ func parseAccountBootstrap(raw []byte, origin string) (accountBootstrap, error) 
 				CatalogURL       string          `json:"catalog_url"`
 				APIAccessEnabled bool            `json:"api_access_enabled"`
 				Profile          json.RawMessage `json:"profile"`
+				Roles            json.RawMessage `json:"roles"`
 			} `json:"models"`
 		} `json:"data"`
 	}
@@ -524,8 +584,47 @@ func parseAccountBootstrap(raw []byte, origin string) (accountBootstrap, error) 
 	if err != nil {
 		return accountBootstrap{}, err
 	}
-	out.profile = profile
+	roles, err := parseAccountRoles(m.Roles)
+	if err != nil {
+		return accountBootstrap{}, err
+	}
+	out.profile, out.roles = profile, roles
 	return out, nil
+}
+
+func parseAccountRoles(raw json.RawMessage) ([]provider.AccountRole, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var rows []provider.AccountRole
+	if json.Unmarshal(raw, &rows) != nil || len(rows) > 6 {
+		return nil, errAccountResponse
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	seen := map[string]bool{}
+	for i := range rows {
+		role := &rows[i]
+		role.ID = strings.TrimSpace(role.ID)
+		switch role.ID {
+		case "conversation", "title", "compact", "embedding", "ocr", "decisions":
+		default:
+			return nil, errAccountResponse
+		}
+		if seen[role.ID] {
+			return nil, errAccountResponse
+		}
+		seen[role.ID] = true
+		role.Label = strings.TrimSpace(role.Label)
+		if role.Label == "" {
+			role.Label = role.ID
+		}
+		if len(role.Label) > 255 || strings.IndexFunc(role.Label, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+			return nil, errAccountResponse
+		}
+	}
+	return rows, nil
 }
 
 // sameOriginURL accepts only an absolute URL on exactly the credential's

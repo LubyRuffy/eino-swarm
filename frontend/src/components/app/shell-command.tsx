@@ -34,7 +34,7 @@ export function ShellCommand({
       className={cn(
         "font-mono",
         compact
-          ? "block truncate text-[13px]"
+          ? "block truncate text-(length:--chrome-font-size)"
           : "thin-scrollbar max-h-72 overflow-auto whitespace-pre-wrap wrap-break-word rounded bg-muted p-2 text-[12px]",
       )}
     >

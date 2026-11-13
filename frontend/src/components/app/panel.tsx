@@ -390,7 +390,7 @@ function sortDirLabel(sort: AgentRosterSort, t: Translate): string {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mb-3">
-      <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      <p className="px-2 py-1.5 text-(length:--chrome-font-size) font-semibold text-muted-foreground">
         {title}
       </p>
       {children}

@@ -76,7 +76,7 @@ export function NuwaPanel({
     <div data-testid="nuwa-panel" className="thin-scrollbar min-h-0 flex-1 overflow-y-auto p-3">
       <div className="mb-3 flex items-center gap-2">
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-semibold">{project.name}</h2>
+          <h2 className="truncate text-(length:--chrome-font-size) font-semibold">{project.name}</h2>
           <span
             className={cn(
               "mt-1 flex items-center gap-1 text-[11px]",
@@ -350,7 +350,7 @@ function NodeDetail({
       className="mt-3 rounded-lg border border-border bg-muted/20 p-3"
     >
       <div className="mb-2 flex items-start justify-between gap-2">
-        <h3 className="wrap-break-word text-sm font-medium">{node.title}</h3>
+        <h3 className="wrap-break-word text-(length:--chrome-font-size) font-medium">{node.title}</h3>
         <NuwaStatus status={node.status} />
       </div>
       <p className="whitespace-pre-wrap wrap-break-word text-xs text-muted-foreground">

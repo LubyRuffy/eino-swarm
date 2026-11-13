@@ -399,6 +399,11 @@ export function reduceEvent(
     append(touchAgent(next, MANAGER_ID), block(ev, "notice", modelRetryNotice(ev.text)))
     return next
   }
+  if (ev.kind === "decision") {
+    const text = ev.text?.trim()
+    if (text) append(touchAgent(next, MANAGER_ID), block(ev, "notice", text))
+    return next
+  }
   if (ev.kind === "model_backoff") {
     const previous = next.agents[MANAGER_ID]?.blocks ?? []
     const blocks = backoffBlocks(previous, ev, next.agents[ev.agent_id || MANAGER_ID]?.role)

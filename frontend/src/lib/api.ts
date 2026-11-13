@@ -700,6 +700,8 @@ export const api = {
   },
 
   askSideChat,
+  decideThread: (id: string) =>
+    request<{ text: string }>(`/api/threads/${id}/decision`, { method: "POST" }).then((r) => r.text),
   startTurn: (
     id: string,
     text: string,

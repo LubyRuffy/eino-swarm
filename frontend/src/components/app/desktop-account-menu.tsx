@@ -210,6 +210,20 @@ export function DesktopAccountMenu() {
                 ) : <UserRound className="size-7" />}
               </button>
             </div>
+            {fofa && models?.roles && models.roles.length > 0 ? (
+              <div className="grid gap-2" data-testid="account-model-roles">
+                <p className="text-sm font-medium">{t("accountModels.roles")}</p>
+                {models.roles.map((role) => (
+                  <label key={role.id} className="flex items-center justify-between gap-3 text-sm">
+                    <span>{role.label || role.id}</span>
+                    <span className="flex items-center gap-2 text-muted-foreground">
+                      {role.enabled ? t("accountModels.roleOn") : t("accountModels.roleOff")}
+                      <input type="checkbox" checked={role.enabled} disabled aria-label={role.label || role.id} readOnly />
+                    </span>
+                  </label>
+                ))}
+              </div>
+            ) : null}
             {fofa ? null : <p className="text-sm text-muted-foreground">{t("desktopAccount.localHint")}</p>}
             {failed ? <p role="alert" className="text-sm text-destructive">{t("desktopAccount.actionFailed")}</p> : null}
             <RemoteLoginSection

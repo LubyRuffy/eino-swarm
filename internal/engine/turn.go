@@ -424,6 +424,11 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 	if len(modelImages) == 0 && len(keep) > 0 {
 		modelImages = e.loadImageInputs(threadID, keep)
 	}
+	if next, images, used, err := e.readRoleImages(prov.ID, text, modelImages); err != nil {
+		return nil, err
+	} else if used {
+		text, caption, modelImages, refs = next, next, images, nil
+	}
 
 	turn := &store.Turn{
 		ProjectID:        th.ProjectID,

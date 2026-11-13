@@ -281,7 +281,7 @@ export function BackupTab({ query }: { query: string }) {
             <DialogTitle>{t("backup.busyTitle")}</DialogTitle>
             <DialogDescription>{t("backup.busyBody")}</DialogDescription>
           </DialogHeader>
-          <ul className="max-h-40 overflow-auto text-sm">
+          <ul className="max-h-40 overflow-auto text-(length:--chrome-font-size)">
             {choice?.tasks.map((task) => <li key={task.id}>{task.title}</li>)}
           </ul>
           <DialogFooter>

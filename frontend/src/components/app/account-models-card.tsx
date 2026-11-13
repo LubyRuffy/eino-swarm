@@ -29,6 +29,7 @@ export function AccountModelsCard({
   const t = useT()
   const [leaveOfficial, setLeaveOfficial] = useState(false)
   const account = useApp((s) => s.meta?.account_models)
+  const fofa = useApp((s) => s.meta?.product_mode) === "fofa"
   const problem = accountModelsProblem(account)
   const ready = account?.state === "ready"
   const tally = accountKindTally(account?.kinds)
@@ -113,6 +114,20 @@ export function AccountModelsCard({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      ) : null}
+      {ready && fofa && account.roles && account.roles.length > 0 ? (
+        <div className="grid gap-2 px-4 py-3" data-testid="account-model-roles">
+          <p className="text-sm font-medium">{t("accountModels.roles")}</p>
+          {account.roles.map((role) => (
+            <label key={role.id} className="flex items-center justify-between gap-3 text-sm">
+              <span>{role.label || role.id}</span>
+              <span className="flex items-center gap-2 text-muted-foreground">
+                {role.enabled ? t("accountModels.roleOn") : t("accountModels.roleOff")}
+                <input type="checkbox" checked={role.enabled} disabled aria-label={role.label || role.id} readOnly />
+              </span>
+            </label>
+          ))}
+        </div>
       ) : null}
       {ready && ownReady && !officialOnly ? (
         <SettingsChoice

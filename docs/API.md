@@ -273,7 +273,7 @@ endpoint:
 |---|---|
 | `signed_out` | no device login on this machine |
 | `pending` | signed in; the model catalog has not been read yet |
-| `ready` | the catalog was read (`models` is the total count). `kinds` counts `chat`, `unclassified`, `embedding`, `ocr`, `decisions` and `other`, and `embedding_models` lists the embedding names. `source_id` is the runtime `gateway:<32 hex>` id. Conversation rows in `GET /api/models` are the `chat` and unclassified names |
+| `ready` | the catalog was read (`models` is the total count). `kinds` counts `chat`, `unclassified`, `embedding`, `ocr`, `decisions` and `other`, and `embedding_models` lists the embedding names. `source_id` is the runtime `gateway:<32 hex>` id. Conversation rows in `GET /api/models` are the `chat` and unclassified names. When the server publishes fixed roles, `roles` is the read-only list `{id,enabled,label}` and a FOFA install uses those names instead of the catalog. An old server omits `roles`. LOCAL ignores the field |
 | `no_access` | signed in but the account may not use the model API |
 | `unavailable` | signed in but the catalog could not be used; `reason` is one of `rejected`, `unsupported`, `network`, `gateway`, `unsafe_response`, `no_models` |
 
@@ -611,7 +611,7 @@ is `fofa`, a `models` section that is not identical to what is stored, and
 `POST /api/models/discover`, are `403` with `custom_models_disabled`. The stored
 providers stay. A request that sets `local` in the same body may change models.
 While `fofa` and the account state is missing or `signed_out`, turn, steer,
-continue, retry, compact, follow-up, side chat, review, schedule create and
+continue, retry, compact, follow-up, side chat, decision, review, schedule create and
 run, preempt, plan implement, and goal resume are `403` with `login_required`.
 `pending`, `ready`, `no_access`, and `unavailable` count as signed in. Stop and
 answer stay available. `--mock` does not require a sign-in. A server built
@@ -2179,6 +2179,16 @@ An unavailable answer returns `502 side_chat_unavailable`. A timed-out
 request returns `504 side_chat_timeout`; the side call has a 90-second budget
 and can also end sooner at the provider boundary.
 
+### `POST /api/threads/:id/decision` → `200`
+
+Ask the fixed decisions role about the current conversation. There is no
+request body and nothing to configure. The server uses the conversation text
+and records the answer as a `decision` event in that conversation. The
+response is `{"text":"…"}`. The button exists only while FOFA is signed in to
+a server that has the decisions role enabled. A conversation that cannot call
+it returns `404 decision_unavailable`. Signed-out FOFA returns `403
+login_required`.
+
 ### `POST /api/threads/:id/turns`
 
 ## Turns
@@ -2684,6 +2694,7 @@ shortening only the bounded detail text.
 | `model_backoff` | a wait observation or private-candidate deferral, not a sent request or new retry allowance. Origin JSON is `{scope:"origin",cooldown_id,attempt,wait_ms}` on the actual caller/turn: cooldown_id is an opaque process-local service-generation identity shared across roles, with no endpoint; positive wait_ms is observed remaining cooldown (sub-millisecond waits use 1), and 0 means an active probe has not yet yielded valid content and its remaining wait is unknown. Only one recovery probe is admitted after cooldown; its first decoded nonempty body, reasoning or tool-call delta admits other requests while the stream stays open. Headers, role-only/empty/usage-only deltas and error frames do not admit them. Only the probe's final result resets or advances failures; concurrent results during that probe cannot change the streak or a later generation. A failed probe renews cooldown without cancelling already admitted requests; non-streaming Generate waits for its complete result. PC/phone chat and history show one timed row per conversation/generation and omit zero-delay probe rows; Trace keeps each caller observation. Candidate JSON instead uses `{scope:"schedule_answer",attempt,wait_ms,code,candidate_id}` as described below. Legacy rows may omit the added fields. |
 | `model_retry` | the manager hit a recoverable ChatModel failure and re-entered this turn. `text` is JSON `{attempt,cap,reason?}`. `reason` selects the transcript notice: `invalid_tool_json` (the model returned a tool call that was not valid JSON), `model_response_invalid` (the SDK cannot decode the model HTTP response or stream, including a wrong field type; the turn did not reach a tool), `rate_limited`, `model_unavailable` (HTTP 500/502/503/504/529), `model_transport` (dropped stream, connection reset, mid-stream read timeout), `model_idle` (silence after the first byte). Older rows omit `reason` and keep the generic retry line. `reason: "context_overflow"` is separate: the endpoint rejected the call because the prompt plus the requested output does not fit the window. That notice names the window, the turn compacts once, and a second rejection ends the turn with `the prompt plus the requested output exceeds this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry`. A repeating schedule that ends that way is paused. When the in-turn retries are exhausted, the turn error is the same class: `the model returned a tool call that was not valid JSON`, `the model service is rate limiting requests`, `the model service is unavailable`, `the model service returned a response that could not be decoded`, or `the connection to the model service dropped`. An exhausted idle timeout keeps the sentence that names how long the model sent no data. A trailing tool call whose arguments are not valid JSON is refused before the next model request and then dropped, so that payload is not sent and a `400 Unterminated string` cannot repeat. `reason: "scheduled_no_activity"` is the scheduled-check continuation, not a model failure |
 | `title` | the conversation was named; `text` is the new title, `agent_id` is `title-namer`. Not rendered in the transcript |
+| `decision` | the fixed decisions role answered; `text` is the short result and the transcript shows it as a notice |
 | `session_memory` | the rolling session briefing was refreshed from the event log; `text` is JSON `{summary,through_seq}`. `agent_id` is `session-memory`. Not rendered in the transcript; compact and the reviewer read the thread fields. Post-turn refresh is background work: a queued follow-up starts as soon as the turn is `done` or `error`, and does not wait for this event |
 | `goal` | the human set or cleared a standing objective; `text` is the objective (empty when cleared). Resets complete/blocked/capped |
 | `goal_complete` | the manager called `complete_goal`; auto-continue stops. `text` is JSON `{summary}`. `reopen_goal` in the same turn records `goal_resumed`, resets the auto-continue budget, and pursuit continues |

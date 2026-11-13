@@ -98,12 +98,12 @@ export function ExternalSkillsDialog({ project, onClose }: { project: Project; o
           </Button>
         </div>
         {loadError ? (
-          <p role="alert" className="break-words text-xs text-destructive">
+          <p role="alert" className="break-words text-(length:--chrome-font-size) text-destructive">
             {t("skill.installedLoadError", { error: loadError })}
           </p>
         ) : null}
         {removeError ? (
-          <p role="alert" className="break-words text-xs text-destructive">
+          <p role="alert" className="break-words text-(length:--chrome-font-size) text-destructive">
             {t("skill.removeError", removeError)}
           </p>
         ) : null}
@@ -197,7 +197,7 @@ function ExternalSkillRow({
         >
           <ChevronRight className={`mt-0.5 size-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm">{info.name}</span>
+            <span className="block truncate text-(length:--chrome-font-size)">{info.name}</span>
             <span className="block text-xs leading-snug text-muted-foreground">{info.description}</span>
           </span>
         </button>
@@ -215,9 +215,9 @@ function ExternalSkillRow({
       {open ? (
         <div
           data-testid="skill-body"
-          className="md thin-scrollbar max-h-72 min-w-0 overflow-auto wrap-break-word border-t border-border px-2 py-2 text-sm *:first:mt-0"
+          className="md thin-scrollbar max-h-72 min-w-0 overflow-auto wrap-break-word border-t border-border px-2 py-2 text-(length:--chrome-font-size) *:first:mt-0"
         >
-          {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : skill ? (
+          {error ? <p role="alert" className="text-(length:--chrome-font-size) text-destructive">{error}</p> : skill ? (
             // A bundle preview must not fetch its external images or navigate to relative paths on the engine.
             <Markdown skipHtml disallowedElements={["img", "a"]} unwrapDisallowed>
               {skill.body}

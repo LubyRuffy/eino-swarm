@@ -133,7 +133,7 @@ export function SkillCopyDialog({
           <DialogDescription>{t("skill.copyDesc")}</DialogDescription>
         </DialogHeader>
         {loaded && dests.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("skill.copyNone")}</p>
+          <p className="text-(length:--chrome-font-size) text-muted-foreground">{t("skill.copyNone")}</p>
         ) : (
           <div className="grid gap-3">
             <div className="grid gap-1.5">
@@ -170,7 +170,7 @@ export function SkillCopyDialog({
           </div>
         )}
         {error ? (
-          <p role="alert" className="whitespace-pre-wrap text-sm text-destructive">
+          <p role="alert" className="whitespace-pre-wrap text-(length:--chrome-font-size) text-destructive">
             {error}
           </p>
         ) : null}

@@ -354,7 +354,7 @@ const BlockView = memo(function BlockView({
     case "steer":
       return (
         <div className="mb-2 flex justify-end" data-testid="steer">
-          <div className="flex max-w-[85%] items-start gap-2 rounded-2xl rounded-br-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+          <div className="flex max-w-[85%] items-start gap-2 rounded-2xl rounded-br-md border border-dashed border-border px-3 py-2 text-(length:--chrome-font-size) text-muted-foreground">
             <Badge variant="outline" className="mt-0.5 shrink-0">
               {t("transcript.steer")}
             </Badge>
@@ -517,7 +517,7 @@ export function WaitProgress({
   const ages = new Map(livePulse?.agents.map((a) => [a.agentId, a.elapsedMs]))
   return (
     <div className="my-1 rounded-lg border border-border bg-muted/40 px-3 py-2">
-      <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+      <div className="flex items-center gap-2 text-(length:--chrome-font-size) text-muted-foreground">
         <Loader2 className="size-3.5 shrink-0 animate-spin" />
         <MarqueeText
           active
@@ -608,10 +608,10 @@ function SpawnRow({
     <button
       type="button"
       onClick={() => onSelect(id)}
-      className="my-0.5 flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent/60"
+      className="my-0.5 flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-(length:--chrome-font-size) transition-colors hover:bg-accent/60"
     >
       <Users className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="text-[13px]">
+      <span className="text-(length:--chrome-font-size)">
         {t("transcript.started", {
           role: agentRosterText(block.spawn?.role ?? "", id),
         })}
@@ -620,7 +620,7 @@ function SpawnRow({
       <MarqueeText
         text={live?.activity ?? ""}
         active={live?.status === "running"}
-        className="text-[13px] text-muted-foreground"
+        className="text-(length:--chrome-font-size) text-muted-foreground"
       />
     </button>
   )
@@ -671,7 +671,7 @@ export function Heartbeat({
       className="mt-2 flex items-center gap-2 px-2 text-xs text-muted-foreground"
     >
       <Loader2 className="size-3 shrink-0 animate-spin" />
-      <MarqueeText active className="text-xs" text={label} />
+      <MarqueeText active className="text-(length:--chrome-font-size)" text={label} />
     </p>
   )
 }

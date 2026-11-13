@@ -58,7 +58,7 @@ export function ContextMeter({
         align="end"
         className="max-w-56 border border-border bg-popover px-3 py-2 text-popover-foreground"
       >
-        <p className="text-sm font-medium">{label}</p>
+        <p className="text-(length:--chrome-font-size) font-medium">{label}</p>
         {limit > 0 ? (
           <p className="text-xs text-muted-foreground">
             {t("usage.tokensOf", {

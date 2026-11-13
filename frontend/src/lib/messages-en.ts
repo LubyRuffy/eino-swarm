@@ -169,6 +169,8 @@ export const en = {
   "composer.placeholderPlan": "What should we plan?",
   "composer.placeholderAsk": "Type an answer, or pick a choice above",
   "composer.attach": "Attach files",
+  "composer.decision": "Decision",
+  "composer.decisionFailed": "The decision did not finish.",
   "composer.attachHint": "Attach files to the workspace",
   "composer.thinking": "Thinking level",
   "composer.thinkingDefault": "Default thinking",

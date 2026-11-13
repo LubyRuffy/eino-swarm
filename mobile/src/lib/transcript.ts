@@ -476,6 +476,11 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
       if (ev.text) kept.push({ id: blockId(ev), kind: "notice", text: ev.text, turnId: ev.turn_id })
       return kept
     }
+    case "decision": {
+      const text = ev.text.trim()
+      if (text) next.push({ id: blockId(ev), kind: "notice", text, turnId: ev.turn_id })
+      return next
+    }
     case "composer_prediction":
       return next
     default:

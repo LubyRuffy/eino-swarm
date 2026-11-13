@@ -619,3 +619,60 @@ func TestAccountPictureFollowsTheBootstrapAndKeepsASavedAddress(t *testing.T) {
 		t.Fatalf("restart lost the picture: %+v", restarted.State())
 	}
 }
+
+func TestFOFARolesUseFixedNamesAndStayReadOnly(t *testing.T) {
+	g := newAccountGateway(t)
+	roles := []map[string]any{
+		{"id": "conversation", "enabled": true, "label": "对话"},
+		{"id": "title", "enabled": false, "label": "对话命名"},
+		{"id": "compact", "enabled": true, "label": "压缩"},
+		{"id": "embedding", "enabled": true, "label": "嵌入"},
+		{"id": "ocr", "enabled": false, "label": "OCR"},
+		{"id": "decisions", "enabled": true, "label": "决策"},
+	}
+	g.bootstrap = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
+			"user": map[string]any{"id": strings.Repeat("2", 32), "username": "Account"},
+			"models": map[string]any{
+				"source_id": accountModelsSourceID, "source_kind": "gateway", "label": "Server", "execution": "desktop",
+				"api_base_url": g.server.URL + "/client/desktop/v1", "catalog_url": g.server.URL + "/client/desktop/v1/models",
+				"api_access_enabled": true, "roles": roles,
+			},
+		}})
+	}
+	am, pool, cfg := accountModelsFixture(t, g)
+	st := am.Refresh(context.Background())
+	if st.State != AccountReady || st.Models != 1 || len(st.Roles) != 6 || st.Roles[0].ID != "conversation" || !st.Roles[0].Enabled || st.Roles[1].Enabled || st.Roles[5].Label != "决策" {
+		t.Fatalf("roles = %+v", st)
+	}
+	for _, uri := range g.seen() {
+		if uri == "/client/desktop/v1/models" {
+			t.Fatal("role mode still read the public model catalog")
+		}
+	}
+	name, _, ok := pool.ConversationDefault(accountModelsSourceID)
+	if !ok || name != "conversation" {
+		t.Fatalf("conversation model = %q ok=%v", name, ok)
+	}
+	if enabled, configured := pool.AccountRole(accountModelsSourceID, "title"); !configured || enabled {
+		t.Fatalf("title role = enabled %v configured %v", enabled, configured)
+	}
+	if id, model, enabled, configured := pool.AccountEmbedding(); !configured || !enabled || id != accountModelsSourceID || model != "embedding" {
+		t.Fatalf("embedding = %s %s %v %v", id, model, enabled, configured)
+	}
+	if err := cfg.Update(func(next *config.Config) error {
+		next.Product.Mode = config.ProductModeLocal
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	local := am.Refresh(context.Background())
+	if len(local.Roles) != 0 || local.Models != 2 {
+		t.Fatalf("local mode consumed server roles: %+v", local)
+	}
+	name, _, ok = pool.ConversationDefault(accountModelsSourceID)
+	if !ok || name != "server-model" {
+		t.Fatalf("local catalog = %q", name)
+	}
+}

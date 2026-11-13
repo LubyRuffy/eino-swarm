@@ -34,7 +34,7 @@ function LoginRequired() {
         className="pointer-events-auto grid w-full max-w-lg gap-4 rounded-lg border bg-background p-6 shadow-lg"
       >
         <h2 id="login-required-title" className="text-lg font-semibold">{t("welcome.title")}</h2>
-        <p className="text-sm text-muted-foreground">{t("welcome.desc")}</p>
+        <p className="text-(length:--chrome-font-size) text-muted-foreground">{t("welcome.desc")}</p>
         <AccountSignIn />
       </div>
     </div>
@@ -64,7 +64,7 @@ function WelcomeDialog() {
           <DialogDescription>{t("welcome.desc")}</DialogDescription>
         </DialogHeader>
         <AccountSignIn />
-        {problem ? <p role="status" className="text-sm text-muted-foreground">{t(problem)}</p> : null}
+        {problem ? <p role="status" className="text-(length:--chrome-font-size) text-muted-foreground">{t(problem)}</p> : null}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => answer(() => openSettings("models"))}>
             {t("welcome.own")}

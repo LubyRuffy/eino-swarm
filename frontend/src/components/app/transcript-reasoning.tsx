@@ -34,9 +34,9 @@ export function Reasoning({ block, reveal, defaultCollapsed = false }: {
             <Brain className="size-3.5 shrink-0" />
           )}
           {block.streaming ? (
-            <MarqueeText text={t("transcript.thinking")} active className="flex-none w-fit text-[13px]" />
+            <MarqueeText text={t("transcript.thinking")} active className="flex-none w-fit text-(length:--chrome-font-size)" />
           ) : (
-            <span className="text-[13px]">{t("transcript.thought")}</span>
+            <span className="text-(length:--chrome-font-size)">{t("transcript.thought")}</span>
           )}
           {expanded ? (
             <ChevronDown className="size-3.5 opacity-60" />

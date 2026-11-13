@@ -75,7 +75,7 @@ export function AskCardView({ card }: { card: AskCard }) {
         {card.pending ? <AskMark className="size-3.5" pulse={false} /> : null}
         <p
           className={cn(
-            "text-sm",
+            "text-(length:--chrome-font-size)",
             card.pending ? "font-medium text-ask" : "text-muted-foreground",
           )}
         >
@@ -123,8 +123,8 @@ export function AskCardView({ card }: { card: AskCard }) {
               {q.header ? (
                 <p className="text-xs text-muted-foreground">{q.header}</p>
               ) : null}
-              <p className="text-sm font-medium">{q.prompt}</p>
-              <p className="mt-2 text-sm text-muted-foreground">
+              <p className="text-(length:--chrome-font-size) font-medium">{q.prompt}</p>
+              <p className="mt-2 text-(length:--chrome-font-size) text-muted-foreground">
                 {card.answers?.[q.id] ?? ""}
               </p>
             </div>
@@ -159,7 +159,7 @@ function AskQuestionBlock({
       {question.header ? (
         <p className="mb-1 px-2 text-xs text-muted-foreground">{question.header}</p>
       ) : null}
-      <p id={promptId} className="px-2 text-sm font-medium leading-snug">
+      <p id={promptId} className="px-2 text-(length:--chrome-font-size) font-medium leading-snug">
         {question.prompt}
       </p>
       <div
@@ -187,14 +187,14 @@ function AskQuestionBlock({
               data-testid={`ask-option-${o.id}`}
               aria-label={label}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition-colors",
+                "flex items-center gap-3 rounded-lg px-2 py-2.5 text-left text-(length:--chrome-font-size) transition-colors",
                 "hover:bg-muted hover:text-accent-foreground",
                 "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                 selected && "bg-muted text-accent-foreground",
               )}
               onClick={() => onPick(o.id)}
             >
-              <span className="w-5 shrink-0 text-sm tabular-nums text-muted-foreground">
+              <span className="w-5 shrink-0 text-(length:--chrome-font-size) tabular-nums text-muted-foreground">
                 {i + 1}.
               </span>
               <span className="min-w-0 flex-1">

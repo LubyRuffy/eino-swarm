@@ -36,7 +36,7 @@ export function TranscriptError({
   const retryable = onRetry && turnId && latest?.id === turnId && latest.status === "error"
   return (
     <div
-      className="my-2 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+      className="my-2 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-(length:--chrome-font-size) text-destructive"
       data-testid={budget ? "output-budget-error" : firstByte ? "first-byte-timeout-error" : undefined}
     >
       <AlertTriangle className="mt-0.5 size-4 shrink-0" />
@@ -48,7 +48,7 @@ export function TranscriptError({
             <Button
               type="button"
               variant="link"
-              className="h-auto px-0 py-0 text-sm text-destructive underline underline-offset-4"
+              className="h-auto px-0 py-0 text-(length:--chrome-font-size) text-destructive underline underline-offset-4"
               onClick={() => openSettings("models", firstByteTimeoutSettingsKey(providerId ?? ""))}
             >
               {t("transcript.firstByteTimeoutSettings")}
@@ -62,7 +62,7 @@ export function TranscriptError({
               <Button
                 type="button"
                 variant="link"
-                className="h-auto px-0 py-0 text-sm text-destructive underline underline-offset-4"
+                className="h-auto px-0 py-0 text-(length:--chrome-font-size) text-destructive underline underline-offset-4"
                 onClick={() =>
                   openSettings("swarm", MAX_COMPLETION_SETTINGS_KEY)
                 }

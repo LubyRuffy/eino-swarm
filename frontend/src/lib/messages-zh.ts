@@ -166,6 +166,8 @@ export const zh: { [K in keyof typeof en]: string } = {
   "composer.placeholderPlan": "要规划什么？",
   "composer.placeholderAsk": "输入回答，或点上面的选项",
   "composer.attach": "附加文件",
+  "composer.decision": "决策",
+  "composer.decisionFailed": "这次决策没有完成。",
   "composer.attachHint": "把文件放到工作区",
   "composer.thinking": "思考强度",
   "composer.thinkingDefault": "默认思考",

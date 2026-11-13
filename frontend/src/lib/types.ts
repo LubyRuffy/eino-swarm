@@ -37,6 +37,7 @@ export type EventKind =
   | "model_retry"
   | "model_backoff"
   | "title"
+  | "decision"
   | "composer_prediction"
   | "session_memory"
   | "done"
@@ -492,6 +493,8 @@ export interface AccountModels {
   /** Runtime provider id for this account. Not an endpoint. */
   source_id?: string
   kinds?: AccountModelKinds
+  /** Read-only server roles. Absent on an older server and in local mode. */
+  roles?: { id: string; enabled: boolean; label: string }[]
   /** Present only while the server published an official-model agreement.
    *  The instruction text is not included. */
   profile?: {

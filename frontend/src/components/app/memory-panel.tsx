@@ -120,7 +120,7 @@ export function MemoryPanel({
 
   if (!project && !library) {
     return (
-      <p className="p-4 text-sm text-muted-foreground">
+      <p className="p-4 text-(length:--chrome-font-size) text-muted-foreground">
         {t("memory.noProject")}
       </p>
     )
@@ -154,7 +154,7 @@ export function MemoryPanel({
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col gap-3 p-3">
       <div className="flex shrink-0 items-center gap-2">
-        <p className="min-w-0 flex-1 truncate text-sm font-medium">
+        <p className="min-w-0 flex-1 truncate text-(length:--chrome-font-size) font-medium">
           {library ? t("memory.libraryTitle") : project?.name}
         </p>
         <Button
@@ -196,7 +196,7 @@ export function MemoryPanel({
       {library ? null : (
       <section className="grid shrink-0 gap-2">
         <div className="flex items-center gap-2">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <h3 className="text-(length:--chrome-font-size) font-semibold text-muted-foreground">
             {t("memory.notes")}
           </h3>
           <Badge variant={chars > limit * 0.9 ? "warning" : "outline"}>
@@ -255,7 +255,7 @@ export function MemoryPanel({
 
       <section className="flex min-h-0 flex-1 flex-col gap-2">
         <div className="flex shrink-0 items-center gap-2">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <h3 className="text-(length:--chrome-font-size) font-semibold text-muted-foreground">
             {t("memory.skills")}
           </h3>
           <Button
@@ -489,7 +489,7 @@ function SkillRow({
             className={`mt-0.5 size-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
           />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm">{name}</span>
+            <span className="block truncate text-(length:--chrome-font-size)">{name}</span>
             <span className="block text-xs leading-snug text-muted-foreground">
               {description}
             </span>
@@ -546,7 +546,7 @@ function SkillRow({
       {open ? (
         <div
           data-testid="skill-body"
-          className="md thin-scrollbar max-h-72 min-w-0 overflow-auto wrap-break-word border-t border-border px-2 py-2 text-sm *:first:mt-0"
+          className="md thin-scrollbar max-h-72 min-w-0 overflow-auto wrap-break-word border-t border-border px-2 py-2 text-(length:--chrome-font-size) *:first:mt-0"
         >
           {error ? (
             <p className="text-xs text-destructive">{error}</p>

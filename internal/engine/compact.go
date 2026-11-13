@@ -162,7 +162,8 @@ func (e *Engine) CompactThread(threadID string) (*store.Thread, error) {
 		}
 		through = th.CompactThroughSeq
 	} else if summary == "" {
-		providerID, model := e.cfg.SwarmSnapshot().ResolveCompact(th.ProviderID, th.Model)
+		fbProvider, fbModel := e.cfg.SwarmSnapshot().ResolveCompact(th.ProviderID, th.Model)
+		providerID, model := e.applyRoleModel(th.ProviderID, "compact", fbProvider, fbModel)
 		builder, err := e.pool.ModelBuilder(ctx, providerID, model, "", e.callRecorder(threadID, turnID))
 		if err != nil {
 			e.recordCompact(threadID, turnID, "", err.Error())

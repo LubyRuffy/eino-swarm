@@ -87,7 +87,7 @@ export function ConversationSchedules({ threadId }: { threadId?: string }) {
                 onClick={() => openConversationSchedule(row)}
               >
                 <span className="block w-full min-w-0">
-                  <span className="block truncate text-sm font-medium">{headline}</span>
+                  <span className="block truncate text-(length:--chrome-font-size) font-medium">{headline}</span>
                   {meta ? (
                     <span className="block truncate text-xs text-muted-foreground">{meta}</span>
                   ) : null}
