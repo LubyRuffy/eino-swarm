@@ -1,8 +1,10 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent, { PointerEventsCheckLevel } from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
 import { Composer } from "./composer"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { api } from "@/lib/api"
 import { IME_KEYCODE } from "@/lib/ime"
 import { formatQuotedMessage } from "@/lib/quote"
 import type { Attachment, ModelInfo } from "@/lib/types"
@@ -92,6 +94,30 @@ describe("Composer thinking level", () => {
   it("hides the control when the server offers no levels", () => {
     renderComposer({ reasoningLevels: [] })
     expect(screen.queryByLabelText("Thinking level")).toBeNull()
+  })
+
+  // The tools menu and this list both open over the composer. One has to
+  // close before the other paints, or the two panels cover each other.
+  it("closes the tools menu when thinking opens, and the reverse", async () => {
+    vi.spyOn(api, "tools").mockResolvedValue({ catalog: [], enabled: [] })
+    vi.spyOn(api, "mcpServers").mockResolvedValue([])
+    vi.spyOn(api, "settings").mockResolvedValue({ tools: {
+      disabled: [], enabled: [], proxy: { http: "", https: "", no_proxy: "" },
+      web_search_max_results: 8, web_execution: "local", result_max_chars: 12000,
+    } } as unknown as Awaited<ReturnType<typeof api.settings>>)
+    const user = userEvent.setup({ pointerEventsCheck: PointerEventsCheckLevel.Never })
+    HTMLElement.prototype.hasPointerCapture ??= () => false
+    HTMLElement.prototype.releasePointerCapture ??= () => undefined
+    renderComposer()
+    await user.click(screen.getByRole("button", { name: "Tools" }))
+    expect(await screen.findByTestId("composer-tools-menu")).toBeVisible()
+    await user.click(screen.getByLabelText("Thinking level"))
+    await waitFor(() => expect(screen.queryByTestId("composer-tools-menu")).toBeNull())
+    expect(screen.getByRole("option", { name: "High thinking" })).toBeVisible()
+    await user.click(screen.getByRole("button", { name: "Tools", hidden: true }))
+    await waitFor(() => expect(screen.queryByRole("option", { name: "High thinking" })).toBeNull())
+    expect(screen.getByTestId("composer-tools-menu")).toBeVisible()
+    vi.restoreAllMocks()
   })
 })
 

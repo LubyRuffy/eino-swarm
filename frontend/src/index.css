@@ -78,6 +78,7 @@
   --color-diff-del: hsl(var(--diff-del));
   --color-diff-del-bg: hsl(var(--diff-del-bg));
 
+  --text-xs: calc(var(--chrome-font-size) * 0.85); /* rem-based xs fell to ~9.75px at a 13px root */
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
@@ -366,12 +367,12 @@
     @apply min-w-0;
   }
   & th {
-    @apply border border-border px-2 py-1 text-left align-top;
+    @apply border border-border bg-muted/50 px-3 py-1.5 text-left align-top font-medium;
     min-width: 10ch;
     overflow-wrap: anywhere;
   }
   & td {
-    @apply border border-border px-2 py-1 text-left align-top;
+    @apply border border-border px-3 py-1.5 text-left align-top;
     min-width: 10ch;
     overflow-wrap: anywhere;
   }

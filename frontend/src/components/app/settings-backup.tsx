@@ -240,9 +240,9 @@ export function BackupTab({ query }: { query: string }) {
             }}
           />
         </div>
-        {!selectedId ? <p className="px-4 pb-3 text-sm text-muted-foreground">{t("backup.noProject")}</p> : null}
+        {!selectedId ? <p className="px-4 py-3 text-(length:--chrome-font-size) text-muted-foreground">{t("backup.noProject")}</p> : null}
         {report ? (
-          <div className="flex flex-col gap-2 px-4 pb-3 text-sm">
+          <div className="flex flex-col gap-2 px-4 py-3 text-(length:--chrome-font-size)">
             <p>{t("backup.counts", {
               projects: report.manifest.counts?.projects ?? 0,
               threads: report.manifest.counts?.threads ?? 0,
@@ -257,7 +257,7 @@ export function BackupTab({ query }: { query: string }) {
           </div>
         ) : null}
         {activity ? (
-          <div className="grid gap-2 px-4 pb-3">
+          <div className="grid gap-2 px-4 py-3">
             <div
               className="h-1 overflow-hidden rounded-full bg-muted"
               role="progressbar"
@@ -271,9 +271,9 @@ export function BackupTab({ query }: { query: string }) {
                 style={backupPercent(progress) === undefined ? undefined : { width: `${backupPercent(progress)}%` }}
               />
             </div>
-            <p className="text-sm" role="status">{backupProgressText(progress, t)}</p>
+            <p className="text-(length:--chrome-font-size)" role="status">{backupProgressText(progress, t)}</p>
           </div>
-        ) : note ? <p className="px-4 pb-3 text-sm" role="status">{note}</p> : null}
+        ) : note ? <p className="px-4 py-3 text-(length:--chrome-font-size)" role="status">{note}</p> : null}
       </SettingsSection>
       <Dialog open={choice !== undefined} onOpenChange={(open) => { if (!open) setChoice(undefined) }}>
         <DialogContent>

@@ -110,7 +110,7 @@ function RemoteTabBody({
       title={t("settings.remote.title")}
       description={t("settings.remote.accountDesc")}
     >
-      <p className={settingsHintClass}>{t("settings.remote.accountSetup")}</p>
+      <p className={cn(settingsHintClass, "-mt-5")}>{t("settings.remote.accountSetup")}</p>
       <RemoteLoginSection
         accountEntry
         enabled={remote.enabled}

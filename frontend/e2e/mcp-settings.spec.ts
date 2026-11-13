@@ -73,7 +73,7 @@ test("MCP connection configuration persists and discovers the real server's tool
   }
 })
 
-test("MCP JSON text adds a one-line command and keeps its credential hidden", async ({ page, request }) => {
+test("MCP JSON text adds a one-line command and keeps its credential hidden", async ({ page, request }, info) => {
   const name = `json-${Date.now()}`
   const fixture = resolve("../tools/mcp_fixture.py")
   const content = JSON.stringify({
@@ -90,6 +90,13 @@ test("MCP JSON text adds a one-line command and keeps its credential hidden", as
     await dialog.getByRole("button", { name: "Edit JSON", exact: true }).click()
     const editor = dialog.getByLabel("MCP JSON")
     await expect(editor).toHaveAttribute("spellcheck", "false")
+    await expect(dialog.getByRole("heading", { name: "JSON configuration", exact: true })).toBeVisible()
+    await expect(dialog.getByRole("heading", { name: "MCP servers", exact: true })).toHaveCount(0)
+    await expect(dialog.locator("pre [style*='--shiki-light']").first()).toBeVisible()
+    const editorBox = await editor.boundingBox()
+    const dialogBox = await dialog.boundingBox()
+    expect(editorBox && dialogBox && editorBox.height > dialogBox.height * 0.45).toBe(true)
+    await page.screenshot({ path: info.outputPath("mcp-json-highlight.png"), animations: "disabled" })
     await editor.fill(content)
     await page.setViewportSize({ width: 820, height: 900 })
     expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true)

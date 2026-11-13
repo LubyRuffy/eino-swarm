@@ -121,7 +121,9 @@ starts folded. A filter box matches a tool title, a tool name, or a
 connection name, and opens the groups that match. The menu opens above the
 composer, and each switch stays clear of the scrollbar. Each row is a
 compact switch. The tool name and description sit behind an information
-icon; they appear when the pointer is over that icon. A tool that is on by default starts on;
+icon; they appear when the pointer is over that icon. Opening this menu
+closes the thinking-level menu, and opening the thinking-level menu closes
+this one. A tool that is on by default starts on;
 Python and screenshot stay off until you turn them on. A remote tool starts
 on. Turning one off saves immediately and does not disable the server. The
 next model request omits that built-in tool, or leaves that remote name out
@@ -967,7 +969,9 @@ it. A failed inspection stays visible and can be retried. The row uses one
 colored mark for enabled or disabled, and another for the latest check.
 Opening a tool highlights its input schema.
 
-**Edit JSON** opens the same connections as text. The text uses the
+**Edit JSON** replaces the right-hand settings page with the document and
+colors it as JSON while it is edited. Cancel or Apply returns to the
+connection list. The text uses the
 `mcpServers` object other clients use, so a document can be pasted there.
 Entries in the text are added or updated. A connection that is not in the text
 stays. Saved credential values are not shown; leave `env` and `headers` out to

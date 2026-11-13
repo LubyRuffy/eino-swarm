@@ -31,7 +31,7 @@ export const settingsHintClass = cn(chromeTypeClass, "mt-0.5 text-muted-foregrou
 /** Light bordered control, same type as the row, not a grey chip. */
 export const settingsSelectTriggerClass = cn(
   chromeTypeClass,
-  "h-[32px] w-auto max-w-56 border-border bg-background px-2.5 text-foreground shadow-none",
+  "h-[32px] w-auto max-w-72 border-border bg-background px-2.5 text-foreground shadow-none",
 )
 
 function fieldControlClass(wide?: boolean) {
@@ -234,7 +234,7 @@ export function SettingsTwinChoice({
         <Select value={left.value} onValueChange={left.onValueChange}>
           <SelectTrigger
             aria-label={left.ariaLabel}
-            className={cn(settingsSelectTriggerClass, "max-w-38")}
+            className={cn(settingsSelectTriggerClass, "max-w-48")}
           >
             <SelectValue />
           </SelectTrigger>
@@ -243,7 +243,7 @@ export function SettingsTwinChoice({
         <Select value={right.value} onValueChange={right.onValueChange}>
           <SelectTrigger
             aria-label={right.ariaLabel}
-            className={cn(settingsSelectTriggerClass, "max-w-34")}
+            className={cn(settingsSelectTriggerClass, "max-w-48")}
           >
             <SelectValue />
           </SelectTrigger>
@@ -268,12 +268,12 @@ export function SettingsSection({
   const visible = Children.toArray(children).filter(Boolean)
   if (visible.length === 0) return null
   return (
-    <section className="flex flex-col gap-2 [&:not(:has([data-settings-row]))]:hidden">
+    <section className="flex flex-col gap-2.5 [&:not(:has([data-settings-row]))]:hidden">
       {title || action ? (
-        <div className="flex items-end justify-between gap-3 px-0.5">
+        <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             {title ? (
-              <h3 className={cn(chromeTypeClass, "font-medium text-foreground/90")}>
+              <h3 className={cn(chromeTypeClass, "font-semibold text-foreground")}>
                 {title}
               </h3>
             ) : null}

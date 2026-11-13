@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { api } from "@/lib/api"
 import { composerToolsMenuPlacement, filterRemoteTools, toolHoverText, toolMenuMatches, toolMenuQuery } from "@/lib/composer-menu"
+import { chromeTypeClass } from "@/lib/chrome-type"
 import { cn } from "@/lib/utils"
 import type { MCPServerView } from "@/lib/mcp-settings"
 import { catalogToolOn, mcpToolOn, withCatalogTool, withMCPTool } from "@/lib/tool-toggle"
@@ -63,12 +64,24 @@ function GroupToggle({ label, open, onToggle }: { label: string; open: boolean; 
   )
 }
 
-/** Built-in tools and each remote MCP tool, sent on the next model request. */
-export function ComposerTools({ disabled }: { disabled?: boolean }) {
+/** Built-in tools and each remote MCP tool, sent on the next model request.
+ *  `open` is controlled when the composer also owns the thinking menu, so the
+ *  two popovers cannot sit on top of each other. */
+export function ComposerTools({
+  disabled,
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  disabled?: boolean
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}) {
   const t = useT()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const filterRef = useRef<HTMLInputElement>(null)
-  const [open, setOpen] = useState(false)
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
+  const open = controlledOpen ?? uncontrolledOpen
+  const openRef = useRef(open)
   const [query, setQuery] = useState("")
   const [folded, setFolded] = useState<Record<string, boolean>>({})
   const [placement, setPlacement] = useState({ sideOffset: 8, maxHeight: 320 })
@@ -96,6 +109,14 @@ export function ComposerTools({ disabled }: { disabled?: boolean }) {
     if (!button || !(box instanceof HTMLElement)) return
     setPlacement(composerToolsMenuPlacement(button.getBoundingClientRect(), box.getBoundingClientRect()))
   }
+
+  useEffect(() => {
+    if (openRef.current && !open) {
+      stopInspects()
+      setQuery("")
+    }
+    openRef.current = open
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -234,16 +255,19 @@ export function ComposerTools({ disabled }: { disabled?: boolean }) {
   })
   const showNoMatch = toolMenuQuery(query) !== "" && builtin.length === 0 && remoteGroups.length === 0 && !waiting && !loading
 
+  const changeOpen = (next: boolean) => {
+    if (next) measure()
+    onOpenChange?.(next)
+    if (controlledOpen === undefined) setUncontrolledOpen(next)
+    if (next) load()
+    else {
+      stopInspects()
+      setQuery("")
+    }
+  }
+
   return (
-    <DropdownMenu open={open} onOpenChange={(next) => {
-      if (next) measure()
-      setOpen(next)
-      if (next) load()
-      else {
-        stopInspects()
-        setQuery("")
-      }
-    }}>
+    <DropdownMenu open={open} onOpenChange={changeOpen}>
       <DropdownMenuTrigger asChild>
         <Button
           ref={triggerRef}
@@ -253,7 +277,7 @@ export function ComposerTools({ disabled }: { disabled?: boolean }) {
           data-testid="composer-tools"
           aria-label={t("composer.tools")}
           title={t("composer.toolsHint")}
-          className="h-7 gap-1.5 px-2"
+          className={cn(chromeTypeClass, "h-7 gap-1.5 px-2")}
         >
           <Wrench />
           {t("composer.tools")}

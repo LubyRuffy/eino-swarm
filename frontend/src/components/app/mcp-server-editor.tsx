@@ -62,7 +62,7 @@ export function MCPServerEditor({ draft, saved, saving, error, onChange, onSave,
           <Input type="number" min={0} max={3600} step={1} value={draft.timeout_seconds} {...asTyped}
             onChange={(e) => patch({ timeout_seconds: Number(e.target.value) })} />
         </Field>
-        {error ? <p role="alert" className="px-4 py-3 text-sm text-destructive">{error}</p> : null}
+        {error ? <p role="alert" className="px-4 py-3 text-(length:--chrome-font-size) text-destructive">{error}</p> : null}
         <div className="flex justify-end gap-2 px-4 py-3">
           <Button type="button" variant="ghost" onClick={onCancel}>{t("mcp.cancel")}</Button>
           <Button type="button" onClick={onSave}>{t(saving ? "mcp.saving" : "mcp.save")}</Button>

@@ -233,6 +233,10 @@ export function Composer({
   const [uploading, setUploading] = useState(false)
   const [armed, setArmed] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [composerMenu, setComposerMenu] = useState<null | "tools" | "thinking">(null)
+  const showComposerMenu = (which: "tools" | "thinking", next: boolean) => {
+    setComposerMenu((current) => (next ? which : current === which ? null : current))
+  }
   const [slashIndex, setSlashIndex] = useState(0)
   const [draftOverflows, setDraftOverflows] = useState(false)
   const areaRef = useRef<HTMLTextAreaElement>(null)
@@ -627,7 +631,7 @@ export function Composer({
           <div
             data-composer-box=""
             className={
-              "relative rounded-3xl border border-border bg-card shadow-lg transition-colors focus-within:border-ring" +
+              "relative rounded-2xl border border-border bg-card shadow-sm transition-shadow focus-within:border-ring focus-within:shadow-md" +
               (armed || adding ? " min-h-36" : "")
             }
           >
@@ -829,10 +833,16 @@ export function Composer({
               onEdit={onEditProviders}
             />
 
-            <ComposerTools disabled={readOnly} />
+            <ComposerTools
+              disabled={readOnly}
+              open={composerMenu === "tools"}
+              onOpenChange={(next) => showComposerMenu("tools", next)}
+            />
 
             {reasoningLevels.length > 0 ? (
               <Select
+                open={composerMenu === "thinking"}
+                onOpenChange={(next) => showComposerMenu("thinking", next)}
                 value={reasoning ? reasoning : "default"}
                 onValueChange={(v) => onReasoningChange(v === "default" ? "" : v)}
               >
@@ -859,7 +869,7 @@ export function Composer({
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Badge variant="outline" className="gap-1">
+                <Badge variant="outline" className={cn(chromeTypeClass, "h-7 gap-1 border-transparent px-2")}>
                   <ShieldCheck className="size-3" />
                   {t("composer.fullAccess")}
                 </Badge>
@@ -879,7 +889,7 @@ export function Composer({
                 <Button
                   size="icon"
                   variant="secondary"
-                  className={restoreStop ? "pointer-events-auto" : undefined}
+                  className={cn("size-8 rounded-full", restoreStop && "pointer-events-auto")}
                   onClick={onStop}
                   aria-label={t("composer.stop")}
                   title={t("composer.stop")}
@@ -890,6 +900,7 @@ export function Composer({
               {corner.send ? (
                 <Button
                   size="icon"
+                  className="size-8 rounded-full"
                   disabled={sendDisabled}
                   onClick={() => void submit()}
                   aria-label={t("composer.send")}

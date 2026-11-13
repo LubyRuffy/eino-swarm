@@ -106,7 +106,8 @@ single remote tool off: `list_tools` omits it, `call_tool` returns
 `tool_switched_off` without executing, and turning it back on uses the same
 session. A directly mounted name follows the same switch on the next model
 request and does not run. `frontend/e2e/composer-tools.spec.ts` checks the open menu sits above
-the composer, keeps each compact switch clear of the scrollbar, groups
+the composer, keeps each compact switch clear of the scrollbar, closes the
+thinking-level menu when Tools opens and the reverse, groups
 built-in tools together and starts them open, starts each MCP connection
 folded, filters by name, shows an enabled connection as its own group rather
 than a server switch, leaves a Settings-disabled server out, clears Read file,
@@ -130,7 +131,7 @@ python3 -B -m unittest discover -s tools -p 'test_native_macos_mcp*.py'
 ```
 
 The browser suite drives create/edit, private-field preservation, validation,
-connection/catalog expansion, JSON text import and removal. Run the default user-visible E2E suite
+connection/catalog expansion, JSON text import, its syntax color, and removal. Run the default user-visible E2E suite
 as well, with its own port/data/output and no concurrent rebuild of its served
 `dist`. A transport or browser test does not accept a native desktop window.
 

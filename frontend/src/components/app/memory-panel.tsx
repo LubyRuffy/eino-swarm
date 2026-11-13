@@ -281,14 +281,14 @@ export function MemoryPanel({
             </Button>
           ) : null}
         </div>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           {library ? t("memory.libraryHint") : t("memory.skillsHint")}
         </p>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           {t(library ? "memory.tidyLibraryHint" : "memory.tidyHint")}
         </p>
         {memory?.skill_index && memory.skill_index.listed > 0 ? (
-          <p data-testid="skill-index-cost" className="text-xs text-muted-foreground">
+          <p data-testid="skill-index-cost" className="text-xs leading-relaxed text-muted-foreground">
             {t("memory.skillIndexCost", {
               chars: formatChars(memory.skill_index.chars),
               unviewed: formatChars(memory.skill_index.unviewed_chars),

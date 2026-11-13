@@ -204,7 +204,7 @@ export function ScheduleListPane() {
         </DropdownMenu>
       </div>
       {listed.length === 0 ? (
-        <p className={cn(chromeTypeClass, "min-h-0 flex-1 px-(--sidebar-row-px) text-sidebar-foreground/60")}>
+        <p className={cn(chromeTypeClass, "min-h-0 flex-1 px-(--sidebar-list-px) text-sidebar-foreground/60")}>
           {emptyText}
         </p>
       ) : (

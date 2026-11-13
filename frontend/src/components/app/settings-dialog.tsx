@@ -52,7 +52,7 @@ import { errorMessage, toastError, useToasts } from "@/store/toasts"
  *  otherwise one below the fold overflows the fixed sheet and scrolls the
  *  rail with Back to app off screen. */
 const settingsScrollTab =
-  "thin-scrollbar relative min-h-0 flex-1 overflow-auto pb-1"
+  "thin-scrollbar relative flex min-h-0 flex-1 flex-col overflow-auto pb-1"
 
 function sections(t: Translate) {
   return [

@@ -54,6 +54,9 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Fixed
 
+- Settings → MCP → Edit JSON colors the document with the same JSON syntax
+  highlighting as a tool schema. The text stays editable. (`F-176`)
+
 - A symbolic link inside a backed-up directory no longer makes the backup
   fail. The link stays on disk, the archive leaves it out, and the other
   files are still written. The manifest counts them in `skipped_symlinks`,
@@ -72,6 +75,36 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   schema only for an exact name. Switching a tool off removes it from the next
   request. Restoring a worker keeps the names that turn mounted.
   (`F-176`, `C-041`)
+
+- The composer Tools menu and the thinking-level menu close each other.
+  Opening one hides the other, so the two panels cannot cover the same spot.
+  (`F-130`)
+
+- Settings → MCP → Edit JSON uses the whole right-hand settings page for the
+  document. Cancel or Apply returns to the connection list. (`F-176`)
+
+- The empty conversation screen has a larger heading, a narrower balanced lead
+  line, and example cards with an icon chip, equal heights, a soft shadow and a
+  visible keyboard focus ring. Clicking a card still fills the composer.
+
+- The composer box is lighter: a smaller corner radius and a soft shadow that
+  deepens on focus. Its controls (model, Tools, thinking, Full access) share
+  one type size and weight, and Send and Stop are round and match the row.
+
+- Settings pages read more clearly. Section titles are bold and line up with
+  the card edge, and the controls in a title row (such as MCP's Edit JSON and
+  Add server) are vertically centered. Font and review selects are wide enough
+  to show their value instead of cutting it off. Buttons and badges follow the
+  UI font size instead of a fixed rem size that came out near 10px, MCP and
+  Backup notes use the same size, the Backup note no longer touches the divider
+  above it, and Phone's intro line sits with its page description.
+
+- Small captions ("Worked for 6s", View details, the Chart/Table switch, agent
+  status words) follow the UI font size instead of a fixed rem size that came
+  out near 10px. Tables in answers have a shaded header and more cell padding.
+
+- The Scheduled list's empty line lines up with its section title, and the
+  Memory panel's hint paragraphs have looser line spacing.
 
 - Choosing All models asks for confirmation. The prompt says this machine's
   own model services do not have the account's online capabilities. Staying
