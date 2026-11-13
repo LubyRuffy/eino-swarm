@@ -12,7 +12,7 @@ Phone pairing keys are not in this database. `$ZWAI_HOME/remote/host_token` and
 `host_token` accepts a legacy raw token or a schema-1 JSON record containing
 `token`, `origin`, `authorized`, optional `host_id`, `user_id`, `username`,
 `display_name` and `avatar_url`. `avatar_url` is a public image address on
-`fofa.info` or a subdomain of that root, not
+`fofa.info`, `nosec.org`, `baimaohui.net`, or a subdomain of one of those roots, not
 an identity or a credential. An omitted or rejected address does not clear a
 previously accepted one for the same account.
 Account mode requires a complete origin/account/host-bound authorized receipt; mode

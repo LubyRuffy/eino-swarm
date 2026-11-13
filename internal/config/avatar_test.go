@@ -63,6 +63,17 @@ func TestAcceptedAvatarURLKeepsAPublicHTTPAddress(t *testing.T) {
 	if got := AcceptedAvatarURL("https://CDN.Images.Fofa.Info/a.png"); got != "https://CDN.Images.Fofa.Info/a.png" {
 		t.Fatalf("subdomain address = %q", got)
 	}
+	for _, picture := range []string{
+		"https://i.nosec.org/a.png",
+		"https://nosec.org/a.png",
+		"https://CDN.Images.Nosec.Org/a.png",
+		"https://baimaohui.net/a.png",
+		"https://www.baimaohui.net/a.png",
+	} {
+		if got := AcceptedAvatarURL(picture); got != picture {
+			t.Fatalf("trusted address = %q", got)
+		}
+	}
 	long := "https://images.fofa.info/" + strings.Repeat("a", 2048-len("https://images.fofa.info/"))
 	if len(long) != 2048 || AcceptedAvatarURL(long) != long {
 		t.Fatal("a 2048-byte public address must be kept")
@@ -87,7 +98,11 @@ func TestAcceptedAvatarURLDropsUnsafeAddresses(t *testing.T) {
 		"https://images.example.test/a.png",
 		"https://notfofa.info/a.png",
 		"https://fofa.info.evil.com/a.png",
-		"https://i.nosec.org/a.png",
+		"https://notnosec.org/a.png",
+		"https://nosec.org.evil.com/a.png",
+		"https://i.nosec.org.evil.com/a.png",
+		"https://notbaimaohui.net/a.png",
+		"https://baimaohui.net.evil.com/a.png",
 		"https://127.0.0.1/a.png",
 		long,
 	} {

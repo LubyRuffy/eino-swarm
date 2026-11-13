@@ -759,8 +759,8 @@ another account's active device.
 `frontend/src/components/app/desktop-account-menu.tsx` adds a circular account
 entry below the existing rail controls; hiding the list leaves it available.
 Its independent dialog reuses the public login details and confirmation UI.
-The account button shows a saved public `avatar_url` on `fofa.info` or its
-subdomains, with no referrer, and
+The account button shows a saved public `avatar_url` on `fofa.info`,
+`nosec.org`, `baimaohui.net`, or one of their subdomains, with no referrer, and
 the name initial when that picture is missing or cannot be loaded; account
 authorization and host connectivity remain distinct, and anonymous local work
 is never gated on sign-in. `frontend/src/lib/use-remote-status.ts` adapts one

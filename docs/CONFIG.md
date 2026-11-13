@@ -852,7 +852,7 @@ Manual token writes return `403 remote_login_required` in this mode.
 The active file supports a schema-1 JSON credential with origin, authorized
 flag, host/account IDs, account label and optional public `avatar_url`, while
 legacy raw-token files remain readable. `avatar_url` is not an identity.
-Only `fofa.info` and its subdomains are stored.
+Only `fofa.info`, `nosec.org`, `baimaohui.net`, and their subdomains are stored.
 An omitted or rejected address leaves a previously accepted one in place. `pending-host-token-*` under the same private directory retain candidate
 tokens bound to origin and public key for safe retry after an uncertain result.
 Each is limited to 16 KiB; at most 128 are retained (2 MiB maximum), scans are

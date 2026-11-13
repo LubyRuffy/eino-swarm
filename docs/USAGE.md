@@ -809,7 +809,7 @@ address, Host Token, authentication mode, computer name, or pairing limits.
 PC's connection. Opening Phone does not start sign-in. If a login result and
 the configuration read-back are both unavailable, Phone offers **Reload
 account settings** before allowing another login. An authorized account shows the public avatar from the server when that
-address is a safe http(s) URL on `fofa.info` or one of its subdomains. Any
+address is a safe http(s) URL on `fofa.info`, `nosec.org`, `baimaohui.net`, or a subdomain of one of those roots. Any
 other host is left unrequested. The image is loaded without sending a referrer.
 If there is no address, or the picture cannot be loaded, the button shows the
 account name's initial. **Signed in · PC offline** distinguishes

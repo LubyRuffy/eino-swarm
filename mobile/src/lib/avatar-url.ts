@@ -1,8 +1,8 @@
-// The only registrable domain an account picture may come from. Subdomains
-// belong to that site; every other host stays unrequested.
-const avatarTrustedRoot = "fofa.info"
+// Registrable domains an account picture may come from. Subdomains belong to
+// that site; every other host stays unrequested.
+const avatarTrustedRoots = ["fofa.info", "nosec.org", "baimaohui.net"]
 
-// A public image address on fofa.info only. Absolute http(s), no userinfo,
+// A public image address on one of those roots. Absolute http(s), no userinfo,
 // fragment, whitespace, control character or backslash, and at most 2048 bytes.
 export function acceptAvatarURL(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined
@@ -17,8 +17,8 @@ export function acceptAvatarURL(raw: unknown): string | undefined {
 }
 
 function avatarHostTrusted(hostname: string): boolean {
-  const labels = hostname.toLowerCase().replace(/\.$/, "").split(".")
-  const root = avatarTrustedRoot.split(".")
+  const host = hostname.toLowerCase().replace(/\.$/, "")
+  const labels = host.split(".")
   if (labels.length < 2 || labels.some((label) => label === "")) return false
-  return labels.at(-2) === root[0] && labels.at(-1) === root[1]
+  return avatarTrustedRoots.some((root) => host === root || host.endsWith(`.${root}`))
 }

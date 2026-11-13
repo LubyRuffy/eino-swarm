@@ -9,7 +9,7 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 ### Added
 
 - A signed-in account can show the public avatar published by Gateway
-  `avatar_url` when its host is `fofa.info` or a subdomain of that root.
+  `avatar_url` when its host is `fofa.info`, `nosec.org`, `baimaohui.net`, or a subdomain of one of those roots.
   Desktop keeps a safe address with the private device receipt
   and paints it on the account button. The phone keeps it on the account
   session and paints it in User center. The image is requested with no

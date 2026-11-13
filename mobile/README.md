@@ -50,7 +50,7 @@ guessed). A signed-in phone with no connected PC lists its computers on the home
 page, with the same **Other ways**, and Add a PC lists them above the QR options.
 
 User center shows the Gateway and PC display names provided by the Gateway.
-A safe public `avatar_url` on `fofa.info` or one of its subdomains is shown
+A safe public `avatar_url` on `fofa.info`, `nosec.org`, `baimaohui.net`, or a subdomain of one of those roots is shown
 beside the account name without sending a referrer. Another host is not
 requested. If the address is missing or the picture fails to load, the name's
 initial stays visible.
