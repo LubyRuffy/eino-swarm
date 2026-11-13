@@ -59,7 +59,7 @@ func TestDesktopAttachRecognizesAReplacementAtTheSameURL(t *testing.T) {
 		Version: self.Version, Dev: self.Dev, Ino: self.Ino}); err != nil {
 		t.Fatal(err)
 	}
-	got, held, err := ensureDesktopEngine(dir, true)
+	got, held, _, err := ensureDesktopEngine(dir, true)
 	if held != nil {
 		defer held.release()
 	}

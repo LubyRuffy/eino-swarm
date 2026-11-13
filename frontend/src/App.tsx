@@ -45,6 +45,7 @@ import { composerDraftKey, composerDraftSession } from "@/lib/composer-draft"
 import { installComposerRecoveryAttribution } from "@/lib/composer-recovery"
 import { liveWorkers } from "@/lib/transcript"
 import { terminalShortcut, terminalTarget } from "@/lib/terminal"
+import { showLoginGate } from "@/lib/account-models"
 import { isWelcomePane, visibleManagerBlockCount } from "@/lib/welcome"
 import type { Project, SkillInfo } from "@/lib/types"
 import { startSidebarSync } from "@/lib/sidebar-sync"
@@ -134,6 +135,7 @@ function TaskBody({ chat }: { chat: ReactNode }) {
  *  cannot rewrite the textarea while a CJK IME is composing. */
 function AppShell() {
   const t = useT()
+  const loginWall = useApp((s) => showLoginGate(s.meta))
   const [panelOpen, setPanelOpen] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(readSidebarOpen)
   const [panelTab, setPanelTab] = useState<PanelTab>("agents")
@@ -361,6 +363,7 @@ function AppShell() {
       }
       const mod = e.metaKey || e.ctrlKey
       if (!mod) return
+      if (showLoginGate(useApp.getState().meta) && e.key !== ",") return
       if (e.key === "k") {
         e.preventDefault()
         setPaletteOpen((open) => !open)
@@ -448,7 +451,7 @@ function AppShell() {
           />
 
         <div className="flex min-w-0 flex-1">
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main className="relative flex min-w-0 flex-1 flex-col">
           <EngineStartupBanner />
           <DesktopUpdateBanner />
           <ConfiguredBanner onConfigure={() => openSettings("models")} />
@@ -461,6 +464,7 @@ function AppShell() {
             data-composer-stage=""
             data-testid="composer-stage"
             className="relative min-h-0 min-w-0 flex-1"
+            inert={loginWall || undefined}
           >
             <div className="absolute inset-0 flex min-h-0 min-w-0 flex-col overflow-hidden">
               {client ? (

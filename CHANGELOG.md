@@ -6,6 +6,20 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
+### Fixed
+
+- A default FOFA install that is not signed in covers the conversation and
+  composer with the sign-in prompt. The account button stays available.
+  An explicit `product.mode: local` install still opens the main surface
+  with that machine's own models.
+
+- Desktop startup no longer exits when a stored setting uses a value this
+  version does not understand. `remote.auth_mode` defaults to `account`.
+  Unrecognized enumerated settings are cleared, written back at their
+  defaults, and the rest of the configuration is kept. The desktop shows
+  that change, and any other startup error, in a system dialog before the
+  window opens.
+
 ### Added
 
 - FOFA reads six fixed server model roles when the account bootstrap includes

@@ -969,16 +969,19 @@ seeds the machine hostname. A PUT of `remote` reloads the pairlink host. `keep_a
 holds a system sleep assertion while pairing is on; it is not tied to the hub
 socket. The Host Token is **not** in
 settings JSON; it lives under `$ZWAI_HOME/remote/`. `auth_mode` defaults to
-`independent`, which mints a missing token on registration and permits manual token
-replacement. `account` requires the browser account/device flow below and never
-falls back to anonymous registration or manual-token admission.
+`account`, which requires the browser account/device flow below and never
+falls back to anonymous registration or manual-token admission. `independent`
+mints a missing token on registration and permits manual token replacement.
+A stored value this version does not understand is removed and written back
+as `account`; the desktop says so before the window opens. Other startup
+errors are shown the same way. A settings save still rejects an unknown value.
 
 ### `GET /api/remote/status`
 
 ```json
 {"enabled": false, "hub_url": "https://ai.fofa.info:2440", "has_token": false, "online": false,
  "keep_awake": true, "awake": false, "fingerprint": "", "error": "",
- "auth_mode": "independent", "login_available": false}
+ "auth_mode": "account", "login_available": false}
 ```
 
 `has_token` is a boolean. The Host Token is never returned. `keep_awake` is

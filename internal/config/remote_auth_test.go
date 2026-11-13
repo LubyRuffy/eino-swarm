@@ -146,8 +146,8 @@ func TestRemoteAuthModeValidationPersistsAndRejectsUnknownMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Remote.AuthMode != RemoteAuthIndependent {
-		t.Fatal("legacy mode default changed")
+	if cfg.Remote.AuthMode != RemoteAuthAccount {
+		t.Fatal("account is the default authentication mode")
 	}
 	if err := cfg.Update(func(next *Config) error { next.Remote.AuthMode = RemoteAuthAccount; return nil }); err != nil {
 		t.Fatal(err)

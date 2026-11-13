@@ -62,7 +62,7 @@ func (c *Config) remoteTokenPath() string {
 
 func (c *Config) normalizeRemote() {
 	if c.Remote.AuthMode == "" {
-		c.Remote.AuthMode = RemoteAuthIndependent
+		c.Remote.AuthMode = RemoteAuthAccount
 	}
 	c.Remote.HubURL = strings.TrimSpace(c.Remote.HubURL)
 	if c.Remote.HubURL == "" {

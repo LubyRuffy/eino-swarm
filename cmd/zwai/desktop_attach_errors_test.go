@@ -58,7 +58,7 @@ func TestDesktopAttachRetriesOnlyAfterTheOldHolderDeparts(t *testing.T) {
 			if err := lease.Publish(dir, lease.Record{PID: holder.Process.Pid, URL: old.URL, Mock: true, Version: self.Version, Dev: self.Dev, Ino: self.Ino}); err != nil {
 				t.Fatal(err)
 			}
-			base, held, err := ensureDesktopEngine(dir, true)
+			base, held, _, err := ensureDesktopEngine(dir, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -108,7 +108,7 @@ func TestDesktopAttachKeepsAnUnhealthyOrMismatchedHolder(t *testing.T) {
 			if err := lease.Publish(dir, lease.Record{PID: holder.Process.Pid, URL: srv.URL, Mock: true, Version: self.Version, Dev: self.Dev, Ino: self.Ino}); err != nil {
 				t.Fatal(err)
 			}
-			_, held, err := ensureDesktopEngine(dir, true)
+			_, held, _, err := ensureDesktopEngine(dir, true)
 			if err == nil || held != nil || (tc.want != nil && !errors.Is(err, tc.want)) || !lease.Busy(dir) {
 				t.Fatalf("unhealthy holder must remain: err=%v release=%v busy=%v", err, held != nil, lease.Busy(dir))
 			}
@@ -159,7 +159,7 @@ func TestDesktopPresenceHandshakeRejectsErrorsAndMalformedReservations(t *testin
 	if err := os.WriteFile(badDir, []byte("x"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := ensureDesktopEngine(badDir, true); err == nil {
+	if _, _, _, err := ensureDesktopEngine(badDir, true); err == nil {
 		t.Fatal("file data dir accepted")
 	}
 }

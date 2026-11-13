@@ -43,6 +43,8 @@ type Config struct {
 	// dataDir is where this config was loaded from. Not serialized: the file
 	// cannot meaningfully record its own location.
 	dataDir string `yaml:"-"`
+	// repairs lists values this version cleared while loading. Not stored.
+	repairs []ConfigRepair `yaml:"-" json:"-"`
 }
 
 // ServerConfig covers the HTTP surface both UIs are served from.
@@ -553,6 +555,7 @@ func Default() *Config {
 			Palette:        DefaultPalette,
 		},
 		Remote: RemoteConfig{
+			AuthMode:     RemoteAuthAccount,
 			Enabled:      false,
 			HubURL:       DefaultGatewayOrigin,
 			ThreadLimit:  DefaultRemoteThreadLimit,
@@ -618,6 +621,7 @@ func Load(dataDir string) (*Config, error) {
 
 	cfg.dataDir = abs
 	cfg.seedFromEnv()
+	cfg.repairUnrecognized()
 	if err := cfg.validateRemoteAuth(); err != nil {
 		return nil, err
 	}
@@ -637,8 +641,11 @@ func Load(dataDir string) (*Config, error) {
 		return nil, err
 	}
 	cfg.normalize()
+	cfg.refreshRepairCurrents()
 
-	if os.IsNotExist(err) {
+	// An existing file is rewritten only after an unrecognized value was
+	// removed, so the next launch does not clear the same setting again.
+	if os.IsNotExist(err) || len(cfg.repairs) > 0 {
 		if err := cfg.Save(); err != nil {
 			return nil, err
 		}

@@ -35,6 +35,12 @@ func TestRemoteDefaultsAndTokenStayOffYAML(t *testing.T) {
 	if !cfg.Remote.KeepAwake {
 		t.Fatal("keep-awake defaults on so a phone can still reach this PC")
 	}
+	if cfg.Remote.AuthMode != RemoteAuthAccount {
+		t.Fatal("account is the default authentication mode")
+	}
+	if err := cfg.Update(func(next *Config) error { next.Remote.AuthMode = RemoteAuthIndependent; return nil }); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := os.Stat(cfg.RemoteDir()); err != nil {
 		t.Fatal(err)
 	}
@@ -70,6 +76,12 @@ func TestEnsureHostTokenMintsOnceAndStaysOffYAML(t *testing.T) {
 	t.Setenv("OPENAI_MODEL", "")
 	cfg, err := Load(t.TempDir())
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cfg.EnsureHostToken(); !errors.Is(err, ErrRemoteApprovalRequired) {
+		t.Fatal("the default account mode minted an anonymous token")
+	}
+	if err := cfg.Update(func(next *Config) error { next.Remote.AuthMode = RemoteAuthIndependent; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	first, err := cfg.EnsureHostToken()
@@ -108,6 +120,9 @@ func TestEnsureHostTokenDirectoryIsAnError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := cfg.Update(func(next *Config) error { next.Remote.AuthMode = RemoteAuthIndependent; return nil }); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Mkdir(cfg.remoteTokenPath(), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -122,6 +137,9 @@ func TestEnsureHostTokenWriteFailure(t *testing.T) {
 	t.Setenv("OPENAI_MODEL", "")
 	cfg, err := Load(t.TempDir())
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Update(func(next *Config) error { next.Remote.AuthMode = RemoteAuthIndependent; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	dir := cfg.RemoteDir()

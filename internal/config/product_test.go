@@ -91,8 +91,13 @@ func TestUnknownProductModeIsRejected(t *testing.T) {
 	if err := os.WriteFile(path, []byte("product:\n  mode: nope\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load(dir); err == nil {
-		t.Fatal("a hand-edited unknown mode loaded")
+	loaded, err := Load(dir)
+	if err != nil || loaded.Product.Resolved() != ProductModeFOFA {
+		t.Fatalf("unknown product mode was not cleared: %+v %v", loaded.Product, err)
+	}
+	repairs := loaded.StartupRepairs()
+	if len(repairs) != 1 || repairs[0].Setting != "product.mode" || repairs[0].Removed != "nope" {
+		t.Fatalf("product repair = %+v", repairs)
 	}
 }
 

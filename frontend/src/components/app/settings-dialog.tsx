@@ -326,7 +326,7 @@ export function SettingsDialog({
           const status = await api.startRemoteLogin(newDevice, true)
           const previous = defaultRemoteSettings(settingsRef.current?.remote)
           adoptRemote({ ...previous, enabled: status.enabled,
-            hub_url: status.hub_url, auth_mode: status.auth_mode ?? "independent" })
+            hub_url: status.hub_url, auth_mode: status.auth_mode ?? "account" })
           return status
         } catch (error) {
           // Enabling may have committed before start failed or its reply was

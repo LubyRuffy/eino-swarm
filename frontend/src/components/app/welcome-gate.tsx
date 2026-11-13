@@ -25,13 +25,16 @@ export function WelcomeGate() {
 function LoginRequired() {
   const t = useT()
   return (
-    <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center p-4">
+    <div
+      className="absolute inset-0 z-30 flex items-center justify-center bg-background p-6"
+      data-testid="login-required-screen"
+    >
       <div
         role="dialog"
-        aria-modal="false"
+        aria-modal="true"
         aria-labelledby="login-required-title"
         data-testid="login-required"
-        className="pointer-events-auto grid w-full max-w-lg gap-4 rounded-lg border bg-background p-6 shadow-lg"
+        className="grid w-full max-w-lg gap-4 rounded-lg border bg-background p-6 shadow-lg"
       >
         <h2 id="login-required-title" className="text-lg font-semibold">{t("welcome.title")}</h2>
         <p className="text-(length:--chrome-font-size) text-muted-foreground">{t("welcome.desc")}</p>

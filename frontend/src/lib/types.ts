@@ -738,7 +738,7 @@ export function defaultRemoteSettings(
   return {
     enabled: remote?.enabled ?? false,
     hub_url: remote?.hub_url ?? "",
-    auth_mode: remote?.auth_mode ?? "independent",
+    auth_mode: remote?.auth_mode ?? "account",
     thread_limit: remote?.thread_limit && remote.thread_limit > 0 ? remote.thread_limit : 5,
     summary_chars:
       remote?.summary_chars && remote.summary_chars > 0 ? remote.summary_chars : 280,

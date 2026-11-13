@@ -851,11 +851,14 @@ replaced only after the new authorization succeeds. If it asks you to retry
 the previous login first, use **Sign in**. Do not create another device while
 the earlier result is uncertain.
 
-Anonymous pairing uses the configured Hub and `remote.enabled` /
-`remote.auth_mode`. Settings does not show or edit those fields. Legacy
-remains the compatible configuration default: this PC mints its hidden Host
-Token locally. Existing legacy connections keep their mode until you change
-the configuration or choose account sign-in. A new account waits for
+Anonymous pairing uses the configured Hub and an explicit
+`remote.auth_mode` of `independent`. Settings does not show or edit those
+fields. The default is `account`: this PC signs in instead of minting a Host
+Token. An explicit `independent` value still mints its hidden Host Token
+locally. A value this version does not understand is removed, written back as
+`account`, and explained in a system dialog before the window opens. If
+startup still cannot finish, that same dialog shows the error before the
+process exits. A new account waits for
 administrator approval. Approval alone does not authorize a device: return to
 the browser confirmation and confirm it. An existing anonymous pairing moves
 to account management when both devices sign in to the same account, matching

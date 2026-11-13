@@ -30,8 +30,16 @@ func TestWebExecutionRejectsAnUnknownSavedMode(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, FileName), []byte("tools:\n  web_execution: unknown\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load(dir); err == nil {
-		t.Fatal("unknown web execution mode was silently accepted")
+	cfg, err := Load(dir)
+	if err != nil || cfg.Tools.WebExecution != WebExecutionAuto {
+		t.Fatalf("unknown web execution mode stayed: %+v %v", cfg.Tools, err)
+	}
+	repairs := cfg.StartupRepairs()
+	if len(repairs) != 1 || repairs[0].Setting != "tools.web_execution" || repairs[0].Removed != "unknown" {
+		t.Fatalf("web execution repair = %+v", repairs)
+	}
+	if err := cfg.Update(func(next *Config) error { next.Tools.WebExecution = "unknown"; return nil }); err == nil {
+		t.Fatal("a live save accepted an unknown web execution mode")
 	}
 }
 

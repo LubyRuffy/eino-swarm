@@ -722,7 +722,10 @@ name or pairing limits, including through Settings search. Go supplies
 `DefaultGatewayOrigin` when the configured Hub is blank; the renderer
 does not hardcode an official address or infer account ownership from one.
 Merely opening Phone or the account menu changes neither
-configuration nor authorization, and existing legacy QR connections remain usable.
+configuration nor authorization, and an explicit independent pairing remains usable.
+A missing authentication mode is account. A value this version does not understand
+is removed and written back as account; the desktop explains that, and any other
+startup error, in a system dialog before a window exists.
 Hub, authentication mode and the computer name stay in configuration.
 
 `SettingsDialog` serializes its explicit Phone login with `SettingsPersist`:

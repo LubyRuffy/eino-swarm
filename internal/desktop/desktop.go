@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -36,6 +37,12 @@ type Options struct {
 	// Fatal reports a terminal loss of this native client's engine connection.
 	// Run records the cause before native Quit; returning platforms preserve it.
 	Fatal <-chan error
+	// StartupRepairs are unrecognized settings cleared before this window opens.
+	// Run does not display them; the desktop launcher does, while it is still
+	// the foreground process and no window exists yet.
+	StartupRepairs []config.ConfigRepair
+	// StartupLocale is the loaded UI language used for that notice.
+	StartupLocale string
 }
 
 // Run opens the window and blocks until the user quits.

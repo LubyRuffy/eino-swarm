@@ -29,14 +29,17 @@ func runDesktop(args []string) error {
 	// "no route to host" while Terminal curl works. Re-exec into a cached
 	// .app before we bind the local server.
 	if err := desktop.ReexecIfUnbundled(); err != nil {
+		reportStartup(err, nil, "")
 		return err
 	}
 	// Closing the window leaves the engine running. Later shells are attached
 	// to that process, not to this one.
 	opts, err := startDesktopServer(args)
 	if err != nil {
+		reportStartup(err, opts.StartupRepairs, opts.StartupLocale)
 		return err
 	}
+	reportStartup(nil, opts.StartupRepairs, opts.StartupLocale)
 	defer opts.OnShutdown()
 	opts, cleanup, err := configureDesktopRecovery(opts, args)
 	if err != nil {
@@ -55,9 +58,14 @@ func startDesktopServer(args []string) (desktop.Options, error) {
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"data-dir": true})); err != nil {
 		return desktop.Options{}, err
 	}
-	raw, held, err := ensureDesktopEngine(*dataDir, *mock)
+	raw, held, cfg, err := ensureDesktopEngine(*dataDir, *mock)
 	if err != nil {
-		return desktop.Options{}, err
+		opts := desktop.Options{}
+		if cfg != nil {
+			opts.StartupRepairs = cfg.StartupRepairs()
+			opts.StartupLocale = cfg.UI.Locale
+		}
+		return opts, err
 	}
 	// The successful HTTP handshake already parsed raw as a request URL.
 	u, _ := url.Parse(shellURL(raw, "desktop"))
@@ -65,11 +73,13 @@ func startDesktopServer(args []string) (desktop.Options, error) {
 	query.Set("presence", held.id)
 	u.RawQuery = query.Encode()
 	return desktop.Options{
-		URL:        u.String(),
-		Title:      "zwai",
-		Version:    version,
-		OnShutdown: held.release,
-		Fatal:      held.fatal,
+		URL:            u.String(),
+		Title:          "zwai",
+		Version:        version,
+		OnShutdown:     held.release,
+		Fatal:          held.fatal,
+		StartupRepairs: cfg.StartupRepairs(),
+		StartupLocale:  cfg.UI.Locale,
 	}, nil
 }
 

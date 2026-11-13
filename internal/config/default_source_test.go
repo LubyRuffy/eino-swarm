@@ -125,22 +125,32 @@ func TestFullPresentationSurvivesReload(t *testing.T) {
 	}
 }
 
-func TestUnknownPresentationIsRejected(t *testing.T) {
+func TestUnknownPresentationIsClearedOnLoadAndRejectedOnSave(t *testing.T) {
 	clearModelEnv(t)
 	dir := writeConfigFile(t, "models:\n  account_presentation: somewhere\n")
-	if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "account_presentation") {
-		t.Fatalf("unknown presentation accepted: %v", err)
+	cfg, err := Load(dir)
+	if err != nil || cfg.Models.AccountPresentation != "" || cfg.Models.Presentation() != AccountPresentationOfficial {
+		t.Fatalf("unknown presentation stayed: %+v %v", cfg.Models, err)
 	}
-	if (ModelsConfig{AccountPresentation: "somewhere"}).Presentation() != AccountPresentationOfficial {
-		t.Fatal("an unreadable switch was not treated as official")
+	repairs := cfg.StartupRepairs()
+	if len(repairs) != 1 || repairs[0].Setting != "models.account_presentation" || repairs[0].Removed != "somewhere" {
+		t.Fatalf("presentation repair = %+v", repairs)
+	}
+	if err := cfg.Update(func(next *Config) error { next.Models.AccountPresentation = "somewhere"; return nil }); err == nil {
+		t.Fatal("a live save accepted an unknown presentation")
 	}
 }
 
-func TestUnknownDefaultSourceIsRejectedRatherThanGuessed(t *testing.T) {
+func TestUnknownDefaultSourceIsClearedOnLoadAndRejectedOnSave(t *testing.T) {
 	clearModelEnv(t)
 	dir := writeConfigFile(t, "models:\n  default_source: gateway\n")
-	if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "default_source") {
-		t.Fatalf("unknown default source accepted: %v", err)
+	loaded, err := Load(dir)
+	if err != nil || loaded.Models.DefaultSource == "gateway" {
+		t.Fatalf("unknown default source stayed: %+v %v", loaded.Models, err)
+	}
+	repairs := loaded.StartupRepairs()
+	if len(repairs) != 1 || repairs[0].Setting != "models.default_source" || repairs[0].Removed != "gateway" {
+		t.Fatalf("source repair = %+v", repairs)
 	}
 	cfg, err := Load(t.TempDir())
 	if err != nil {

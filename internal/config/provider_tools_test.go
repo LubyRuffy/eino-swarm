@@ -102,19 +102,36 @@ func TestProviderBuiltinToolsValidateBeforeWritingOrChangingLiveConfig(t *testin
 	}
 }
 
-func TestProviderBuiltinToolsRejectInvalidYAMLOnLoad(t *testing.T) {
-	for _, raw := range []string{
-		"api_mode: responses\n      builtin_tools:\n        - type: function\n",
-		"api_mode: responses\n      builtin_tools:\n        - type: web_search\n          filters:\n            4: invalid\n",
-		"api_mode: unsupported\n",
+func TestProviderBuiltinToolsClearUnrecognizedValuesOnLoad(t *testing.T) {
+	for _, tc := range []struct {
+		raw, setting, removed string
+	}{
+		{"api_mode: responses\n      builtin_tools:\n        - type: function\n", "models.providers.default.builtin_tools", "function"},
+		{"api_mode: unsupported\n", "models.providers.default.api_mode", "unsupported"},
 	} {
 		dir := t.TempDir()
-		if err := os.WriteFile(filepath.Join(dir, FileName), []byte("models:\n  providers:\n    - id: default\n      "+raw), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, FileName), []byte("models:\n  providers:\n    - id: default\n      "+tc.raw), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := Load(dir); !errors.Is(err, ErrInvalidProviderConfig) {
-			t.Fatalf("invalid file accepted: %v", err)
+		cfg, err := Load(dir)
+		if err != nil {
+			t.Fatal(err)
 		}
+		repairs := cfg.StartupRepairs()
+		if len(repairs) != 1 || repairs[0].Setting != tc.setting || repairs[0].Removed != tc.removed {
+			t.Fatalf("repair = %+v", repairs)
+		}
+	}
+}
+
+func TestProviderBuiltinToolsRejectInvalidYAMLOnLoad(t *testing.T) {
+	dir := t.TempDir()
+	raw := "models:\n  providers:\n    - id: default\n      api_mode: responses\n      builtin_tools:\n        - type: web_search\n          filters:\n            4: invalid\n"
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(dir); !errors.Is(err, ErrInvalidProviderConfig) {
+		t.Fatalf("invalid file accepted: %v", err)
 	}
 }
 

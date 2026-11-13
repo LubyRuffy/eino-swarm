@@ -839,7 +839,7 @@ or edit the hub URL, authentication mode, computer name or pairing limits.
 |---|---|---|
 | `enabled` | `false` | register this PC with the hub and accept sealed RPC from bound phones |
 | `hub_url` | `https://ai.fofa.info:2440` | Gateway / pairlink hub origin. Blank uses the official default, so normal sign-in requires no server configuration; an explicit self-hosted origin is preserved. Settings does not show or edit it; change this file or `PUT /api/settings`. Account mode accepts an HTTPS origin with no path/query/fragment or user info; HTTP is allowed only on loopback for local testing |
-| `auth_mode` | `independent` | `independent` keeps independent pairlink registration; `account` requires browser sign-in, administrator account approval and explicit device authorization before registration. Settings does not show this control; change this file or `PUT /api/settings` |
+| `auth_mode` | `account` | `account` requires browser sign-in, administrator account approval and explicit device authorization before registration. `independent` keeps independent pairlink registration. A blank value uses `account`. A value this version does not understand is removed, the default is written back, and the desktop explains that before opening the window. Settings does not show this control; change this file or `PUT /api/settings`. A save still rejects an unknown value |
 | `display_name` | this machine's hostname | name a bound phone paints on its host chip. Blank seeds `os.Hostname()` (or stays empty if that fails). Settings does not show this field. Clipped to 40 runes. Not a compiled label |
 | `thread_limit` | `5` | how many idle recents the phone lists below In progress before More. Live rows (`list.running`) are a separate roster and do not count |
 | `summary_chars` | `280` | truncate assistant/summary text on the phone. Inbox `action` / `summary` are human one-liners (findings, a command, prose), not raw `tool_call` JSON |
@@ -855,7 +855,7 @@ $ZWAI_HOME/remote/host_token   0600
 $ZWAI_HOME/remote/identity     0600
 ```
 
-`GET /api/settings` never echoes the token. In `legacy` mode, enabling pairing
+`GET /api/settings` never echoes the token. In `independent` mode, enabling pairing
 with a hub URL mints `host_token` if missing; `PUT /api/remote/token` can replace
 it. In `account` mode, enabling pairing does not register anonymously. Use
 **Sign in** in the desktop app, compare the public browser code and

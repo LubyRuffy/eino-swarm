@@ -14,36 +14,36 @@ import (
 // ensureDesktopEngine returns only after a live presence hold is acknowledged.
 // The native process owns it until window shutdown. Reloading the WebView
 // cannot drop it; the frontend skips its own hold when that id is in the URL.
-func ensureDesktopEngine(dataDir string, mock bool) (string, *desktopPresence, error) {
+func ensureDesktopEngine(dataDir string, mock bool) (string, *desktopPresence, *config.Config, error) {
 	cfg, err := config.Load(dataDir)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	var deadline time.Time
 	var previous error
 	for {
 		if !deadline.IsZero() && !time.Now().Before(deadline) {
-			return "", nil, previous
+			return "", nil, cfg, previous
 		}
 		holder, err := ensureEngineRecord(cfg.DataDir(), "127.0.0.1:0", mock)
 		if err != nil {
-			return "", nil, err
+			return "", nil, cfg, err
 		}
 		held, err := holdDesktopPresence(holder.URL)
 		if err == nil {
-			return holder.URL, held, nil
+			return holder.URL, held, cfg, nil
 		}
 		var transport *url.Error
 		if !errors.Is(err, server.ErrEngineStopping) && !errors.As(err, &transport) &&
 			!errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-			return "", nil, err
+			return "", nil, cfg, err
 		}
 		if deadline.IsZero() {
 			deadline = time.Now().Add(engineBootWait)
 		}
 		previous = err
 		if !waitDesktopEngineDeparture(cfg.DataDir(), holder, mock, deadline) {
-			return "", nil, err
+			return "", nil, cfg, err
 		}
 	}
 }

@@ -11,8 +11,8 @@ func TestRemoteDefaultGatewayPreservesAuthenticationAndCustomOrigins(t *testing.
 		name, yaml, origin, mode string
 		enabled                  bool
 	}{
-		{"first run", "", "https://ai.fofa.info:2440", RemoteAuthIndependent, false},
-		{"legacy blank", "remote:\n  enabled: false\n  hub_url: ''\n", "https://ai.fofa.info:2440", RemoteAuthIndependent, false},
+		{"first run", "", "https://ai.fofa.info:2440", RemoteAuthAccount, false},
+		{"legacy blank", "remote:\n  enabled: false\n  hub_url: ''\n", "https://ai.fofa.info:2440", RemoteAuthAccount, false},
 		{"account blank", "remote:\n  enabled: true\n  auth_mode: account\n  hub_url: '  '\n", "https://ai.fofa.info:2440", RemoteAuthAccount, true},
 		{"custom anonymous", "remote:\n  enabled: true\n  auth_mode: independent\n  hub_url: https://relay.example\n", "https://relay.example", RemoteAuthIndependent, true},
 		{"custom account", "remote:\n  enabled: true\n  auth_mode: account\n  hub_url: https://gateway.example:2440\n", "https://gateway.example:2440", RemoteAuthAccount, true},

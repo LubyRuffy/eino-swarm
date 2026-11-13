@@ -26,7 +26,8 @@ export function showWelcome(meta?: Meta): boolean {
   return !meta.configured && !meta.ui?.welcome_dismissed
 }
 
-/** FOFA with nobody signed in. The account button stays reachable behind it. */
+/** FOFA with nobody signed in. The main column is covered; the account
+ *  button stays outside that column so sign-in is still reachable. */
 export function showLoginGate(meta?: Meta): boolean {
   if (!meta || meta.startup === "restoring" || meta.product_mode !== "fofa") return false
   const state = meta.account_models?.state
