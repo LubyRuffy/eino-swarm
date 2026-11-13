@@ -57,6 +57,7 @@ type AccountModelsState struct {
 	Label       string `json:"label,omitempty"`
 	Username    string `json:"username,omitempty"`
 	DisplayName string `json:"display_name,omitempty"`
+	AvatarURL   string `json:"avatar_url,omitempty"`
 	Models      int    `json:"models"`
 	// SourceID is the runtime provider id (gateway:<hex>). It is not an endpoint.
 	SourceID string               `json:"source_id,omitempty"`
@@ -115,7 +116,7 @@ func NewAccountModels(cfg *config.Config, pool *provider.Pool, log *slog.Logger)
 		}},
 	}
 	if id, ok := a.identity(); ok {
-		a.state = AccountModelsState{State: AccountPending, Username: id.username, DisplayName: id.displayName}
+		a.state = AccountModelsState{State: AccountPending, Username: id.username, DisplayName: id.displayName, AvatarURL: id.avatarURL}
 	} else {
 		a.state = AccountModelsState{State: AccountSignedOut}
 	}
@@ -221,7 +222,7 @@ func (a *AccountModels) Stop() {
 }
 
 type accountIdentity struct {
-	origin, token, username, displayName string
+	origin, token, username, displayName, userID, avatarURL string
 }
 
 // identity is the credential this device may use for model access: an
@@ -239,7 +240,10 @@ func (a *AccountModels) identity() (accountIdentity, bool) {
 	if err != nil || !credential.Authorized || credential.Origin != origin || credential.HostID == "" || credential.UserID == "" || credential.Token == "" {
 		return accountIdentity{}, false
 	}
-	return accountIdentity{origin: origin, token: credential.Token, username: credential.Username, displayName: credential.DisplayName}, true
+	return accountIdentity{
+		origin: origin, token: credential.Token, username: credential.Username, displayName: credential.DisplayName,
+		userID: credential.UserID, avatarURL: config.AcceptedAvatarURL(credential.AvatarURL),
+	}, true
 }
 
 type accountOutcome struct {
@@ -294,7 +298,7 @@ func (a *AccountModels) Seal() {
 	a.pool.SetAccountSource(nil)
 	a.published = false
 	a.publishedToken, a.publishedOrigin = "", ""
-	a.state = AccountModelsState{State: AccountPending, Username: now.username, DisplayName: now.displayName}
+	a.state = AccountModelsState{State: AccountPending, Username: now.username, DisplayName: now.displayName, AvatarURL: now.avatarURL}
 }
 
 func (a *AccountModels) setLastKey(key string) {
@@ -342,7 +346,7 @@ func (a *AccountModels) apply(fetched accountIdentity, o accountOutcome) Account
 }
 
 func (a *AccountModels) fetch(ctx context.Context, id accountIdentity) accountOutcome {
-	who := AccountModelsState{Username: id.username, DisplayName: id.displayName}
+	who := AccountModelsState{Username: id.username, DisplayName: id.displayName, AvatarURL: id.avatarURL}
 	fail := func(state, reason string, transient bool) accountOutcome {
 		s := who
 		s.State, s.Reason = state, reason
@@ -356,6 +360,7 @@ func (a *AccountModels) fetch(ctx context.Context, id accountIdentity) accountOu
 	if err != nil {
 		return fail(AccountUnavailable, AccountReasonUnsafe, false)
 	}
+	who = a.withPicture(id, boot, who)
 	if !boot.access {
 		s := who
 		s.State, s.Label = AccountNoAccess, boot.label
@@ -455,12 +460,35 @@ func boundCatalog(cat provider.Catalog) provider.Catalog {
 type accountBootstrap struct {
 	sourceID, label, apiBaseURL, catalogURL string
 	access                                  bool
+	userID, avatarURL                       string
 	profile                                 *provider.AccountProfile
+}
+
+// withPicture adopts a bootstrap avatar only for this same account. A missing
+// or rejected address keeps the one already saved for that account.
+func (a *AccountModels) withPicture(id accountIdentity, boot accountBootstrap, who AccountModelsState) AccountModelsState {
+	picture := id.avatarURL
+	if boot.userID != "" && boot.userID == id.userID {
+		if next := config.AcceptedAvatarURL(boot.avatarURL); next != "" {
+			picture = next
+		}
+	}
+	if picture != "" && picture != id.avatarURL && a.cfg != nil {
+		if err := a.cfg.RememberRemoteAvatarURL(id.origin, id.token, id.userID, picture); err != nil {
+			a.log.Warn("account avatar was not saved", "err", err)
+		}
+	}
+	who.AvatarURL = picture
+	return who
 }
 
 func parseAccountBootstrap(raw []byte, origin string) (accountBootstrap, error) {
 	var envelope struct {
 		Data struct {
+			User struct {
+				ID        string `json:"id"`
+				AvatarURL string `json:"avatar_url"`
+			} `json:"user"`
 			Models struct {
 				SourceID         string          `json:"source_id"`
 				SourceKind       string          `json:"source_kind"`
@@ -484,7 +512,7 @@ func parseAccountBootstrap(raw []byte, origin string) (accountBootstrap, error) 
 	if len(label) > accountMaxLabelLen {
 		label = ""
 	}
-	out := accountBootstrap{sourceID: m.SourceID, label: label, access: m.APIAccessEnabled}
+	out := accountBootstrap{sourceID: m.SourceID, label: label, access: m.APIAccessEnabled, userID: envelope.Data.User.ID, avatarURL: envelope.Data.User.AvatarURL}
 	if !m.APIAccessEnabled {
 		return out, nil
 	}

@@ -10,7 +10,10 @@ $ZWAI_HOME (default ~/.zwai-swarm)/zwai.db
 Phone pairing keys are not in this database. `$ZWAI_HOME/remote/host_token` and
 `$ZWAI_HOME/remote/identity` are 0600 files under the private remote directory.
 `host_token` accepts a legacy raw token or a schema-1 JSON record containing
-`token`, `origin`, `authorized`, optional `host_id`, `user_id` and `username`.
+`token`, `origin`, `authorized`, optional `host_id`, `user_id`, `username`,
+`display_name` and `avatar_url`. `avatar_url` is a public image address, not
+an identity or a credential. An omitted or rejected address does not clear a
+previously accepted one for the same account.
 Account mode requires a complete origin/account/host-bound authorized receipt; mode
 selection itself is not authorization. The X25519 identity remains stable.
 Reading legacy raw files is backward compatible in this client; downgrading to

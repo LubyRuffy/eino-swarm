@@ -808,8 +808,10 @@ address, Host Token, authentication mode, computer name, or pairing limits.
 **Settings → Phone** shows account status, **Sign in**, and a switch for this
 PC's connection. Opening Phone does not start sign-in. If a login result and
 the configuration read-back are both unavailable, Phone offers **Reload
-account settings** before allowing another login. An authorized account uses
-its name's initial as a local avatar. **Signed in · PC offline** distinguishes
+account settings** before allowing another login. An authorized account shows the public avatar from the server when that
+address is a safe http(s) URL. The image is loaded without sending a referrer.
+If there is no address, or the picture cannot be loaded, the button shows the
+account name's initial. **Signed in · PC offline** distinguishes
 account authorization from the actual hub connection. A failed registration
 keeps that sign-in and retries on its own. **Refresh account status** only
 reads the current result. Stop, sign-out, and saving settings cancel the

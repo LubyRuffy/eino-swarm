@@ -1,5 +1,5 @@
 import { Loader2, UserRound } from "lucide-react"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -8,11 +8,13 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { api } from "@/lib/api"
+import { accountAvatarURL } from "@/lib/avatar-url"
 import type { MessageKey } from "@/lib/i18n"
 import { remoteAccountName } from "@/lib/remote-account-name"
 import { defaultRemoteSettings, type RemoteLoginStatus, type RemoteStatus } from "@/lib/types"
 import { useDesktopAccount } from "@/lib/use-remote-status"
 import { useT } from "@/lib/use-t"
+import { useApp } from "@/store/app"
 import { openSettings } from "@/store/settings-sheet"
 import { RemoteLoginSection } from "./settings-remote-login"
 
@@ -59,11 +61,15 @@ export function DesktopAccountMenu() {
   const handoff = useRef(false)
   const managed = status?.auth_mode === "account"
   const login = managed ? status.login : undefined
+  const models = useApp((s) => s.meta?.account_models)
+  const [pictureFailed, setPictureFailed] = useState(false)
   const authorized = !unavailable && login?.state === "authorized"
-  const accountName = remoteAccountName(unavailable ? undefined : login)
-  const initial = authorized && accountName ? Array.from(accountName)[0]?.toLocaleUpperCase(t.locale) : undefined
-  const pending = login && !["signed_out", "cancelled"].includes(login.state)
   const signingOut = login?.state === "signing_out"
+  const accountName = remoteAccountName(unavailable ? undefined : login)
+  const initial = (authorized || signingOut) && accountName ? Array.from(accountName)[0]?.toLocaleUpperCase(t.locale) : undefined
+  const picture = accountAvatarURL(unavailable ? undefined : login, models)
+  useEffect(() => { setPictureFailed(false) }, [picture])
+  const pending = login && !["signed_out", "cancelled"].includes(login.state)
   const canLogout = managed && !unavailable && (status.has_token || !!pending)
   const summary = t(summaryKey(status, unavailable))
   const ready = !!status?.login_available && !busy && !unavailable && !signingOut
@@ -107,11 +113,15 @@ export function DesktopAccountMenu() {
             className="rounded-full text-sidebar-foreground hover:bg-sidebar-accent"
             style={{ width: "var(--sidebar-row-height)", height: "var(--sidebar-row-height)" }}
           >
-            {initial ? (
-              <span aria-hidden="true" className="flex size-full items-center justify-center rounded-full bg-sidebar-accent text-xs font-medium">{initial}</span>
-            ) : busy || (!unavailable && login?.state === "starting") ? (
-              <Loader2 aria-hidden="true" className="animate-spin" />
-            ) : <UserRound aria-hidden="true" />}
+            <span aria-hidden="true" className="flex size-full items-center justify-center overflow-hidden rounded-full">
+              {picture && !pictureFailed ? (
+                <img src={picture} alt="" referrerPolicy="no-referrer" className="size-full object-cover" onError={() => setPictureFailed(true)} />
+              ) : initial ? (
+                <span className="flex size-full items-center justify-center bg-sidebar-accent text-xs font-medium">{initial}</span>
+              ) : busy || (!unavailable && login?.state === "starting") ? (
+                <Loader2 className="animate-spin" />
+              ) : <UserRound />}
+            </span>
           </Button>
         </DropdownMenuTrigger>
         {/* Unmount a closed menu before it can refocus during an exit animation.

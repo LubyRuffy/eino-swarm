@@ -252,4 +252,43 @@ describe("Gateway account authority", () => {
     await expect(connecting).rejects.toThrow(state === "expired" ? "session_expired" : "access_denied")
     expect(loadSavedLinks()).toEqual([])
   })
+
+  it("keeps a public avatar and never stores mail or an access key", async () => {
+    const picture = "https://images.example.test/a.png?sig=1"
+    saveGatewaySession({ ...session, user: { ...session.user, avatar_url: picture, email: "private@example.test", key: "private-nosec-key" } } as GatewaySession)
+    expect(loadGatewaySession()).toEqual({ ...session, user: { ...session.user, avatar_url: picture } })
+    expect(localStorage.getItem("zwai.phone.gateway.session")).not.toContain("private")
+    const bootstrap = {
+      user: session.user, device: session.device,
+      models: { source_id: "gateway:source", source_kind: "gateway", label: "服务器", execution: "phone", api_base_url: origin + "/v1", catalog_url: origin + "/v1/models", api_access_enabled: false },
+      pairlink: { enabled: true, hub_url: origin, redeem_url: origin + "/pairlink/v1/pairings/redeem", websocket_url: "wss://gateway.example.test/pairlink/v1/ws", info_url: origin + "/pairlink/v1/info" },
+      heartbeat_interval: 30, presence_ttl: 90,
+    }
+    const pending = { origin, verifier: "a".repeat(43), candidateToken: session.token, deviceCode: "b".repeat(43), userCode: "abcd-1234-abcd-1234", verificationURI: origin + "/login", expiresAt: Date.now() + 60_000, interval: 5 }
+    const polled = await pollGatewayLogin(pending, vi.fn(async (input) => {
+      const url = String(input)
+      if (url.endsWith("/auth/mobile/poll")) return ok({ status: "authorized", mobile_id: session.device.id, user: { ...session.user, avatar_url: picture, key: "private-nosec-key" } })
+      return ok({ user: { ...session.user, email: "private@example.test" }, device: session.device })
+    }) as typeof fetch)
+    expect(polled.session?.user).toEqual({ ...session.user, avatar_url: picture })
+    expect(JSON.stringify(polled.session)).not.toContain("private")
+    const kept = await refreshGatewaySession({ ...session, user: { ...session.user, avatar_url: picture } }, vi.fn(async (input) => {
+      const url = String(input)
+      if (url.endsWith("/auth/me")) return ok({ user: { ...session.user, email: "private@example.test" }, device: session.device })
+      if (url.endsWith("/bootstrap")) return ok({ ...bootstrap, user: { ...session.user, avatar_url: "javascript:alert(1)", key: "private-nosec-key" } })
+      if (url.includes("/link-hosts")) return new Response(JSON.stringify({ data: [], meta: { total: 0 } }))
+      return ok({ ok: true })
+    }) as typeof fetch)
+    expect(kept.session.user.avatar_url).toBe(picture)
+    expect(JSON.stringify(kept.session)).not.toContain("javascript:")
+    expect(JSON.stringify(kept.session)).not.toContain("private")
+    const adopted = await refreshGatewaySession(session, vi.fn(async (input) => {
+      const url = String(input)
+      if (url.endsWith("/auth/me")) return ok({ user: session.user, device: session.device })
+      if (url.endsWith("/bootstrap")) return ok({ ...bootstrap, user: { ...session.user, avatar_url: picture } })
+      if (url.includes("/link-hosts")) return new Response(JSON.stringify({ data: [], meta: { total: 0 } }))
+      return ok({ ok: true })
+    }) as typeof fetch)
+    expect(adopted.session.user.avatar_url).toBe(picture)
+  })
 })

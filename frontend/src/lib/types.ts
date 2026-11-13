@@ -487,6 +487,7 @@ export interface AccountModels {
   label?: string
   username?: string
   display_name?: string
+  avatar_url?: string
   models: number
   /** Runtime provider id for this account. Not an endpoint. */
   source_id?: string
@@ -766,6 +767,7 @@ export interface RemoteLoginStatus {
   user_id?: string
   username?: string
   display_name?: string
+  avatar_url?: string
   error_code?: string
 }
 

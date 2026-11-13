@@ -142,6 +142,34 @@ test("sidebar account login shows review and account identity and shares Phone s
   expect(account.starts).toHaveLength(1)
 })
 
+test("a public avatar loads without a referrer and a failed image returns to the initial", async ({ page, request }) => {
+  const picture = "https://images.example.test/a.png?v=1"
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64")
+  await page.route((url) => url.href === picture, (route) => route.fulfill({ status: 200, contentType: "image/png", body: png }))
+  await page.route((url) => url.href === "https://images.example.test/missing.png", (route) => route.abort())
+  const account = await fixture(page, request, {
+    ...anonymous, enabled: true, auth_mode: "account", has_token: true,
+    login: { state: "authorized", display_name: "Fixture Account", avatar_url: picture },
+  })
+  await page.goto("/")
+  const trigger = page.getByTestId("desktop-account-trigger")
+  const image = trigger.locator("img")
+  await expect(image).toHaveAttribute("src", picture)
+  await expect(image).toHaveAttribute("referrerpolicy", "no-referrer")
+  account.setStatus({
+    ...account.getStatus(),
+    login: { state: "authorized", display_name: "Fixture Account", avatar_url: "https://images.example.test/missing.png" },
+  })
+  await expect(trigger).toHaveText("F")
+  await expect(trigger.locator("img")).toHaveCount(0)
+  account.setStatus({
+    ...account.getStatus(),
+    login: { state: "authorized", display_name: "Other Name", avatar_url: "javascript:alert(1)" },
+  })
+  await expect(trigger).toHaveText("O")
+  await expect(trigger.locator("img")).toHaveCount(0)
+})
+
 test("an authorized PC with the connection off is not described as waiting", async ({ page, request }) => {
   const account = await fixture(page, request)
   account.setStatus({

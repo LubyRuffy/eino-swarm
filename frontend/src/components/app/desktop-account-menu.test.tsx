@@ -219,6 +219,34 @@ describe("desktop account entry", () => {
     expect(within(dialog).getByText(`Account: ${name}`)).toBeVisible()
   })
 
+  it("shows a public avatar and returns to the initial when the image cannot load", () => {
+    const picture = "https://images.example.test/a.png?sig=a+b&v=1"
+    fake.status = {
+      ...anonymous, enabled: true, auth_mode: "account", has_token: true,
+      login: { state: "authorized", display_name: "Ada", avatar_url: picture },
+    }
+    render(<DestRail {...props} />)
+    const trigger = screen.getByRole("button", { name: "Account" })
+    const image = trigger.querySelector("img")
+    expect(image).toHaveAttribute("src", picture)
+    expect(image).toHaveAttribute("referrerpolicy", "no-referrer")
+    expect(trigger).not.toHaveTextContent("A")
+    fireEvent.error(image!)
+    expect(trigger.querySelector("img")).toBeNull()
+    expect(trigger).toHaveTextContent("A")
+  })
+
+  it("does not request an avatar address that is not a public image URL", () => {
+    fake.status = {
+      ...anonymous, enabled: true, auth_mode: "account", has_token: true,
+      login: { state: "authorized", display_name: "Ada", avatar_url: "javascript:alert(1)" },
+    }
+    render(<DestRail {...props} />)
+    const trigger = screen.getByRole("button", { name: "Account" })
+    expect(trigger.querySelector("img")).toBeNull()
+    expect(trigger).toHaveTextContent("A")
+  })
+
   it("says an authorized connection that is off is not waiting, and turning it on keeps the saved remote", async () => {
     const saved = {
       enabled: false, hub_url: "https://configured.example", auth_mode: "account" as const,
