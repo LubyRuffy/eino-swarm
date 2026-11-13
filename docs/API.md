@@ -1500,9 +1500,14 @@ bytes land in the workspace. The PC decides what the turn is: text with no
 attachments while a turn runs is a follow-up; attachments while a turn
 runs steer; an idle conversation starts a turn. The phone uploads, then
 calls `send` or `steer`; it does not reimplement that policy.
-`files` `{thread_id, cursor?}` returns the same bounded workspace tree as the
-PC (`files[]` with relative `path`, `name`, `size`, `dir`, `modified`,
-`uploaded`), paged by `more`/`next` before the sealed frame cap.
+`files` `{thread_id, directory?, text?, cursor?}` lists one complete directory,
+or every listed match when `text` is set. An empty or omitted `directory` is
+the workspace root. `cursor` pages that same result and must repeat
+`directory` or `text`. `files[]` carries relative `path`, `name`, `size`,
+`dir`, `modified` and `uploaded`. A listing that fails or does not finish is
+an error, not a shorter tree. Dot-directories, `node_modules` and `vendor`
+are omitted. An older phone that omits `directory` sees only the root until
+it is updated.
 `file_chunk` `{thread_id, file_path, before?}` returns base64 `data`, MIME,
 file `size`, `offset`, `next_offset`, and `more` in slices no larger than
 36 KiB. An older PC that returns `unknown_op` shows an update-PC message in
@@ -3212,14 +3217,15 @@ suggestion. The phone receives the event and does not show it.
             "dir": false, "modified": "…", "uploaded": true}]}
 ```
 
-`path` is workspace-relative. The walk is breadth-first: every directory at a
-depth is recorded before files, and files are taken round-robin across parents,
-so a fat folder that sorts early cannot spend the cap before later siblings the
-file manager still shows. `uploaded` marks what the human put there, as opposed
-to what agents produced. The listing is capped at 2000 entries. Dot-directories,
-`node_modules` and `vendor` are skipped so a repository does not spend that cap
-on a VCS or dependency tree (agents can still read those paths). The Files panel
-nests this flat walk into a collapsible tree; the payload does not.
+`path` is workspace-relative and uses `/`. With no `q`, the response is every
+direct child of `dir` (`dir` empty or omitted is the workspace root). `q`
+searches the whole listed workspace and returns every match; it takes
+precedence over `dir`. A failed listing or search is an error with no partial
+`files` array. `uploaded` marks what the human put there, as opposed to what
+agents produced. Dot-directories, `node_modules` and `vendor` are omitted
+(agents can still read those paths). The Files panel loads the next directory
+when it is opened and uses `q` for its filter. The payload stays a flat list
+of that one result.
 
 ### `POST /api/threads/:id/files` → `201`
 

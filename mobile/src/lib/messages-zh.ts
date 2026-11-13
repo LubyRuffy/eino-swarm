@@ -145,6 +145,8 @@ export const zh: Record<MessageKey, string> = {
   "files.empty": "暂无文件",
   "files.refresh": "刷新文件列表",
   "files.search": "搜索文件",
+  "files.searching": "正在查找…",
+  "files.loadingDir": "正在读取这个目录…",
   "files.loading": "正在读取文件…",
   "files.progressLabel": "文件加载进度",
   "files.progress": "{percent}% · {loaded} / {total}",

@@ -70,6 +70,8 @@ export type RemoteRequest = {
   followup_id?: string
   task_id?: string
   file_path?: string
+  /** OpFiles: one workspace directory. Empty or omitted is the root. */
+  directory?: string
   project_patch?: ProjectPatch
   timeout_settings?: TimeoutSettingsPatch
 }

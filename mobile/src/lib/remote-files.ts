@@ -2,8 +2,9 @@ import type { RemoteLink } from "./link"
 import { OpFileChunk, OpFiles, type WorkspaceFile } from "./rpc"
 import { documentFormat } from "../../../frontend/src/lib/documents/kind"
 
-// A long path may leave room for only one entry per sealed frame. The host
-// caps its tree at 2000 entries; the phone also bounds pages and duplicates.
+// One response is one directory or one search. A long path may leave room for
+// only one entry per sealed frame, so the phone follows every page. A listing
+// that never finishes is an error, not a shorter tree.
 const maxListPages = 2000
 export const maxPhoneFileBytes = 32 * 1024 * 1024
 export const maxInlinePreviewBytes = 8 * 1024 * 1024
@@ -14,18 +15,28 @@ export class RemoteFileError extends Error {
   }
 }
 
-export async function listWorkspaceFiles(link: RemoteLink, threadId: string): Promise<WorkspaceFile[]> {
+export async function listWorkspaceFiles(
+  link: RemoteLink,
+  threadId: string,
+  directory = "",
+  query = "",
+): Promise<WorkspaceFile[]> {
   const files: WorkspaceFile[] = []
   const seen = new Set<string>()
   let cursor = ""
   for (let page = 0; page < maxListPages; page++) {
-    const resp = await link.rpc({ op: OpFiles, thread_id: threadId, cursor: cursor || undefined })
+    const resp = await link.rpc({
+      op: OpFiles,
+      thread_id: threadId,
+      cursor: cursor || undefined,
+      directory: directory || undefined,
+      text: query || undefined,
+    })
     if (!resp.ok) throw new RemoteFileError(resp.code || "remote_error", resp.error || "file listing failed")
     for (const file of resp.files ?? []) {
       if (seen.has(file.path)) throw new Error("file listing repeated an entry")
       seen.add(file.path)
       files.push(file)
-      if (files.length > maxListPages) throw new Error("file listing exceeds the workspace limit")
     }
     if (!resp.more) return files
     if (!resp.next || resp.next === cursor) throw new Error("file listing cursor did not advance")

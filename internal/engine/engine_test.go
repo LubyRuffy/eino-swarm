@@ -187,13 +187,13 @@ func TestFullTurnRunsTheWholeSwarm(t *testing.T) {
 	}
 
 	// the workers really wrote into this conversation's workspace
-	files, err := e.ListFiles(th.ID)
+	files, err := e.ListFiles(th.ID, "notes")
 	if err != nil {
 		t.Fatalf("ListFiles: %v", err)
 	}
 	var notes []string
 	for _, f := range files {
-		if !f.Dir && strings.HasPrefix(f.Path, "notes/") {
+		if !f.Dir {
 			notes = append(notes, f.Path)
 		}
 	}

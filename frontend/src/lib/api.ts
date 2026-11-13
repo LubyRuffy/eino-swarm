@@ -805,9 +805,18 @@ export const api = {
       `/api/threads/${id}/agents/${encodeURIComponent(agentId)}/log`,
     ),
 
-  files: (id: string) =>
+  files: (id: string, dir?: string) => {
+    const params = new URLSearchParams()
+    if (dir) params.set("dir", dir)
+    const query = params.toString()
+    return request<{ workspace: string; files: FileEntry[] }>(
+      `/api/threads/${id}/files${query ? `?${query}` : ""}`,
+    )
+  },
+  /** Every listed path that contains query. Not a capped sample. */
+  searchFiles: (id: string, query: string) =>
     request<{ workspace: string; files: FileEntry[] }>(
-      `/api/threads/${id}/files`,
+      `/api/threads/${id}/files?q=${encodeURIComponent(query)}`,
     ),
   upload: (id: string, files: File[]) => {
     const form = new FormData()

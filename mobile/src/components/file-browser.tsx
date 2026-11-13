@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { TextFilePreview } from "@/components/text-file-preview"
 import { ImageFilePreview } from "@/components/image-file-preview"
 import { PhoneRichPreview } from "@/components/document-preview"
@@ -36,12 +36,16 @@ export function FileBrowser({ link, threadId, onClose }: {
   threadId: string
   onClose: () => void
 }) {
-  const [files, setFiles] = useState<WorkspaceFile[]>([])
+  const [listings, setListings] = useState<Record<string, WorkspaceFile[]>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [revision, setRevision] = useState(0)
   const [query, setQuery] = useState("")
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [open, setOpen] = useState<Set<string>>(new Set())
+  const [hits, setHits] = useState<{ query: string; files: WorkspaceFile[] } | null>(null)
+  const [searchError, setSearchError] = useState("")
+  const listedGeneration = useRef(0)
+  const loadingDirs = useRef(new Set<string>())
   const [selected, setSelected] = useState<WorkspaceFile | null>(null)
   const [file, setFile] = useState<LoadedFile | null>(null)
   const [readRevision, setReadRevision] = useState(0)
@@ -49,21 +53,49 @@ export function FileBrowser({ link, threadId, onClose }: {
   const [fileError, setFileError] = useState("")
 
   useEffect(() => {
+    const generation = ++listedGeneration.current
+    loadingDirs.current.clear()
     let active = true
     setLoading(true)
     setError("")
+    setListings({})
+    setOpen(new Set())
     void listWorkspaceFiles(link, threadId).then((rows) => {
-      if (active) {
-        setFiles(rows.sort((a, b) => a.path.localeCompare(b.path)))
-        setCollapsed(new Set(rows.filter((entry) => entry.dir).map((entry) => entry.path)))
-      }
+      if (!active || listedGeneration.current !== generation) return
+      setListings({ "": rows })
     }).catch((cause: unknown) => {
-      if (active) setError(fileFailure(cause))
+      if (active && listedGeneration.current === generation) setError(fileFailure(cause))
     }).finally(() => {
-      if (active) setLoading(false)
+      if (active && listedGeneration.current === generation) setLoading(false)
     })
     return () => { active = false }
   }, [link, threadId, revision])
+
+  useEffect(() => {
+    const needle = query.trim()
+    if (!needle) {
+      setHits(null)
+      setSearchError("")
+      return
+    }
+    let active = true
+    setHits(null)
+    setSearchError("")
+    const timer = window.setTimeout(() => {
+      void listWorkspaceFiles(link, threadId, "", needle).then((rows) => {
+        if (!active) return
+        setHits({ query: needle, files: rows })
+      }).catch((cause: unknown) => {
+        if (!active) return
+        setHits(null)
+        setSearchError(fileFailure(cause))
+      })
+    }, 200)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [link, threadId, query, revision])
 
   useEffect(() => {
     if (!selected) return
@@ -103,22 +135,44 @@ export function FileBrowser({ link, threadId, onClose }: {
     return true
   }), [selected, onClose])
 
-  const visible = useMemo(() => files.filter((entry) => {
-    if (query && !entry.path.toLowerCase().includes(query.toLowerCase())) return false
-    if (query) return true
-    const parts = entry.path.split("/")
-    for (let n = 1; n < parts.length; n++) {
-      if (collapsed.has(parts.slice(0, n).join("/"))) return false
+  const needle = query.trim()
+  const matches = hits?.query === needle ? hits.files : null
+  const awaitingSearch = needle !== "" && matches === null && !searchError
+  const visible = useMemo(() => {
+    if (needle) {
+      return (matches ?? []).map((entry) => ({ entry, depth: entry.path.split("/").length - 1 }))
     }
-    return true
-  }), [files, query, collapsed])
+    const rows: { entry: WorkspaceFile; depth: number }[] = []
+    const walk = (dir: string, depth: number) => {
+      for (const entry of listings[dir] ?? []) {
+        rows.push({ entry, depth })
+        if (entry.dir && open.has(entry.path)) walk(entry.path, depth + 1)
+      }
+    }
+    walk("", 0)
+    return rows
+  }, [needle, matches, listings, open])
 
-  const toggle = (path: string) => setCollapsed((current) => {
-    const next = new Set(current)
-    if (next.has(path)) next.delete(path)
-    else next.add(path)
-    return next
-  })
+  const toggle = (path: string) => {
+    setOpen((current) => {
+      const next = new Set(current)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+    if (Object.prototype.hasOwnProperty.call(listings, path) || loadingDirs.current.has(path)) return
+    loadingDirs.current.add(path)
+    const generation = listedGeneration.current
+    void listWorkspaceFiles(link, threadId, path).then((rows) => {
+      if (listedGeneration.current !== generation) return
+      setListings((current) => ({ ...current, [path]: rows }))
+    }).catch((cause: unknown) => {
+      if (listedGeneration.current !== generation) return
+      setError(fileFailure(cause))
+    }).finally(() => {
+      loadingDirs.current.delete(path)
+    })
+  }
 
   const progressText = progress?.total ? t("files.progress", {
     percent: Math.floor(100 * progress.loaded / progress.total),
@@ -182,18 +236,27 @@ export function FileBrowser({ link, threadId, onClose }: {
           {error ? <div className="p-4 text-sm text-destructive" role="alert">{error}
             <Button variant="ghost" onClick={() => setRevision((n) => n + 1)}>{t("files.retry")}</Button>
           </div> : null}
-          {!loading && !error && visible.length === 0 ? <p className="p-4 text-sm text-muted-foreground">{t("files.empty")}</p> : null}
+          {searchError ? <p role="alert" className="px-4 py-2 text-sm text-destructive">{searchError}</p> : null}
+          {awaitingSearch ? <p role="status" className="p-4 text-sm text-muted-foreground">{t("files.searching")}</p> : null}
+          {!loading && !error && !searchError && !awaitingSearch && visible.length === 0 ? <p className="p-4 text-sm text-muted-foreground">{t("files.empty")}</p> : null}
           <div className="min-h-0 flex-1 overflow-auto">
-            {visible.map((entry) => (
-              <button key={entry.path} type="button" onClick={() => entry.dir ? toggle(entry.path) : setSelected(entry)}
-                className="flex min-h-11 w-full items-center gap-2 border-b border-border px-3 text-left text-sm hover:bg-muted"
-                style={{ paddingLeft: `${12 + Math.min(entry.path.split("/").length - 1, 8) * 16}px` }}>
-                {entry.dir ? (collapsed.has(entry.path) ? <ChevronRight className="size-4 shrink-0" /> : <ChevronDown className="size-4 shrink-0" />) : null}
-                {entry.dir ? <Folder className="size-4 shrink-0" /> : <FileText className="size-4 shrink-0" />}
-                <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-                {entry.uploaded ? <span className="text-xs text-muted-foreground">{t("files.uploaded")}</span> : null}
-                {!entry.dir ? <span aria-hidden className="shrink-0 text-xs text-muted-foreground">{fileSize(entry.size)}</span> : null}
-              </button>
+            {visible.map(({ entry, depth }) => (
+              <div key={entry.path}>
+                <button type="button" onClick={() => entry.dir ? toggle(entry.path) : setSelected(entry)}
+                  className="flex min-h-11 w-full items-center gap-2 border-b border-border px-3 text-left text-sm hover:bg-muted"
+                  style={{ paddingLeft: `${12 + Math.min(depth, 8) * 16}px` }}>
+                  {entry.dir ? (open.has(entry.path) ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />) : null}
+                  {entry.dir ? <Folder className="size-4 shrink-0" /> : <FileText className="size-4 shrink-0" />}
+                  <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                  {entry.uploaded ? <span className="text-xs text-muted-foreground">{t("files.uploaded")}</span> : null}
+                  {!entry.dir ? <span aria-hidden className="shrink-0 text-xs text-muted-foreground">{fileSize(entry.size)}</span> : null}
+                </button>
+                {!needle && entry.dir && open.has(entry.path) && listings[entry.path] === undefined ? (
+                  <p role="status" className="px-3 py-2 text-xs text-muted-foreground" style={{ paddingLeft: `${28 + Math.min(depth, 8) * 16}px` }}>
+                    {t("files.loadingDir")}
+                  </p>
+                ) : null}
+              </div>
             ))}
           </div>
         </section>

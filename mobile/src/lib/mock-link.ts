@@ -1,5 +1,5 @@
 import { MockProjects } from "./mock-projects"
-import { mockFileChunk, mockOutputFiles } from "./mock-files"
+import { mockFileChunk, mockListedFiles, mockOutputFiles } from "./mock-files"
 import { iterationLimitHistory, iterationSnapshotOnly, mockAwaitingContinue, mockContinueIteration } from "./mock-iteration-limit"
 import { restartAskHistory } from "./mock-ask-restart"
 import { generationHistory } from "./mock-generation"
@@ -818,12 +818,10 @@ export class MockLink {
           return this.ok({ id, ...page })
         }
         return this.ok({ id, threads: [this.host.older()], more: false, next: "" })
-      case OpFiles:
+      case OpFiles: {
         if (!thread()) return this.missing(id)
-        return this.ok({ id, files: [
-          { path: "outputs", name: "outputs", size: 0, dir: true, modified: "", uploaded: false },
-          ...Object.entries(this.outputFiles).map(([path, file]) => ({ path, name: path.split("/").at(-1)!, size: file.bytes.length, dir: false, modified: "", uploaded: false })),
-        ], more: false })
+        return this.ok({ id, files: mockListedFiles(this.outputFiles, req.directory, req.text), more: false })
+      }
       case OpFileChunk: {
         if (!thread()) return this.missing(id)
         const file_chunk = await mockFileChunk(this.outputFiles, req.file_path ?? "", req.before ?? 0)

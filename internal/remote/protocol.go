@@ -118,6 +118,9 @@ type Request struct {
 	TaskID string `json:"task_id,omitempty"`
 	// FilePath is workspace-relative; Before is the byte offset for file_chunk.
 	FilePath string `json:"file_path,omitempty"`
+	// Directory is the workspace directory OpFiles lists. Empty is the root.
+	// Text on OpFiles searches the whole listed workspace instead of one directory.
+	Directory string `json:"directory,omitempty"`
 
 	ProjectPatch    json.RawMessage `json:"project_patch,omitempty"`
 	TimeoutSettings json.RawMessage `json:"timeout_settings,omitempty"`

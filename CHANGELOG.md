@@ -72,6 +72,14 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Changed
 
+- The Files panel and a paired phone list one workspace directory at a time,
+  and that directory is complete. Opening a folder loads its next level.
+  Search walks the listed workspace and shows every match; nothing is shown
+  as the result until that search finishes, and a failure is not a shorter
+  list. Dot-directories, `node_modules` and `vendor` stay omitted. An older
+  phone that does not send `directory` sees only the workspace root.
+  (`F-140`, `F-224`, `C-020`)
+
 - Settings → MCP mounts each enabled remote tool as its own function when the
   schemas about to be mounted stay within `mcp.direct_load_percent` of the
   model context window. The default is 5. Zero always keeps the two catalog

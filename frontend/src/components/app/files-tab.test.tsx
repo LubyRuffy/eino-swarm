@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { FilesTab } from "./files-tab"
@@ -230,5 +230,55 @@ describe("Files tab", () => {
     fireEvent.keyDown(tree, { key: "Home" })
     fireEvent.keyDown(tree, { key: "ArrowRight" })
     expect(within(tree).getByRole("treeitem", { name: "a.go" })).toBeInTheDocument()
+  })
+
+  it("asks for a directory and shows every child once that listing arrives", () => {
+    const onOpenDir = vi.fn()
+    const props = {
+      workspace: "/tmp/ws",
+      threadId: "th_1",
+      canReveal: false,
+      onOpenDir,
+      onUpload: vi.fn(),
+      onDelete: vi.fn(),
+      onRefresh: vi.fn(),
+      onReveal: vi.fn(),
+    }
+    const { rerender } = render(
+      <FilesTab {...props} files={[entry("notes", { dir: true }), entry("other", { dir: true })]} loadedDirs={[]} />,
+    )
+    fireEvent.click(screen.getByRole("treeitem", { name: "notes" }))
+    expect(onOpenDir).toHaveBeenCalledWith("notes")
+    expect(screen.getByRole("status")).toHaveTextContent("Loading this directory")
+    expect(screen.queryByRole("treeitem", { name: "a.md" })).not.toBeInTheDocument()
+    rerender(
+      <FilesTab
+        {...props}
+        loadedDirs={["notes"]}
+        files={[
+          entry("notes", { dir: true }),
+          entry("other", { dir: true }),
+          entry("notes/a.md"),
+          entry("notes/b.md"),
+        ]}
+      />,
+    )
+    expect(screen.getByRole("treeitem", { name: "a.md" })).toBeInTheDocument()
+    expect(screen.getByRole("treeitem", { name: "b.md" })).toBeInTheDocument()
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+  })
+
+  it("keeps a file hidden until the complete search result includes it", async () => {
+    const onSearch = vi.fn(async () => [entry("notes/hidden.md")])
+    renderTab(
+      [entry("other.md"), entry("notes", { dir: true }), entry("notes/hidden.md")],
+      { onSearch, loadedDirs: ["notes"] },
+    )
+    fireEvent.change(screen.getByLabelText("Filter files"), { target: { value: "hidden" } })
+    expect(screen.queryByRole("treeitem", { name: "hidden.md" })).not.toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveTextContent("Searching")
+    expect(await screen.findByRole("treeitem", { name: "hidden.md" })).toBeInTheDocument()
+    expect(screen.queryByRole("treeitem", { name: "other.md" })).not.toBeInTheDocument()
+    await waitFor(() => expect(onSearch).toHaveBeenCalledWith("hidden"))
   })
 })

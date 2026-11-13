@@ -920,6 +920,8 @@ function AppPanel({
   const selectedAgent = useApp((s) => s.selectedAgent)
   const selectAgent = useApp((s) => s.selectAgent)
   const files = useApp((s) => s.files)
+  const loadedFileDirs = useApp((s) => s.loadedFileDirs)
+  const fileDirErrors = useApp((s) => s.fileDirErrors)
   const workspace = useApp((s) => s.workspace)
   const turns = useApp((s) => s.turns)
   const meta = useApp((s) => s.meta)
@@ -929,6 +931,8 @@ function AppPanel({
   const upload = useApp((s) => s.upload)
   const removeFile = useApp((s) => s.removeFile)
   const refreshFiles = useApp((s) => s.refreshFiles)
+  const ensureFileDir = useApp((s) => s.ensureFileDir)
+  const searchFiles = useApp((s) => s.searchFiles)
   const threads = useApp((s) => s.threads)
   const reviewNow = useApp((s) => s.reviewNow)
   const projects = useProjects((s) => s.projects)
@@ -993,6 +997,10 @@ function AppPanel({
       selectedAgent={selectedAgent}
       onSelectAgent={selectAgent}
       files={files}
+      loadedDirs={loadedFileDirs}
+      dirErrors={fileDirErrors}
+      onOpenDir={ensureFileDir}
+      onSearch={searchFiles}
       workspace={workspace}
       turns={turns}
       meta={meta}

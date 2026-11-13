@@ -352,6 +352,7 @@ export const en = {
   "files.revealDir": "Show {name} in the file manager",
   "files.filter": "Filter files",
   "files.filterPlaceholder": "Filter files...",
+  "files.searching": "Searching…",
   "files.tree": "Workspace files",
   "files.empty":
     "Nothing here yet. Upload files for the agents to work on, or wait for them to produce some.",
@@ -365,6 +366,7 @@ export const en = {
   "files.copyContent": "Copy file content",
   "files.revealFile": "Show file in file manager",
   "files.loading": "Loading file…",
+  "files.loadingDir": "Loading this directory…",
   "files.emptyFile": "This file is empty.",
   "files.invalidImage": "This image could not be displayed. Download it to view the original file.",
   "files.tooLarge": "This file exceeds the 8 MiB preview limit. Download it to view the content.",

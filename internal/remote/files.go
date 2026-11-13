@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -22,7 +23,13 @@ func handleFiles(eng *engine.Engine, req Request, path, sessionID string) Respon
 	if _, err := eng.Store().GetThread(req.ThreadID); err != nil {
 		return mapErr(req.ID, path, sessionID, err)
 	}
-	entries, err := eng.ListFiles(req.ThreadID)
+	var entries []engine.FileEntry
+	var err error
+	if strings.TrimSpace(req.Text) != "" {
+		entries, err = eng.SearchFiles(context.Background(), req.ThreadID, req.Text)
+	} else {
+		entries, err = eng.ListFiles(req.ThreadID, req.Directory)
+	}
 	if err != nil {
 		return mapErr(req.ID, path, sessionID, err)
 	}

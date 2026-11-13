@@ -137,6 +137,8 @@ export const en = {
   "files.empty": "No files yet",
   "files.refresh": "Refresh files",
   "files.search": "Search files",
+  "files.searching": "Searching…",
+  "files.loadingDir": "Loading this directory…",
   "files.loading": "Reading file…",
   "files.progressLabel": "File load progress",
   "files.progress": "{percent}% · {loaded} / {total}",

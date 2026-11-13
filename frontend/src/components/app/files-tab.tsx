@@ -51,19 +51,27 @@ export function FilesTab({
   workspace,
   threadId,
   canReveal,
+  loadedDirs,
+  dirErrors,
   onUpload,
   onDelete,
   onRefresh,
   onReveal,
+  onOpenDir,
+  onSearch,
 }: {
   files: FileEntry[]
   workspace: string
   threadId?: string
   canReveal: boolean
+  loadedDirs?: readonly string[]
+  dirErrors?: Record<string, string>
   onUpload: (files: File[]) => Promise<unknown>
   onDelete: (path: string) => void
   onRefresh: () => void
   onReveal: (path?: string) => void
+  onOpenDir?: (path: string) => void
+  onSearch?: (query: string) => Promise<FileEntry[]>
 }) {
   const t = useT()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -74,12 +82,21 @@ export function FilesTab({
   const [focused, setFocused] = useState<string>()
   const [doomed, setDoomed] = useState<string>()
   const [preview, setPreview] = useState<{ threadId: string; path: string }>()
-  const tree = useMemo(() => buildFileTree(files), [files])
-  const rows = useMemo(
-    () => visibleRows(tree, expanded, filter),
-    [tree, expanded, filter],
+  const [hits, setHits] = useState<FileEntry[]>()
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState("")
+  const loaded = useMemo(() => new Set(loadedDirs ?? []), [loadedDirs])
+  const query = filter.trim()
+  const serverSearch = Boolean(onSearch) && query.length > 0
+  const tree = useMemo(
+    () => buildFileTree(serverSearch ? (hits ?? []) : files),
+    [files, hits, serverSearch],
   )
-  const filtering = filter.trim().length > 0
+  const rows = useMemo(
+    () => visibleRows(tree, expanded, serverSearch ? query : onSearch ? "" : query),
+    [tree, expanded, serverSearch, onSearch, query],
+  )
+  const filtering = query.length > 0
 
   useEffect(() => {
     userTouched.current = false
@@ -95,6 +112,42 @@ export function FilesTab({
     }
     setExpanded((prev) => pruneExpanded(prev, tree))
   }, [threadId, tree])
+
+  useEffect(() => {
+    if (!onOpenDir) return
+    for (const path of expanded) {
+      if (!loaded.has(path) && !dirErrors?.[path]) onOpenDir(path)
+    }
+  }, [expanded, loaded, dirErrors, onOpenDir])
+
+  useEffect(() => {
+    if (!onSearch || query.length === 0) {
+      setHits(undefined)
+      setSearching(false)
+      setSearchError("")
+      return
+    }
+    let cancel = false
+    setHits(undefined)
+    setSearching(true)
+    setSearchError("")
+    const timer = window.setTimeout(() => {
+      void onSearch(query).then((rows) => {
+        if (cancel) return
+        setHits(rows)
+        setSearching(false)
+      }).catch((error: unknown) => {
+        if (cancel) return
+        setHits(undefined)
+        setSearching(false)
+        setSearchError(error instanceof Error ? error.message : String(error))
+      })
+    }, 200)
+    return () => {
+      cancel = true
+      window.clearTimeout(timer)
+    }
+  }, [onSearch, query])
 
   const applyToggle = (path: string) => {
     userTouched.current = true
@@ -160,15 +213,26 @@ export function FilesTab({
         ) : null}
       </div>
 
-      {files.length === 0 ? (
+      {dirErrors?.[""] && !serverSearch ? (
+        <p role="alert" className="px-3 py-2 text-center text-xs text-destructive">{dirErrors[""]}</p>
+      ) : null}
+      {searchError ? (
+        <p role="alert" className="px-3 py-8 text-center text-xs text-destructive">
+          {searchError}
+        </p>
+      ) : serverSearch && searching && !hits ? (
+        <p role="status" className="px-3 py-8 text-center text-xs text-muted-foreground">
+          {t("files.searching")}
+        </p>
+      ) : files.length === 0 && !serverSearch && !dirErrors?.[""] ? (
         <p className="px-3 py-8 text-center text-xs text-muted-foreground">
           {t("files.empty")}
         </p>
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 && !(dirErrors?.[""] && !serverSearch && files.length === 0) ? (
         <p className="px-3 py-8 text-center text-xs text-muted-foreground">
           {t("files.noMatch")}
         </p>
-      ) : (
+      ) : rows.length === 0 ? null : (
         <div
           ref={treeRef}
           data-testid="file-tree"
@@ -192,23 +256,38 @@ export function FilesTab({
             }
           }}
         >
-          {rows.map(({ node, depth }) => (
-            <FileRow
-              key={node.path}
-              node={node}
-              depth={depth}
-              open={expanded.has(node.path)}
-              focused={focused === node.path}
-              threadId={threadId}
-              filtering={filtering}
-              canReveal={canReveal}
-              onFocus={setFocused}
-              onToggle={applyToggle}
-              onOpen={openFile}
-              onReveal={onReveal}
-              onDelete={setDoomed}
-            />
-          ))}
+          {rows.map(({ node, depth }) => {
+            const pending = !serverSearch && onOpenDir && node.dir && expanded.has(node.path) && !loaded.has(node.path)
+              ? dirErrors?.[node.path] ?? t("files.loadingDir")
+              : ""
+            return (
+              <div key={node.path}>
+                <FileRow
+                  node={node}
+                  depth={depth}
+                  open={expanded.has(node.path)}
+                  focused={focused === node.path}
+                  threadId={threadId}
+                  filtering={filtering}
+                  canReveal={canReveal}
+                  onFocus={setFocused}
+                  onToggle={applyToggle}
+                  onOpen={openFile}
+                  onReveal={onReveal}
+                  onDelete={setDoomed}
+                />
+                {pending ? (
+                  <p
+                    role={dirErrors?.[node.path] ? "alert" : "status"}
+                    className="truncate px-3 py-1 text-xs text-muted-foreground"
+                    style={{ paddingLeft: 28 + depth * 12 }}
+                  >
+                    {pending}
+                  </p>
+                ) : null}
+              </div>
+            )
+          })}
         </div>
       )}
       {preview && preview.threadId === threadId ? (

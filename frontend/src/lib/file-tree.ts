@@ -1,7 +1,7 @@
 import type { FileEntry } from "@/lib/types"
 
-/** Nested workspace listing. The API still returns a flat walk; the Files
- *  panel is the thing that has to look like a file explorer. */
+/** Nested workspace listing. Each loaded directory is complete; the panel
+ *  asks for the next directory when it is opened. */
 export interface FileTreeNode {
   path: string
   name: string

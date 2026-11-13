@@ -130,35 +130,40 @@ func TestListFilesReportsDirsAndSizes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files, err := e.ListFiles(th.ID)
+	rootEntries, err := e.ListFiles(th.ID, "")
 	if err != nil {
 		t.Fatalf("ListFiles: %v", err)
 	}
-	byPath := map[string]FileEntry{}
-	for _, f := range files {
-		byPath[f.Path] = f
-		if strings.Contains(f.Path, string(os.PathSeparator)) && os.PathSeparator != '/' {
-			t.Fatalf("paths must be slash-separated for the UI: %q", f.Path)
-		}
+	if len(rootEntries) != 1 || rootEntries[0].Path != "notes" || !rootEntries[0].Dir {
+		t.Fatalf("root listing = %+v", rootEntries)
 	}
-	if !byPath["notes"].Dir || !byPath["notes/deep"].Dir {
-		t.Fatalf("directories not reported: %+v", files)
+	notes, err := e.ListFiles(th.ID, "notes")
+	if err != nil {
+		t.Fatal(err)
 	}
-	f := byPath["notes/deep/a.md"]
-	if f.Dir || f.Size != 5 || f.Modified.IsZero() {
-		t.Fatalf("file entry wrong: %+v", f)
+	if len(notes) != 1 || notes[0].Path != "notes/deep" || !notes[0].Dir {
+		t.Fatalf("notes listing = %+v", notes)
+	}
+	deep, err := e.ListFiles(th.ID, "notes/deep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deep) != 1 || deep[0].Dir || deep[0].Path != "notes/deep/a.md" || deep[0].Size != 5 || deep[0].Modified.IsZero() {
+		t.Fatalf("file entry wrong: %+v", deep)
+	}
+	if strings.Contains(deep[0].Path, string(os.PathSeparator)) && os.PathSeparator != '/' {
+		t.Fatalf("paths must be slash-separated for the UI: %q", deep[0].Path)
 	}
 
 	// listing a conversation with no workspace yet must not fail
-	if _, err := e.ListFiles("never-existed"); err != nil {
+	if _, err := e.ListFiles("never-existed", ""); err != nil {
 		t.Fatalf("ListFiles on a fresh conversation: %v", err)
 	}
 }
 
 func TestListFilesSkipsDependencyTrees(t *testing.T) {
-	// A project pointed at a repository would otherwise spend the 2000-entry
-	// cap on .git / node_modules / vendor before the panel lists anything
-	// the human recognizes. Agents can still read those paths.
+	// Dot-directories, node_modules and vendor stay out of the panel.
+	// Agents can still read those paths.
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	root := e.WorkspaceDir(th.ID)
@@ -185,7 +190,7 @@ func TestListFilesSkipsDependencyTrees(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files, err := e.ListFiles(th.ID)
+	files, err := e.ListFiles(th.ID, "")
 	if err != nil {
 		t.Fatalf("ListFiles: %v", err)
 	}

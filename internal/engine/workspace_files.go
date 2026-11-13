@@ -23,21 +23,6 @@ type FileEntry struct {
 	Modified time.Time `json:"modified"`
 }
 
-// maxWorkspaceEntries bounds the Files panel listing: an agent that generates
-// thousands of files must not be able to hang the UI.
-const maxWorkspaceEntries = 2000
-
-// ListFiles walks a conversation's workspace, returning workspace-relative
-// paths. The walk is breadth-first so a fat directory that sorts early
-// cannot hide later siblings from the Files panel.
-func (e *Engine) ListFiles(threadID string) ([]FileEntry, error) {
-	root := e.WorkspaceDir(threadID)
-	if err := os.MkdirAll(root, 0o700); err != nil {
-		return nil, fmt.Errorf("engine: workspace: %w", err)
-	}
-	return listWorkspace(root, maxWorkspaceEntries), nil
-}
-
 // ResolveWorkspacePath turns a client-supplied relative path into an absolute
 // one inside the conversation's workspace, rejecting anything that escapes.
 //

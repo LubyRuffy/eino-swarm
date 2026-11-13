@@ -58,6 +58,10 @@ export function RightPanel({
   onDeleteFile,
   onRefreshFiles,
   onReveal,
+  loadedDirs,
+  dirErrors,
+  onOpenDir,
+  onSearch,
   usage,
   nuwaProject,
 }: {
@@ -78,6 +82,10 @@ export function RightPanel({
   onDeleteFile: (path: string) => void
   onRefreshFiles: () => void
   onReveal: (path?: string) => void
+  loadedDirs?: readonly string[]
+  dirErrors?: Record<string, string>
+  onOpenDir?: (path: string) => void
+  onSearch?: (query: string) => Promise<FileEntry[]>
   usage?: UsageSnapshot | null
   nuwaProject?: Project
 }) {
@@ -194,6 +202,10 @@ export function RightPanel({
               onDelete={onDeleteFile}
               onRefresh={onRefreshFiles}
               onReveal={onReveal}
+              loadedDirs={loadedDirs}
+              dirErrors={dirErrors}
+              onOpenDir={onOpenDir}
+              onSearch={onSearch}
             />
           </TabsContent>
 

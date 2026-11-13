@@ -18,6 +18,12 @@ import {
   type Appearance,
 } from "@/lib/appearance"
 import { ApiError, api } from "@/lib/api"
+import {
+  ensureWorkspaceDir,
+  refreshWorkspaceFiles,
+  resetWorkspaceFileLoads,
+  searchWorkspaceFiles,
+} from "@/store/workspace-files"
 import { dataGenerationChanged } from "@/lib/data-generation"
 import { closeClient } from "@/lib/client-open"
 import { listDestForThread, setDeskDest } from "@/lib/desk-nav"
@@ -91,6 +97,10 @@ export interface AppState extends ScheduleSlice {
   turns: Turn[]
   followups: Followup[]
   files: FileEntry[]
+  /** Direct listings already fetched, keyed by workspace directory. "" is the root. */
+  fileListings: Record<string, FileEntry[]>
+  loadedFileDirs: string[]
+  fileDirErrors: Record<string, string>
   workspace: string
   usage?: UsageSnapshot
   /** The first tail page is ready, or fallback SSE replay has acknowledged.
@@ -164,6 +174,8 @@ export interface AppState extends ScheduleSlice {
   extendTurn: (proceed: boolean) => Promise<void>
   upload: (files: File[], threadId?: string) => Promise<Attachment[]>
   refreshFiles: () => Promise<void>
+  ensureFileDir: (dir: string) => Promise<void>
+  searchFiles: (query: string) => Promise<FileEntry[]>
   removeFile: (path: string) => Promise<void>
   setTheme: (t: Theme) => void
   setLocale: (pref: LocalePref, opts?: { persist?: boolean }) => void
@@ -200,6 +212,9 @@ export const useApp = create<AppState>((set, get) => ({
   turns: [],
   followups: [],
   files: [],
+  fileListings: {},
+  loadedFileDirs: [],
+  fileDirErrors: {},
   workspace: "",
   loaded: false,
   historyHasMore: false,
@@ -389,6 +404,7 @@ export const useApp = create<AppState>((set, get) => ({
     unsubscribe?.()
     unsubscribe = undefined
     resetThreadHistory()
+    resetWorkspaceFileLoads()
     set((s) => ({
       activeId: id,
       error: undefined,
@@ -396,6 +412,9 @@ export const useApp = create<AppState>((set, get) => ({
       turns: [],
       followups: [],
       files: [],
+      fileListings: {},
+      loadedFileDirs: [],
+      fileDirErrors: {},
       loaded: false,
       historyHasMore: false,
       historyLoading: false,
@@ -814,16 +833,11 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
 
-  refreshFiles: async () => {
-    const id = get().activeId
-    if (!id) return
-    try {
-      const { files, workspace } = await api.files(id)
-      set({ files, workspace })
-    } catch {
-      // The Files panel is secondary; a failure here must not break the chat.
-    }
-  },
+  refreshFiles: () => refreshWorkspaceFiles(get, set).catch(() => {
+    // The Files panel is secondary; a failure here must not break the chat.
+  }),
+  ensureFileDir: (dir) => ensureWorkspaceDir(get, set, dir),
+  searchFiles: (query) => searchWorkspaceFiles(get, query),
 
   removeFile: async (path) => {
     const id = get().activeId

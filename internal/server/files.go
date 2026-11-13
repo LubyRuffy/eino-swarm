@@ -25,7 +25,15 @@ func (s *Server) listFiles(c *gin.Context) {
 	if !ok {
 		return
 	}
-	files, err := s.engine.ListFiles(th.ID)
+	dir := c.Query("dir")
+	query := strings.TrimSpace(c.Query("q"))
+	var files []engine.FileEntry
+	var err error
+	if query != "" {
+		files, err = s.engine.SearchFiles(c.Request.Context(), th.ID, query)
+	} else {
+		files, err = s.engine.ListFiles(th.ID, dir)
+	}
 	if err != nil {
 		s.fail(c, err)
 		return

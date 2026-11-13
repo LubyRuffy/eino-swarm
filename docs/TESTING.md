@@ -6327,9 +6327,8 @@ window: the EventSource is cancelled instead of waited out for five seconds.
 `TestTruncateDoesNotBusyAgainstAWriter` is why editing a sent message does
 not fail with `SQLITE_BUSY` while the previous turn is still flushing events
 (the database is one connection).
-`TestListWorkspaceDoesNotHideSiblingsBehindAFatDirectory` is why the Files
-panel still shows later siblings when an early directory would otherwise spend
-the 2000-entry cap.
+`TestListFilesReturnsEveryDirectChild` is why opening one directory shows
+every child there, even when a sibling directory is large.
 `TestMissedHandoffReachesTheWaitingManager` is why a worker that
 `send_message`s an invented id still finishes as done and the manager's next
 model call sees the handoff text: the miss notifies the host
@@ -7285,8 +7284,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   Keyboard actions are pure: arrows move, Right expands, Left collapses or
   walks to the parent, Enter opens a file.
 - **`src/components/app/files-tab.tsx`**, rendered in jsdom: the filter is
-  labelled, a repository listing starts collapsed, clicking a folder toggles
-  it, a query surfaces a nested file without expanding first, download/delete
+  labelled, a repository listing starts collapsed, clicking a folder asks for
+  that directory and shows every child once the complete listing arrives, a
+  server search stays empty until its result arrives, download/delete
   stay off directory rows, deleting a file asks first, and the tree takes
   arrow keys.
 - **`src/lib/agent-failure.test.ts`** checks exact worker watchdog identity and

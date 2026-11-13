@@ -39,7 +39,7 @@ func TestUploadListDownloadDelete(t *testing.T) {
 		t.Fatalf("uploads=%+v", uploaded.Files)
 	}
 
-	listed := h.json(http.MethodGet, "/api/threads/"+id+"/files", nil, http.StatusOK)
+	listed := h.json(http.MethodGet, "/api/threads/"+id+"/files?dir=uploads", nil, http.StatusOK)
 	if listed["workspace"] == "" {
 		t.Fatal("the Files panel needs the workspace path to show")
 	}
@@ -116,7 +116,7 @@ func TestUploadingTheSameNameTwiceKeepsBoth(t *testing.T) {
 		}
 	}
 
-	listed := h.json(http.MethodGet, "/api/threads/"+id+"/files", nil, http.StatusOK)
+	listed := h.json(http.MethodGet, "/api/threads/"+id+"/files?dir=uploads", nil, http.StatusOK)
 	var names []string
 	for _, f := range listed["files"].([]any) {
 		entry := f.(map[string]any)
@@ -336,4 +336,75 @@ func TestTurnNamesThisTurnsUploadsNotLeftovers(t *testing.T) {
 	if alone["turn"] == nil {
 		t.Fatal("a file with no caption still has to start a turn")
 	}
+}
+
+func TestWorkspaceListingIsOneCompleteDirectory(t *testing.T) {
+	h := newHarness(t)
+	id := h.newThread()
+	root := h.json(http.MethodGet, "/api/threads/"+id+"/files", nil, http.StatusOK)["workspace"].(string)
+	for _, rel := range []string{"notes/plain.txt", "root.txt", ".hidden/secret.txt", "node_modules/pkg/plain.txt"} {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rootPaths := filePaths(h.json(http.MethodGet, "/api/threads/"+id+"/files", nil, http.StatusOK))
+	if !containsAll(rootPaths, "notes", "root.txt") || containsAny(rootPaths, "notes/plain.txt", ".hidden", "node_modules") {
+		t.Fatalf("root listing = %v", rootPaths)
+	}
+	notePaths := filePaths(h.json(http.MethodGet, "/api/threads/"+id+"/files?dir=notes", nil, http.StatusOK))
+	if len(notePaths) != 1 || notePaths[0] != "notes/plain.txt" {
+		t.Fatalf("directory listing = %v", notePaths)
+	}
+	found := filePaths(h.json(http.MethodGet, "/api/threads/"+id+"/files?q=plain", nil, http.StatusOK))
+	if !containsAll(found, "notes/plain.txt") || containsAny(found, ".hidden/secret.txt", "node_modules/pkg/plain.txt") {
+		t.Fatalf("search = %v", found)
+	}
+	wide := filePaths(h.json(http.MethodGet, "/api/threads/"+id+"/files?dir=notes&q=root.txt", nil, http.StatusOK))
+	if !containsAll(wide, "root.txt") {
+		t.Fatalf("search must not stay inside dir: %v", wide)
+	}
+	h.json(http.MethodGet, "/api/threads/"+id+"/files?dir=../outside", nil, http.StatusBadRequest)
+	h.json(http.MethodGet, "/api/threads/"+id+"/files?dir=missing-dir", nil, http.StatusNotFound)
+}
+
+func filePaths(body map[string]any) []string {
+	rows, _ := body["files"].([]any)
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		entry, _ := row.(map[string]any)
+		path, _ := entry["path"].(string)
+		out = append(out, path)
+	}
+	return out
+}
+
+func containsAll(paths []string, want ...string) bool {
+	have := map[string]bool{}
+	for _, path := range paths {
+		have[path] = true
+	}
+	for _, path := range want {
+		if !have[path] {
+			return false
+		}
+	}
+	return true
+}
+
+func containsAny(paths []string, want ...string) bool {
+	have := map[string]bool{}
+	for _, path := range paths {
+		have[path] = true
+	}
+	for _, path := range want {
+		if have[path] {
+			return true
+		}
+	}
+	return false
 }

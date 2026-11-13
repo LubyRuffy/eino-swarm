@@ -2398,11 +2398,10 @@ $ZWAI_HOME (default ~/.zwai-swarm)
 ```
 
 The workspace is where relative tool paths resolve and what the Files panel
-shows. The panel nests that listing into a collapsible tree in the client;
-`GET /api/threads/:id/files` is still a flat walk, but breadth-first, so a fat
-directory that sorts early cannot hide later siblings. It skips
-dot-directories, `node_modules` and `vendor` so a repository does not spend
-the 2000-entry cap on a VCS or dependency tree. It is **not** a sandbox:
+shows. `GET /api/threads/:id/files` lists one directory's complete direct
+children, or every listed match when `q` is set. The panel loads the next
+directory when it is opened. Dot-directories, `node_modules` and `vendor`
+are omitted. It is **not** a sandbox:
 `exec` runs as the user, and absolute paths work.
 That is the "Full access" model, stated plainly in the UI rather than implied.
 

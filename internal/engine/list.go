@@ -1,94 +1,114 @@
 package engine
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
-// listWorkspace walks a workspace breadth-first so a fat directory that
-// sorts early cannot spend the listing cap before siblings the file
-// manager still shows. Directories at a depth are recorded before files,
-// and files are taken round-robin across parents at that depth.
-func listWorkspace(root string, max int) []FileEntry {
-	if max <= 0 {
+// errNotDirectory is a directory listing asked to read a file or a symlink.
+var errNotDirectory = errors.New("not a directory")
+
+// listDirectory reads one directory completely. rel is empty for the
+// workspace root and is otherwise an OS path relative to it. Dot-directories,
+// node_modules and vendor are omitted; every other direct child is returned.
+// A symlink is not followed.
+func listDirectory(workspace, rel string) ([]FileEntry, error) {
+	root, err := os.OpenRoot(workspace)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+
+	name := "."
+	prefix := ""
+	if rel != "" {
+		name = rel
+		prefix = filepath.ToSlash(rel) + "/"
+	}
+	info, err := root.Lstat(name)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return nil, errNotDirectory
+	}
+	f, err := root.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	ents, err := f.ReadDir(-1)
+	if err != nil {
+		// A short read is not a directory listing.
+		return nil, err
+	}
+	out := make([]FileEntry, 0, len(ents))
+	for _, ent := range ents {
+		if ent.IsDir() && skipListedDir(ent.Name()) {
+			continue
+		}
+		item := FileEntry{
+			Path: prefix + ent.Name(),
+			Name: ent.Name(),
+			Dir:  ent.IsDir(),
+		}
+		if info, err := ent.Info(); err == nil {
+			item.Size = info.Size()
+			item.Modified = info.ModTime()
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+// searchWorkspace returns every non-skipped entry whose slash path contains
+// query, case-insensitively. Cancellation returns no partial result.
+func searchWorkspace(ctx context.Context, workspace, query string) ([]FileEntry, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	needle := strings.ToLower(query)
+	out := make([]FileEntry, 0)
+	err := filepath.WalkDir(workspace, func(abs string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if abs == workspace {
+			return nil
+		}
+		if d.IsDir() && skipListedDir(d.Name()) {
+			return filepath.SkipDir
+		}
+		rel, err := filepath.Rel(workspace, abs)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if !strings.Contains(strings.ToLower(rel), needle) {
+			return nil
+		}
+		item := FileEntry{Path: rel, Name: d.Name(), Dir: d.IsDir()}
+		if info, err := d.Info(); err == nil {
+			item.Size = info.Size()
+			item.Modified = info.ModTime()
+		}
+		out = append(out, item)
 		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	type queued struct{ abs, rel string }
-	queue := []queued{{abs: root, rel: ""}}
-	out := make([]FileEntry, 0, 64)
-
-	for len(queue) > 0 && len(out) < max {
-		remaining := max - len(out)
-		type bucket struct {
-			dirs  []FileEntry
-			dabs  []string
-			files []FileEntry
-		}
-		buckets := make([]bucket, 0, len(queue))
-		for _, d := range queue {
-			ents, err := os.ReadDir(d.abs)
-			if err != nil {
-				continue
-			}
-			var b bucket
-			for _, ent := range ents {
-				if ent.IsDir() && skipListedDir(ent.Name()) {
-					continue
-				}
-				rel := ent.Name()
-				if d.rel != "" {
-					rel = d.rel + "/" + ent.Name()
-				}
-				item := FileEntry{Path: rel, Name: ent.Name(), Dir: ent.IsDir()}
-				if info, err := ent.Info(); err == nil {
-					item.Size = info.Size()
-					item.Modified = info.ModTime()
-				}
-				if ent.IsDir() {
-					b.dirs = append(b.dirs, item)
-					b.dabs = append(b.dabs, filepath.Join(d.abs, ent.Name()))
-				} else {
-					b.files = append(b.files, item)
-				}
-			}
-			buckets = append(buckets, b)
-		}
-
-		var next []queued
-		for i := range buckets {
-			b := &buckets[i]
-			for j, item := range b.dirs {
-				if remaining <= 0 {
-					return out
-				}
-				out = append(out, item)
-				remaining--
-				next = append(next, queued{abs: b.dabs[j], rel: item.Path})
-			}
-		}
-		for remaining > 0 {
-			added := false
-			for i := range buckets {
-				if remaining <= 0 {
-					break
-				}
-				b := &buckets[i]
-				if len(b.files) == 0 {
-					continue
-				}
-				out = append(out, b.files[0])
-				b.files = b.files[1:]
-				remaining--
-				added = true
-			}
-			if !added {
-				break
-			}
-		}
-		queue = next
-	}
-	return out
+	return out, nil
 }
 
 func skipListedDir(name string) bool {
@@ -101,4 +121,50 @@ func skipListedDir(name string) bool {
 	default:
 		return false
 	}
+}
+
+// ListFiles lists the immediate children of one workspace directory. An empty
+// dir is the workspace root. The result is that directory's complete direct
+// listing, not a sample of the tree.
+func (e *Engine) ListFiles(threadID, dir string) ([]FileEntry, error) {
+	root := e.WorkspaceDir(threadID)
+	rel := ""
+	if strings.TrimSpace(dir) != "" {
+		name, err := workspaceRelName(dir)
+		if err != nil {
+			return nil, err
+		}
+		rel = name
+	} else if err := os.MkdirAll(root, 0o700); err != nil {
+		return nil, fmt.Errorf("engine: workspace: %w", err)
+	}
+	entries, err := listDirectory(root, rel)
+	if err != nil {
+		if errors.Is(err, errNotDirectory) {
+			return nil, fmt.Errorf("engine: %q is not a directory", dir)
+		}
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("engine: list %q: %w", dir, store.ErrNotFound)
+		}
+		return nil, fmt.Errorf("engine: list %q: %w", dir, err)
+	}
+	return entries, nil
+}
+
+// SearchFiles returns every listed workspace entry whose path contains query.
+// It does not return a truncated sample: failure yields no rows.
+func (e *Engine) SearchFiles(ctx context.Context, threadID, query string) ([]FileEntry, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, fmt.Errorf("engine: empty file search")
+	}
+	root := e.WorkspaceDir(threadID)
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return nil, fmt.Errorf("engine: workspace: %w", err)
+	}
+	entries, err := searchWorkspace(ctx, root, query)
+	if err != nil {
+		return nil, fmt.Errorf("engine: search workspace: %w", err)
+	}
+	return entries, nil
 }

@@ -283,8 +283,8 @@ Ordinary quoted requests, paths and literal command text keep their usual
 behavior. Pure-text commands still use the PC engine's existing semantics.
 **Outputs** in a paired conversation lists that
 PC conversation's workspace, including uploads and generated files. It opens
-with the first-level files and folders visible and every folder collapsed;
-tap a folder to reveal its next level, or search across collapsed paths. Open a
+at the workspace root. Tap a folder to load that folder's complete contents,
+or search to list every match. A search does not show a shorter list first. Open a
 file to preview Markdown (.md/.markdown/.mdx) as a document, known source
 suffixes with syntax colors, plain text, a common image, PDF, tables, or supported
 Office and EPUB documents. HTML artifacts render in an isolated frame. SVG stays

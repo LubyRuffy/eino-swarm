@@ -605,8 +605,9 @@ a sandbox without access to the app origin and can switch back to source. CSV
 and TSV open as tables. DOCX, XLSX, PPTX, and EPUB show their saved package
 content. SVG stays source. Images offer zoom, actual size, and fit to window.
 Enlarged images scroll in both directions. Refreshing or reopening restores
-the default fit. The tree is the workspace root, listed breadth-first so a
-large generated folder cannot hide the rest.
+the default fit. The tree starts at the workspace root. Opening a folder loads
+that folder's complete contents. The filter searches the listed workspace and
+shows every match.
 
 The title-bar terminal (⌘J, and every click on the icon) starts a real shell
 in that same directory — a project's working directory when the conversation

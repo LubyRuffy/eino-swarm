@@ -156,3 +156,21 @@ export async function mockFileChunk(
     offset, next_offset: next, data: btoa(String.fromCharCode(...bytes)), more: next < file.bytes.length,
   }
 }
+
+/** One complete directory, or every match. The root is only the outputs folder. */
+export function mockListedFiles(
+  files: ReturnType<typeof mockOutputFiles>,
+  directory = "",
+  text = "",
+) {
+  const rows = [
+    { path: "outputs", name: "outputs", size: 0, dir: true, modified: "", uploaded: false },
+    ...Object.entries(files).map(([path, file]) => ({
+      path, name: path.split("/").at(-1)!, size: file.bytes.length, dir: false, modified: "", uploaded: false,
+    })),
+  ]
+  const query = text.trim().toLowerCase()
+  if (query) return rows.filter((file) => file.path.toLowerCase().includes(query))
+  const prefix = directory ? `${directory}/` : ""
+  return rows.filter((file) => file.path.startsWith(prefix) && !file.path.slice(prefix.length).includes("/") && file.path.length > prefix.length)
+}

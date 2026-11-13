@@ -19,6 +19,23 @@ describe("phone workspace files", () => {
     expect(remote.rpc).toHaveBeenNthCalledWith(2, { op: "files", thread_id: "t1", cursor: "1" })
   })
 
+  it("repeats the opened directory and the search on every page", async () => {
+    const row = (path: string) => ({ path, name: path.split("/").at(-1)!, size: 1, dir: false, modified: "", uploaded: false })
+    const remote = link([
+      { files: [row("notes/a.md")], more: true, next: "1" },
+      { files: [row("notes/b.md")] },
+    ])
+    expect((await listWorkspaceFiles(remote, "t1", "notes", "md")).map((file) => file.path)).toEqual([
+      "notes/a.md", "notes/b.md",
+    ])
+    expect(remote.rpc).toHaveBeenNthCalledWith(1, {
+      op: "files", thread_id: "t1", directory: "notes", text: "md",
+    })
+    expect(remote.rpc).toHaveBeenNthCalledWith(2, {
+      op: "files", thread_id: "t1", directory: "notes", text: "md", cursor: "1",
+    })
+  })
+
   it("reassembles bounded chunks and rejects a stalled or oversized response", async () => {
     const remote = link([
       { file_chunk: { path: "a.txt", name: "a.txt", size: 5, mime: "text/plain", offset: 0,

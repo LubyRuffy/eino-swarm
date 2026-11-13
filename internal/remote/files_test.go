@@ -34,9 +34,16 @@ func TestPhoneCanListAndPreviewConversationFiles(t *testing.T) {
 	if !listed.OK {
 		t.Fatalf("phone cannot list conversation outputs: %+v", listed)
 	}
-	if len(listed.Files) != 2 || listed.Files[0].Path != "reports" || !listed.Files[0].Dir ||
-		listed.Files[1].Path != "reports/result.txt" || listed.Files[1].Dir || !listed.Files[1].Uploaded {
-		t.Fatalf("workspace tree changed across PC/phone: %+v", listed.Files)
+	if len(listed.Files) != 1 || listed.Files[0].Path != "reports" || !listed.Files[0].Dir {
+		t.Fatalf("root listing = %+v", listed.Files)
+	}
+	nested := Handle(e, config.RemoteConfig{}, Request{ID: "nested", Op: "files", ThreadID: th.ID, Directory: "reports"}, "relay", "session")
+	if !nested.OK || len(nested.Files) != 1 || nested.Files[0].Path != "reports/result.txt" || nested.Files[0].Dir || !nested.Files[0].Uploaded {
+		t.Fatalf("directory listing = %+v", nested.Files)
+	}
+	found := Handle(e, config.RemoteConfig{}, Request{ID: "search", Op: "files", ThreadID: th.ID, Text: "result"}, "relay", "session")
+	if !found.OK || len(found.Files) != 1 || found.Files[0].Path != "reports/result.txt" {
+		t.Fatalf("search = %+v", found.Files)
 	}
 	preview := Handle(e, config.RemoteConfig{}, Request{
 		ID: "preview", Op: "file_chunk", ThreadID: th.ID, FilePath: "reports/result.txt",
