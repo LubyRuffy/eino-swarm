@@ -157,5 +157,5 @@ func retainedLogoutIdentity(cfg *config.Config, origin string, receipt config.Re
 	if err != nil || !current.Authorized || current.Origin != origin || current.Token != receipt.Token || current.HostID != receipt.HostID || current.UserID != receipt.UserID {
 		return LoginStatus{}
 	}
-	return LoginStatus{HostID: current.HostID, UserID: current.UserID, Username: current.Username, DisplayName: current.DisplayName}
+	return LoginStatus{HostID: current.HostID, UserID: current.UserID, Username: current.Username, DisplayName: current.DisplayName, AvatarURL: config.AcceptedAvatarURL(current.AvatarURL)}
 }

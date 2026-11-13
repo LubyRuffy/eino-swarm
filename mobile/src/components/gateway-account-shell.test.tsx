@@ -82,6 +82,8 @@ describe("gateway account shell", () => {
     }
     render(<App />)
     expect(screen.getByText("林小明", { exact: true })).toBeVisible()
+    expect(document.querySelector("img")).toBeNull()
+    expect(screen.getByText("林", { exact: true })).toBeVisible()
     expect(screen.getByRole("button", { name: "Connect Office Mac" })).toBeEnabled()
     expect(screen.getByRole("button", { name: "Connect Home Mac" })).toBeDisabled()
     expect(screen.getAllByRole("button", { name: "Connect Unnamed PC" })).toHaveLength(2)
@@ -90,6 +92,31 @@ describe("gateway account shell", () => {
     expect(document.body.textContent).not.toContain("open-abcdef012345678")
     expect(document.body.textContent).not.toContain("32c7e49348b6077123aa38a120177553")
     expect(document.body.textContent).not.toContain(fingerprint)
+  })
+
+  it("shows a public avatar without sending a referrer and falls back to the initial", () => {
+    const picture = "https://images.example.test/a.png?v=1"
+    mocks.account = {
+      ...mocks.account, status: "authorized",
+      session: { ...session, user: { ...session.user, display_name: "林小明", avatar_url: picture } },
+      bootstrap: { ...bootstrap, models: { ...bootstrap.models, api_access_enabled: false } },
+    }
+    const view = render(<App />)
+    const image = document.querySelector("img")
+    expect(image).toHaveAttribute("src", picture)
+    expect(image).toHaveAttribute("referrerpolicy", "no-referrer")
+    fireEvent.error(image!)
+    expect(document.querySelector("img")).toBeNull()
+    expect(screen.getByText("林", { exact: true })).toBeVisible()
+    expect(screen.getByText("林小明", { exact: true })).toBeVisible()
+    view.unmount()
+    mocks.account = {
+      ...mocks.account,
+      session: { ...session, user: { ...session.user, display_name: "林小明", avatar_url: "javascript:alert(1)" } },
+    }
+    render(<App />)
+    expect(document.querySelector("img")).toBeNull()
+    expect(screen.getByText("林", { exact: true })).toBeVisible()
   })
 
   it.each([
@@ -132,9 +159,12 @@ describe("gateway account shell", () => {
 
   it("shows the official name and does not ask for model ids", async () => {
     const marker = "profile guidance marker 1842"
+    // The stored profile drops instruction. The fixture still sends it so the
+    // screen can prove that guidance never becomes a model id prompt.
+    const profile = { label: "Partner model", instruction: marker, tools: ["read"] }
     mocks.account = {
       ...mocks.account, status: "authorized", session,
-      bootstrap: { ...bootstrap, models: { ...bootstrap.models, profile: { label: "Partner model", instruction: marker, tools: ["read"] } } },
+      bootstrap: { ...bootstrap, models: { ...bootstrap.models, profile } },
     }
     render(<App />)
     await screen.findByRole("tab", { name: "Chat" })

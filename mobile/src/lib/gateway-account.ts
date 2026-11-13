@@ -2,6 +2,7 @@ import { Browser } from "@capacitor/browser"
 import { AppLauncher } from "@capacitor/app-launcher"
 import { Capacitor } from "@capacitor/core"
 import { sha256 } from "@noble/hashes/sha2.js"
+import { acceptAvatarURL } from "./avatar-url"
 import { softwareVersion } from "./app-update"
 import { b64urlToBytes, bytesToB64url, bytesToHex, randomBytes, utf8 } from "./bytes"
 import { fingerprint } from "./crypto"
@@ -21,7 +22,20 @@ const PENDING_KEY = "zwai.phone.gateway.pending"
 const CLIENT_PATH = "/client/api/v1"
 
 export type GatewayStatus = "signed_out" | "checking" | "authorization_pending" | "account_pending" | "account_rejected" | "authorized" | "access_denied" | "expired" | "error"
-export type GatewayUser = { id: string; username: string; display_name?: string; approval_status?: string; enabled?: boolean }
+export type GatewayUser = { id: string; username: string; display_name?: string; avatar_url?: string; approval_status?: string; enabled?: boolean }
+
+// Copies only the fields the phone may keep. A picture is kept for the same
+// person when a later response omits it; an address that fails the public
+// rule never replaces a saved one. Mail and access keys are not fields here.
+export function gatewayUser(user: GatewayUser, previous?: GatewayUser): GatewayUser {
+  const next: GatewayUser = { id: user.id, username: typeof user.username === "string" ? user.username : "" }
+  if (typeof user.display_name === "string") next.display_name = user.display_name
+  if (typeof user.approval_status === "string" && user.approval_status) next.approval_status = user.approval_status
+  if (typeof user.enabled === "boolean") next.enabled = user.enabled
+  const avatar = acceptAvatarURL(user.avatar_url) ?? (previous?.id === user.id ? acceptAvatarURL(previous.avatar_url) : undefined)
+  if (avatar) next.avatar_url = avatar
+  return next
+}
 export type GatewayDevice = { id: string; expires_at: string; name?: string; platform?: string }
 export type GatewaySession = { origin: string; token: string; user: GatewayUser; device: GatewayDevice }
 export type GatewayHost = { id: string; name: string; hostname: string; display_name?: string; version: string; online: boolean; enabled: boolean; owner_user_id?: string; host_pub?: string; host_fp?: string }
@@ -70,14 +84,21 @@ function announce() { window.dispatchEvent(new Event(GATEWAY_ACCOUNT_EVENT)) }
 
 export function loadGatewaySession(): GatewaySession | null {
   try {
-    const session = JSON.parse(localStorage.getItem(SESSION_KEY) || "null") as GatewaySession | null
-    if (!session || normalizeGatewayOrigin(session.origin) !== session.origin || !/^agm_[a-f0-9]{64}$/.test(session.token) || !session.user.id || !session.device.id || !Number.isFinite(Date.parse(session.device.expires_at))) return null
-    return session
+    const raw = localStorage.getItem(SESSION_KEY)
+    const session = JSON.parse(raw || "null") as GatewaySession | null
+    if (!session || normalizeGatewayOrigin(session.origin) !== session.origin || !/^agm_[a-f0-9]{64}$/.test(session.token) || !session.user?.id || !session.user.username || !session.device?.id || !Number.isFinite(Date.parse(session.device.expires_at))) return null
+    const clean: GatewaySession = { origin: session.origin, token: session.token, user: gatewayUser(session.user), device: { id: session.device.id, expires_at: session.device.expires_at, name: session.device.name, platform: session.device.platform } }
+    if (!clean.device.name) delete clean.device.name
+    if (!clean.device.platform) delete clean.device.platform
+    const encoded = JSON.stringify(clean)
+    if (raw !== encoded) localStorage.setItem(SESSION_KEY, encoded)
+    return clean
   } catch { return null }
 }
 
 export function saveGatewaySession(session: GatewaySession) {
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+  const clean: GatewaySession = { origin: session.origin, token: session.token, user: gatewayUser(session.user), device: session.device }
+  localStorage.setItem(SESSION_KEY, JSON.stringify(clean))
   localStorage.removeItem(PENDING_KEY)
   announce()
 }
@@ -227,14 +248,14 @@ export async function pollGatewayLogin(pending: GatewayPending, fetcher: typeof 
   if (data.status !== "authorized") return { status: data.status }
   const { data: principal } = await request<{ user: GatewayUser; device: GatewayDevice }>(pending.origin, "/auth/me", fetcher, pending.candidateToken, undefined, signal)
   if (!principal.user?.id || principal.user.id !== data.user?.id || !principal.device?.id || principal.device.id !== data.mobile_id || !Number.isFinite(Date.parse(principal.device.expires_at))) throw new GatewayError(0, "invalid_gateway_response")
-  return { status: "authorized", session: { origin: pending.origin, token: pending.candidateToken, ...principal } }
+  return { status: "authorized", session: { origin: pending.origin, token: pending.candidateToken, user: gatewayUser(principal.user, data.user), device: principal.device } }
 }
 
 export async function readGatewaySession(session: GatewaySession, fetcher: typeof fetch = gatewayFetch, signal?: AbortSignal): Promise<GatewaySession> {
   if (Date.parse(session.device.expires_at) <= Date.now()) throw new GatewayError(401, "session_expired")
   const { data: principal } = await request<{ user: GatewayUser; device: GatewayDevice }>(session.origin, "/auth/me", fetcher, session.token, undefined, signal)
   if (principal.user?.id !== session.user.id || principal.device?.id !== session.device.id || principal.user.enabled === false || !Number.isFinite(Date.parse(principal.device.expires_at)) || Date.parse(principal.device.expires_at) <= Date.now()) throw new GatewayError(401, "session_expired")
-  return { ...session, ...principal }
+  return { origin: session.origin, token: session.token, user: gatewayUser(principal.user, session.user), device: principal.device }
 }
 
 export async function refreshGatewaySession(session: GatewaySession, fetcher: typeof fetch = gatewayFetch, signal?: AbortSignal): Promise<GatewayState> {
@@ -242,6 +263,7 @@ export async function refreshGatewaySession(session: GatewaySession, fetcher: ty
   if (current.user.approval_status !== "approved") return { status: current.user.approval_status === "rejected" ? "account_rejected" : "account_pending", session: current, hosts: [] }
   const { data: bootstrap } = await request<GatewayBootstrap>(session.origin, "/bootstrap", fetcher, session.token, undefined, signal)
   validateBootstrap(session.origin, bootstrap, current)
+  if (bootstrap.user?.id === current.user.id) current.user = gatewayUser({ ...current.user, avatar_url: bootstrap.user.avatar_url }, current.user)
   const hosts: GatewayHost[] = []
   if (bootstrap.pairlink.enabled) {
     for (let page = 1; page <= 100; page++) {

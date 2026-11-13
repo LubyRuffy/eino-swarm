@@ -51,6 +51,44 @@ async function noOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 }
 
+test("user center shows a public avatar without a referrer", async ({ page }) => {
+  const picture = "https://images.example.test/a.png?v=1"
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64")
+  const pictured = { ...user, display_name: "林小明", avatar_url: picture }
+  await page.addInitScript(({ origin, token, user, device }) => {
+    localStorage.setItem("zwai.phone.gateway.session", JSON.stringify({ origin, token, user, device }))
+  }, { origin, token, user: pictured, device })
+  await page.route((url) => url.href === picture, (route) => route.fulfill({ status: 200, contentType: "image/png", body: png }))
+  await fixture(page, { apiEnabled: false, hosts: [] })
+  await page.route(origin + "/client/api/v1/auth/me", (route) => route.fulfill({
+    contentType: "application/json", body: JSON.stringify({ data: { user: pictured, device } }),
+  }))
+  await page.goto("/?mock=1&tick=0")
+  const screen = page.getByTestId("gateway-account")
+  const image = screen.locator("img")
+  await expect(image).toHaveAttribute("src", picture)
+  await expect(image).toHaveAttribute("referrerpolicy", "no-referrer")
+  await expect(screen.getByText("林小明", { exact: true })).toBeVisible()
+})
+
+test("user center keeps the name initial when a public avatar cannot load", async ({ page }) => {
+  const picture = "https://images.example.test/missing.png"
+  const pictured = { ...user, display_name: "林小明", avatar_url: picture }
+  await page.addInitScript(({ origin, token, user, device }) => {
+    localStorage.setItem("zwai.phone.gateway.session", JSON.stringify({ origin, token, user, device }))
+  }, { origin, token, user: pictured, device })
+  await page.route((url) => url.href === picture, (route) => route.abort())
+  await fixture(page, { apiEnabled: false, hosts: [] })
+  await page.route(origin + "/client/api/v1/auth/me", (route) => route.fulfill({
+    contentType: "application/json", body: JSON.stringify({ data: { user: pictured, device } }),
+  }))
+  await page.goto("/?mock=1&tick=0")
+  const screen = page.getByTestId("gateway-account")
+  await expect(screen.getByText("林", { exact: true })).toBeVisible()
+  await expect(screen.getByText("林小明", { exact: true })).toBeVisible()
+  await expect(screen.locator("img")).toHaveCount(0)
+})
+
 test("account overlays keep the title and close control inside the safe area", async ({ page, browserName }, testInfo) => {
   test.skip(browserName !== "chromium", "Chromium exposes CSS safe-area env overrides through CDP; iOS also has a native layout gate")
   const insets = { top: 59, right: 16, bottom: 34, left: 10 }

@@ -1,14 +1,26 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { X } from "lucide-react"
 import { AccountPcList } from "@/components/account-pc-list"
 import type { GatewayAccountController } from "@/components/gateway-account-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { DirectProvider } from "@/lib/direct-provider"
+import { acceptAvatarURL } from "@/lib/avatar-url"
 import { t } from "@/lib/i18n"
 import { gatewayUserDisplayName } from "@/lib/gateway-names"
 import { WebExecutionSettings } from "@/components/web-execution-settings"
 import type { PcWebSnapshot } from "@/components/pc-web-execution-status"
+
+function AccountPortrait({ name, url }: { name: string; url?: string }) {
+  const picture = acceptAvatarURL(url)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => { setFailed(false) }, [picture])
+  return (
+    <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-sm font-medium">
+      {picture && !failed ? <img src={picture} alt="" referrerPolicy="no-referrer" className="size-full object-cover" onError={() => setFailed(true)} /> : Array.from(name)[0]}
+    </span>
+  )
+}
 
 export function GatewayAccountScreen({ account, providers, modelBusy, modelError, pcWeb, onClose, onConnect, onRefresh, onOpenChat, onOtherWays }: {
   account: GatewayAccountController
@@ -29,6 +41,7 @@ export function GatewayAccountScreen({ account, providers, modelBusy, modelError
   const [advanced, setAdvanced] = useState(false)
   const [server, setServer] = useState(account.origin)
   const authorized = account.status === "authorized"
+  const accountName = account.session ? gatewayUserDisplayName(account.session.user) : ""
   const waiting = ["checking", "authorization_pending", "account_pending", "account_rejected"].includes(account.status) || Boolean(account.session && account.status === "access_denied")
   const statusText = account.status === "account_pending" ? t("account.pending")
     : account.status === "account_rejected" ? t("account.rejected")
@@ -43,7 +56,10 @@ export function GatewayAccountScreen({ account, providers, modelBusy, modelError
         {onClose ? <Button variant="ghost" className="size-10 px-0" aria-label={t("home.close")} onClick={onClose}><X className="size-5" aria-hidden /></Button> : null}
       </header>
       <div className="flex flex-col gap-4 p-5">
-        {account.session ? <p className="break-all text-sm font-medium">{gatewayUserDisplayName(account.session.user)}</p> : null}
+        {account.session ? <div className="flex items-center gap-3">
+          <AccountPortrait name={accountName} url={account.session.user.avatar_url} />
+          <p className="break-all text-sm font-medium">{accountName}</p>
+        </div> : null}
         {statusText ? <p role="status" className="text-sm text-muted-foreground">{statusText}</p> : null}
         {account.error ? <p role="alert" className="text-sm text-destructive">{t(account.error === "browser_unavailable" ? "account.browserFailed" : account.error === "gateway_timeout" ? "account.timeout" : account.error === "pc_upgrade_failed" ? "account.upgradeFailed" : "chat.failed")}</p> : null}
         {!authorized && (!waiting || account.status === "access_denied") ? <>

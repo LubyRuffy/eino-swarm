@@ -558,3 +558,64 @@ func TestTypedCatalogPublishesKindsAndHidesThemFromTheComposer(t *testing.T) {
 		t.Fatalf("kinds leaked the endpoint or credential: %s", raw)
 	}
 }
+
+func TestAccountPictureFollowsTheBootstrapAndKeepsASavedAddress(t *testing.T) {
+	g := newAccountGateway(t)
+	const savedPicture = "https://images.example.test/saved.png"
+	const nextPicture = "https://images.example.test/next.png?v=1"
+	am, _, cfg := accountModelsFixture(t, g)
+	credential, err := cfg.ReadRemoteCredential()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.RememberRemoteAvatarURL(credential.Origin, credential.Token, credential.UserID, savedPicture); err != nil {
+		t.Fatal(err)
+	}
+	userID := strings.Repeat("2", 32)
+	write := func(avatar, id string) {
+		t.Helper()
+		g.bootstrap = func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
+				"user":    map[string]any{"id": id, "username": "Account", "display_name": "Account Name", "avatar_url": avatar, "email": "private@example.test", "key": "private-nosec-key"},
+				"host_id": strings.Repeat("1", 32),
+				"models": map[string]any{
+					"source_id": accountModelsSourceID, "source_kind": "gateway", "label": "Server", "execution": "desktop",
+					"api_base_url": g.server.URL + "/client/desktop/v1", "catalog_url": g.server.URL + "/client/desktop/v1/models", "api_access_enabled": true,
+				},
+			}})
+		}
+	}
+	write("", userID)
+	st := am.Refresh(context.Background())
+	if st.State != AccountReady || st.AvatarURL != savedPicture {
+		t.Fatalf("omitted avatar cleared the saved picture: %+v", st)
+	}
+	write("javascript:alert(1)", userID)
+	st = am.Refresh(context.Background())
+	if st.AvatarURL != savedPicture {
+		t.Fatalf("unsafe avatar replaced the saved picture: %q", st.AvatarURL)
+	}
+	write(nextPicture, strings.Repeat("9", 32))
+	st = am.Refresh(context.Background())
+	if st.AvatarURL != savedPicture {
+		t.Fatalf("another account picture was adopted: %q", st.AvatarURL)
+	}
+	write(nextPicture, userID)
+	st = am.Refresh(context.Background())
+	if st.AvatarURL != nextPicture {
+		t.Fatalf("new public avatar = %q", st.AvatarURL)
+	}
+	raw, _ := json.Marshal(st)
+	if strings.Contains(string(raw), "private@") || strings.Contains(string(raw), "private-nosec-key") || strings.Contains(string(raw), "javascript:") {
+		t.Fatalf("account secret or rejected address entered model state: %s", raw)
+	}
+	stored, err := cfg.ReadRemoteCredential()
+	if err != nil || stored.AvatarURL != nextPicture || stored.Token != credential.Token {
+		t.Fatalf("saved picture = %+v %v", stored, err)
+	}
+	restarted := NewAccountModels(cfg, provider.New(cfg), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if restarted.State().AvatarURL != nextPicture {
+		t.Fatalf("restart lost the picture: %+v", restarted.State())
+	}
+}

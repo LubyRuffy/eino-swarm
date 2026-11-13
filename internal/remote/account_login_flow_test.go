@@ -78,7 +78,7 @@ func TestAccountLoginDeviceAuthorizationUsesRealWireAndConnectsOnlyAfterApproval
 					t.Error("could not prepare authorized relay host")
 				}
 				data["host_id"] = strings.Repeat("a", 32)
-				data["user"] = map[string]string{"id": strings.Repeat("b", 32), "username": "nosec_alvaro_0123456789abcdef", "display_name": "Álvaro García"}
+				data["user"] = map[string]string{"id": strings.Repeat("b", 32), "username": "nosec_alvaro_0123456789abcdef", "display_name": "Álvaro García", "avatar_url": "https://images.example.test/a.png?sig=1", "email": "private@example.test", "key": "private-nosec-key"}
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
 		default:
@@ -170,10 +170,24 @@ func TestAccountLoginDeviceAuthorizationUsesRealWireAndConnectsOnlyAfterApproval
 	}
 	checkDisplayName(saved)
 	checkDisplayName(host.Status().Login)
+	if saved.AvatarURL != "https://images.example.test/a.png?sig=1" || host.Status().Login.AvatarURL != saved.AvatarURL {
+		t.Fatalf("public avatar = saved %q status %q", saved.AvatarURL, host.Status().Login.AvatarURL)
+	}
+	receiptJSON, _ := json.Marshal(saved)
+	if strings.Contains(string(receiptJSON), "private@example.test") || strings.Contains(string(receiptJSON), "private-nosec-key") {
+		t.Fatal("account secret was stored with the avatar")
+	}
+	statusJSON, _ := json.Marshal(host.Status().Login)
+	if strings.Contains(string(statusJSON), "private@example.test") || strings.Contains(string(statusJSON), "private-nosec-key") {
+		t.Fatal("account secret crossed the login status boundary")
+	}
 	// A fresh Host must recover the label from the authorized local receipt.
 	restored := New(e, cfg, nil)
 	defer restored.Stop()
 	checkDisplayName(restored.Status().Login)
+	if restored.Status().Login.AvatarURL != saved.AvatarURL {
+		t.Fatal("a fresh host lost the saved public avatar")
+	}
 	if registrations.Load() != 1 {
 		t.Fatal("authorization did not make exactly one actual registration")
 	}

@@ -8,6 +8,14 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Added
 
+- A signed-in account can show the public avatar published by Gateway
+  `avatar_url`. Desktop keeps a safe address with the private device receipt
+  and paints it on the account button. The phone keeps it on the account
+  session and paints it in User center. The image is requested with no
+  referrer. A missing address, a rejected address, or a picture that fails to
+  load leaves the name or its initial in place. Mail and access keys are not
+  stored. (`F-210`, `F-211`, `C-006`)
+
 - Settings → MCP can edit connections as JSON text. The text uses the same
   `mcpServers` object as other clients. Entries in the text are added or
   updated, and connections that are not in the text stay, including saved

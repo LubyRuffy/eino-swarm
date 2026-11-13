@@ -21,6 +21,7 @@ type LoginStatus struct {
 	UserID      string `json:"user_id,omitempty"`
 	Username    string `json:"username,omitempty"`
 	DisplayName string `json:"display_name,omitempty"`
+	AvatarURL   string `json:"avatar_url,omitempty"`
 	ErrorCode   string `json:"error_code,omitempty"`
 }
 
@@ -290,9 +291,14 @@ func (h *Host) runLogin(attempt *loginAttempt) {
 			if len(displayName) > 1024 {
 				displayName = ""
 			}
+			previous, readErr := h.cfg.ReadRemoteCredential()
+			if readErr != nil {
+				previous = config.RemoteCredential{}
+			}
 			receipt := config.RemoteCredential{
 				Token: attempt.candidate, Origin: attempt.origin, Authorized: true,
 				HostID: polled.HostID, UserID: polled.User.ID, Username: polled.User.Username, DisplayName: displayName,
+				AvatarURL: loginAvatar(previous, attempt.origin, polled.User.ID, polled.User.AvatarURL),
 			}
 			if err := h.cfg.ActivateRemoteTokenIfCurrent(attempt.pending, receipt); err != nil {
 				h.login = LoginStatus{State: "error", ErrorCode: "credential_unavailable"}
@@ -308,7 +314,7 @@ func (h *Host) runLogin(attempt *loginAttempt) {
 			// join the pending connection, never this login task waiting on itself.
 			h.login = LoginStatus{
 				State: "authorized", HostID: receipt.HostID, UserID: receipt.UserID,
-				Username: receipt.Username, DisplayName: receipt.DisplayName,
+				Username: receipt.Username, DisplayName: receipt.DisplayName, AvatarURL: receipt.AvatarURL,
 			}
 			h.loginActive = nil
 			connect, launch = h.prepareStartLocked(context.Background())
@@ -356,6 +362,16 @@ func (h *Host) loginStatusLocked(cfg *config.Config) *LoginStatus {
 			current = LoginStatus{
 				State: "authorized", HostID: credential.HostID, UserID: credential.UserID,
 				Username: credential.Username, DisplayName: credential.DisplayName,
+				AvatarURL: config.AcceptedAvatarURL(credential.AvatarURL),
+			}
+		}
+	}
+	if current.State == "authorized" || current.State == "signing_out" {
+		origin, originErr := config.RemoteOrigin(cfg.Remote.HubURL)
+		credential, credErr := cfg.ReadRemoteCredential()
+		if originErr == nil && credErr == nil && credential.Authorized && credential.Origin == origin && credential.UserID != "" && credential.UserID == current.UserID {
+			if picture := config.AcceptedAvatarURL(credential.AvatarURL); picture != "" {
+				current.AvatarURL = picture
 			}
 		}
 	}

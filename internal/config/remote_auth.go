@@ -29,6 +29,8 @@ type RemoteCredential struct {
 	UserID      string `json:"user_id,omitempty"`
 	Username    string `json:"username,omitempty"`
 	DisplayName string `json:"display_name,omitempty"`
+	// AvatarURL is a public image address. It is not an identity or a grant.
+	AvatarURL string `json:"avatar_url,omitempty"`
 }
 
 func RemoteOrigin(raw string) (string, error) {
@@ -360,6 +362,28 @@ func (c *Config) validateRemoteAuth() error {
 		return fmt.Errorf("remote: invalid authentication mode")
 	}
 	return nil
+}
+
+// RememberRemoteAvatarURL stores a new public avatar for the current receipt.
+// An empty or rejected address, or a receipt that no longer matches, leaves
+// the saved address in place.
+func (c *Config) RememberRemoteAvatarURL(origin, token, userID, avatar string) error {
+	avatar = AcceptedAvatarURL(avatar)
+	if c == nil || avatar == "" || origin == "" || token == "" || userID == "" {
+		return nil
+	}
+	mu := c.mutex()
+	mu.Lock()
+	defer mu.Unlock()
+	current, err := c.ReadRemoteCredential()
+	if err != nil {
+		return err
+	}
+	if !current.Authorized || current.Origin != origin || current.Token != token || current.UserID != userID || current.AvatarURL == avatar {
+		return nil
+	}
+	current.AvatarURL = avatar
+	return c.writeRemoteCredential(current)
 }
 
 // ActivateRemoteTokenIfCurrent serializes the durable receipt with Settings

@@ -810,8 +810,9 @@ the account. The renderer never receives a token, device code or proof verifier.
 Manual token writes return `403 remote_login_required` in this mode.
 
 The active file supports a schema-1 JSON credential with origin, authorized
-flag, host/account IDs and account label, while legacy raw-token files remain
-readable. `pending-host-token-*` under the same private directory retain candidate
+flag, host/account IDs, account label and optional public `avatar_url`, while
+legacy raw-token files remain readable. `avatar_url` is not an identity.
+An omitted or rejected address leaves a previously accepted one in place. `pending-host-token-*` under the same private directory retain candidate
 tokens bound to origin and public key for safe retry after an uncertain result.
 Each is limited to 16 KiB; at most 128 are retained (2 MiB maximum), scans are
 bounded to 128, and staging an existing candidate reuses its file. Capacity
