@@ -31,6 +31,7 @@ func testEngineWithPool(t *testing.T, scripted bool) *engine.Engine {
 	// Remote fixtures opt into their own loopback hub; configuration defaults
 	// must never make a host lifecycle test contact an external gateway.
 	cfg.Remote.HubURL = ""
+	cfg.Remote.AuthMode = config.RemoteAuthIndependent
 	st, err := store.Open(cfg.DBPath())
 	if err != nil {
 		t.Fatal(err)

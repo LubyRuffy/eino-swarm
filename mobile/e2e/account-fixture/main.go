@@ -523,6 +523,9 @@ func main() {
 	server, anonServer := &http.Server{Handler: f, ReadHeaderTimeout: 5 * time.Second}, &http.Server{Handler: f, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = server.Serve(listener) }()
 	go func() { _ = anonServer.Serve(anonymous) }()
+	// The fixture PC uses anonymous relay pairing before any account flow.
+	cfg.Product.Mode = config.ProductModeLocal
+	cfg.Remote.AuthMode = config.RemoteAuthIndependent
 	cfg.Remote.Enabled, cfg.Remote.HubURL, cfg.Remote.DisplayName, cfg.Remote.KeepAwake = true, f.origin, "Native PC", false
 	token, err := relay.IssueHostToken(context.Background(), f.bindings)
 	if err != nil {

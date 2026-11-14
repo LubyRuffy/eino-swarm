@@ -9,12 +9,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/pairlink/relay"
 	pstore "github.com/LubyRuffy/pairlink/store"
 )
 
 func TestRemoteStatusDoesNotEchoTheHostToken(t *testing.T) {
 	h := newHarness(t)
+	if err := h.app.Config.Update(func(c *config.Config) error { c.Remote.AuthMode = config.RemoteAuthIndependent; return nil }); err != nil {
+		t.Fatal(err)
+	}
 	if err := h.app.Config.WriteHostToken("never-return-this-token"); err != nil {
 		t.Fatal(err)
 	}
@@ -44,6 +48,9 @@ func TestRemoteStatusDoesNotEchoTheHostToken(t *testing.T) {
 
 func TestRemoteOfferWithoutHubIsOffline(t *testing.T) {
 	h := newHarness(t)
+	if err := h.app.Config.Update(func(c *config.Config) error { c.Remote.AuthMode = config.RemoteAuthIndependent; return nil }); err != nil {
+		t.Fatal(err)
+	}
 	resp := h.do(http.MethodPost, "/api/remote/offer", map[string]any{})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusConflict {
@@ -73,6 +80,9 @@ func TestRemoteOfferMintsAScannablePNG(t *testing.T) {
 	}
 
 	h := newHarness(t)
+	if err := h.app.Config.Update(func(c *config.Config) error { c.Remote.AuthMode = config.RemoteAuthIndependent; return nil }); err != nil {
+		t.Fatal(err)
+	}
 	h.app.Config.Remote.Enabled = true
 	h.app.Config.Remote.HubURL = srv.URL
 	if err := h.app.Config.WriteHostToken(token); err != nil {

@@ -40,6 +40,9 @@ func realUpgradeFixture(t *testing.T, devicePub []byte) *fixture {
 	server := httptest.NewServer(f)
 	t.Cleanup(server.Close)
 	f.origin, f.anonymous = server.URL, server.URL
+	// The fixture PC uses anonymous relay pairing before any account flow.
+	cfg.Product.Mode = config.ProductModeLocal
+	cfg.Remote.AuthMode = config.RemoteAuthIndependent
 	cfg.Remote.Enabled, cfg.Remote.HubURL, cfg.Remote.DisplayName, cfg.Remote.KeepAwake = true, f.origin, "Native PC", false
 	token, err := relay.IssueHostToken(t.Context(), f.bindings)
 	if err != nil {

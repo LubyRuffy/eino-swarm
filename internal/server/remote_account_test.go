@@ -169,6 +169,9 @@ func TestAccountLogoutUsesStrictIntentAndRemovesCloudAuthority(t *testing.T) {
 
 func TestAccountLogoutRefusesIndependentAndReportsCredentialFailure(t *testing.T) {
 	h := newHarness(t)
+	if err := h.app.Config.Update(func(c *config.Config) error { c.Remote.AuthMode = config.RemoteAuthIndependent; return nil }); err != nil {
+		t.Fatal(err)
+	}
 	if err := h.app.Config.WriteHostToken("anonymous-private-token"); err != nil {
 		t.Fatal(err)
 	}

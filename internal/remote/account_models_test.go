@@ -248,7 +248,7 @@ func TestCredentialForAnotherServerDoesNotSignInHere(t *testing.T) {
 func TestAnonymousModeHasNoAccount(t *testing.T) {
 	g := newAccountGateway(t)
 	am, _, cfg := accountModelsFixture(t, g)
-	if err := cfg.Update(func(next *config.Config) error { next.Remote.AuthMode = ""; return nil }); err != nil {
+	if err := cfg.Update(func(next *config.Config) error { next.Remote.AuthMode = config.RemoteAuthIndependent; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if st := am.Refresh(context.Background()); st.State != AccountSignedOut || len(g.seen()) != 0 {
