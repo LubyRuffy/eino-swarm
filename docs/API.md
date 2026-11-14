@@ -273,7 +273,7 @@ endpoint:
 |---|---|
 | `signed_out` | no device login on this machine |
 | `pending` | signed in; the model catalog has not been read yet |
-| `ready` | the catalog was read (`models` is the total count). `kinds` counts `chat`, `unclassified`, `embedding`, `ocr`, `decisions` and `other`, and `embedding_models` lists the embedding names. `source_id` is the runtime `gateway:<32 hex>` id. Conversation rows in `GET /api/models` are the `chat` and unclassified names. When the server publishes fixed roles, `roles` is the read-only list `{id,enabled,label}` and a FOFA install uses those names instead of the catalog. An old server omits `roles`. LOCAL ignores the field |
+| `ready` | the catalog was read (`models` is the total count). `kinds` counts `chat`, `unclassified`, `embedding`, `ocr`, `decisions` and `other`, and `embedding_models` lists the embedding names. `source_id` is the runtime `gateway:<32 hex>` id. Conversation rows in `GET /api/models` are the `chat` and unclassified names. When the server publishes fixed roles, `roles` is the read-only list `{id,enabled,label}` and a FOFA install uses those names instead of the catalog. The list may include `transcription` and `image`; this client shows them and does not call them. An old server omits `roles` or returns only the first six roles. LOCAL ignores the field |
 | `no_access` | signed in but the account may not use the model API |
 | `unavailable` | signed in but the catalog could not be used; `reason` is one of `rejected`, `unsupported`, `network`, `gateway`, `unsafe_response`, `no_models` |
 

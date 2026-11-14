@@ -34,7 +34,7 @@ export function EngineStartupBanner() {
   }, [restoring])
   const failed = meta?.restore?.failed ?? 0
   if (!restoring && !failed) return null
-  return <div role={restoring ? "status" : "alert"} data-testid="engine-startup" className="flex shrink-0 items-center gap-2 border-b border-border bg-muted px-4 py-2 text-sm text-muted-foreground">
+  return <div role={restoring ? "status" : "alert"} data-testid="engine-startup" className="flex shrink-0 items-center gap-2 border-b border-border bg-muted px-4 py-2 text-(length:--chrome-font-size) text-muted-foreground">
     {restoring ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden /> : <AlertTriangle className="size-4" aria-hidden />}
     {restoring ? t("startup.restoring", { completed: meta?.restore?.completed ?? 0, total: meta?.restore?.total ?? 0 }) : t("startup.failed", { failed })}
   </div>

@@ -45,7 +45,7 @@ export function ChromeMenu({
     fn()
   }
   const itemClass =
-    "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent"
+    "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-(length:--chrome-font-size) hover:bg-accent"
   return (
     <div className="relative shrink-0">
       <Button
@@ -141,7 +141,7 @@ export function ChromeMenu({
                 {shared ? (
                   <p
                     data-testid="shared-clients"
-                    className="px-2 py-1.5 text-xs text-muted-foreground"
+                    className="px-2 py-1.5 text-(length:--chrome-font-size) text-muted-foreground"
                   >
                     {t("header.shared", { where: shared })}
                   </p>
@@ -149,7 +149,7 @@ export function ChromeMenu({
                 {version ? (
                   <p
                     data-testid="app-version"
-                    className="px-2 py-1.5 text-xs text-muted-foreground"
+                    className="px-2 py-1.5 text-(length:--chrome-font-size) text-muted-foreground"
                   >
                     {t("sidebar.version", { version })}
                   </p>

@@ -9,7 +9,7 @@ export function CloudToolNotice({ block }: { block: Block }) {
   if (block.quiet) return null
   const tool = block.cloudTool ?? {}
   return (
-    <div data-testid="cloud-tool-notice" className="my-2 flex items-start gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[13px] text-muted-foreground">
+    <div data-testid="cloud-tool-notice" className="my-2 flex items-start gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-(length:--chrome-font-size) text-muted-foreground">
       <Cloud aria-hidden className="mt-0.5 size-3.5 shrink-0" />
       <p className="min-w-0 flex-1 whitespace-pre-wrap">
         {cloudToolSummary(tool, t.locale)}

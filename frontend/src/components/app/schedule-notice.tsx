@@ -53,7 +53,7 @@ export function ScheduleNotice({
   return (
     <div
       data-testid="schedule-notice"
-      className="my-2 flex items-start gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[13px] text-muted-foreground"
+      className="my-2 flex items-start gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-(length:--chrome-font-size) text-muted-foreground"
     >
       {armed ? (
         <WaitMark className="mt-0.5 size-3.5" />
@@ -65,12 +65,12 @@ export function ScheduleNotice({
           {localizeNotice(block.text, t.locale)}
         </p>
         {live && when ? (
-          <p data-testid="schedule-next" className="mt-0.5 text-xs">
+          <p data-testid="schedule-next" className="mt-0.5 text-(length:--chrome-font-size)">
             {t("schedule.nextCheck", { time: when })}
           </p>
         ) : null}
         {live && headline ? (
-          <p data-testid="schedule-prompt" className="mt-0.5 truncate text-xs">
+          <p data-testid="schedule-prompt" className="mt-0.5 truncate text-(length:--chrome-font-size)">
             {headline}
           </p>
         ) : null}

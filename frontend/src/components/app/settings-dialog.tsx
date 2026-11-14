@@ -588,7 +588,7 @@ export function SettingsDialog({
                     <SettingsPage title={t("settings.remote.title")}>
                       <SettingsSection title={t("desktopAccount.title")}>
                         <div role="alert" data-settings-row="" className="flex flex-col gap-3 px-4 py-3">
-                          <p className="text-sm text-muted-foreground">{t("desktopAccount.settingsUnknown")}</p>
+                          <p className="text-(length:--chrome-font-size) text-muted-foreground">{t("desktopAccount.settingsUnknown")}</p>
                           <Button type="button" variant="outline" disabled={accountUpdating} onClick={() => void reloadAccountRemote()}>
                             {t("desktopAccount.reloadSettings")}
                           </Button>

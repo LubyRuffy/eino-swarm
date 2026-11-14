@@ -7,7 +7,7 @@ export function ComposerDraftStatus({ session, snapshot, disabled = false }: { s
   const uncertain = snapshot.draft.state === "uncertain"
   if (!snapshot.error && !snapshot.conflict && !uncertain) return null
   const hasDraft = Boolean(snapshot.draft.text || snapshot.draft.quotes.length || snapshot.draft.files.length)
-  return <div data-testid="composer-draft-status" className="pointer-events-auto px-4 py-1 text-xs text-muted-foreground" aria-live="polite">
+  return <div data-testid="composer-draft-status" className="pointer-events-auto px-4 py-1 text-(length:--chrome-font-size) text-muted-foreground" aria-live="polite">
     <p role="alert">
       {uncertain ? t("draft.uncertain") : snapshot.conflict ? t("draft.conflict") : t("draft.failed")}
     </p>

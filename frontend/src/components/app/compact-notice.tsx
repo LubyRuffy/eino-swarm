@@ -32,8 +32,8 @@ export function CompactNotice({ block }: { block: Block }) {
     <div
       data-testid="memory-notice"
       className={compacted
-        ? "my-1 text-xs text-muted-foreground"
-        : "my-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[13px] text-muted-foreground"}
+        ? "my-1 text-(length:--chrome-font-size) text-muted-foreground"
+        : "my-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-(length:--chrome-font-size) text-muted-foreground"}
     >
       <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
         <Icon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
@@ -45,7 +45,7 @@ export function CompactNotice({ block }: { block: Block }) {
             type="button"
             variant="ghost"
             size="sm"
-            className="h-auto shrink-0 gap-1 px-1 py-0 text-xs font-normal leading-5 text-muted-foreground hover:text-foreground [&_svg]:size-3"
+            className="h-auto shrink-0 gap-1 px-1 py-0 text-(length:--chrome-font-size) font-normal leading-5 text-muted-foreground hover:text-foreground [&_svg]:size-3"
             onClick={() => setOpen((previous) => !previous)}
             aria-expanded={open}
             aria-controls={briefingId}

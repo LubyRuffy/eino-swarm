@@ -47,11 +47,11 @@ export function AccountSignIn({ compact = false }: { compact?: boolean }) {
           ? <p className={settingsHintClass}>{t("settings.remote.login.desktopRequired")}</p>
           : null}
       </div>
-      {failed ? <p role="alert" className="text-sm text-destructive">{t("desktopAccount.actionFailed")}</p> : null}
+      {failed ? <p role="alert" className="text-(length:--chrome-font-size) text-destructive">{t("desktopAccount.actionFailed")}</p> : null}
       {login?.user_code ? (
         <div className={compact ? "flex items-center gap-2" : undefined}>
           <p className={settingsHintClass}>{t("settings.remote.login.code")}</p>
-          <code className="select-all font-mono text-sm">{login.user_code}</code>
+          <code className="select-all font-mono text-(length:--chrome-font-size)">{login.user_code}</code>
         </div>
       ) : null}
       {state === "authorized" ? null : (

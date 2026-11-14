@@ -207,29 +207,29 @@ export function FilesTab({
               aria-label={t("files.filter")}
               placeholder={t("files.filterPlaceholder")}
               spellCheck={false}
-              className="h-8 pl-7 text-xs shadow-none"
+              className="h-8 pl-7 text-(length:--chrome-font-size) shadow-none"
             />
           </div>
         ) : null}
       </div>
 
       {dirErrors?.[""] && !serverSearch ? (
-        <p role="alert" className="px-3 py-2 text-center text-xs text-destructive">{dirErrors[""]}</p>
+        <p role="alert" className="px-3 py-2 text-center text-(length:--chrome-font-size) text-destructive">{dirErrors[""]}</p>
       ) : null}
       {searchError ? (
-        <p role="alert" className="px-3 py-8 text-center text-xs text-destructive">
+        <p role="alert" className="px-3 py-8 text-center text-(length:--chrome-font-size) text-destructive">
           {searchError}
         </p>
       ) : serverSearch && searching && !hits ? (
-        <p role="status" className="px-3 py-8 text-center text-xs text-muted-foreground">
+        <p role="status" className="px-3 py-8 text-center text-(length:--chrome-font-size) text-muted-foreground">
           {t("files.searching")}
         </p>
       ) : files.length === 0 && !serverSearch && !dirErrors?.[""] ? (
-        <p className="px-3 py-8 text-center text-xs text-muted-foreground">
+        <p className="px-3 py-8 text-center text-(length:--chrome-font-size) text-muted-foreground">
           {t("files.empty")}
         </p>
       ) : rows.length === 0 && !(dirErrors?.[""] && !serverSearch && files.length === 0) ? (
-        <p className="px-3 py-8 text-center text-xs text-muted-foreground">
+        <p className="px-3 py-8 text-center text-(length:--chrome-font-size) text-muted-foreground">
           {t("files.noMatch")}
         </p>
       ) : rows.length === 0 ? null : (
@@ -279,7 +279,7 @@ export function FilesTab({
                 {pending ? (
                   <p
                     role={dirErrors?.[node.path] ? "alert" : "status"}
-                    className="truncate px-3 py-1 text-xs text-muted-foreground"
+                    className="truncate px-3 py-1 text-(length:--chrome-font-size) text-muted-foreground"
                     style={{ paddingLeft: 28 + depth * 12 }}
                   >
                     {pending}

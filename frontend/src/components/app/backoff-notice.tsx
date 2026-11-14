@@ -30,11 +30,11 @@ export function BackoffNotice({ block }: { block: Block }) {
   if (block.quiet || !context) return null
   const reason = scheduleAnswerBackoffReason(context)
   return (
-    <div data-testid="backoff-notice" className="my-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[13px] text-muted-foreground">
+    <div data-testid="backoff-notice" className="my-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-(length:--chrome-font-size) text-muted-foreground">
       <div className="flex items-start gap-2">
         <Sparkles aria-hidden className="mt-0.5 size-3.5 shrink-0" />
         <p className="min-w-0 flex-1 stream-text whitespace-pre-wrap leading-5">{localizeNotice(block.text, t.locale)}</p>
-        <Button type="button" variant="ghost" size="sm" className="h-auto shrink-0 gap-1 px-1 py-0 text-xs font-normal leading-5"
+        <Button type="button" variant="ghost" size="sm" className="h-auto shrink-0 gap-1 px-1 py-0 text-(length:--chrome-font-size) font-normal leading-5"
           aria-expanded={open} aria-controls={id} onClick={() => setOpen((value) => !value)}>
           <ChevronRight aria-hidden className={open ? "size-3 rotate-90" : "size-3"} />
           {t(open ? "backoff.hide" : "backoff.details")}

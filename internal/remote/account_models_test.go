@@ -658,6 +658,17 @@ func TestFOFARolesUseFixedNamesAndStayReadOnly(t *testing.T) {
 	if enabled, configured := pool.AccountRole(accountModelsSourceID, "title"); !configured || enabled {
 		t.Fatalf("title role = enabled %v configured %v", enabled, configured)
 	}
+	roles = append(roles,
+		map[string]any{"id": "transcription", "enabled": false, "label": "语音识别"},
+		map[string]any{"id": "image", "enabled": true, "label": "图片生成"},
+	)
+	st = am.Refresh(context.Background())
+	if st.State != AccountReady || len(st.Roles) != 8 || st.Roles[6].ID != "transcription" || st.Roles[6].Enabled || st.Roles[7].ID != "image" || !st.Roles[7].Enabled || st.Roles[7].Label != "图片生成" {
+		t.Fatalf("speech and image roles = %+v", st.Roles)
+	}
+	if name, _, ok := pool.ConversationDefault(accountModelsSourceID); !ok || name != "conversation" {
+		t.Fatalf("conversation model after extra roles = %q ok=%v", name, ok)
+	}
 	if id, model, enabled, configured := pool.AccountEmbedding(); !configured || !enabled || id != accountModelsSourceID || model != "embedding" {
 		t.Fatalf("embedding = %s %s %v %v", id, model, enabled, configured)
 	}

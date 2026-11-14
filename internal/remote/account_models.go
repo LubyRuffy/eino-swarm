@@ -465,7 +465,8 @@ func fetchRoles(boot accountBootstrap, token string, who AccountModelsState) acc
 	return accountOutcome{state: s, source: source}
 }
 
-// account does not have, a server that lacks the feature, and plain outages.
+// classifyAccountError maps a bootstrap failure to a public state. It covers
+// a rejected sign-in, a server that lacks the feature, and a plain outage.
 func classifyAccountError(err error, who AccountModelsState) accountOutcome {
 	state := func(state, reason string, transient bool) accountOutcome {
 		s := who
@@ -597,7 +598,7 @@ func parseAccountRoles(raw json.RawMessage) ([]provider.AccountRole, error) {
 		return nil, nil
 	}
 	var rows []provider.AccountRole
-	if json.Unmarshal(raw, &rows) != nil || len(rows) > 6 {
+	if json.Unmarshal(raw, &rows) != nil || len(rows) > 8 {
 		return nil, errAccountResponse
 	}
 	if len(rows) == 0 {
@@ -608,7 +609,7 @@ func parseAccountRoles(raw json.RawMessage) ([]provider.AccountRole, error) {
 		role := &rows[i]
 		role.ID = strings.TrimSpace(role.ID)
 		switch role.ID {
-		case "conversation", "title", "compact", "embedding", "ocr", "decisions":
+		case "conversation", "title", "compact", "embedding", "ocr", "decisions", "transcription", "image":
 		default:
 			return nil, errAccountResponse
 		}

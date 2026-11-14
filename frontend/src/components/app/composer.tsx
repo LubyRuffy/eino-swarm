@@ -615,7 +615,7 @@ export function Composer({
           {compressing ? (
             <p
               data-testid="compressing-banner"
-              className="mb-2 text-xs text-muted-foreground"
+              className="mb-2 text-(length:--chrome-font-size) text-muted-foreground"
             >
               {t("notice.compressing")}
             </p>
@@ -643,7 +643,7 @@ export function Composer({
           {armed || adding ? <ComposerDropOverlay busy={adding} /> : null}
           {durable.session && durable.snapshot ? <ComposerDraftStatus session={durable.session} snapshot={durable.snapshot} disabled={readOnly} /> : null}
           {slashRejected ? (
-            <p role="alert" className="pointer-events-auto px-4 py-1 text-xs text-destructive">
+            <p role="alert" className="pointer-events-auto px-4 py-1 text-(length:--chrome-font-size) text-destructive">
               {t(slashRejected === "side" ? "sideChat.openUnavailable" : "draft.slashTextOnly")}
             </p>
           ) : null}
@@ -655,7 +655,7 @@ export function Composer({
           {awaitingArg ? (
             <p
               data-testid="composer-command-hint"
-              className="px-4 pt-2 text-xs text-muted-foreground"
+              className="px-4 pt-2 text-(length:--chrome-font-size) text-muted-foreground"
             >
               {awaitingArg === "goal"
                 ? t("composer.placeholderGoal")

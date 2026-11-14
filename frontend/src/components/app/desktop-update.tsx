@@ -56,7 +56,7 @@ export function DesktopUpdateBanner() {
       {working || phase.kind === "checking" || phase.kind === "restarting"
         ? <Loader2 className="size-4 shrink-0 motion-safe:animate-spin" aria-hidden /> : null}
       <div className="min-w-0 flex-1 space-y-2">
-        <p className="wrap-break-word text-sm" role={phase.kind === "error" ? "alert" : "status"}>{phaseText(phase, t)}</p>
+        <p className="wrap-break-word text-(length:--chrome-font-size)" role={phase.kind === "error" ? "alert" : "status"}>{phaseText(phase, t)}</p>
         {downloading ? (
           <div role="progressbar" aria-label={t("update.progressLabel")}
             aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}

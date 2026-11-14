@@ -117,9 +117,9 @@ export function AccountModelsCard({
       ) : null}
       {ready && fofa && account.roles && account.roles.length > 0 ? (
         <div className="grid gap-2 px-4 py-3" data-testid="account-model-roles">
-          <p className="text-sm font-medium">{t("accountModels.roles")}</p>
+          <p className="text-(length:--chrome-font-size) font-medium">{t("accountModels.roles")}</p>
           {account.roles.map((role) => (
-            <label key={role.id} className="flex items-center justify-between gap-3 text-sm">
+            <label key={role.id} className="flex items-center justify-between gap-3 text-(length:--chrome-font-size)">
               <span>{role.label || role.id}</span>
               <span className="flex items-center gap-2 text-muted-foreground">
                 {role.enabled ? t("accountModels.roleOn") : t("accountModels.roleOff")}

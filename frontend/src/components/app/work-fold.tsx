@@ -77,7 +77,7 @@ function PlanningTail() {
     <div
       data-testid="planning-tail"
       role="status"
-      className="flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 py-1 text-sm text-muted-foreground"
+      className="flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 py-1 text-(length:--chrome-font-size) text-muted-foreground"
     >
       <Loader2 aria-hidden className="size-3.5 shrink-0 animate-spin" />
       <SwapLine itemKey="planning:tail" text={t("transcript.planningMoves")} active />

@@ -35,12 +35,14 @@ retain their existing release batches.
 
 ### Added
 
-- FOFA reads six fixed server model roles when the account bootstrap includes
-  them. The account details show each switch and name, and those controls
-  cannot be edited. Conversation requests use `conversation`. Naming and
-  compact follow `conversation` while their own roles are off. Embedding, OCR
-  and decisions run only while those roles are on. LOCAL keeps the ordinary
-  catalog. (`F-173`)
+- FOFA reads up to eight fixed server model roles when the account bootstrap
+  includes them. The account details show each switch and name, and those
+  controls cannot be edited. Conversation requests use `conversation`. Naming
+  and compact follow `conversation` while their own roles are off. Embedding,
+  OCR and decisions run only while those roles are on. Speech recognition and
+  image generation are shown read-only and are not called by this client. An
+  older server that returns the first six roles still works. LOCAL keeps the
+  ordinary catalog. (`F-173`)
 
 - The install mode is `product.mode`. A missing key means FOFA: sign in before
   work, no Settings → Models section, and no composer model menu. Custom
@@ -174,6 +176,15 @@ retain their existing release batches.
   the UI font size, so a form control no longer reads smaller than the button
   beside it. The ask card, error notices, welcome page, skill dialogs, Memory,
   Nuwa and conversation schedules follow the same size.
+
+- The Agents panel "Done (2)" / "Running" group heading and the Memory panel
+  "Skills" / "Notes" section heading are now a normal-weight semibold label
+  instead of an all-caps small-caps label; they read as headings, not tags.
+
+- System banner lines (config warning, error), running work-fold row, chrome
+  menu items, file-tree notices, side chat, engine startup, desktop update,
+  account menus, composer hints, schedule/backoff/cloud/compact inline notices
+  all follow the UI font size instead of a fixed rem size.
 
 - Choosing All models asks for confirmation. The prompt says this machine's
   own model services do not have the account's online capabilities. Staying

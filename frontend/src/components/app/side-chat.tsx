@@ -55,12 +55,12 @@ export function SideChat({ threadId, onClose }: { threadId: string; onClose: () 
     >
       <ResizeHandle width={width} onWidthChange={setWidth} edge="left" label={t("sideChat.resize")} min={260} max={720} />
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
-        <h2 id="side-chat-title" className="text-sm font-medium">{t("sideChat.title")}</h2>
+        <h2 id="side-chat-title" className="text-(length:--chrome-font-size) font-medium">{t("sideChat.title")}</h2>
         <Button type="button" variant="ghost" size="icon-sm" aria-label={t("sideChat.close")} onClick={onClose}>
           <X />
         </Button>
       </div>
-      <div ref={log} role="log" aria-label={t("sideChat.messages")} className="min-h-0 flex-1 space-y-4 overflow-auto p-3 text-sm">
+      <div ref={log} role="log" aria-label={t("sideChat.messages")} className="min-h-0 flex-1 space-y-4 overflow-auto p-3 text-(length:--chrome-font-size)">
         {session.exchanges.length === 0 && !pending ? (
           <p className="text-muted-foreground">{t("sideChat.intro")}</p>
         ) : session.exchanges.map(({ question, answer }, index) => (
@@ -94,7 +94,7 @@ export function SideChat({ threadId, onClose }: { threadId: string; onClose: () 
       >
         {session.quote ? (
           <div className="flex items-start gap-1 rounded-md bg-muted px-2 py-1">
-            <blockquote data-testid="side-chat-quote" className="max-h-24 min-w-0 flex-1 overflow-auto wrap-anywhere whitespace-pre-wrap text-xs text-muted-foreground">
+            <blockquote data-testid="side-chat-quote" className="max-h-24 min-w-0 flex-1 overflow-auto wrap-anywhere whitespace-pre-wrap text-(length:--chrome-font-size) text-muted-foreground">
               {session.quote}
             </blockquote>
             <Button type="button" variant="ghost" size="icon-sm" aria-label={t("sideChat.removeQuote")} onClick={useSideChat.getState().clearQuote}>
@@ -127,8 +127,8 @@ export function SideChat({ threadId, onClose }: { threadId: string; onClose: () 
             ask()
           }}
         />
-        {tooLong ? <p id="side-chat-question-length" className="text-xs text-destructive">{t("sideChat.questionTooLong")}</p> : null}
-        {session.error ? <p role="alert" className="wrap-anywhere text-xs text-destructive">{session.error}</p> : null}
+        {tooLong ? <p id="side-chat-question-length" className="text-(length:--chrome-font-size) text-destructive">{t("sideChat.questionTooLong")}</p> : null}
+        {session.error ? <p role="alert" className="wrap-anywhere text-(length:--chrome-font-size) text-destructive">{session.error}</p> : null}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <ModelPicker
             models={models}
@@ -141,7 +141,7 @@ export function SideChat({ threadId, onClose }: { threadId: string; onClose: () 
           />
           {pending ? (
             <div className="ml-auto flex items-center gap-2">
-              <span role="status" className="text-xs text-muted-foreground">{t(preview ? "sideChat.streaming" : "sideChat.thinking")}</span>
+              <span role="status" className="text-(length:--chrome-font-size) text-muted-foreground">{t(preview ? "sideChat.streaming" : "sideChat.thinking")}</span>
               <Button type="button" variant="outline" size="icon-sm" aria-label={t("sideChat.cancel")} onClick={useSideChat.getState().cancel}>
                 <Square />
               </Button>

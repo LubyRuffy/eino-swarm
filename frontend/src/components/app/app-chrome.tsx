@@ -94,7 +94,7 @@ export function ConfiguredBanner({ onConfigure }: { onConfigure: () => void }) {
   if (fofa && (!state || state === "signed_out")) return null
   // The server account leads; a model service of your own stays one click away.
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-running/10 px-4 py-2 text-sm">
+    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-running/10 px-4 py-2 text-(length:--chrome-font-size)">
       <AlertTriangle className="size-4 shrink-0 text-running" />
       <span className="min-w-0 flex-1">
         {t("banner.unconfigured")}
@@ -115,7 +115,7 @@ export function ErrorBanner() {
   const setError = useApp((s) => s.setError)
   if (!error) return null
   return (
-    <div className="flex items-start gap-2 border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+    <div className="flex items-start gap-2 border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-(length:--chrome-font-size) text-destructive">
       <AlertTriangle className="mt-0.5 size-4 shrink-0" />
       <span className="min-w-0 flex-1">{error}</span>
       <Button

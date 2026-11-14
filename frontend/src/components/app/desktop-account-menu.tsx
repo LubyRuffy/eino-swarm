@@ -139,7 +139,7 @@ export function DesktopAccountMenu() {
               {picture && !pictureFailed ? (
                 <img src={picture} alt="" referrerPolicy="no-referrer" className="size-full object-cover" onError={() => setPictureFailed(true)} />
               ) : initial ? (
-                <span className="flex size-full items-center justify-center bg-sidebar-accent text-xs font-medium">{initial}</span>
+                <span className="flex size-full items-center justify-center bg-sidebar-accent text-(length:--chrome-font-size) font-medium">{initial}</span>
               ) : busy || (!unavailable && login?.state === "starting") ? (
                 <Loader2 className="animate-spin" />
               ) : <UserRound />}
@@ -212,9 +212,9 @@ export function DesktopAccountMenu() {
             </div>
             {fofa && models?.roles && models.roles.length > 0 ? (
               <div className="grid gap-2" data-testid="account-model-roles">
-                <p className="text-sm font-medium">{t("accountModels.roles")}</p>
+                <p className="text-(length:--chrome-font-size) font-medium">{t("accountModels.roles")}</p>
                 {models.roles.map((role) => (
-                  <label key={role.id} className="flex items-center justify-between gap-3 text-sm">
+                  <label key={role.id} className="flex items-center justify-between gap-3 text-(length:--chrome-font-size)">
                     <span>{role.label || role.id}</span>
                     <span className="flex items-center gap-2 text-muted-foreground">
                       {role.enabled ? t("accountModels.roleOn") : t("accountModels.roleOff")}
@@ -224,8 +224,8 @@ export function DesktopAccountMenu() {
                 ))}
               </div>
             ) : null}
-            {fofa ? null : <p className="text-sm text-muted-foreground">{t("desktopAccount.localHint")}</p>}
-            {failed ? <p role="alert" className="text-sm text-destructive">{t("desktopAccount.actionFailed")}</p> : null}
+            {fofa ? null : <p className="text-(length:--chrome-font-size) text-muted-foreground">{t("desktopAccount.localHint")}</p>}
+            {failed ? <p role="alert" className="text-(length:--chrome-font-size) text-destructive">{t("desktopAccount.actionFailed")}</p> : null}
             <RemoteLoginSection
               accountEntry
               enabled={!!status?.enabled}
