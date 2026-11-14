@@ -14,8 +14,9 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   Explicit Linux release batches validate ELF architecture, executable mode
   and remote SHA-256. (`F-430`, `C-010`)
 
-This release adds the Linux arm64 Web/CLI package. Other platform deliveries
-retain their existing release batches.
+This candidate includes Linux arm64 Web/CLI packaging, the pending account-role
+and UI font updates, and desktop distribution builds. Each platform is published
+only after its own acceptance; older mobile deliveries retain their frozen batches.
 
 ## [Unreleased]
 
