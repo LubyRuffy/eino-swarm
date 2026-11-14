@@ -35,6 +35,9 @@ class PendingBatchTests(unittest.TestCase):
                 "accepted_at": accepted_at,
             } for n in numbers},
         }
+        if platform in ("linux", "windows"):
+            for row in state["issues"].values():
+                row[platform] = "pending_release"
         for n in extra_numbers:
             state["issues"][str(n)] = {
                 "code": "verified_integrated_and_pushed" if extra_accepted else "implementing",
@@ -85,6 +88,18 @@ class PendingBatchTests(unittest.TestCase):
                 patch("sys.argv", [str(SCRIPT)]), contextlib.redirect_stdout(output):
             runpy.run_path(str(SCRIPT), run_name="__main__")
         return json.loads(output.getvalue())
+
+    def test_linux_only_issue_is_not_lost_after_other_platforms_are_delivered(self):
+        result = self.audit([1], delivered=True, platform="linux", commits=4)
+        self.assertEqual(result["unallocated_issues"], [1])
+        self.assertEqual(result["platforms_to_release"], ["linux"])
+
+    def test_direct_linux_addition_needs_no_synthetic_issue(self):
+        result = self.audit([], commits=4, additional_platforms={
+            "linux": {"source_shas": ["desktop-sha"], "status": "pending_release"}})
+        self.assertEqual(result["unallocated_issues"], [])
+        self.assertEqual(result["platforms_to_release"], ["linux"])
+        self.assertTrue(result["allocate_new_version"])
 
     def test_closed_fix_keeps_its_pending_platform(self):
         result = self.audit([1])

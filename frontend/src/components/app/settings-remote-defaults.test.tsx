@@ -12,7 +12,7 @@ const { api } = await import("@/lib/api")
 // The Go settings response supplies its effective default origin. The renderer
 // must not need a compiled-in official hostname to offer the account entry.
 const origin = "https://configured-gateway.example"
-const initial: RemoteStatus = { enabled: false, hub_url: origin, auth_mode: "independent",
+const initial: RemoteStatus = { enabled: false, hub_url: origin, auth_mode: "account",
   online: false, has_token: false, login_available: true }
 const settings = { remote: defaultRemoteSettings({ hub_url: origin }) } as Settings
 
@@ -61,8 +61,8 @@ describe("Phone account defaults", () => {
   })
 
   it("keeps existing legacy configuration without a pairing QR or an automatic account claim", async () => {
-    const legacy = { ...settings, remote: { ...settings.remote!, enabled: true } }
-    vi.mocked(api.remoteStatus).mockResolvedValue({ ...initial, enabled: true, has_token: true, online: true })
+    const legacy = { ...settings, remote: { ...settings.remote!, enabled: true, auth_mode: "independent" as const } }
+    vi.mocked(api.remoteStatus).mockResolvedValue({ ...initial, enabled: true, auth_mode: "independent", has_token: true, online: true })
     const change = vi.fn()
     render(<RemoteTab settings={legacy} onChange={change} />)
     await act(async () => { await Promise.resolve() })

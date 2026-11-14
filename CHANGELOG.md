@@ -4,6 +4,19 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). GitHub Releases start
 at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
+## [0.1.76] - 2026-11-14
+
+### Added
+
+- Linux arm64 Web/CLI archive (`zwai-<version>-linux-arm64.tar.gz`).
+  `make linux-release` embeds the frontend and builds without GTK/WebKit.
+  The server build defaults to Web mode and refuses native desktop commands.
+  Explicit Linux release batches validate ELF architecture, executable mode
+  and remote SHA-256. (`F-430`, `C-010`)
+
+This release adds the Linux arm64 Web/CLI package. Other platform deliveries
+retain their existing release batches.
+
 ## [Unreleased]
 
 ### Fixed

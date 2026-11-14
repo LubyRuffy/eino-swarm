@@ -43,6 +43,9 @@ go run ./cmd/zwai web
 
 # Windows amd64 and arm64 zips, cross-compiled. See docs/CLI.md.
 make windows-release VERSION=x.y.z
+
+# Linux arm64 Web/CLI (no native window; run ./zwai web --no-open)
+make linux-release VERSION=x.y.z
 ```
 
 First launch writes `~/.zwai-swarm/config.yaml`. Until a model can answer, the

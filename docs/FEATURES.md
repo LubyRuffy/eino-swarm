@@ -521,6 +521,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
+- Linux arm64 Web/CLI 包：`make linux-release` 生成 `zwai-<version>-linux-arm64.tar.gz`，只有 0755 的 ELF64 AArch64 `zwai`，包含前端，默认 Web 模式；不包含原生桌面窗口。批次显式包含 linux 才发布，旧行不新增交付义务。关联契约：`C-010`；证据：`tools/release_linux.py`、`tools/test_release_linux.py`、`cmd/zwai/default_shell_server_test.go`。
+
 - Windows amd64 与 arm64 桌面 zip：入口是 `make windows-release`，以及批次工作集包含 windows 时的 `tools/release.py`。两份 zip 的唯一文件都是对应架构的 `zwai.exe`；缺一、不是 zip、或 PE 机器类型与文件名不符时不上传。没有 windows 字段的旧台账行不会因此变成待发布。应用内更新仍只安装 macOS zip。关联契约：`C-010`；实现证据：`internal/desktop/winpack`、`internal/update/version.go`、`internal/release/publish.go`、`tools/release.py`、`tools/test_release_windows.py`。
 
 - 初始原生 readiness 对已完整落证且精确匹配当前调用的 `AXRole`／`kAXErrorCannotComplete` 可在原共享期限内重新取得完整 snapshot；失败图不进入窗口／输入证明，其他未知与输入失败不重试。helper 保留严格 Role／Children 首错和当前进程 AX 消息默认上限。关联契约：`C-031`；证据：`tools/native_macos_smoke.py`、`tools/native_macos_ax.m`、`tools/test_native_macos_initial_observation.py`；来源：Issue #135。

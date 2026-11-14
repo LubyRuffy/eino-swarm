@@ -153,6 +153,13 @@ func platformAssets(dir, version, platform string) ([]string, error) {
 		}
 		return []string{file}, nil
 	}
+	if platform == "linux" {
+		file := filepath.Join(dir, "zwai-"+update.Canonical(version)+"-linux-arm64.tar.gz")
+		if _, err := os.Stat(file); err != nil {
+			return nil, fmt.Errorf("linux archive missing: %s", file)
+		}
+		return []string{file}, nil
+	}
 	if platform == "windows" {
 		var files []string
 		for _, arch := range []string{"amd64", "arm64"} {

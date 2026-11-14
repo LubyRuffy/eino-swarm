@@ -125,7 +125,7 @@ and matching native acceptance; previous-version evidence never transfers.
 The 25–35 minute healthy-environment target remains unmeasured for this entry.
 
 `make release VERSION=x.y.z` publishes only the allocated batch's outstanding
-required platforms in macOS → Android → iOS → Windows order. Windows is required only when the workset lists
+required platforms in macOS → Android → iOS → Windows → Linux order. Windows is required only when the workset lists
 it; older ledger rows without a windows field do not gain one. The Windows
 build cross-compiles both architectures with CGO disabled and does not run a
 Windows desktop session. The in-app updater still installs only the Mac zip.
@@ -136,6 +136,7 @@ window.
 |---|---|---|---|
 | macOS | `make desktop-release` | GitHub `vX.Y.Z`, host architecture zip | ZIP 有 Finder 图标资源与 plist 引用，远端 SHA-256 匹配 |
 | Windows | `make windows-release` | same GitHub Release, amd64 and arm64 zips | 两份 zip 都只有根上的 `zwai.exe`，PE 机器类型与文件名一致，远端 SHA-256 匹配 |
+| Linux arm64 | `make linux-release` | same GitHub Release, `zwai-<version>-linux-arm64.tar.gz` | archive contains only executable `zwai` (0755), ELF64 AArch64; remote SHA-256 matches |
 | Android | APK-only `make mobile-android-release` | same GitHub Release | remote SHA-256 matches |
 | iOS | Capacitor sync, `xcodebuild archive/exportArchive`, distribution signature/profile, `xcrun altool` | existing App Store Connect app | all configured groups attached, VALID, internal READY_FOR_BETA_TESTING and external IN_BETA_TESTING; any review submission must be APPROVED |
 
@@ -524,3 +525,31 @@ resolved first. On actual completion the original pending Issue rows and deliver
 aliases are updated, retaining the existing ledger and unrelated history. Closed
 Issues are never reopened merely for publication waits. `--check` does not write
 platform/daily success records or mutate Apple; it can fetch Git and create a lock.
+
+### Linux arm64 Web/CLI package
+
+`make linux-release VERSION=x.y.z` builds the current frontend and cross-compiles
+with `GOOS=linux GOARCH=arm64 CGO_ENABLED=0` and the Wails `server` build tag.
+This package provides `web`, `engine`, `tui` and the other CLI commands; it
+defaults to Web mode and refuses native desktop commands. It has no GTK/WebKit
+requirement and includes the frontend in the executable. Extract the archive
+and run `./zwai web --no-open`; follow the printed local URL. Authentication
+and same-origin/loopback defaults are unchanged. Remote access requires the
+existing authenticated server configuration.
+
+A directly requested platform addition can allocate a batch with an empty Issue
+list and nonempty `additional_platforms`. Its source ancestry, finalized workset,
+version, audit and publication checks still apply; no synthetic Issue is needed.
+Previous frozen batches retain their original source and pending deliveries.
+
+A batch that explicitly lists `linux` publishes through
+`python3 tools/release.py --version x.y.z --platform linux`. Old issue rows
+without `linux` gain no delivery obligation. The in-app updater does not
+install this archive. Cross-compilation and ELF validation prove packaging;
+record Linux arm64 execution and offline Web behavior separately. Failed
+builds leave an existing archive untouched; publication never overwrites
+different bytes under an existing asset name.
+
+A passed `release_linux_validation` receipt binds `status`, `version`,
+`source_sha`, `asset_name` and `asset_sha256` to the runtime-tested archive.
+Publication reuses those exact bytes; a missing or changed file fails closed.

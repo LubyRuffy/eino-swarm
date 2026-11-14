@@ -795,9 +795,9 @@ func TestFlagsWithNoSubcommandOpenTheApp(t *testing.T) {
 		in   []string
 		want []string
 	}{
-		{nil, []string{"desktop"}},
-		{[]string{"--data-dir", "/tmp/x"}, []string{"desktop", "--data-dir", "/tmp/x"}},
-		{[]string{"--mock"}, []string{"desktop", "--mock"}},
+		{nil, []string{defaultShell}},
+		{[]string{"--data-dir", "/tmp/x"}, []string{defaultShell, "--data-dir", "/tmp/x"}},
+		{[]string{"--mock"}, []string{defaultShell, "--mock"}},
 		// asking about the program itself is not asking it to open
 		{[]string{"--version"}, []string{"--version"}},
 		{[]string{"-v"}, []string{"-v"}},

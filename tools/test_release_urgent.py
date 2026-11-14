@@ -64,6 +64,19 @@ class UrgentReleaseTests(unittest.TestCase):
         return release.source_preflight(self.root, '1.2.3', ('android', 'ios'),
                                         urgent_reason=reason)
 
+    def test_direct_platform_batch_keeps_source_and_workset_gates(self):
+        batch = self.delivery['pending_new_batch']
+        batch.update(issues=[], additional_platforms={'linux': {'source_shas': ['sha'], 'status': 'pending'}})
+        batch['finalized_workset'].update(issues=[], platforms_to_release=['linux'])
+        self.report.update(unallocated_issues=[], platforms_to_release=['linux'])
+        self.save()
+        self.assertEqual(release.source_preflight(self.root, '1.2.3', ('linux',),
+                         urgent_reason='direct user release'), 'sha')
+        batch['finalized_workset']['platforms_to_release'] = []
+        self.save()
+        with self.assertRaisesRegex(ValueError, 'finalized workset'):
+            release.source_preflight(self.root, '1.2.3', ('linux',), urgent_reason='direct user release')
+
     def test_explicit_reason_accepts_an_allocated_batch_below_aggregation_threshold(self):
         with self.assertRaisesRegex(ValueError, 'allocated batch'):
             self.preflight()

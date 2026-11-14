@@ -23,8 +23,9 @@ def delivery_complete(row):
     platforms = ['android', 'macos', 'ios', 'server']
     # A missing windows field is not a pending Windows delivery. Older rows
     # predate that platform and must stay complete on their original ends.
-    if 'windows' in row:
-        platforms.append('windows')
+    for platform in ('windows', 'linux'):
+        if platform in row:
+            platforms.append(platform)
     return all(row.get(platform) in DELIVERED for platform in platforms)
 
 
@@ -127,11 +128,11 @@ def allocated_unpublished_source(root, version, source_sha, delivery, platforms)
     if (batch.get('version') != version or batch.get('source_sha') != source_sha
             or batch.get('version_locked') is not False
             or batch.get('qualified_for_new_release') is not True
-            or not isinstance(issues, list) or not issues
+            or not isinstance(issues, list) or (not issues and not batch.get('additional_platforms'))
             or any(type(number) is not int or number <= 0 for number in issues)
             or len(issues) != len(set(issues))
             or not isinstance(required, list) or not required
-            or any(not isinstance(p, str) or p not in {'macos', 'android', 'ios', 'windows'} for p in required)
+            or any(not isinstance(p, str) or p not in {'macos', 'android', 'ios', 'windows', 'linux'} for p in required)
             or len(required) != len(set(required))
             or not isinstance(work, dict)
             or 'active_issue' not in delivery or delivery['active_issue'] is not None
@@ -225,7 +226,9 @@ def source_preflight(root, version, platforms=('macos', 'android', 'ios'), *, ur
         batch = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
         pending = batch.get('pending_new_batch', {})
         if (pending.get('version') != version or pending.get('source_sha') != sha
-                or not pending.get('issues') or not (pending.get('qualified_for_new_release') or urgent_reason)):
+                or not isinstance(pending.get('issues'), list)
+                or (not pending['issues'] and not pending.get('additional_platforms'))
+                or not (pending.get('qualified_for_new_release') or urgent_reason)):
             raise ValueError('New publication requires a verified, allocated batch')
         if main_sha != sha:
             allocated_unpublished_source(root, version, sha, batch, platforms)
@@ -293,6 +296,8 @@ def github_platform(root, version, source_sha, platform, state, *, urgent_reason
         files = [root / 'bin' / f'zwai-{version}-android.apk']
     elif platform == 'windows':
         files = windows_release_files(root, version)
+    elif platform == 'linux':
+        files = [root / 'bin' / f'zwai-{version}-linux-arm64.tar.gz']
     else:
         machine = run(['uname', '-m'])
         arch = {'arm64': 'arm64', 'x86_64': 'amd64'}.get(machine)
@@ -325,6 +330,15 @@ def github_platform(root, version, source_sha, platform, state, *, urgent_reason
                     or accepted.get('asset_name') != asset.name or not asset.is_file()
                     or sha256(asset) != accepted.get('asset_sha256')):
                 raise ValueError('The accepted Android package is missing or differs from native-device evidence')
+        elif platform == 'linux' and ('release_linux_validation' in (batch or {})
+                or (batch or {}).get('linux') == 'ready_for_publication'):
+            asset = files[0]
+            accepted = (batch or {}).get('release_linux_validation')
+            if (not isinstance(accepted, dict) or batch.get('source_sha') != source_sha
+                    or accepted.get('status') != 'passed' or accepted.get('version') != version
+                    or accepted.get('source_sha') != source_sha or accepted.get('asset_name') != asset.name
+                    or not asset.is_file() or sha256(asset) != accepted.get('asset_sha256')):
+                raise ValueError('The accepted Linux archive is missing or differs from runtime evidence')
         elif platform == 'macos' and (native or (batch or {}).get('macos') == 'ready_for_publication'):
             asset = files[0]
             if (native.get('status') != 'passed' or native.get('version') != version
@@ -336,6 +350,8 @@ def github_platform(root, version, source_sha, platform, state, *, urgent_reason
                 target = 'desktop-release'
             elif platform == 'windows':
                 target = 'windows-release'
+            elif platform == 'linux':
+                target = 'linux-release'
             else:
                 target = 'mobile-android-release'
             env = dict(os.environ, ANDROID_ARTIFACT='apk')
@@ -347,6 +363,9 @@ def github_platform(root, version, source_sha, platform, state, *, urgent_reason
         elif platform == 'windows':
             for path in files:
                 validate_windows_zip(path)
+    if platform == 'linux':
+        from release_linux import validate_archive
+        validate_archive(files[0])
     if source_preflight(root, version, (platform,), urgent_reason=urgent_reason) != source_sha:
         raise ValueError('Source changed during platform build')
     run(['go', 'run', './internal/release/cmd', '-version', version, '-dir', str(root / 'bin'),
@@ -370,7 +389,7 @@ def record_installer(version, source_sha, platform, result):
         row = delivery['issues'][str(number)]
         row['version'] = row['batch_version'] = version
         row['release_source_sha'] = source_sha
-        if (platform != 'windows' or platform in row) and row.get(platform) not in NOT_REQUIRED:
+        if (platform not in ('windows', 'linux') or platform in row) and row.get(platform) not in NOT_REQUIRED:
             row[platform] = 'published'
             row[f'{platform}_delivery'] = dict(result, source_sha=source_sha, version=version)
         row['delivery_complete'] = delivery_complete(row)
@@ -380,14 +399,14 @@ def record_installer(version, source_sha, platform, result):
 
 
 def release_notes(root, version, state):
-    if not any(state.get(p, {}).get('status') == 'published' for p in ('macos', 'android', 'windows')):
+    if not any(state.get(p, {}).get('status') == 'published' for p in ('macos', 'android', 'windows', 'linux')):
         return
     body = json.loads(run(['gh', 'release', 'view', 'v' + version, '--json', 'body'], cwd=root))['body']
     start, end = '<!-- zwai-platform-delivery -->', '<!-- /zwai-platform-delivery -->'
     body = re.sub(re.escape(start) + r'.*?' + re.escape(end), '', body, flags=re.S).rstrip()
     required = batch_platforms(version, pending_only=False)
     rows = [f"- {p}: {state.get(p, {}).get('status', 'pending') if required is None or p in required else 'not_required'}"
-            for p in ('macos', 'android', 'ios', 'windows')]
+            for p in ('macos', 'android', 'ios', 'windows', 'linux')]
     notes = root / 'bin' / 'release-notes.md'
     notes.parent.mkdir(parents=True, exist_ok=True)
     notes.write_text(body + '\n\n' + start + '\n' + '\n'.join(rows) + '\n' + end + '\n')
@@ -395,7 +414,7 @@ def release_notes(root, version, state):
 
 
 def issue_needs_platform(row, platform, excluded):
-    if platform == 'windows' and platform not in row:
+    if platform in ('windows', 'linux') and platform not in row:
         return False
     return row.get(platform) not in excluded
 
@@ -404,10 +423,10 @@ def batch_platforms(version, pending_only, *, delivery=None):
     if delivery is None:
         delivery = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
     batch, _ = delivery_batch(delivery, version)
-    if not batch or not batch.get('issues'):
+    if not batch or (not batch.get('issues') and not batch.get('additional_platforms')):
         return None
     excluded = DELIVERED if pending_only else NOT_REQUIRED
-    return [platform for platform in ('macos', 'android', 'ios', 'windows') if (
+    return [platform for platform in ('macos', 'android', 'ios', 'windows', 'linux') if (
         any(issue_needs_platform(delivery.get('issues', {}).get(str(number), {}), platform, excluded)
             for number in batch['issues'])
         or batch.get('additional_platforms', {}).get(platform, {}).get('status', 'not_required') not in excluded)]
@@ -495,7 +514,7 @@ def execute(root, version, selected, state_path, check=False, *, urgent_reason=N
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--version', required=True)
-    parser.add_argument('--platform', choices=['all', 'macos', 'android', 'ios', 'windows'], default='all')
+    parser.add_argument('--platform', choices=['all', 'macos', 'android', 'ios', 'windows', 'linux'], default='all')
     parser.add_argument('--check', action='store_true', help='read-only source, signing and remote checks')
     parser.add_argument('--verify', action='store_true', help='local resumable checks/package only; never publish')
     parser.add_argument('--plan', action='store_true', help='print the local verification plan without running it')

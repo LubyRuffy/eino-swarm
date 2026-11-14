@@ -37,9 +37,17 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 	var err error
 	switch args[0] {
 	case "desktop":
-		err = runDesktop(args[1:])
+		if defaultShell == "web" {
+			err = errors.New("this server build supports web and CLI commands; use zwai web --no-open")
+		} else {
+			err = runDesktop(args[1:])
+		}
 	case "desktop-attach":
-		err = runDesktopAttach(args[1:])
+		if defaultShell == "web" {
+			err = errors.New("this server build does not include a native desktop window")
+		} else {
+			err = runDesktopAttach(args[1:])
+		}
 	case "web":
 		err = runWeb(args[1:])
 	case "tui":
@@ -79,10 +87,10 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 // a desktop shortcut — including one that carries --data-dir or --mock.
 func withDefaultCommand(args []string) []string {
 	if len(args) == 0 {
-		return []string{"desktop"}
+		return []string{defaultShell}
 	}
 	if strings.HasPrefix(args[0], "-") && !isGlobalFlag(args[0]) {
-		return append([]string{"desktop"}, args...)
+		return append([]string{defaultShell}, args...)
 	}
 	return args
 }
@@ -136,7 +144,7 @@ func reorderFlags(args []string, takesValue map[string]bool) []string {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintln(w, strings.TrimSpace(`
+	text := strings.TrimSpace(`
 zwai — a swarm of agents that work together on your tasks
 
 usage:
@@ -170,5 +178,9 @@ usage:
 common flags:
   --data-dir DIR   use another data directory (default: $ZWAI_HOME or ~/.zwai-swarm)
   --mock           run on the scripted offline provider; no model is called
-`))
+`)
+	if defaultShell == "web" {
+		text = strings.Replace(text, "zwai [desktop] [--data-dir DIR] [--mock]\n        open the app in a native window", "zwai [web] [--data-dir DIR] [--mock]\n        serve the app in your browser (server build; no native window)", 1)
+	}
+	fmt.Fprintln(w, text)
 }

@@ -43,7 +43,8 @@ for number in sorted(candidates):
     if not sha:
         raise SystemExit(f"Issue #{number}: missing fix SHA")
     subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"], cwd=repo, check=True)
-    pending = any(row.get(p) not in delivered for p in ("android", "macos", "ios", "server"))
+    required = ["android", "macos", "ios", "server"] + [p for p in ("windows", "linux") if p in row]
+    pending = any(row.get(p) not in delivered for p in required)
     if pending:
         accepted.append(number)
 locked = state["pending_new_batch"].get("version_locked", False)
@@ -55,7 +56,10 @@ unallocated = [n for n in accepted if n not in allocated]
 commit_count = 0
 oldest = None
 additional = {}
-if unallocated:
+next_batch = state.get("next_unallocated_batch", {})
+# A platform addition can be directly requested without a GitHub Issue.
+# It still freezes source ancestry and the complete platform workset.
+if unallocated or (next_batch.get("additional_platforms") and next_batch.get("issues") == []):
     baseline = state.get("last_published_source_sha")
     if not baseline and locked:
         baseline = state["pending_new_batch"].get("source_sha")
@@ -68,7 +72,7 @@ if unallocated:
             raise SystemExit("Extra platform scope does not match the unallocated batch")
         for platform, entry in next_batch["additional_platforms"].items():
             shas = entry.get("source_shas", [])
-            if platform not in ("macos", "android", "ios", "windows") or not shas:
+            if platform not in ("macos", "android", "ios", "windows", "linux") or not shas:
                 raise SystemExit(f"Invalid extra platform scope: {platform}")
             for sha in shas:
                 subprocess.run(["git", "merge-base", "--is-ancestor", baseline, sha], cwd=repo, check=True)
@@ -91,12 +95,12 @@ if unallocated:
         oldest = moment if oldest is None or moment < oldest else oldest
 age_hours = (datetime.now(timezone.utc) - oldest.astimezone(timezone.utc)).total_seconds() / 3600 if oldest else 0
 def issue_platform_pending(row, platform):
-    if platform == "windows" and platform not in row:
+    if platform in ("windows", "linux") and platform not in row:
         return False
     return row.get(platform) not in delivered
 
 
-platforms = [p for p in ("macos", "android", "ios", "windows") if p in additional or any(
+platforms = [p for p in ("macos", "android", "ios", "windows", "linux") if p in additional or any(
     issue_platform_pending(rows[n], p) for n in unallocated)]
 qualified = bool(platforms) and (commit_count > 3 or age_hours > 24)
 preallocated = bool(state["pending_new_batch"].get("version")) and not locked
