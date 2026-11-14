@@ -22,6 +22,10 @@ only after its own acceptance; older mobile deliveries retain their frozen batch
 
 ### Fixed
 
+- Native offline smoke explicitly selects LOCAL in its private configuration
+  before launching. It no longer waits for a composer behind the default FOFA
+  sign-in welcome page; FOFA login still needs separate acceptance.
+
 - A default FOFA install that is not signed in covers the conversation and
   composer with the sign-in prompt. The account button stays available.
   An explicit `product.mode: local` install still opens the main surface

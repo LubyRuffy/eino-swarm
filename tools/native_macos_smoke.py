@@ -751,6 +751,15 @@ def run_smoke(context, *, deadline=None):
                 native_helper=context["ax_identity"], worker_outputs=outputs, phases=phases)
 
 
+def prepare_local_fixture(_lock, receipt, environment, _processes, _scope, _deadline):
+    """A keyless turn uses LOCAL; the FOFA welcome gate needs separate acceptance."""
+    path = Path(environment["ZWAI_NATIVE_DATA"]) / "config.yaml"
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        stream.write("product:\n  mode: local\n")
+    receipt["fixture_product_mode"] = "local"
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -769,6 +778,7 @@ def main(argv=None):
         return runner.main(["--app", str(args.app), "--evidence", str(args.evidence),
                             "--timeout", str(args.timeout), "--budget", str(args.budget), "--",
                             sys.executable, str(Path(__file__).resolve()), "--ax", str(binary)],
+                           prepare=prepare_local_fixture,
                            preflight=lambda lock, receipt, evidence, deadline:
                            case_preflight(binary, receipt, evidence, deadline))
     if args.app is not None or args.evidence is not None:
