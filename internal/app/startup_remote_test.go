@@ -31,6 +31,9 @@ func TestNewDoesNotWaitForRemoteRegistration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Exercise the independent Hub registration path without an account login.
+	cfg.Product.Mode = config.ProductModeLocal
+	cfg.Remote.AuthMode = config.RemoteAuthIndependent
 	cfg.Remote.Enabled = true
 	cfg.Remote.HubURL = hub.URL
 	if err := cfg.Save(); err != nil {

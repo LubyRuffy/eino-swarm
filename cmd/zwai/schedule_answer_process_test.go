@@ -120,6 +120,8 @@ func runScheduleAnswerProcessRecovery(t *testing.T, outcome string) {
 		t.Fatal(err)
 	}
 	cfg.Models.Default = "process-answer-fixture"
+	// This keyless lifecycle fixture exercises LOCAL, not account sign-in.
+	cfg.Product.Mode = config.ProductModeLocal
 	cfg.Models.Providers = []config.Provider{{ID: cfg.Models.Default, BaseURL: server.URL, Model: "offline-process-answer", FirstByteTimeoutSeconds: 40, TimeoutSeconds: 40, ContextWindow: 128000}}
 	cfg.Swarm.AutoTitle = false
 	cfg.Memory.Enabled, cfg.Memory.AutoReview = false, false

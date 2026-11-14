@@ -119,6 +119,8 @@ func runRestartAskProcessAcceptance(t *testing.T, dir, oldBinary, newBinary stri
 	if err != nil {
 		t.Fatal(err)
 	}
+	// This keyless lifecycle fixture exercises LOCAL, not account sign-in.
+	cfg.Product.Mode = config.ProductModeLocal
 	cfg.Models.Providers = []config.Provider{{ID: "restart-ask", BaseURL: fixture.URL, Model: "fixture-model", TimeoutSeconds: 60, ContextWindow: 128000}}
 	cfg.Models.Default, cfg.Swarm.AutoTitle = "restart-ask", false
 	cfg.Memory.Enabled, cfg.Memory.AutoReview = false, false

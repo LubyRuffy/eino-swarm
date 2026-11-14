@@ -180,6 +180,8 @@ func (c *largeRosterCase) seed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// This keyless lifecycle fixture exercises LOCAL, not account sign-in.
+	cfg.Product.Mode = config.ProductModeLocal
 	cfg.Models.Providers = []config.Provider{{ID: "large-roster", BaseURL: c.fixture.server.URL, Model: "fixture-model", TimeoutSeconds: 180, ContextWindow: 128000}}
 	cfg.Models.Default = "large-roster"
 	cfg.Swarm.AutoTitle, cfg.Memory.Enabled, cfg.Memory.AutoReview = false, false, false
