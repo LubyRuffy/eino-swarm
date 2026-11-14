@@ -36,14 +36,14 @@ only after its own acceptance; older mobile deliveries retain their frozen batch
 
 ### Added
 
-- FOFA reads up to eight fixed server model roles when the account bootstrap
+- FOFA reads up to nine fixed server model roles when the account bootstrap
   includes them. The account details show each switch and name, and those
   controls cannot be edited. Conversation requests use `conversation`. Naming
   and compact follow `conversation` while their own roles are off. Embedding,
-  OCR and decisions run only while those roles are on. Speech recognition and
-  image generation are shown read-only and are not called by this client. An
-  older server that returns the first six roles still works. LOCAL keeps the
-  ordinary catalog. (`F-173`)
+  OCR and decisions run only while those roles are on. Speech recognition,
+  speech synthesis and image generation are shown read-only and are not called
+  by this client. An older server that returns the first six or eight roles
+  still works. LOCAL keeps the ordinary catalog. (`F-173`)
 
 - The install mode is `product.mode`. A missing key means FOFA: sign in before
   work, no Settings → Models section, and no composer model menu. Custom

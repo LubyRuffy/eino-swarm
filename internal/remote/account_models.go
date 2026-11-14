@@ -598,7 +598,7 @@ func parseAccountRoles(raw json.RawMessage) ([]provider.AccountRole, error) {
 		return nil, nil
 	}
 	var rows []provider.AccountRole
-	if json.Unmarshal(raw, &rows) != nil || len(rows) > 8 {
+	if json.Unmarshal(raw, &rows) != nil || len(rows) > 9 {
 		return nil, errAccountResponse
 	}
 	if len(rows) == 0 {
@@ -609,7 +609,7 @@ func parseAccountRoles(raw json.RawMessage) ([]provider.AccountRole, error) {
 		role := &rows[i]
 		role.ID = strings.TrimSpace(role.ID)
 		switch role.ID {
-		case "conversation", "title", "compact", "embedding", "ocr", "decisions", "transcription", "image":
+		case "conversation", "title", "compact", "embedding", "ocr", "decisions", "transcription", "speech", "image":
 		default:
 			return nil, errAccountResponse
 		}
