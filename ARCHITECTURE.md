@@ -18,6 +18,12 @@ engine exits after the idle grace once no presence connection is held, the
 phone hub socket is down, and no turn is running. A host that is killed
 releases `engine.lock`; the next shell takes it and resumes orphaned turns.
 
+`engine.json` is replaced atomically. A discovery reader can finish the old
+complete record while the engine publishes the new one. Windows discovery
+opens the record with deletion sharing and publishes with `FileRenameInfoEx`
+POSIX replacement; the legacy `MoveFileEx` path refuses even a deletion-shared
+reader. Failed replacement preserves the previous record.
+
 Nuwa separates the conversation planner from task execution. The engine builds
 the planner's history, project-memory and coordination surface independently of
 the Registry's worker tool catalog. Workspace and MCP operations stay on workers;

@@ -8820,3 +8820,14 @@ local scrolling at 100% and zoom, copyable source, rewatch and refusal of remote
 resources. `mobile/e2e/composer-prediction.spec.ts` verifies tap/Tab insertion,
 explicit Send, dismissal and the PC setting. The quote selection case in
 `mobile/e2e/composer-layout.spec.ts` verifies dismissal and subsequent re-selection.
+
+### Windows lease replacement
+
+`internal/lease/record_file_windows_test.go` runs on Windows and holds the actual
+discovery handle while `Publish` replaces `engine.json`. It verifies complete old
+and new records, retains the legacy `os.Rename` counterexample, and checks file
+errors, failed replacement preserving the old bytes, handle release and long/UNC
+path identities. The publisher uses `FileRenameInfoEx` with POSIX replacement;
+deletion sharing alone does not make legacy `MoveFileEx` accept an open target. `record_file_test.go` verifies exact bytes and handle release on every
+platform. Cross-compilation does not replace these Windows kernel checks or the
+packaged desktop window acceptance.

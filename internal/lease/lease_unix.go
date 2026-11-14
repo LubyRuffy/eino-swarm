@@ -8,6 +8,14 @@ import (
 	"syscall"
 )
 
+func replaceRecordFile(source, target string) error {
+	return os.Rename(source, target)
+}
+
+func openRecordFile(path string) (*os.File, error) {
+	return os.Open(path)
+}
+
 func lockExclusive(f *os.File) error {
 	err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 	if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {

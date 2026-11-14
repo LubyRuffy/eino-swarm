@@ -4,6 +4,14 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). GitHub Releases start
 at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
+## [0.1.77] - 2026-11-14
+
+### Fixed
+
+- Windows desktop discovery allows the engine to atomically replace its lease
+  while a shell reads the previous record. Startup no longer fails with
+  “Access is denied” when it publishes readiness during that read. (`C-001`)
+
 ## [0.1.76] - 2026-11-14
 
 ### Added

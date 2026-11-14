@@ -265,7 +265,7 @@ func Publish(dataDir string, rec Record) error {
 		_ = os.Remove(tmpName)
 		return err
 	}
-	if err := os.Rename(tmpName, final); err != nil {
+	if err := replaceRecordFile(tmpName, final); err != nil {
 		_ = os.Remove(tmpName)
 		return fmt.Errorf("lease: publish: %w", err)
 	}
@@ -283,7 +283,7 @@ type metaView struct {
 // caller's already-known child during startup, but the record must not be used
 // to attach, accept its mode/build identity or stop an unrelated process.
 func Discover(dataDir string, mock bool) (Record, error) {
-	body, err := os.ReadFile(filepath.Join(dataDir, fileName))
+	body, err := readRecordFile(filepath.Join(dataDir, fileName))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return Record{}, ErrNotRunning
@@ -330,4 +330,15 @@ func Discover(dataDir string, mock bool) (Record, error) {
 		rec.Version = meta.Version
 	}
 	return rec, nil
+}
+
+// A discovery reader must allow the engine to replace its record while the
+// reader holds the old complete version, including on Windows.
+func readRecordFile(path string) ([]byte, error) {
+	f, err := openRecordFile(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(f)
 }
