@@ -315,7 +315,7 @@ func TestWikiBuildRecoversPublishedDocumentAfterReceiptWriteFails(t *testing.T) 
 	}
 	job := &projectDistillWork{projectID: p.ID, result: result, kb: kb}
 	checkpoint := &distillCheckpoint{e: e, current: &job.result, projectID: p.ID}
-	if err := e.renderWikiDocumentBatch(t.Context(), job, checkpoint, 0); err == nil {
+	if err := e.renderWikiDocumentBatch(t.Context(), job, checkpoint, 0, true); err == nil {
 		t.Fatal("a refused receipt incorrectly completed the build")
 	}
 	page, err := e.ProjectKnowledgePage(t.Context(), p.ID, node.ID)
@@ -348,7 +348,7 @@ func TestWikiBuildRecoversPublishedDocumentAfterReceiptWriteFails(t *testing.T) 
 	t.Fatal("resumed wiki did not recognize its published document")
 }
 
-func TestWikiBuildPublishesGraphBeforeDocumentsAndResumesFullSource(t *testing.T) {
+func TestWikiBuildPublishesVerifiedObservationsAndResumesFullSource(t *testing.T) {
 	const first = "Sable Finch attended the Harbor Briefing."
 	const tail = "The Amber Seal was mentioned later."
 	headers := regexp.MustCompile(`(?m)^\[seq=([0-9]+) kind=`)
@@ -457,8 +457,8 @@ func TestWikiBuildPublishesGraphBeforeDocumentsAndResumesFullSource(t *testing.T
 		t.Fatal("the verified graph did not appear while another source batch was pending")
 	}
 	page, err := e.ProjectKnowledgePage(t.Context(), p.ID, id)
-	if err != nil || page.Wiki == nil || !page.Wiki.Pending || page.Body != "" || page.Sources[0].Seq != event.Seq {
-		t.Fatalf("early node lost source attribution or published its article too early: %+v %v", page, err)
+	if err != nil || page.Wiki == nil || page.Wiki.Pending || !strings.Contains(page.Body, first) || page.Sources[0].Seq != event.Seq {
+		t.Fatalf("a verified observation did not become readable while later evidence was waiting: %+v %v", page, err)
 	}
 	if _, err := e.StartProjectDistillation(t.Context(), p.ID, DistillationRequest{PauseReviewID: start.ReviewID, WikiGraph: true}); err != nil {
 		t.Fatal(err)

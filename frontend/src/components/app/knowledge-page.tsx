@@ -30,6 +30,14 @@ export function KnowledgePageView({ page, onPage, onOpenThread, onTrace }: Knowl
   const [linkError, setLinkError] = useState<string>()
   const expand = useRef<HTMLButtonElement>(null)
   const fields = Object.entries(page.fields ?? {})
+  const excerpts = new Map<string, Set<string>>()
+  for (const { source, quote } of page.wiki_observations ?? []) {
+    if (!source.available || !quote) continue
+    const key = sourceKey(source)
+    const values = excerpts.get(key) ?? new Set<string>()
+    values.add(quote)
+    excerpts.set(key, values)
+  }
   const { updated_thread: updatedThread, updated_turn: updatedTurn } = page
   const historyActions = (thread: string, turn?: string) => {
     setLinkError(undefined)
@@ -89,7 +97,7 @@ export function KnowledgePageView({ page, onPage, onOpenThread, onTrace }: Knowl
             <ul className="space-y-2">
               {page.sources.map((source, index) => (
                 <li key={`${source.uri ?? source.thread_id}:${source.kind}:${source.seq}:${index}`}>
-                  <SourceItem source={source} onHistory={historyActions} />
+                  <SourceItem source={source} excerpts={excerpts.get(sourceKey(source))} onHistory={historyActions} />
                 </li>
               ))}
             </ul>
@@ -188,7 +196,15 @@ function PageLink({ title, onOpen, broken }: { title: string; onOpen: () => void
   )
 }
 
-function SourceItem({ source, onHistory }: { source: KnowledgeSource; onHistory: (threadId: string, turnId?: string) => void }) {
+function sourceKey({ uri, thread_id: threadId, kind, seq }: KnowledgeSource) {
+  return JSON.stringify([uri, threadId, kind, seq])
+}
+
+function SourceItem({ source, excerpts, onHistory }: {
+  source: KnowledgeSource
+  excerpts?: Set<string>
+  onHistory: (threadId: string, turnId?: string) => void
+}) {
   const t = useT()
   const { uri, kind, seq, thread_id: threadId, turn_id: turnId, available } = source
   const url = knowledgeSourceURL(uri)
@@ -207,6 +223,14 @@ function SourceItem({ source, onHistory }: { source: KnowledgeSource; onHistory:
         available && threadId ? <PageLink title={label} onOpen={() => onHistory(threadId, turnId)} /> : (
           <p className="text-muted-foreground">{label} · {t("knowledge.source.unavailable")}</p>
         )
+      ) : null}
+      {available && excerpts?.size ? (
+        <details className="mt-1">
+          <summary className="cursor-pointer text-primary">{t("knowledge.source.excerpt")}</summary>
+          {[...excerpts].map((quote) => (
+            <blockquote key={quote} className="mt-1 whitespace-pre-wrap wrap-anywhere border-s-2 ps-2">{quote}</blockquote>
+          ))}
+        </details>
       ) : null}
     </div>
   )

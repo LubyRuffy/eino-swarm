@@ -148,6 +148,9 @@ func (s *Store) DeleteProject(id string) error {
 		if err := tx.Delete(&ProjectWikiBuild{}, "project_id = ?", id).Error; err != nil {
 			return err
 		}
+		if err := tx.Delete(&WikiSourceScan{}, "project_id = ?", id).Error; err != nil {
+			return err
+		}
 		return tx.Where("id = ?", id).Delete(&Project{}).Error
 	})
 	if err != nil {

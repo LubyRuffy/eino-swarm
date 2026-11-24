@@ -2699,13 +2699,15 @@ and current-project manual distillation freeze source identities in SQLite,
 read bounded batches in order and commit a cursor with each accepted receipt.
 Full-text mode also commits the byte offset inside an unfinished source. The
 event cursor advances after the final segment, and explicitly resumed jobs use
-both saved positions. Wiki builds use a separate project receipt. They submit
-a short first window, then send several bounded source windows to the reviewer
-at once. Eligible failures reduce the input size at the uncommitted position.
-They validate drafts and commit completed windows in source order. A bulk publisher uses one
-wiki snapshot to validate nodes and writes each Markdown file atomically.
-The document pass extends articles from the verified observations already
-stored with each node. The Knowledge graph projects the
+both saved positions. Wiki builds use one frozen source queue with separate
+local and semantic checkpoints. The local scanner reads source windows, verifies
+project ownership and stages attributable nodes and explicit edges in the
+Markdown store. The persisted receipt makes the first graph available before
+model input. Per-source acknowledgements reuse immutable records across builds;
+current source identities and editable captions govern reuse. The semantic
+reviewer repairs unresolved items while retaining previously validated items
+within the same draft. The host commits complete windows in order and
+progressively appends verified observations to the documents. The graph uses the
 same in-memory wiki index as the tree and page views. Page IDs remain stable
 across title edits, and the client lays out the scoped nodes and edges. See [the distillation design](docs/plans/2026-11-23-unified-project-distillation.md)
 and [the wiki design](docs/plans/2026-11-23-project-knowledge-design.md).

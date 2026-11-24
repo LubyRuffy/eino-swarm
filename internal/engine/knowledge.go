@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/knowledge"
@@ -45,7 +46,7 @@ func (e *Engine) snapshotProjectKnowledge(pc *projectContext) {
 		var snapshot *knowledge.Snapshot
 		snapshot, err = kb.Snapshot()
 		if err == nil && !snapshot.Enabled() && !pc.planning {
-			snapshot, err = kb.Enable()
+			snapshot, err = e.enableKnowledgeFiles(context.Background(), pc.project.ID, kb)
 		}
 		if err == nil && snapshot.Enabled() {
 			pc.knowledge = kb
@@ -77,6 +78,17 @@ func (e *Engine) EnableProjectKnowledge(projectID string) (*knowledge.Snapshot, 
 	if err != nil {
 		return nil, err
 	}
+	return e.enableKnowledgeFiles(context.Background(), projectID, kb)
+}
+
+func (e *Engine) enableKnowledgeFiles(ctx context.Context, projectID string, kb *knowledge.Store) (*knowledge.Snapshot, error) {
+	snap, err := kb.Snapshot()
+	if err != nil || snap.Enabled() {
+		return snap, err
+	}
+	if err := e.store.ForgetWikiSourceScans(ctx, projectID); err != nil {
+		return nil, err
+	}
 	return kb.Enable()
 }
 
@@ -104,11 +116,62 @@ func (e *Engine) knowledgePage(ctx context.Context, projectID string, snap *know
 	if err := e.enrichKnowledgeSources(ctx, projectID, page.Sources); err != nil {
 		return nil, err
 	}
+	if err := e.addWikiObservations(ctx, projectID, page); err != nil {
+		return nil, err
+	}
 	page.UpdatedThread, err = e.knowledgeOrigin(ctx, projectID, page.UpdatedThread, page.UpdatedTurn)
 	if err != nil {
 		return nil, err
 	}
 	return page, nil
+}
+
+// Quotes are plain source excerpts. A moved, edited or rewound source
+// stays in the source list with its unavailable marker and no excerpt.
+func (e *Engine) addWikiObservations(ctx context.Context, projectID string, page *knowledge.PageDetail) error {
+	if page.Wiki == nil {
+		return nil
+	}
+	const maxObservations, maxQuoteChecks, maxQuoteBytes = 24, 48, 1024
+	available := make(map[store.HistoryReference]knowledge.Source, len(page.Sources))
+	for _, source := range page.Sources {
+		if source.Available != nil && *source.Available && source.RecordID != "" && source.TurnID != "" {
+			available[historyReference(source)] = source
+		}
+	}
+	checks := 0
+	for _, evidence := range page.Wiki.Evidence {
+		ref := historyReference(evidence.Source)
+		source, found := available[ref]
+		if !found || evidence.Source.RecordID != source.RecordID || strings.TrimSpace(evidence.Quote) == "" {
+			continue
+		}
+		quote := evidence.Quote
+		if len(quote) > maxQuoteBytes {
+			end := maxQuoteBytes
+			for !utf8.RuneStart(quote[end]) {
+				end--
+			}
+			quote = quote[:end]
+		}
+		if checks >= maxQuoteChecks {
+			break
+		}
+		checks++
+		identity, err := e.store.ReadProjectWikiQuoteIdentity(ctx, projectID, ref, quote)
+		if err != nil {
+			return err
+		}
+		if identity != nil && identity.CreatedAt.Valid && identity.TurnID == source.TurnID &&
+			source.Timestamp.Equal(identity.CreatedAt.Time) && source.RecordID == sourceRecordID(identity) {
+			page.WikiObservations = append(page.WikiObservations, knowledge.WikiObservation{Source: source, Quote: quote})
+			delete(available, ref)
+			if len(page.WikiObservations) >= maxObservations {
+				break
+			}
+		}
+	}
+	return nil
 }
 
 func (e *Engine) knowledgeOrigin(ctx context.Context, projectID, threadID, turnID string) (string, error) {

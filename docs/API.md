@@ -1851,11 +1851,19 @@ Use `wiki_graph: true` on POST to start a graph build with `thread` or
 With the global Knowledge setting enabled, the build initializes the project
 wiki if needed and uses an independent checkpoint.
 Use `GET /api/projects/:id/distill?wiki_graph=true` for its status. A wiki
-receipt reports `wiki_phase: "graph" | "documents"`. During document
-publication, `wiki_documents` and `wiki_documented` count its pages and
-written documents. The existing progress object still counts history
-records, including skips. A generated page exposes `wiki.kind`,
-`wiki.category` and `wiki.document_pending` through the page endpoint.
+receipt reports `wiki_phase: "scan" | "graph" | "documents"`.
+`wiki_scan_processed` counts frozen records accounted for locally, including
+`wiki_scan_skipped` for unavailable or ineligible records. `wiki_scan_deferred`
+counts oversized structured records reserved for semantic review. After local
+publication, `wiki_scan_complete` reports that the first graph can be browsed.
+The existing progress object counts semantic review, including previously
+accepted immutable records and skips. `wiki_documents` and `wiki_documented`
+track pages and written documents, including batches during semantic review.
+A generated page exposes `wiki.kind`, `wiki.category` and
+`wiki.document_pending`. Its optional `wiki_observations` array holds
+`{source, quote}` excerpts confirmed against still-available source records.
+Each retained excerpt has the original conversation, event or message
+sequence, and turn when available.
 
 An admitted request returns `202` with `review_id`, `state: "running"`,
 `scope` and, while the original anchor is available, `thread_id` and

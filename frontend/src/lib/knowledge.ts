@@ -94,6 +94,7 @@ export interface KnowledgePage extends KnowledgePageRef {
   mentions?: KnowledgePageRef[]
   unresolved?: string[]
   sources?: KnowledgeSource[]
+  wiki_observations?: { source: KnowledgeSource; quote: string }[]
 }
 
 

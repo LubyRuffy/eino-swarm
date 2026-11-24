@@ -18,7 +18,11 @@ export interface DistillResult {
   scope?: DistillScope
   full_text?: boolean
   wiki_graph?: boolean
-  wiki_phase?: "graph" | "documents"
+  wiki_phase?: "scan" | "graph" | "documents"
+  wiki_scan_processed?: number
+  wiki_scan_skipped?: number
+  wiki_scan_deferred?: number
+  wiki_scan_complete?: boolean
   wiki_documents?: number
   wiki_documented?: number
   thread_id?: string

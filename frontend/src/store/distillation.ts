@@ -35,6 +35,7 @@ function createDistillationStore(wikiGraph: boolean) {
       const changed = slot.result?.review_id !== result.review_id || slot.result?.state !== result.state
       const knowledgeChanged = slot.result?.knowledge?.length !== result.knowledge?.length ||
         (wikiGraph && (slot.result?.progress?.batches !== result.progress?.batches ||
+          slot.result?.wiki_scan_complete !== result.wiki_scan_complete ||
           slot.result?.wiki_documented !== result.wiki_documented))
       const memoryChanged = slot.result?.changes?.length !== result.changes?.length
       save(projectId, { generation: slot.generation, result })

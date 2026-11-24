@@ -877,16 +877,19 @@ failure that needs a settings change, follow the message in either panel,
 then choose **Resume distillation** to keep the progress already saved.
 
 In **Knowledge → Build wiki graph**, choose **Current task** or **Current project**
-to build a graph from retained history. The builder reads eligible sources in
-full and extracts entities and events across subjects. It saves nodes, links
-and original sources as batches finish, so you can open a node before its
-document is ready. The panel shows when the first batch is awaiting verification
-and counts saved batches even while a long record is still in progress.
-Some model and validation failures retry with a smaller piece of the same
-source. After extraction, it appends source observations to the
-documents and preserves existing prose. The two progress bars show the
-source review and the document updates. Pause and resume use the saved
-positions. The graph build has its own receipt alongside **Distill**.
+to build a graph from retained history. Local scanning publishes explicit
+identifiers, supported structured names and evidenced relationships. Open
+**Graph** to search nodes and view their cited excerpts while the model
+reviews ambiguous names, events and relationships. A link uses one
+undirected line per pair. For large graphs the overview lays out a bounded
+selection, and search can find every node in the project. Once observations
+are verified, the builder appends them to the documents in batches and
+preserves existing prose.
+
+The panel tracks scanned records, source review and document updates.
+Pause and resume use the saved positions, and subsequent builds reuse
+accepted immutable records. Sources with changed content are checked again.
+The graph build has its own receipt alongside **Distill**.
 
 **Distill** uses enabled destinations. Choose **Enable knowledge and distill**
 to initialize a wiki and include it in the same review. An interrupted run

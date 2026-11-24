@@ -37,26 +37,31 @@ var ErrDistillationPending = errors.New("continue the incomplete distillation be
 
 // DistillationResult is the durable status shared by both project panels.
 type DistillationResult struct {
-	ReviewID         string                `json:"review_id,omitempty"`
-	State            string                `json:"state"`
-	Scope            string                `json:"scope,omitempty"`
-	FullText         bool                  `json:"full_text,omitempty"`
-	WikiGraph        bool                  `json:"wiki_graph,omitempty"`
-	WikiPhase        string                `json:"wiki_phase,omitempty"`
-	WikiDocuments    int                   `json:"wiki_documents,omitempty"`
-	WikiDocumented   int                   `json:"wiki_documented,omitempty"`
-	ThreadID         string                `json:"thread_id,omitempty"`
-	TurnID           string                `json:"turn_id,omitempty"`
-	Progress         *DistillationProgress `json:"progress,omitempty"`
-	HistoryOmitted   bool                  `json:"history_omitted,omitempty"`
-	MemoryEnabled    bool                  `json:"memory_enabled,omitempty"`
-	KnowledgeEnabled bool                  `json:"knowledge_enabled,omitempty"`
-	Changes          []memory.Change       `json:"changes,omitempty"`
-	Knowledge        []distillChange       `json:"knowledge,omitempty"`
-	Error            string                `json:"error,omitempty"`
-	ErrorCode        string                `json:"error_code,omitempty"`
-	ErrorProviderID  string                `json:"error_provider_id,omitempty"`
-	Uncertain        bool                  `json:"uncertain,omitempty"`
+	ReviewID          string                `json:"review_id,omitempty"`
+	State             string                `json:"state"`
+	Scope             string                `json:"scope,omitempty"`
+	FullText          bool                  `json:"full_text,omitempty"`
+	WikiGraph         bool                  `json:"wiki_graph,omitempty"`
+	WikiPhase         string                `json:"wiki_phase,omitempty"`
+	WikiScanCursor    uint                  `json:"wiki_scan_cursor,omitempty"`
+	WikiScanProcessed int                   `json:"wiki_scan_processed,omitempty"`
+	WikiScanSkipped   int                   `json:"wiki_scan_skipped,omitempty"`
+	WikiScanDeferred  int                   `json:"wiki_scan_deferred,omitempty"`
+	WikiScanComplete  bool                  `json:"wiki_scan_complete,omitempty"`
+	WikiDocuments     int                   `json:"wiki_documents,omitempty"`
+	WikiDocumented    int                   `json:"wiki_documented,omitempty"`
+	ThreadID          string                `json:"thread_id,omitempty"`
+	TurnID            string                `json:"turn_id,omitempty"`
+	Progress          *DistillationProgress `json:"progress,omitempty"`
+	HistoryOmitted    bool                  `json:"history_omitted,omitempty"`
+	MemoryEnabled     bool                  `json:"memory_enabled,omitempty"`
+	KnowledgeEnabled  bool                  `json:"knowledge_enabled,omitempty"`
+	Changes           []memory.Change       `json:"changes,omitempty"`
+	Knowledge         []distillChange       `json:"knowledge,omitempty"`
+	Error             string                `json:"error,omitempty"`
+	ErrorCode         string                `json:"error_code,omitempty"`
+	ErrorProviderID   string                `json:"error_provider_id,omitempty"`
+	Uncertain         bool                  `json:"uncertain,omitempty"`
 }
 
 type distillChange struct {
@@ -241,7 +246,7 @@ func (e *Engine) StartProjectDistillation(ctx context.Context, projectID string,
 			return DistillationResult{}, err
 		}
 		if (req.EnableKnowledge || req.WikiGraph) && !snap.Enabled() {
-			snap, err = kb.Enable()
+			snap, err = e.enableKnowledgeFiles(ctx, projectID, kb)
 			if err != nil {
 				return DistillationResult{}, err
 			}
@@ -256,7 +261,7 @@ func (e *Engine) StartProjectDistillation(ctx context.Context, projectID string,
 		MemoryEnabled: !req.WikiGraph && e.MemoryEnabled(p), KnowledgeEnabled: knowledgeEnabled,
 	}
 	if req.WikiGraph {
-		result.WikiPhase = "graph"
+		result.WikiPhase = "scan"
 	}
 	if !result.MemoryEnabled && !result.KnowledgeEnabled {
 		return DistillationResult{}, ErrDistillationTargets

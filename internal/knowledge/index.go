@@ -46,12 +46,18 @@ type Connection struct {
 	Resolved bool     `json:"resolved"`
 }
 
+type WikiObservation struct {
+	Source Source `json:"source"`
+	Quote  string `json:"quote"`
+}
+
 type PageDetail struct {
 	Page
-	Outgoing   []Connection `json:"outgoing"`
-	Incoming   []Connection `json:"incoming"`
-	Mentions   []PageRef    `json:"mentions"`
-	Unresolved []string     `json:"unresolved"`
+	Outgoing         []Connection      `json:"outgoing"`
+	Incoming         []Connection      `json:"incoming"`
+	Mentions         []PageRef         `json:"mentions"`
+	Unresolved       []string          `json:"unresolved"`
+	WikiObservations []WikiObservation `json:"wiki_observations,omitempty"`
 }
 
 type Issue struct {

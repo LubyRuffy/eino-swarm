@@ -24,6 +24,10 @@ func (e *Engine) distillationFullSlice(ctx context.Context, job *projectDistillW
 	var transcript strings.Builder
 	transcript.WriteString(reviewSourceHeader)
 	for _, row := range rows {
+		if row.WikiReviewed && offset == 0 {
+			checkpoint.to, checkpoint.count = row.Position, checkpoint.count+1
+			continue
+		}
 		handle := int64(len(batch.sources.sources) + 1)
 		header := distillationFullHeader(row, handle, offset, calls[row.CallID])
 		room := maxBytes - transcript.Len() - len(header) - len("\n\n")
@@ -51,6 +55,9 @@ func (e *Engine) distillationFullSlice(ctx context.Context, job *projectDistillW
 				checkpoint.segmentBytes = next
 				checkpoint.segmentTotalBytes = part.TotalBytes
 				break
+			}
+			if job.result.WikiGraph {
+				checkpoint.wikiReviewed = append(checkpoint.wikiReviewed, row.Position)
 			}
 		}
 		checkpoint.to, checkpoint.count = row.Position, checkpoint.count+1

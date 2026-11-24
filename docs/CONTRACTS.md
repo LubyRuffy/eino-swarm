@@ -21,8 +21,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 自动复盘与项目记忆开启时，已启用知识库的成功非计划回合在现有 `apply_memory_review` 提案中也可提交 wiki 更新。回合当前归属、设置和来源身份在写入前复核。回执以同一个 `memory_review` 事件列出已落盘页面与 schema revision，刷新笔记、Skills 和 Knowledge；普通复盘与 Dream 的原请求预算适用。
 - 两个面板显示同一份进度条与已处理、剩余及跳过记录计数，分别标明只读摘录、超过读取上限和其他跳过项。已接受批次的进度、游标和回执同一次提交。全文分段的检查点保存当前记录的字节偏移，记录读到末尾才计入已处理。范围耗尽才标为完成。暂停或进程退出后可继续同一个任务，已提交批次不重跑。文件写入开始前记录未确认状态，若中途退出则提示核实当前内容，继续时复查未提交批次。仍有剩余记录时拒绝以新范围覆盖原进度。遇到可通过配置解决的失败时，界面按错误类别提示首字节等待时间、请求超时、子代理超时、生成上限或复盘轮次。Trace 使用正在复查或最近处理的原始回合。项目删除清除关联回执和候选记录。
 - 原回执的范围、读取模式与提炼编号跨失败、暂停和续跑保持一致。旧回执保留通用截取提示。两个面板都显示保存的范围。手动暂停请求发出后报告 `pausing`，等模型和写入退出后记录 `paused`。只要还有待处理记录，暂停或失败后的顶部操作即为继续原提炼。
-- Wiki 建图使用独立回执与同样的范围快照，扫描可引用的保留历史。成功命令以实际输出为证据，全文窗口保留少量跨段上下文。首批使用短窗口，之后模型可并行提取。遇到适合缩批重试的校验失败、上下文或处理上限时，从未提交的检查点缩小窗口重读。宿主按来源顺序提交批次，并要求每个可见来源都有处理确认。每个节点与关系须有实际可见的原文引文，发布前复核来源所有权。歧义名称按来源区分，关系图按无向对合并。
-- 建图先发布节点、来源及关系，再按批从已验证引文补写正文。现有正文保留，每页记录已写入的位置。模型或文件写入失败保留已保存的图和断点，所有范围记录和节点文档都处理后才显示完成。建图和记忆提炼的回执互不覆盖。
+- Wiki 建图使用独立回执与范围快照。宿主先本地扫描，发布含精确来源的明确标识、受支持的结构化实体和显式关系，成功命令以实际输出为证据。扫描完成回执须晚于本地节点落盘。待确认内容进入后台语义复核，图谱此时可浏览、搜索和查看已核实引文。本地重复观察保留有限的代表来源，关系各自保留证据。每对节点保留一条无向线，歧义名称按来源区分。
+- 本地扫描与模型复核各保存独立位置，文件和回执之间的中断可幂等重放。已成功处理的不可变记录通过当前归属和原始身份复用。编辑、倒带或移出项目的记录需重新核对，旧来源不可用时保留页面。模型需要确认每个可见来源，单条提案修正保留已验证项目，未通过的引用不得推进复核游标。
+- 正文从已验证的观察补写，保留现有正文。模型复核或文件写入失败时保留已发布图谱与断点。完成状态要求全部范围记录和最终节点文档均已处理。建图和统一提炼回执相互独立。
 - 实现 `internal/engine/project_distill.go`、`internal/engine/project_distill_batch.go`、`internal/engine/review_knowledge.go` 和 `internal/store/distillation.go`。验证见 `internal/engine/project_distill_test.go`、`internal/engine/review_knowledge_test.go`、`internal/engine/dream_http_test.go`、`internal/server/project_distill_test.go`、`frontend/e2e/project-knowledge.spec.ts` 和 `models/knowledge/ProjectDistillation.tla` 和 `models/knowledge/DistillationProgress.tla`。
 
 ## C-053 Project knowledge keeps stable pages and attributable sources

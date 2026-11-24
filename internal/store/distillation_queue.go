@@ -83,10 +83,11 @@ func (s *Store) StartDistillationQueue(ctx context.Context, row ProjectDistillat
 // available evidence. A vanished source still has a position to account for.
 type DistillationSourceRow struct {
 	Event
-	Turn     Turn `gorm:"embedded;embeddedPrefix:origin_"`
-	Position uint
-	CallID   uint
-	Oversize bool
+	Turn         Turn `gorm:"embedded;embeddedPrefix:origin_"`
+	Position     uint
+	CallID       uint
+	Oversize     bool
+	WikiReviewed bool
 }
 
 const distillationEventIdentity = "e.id,e.thread_id,e.turn_id,e.seq,e.kind,e.agent_id,e.role,e.tool_call_id,e.created_at"
@@ -96,11 +97,19 @@ const distillationEventProjection = distillationEventIdentity + `,
 	CASE WHEN length(CAST(e.err AS BLOB)) <= 65536 THEN e.err END AS err,
 	COALESCE(length(CAST(e.text AS BLOB)),0) > 65536 OR COALESCE(length(CAST(e.err AS BLOB)),0) > 65536 AS oversize`
 
-const distillationQueueJoins = `
-	FROM project_distillation_sources q
+const distillationQueueJoins = "\n FROM project_distillation_sources q" + distillationQueueOwners
+
+const distillationQueueOwners = `
 	LEFT JOIN threads h ON h.id=q.thread_id AND h.project_id=q.project_id
 	LEFT JOIN turns t ON t.id=q.turn_id AND t.thread_id=h.id AND t.status=q.turn_status
 	LEFT JOIN events e ON e.id=q.event_id AND e.turn_id=t.id AND e.thread_id=h.id AND e.seq=q.seq AND e.kind=q.kind AND e.work_record_payload=0`
+
+// The nearest preceding invocation must match the result's turn and agent.
+const distillationPairedCall = `SELECT c.id FROM events c
+	WHERE e.kind='tool_result' AND e.tool_call_id<>'' AND
+		c.thread_id=e.thread_id AND c.turn_id=e.turn_id AND c.kind='tool_call'
+		AND c.tool_call_id=e.tool_call_id AND c.agent_id=e.agent_id AND c.seq<e.seq AND c.id<e.id
+	ORDER BY c.seq DESC LIMIT 1`
 
 func (s *Store) DistillationWindow(ctx context.Context, reviewID string, after uint, limit int) ([]DistillationSourceRow, error) {
 	return s.distillationWindow(ctx, reviewID, after, limit, distillationEventProjection)
@@ -115,12 +124,7 @@ func (s *Store) distillationWindow(ctx context.Context, reviewID string, after u
 	err := s.db.WithContext(ctx).Raw(`
 		SELECT q.event_id AS position, `+projection+`,
 			t.id AS origin_id, t.thread_id AS origin_thread_id, t.status AS origin_status,
-			CASE WHEN e.kind='tool_result' AND e.tool_call_id<>'' THEN (
-				SELECT c.id FROM events c
-				WHERE c.thread_id=e.thread_id AND c.turn_id=e.turn_id AND c.kind='tool_call'
-					AND c.tool_call_id=e.tool_call_id AND c.agent_id=e.agent_id AND c.seq<e.seq AND c.id<e.id
-				ORDER BY c.seq DESC LIMIT 1
-			) END AS call_id
+			(`+distillationPairedCall+`) AS call_id
 		`+distillationQueueJoins+`
 		WHERE q.review_id=? AND q.event_id>? ORDER BY q.event_id LIMIT ?`, reviewID, after, limit).Scan(&rows).Error
 	return rows, err
@@ -134,9 +138,13 @@ func (s *Store) DistillationToolCalls(ctx context.Context, ids []uint) (map[uint
 // without loading its arguments. When clipped, only a name followed by "("
 // within the prefix is identifiable.
 func (s *Store) DistillationCallHeads(ctx context.Context, ids []uint) (map[uint]Event, error) {
-	return s.distillationToolCalls(ctx, ids, distillationEventIdentity+`,
-		CASE WHEN length(CAST(e.text AS BLOB)) <= 512 THEN e.text
-			WHEN instr(substr(e.text,1,128), '(') > 0 THEN substr(e.text,1,128) END AS text`)
+	return s.distillationToolCalls(ctx, ids, distillationEventIdentity+", "+distillationCallHead("e")+" AS text")
+}
+
+func distillationCallHead(alias string) string {
+	text := alias + ".text"
+	return "CASE WHEN length(CAST(" + text + " AS BLOB)) <= 512 THEN " + text +
+		" WHEN instr(substr(" + text + ",1,128), '(') > 0 THEN substr(" + text + ",1,128) END"
 }
 
 func (s *Store) distillationToolCalls(ctx context.Context, ids []uint, projection string) (map[uint]Event, error) {
@@ -161,20 +169,24 @@ func (s *Store) distillationToolCalls(ctx context.Context, ids []uint, projectio
 // cursor and owner must still match even after a cancellation or restart.
 func (s *Store) CheckpointDistillation(ctx context.Context, row ProjectDistillation, previous uint) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		result := tx.Table(row.table()).
-			Where("project_id=? AND id=? AND state=? AND cursor_event_id=?", row.ProjectID, row.ID, "running", previous).
-			Updates(map[string]any{"state": row.State, "receipt": row.Receipt, "cursor_event_id": row.CursorEventID})
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected != 1 {
-			return ErrNotFound
-		}
-		if row.State == "completed" {
-			return tx.Delete(&ProjectDistillationSource{}, "review_id = ?", row.ID).Error
-		}
-		return nil
+		return checkpointDistillation(tx, row, previous)
 	})
+}
+
+func checkpointDistillation(tx *gorm.DB, row ProjectDistillation, previous uint) error {
+	result := tx.Table(row.table()).
+		Where("project_id=? AND id=? AND state=? AND cursor_event_id=?", row.ProjectID, row.ID, "running", previous).
+		Updates(map[string]any{"state": row.State, "receipt": row.Receipt, "cursor_event_id": row.CursorEventID})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrNotFound
+	}
+	if row.State == "completed" {
+		return tx.Delete(&ProjectDistillationSource{}, "review_id = ?", row.ID).Error
+	}
+	return nil
 }
 
 // ResumeDistillation claims the same receipt without changing its checkpoint.

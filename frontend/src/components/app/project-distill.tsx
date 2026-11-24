@@ -160,6 +160,22 @@ export function ProjectDistillStatus({ projectId, wikiGraph = false }: { project
   const errorCode = !slot?.error && error ? result?.error_code ?? legacyDistillError(error) : undefined
   const historyOmitted = result?.history_omitted
   const progress = result?.progress
+  const wikiPhase = result?.wiki_phase
+  const scanComplete = result?.wiki_scan_complete === true
+  const scanProcessed = result?.wiki_scan_processed ?? 0
+  const scanSkipped = result?.wiki_scan_skipped ?? 0
+  const scanDeferred = result?.wiki_scan_deferred ?? 0
+  const showScan = wikiGraph && (wikiPhase === "scan" || scanComplete || result?.wiki_scan_processed !== undefined)
+  const scanning = showScan && !scanComplete
+  const scanPercent = scanComplete ? 100 : progress?.total
+    ? Math.min(99.99, Number((100 * scanProcessed / progress.total).toFixed(2)))
+    : undefined
+  const phaseLabel = scanning ? "knowledge.wikiScanning" : scanComplete && wikiPhase === "graph"
+    ? "knowledge.wikiGraphReady"
+    : undefined
+  const reviewLabel = showScan ? "knowledge.wikiReviewProgressLabel" : "knowledge.wikiGraphProgressLabel"
+  const documentTotal = result?.wiki_documents ?? 0
+  const documentCount = result?.wiki_documented ?? 0
   const excerpted = progress?.excerpted ?? 0
   const oversizedSkipped = progress?.oversized_skipped ?? 0
   const unavailable = (progress?.skipped ?? 0) - oversizedSkipped
@@ -175,7 +191,9 @@ export function ProjectDistillStatus({ projectId, wikiGraph = false }: { project
     if (id) void store.getState().start(projectId, running ? { pause_review_id: id } : { resume_review_id: id })
   }
   const hasChanges = changes.length + pages.length > 0
-  const status = wikiGraph && state && state !== "idle" ? t(`knowledge.wikiState.${state}`) : state === "completed" && !hasChanges
+  const status = wikiGraph && state && state !== "idle"
+    ? t(running && phaseLabel ? phaseLabel : `knowledge.wikiState.${state}`)
+    : state === "completed" && !hasChanges
     ? t("knowledge.distillNoChanges")
     : state && state !== "idle" ? t(`knowledge.distillState.${state}`) : undefined
   if ((!state || state === "idle") && !error) return null
@@ -192,14 +210,27 @@ export function ProjectDistillStatus({ projectId, wikiGraph = false }: { project
           </Button>
         ) : null}
       </div>
-      {progress || state === "running" ? (
-        <ReviewProgressBar label={t(wikiGraph ? "knowledge.wikiGraphProgressLabel" : "knowledge.distillProgressLabel")} percent={percent} />
+      {showScan && progress ? (
+        <>
+          <ReviewProgressBar label={t("knowledge.wikiScanProgressLabel")} percent={scanPercent} />
+          <p aria-live="polite" data-testid="wiki-scan-progress">
+            {t("knowledge.wikiScanProgress", { done: scanProcessed, total: progress.total })}
+            {scanSkipped ? ` · ${t("knowledge.wikiScanSkipped", { count: scanSkipped })}` : ""}
+            {scanDeferred ? ` · ${t("knowledge.wikiScanDeferred", { count: scanDeferred })}` : ""}
+          </p>
+        </>
+      ) : null}
+      {!scanning && (progress || state === "running") ? (
+        <ReviewProgressBar label={t(wikiGraph ? reviewLabel : "knowledge.distillProgressLabel")} percent={percent} />
       ) : null}
       {progress ? (
         <div className="flex flex-wrap items-center gap-x-2">
-          <p aria-live="polite" data-testid="project-distill-progress">
-            {t("knowledge.distillProgress", { done: progress.processed, total: progress.total, remaining: progress.remaining })}
-          </p>
+          {!scanning ? (
+            <p aria-live="polite" data-testid="project-distill-progress">
+              {t(showScan ? "knowledge.wikiReviewProgress" : "knowledge.distillProgress",
+                { done: progress.processed, total: progress.total, remaining: progress.remaining })}
+            </p>
+          ) : null}
           {canControl ? (
             <Button type="button" variant="link" size="sm" className="h-auto p-0" disabled={slot?.controlling} onClick={control}>
               {t(wikiGraph ? (running ? "knowledge.wikiPause" : "knowledge.wikiResume") :
@@ -213,12 +244,12 @@ export function ProjectDistillStatus({ projectId, wikiGraph = false }: { project
           {progress.batches > 0 ? t("knowledge.wikiSourceBatches", { count: progress.batches }) : t("knowledge.wikiFirstBatch")}
         </p>
       ) : null}
-      {result?.wiki_phase === "documents" ? (
+      {wikiPhase === "documents" || (wikiGraph && documentTotal > 0) ? (
         <div className="grid gap-1">
-          <ReviewProgressBar label={t("knowledge.wikiDocumentProgressLabel")} percent={result.wiki_documents ?
-            Math.floor(100 * (result.wiki_documented ?? 0) / result.wiki_documents) : 100} />
+          <ReviewProgressBar label={t("knowledge.wikiDocumentProgressLabel")}
+            percent={documentTotal ? Math.floor(100 * documentCount / documentTotal) : 100} />
           <p aria-live="polite" data-testid="wiki-document-progress">
-            {t("knowledge.wikiDocumentProgress", { done: result.wiki_documented ?? 0, total: result.wiki_documents ?? 0 })}
+            {t("knowledge.wikiDocumentProgress", { done: documentCount, total: documentTotal })}
           </p>
         </div>
       ) : null}

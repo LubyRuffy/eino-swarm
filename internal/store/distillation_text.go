@@ -27,6 +27,14 @@ const wikiSourceProjection = `CASE WHEN e.kind='tool_result' AND json_valid(e.te
 		ELSE e.text END
 	ELSE e.text END`
 
+const distillationToolSucceeded = `CASE
+	WHEN NOT json_valid(e.text) THEN 1
+	WHEN json_type(e.text)<>'object' THEN 1
+	ELSE NOT EXISTS (
+		SELECT 1 FROM json_each(e.text) j
+		WHERE j.key IN ('ok','success') AND j.type='false'
+	) END`
+
 func (s *Store) ReadWikiSourceText(ctx context.Context, reviewID string, position uint, offset, limit int) (DistillationText, error) {
 	return s.readDistillationText(ctx, reviewID, position, offset, limit, wikiSourceProjection)
 }
@@ -46,12 +54,8 @@ func (s *Store) readDistillationText(ctx context.Context, reviewID string, posit
 			WHERE q.review_id=? AND q.event_id=? AND e.id IS NOT NULL
 				AND (e.kind<>'tool_result' OR CASE
 					WHEN COALESCE(e.err,'')<>'' THEN 0
-					WHEN ?<>0 OR NOT json_valid(e.text) THEN 1
-					WHEN json_type(e.text)<>'object' THEN 1
-					ELSE NOT EXISTS (
-						SELECT 1 FROM json_each(e.text) j
-						WHERE j.key IN ('ok','success') AND j.type='false'
-					) END)
+					WHEN ?<>0 THEN 1
+					ELSE `+distillationToolSucceeded+` END)
 			LIMIT 2
 		)
 		SELECT substr(body,prefix+?+1,?) AS text, COALESCE(length(body),0)-prefix AS total_bytes, message_seq

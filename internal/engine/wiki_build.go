@@ -21,6 +21,16 @@ type wikiDraftResult struct {
 }
 
 func (e *Engine) runWikiBuild(ctx context.Context, gate chan struct{}, job *projectDistillWork, cursor uint) {
+	if !job.result.WikiScanComplete && job.result.WikiPhase != "documents" {
+		if err := e.runWikiLocalScan(ctx, job, cursor); err != nil {
+			stopDistillation(ctx, &job.result, err)
+			return
+		}
+	}
+	if err := e.renderAvailableWikiDocuments(ctx, job, cursor); err != nil {
+		stopDistillation(ctx, &job.result, err)
+		return
+	}
 	maxBytes, parallelism := wikiExtractBytes, wikiExtractParallelism
 	if job.result.Progress.Batches == 0 {
 		// Publish a small first batch before starting bulk requests.
@@ -43,6 +53,10 @@ func (e *Engine) runWikiBuild(ctx context.Context, gate chan struct{}, job *proj
 			continue
 		}
 		if err != nil {
+			stopDistillation(ctx, &job.result, err)
+			return
+		}
+		if err := e.renderAvailableWikiDocuments(ctx, job, cursor); err != nil {
 			stopDistillation(ctx, &job.result, err)
 			return
 		}
@@ -180,10 +194,10 @@ func (e *Engine) publishWikiDraft(ctx context.Context, batch *projectDistillWork
 		sources[handle] = resolved[i]
 	}
 	pages := wikiPages(*proposal, sources)
-	if err := batch.kb.EnsureWikiSchema(); err != nil {
+	if err := batch.checkpoint.beforeWrite(); err != nil {
 		return err
 	}
-	if err := batch.checkpoint.beforeWrite(); err != nil {
+	if err := batch.kb.EnsureWikiSchema(); err != nil {
 		return err
 	}
 	stamp := knowledge.Stamp{UpdatedAt: time.Now(), UpdatedTurn: batch.anchor.ID, UpdatedThread: batch.anchor.ThreadID}
@@ -191,6 +205,16 @@ func (e *Engine) publishWikiDraft(ctx context.Context, batch *projectDistillWork
 		return err
 	}
 	return batch.checkpoint.accept(batch.result, nil, true)
+}
+
+// Publish a bounded group of already verified observations before waiting
+// on the next model window. Final document coverage is measured after review.
+func (e *Engine) renderAvailableWikiDocuments(ctx context.Context, job *projectDistillWork, cursor uint) error {
+	if !job.result.WikiScanComplete || job.result.WikiPhase != "graph" || job.result.Progress.Remaining == 0 {
+		return nil
+	}
+	checkpoint := &distillCheckpoint{e: e, current: &job.result, from: cursor, projectID: job.projectID}
+	return e.renderWikiDocumentBatch(ctx, job, checkpoint, cursor, false)
 }
 
 func (e *Engine) renderWikiBuild(ctx context.Context, gate chan struct{}, job *projectDistillWork, cursor uint) {
@@ -204,7 +228,7 @@ func (e *Engine) renderWikiBuild(ctx context.Context, gate chan struct{}, job *p
 		}
 		err := func() error {
 			defer func() { <-gate }()
-			return e.renderWikiDocumentBatch(ctx, job, checkpoint, cursor)
+			return e.renderWikiDocumentBatch(ctx, job, checkpoint, cursor, true)
 		}()
 		if err != nil {
 			stopDistillation(ctx, &job.result, err)
@@ -216,7 +240,7 @@ func (e *Engine) renderWikiBuild(ctx context.Context, gate chan struct{}, job *p
 	}
 }
 
-func (e *Engine) renderWikiDocumentBatch(ctx context.Context, job *projectDistillWork, checkpoint *distillCheckpoint, cursor uint) error {
+func (e *Engine) renderWikiDocumentBatch(ctx context.Context, job *projectDistillWork, checkpoint *distillCheckpoint, cursor uint, finalPass bool) error {
 	done, err := e.beginLifecycleAdmission()
 	if err != nil {
 		return err
@@ -239,10 +263,16 @@ func (e *Engine) renderWikiDocumentBatch(ctx context.Context, job *projectDistil
 	}
 	result := job.result
 	total, written := snap.WikiDocumentProgress(result.ReviewID)
-	if result.WikiPhase == "graph" {
-		// Make the visible boundary durable before any document is enriched.
+	if !finalPass && written == total && total == result.WikiDocuments && written == result.WikiDocumented {
+		return nil
+	}
+	if finalPass && result.WikiPhase == "graph" {
+		// Freeze the final document denominator after source review.
 		result.WikiPhase, result.WikiDocuments, result.WikiDocumented = "documents", total, written
 	} else if written < total {
+		if err := checkpoint.beforeWrite(); err != nil {
+			return err
+		}
 		if err := job.kb.WriteWikiDocuments(ctx, result.ReviewID, wikiDocumentBatch); err != nil {
 			return err
 		}
@@ -252,11 +282,11 @@ func (e *Engine) renderWikiDocumentBatch(ctx context.Context, job *projectDistil
 		}
 		total, written = snap.WikiDocumentProgress(result.ReviewID)
 	}
-	if total != result.WikiDocuments {
+	if finalPass && total != result.WikiDocuments {
 		return fmt.Errorf("wiki graph changed during document publication: %d of %d pages remain associated with this run", total, result.WikiDocuments)
 	}
-	result.WikiDocumented = written
-	if written == total {
+	result.WikiDocuments, result.WikiDocumented = total, written
+	if finalPass && written == total {
 		result.State = "completed"
 	}
 	if err := checkpoint.save(result, cursor); err != nil {

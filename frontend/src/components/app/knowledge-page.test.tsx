@@ -49,4 +49,26 @@ describe("Knowledge page provenance", () => {
     expect(onPage.mock.calls).toEqual([["another"]])
     expect(screen.queryByRole("dialog")).toBeNull()
   })
+
+  it("opens the cited excerpt inline before the article is written", () => {
+    const onTrace = vi.fn()
+    const indexed = {
+      ...page,
+      body: "",
+      wiki: { kind: "entity" as const, category: "topic", document_pending: true },
+      wiki_observations: [
+        { source: page.sources![0], quote: "An exact excerpt from the available source." },
+        { source: page.sources![1], quote: "This former source has been removed." },
+      ],
+    }
+    render(<KnowledgePageView page={indexed} onPage={vi.fn()} onTrace={onTrace} onOpenThread={vi.fn()} />)
+    const excerpt = screen.getByText("View cited excerpt")
+    const details = excerpt.closest("details")
+    expect(details?.hasAttribute("open")).toBe(false)
+    fireEvent.click(excerpt)
+    expect(details?.hasAttribute("open")).toBe(true)
+    expect(within(details!).getByText("An exact excerpt from the available source.")).toBeTruthy()
+    expect(screen.queryByText("This former source has been removed.")).toBeNull()
+    expect(onTrace).not.toHaveBeenCalled()
+  })
 })

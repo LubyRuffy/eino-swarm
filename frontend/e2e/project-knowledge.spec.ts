@@ -235,6 +235,75 @@ test("Wiki build shows saved source batches before a long record finishes", asyn
   }
 })
 
+test("Wiki build opens and cites a node from the local graph while review is still pending", async ({ page }) => {
+  const { projectId, threadId } = await openProjectConversation(page, `Wiki local scan ${Date.now()}`, true)
+  const project = `/api/projects/${projectId}`
+  const endpoint = `${project}/distill`
+  const node = { id: "found-observation", title: "Retained observation", type: "wiki-node" }
+  const quote = "Retained observation appeared in the first source."
+  const source = { kind: "event", seq: 114, thread_id: threadId, classification: "primary", available: true }
+  const nodes = [
+    ...Array.from({ length: 3_000 }, (_, i) => ({ id: `entry-${i}`, title: `Entry ${i}`, type: "wiki-node" })),
+    node,
+  ]
+  let started = false
+  let ready = false
+  await page.route((url) => url.pathname === endpoint, async (route) => {
+    const request = route.request()
+    if (request.method() === "POST") {
+      expect(request.postDataJSON()).toEqual({ scope: "thread", thread_id: threadId, wiki_graph: true })
+      started = true
+    } else if (new URL(request.url()).searchParams.get("wiki_graph") !== "true") {
+      await route.continue()
+      return
+    }
+    await route.fulfill({ json: started ? {
+      state: "running", review_id: "local-scan", scope: "thread", wiki_graph: true, knowledge_enabled: true,
+      wiki_phase: ready ? "graph" : "scan", wiki_scan_processed: ready ? 23_252 : 128,
+      wiki_scan_complete: ready,
+      wiki_scan_deferred: ready ? 1 : 0,
+      wiki_documents: ready ? nodes.length : 0, wiki_documented: ready ? 64 : 0,
+      progress: { total: 23_252, processed: 0, remaining: 23_252, skipped: 0, batches: 0 },
+    } : { state: "idle" } })
+  })
+  await page.route((url) => url.pathname === `${project}/knowledge/graph`,
+    (route) => route.fulfill({ json: { nodes: ready ? nodes : [], edges: [] } }))
+  await page.route((url) => url.pathname === `${project}/knowledge/pages/${node.id}`, (route) => route.fulfill({ json: {
+    ...node,
+    body: "",
+    wiki: { kind: "entity", category: "observation", document_pending: true },
+    sources: [source],
+    wiki_observations: [{ source, quote }],
+  } }))
+  try {
+    expect((await page.request.post(`${project}/knowledge`)).ok()).toBe(true)
+    await knowledgeTab(page).click()
+    await page.getByTestId("knowledge-build").click()
+    await page.getByRole("menuitem", { name: "Current task", exact: true }).click()
+    const status = page.getByTestId("project-wiki-build-status")
+    await expect(status.getByTestId("wiki-scan-progress")).toHaveText("Scanned 128 of 23252 records")
+    await page.getByRole("button", { name: "Graph", exact: true }).click()
+    const graph = page.getByRole("dialog", { name: "Knowledge graph" })
+    await expect(graph).toContainText("No pages yet.")
+    ready = true
+    await expect(graph.getByRole("searchbox")).toBeVisible()
+    await expect(graph).toContainText("Pages 3001 · Connections 0")
+    await graph.getByRole("searchbox").fill(node.title)
+    await graph.getByRole("button", { name: new RegExp(node.title) }).click()
+    await graph.getByRole("button", { name: `Open ${node.title}` }).click()
+    const detail = page.getByTestId("knowledge-page")
+    await expect(detail.getByRole("heading", { name: node.title })).toBeVisible()
+    await detail.getByText("View cited excerpt").click()
+    await expect(detail.getByText(quote)).toBeVisible()
+    await expect(status.getByRole("status")).toContainText("Graph ready · review in progress")
+    await expect(status.getByTestId("wiki-scan-progress")).toContainText("Large records queued for review · 1")
+    await expect(status.getByTestId("project-distill-progress")).toContainText("Reviewed 0 of 23252 records")
+    await expect(status.getByTestId("wiki-document-progress")).toHaveText("Documents updated · 64 of 3001")
+  } finally {
+    await page.request.delete(project)
+  }
+})
+
 test("Wiki build publishes its graph, documents, and sources independently of distillation", async ({ page }) => {
   const { projectId, threadId } = await openProjectConversation(page, `Wiki build ${Date.now()}`, true)
   const endpoint = `/api/projects/${projectId}/distill`

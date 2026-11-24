@@ -22,6 +22,7 @@ type Layout = InstanceType<typeof ForceGraph<LayoutNode, LayoutLink>>
 const MIN_ZOOM = 0.02
 const MAX_ZOOM = 6
 const NODE_RADIUS = 5
+const LARGE_GRAPH_SIZE = 1_000
 function tooltip(value: string) {
   const label = document.createElement("span")
   label.textContent = value
@@ -55,6 +56,7 @@ export default function KnowledgeForceLayout({ graph, selected, onPage }: {
     const host = stage.current
     if (!host) return
     const { nodes, links } = layoutData(graph)
+    const large = nodes.length > LARGE_GRAPH_SIZE
     const byId = new Map(nodes.map((node) => [node.id, node]))
     const nodeColor = (node: LayoutNode) => node.id === active.current ? colors.highlight : colors.node
     const readColors = () => {
@@ -70,12 +72,13 @@ export default function KnowledgeForceLayout({ graph, selected, onPage }: {
     host.addEventListener("wheel", interacted, { passive: true })
     const instance = new ForceGraph<LayoutNode, LayoutLink>(host)
       .width(host.clientWidth).height(host.clientHeight)
-      .minZoom(MIN_ZOOM).maxZoom(MAX_ZOOM).cooldownTicks(160)
+      .minZoom(MIN_ZOOM).maxZoom(MAX_ZOOM).cooldownTicks(large ? 60 : 160)
       .nodeRelSize(NODE_RADIUS).nodeColor(nodeColor)
       .nodeLabel((node) => tooltip(node.title))
       .nodeCanvasObjectMode(() => "after")
       .nodeCanvasObject((node, ctx, zoom) => {
-        if (node.x == null || node.y == null || (nodes.length > 50 && zoom < 0.85 && node.id !== active.current)) return
+        if (node.x == null || node.y == null) return
+        if ((large || (nodes.length > 50 && zoom < 0.85)) && node.id !== active.current) return
         const fontSize = 12 / zoom
         ctx.save()
         if (node.id === active.current) {

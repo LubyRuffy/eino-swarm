@@ -122,9 +122,10 @@ type distillCheckpoint struct {
 	excerpted, oversizedSkipped     int
 	segmentBytes, segmentTotalBytes int
 	accepted                        bool
+	wikiReviewed                    []uint
 }
 
-func (c *distillCheckpoint) save(result DistillationResult, cursor uint) error {
+func (c *distillCheckpoint) save(result DistillationResult, cursor uint, wikiReviewed ...uint) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	row, err := result.row(c.projectID)
@@ -132,6 +133,9 @@ func (c *distillCheckpoint) save(result DistillationResult, cursor uint) error {
 		return err
 	}
 	row.CursorEventID = cursor
+	if len(wikiReviewed) > 0 {
+		return c.e.store.CheckpointWikiReview(ctx, row, c.from, wikiReviewed)
+	}
 	return c.e.store.CheckpointDistillation(ctx, row, c.from)
 }
 
@@ -166,7 +170,11 @@ func (c *distillCheckpoint) accept(batch DistillationResult, changes []memory.Ch
 	if progress.Remaining == 0 && !result.WikiGraph {
 		result.State = "completed"
 	}
-	if err := c.save(result, c.to); err != nil {
+	var wikiReviewed []uint
+	if reviewed {
+		wikiReviewed = c.wikiReviewed
+	}
+	if err := c.save(result, c.to, wikiReviewed...); err != nil {
 		return err
 	}
 	*c.current = result
@@ -267,6 +275,9 @@ func (e *Engine) loadDistillationSlice(ctx context.Context, job *projectDistillW
 	load := e.store.DistillationWindow
 	if job.result.FullText {
 		load = e.store.DistillationMetadataWindow
+	}
+	if job.result.WikiGraph {
+		load = e.store.WikiReviewMetadataWindow
 	}
 	rows, err := load(ctx, job.result.ReviewID, cursor, 128)
 	if err != nil {

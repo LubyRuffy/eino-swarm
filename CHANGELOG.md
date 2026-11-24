@@ -100,9 +100,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   The failed model-call Trace records received bytes, the last read time and
   a Gateway request ID when available. (`F-130`, `C-012`, `C-029`)
 
-- Wiki graph builds use a smaller first batch for earlier publication. Large
-  failed batches can retry with smaller source segments, and the panel shows
-  verified batch counts while a long record is still in progress. (`F-138`, `C-054`)
+- Wiki graph builds publish attributable local observations before model review.
+  The panel shows separate scan, review and article progress. Subsequent builds
+  reuse accepted source records, and large graphs remain searchable while
+  review continues. (`F-138`, `C-054`, #188)
 
 - Conversation image sends, including queued follow-ups, pass the original
   image and caption to the conversation model and keep the image in history,

@@ -11,6 +11,7 @@ import (
 
 const wikiNodeType = "wiki-node"
 const wikiRelation = "wiki-related"
+const wikiLocalWitnessLimit = 12
 
 // WikiPage tracks verified observations awaiting publication into a page's
 // document. The graph can display its title, links and sources immediately.
@@ -27,6 +28,7 @@ type WikiEvidence struct {
 	Source Source `yaml:"source"`
 	Quote  string `yaml:"quote"`
 	To     string `yaml:"to,omitempty"`
+	Local  bool   `yaml:"local,omitempty"`
 }
 
 type WikiNode struct {
@@ -85,6 +87,12 @@ func (s *Store) StageWikiNodes(ctx context.Context, job string, nodes []WikiNode
 		if err != nil {
 			return err
 		}
+		if old, ok := snap.pages[node.ID]; ok && len(old.page.Wiki.Evidence) == len(page.Wiki.Evidence) &&
+			len(old.page.Links) == len(page.Links) && len(old.page.Sources) == len(page.Sources) {
+			// An idempotent replay or a saturated local witness set has
+			// no new content and requires no file replacement.
+			continue
+		}
 		pages = append(pages, page)
 	}
 	return s.publishWikiPages(ctx, root, snap, pages)
@@ -113,6 +121,18 @@ func wikiNodePage(snap *Snapshot, names map[string][]PageRef, job string, node W
 	}
 	page.UpdatedAt, page.UpdatedTurn, page.UpdatedThread = stamp.UpdatedAt.UTC(), stamp.UpdatedTurn, stamp.UpdatedThread
 	page.Wiki.Job = job
+	evidenceSeen := make(map[WikiEvidence]bool, len(page.Wiki.Evidence)+len(node.Evidence))
+	sourceSeen := make(map[Source]bool, len(page.Sources))
+	localWitnesses := make(map[string]int)
+	for _, old := range page.Wiki.Evidence {
+		evidenceSeen[old] = true
+		if old.Local {
+			localWitnesses[old.To]++
+		}
+	}
+	for _, source := range page.Sources {
+		sourceSeen[source] = true
+	}
 	for _, evidence := range node.Evidence {
 		if !validSource(evidence.Source) || strings.TrimSpace(evidence.Quote) == "" {
 			return Page{}, fmt.Errorf("%w: empty or invalid wiki evidence for %q", ErrInvalid, page.ID)
@@ -126,12 +146,18 @@ func wikiNodePage(snap *Snapshot, names map[string][]PageRef, job string, node W
 				page.Links = append(page.Links, link)
 			}
 		}
-		if !slices.Contains(page.Sources, evidence.Source) {
+		if evidenceSeen[evidence] || (evidence.Local && localWitnesses[evidence.To] >= wikiLocalWitnessLimit) {
+			continue
+		}
+		if !sourceSeen[evidence.Source] {
+			sourceSeen[evidence.Source] = true
 			page.Sources = append(page.Sources, evidence.Source)
 		}
-		if !slices.Contains(page.Wiki.Evidence, evidence) {
-			page.Wiki.Evidence = append(page.Wiki.Evidence, evidence)
+		evidenceSeen[evidence] = true
+		if evidence.Local {
+			localWitnesses[evidence.To]++
 		}
+		page.Wiki.Evidence = append(page.Wiki.Evidence, evidence)
 	}
 	return page, snap.validatePageWrite(page)
 }

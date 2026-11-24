@@ -1065,17 +1065,22 @@ repeats the committed batch nor admits history added after the snapshot.
 The pause response stays pending until the reviewer exits. Browser coverage
 checks the toolbar resumes the original task after reopening, and the real
 reviewer checks that an explicit resume after failure still excludes peers.
-The wiki build loopback tests cap the first model input and hold a later segment while the first nodes and
-their undirected edge become visible. It checks the original attribution,
-pauses and resumes inside the source, and checks article completion without
-overwriting a separate distillation receipt. A wide-input refusal is
-replanned, with assertions that the accepted model inputs cover every original
-UTF-8 byte. The browser shows verified batch counts before the first record is
-complete. The store test covers article
-edits, replay and untrusted excerpt markup. The browser follows the Knowledge
-entry through the generated graph and article endpoints. `wiki-build-*`
-TLC cases catch early document publication, early completion and a lost
-document checkpoint on resume.
+The Wiki loopback tests hold model review while the local scan publishes
+searchable observations, check source drill-down, replay partially published
+files after a receipt failure and verify incremental reuse. Actual model
+requests exercise item-level repair, a smaller retry that covers the original
+UTF-8 data, and pauses inside a source. The web suite verifies that an open graph
+refreshes, search reaches nodes outside a large overview and an available
+citation shows its excerpt. Measure the time from the actual build action to
+searchable graph and original citation on an isolated history copy.
+
+`wiki-build-*` checks the bounded scan/review/document protocol in
+`models/knowledge/WikiBuild.tla`. A local scan checkpoint requires publication,
+review requires a complete local scan, and final completion requires all
+semantic windows and documents. Negated progress witnesses exercise pause during
+local scan and article publication. The model represents complete source and
+document units, with file publication and receipt acknowledgement distinct.
+SQLite/file failure and exact source identity are verified in behavioral tests.
 `distillation-progress-*` TLC cases cover completion only at the end of the
 scope, acceptance before advancing, counting a record after its final segment,
 and retaining both checkpoint positions across resume.
