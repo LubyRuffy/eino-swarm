@@ -13,6 +13,9 @@ type MemoryConfig struct {
 	// AutoReview runs a review after each completed turn, which is what makes
 	// memory grow without anyone being asked to maintain it.
 	AutoReview bool `yaml:"auto_review" json:"auto_review"`
+	// AutoDream applies explicit human corrections to existing skills in the
+	// same project after a turn. Memory and AutoReview must be enabled.
+	AutoDream bool `yaml:"auto_dream" json:"auto_dream"`
 	// CharLimit bounds MEMORY.md. A write that would exceed it fails with the
 	// current entries attached, rather than silently dropping the oldest.
 	CharLimit int `yaml:"char_limit" json:"char_limit"`

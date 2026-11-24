@@ -74,3 +74,27 @@ describe("Skill age settings", () => {
     expect(screen.getByText(/candidates for review.*never deleted automatically/i)).toBeInTheDocument()
   })
 })
+
+
+describe("Automatic memory corrections", () => {
+  it.each([
+    { enabled: false, auto_review: true },
+    { enabled: true, auto_review: false },
+  ])("keeps the preference while a prerequisite is disabled (%j)", (prerequisites) => {
+    const onChange = vi.fn()
+    const { rerender } = render(<MemorySettings
+      settings={{ ...settings, memory: { ...settings.memory, ...prerequisites, auto_dream: false } }}
+      onChange={onChange}
+    />)
+    const correctionSwitch = () => screen.getByRole("switch", { name: "Automatic memory corrections" })
+    expect(correctionSwitch()).toBeDisabled()
+    expect(correctionSwitch()).not.toBeChecked()
+    rerender(<MemorySettings
+      settings={{ ...settings, memory: { ...settings.memory, auto_dream: false } }}
+      onChange={onChange}
+    />)
+    expect(correctionSwitch()).toBeEnabled()
+    expect(correctionSwitch()).not.toBeChecked()
+    expect(onChange).not.toHaveBeenCalled()
+  })
+})

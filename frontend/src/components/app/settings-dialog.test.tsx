@@ -472,6 +472,20 @@ describe("Settings dialog", () => {
     expect(vi.mocked(api.saveSettings).mock.calls[0][0].ui).toBeUndefined()
   })
 
+  it("autosaves an explicit opt-out of automatic memory corrections", async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await waitSettingsLoaded()
+    await user.click(screen.getByRole("tab", { name: "Memory" }))
+    const toggle = screen.getByRole("switch", { name: "Automatic memory corrections" })
+    expect(toggle).toBeChecked()
+    await user.click(toggle)
+    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith({
+      memory: { ...base.memory, auto_dream: false },
+    }))
+    expect(toggle).not.toBeChecked()
+  })
+
   it("keeps invalid cloud tool JSON across pages and blocks auto-save and leaving", async () => {
     vi.mocked(api.settings).mockResolvedValue({
       ...base,

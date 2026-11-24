@@ -71,6 +71,9 @@ export const memoryEn = {
   "settings.memory.autoReview": "Review a conversation when it finishes",
   "settings.memory.autoReviewHint":
     "A finished turn is read back so durable facts and reusable procedures are kept. A conversation outside a project keeps procedures in the shared skill library. Off means memory only changes when an agent or you write to it.",
+  "settings.memory.autoDream": "Automatic memory corrections",
+  "settings.memory.autoDreamHint":
+    "Apply explicit human corrections to existing skills in the same project after a turn. Requires memory and automatic review.",
   "settings.memory.after": "After a review",
   "settings.memory.afterHint":
     "The review still runs and still writes. This only governs the line that appears after the answer.",

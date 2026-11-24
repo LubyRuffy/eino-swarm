@@ -129,6 +129,12 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		executionGuidance = incrementalExecutionInstruction
 	}
 	managedExecIndex := rt.managedExecToolIndex(turn, th, toolset, resumed)
+	_, correction := dreamFrame(turn.UserText)
+	if correction && pc != nil {
+		readOnly := *pc
+		readOnly.tools = pc.viewTools
+		pc = &readOnly
+	}
 	instruction := managerPrompt(toolset, JoinPromptSections(historyPrompt(toolset, audience), taskCoordinationPrompt, executionGuidance,
 		managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID), turn.NuwaEnabled), humanReply, rt.finalGoalWorkerSection(th)), turn.NuwaEnabled, managedExecIndex >= 0)
 	// Fresh slice: pc.managerTools may return the workspace toolset's
@@ -188,6 +194,9 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	managerTools = append(managerTools, AskUserTool(rt.waitAsk))
 	managerTools = append(managerTools, rt.managerScheduleTools(turn)...)
 	managerTools = append(managerTools, rt.managerTaskTools(turn)...)
+	if correction {
+		instruction = JoinPromptSections(instruction, "Only the host can apply an explicit memory correction after a successful turn when automatic correction is enabled. Leave project memory untouched and do not claim that a correction was saved. Check the memory review receipt for the outcome.")
+	}
 	budget := e.cfg.SwarmSnapshot().ManagerIterations()
 	if pursuingGoal(th) && !pausedStandingGoal(th) {
 		budget = e.cfg.SwarmSnapshot().GoalSessionIterations()

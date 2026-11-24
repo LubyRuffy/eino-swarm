@@ -395,6 +395,9 @@ func (e *Engine) recordSessionMemory(threadID, turnID, summary string, through i
 func (e *Engine) scheduleSessionAndReview(threadID string, turn *store.Turn, status string,
 	pc *projectContext, final string,
 ) {
+	if turn != nil && e.scheduleDream(turn, status, pc) {
+		return
+	}
 	if !e.sessions.spawn() {
 		return
 	}

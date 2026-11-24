@@ -535,6 +535,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-025 Memory review evidence and commit
 
+- 显式技能纠正。`memory.auto_dream` 默认 true，依赖全局与项目记忆及 `auto_review`。仅接受普通成功回合完整的 `memory-correction` 消息及该回合持久化的原始人类输入。后台复用项目复盘门，提交前核对来源回合及项目归属。现有技能完整正文必须与 `before` 一致，Store 锁内原子保存 `after` 和来源标记，保留描述、归属及使用统计。同来源重放保持幂等。模型写工具、合并、整理和搬家不得覆盖或移除标记保护的技能。人工管理和后续显式纠正保留其入口。该回合用既有 `memory_review.dream` 保存状态、来源序号和实际变更，无额外模型请求。失败、规划、调度、续办及已删除的来源不授权提交。设置关闭停止新纠正，已确认技能保留保护。证据 `internal/engine/dream_correction_http_test.go`、`internal/memory/skill_correction_test.go`。
+
 - 状态：active；类型：lifecycle / consistency / data / compatibility；作用范围：自动复盘、notes 存储、skill 写入、复盘 Trace；关联功能：`F-420`、`F-160`；关联契约：`C-012`。
 - 契约内容：memory 与 auto-review 开启时，成功回合完整复盘，不因 manager 曾写入任何一项记忆而跳过。失败项目回合只允许有效真实人类要求形成 notes，不读任务工具/助手/运行时续办/派生摘要作为新证据，不写技能或执行技能 fold；取消不自动复盘。手动 Review now 仍选择最近成功回合。
 - 输入边界：有效 steer 先应用修订与撤回；源事件优先人类、再近期按 agent/call ID 配对的工具交互、最后助手及派生文本，渲染保持时间顺序。单个事件源 2000、源总量 24000 rune 含完整生命周期前置块、framing、分隔与截断标记；成功回合先预留完整、有界的生命周期块，再从剩余预算选择人类/工具/claims，生成事实不伪造或截短真实身份；身份 framing 本身超出单源上限时省略整个来源组，工具配对不拆分，不截断身份字段或赋予被省略正文来源权限。当前 notes、技能目录和系统指令不在此源预算内，不承诺完整模型输入或费用的同一上限。取得项目复盘串行锁后、模型调用前读取当前 notes。

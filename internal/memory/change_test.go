@@ -113,7 +113,7 @@ func TestSkillToolDetailsRetainExactFilesAcrossCreatePatchAndDelete(t *testing.T
 	assertChangeContent(t, (*changes)[3], string(rewritten), "")
 }
 
-func TestSkillChangeLeavesUnknownEvidenceAsPreviewWithoutChangingWriteResult(t *testing.T) {
+func TestSkillChangeRefusesUnreadableExistingContentAndKeepsReadbackFailuresHonest(t *testing.T) {
 	for _, side := range []string{"before", "after"} {
 		t.Run(side, func(t *testing.T) {
 			s := New(t.TempDir(), 100)
@@ -126,19 +126,20 @@ func TestSkillChangeLeavesUnknownEvidenceAsPreviewWithoutChangingWriteResult(t *
 					t.Fatal(err)
 				}
 			}
+			called := false
 			skill, change, err := s.changeSkill("proof", func() (Skill, error) {
-				if side == "before" {
-					if err := os.Remove(path); err != nil {
-						return Skill{}, err
-					}
-					if err := os.WriteFile(path, []byte("saved content"), 0o600); err != nil {
-						return Skill{}, err
-					}
-				} else if err := os.Mkdir(path, 0o700); err != nil {
+				called = true
+				if err := os.Mkdir(path, 0o700); err != nil {
 					return Skill{}, err
 				}
 				return Skill{SkillInfo: SkillInfo{Name: "proof"}}, nil
 			})
+			if side == "before" {
+				if err == nil || called || change != (Change{}) {
+					t.Fatalf("unreadable existing file did not block an agent write: called=%v change=%+v err=%v", called, change, err)
+				}
+				return
+			}
 			if err != nil || skill.Name != "proof" || change.Before != nil || change.After != nil {
 				t.Fatalf("evidence read changed successful operation: skill=%+v change=%+v err=%v", skill, change, err)
 			}

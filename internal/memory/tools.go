@@ -434,7 +434,7 @@ func (t *skillManageTool) InvokableRun(_ context.Context, args string, _ ...tool
 		t.onChange(change)
 		return marshal(map[string]any{"success": true, "name": name}), nil
 	case "merge":
-		skill, deleted, err := t.store.MergeSkills(name, a.Sources, a.Description, a.Content)
+		skill, deleted, err := t.store.mergeSkills(name, a.Sources, a.Description, a.Content, true)
 		if err != nil {
 			var dup *DuplicateSkillError
 			if errors.As(err, &dup) {

@@ -455,6 +455,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-420 Configuration and project memory
 
+- **自动纠正技能**默认开启，需项目记忆和自动复盘已开启。在普通项目会话发送完整 `memory-correction` 消息，成功后由后台在确认原正文仍相同的情况下更新一条技能。后续会话可通过 `skill_view` 使用修订版，自动工具和整理流程保护已确认的纠正。设置入口 Settings → Memory，Trace 可检查本次修订回执。关联 `C-025`。证据 `internal/engine/dream.go`、`internal/engine/dream_correction_http_test.go`、`internal/memory/skill_correction.go`。
+
 - 用户触发的“整理记忆”支持原笔记升为技能、无步骤短技能降为笔记；完整保留源文字、唯一匹配、预算与目标冲突校验后先存目标再删源，部分失败记录已保存内容，重试按已有最终状态幂等。自动复盘／worker／共享库不获搬家权限。结果显示升降类计数与流式动作，有既有 turn 时动作和陈旧名单进入同 turn Trace。失败摘要按已提交笔记及完整搬家回执判断保存结果，不将仅创建技能的半完成提升当作笔记已保存。入口：项目 Memory 整理按钮、既有 tidy-skills API；关联契约：`C-025`、`C-012`；实现证据：`internal/memory/reclassify.go`、`internal/engine/review_tidy.go`；测试证据：`internal/engine/review_reclassify_test.go`、`internal/server/memory_reclassify_test.go`、`frontend/e2e/memory-boundary.spec.ts`、`frontend/e2e/memory-tidy-partial.spec.ts`。
 
 - 技能查看统计：manager/worker 的成功 skill_view 累加 usage.json，列表、HTTP 查看及复制不计数；面板显示次数、最近查看与可编辑阈值的陈旧 Badge，以及每个技能的成本（索引行字数、正文字数）和索引总字数中未被查看技能所占部分；整理时陈旧候选附带相同成本，作为裁剪依据。merge 累加来源统计、delete 删除边车、copy 从零开始，正文修改时间和摘要不变。整理陈旧候选仅供模型判断，候选名单随结果／原 turn Trace 保留。入口：Memory、Settings → Memory、skill_view；关联契约：`C-025`、`C-012`；实现证据：`internal/memory/skill_usage.go`、`internal/engine/review_tidy.go`、`internal/server/projects.go`；测试证据：`internal/memory/skill_usage_test.go`、`internal/memory/prompt_stale_test.go`、`internal/server/skill_usage_copy_test.go`、`internal/server/memory_stale_test.go`、`internal/engine/review_stale_test.go`、`frontend/e2e/memory-boundary.spec.ts`。

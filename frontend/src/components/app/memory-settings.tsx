@@ -53,6 +53,17 @@ export function MemorySettings({
             onCheckedChange={(auto_review) => update({ auto_review })}
           />
         </Field>
+        <Field
+          query={query}
+          label={t("settings.memory.autoDream")}
+          hint={t("settings.memory.autoDreamHint")}
+        >
+          <Switch
+            checked={settings.memory.auto_dream ?? true}
+            disabled={!settings.memory.enabled || !settings.memory.auto_review}
+            onCheckedChange={(auto_dream) => update({ auto_dream })}
+          />
+        </Field>
         <SettingsChoice
           query={query}
           search={[t("settings.memory.after"), "notifications", "transcript"]}

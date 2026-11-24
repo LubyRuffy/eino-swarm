@@ -38,6 +38,8 @@ type SkillInfo struct {
 type Skill struct {
 	SkillInfo
 	Body string `json:"body"`
+	// correction is private host metadata, independent of skill identity and usage.
+	correction string
 }
 
 // ListSkills returns every skill, by name, so the prompt is stable between
@@ -86,7 +88,7 @@ func (s *Store) readSkill(name string) (Skill, error) {
 		return Skill{}, fmt.Errorf("memory: read skill %s: %w", name, err)
 	}
 	front, body := splitFrontMatter(string(raw))
-	skill := Skill{SkillInfo: SkillInfo{Name: name, Description: front["description"]}, Body: body}
+	skill := Skill{SkillInfo: SkillInfo{Name: name, Description: front["description"]}, Body: body, correction: front[skillCorrectionKey]}
 	if n := front["name"]; n != "" {
 		// The directory name wins: it is what skill_view is called with, and a
 		// front matter that disagrees would advertise a name that cannot be
@@ -108,7 +110,8 @@ func (s *Store) readSkill(name string) (Skill, error) {
 	return skill, nil
 }
 
-// WriteSkill creates or overwrites one skill.
+// WriteSkill explicitly creates or overwrites one skill, replacing any prior
+// correction protection. Agent tools check protection before using the writer.
 func (s *Store) WriteSkill(name, description, body string) (Skill, error) {
 	if err := ValidSkillName(name); err != nil {
 		return Skill{}, err
@@ -145,6 +148,7 @@ func (s *Store) writeSkillLocked(name, description, body string, except map[stri
 // PatchSkill replaces the one occurrence of oldText in a skill's body. Skills
 // are long, so patching is how an agent corrects a step it got wrong without
 // rewriting — and re-deriving — the whole procedure.
+// An explicit host patch replaces prior correction protection.
 func (s *Store) PatchSkill(name, oldText, newText string) (Skill, error) {
 	if err := ValidSkillName(name); err != nil {
 		return Skill{}, err
@@ -177,7 +181,8 @@ func (s *Store) patchSkillLocked(name, oldText, newText string) (Skill, error) {
 	return s.readSkill(name)
 }
 
-// DeleteSkill removes a skill and its directory.
+// DeleteSkill explicitly removes a skill and its directory, including any
+// correction protection. Agent tools check protection before deletion.
 func (s *Store) DeleteSkill(name string) error {
 	if err := ValidSkillName(name); err != nil {
 		return err
@@ -329,6 +334,10 @@ func SafeSkillName(s string) string {
 // renderSkill writes the agentskills.io shape: YAML front matter with the name
 // and the description, then the procedure.
 func renderSkill(name, description, body string, origin *SkillOrigin) string {
+	return renderSkillDocument(name, description, body, origin, "")
+}
+
+func renderSkillDocument(name, description, body string, origin *SkillOrigin, correction string) string {
 	var b strings.Builder
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "name: %s\n", name)
@@ -337,6 +346,9 @@ func renderSkill(name, description, body string, origin *SkillOrigin) string {
 		fmt.Fprintf(&b, "origin_project: %s\n", yamlOneLine(origin.ProjectID))
 		fmt.Fprintf(&b, "origin_name: %s\n", yamlOneLine(origin.Name))
 		fmt.Fprintf(&b, "origin_digest: %s\n", yamlOneLine(origin.Digest))
+	}
+	if correction != "" {
+		fmt.Fprintf(&b, "%s: %s\n", skillCorrectionKey, correction)
 	}
 	b.WriteString("---\n\n")
 	b.WriteString(body)

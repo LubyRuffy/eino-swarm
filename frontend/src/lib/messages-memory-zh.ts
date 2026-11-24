@@ -66,6 +66,9 @@ export const memoryZh: { [K in keyof typeof memoryEn]: string } = {
   "settings.memory.autoReview": "会话结束时复盘",
   "settings.memory.autoReviewHint":
     "读回已完成的回合，留下值得带走的事实和可复用流程。不在项目里的会话把流程写进共享技能库。关掉后记忆只在代理或你写入时变化。",
+  "settings.memory.autoDream": "自动纠正记忆",
+  "settings.memory.autoDreamHint":
+    "回合结束后，将人类明确给出的纠正应用到同一项目的现有技能。需开启记忆与自动复盘。",
   "settings.memory.after": "复盘之后",
   "settings.memory.afterHint":
     "复盘照样跑、照样写。这里只管答案后面那一行。",

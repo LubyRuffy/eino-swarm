@@ -82,7 +82,7 @@ func (t *reclassifyTool) InvokableRun(_ context.Context, args string, _ ...tool.
 	case "promote":
 		result, err = t.store.PromoteNote(a.OldText, strings.TrimSpace(a.Name), a.Description, a.Content)
 	case "demote":
-		result, err = t.store.DemoteSkill(strings.TrimSpace(a.Name), a.Content)
+		result, err = t.store.demoteSkill(strings.TrimSpace(a.Name), a.Content, true)
 	default:
 		return failure("unknown action %q; use promote or demote", a.Action), nil
 	}
@@ -158,7 +158,12 @@ func (s *Store) PromoteNote(oldText, name, description, body string) (Reclassify
 
 // DemoteSkill preserves the short skill's factual body in a budgeted note
 // before deleting the skill. Repeated identical calls do not duplicate notes.
+// Agent tidy tools cannot demote a corrected skill.
 func (s *Store) DemoteSkill(name, content string) (ReclassifyResult, error) {
+	return s.demoteSkill(name, content, false)
+}
+
+func (s *Store) demoteSkill(name, content string, protectCorrections bool) (ReclassifyResult, error) {
 	var result ReclassifyResult
 	if err := ValidSkillName(name); err != nil {
 		return result, err
@@ -195,6 +200,9 @@ func (s *Store) DemoteSkill(name, content string) (ReclassifyResult, error) {
 			return result, nil
 		}
 		return result, err
+	}
+	if protectCorrections && skill.corrected() {
+		return result, errCorrectedSkill
 	}
 	max := s.entryMax
 	if max <= 0 {

@@ -1699,6 +1699,16 @@ restate the body. This changes no Markdown format or event kind.
    continuation, session briefing, final answer or task-tool evidence, no skill
    tools and no skill fold. Cancellation starts no automatic review.
 
+   An explicit `memory-correction` message uses the default automatic
+   correction path instead of model extraction. After the ordinary turn
+   finishes, the project review gate serializes a short commit. The engine
+   checks the durable human input, the live owner and settings. The memory
+   store compares the complete current body and atomically writes the
+   replacement with a source marker. Agent skill edits and consolidation
+   respect that marker, while later conversations open the corrected body
+   through `skill_view`. The existing `memory_review` event carries the
+   source sequence and actual change. See [memory settings](docs/CONFIG.md#memory).
+
    Successful-turn reviews reconstruct turn-attributed worker lifecycle facts
    from the full persisted conversation history before clipping the selected
    source transcript. These deterministic facts precede the bounded briefing and

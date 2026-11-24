@@ -248,6 +248,7 @@ func (e *Engine) ReviewTurn(threadID string) (*store.Turn, error) {
 // reviewOutcome is the payload of the memory_review event, and what the UI
 // turns into one line saying what was learned.
 type reviewOutcome struct {
+	Dream           *dreamReceipt   `json:"dream,omitempty"`
 	StaleCandidates []string        `json:"stale_candidates,omitempty"`
 	Changed         bool            `json:"changed"`
 	Notes           map[string]int  `json:"notes,omitempty"`

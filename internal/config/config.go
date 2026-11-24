@@ -523,6 +523,7 @@ func Default() *Config {
 		Memory: MemoryConfig{
 			Enabled:               true,
 			AutoReview:            true,
+			AutoDream:             true,
 			CharLimit:             DefaultMemoryCharLimit,
 			EntryMax:              DefaultMemoryEntryMax,
 			ReviewMaxIterations:   DefaultReviewMaxIterations,

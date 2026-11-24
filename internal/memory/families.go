@@ -1,8 +1,10 @@
 package memory
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -255,7 +257,7 @@ func sortedSetNames(in map[string]struct{}) []string {
 // The kept name is the shared stem when that stem is a usable skill name,
 // otherwise the shortest existing name. Bodies of the dropped skills become
 // headed sections so the steps are not lost. Returns one Change per fold
-// that landed.
+// that landed. A family with a corrected member or keeper is left intact.
 func (s *Store) FoldSkillFamilies() ([]Change, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -282,6 +284,9 @@ func (s *Store) foldReportLocked() (FoldReport, error) {
 	touched := 0
 	for _, fam := range families {
 		merge, change, err := s.foldOneFamilyLocked(fam)
+		if errors.Is(err, errCorrectedSkill) {
+			continue
+		}
 		if err != nil {
 			report.Unchanged = report.Scanned - touched
 			report.After = report.Before - len(report.Deleted) + len(report.Created)
@@ -303,6 +308,9 @@ func (s *Store) foldReportLocked() (FoldReport, error) {
 }
 
 func (s *Store) foldOneFamilyLocked(fam []Skill) (FoldMerge, Change, error) {
+	if slices.ContainsFunc(fam, Skill.corrected) {
+		return FoldMerge{}, Change{}, errCorrectedSkill
+	}
 	names := make([]string, len(fam))
 	for i, sk := range fam {
 		names[i] = sk.Name
@@ -313,6 +321,16 @@ func (s *Store) foldOneFamilyLocked(fam []Skill) (FoldMerge, Change, error) {
 		if n == keep {
 			created = false
 			break
+		}
+	}
+	if created {
+		// A generated stem may already exist outside this family.
+		keeper, err := s.readSkill(keep)
+		if err != nil && !errors.Is(err, ErrNoMatch) {
+			return FoldMerge{}, Change{}, err
+		}
+		if keeper.corrected() {
+			return FoldMerge{}, Change{}, errCorrectedSkill
 		}
 	}
 	desc, body := foldFamilyContent(keep, fam)
@@ -341,9 +359,13 @@ func (s *Store) foldOneFamilyLocked(fam []Skill) (FoldMerge, Change, error) {
 }
 
 // MergeSkills folds sources into keep. keep may be new. An empty description
-// or body is derived from the members, so a model that names the group but
-// does not rewrite the procedure still lands one skill.
+// or body is derived from the members. This explicit host operation may
+// replace or remove a corrected skill; agent tools use the protected variant.
 func (s *Store) MergeSkills(keep string, sources []string, description, body string) (Skill, []string, error) {
+	return s.mergeSkills(keep, sources, description, body, false)
+}
+
+func (s *Store) mergeSkills(keep string, sources []string, description, body string, protectCorrections bool) (Skill, []string, error) {
 	if err := ValidSkillName(keep); err != nil {
 		return Skill{}, nil, err
 	}
@@ -385,6 +407,9 @@ func (s *Store) MergeSkills(keep string, sources []string, description, body str
 			return Skill{}, nil, err
 		}
 		members = append(members, sk)
+	}
+	if protectCorrections && slices.ContainsFunc(members, Skill.corrected) {
+		return Skill{}, nil, errCorrectedSkill
 	}
 
 	desc := strings.Join(strings.Fields(description), " ")

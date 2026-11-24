@@ -88,6 +88,7 @@ mcp:
 memory:
     enabled: true
     auto_review: true
+    auto_dream: true
     char_limit: 2200
     entry_max: 360
     review_max_iterations: 8
@@ -641,6 +642,7 @@ a project is how that project's own agent follows it.
 |---|---|---|
 | `enabled` | `true` | the master switch. Off means no project carries notes or skills, no review runs, and a conversation outside a project does not add to the shared skill library, whatever a project's own switch says. What is already stored stays readable in the Memory panel. |
 | `auto_review` | `true` | read a turn's event log when it finishes and keep what is worth carrying forward. Off leaves note extraction to the agents' own tools and the "Review now" button. Successful turns receive a full review even if the manager already wrote memory. A failed project turn may retain explicit human requirements as notes only, without task-tool/derived evidence, skill edits or skill folding; cancellation starts no automatic review. "Review now" still runs against the latest successful turn. Leftover skill families are folded after successful turns, including when auto-review is off; this is catalog hygiene, not extraction. The Memory panel's **Tidy memory** control still folds leftover stems, then asks the reviewer to curate the live catalog by content (a model call, not a filename scan). A catalog tidy uses at least 24 tool rounds (`DefaultTidyMaxIterations`), or `review_max_iterations` when that is higher, so a large index can actually be merged. |
+| `auto_dream` | `true` | **Settings → Memory → Automatic memory corrections**. Apply an explicitly supplied correction of one existing project skill after a successful ordinary turn. Requires project memory, `enabled`, and `auto_review`. Old configs missing this key inherit the default. |
 | `char_limit` | `2200` | how long the notes may get. They ride in the system prompt of **every** turn in the project, so this is a per-turn cost, not a disk one. A write that would grow past this is refused, including replacing a note with a longer one. Review input shows current usage and limits; refused batches preserve structured `usage`, `over_by`, `current_entries` and replacement `matched` feedback for the model. It may shorten or replace supported related notes before adding, within the same review budget; unrelated notes are not automatically evicted. Failed drafts leave official notes intact. Small on purpose. |
 | `entry_max` | `360` | how long **one** note may get on an agent write (`memory` add/replace). Notes are short declarations whose absence would misdirect work; methods, steps and workflow-local constraints belong in a skill. A note that restates a recorded skill is refused; an exact existing-name pointer without a body restatement is allowed. The Memory panel's editor still uses `char_limit` only: a person who pastes a longer note is spending that budget on purpose. Zero or negative is repaired to the default; a value above `char_limit` is clamped. |
 | `review_reasoning_effort` | `""` | separate reasoning level for automatic and manual turn reviews. Empty is the background default, `low`; `inherit` follows the reviewed turn; `low` / `medium` / `high` are sent as chosen. Values are trimmed/lowercased; unsupported values normalize to empty. Only the empty default is optional: an endpoint that rejects it with HTTP 400 is asked once more without `reasoning_effort`; an explicit or inherited level keeps the endpoint's error. Main conversation work and catalog tidy retain their own effort, model and output cap. Editable as **Memory → Review thinking**. Before this default, an empty value inherited the turn; set `inherit` to keep that behavior. |
@@ -652,6 +654,26 @@ a project is how that project's own agent follows it.
 
 Numbers that are zero or negative fall back to their defaults, so a hand-edited
 file cannot leave a project with no room to remember anything.
+
+To correct an existing procedure, open its current body and send one whole
+message containing the skill name, the complete current body, and the complete
+replacement as JSON. Encode newlines inside strings as `\n`.
+
+````markdown
+```memory-correction
+{"name":"verify-input","before":"Check the file name.","after":"Check the file name and the content digest."}
+```
+````
+
+Wait for the memory review receipt before starting work that needs the new
+version. The background operation checks that the complete old body still
+matches, then saves the replacement and its correction marker together. The
+turn's Trace shows the source sequence and whether the change landed. It
+uses no extra model call. Planning, generated turns, and failed or cancelled
+turns cannot authorize it. Corrected skills remain readable and protected
+from model memory tools, including review and tidy. To revise one again,
+submit a correction against its current body. Turning off automatic memory
+corrections stops new corrections. Existing correction protection remains.
 
 The files live in the data directory, never in your repository — see
 [DATA_MODEL.md](DATA_MODEL.md) for the layout. Edit notes from the Memory
