@@ -24,7 +24,6 @@ import { setThreadRunning } from "@/lib/thread-title"
 import { applyGoalThreadFlags } from "./goal-events"
 import { applyPlanThreadFlags } from "./plan-events"
 import { useProjects } from "./projects"
-import { useKnowledge } from "./knowledge"
 import { rememberStored, rewindStoredTranscript } from "./thread-history"
 import { bumpFollowups, dropMatchingFollowups } from "./followup-sync"
 import { beginTurnsRead, isCurrentTurnsRead } from "./turns-sync"
@@ -141,7 +140,6 @@ function flushQueued(set: StreamSet, get: StreamGet) {
   let closed = false
   let schedules = state.schedules ?? []
   let schedulesDirty = false
-  let knowledgeDirty = false
   const applied: SwarmEvent[] = []
   for (const ev of events) {
     if (!rememberStored(threadId, ev)) continue
@@ -257,18 +255,15 @@ function flushQueued(set: StreamSet, get: StreamGet) {
       const outcome = parseReview(ev)
       void useProjects.getState().loadMemory()
       if (outcome?.changed) useProjects.getState().noteMemoryWrite()
-      if (outcome?.knowledgeCount && outcome.projectId) useKnowledge.getState().invalidate(outcome.projectId)
       useProjects.getState().finishReview(ev.turn_id, outcome, ev.thread_id, ev.seq)
     }
     if (ev.kind === "tool_result") {
       const name = toolNameOf(transcript, ev.tool_call_id)
-      if (name === "record_knowledge") knowledgeDirty = true
       if (name && MEMORY_WRITE_TOOLS.has(name) && memoryWriteLanded(ev.text)) {
         void useProjects.getState().loadMemory()
         useProjects.getState().noteMemoryWrite()
       }
     }
-    if (ev.kind === "rewound") knowledgeDirty = true
   }
   if (applied.length === 0) return
   threads = setThreadRunning(
@@ -298,8 +293,6 @@ function flushQueued(set: StreamSet, get: StreamGet) {
     ).then(() => get().refreshFollowups())
   }
   if (schedulesDirty) void get().refreshSchedules()
-  const project = threads.find(({ id }) => id === threadId)?.project_id
-  if (project && (knowledgeDirty || closed)) useKnowledge.getState().invalidate(project)
   if (closed) {
     void get().refreshSchedules()
     void get().refreshFiles()

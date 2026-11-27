@@ -60,7 +60,7 @@ func TestEASMCollectionStopAndFailedPublicationKeepDurableEvidence(t *testing.T)
 					easmToolCall(w, request, openCall, "open_task_panel", `{"plugin_id":"easm-asset-portrait"}`)
 				case 2:
 					var panel taskpanel.Panel
-					if err := json.Unmarshal([]byte(nuwaValidationReceipt(request, openCall)), &panel); err != nil || panel.ID == "" {
+					if err := json.Unmarshal([]byte(scriptedToolReceipt(request, openCall)), &panel); err != nil || panel.ID == "" {
 						t.Errorf("invalid open receipt: %v", err)
 					}
 					input := map[string]any{"panel_id": panel.ID, "input": map[string]any{
@@ -220,7 +220,7 @@ func TestEASMCollectionStopAndFailedPublicationKeepDurableEvidence(t *testing.T)
 				OK    bool   `json:"ok"`
 				Error string `json:"error"`
 			}
-			receipt := nuwaValidationReceipt(calls[len(calls)-1], collectCall)
+			receipt := scriptedToolReceipt(calls[len(calls)-1], collectCall)
 			if finished.Status != store.TurnDone || json.Unmarshal([]byte(receipt), &result) != nil || result.OK || result.Error == "" || refused.Load() != 1 {
 				t.Fatalf("publication failure: turn=%+v refused=%d receipt=%s", finished, refused.Load(), receipt)
 			}

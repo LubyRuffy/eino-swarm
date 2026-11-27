@@ -6,7 +6,7 @@ The paired mobile app bundles the same plugin HTML/JS and iframe host. A PC conv
 
 ## Using the example
 
-Install and configure a compatible local `fofa` CLI using its own credential mechanism. Enable task panels under **Settings → Tools → Task panel plugins**. Source options such as the executable and batch size are configured under `task_panels` in `config.yaml` or through the settings API. Provide the query and request geographic collection and HTTP(S) checks in the conversation. The agent can open `fofa-world-map`, then invoke its registered source with `{ "query": "<task-supplied query>", "max_assets": 1000 }`. There is no default query and opening the panel alone performs no collection. Nuwa planners can open/read/publish panels; execution remains on workers. Planning mode exposes only reads.
+Install and configure a compatible local `fofa` CLI using its own credential mechanism. Enable task panels under **Settings → Tools → Task panel plugins**. Source options such as the executable and batch size are configured under `task_panels` in `config.yaml` or through the settings API. Provide the query and request geographic collection and HTTP(S) checks in the conversation. The agent can open `fofa-world-map`, then invoke its registered source with `{ "query": "<task-supplied query>", "max_assets": 1000 }`. There is no default query and opening the panel alone performs no collection. Planning mode exposes only reads.
 
 The inspector opens when it first discovers a new panel instance in the current conversation. Updates to known instances and reconnect replays do not switch the selected tab. Switching tabs keeps the iframe and map zoom. Local map filters, zoom and tooltips do not start tools. Closing the inspector does not stop the task; Stop cancels the task-owned collector and HTTP requests. The current implementation bundles plugins with the app rather than accepting external ZIPs or generated HTML at runtime.
 
@@ -28,12 +28,12 @@ During collection the display reports discovered and processed counts. A fixed c
 
 | 注册项 | `scope` | `activation` | `renderer` |
 | --- | --- | --- | --- |
-| `nuwa` | 当前会话，未打开会话时绑定项目 | 会话打开即显示；项目入口按模式或已有记录显示；保留当前焦点 | `react`：选中时挂载工作记录组件，会话通知复用聊天 SSE |
+| `graph` | 当前会话，未打开会话时绑定项目 | 会话打开即显示（`swarm.graph` 关闭时隐藏）；没有活动会话时由所选项目提供；保留当前焦点 | `react`：选中时挂载工作记录组件（[工作图](GRAPH.md)），会话通知复用聊天 SSE 的 `graph_updated` |
 | `task-panels` | `thread` | `agent_open`：当前会话有实例才显示入口，首次发现新实例时自动打开 | `iframe`：同一标签内可切换多个实例，其他标签选中时保留 iframe |
 
-解析注册项时会绑定具体的项目或会话 ID。当前标签因归属变化或实例移除而不可用时，右侧栏暂时显示 Agents，不覆盖原选项。工作记录读取当前会话及其所属项目；只在没有活动会话时使用侧栏所选项目。任务面板实例归会话，采集执行归启动它的任务，两者有各自的生命周期。
+解析注册项时会绑定具体的项目或会话 ID。当前标签因归属变化或实例移除而不可用时，右侧栏暂时显示 Agents，不覆盖原选项。工作记录的图归属于会话所在项目，不在项目中的会话则归会话自身；只在没有活动会话时使用侧栏所选项目。任务面板实例归会话，采集执行归启动它的任务，两者有各自的生命周期。
 
-按下文编写 HTML/JS 插件后，把定义加到 [catalog.json](../frontend/src/task-panels/catalog.json) 即可共用 `task-panels` 入口，无须改宿主注册表。新增宿主面板类型时，在宿主注册表中声明归属、激活、渲染和挂载规则，并验证切换作用域时不会带入旧面板。`catalog.json` 是构建和 Agent 共用的插件目录；工作记录的宿主注册项不进入该目录，也不出现在 Agent 提示词的可用任务面板列表中，不能用 `open_task_panel` 打开。配对手机继续使用会话级任务面板的现有入口，不展示工作记录图。
+按下文编写 HTML/JS 插件后，把定义加到 [catalog.json](../frontend/src/task-panels/catalog.json) 即可共用 `task-panels` 入口，无须改宿主注册表。新增宿主面板类型时，在宿主注册表中声明归属、激活、渲染和挂载规则，并验证切换作用域时不会带入旧面板。`catalog.json` 是构建和 Agent 共用的插件目录；工作记录的宿主注册项不进入该目录，也不出现在 Agent 提示词的可用任务面板列表中，不能用 `open_task_panel` 打开。配对手机的工作记录不经过任务面板：它通过加密 RPC `graph` 读取同一张图，任务面板继续使用会话级的现有入口。
 
 先约定面板状态：记录的稳定 ID、进度和错误字段，以及空状态。`schema` 校验输出状态，`initial_state` 是首次打开时的有效空状态；专用数据源的输入由 `source.input_schema` 另行约定。现有工具已能提供所需结果时，可以只新增前端插件，复用宿主的发布工具。
 

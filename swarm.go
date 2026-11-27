@@ -55,34 +55,31 @@ const DefaultAgentTimeout = time.Hour
 
 // Handle is the public handle to one running sub-agent.
 type Handle struct {
-	ID       string
-	Role     string
-	ParentID string
-	done     chan struct{}
-	mu       sync.Mutex
-	inbox    []string
+	ID    string
+	Role  string
+	done  chan struct{}
+	mu    sync.Mutex
+	inbox []string
 	// leftover steering that never hit a model call; wait_agents surfaces it
-	undelivered       []string
-	history           []adk.Message // cloned each model call; resume_agent's seed
-	resumedFrom       string
-	gen               int // bumps on resume so Result/Done cannot see the previous life
-	collected         bool
-	closeRequested    bool
-	cancel            context.CancelFunc
-	result            string
-	err               error
-	spawned           time.Time
-	finished          time.Time
-	activity          string // latest streamed reasoning/answer tail (for progress)
-	timeoutFailures   int    // consecutive watchdog stops, retained across resume
-	configTag         string
-	delegationEnabled *bool
-	workerConfig      *WorkerConfig
-	workerToolNames   *[]string
-	modelBinding      *ModelBinding
-	handoff           workerHandoff
-	preemptedByCap    bool
-	preemptedCap      int
+	undelivered     []string
+	history         []adk.Message // cloned each model call; resume_agent's seed
+	resumedFrom     string
+	gen             int // bumps on resume so Result/Done cannot see the previous life
+	collected       bool
+	closeRequested  bool
+	cancel          context.CancelFunc
+	result          string
+	err             error
+	spawned         time.Time
+	finished        time.Time
+	activity        string // latest streamed reasoning/answer tail (for progress)
+	timeoutFailures int    // consecutive watchdog stops, retained across resume
+	configTag       string
+	workerConfig    *WorkerConfig
+	modelBinding    *ModelBinding
+	handoff         workerHandoff
+	preemptedByCap  bool
+	preemptedCap    int
 }
 
 // Activity returns the agent's most recent streamed text tail (thinking or
@@ -182,7 +179,6 @@ type Registry struct {
 	// ResolveWorkerConfig is initialized once; tagged recovery never falls back.
 	ResolveWorkerConfig func(context.Context, string) (WorkerConfig, error)
 	workerConfig        *WorkerConfig
-	delegationUsed      bool
 	mu                  sync.Mutex
 	agents              map[string]*Handle
 	pending             map[string]*Handle // current generations awaiting wait/close
@@ -245,25 +241,12 @@ type Registry struct {
 	// instance to reuse a single client/endpoint across the swarm.
 	ModelBuilder ModelBuilder
 
-	// EnableDelegation gives workers scoped tools on this same Registry.
-	EnableDelegation bool
-
-	// SelectWorkerModel enables opt-in model_ref selection. Resolve and build
-	// before admission; an empty reference selects the host default.
-	SelectWorkerModel func(context.Context, string) (ModelBinding, ModelBuilder, error)
-	// VerifyAdmission bounds Nuwa verify/fix spawns. Nil ignores intent and
-	// target, which is ordinary mode. A refusal happens before a worker starts.
-	VerifyAdmission func(context.Context, string, string, string) error
 	// RestoreWorkerModel builds a pinned binding without resolving its Ref again.
 	RestoreWorkerModel func(context.Context, ModelBinding) (ModelBuilder, error)
 
 	// SubAgentTools are registered on every spawned sub-agent in addition to
 	// the swarm's send_message tool (e.g. web_search/web_fetch for workers).
 	SubAgentTools []tool.BaseTool
-
-	// SelectableToolNames seeds the worker configuration at initialization.
-	// A running host uses ConfigureWorkers to replace its worker surface.
-	SelectableToolNames []string
 
 	// WorkerPreamble is prepended to every sub-agent's Instruction. The task
 	// stays the user message. Empty keeps the previous behaviour: Instruction
@@ -786,11 +769,6 @@ func (r *Registry) Cleanup() int {
 		select {
 		case <-h.Done():
 		default:
-			if r.delegationUsed || r.EnableDelegation {
-				h.mu.Lock()
-				h.closeRequested = true
-				h.mu.Unlock()
-			}
 			running = append(running, h)
 		}
 	}

@@ -44,13 +44,11 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, message, in
 	// handoff cancels the manager's context; tying the worker to that context
 	// would kill in-flight work the next turn still needs. Handle.Cancel /
 	// Cleanup / Close still stop them.
-	runCtx, cancel := context.WithCancel(withWorkerTask(r.workerContext(ctx), task))
+	runCtx, cancel := context.WithCancel(r.workerContext(ctx))
 	watchCtx, watchCancel := context.WithTimeout(runCtx, timeout)
 	h.mu.Lock()
 	h.workerConfig = &config
 	h.configTag = config.Tag
-	enabled := config.EnableDelegation
-	h.delegationEnabled = &enabled
 	h.cancel = cancel
 	h.handoff.task, h.handoff.instruction = task, instruction
 	initial := restoredWorkerMessages(message, workerReplayHistory(h.handoff.restoreHistory, instruction))
@@ -59,15 +57,15 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, message, in
 		cancel()
 	}
 	done := h.done
-	identity := AgentIdentity{AgentID: id, Role: role, ParentID: h.ParentID, Generation: h.gen}
-	caller := toolInvocation{identity: identity, modelBinding: cloneModelBinding(h.modelBinding)}
+	identity := AgentIdentity{AgentID: id, Role: role, Generation: h.gen}
+	caller := toolInvocation{identity: identity}
 	h.mu.Unlock()
 	if seed != "" {
 		// Seed before the goroutine runs. Pushing after Spawn returned is how
 		// fork_context used to lose the race against the first model call.
 		h.pushInbox(seed)
 	}
-	extraTools = r.workerTools(config, r.bindSendCaller(extraTools, id, role))
+	extraTools = r.bindSendCaller(extraTools, id, role)
 	caller.workerTools = extraTools
 
 	receiptScope := rand.Text()
@@ -97,7 +95,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, message, in
 		defer watchCancel()
 
 		acc := &streamAcc{reg: r, agentID: id, role: role, handle: h, rawEvents: true,
-			workerGeneration: identity.Generation, parentID: identity.ParentID, toolReceiptScope: receiptScope}
+			workerGeneration: identity.Generation, toolReceiptScope: receiptScope}
 		inj := &Injector{handle: h, histCap: r.historyCap(), reg: r, caller: caller,
 			config: config, configured: true, toolReceiptScope: receiptScope}
 		handlers := []adk.ChatModelAgentMiddleware{inj}

@@ -9,11 +9,7 @@ import (
 )
 
 func (s *Server) getProjectDistillation(c *gin.Context) {
-	status := s.engine.ProjectDistillationStatus
-	if c.Query("wiki_graph") == "true" {
-		status = s.engine.ProjectWikiBuildStatus
-	}
-	result, err := status(c.Request.Context(), c.Param("id"))
+	result, err := s.engine.ProjectDistillationStatus(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		s.fail(c, err)
 		return

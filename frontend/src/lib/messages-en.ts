@@ -12,8 +12,8 @@ import { draftEN } from "./messages-draft"
 import { agentFailureEn } from "./messages-agent-failure-en"
 import { mcpEN } from "./messages-mcp"
 import { backupEn } from "./messages-backup"
-import { knowledgeEn } from "./messages-knowledge"
-import { workEn } from "./messages-work"
+import { graphEn } from "./messages-graph"
+import { distillEn } from "./messages-distill"
 
 /** English UI chrome. Keys are stable; Chinese lives in messages-zh.ts.
  *  Agent replies and protocol markers (quoted-send wrappers) stay English. */
@@ -25,7 +25,8 @@ export const en = {
   ...modelSettingsEn,
   ...speechEn,
   ...backupEn,
-  ...knowledgeEn,
+  ...graphEn,
+  ...distillEn,
   ...mcpEN,
   ...backoffEn,
   ...scheduleAnswerSettingsEn,
@@ -794,10 +795,6 @@ export const en = {
   "settings.swarm.autoTitle": "Name conversations automatically",
   "settings.swarm.autoTitleHint":
     "The first message is named once, as soon as it is sent. Off keeps that opening line. A name you type is never overwritten. Pin a different model under Models.",
-  "settings.swarm.workLedger": "Work records",
-  "settings.swarm.workLedgerHint": "Collect and show work records. Switch off to hide the panel.",
-  "settings.swarm.knowledge": "Knowledge",
-  "settings.swarm.knowledgeHint": "Summarize project knowledge. Switch off to stop knowledge distillation and hide the panel.",
   "settings.swarm.predictions": "Suggest a next step",
   "settings.swarm.predictionsHint":
     "After a reply, the empty composer shows one likely next message. Tab inserts it. Enter sends it. Off stops generating them.",
@@ -953,12 +950,6 @@ export const en = {
   "project.workdirDesktopHint": "Choose a directory in the desktop app.",
   "project.workdirChooseFailed": "Couldn't choose the directory: {error}",
   "project.memory": "Memory",
-  "project.nuwa": "Nuwa collaboration",
-  "project.nuwaHint": "Applies from the next turn; current work continues. The planner and executor below are saved on this project. Agents plan and divide the work, and share facts and results. Use Instruction to describe your goal and working principles.",
-  "project.nuwaPlanner": "Planner model",
-  "project.nuwaExecutor": "Executor model",
-  "project.nuwaModelsHint": "New roles use the executor. The conversation model picker changes the planner, starting on the next turn.",
-  ...workEn,
   "project.memoryOn":
     "After each conversation, keep what is worth carrying forward: notes and reusable procedures.",
   "project.memoryOff":

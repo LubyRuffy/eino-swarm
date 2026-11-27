@@ -824,56 +824,68 @@ itself save a summary or change Memory. See
 [C-036](CONTRACTS.md#c-036-original-history-is-queryable-through-read-only-sql)
 and [table semantics](DATA_MODEL.md#read-only-history-sql).
 
-**Nuwa collaboration** is enabled on the project, with a planner model and an
-executor model. Mode changes apply to subsequent turns. Current workers keep
-their configuration. See [Nuwa](NUWA.md).
+## Work records
 
-Open **Work records** in the right inspector to see the conversation's
-tasks, facts and results. In a project, the same view includes shared records.
-Choose **Merge into project** on a private record to share it and its private
-prerequisites. An independent conversation keeps its own work records.
-See [Work records](WORK.md).
+While agents work, they can keep a graph of what the work is about and an
+ordered to-do list. Open **Work records** in the right inspector to read it. The
+graph is on top and the to-dos are below. Agents write it with their
+`update_graph` tool; the panel is read-only, so to correct something you ask in
+the conversation. The full model is in [Work graph](GRAPH.md).
 
-## Project knowledge
+A conversation in a project shares the project's graph, so every conversation
+there sees the same record. A conversation outside a project has its own.
+Deleting the project or conversation deletes its graph.
 
-In the right panel, open **Knowledge** and choose
-**Enable knowledge base**. If the conversation is in **Shared library**,
-move it into a project to use Knowledge. **By type** groups pages by their
-schema type. Project-defined views follow named relationships. **Pending**
-shows missing linked pages, stale pages and schema issues. Filter the tree,
-open a page, then follow its body links, relationships or backlinks. Use
-**Back** to retrace that path or **Expand preview** to read a long page.
-Page sources distinguish primary material, unverified analysis and external
-links. Removed or rewound history remains listed as unavailable. An available
-last-update link opens its conversation or Trace.
+Each dot in the graph is a **subject**: an address, a domain, a company, a
+repository, a query, whatever the task is about. Its colour is its kind, its
+name is read from its attributes, and a line between two subjects records how
+one led to another. A subject is a **lead** until the agents show it is right,
+then **confirmed** with evidence, or **retracted** when they show it is wrong.
+A retracted subject stays, greyed, so a dead end is not repeated.
 
-Open **Graph** to browse the wiki from the project root. Dotted membership
-lines connect each relationship cluster and unlinked page to the project.
-Each pair of pages shares one undirected line. A solid line shows a defined
-relationship, and a dashed line shows a Wiki link with no defined relationship.
-Large groups of unlinked pages share an **Unlinked pages** entry. Open it to
-browse those pages, or search by title or alias across browsable pages.
-Selecting a result shows its path in the graph. Click a page node or use
-the open button beside search to read it. **Fit the whole knowledge graph**
-restores the overview.
+The ring around a dot says how far its analysis has gone. The state is derived
+from the to-dos about it, not set by anyone:
 
-On a paired phone, tap **Knowledge** beside a project or in a project
-conversation header. Search or page through the results, open a document
-and follow its Wiki links, related pages or backlinks. Expand a source excerpt
-to read the saved original text, or tap an available source to open its
-conversation on the phone.
+| ring | meaning |
+|---|---|
+| dashed | not analysed yet, or waiting for a to-do that is open |
+| flowing dashed | a to-do about it is in progress while the turn runs |
+| solid | every to-do about it is settled |
+| greyed | retracted |
 
-Open **Distill** from **Memory** or **Knowledge**. Choose **Latest turn** for
+A new to-do about a settled subject reopens its ring. With reduced motion on,
+the flowing ring is a static dashed one.
+
+Each to-do shows its status. A done to-do is struck through; a failed one shows
+the reason. The order is the priority. **Click a to-do** to highlight the
+subject it is about and everything its settlement brought in; click it again to
+clear the highlight. **Click a subject** to open its details (kind, status,
+ring, evidence count and attributes) and to filter the list to the to-dos about
+it and the one that found it; a chip above the list, or the details' close
+button, clears the filter. A
+credential an agent stored shows as a mask, never its value. A very large graph
+shows a bounded selection and says how many subjects are shown. If the live
+connection drops, the panel says updates are paused and reconnects.
+
+**Settings → Swarm → Conversations → Work records** turns it on or off. A turn
+keeps the setting it started with; switching it off stops writes at once and
+hides the panel. See [swarm](CONFIG.md#swarm). Planning mode can read the graph
+but not write it. On a paired phone, **Work records** shows the same graph and
+to-dos; see [mobile/README](../mobile/README.md).
+
+## Distill a project
+
+Open **Distill** from **Memory**. Choose **Latest turn** for
 the most recent successful turn, **Current task** for this conversation or
 **Current project** for the project's retained conversations, including archived
-ones. A single background review can save notes, Skills and wiki pages.
-Both panels show the same result and a link to an original Trace. Failed
+ones. A single background review can save notes and Skills.
+The panel shows the result and a link to an original Trace. Failed
 turns can contribute explicit human requirements to notes.
 
 For **Current task** and **Current project**, the progress bar shows how many
 historical records it has processed and how many remain. You can pause and
 continue from the last saved batch, including after restarting the app.
-Both panels show the saved scope. When a batch stops with records remaining,
+The panel shows the saved scope. When a batch stops with records remaining,
 the toolbar offers **Resume distillation** for that same scope.
 The review covers the completed history at the time you started it. By
 default, long records are reviewed as excerpts or skipped when they exceed
@@ -886,42 +898,13 @@ reading mode and segment position. Unavailable or ineligible sources can
 still be skipped.
 If a citation remains invalid or a temporary model failure ends a batch
 before a write is attempted, the reviewer retries that batch once. For a
-failure that needs a settings change, follow the message in either panel,
+failure that needs a settings change, follow the message in the panel,
 then choose **Resume distillation** to keep the progress already saved.
 
-In **Knowledge → Build wiki graph**, choose **Current task** or **Current project**
-to scan retained history and publish explicit identifiers, supported
-structured names, evidenced relationships and documents locally. To also
-review ambiguous names, events and relationships with a model, choose a scope
-under **Include model review**. Open **Graph** to search nodes and view their
-cited excerpts as soon as the local scan completes. A link uses one
-undirected line per pair. For large graphs the overview lays out a bounded
-selection, and search can find every node in the project. Once observations
-are verified, the builder appends them to the documents in batches and
-preserves existing prose.
-
-Generated workflow messages, waiting prompts and section or table labels
-are excluded from the graph. Older generated pages recognized as those
-labels appear in **Pending**, where you can open their saved text and
-original citations.
-
-The panel tracks scanned records and document updates. When selected,
-model review has its own progress. Records over the local scan size limit
-can be reviewed in an explicit review build. Pause and resume preserve the
-saved positions and chosen mode. Subsequent builds reuse
-accepted immutable records. Sources with changed content are checked again.
-The graph build has its own receipt alongside **Distill**.
-
-**Distill** uses enabled destinations. Choose **Enable knowledge and distill**
-to initialize a wiki and include it in the same review. An interrupted run
-with unconfirmed writes asks you to check the current contents before retrying.
-You can also ask directly in an enabled project turn or edit the files under
-the project's `knowledge` directory. On desktop, the folder button opens it.
-
 With project memory and **Review a conversation when it finishes** enabled,
-the automatic review of a successful turn considers notes, Skills and its
-enabled knowledge base together. It only saves findings worth keeping, and
-the turn receipt lists the writes that landed. For incremental extraction across
+the automatic review of a successful turn considers notes and Skills together.
+It only saves findings worth keeping, and the turn receipt lists the writes
+that landed. For incremental extraction across
 multiple conversations, create a recurring task for the project in
 **Scheduled**. Set a time window that matches the recurrence, specify which
 history to read, and ask the agent to check existing pages and cite original
@@ -933,8 +916,7 @@ actual reads and writes. Each schedule uses the ordinary project tools.
 ## Memory and skills
 
 With memory and auto-review on, each successful turn is reviewed even if the
-manager already wrote memory. When the project has Knowledge enabled, the
-same review also considers wiki updates. A failed project turn may retain explicit human
+manager already wrote memory. A failed project turn may retain explicit human
 requirements as notes, without learning skills from failed work. Cancellation
 does not start an automatic review. Notes are short facts whose absence would
 misdirect future work. Skills are reusable procedures. Constraints needed only
@@ -1284,9 +1266,8 @@ or a direct API call. The server's title is not a reason to skip it.
 
 Settings → Tools owns the server's enabled switch. The composer Tools menu lists
 that server's remote tools and can switch each one off without disabling the
-server. A tool switched off during a turn leaves the next request. Plan and
-Nuwa read-only toolsets do not mount MCP tools. Other Nuwa turns make the
-mounted names available to workers and keep the planner's toolset separate.
+server. A tool switched off during a turn leaves the next request. Plan
+mode's read-only toolset does not mount MCP tools.
 The call is checked against the connected tool's schema before dispatch.
 Missing required fields and clear type mismatches, including array elements,
 appear in the tool record. The model can issue a corrected call in the same

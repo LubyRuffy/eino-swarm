@@ -10,24 +10,23 @@ beforeEach(() => setLocale("zh"))
 function fixture() {
  const rpc = vi.fn(async (req: { op: string }): Promise<RemoteResponse> => ({v:1,id:"r",ok:true,
   ...(req.op === "catalog" ? { memory_available:true, models:[{provider_id:"a",model:"first",default:true},{provider_id:"b",model:"second"}] } : {}),
-  ...(req.op === "project_get" ? {memory_available:true,project:{id:"p",name:"Existing",system_prompt:"Keep",workdir:"/chosen ",resolved_workdir:"/chosen ",memory_enabled:true,nuwa_enabled:false}} : {}),
+  ...(req.op === "project_get" ? {memory_available:true,project:{id:"p",name:"Existing",system_prompt:"Keep",workdir:"/chosen ",resolved_workdir:"/chosen ",memory_enabled:true}} : {}),
   ...(req.op === "project_create" ? {projects:[{id:"new",name:"New"}]} : {}),
  }))
  const link = {alive:()=>true,rpc} as unknown as RemoteLink
  return {link,rpc}
 }
 describe("phone project management",()=>{
- it("creates on the selected PC with distinct Nuwa models and keeps path whitespace",async()=>{
+ it("creates on the selected PC and keeps path whitespace",async()=>{
   const {link,rpc}=fixture(); const onSaved=vi.fn()
   render(<ProjectManager link={link} projects={[]} onSaved={onSaved} onClose={()=>{}} />)
   fireEvent.click(screen.getByRole("button",{name:"新建项目"}))
   fireEvent.change(await screen.findByLabelText("项目名称"),{target:{value:"New"}})
   fireEvent.change(screen.getByLabelText("电脑工作目录"),{target:{value:"/chosen "}})
   await waitFor(()=>expect(screen.getByLabelText("项目记忆")).toBeChecked())
-  fireEvent.click(screen.getByLabelText("女娲协作"))
   fireEvent.click(screen.getByRole("button",{name:"创建项目"}))
   await waitFor(()=>expect(onSaved).toHaveBeenCalled())
-  expect(rpc).toHaveBeenCalledWith(expect.objectContaining({op:"project_create",project_patch:expect.objectContaining({name:"New",workdir:"/chosen ",nuwa_enabled:true,nuwa_planner_provider_id:"a",nuwa_executor_provider_id:"b"})}),expect.anything())
+  expect(rpc).toHaveBeenCalledWith(expect.objectContaining({op:"project_create",project_patch:expect.objectContaining({name:"New",workdir:"/chosen "})}),expect.anything())
  })
  it("name-only edits preserve a concurrently updated instruction",async()=>{
   const {link,rpc}=fixture()

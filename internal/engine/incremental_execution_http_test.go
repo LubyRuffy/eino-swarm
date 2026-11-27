@@ -15,15 +15,13 @@ import (
 // planner's role or overriding the project's instructions.
 func TestIncrementalExecutionGuidanceAtActualManagerHTTP(t *testing.T) {
 	for _, tc := range []struct {
-		name                       string
-		enabled, planner, planMode bool
-		wantGuidance               bool
+		name              string
+		enabled, planMode bool
+		wantGuidance      bool
 	}{
 		{name: "default disabled"},
 		{name: "ordinary manager opts in", enabled: true, wantGuidance: true},
 		{name: "planning mode keeps its role", enabled: true, planMode: true},
-		{name: "Nuwa planner keeps delegation", enabled: true, planner: true},
-		{name: "Nuwa plan keeps its role", enabled: true, planner: true, planMode: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, wire := newScheduleCompletionHTTPEngine(t, func(w http.ResponseWriter, _ *http.Request, _ int, request scheduleCompletionRequest) {
@@ -44,7 +42,7 @@ func TestIncrementalExecutionGuidanceAtActualManagerHTTP(t *testing.T) {
 				t.Fatal(err)
 			}
 			const projectRule = "Preserve the project's explicit scope and authorization requirements."
-			project, err := e.CreateProject("Execution guidance fixture", projectRule, "", false, tc.planner)
+			project, err := e.CreateProject("Execution guidance fixture", projectRule, "", false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -96,11 +94,8 @@ func TestIncrementalExecutionGuidanceAtActualManagerHTTP(t *testing.T) {
 			if tc.wantGuidance && strings.Index(prompt, projectRule) < strings.Index(prompt, "## Incremental execution") {
 				t.Fatal("generic execution guidance displaced project instruction precedence")
 			}
-			if !tc.planner && !strings.Contains(prompt, "Assess delegation before substantial work") {
+			if !strings.Contains(prompt, "Assess delegation before substantial work") {
 				t.Fatal("ordinary manager input lost proactive delegation")
-			}
-			if tc.planner && strings.Contains(prompt, "You are the manager of a team of AI agents") {
-				t.Fatal("the ordinary manager role leaked into the Nuwa planner")
 			}
 		})
 	}

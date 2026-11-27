@@ -142,10 +142,7 @@ func appendWorkerRoster(msgs []adk.Message, running []swarm.RestoredWorker, fini
 
 type workerSlot struct {
 	modelBinding                         *swarm.ModelBinding
-	parentID                             string
 	configTag                            string
-	delegationEnabled                    *bool
-	workerToolNames                      *[]string
 	role, instruction, task, result, err string
 	running, spawned, inflight           bool
 	seed                                 strings.Builder
@@ -192,9 +189,7 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 		for _, w := range checkpoint.Workers {
 			s := note(w.ID)
 			s.modelBinding = w.ModelBinding
-			s.parentID = w.ParentID
-			s.configTag, s.delegationEnabled = w.ConfigTag, w.DelegationEnabled
-			s.workerToolNames = w.WorkerToolNames
+			s.configTag = w.ConfigTag
 			s.role, s.instruction, s.spawned, s.running = w.Role, w.Instruction, true, !w.Finished
 			s.task = w.Task
 			if s.task == resumeCue {
@@ -259,16 +254,12 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 		switch ev.Kind {
 		case swarm.NotifySpawned.String():
 			previousGeneration := s.generation
-			s.configTag, s.delegationEnabled = ev.ConfigTag, ev.DelegationEnabled
-			s.parentID = ev.ParentID
+			s.configTag = ev.ConfigTag
 			if ev.WorkerGeneration > 0 {
 				s.generation = ev.WorkerGeneration
 			}
 			if ev.ModelBinding != nil {
 				s.modelBinding = ev.ModelBinding
-			}
-			if ev.WorkerToolNames != nil {
-				s.workerToolNames = ev.WorkerToolNames
 			}
 			s.spawned = true
 			s.running = true
@@ -347,9 +338,8 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 		if s.running {
 			w := swarm.RestoredWorker{
 				ModelBinding: s.modelBinding,
-				ParentID:     s.parentID,
-				ConfigTag:    s.configTag, DelegationEnabled: s.delegationEnabled, WorkerToolNames: s.workerToolNames,
-				Generation: s.generation, Collected: s.collected, CloseRequested: s.closeRequested,
+				ConfigTag:    s.configTag,
+				Generation:   s.generation, Collected: s.collected, CloseRequested: s.closeRequested,
 				ID: id, Role: s.role, Instruction: s.instruction, Task: s.task, ResumeMessage: resumeCue, TimeoutFailures: s.timeoutFailures,
 				History: s.restoredHistory, Inbox: s.inbox,
 			}
@@ -371,9 +361,8 @@ func orphanedWorkersFromCheckpoint(events []store.Event, checkpoint *restartChec
 		}
 		finished = append(finished, swarm.FinishedWorker{
 			ModelBinding: s.modelBinding,
-			ParentID:     s.parentID,
-			ConfigTag:    s.configTag, DelegationEnabled: s.delegationEnabled, WorkerToolNames: s.workerToolNames,
-			Generation: s.generation, Collected: s.collected, CloseRequested: s.closeRequested,
+			ConfigTag:    s.configTag,
+			Generation:   s.generation, Collected: s.collected, CloseRequested: s.closeRequested,
 			ID: id, Role: s.role, Result: s.result, Err: ferr, History: s.history, TimeoutFailures: s.timeoutFailures,
 		})
 	}

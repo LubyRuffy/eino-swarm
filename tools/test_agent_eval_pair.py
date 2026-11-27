@@ -23,7 +23,7 @@ def result(arm, pair_id="pair-1", passed=True, seconds=5, tokens=100, fixture="s
 
 class ScheduleTest(unittest.TestCase):
     def test_reasoning_effort_accepts_only_existing_thread_api_values(self):
-        base = {"version": 1, "runs": 1, "arms": [{"id": "a", "project_mode": "default"}, {"id": "b", "project_mode": "nuwa"}]}
+        base = {"version": 1, "runs": 1, "arms": [{"id": "a", "project_mode": "default"}, {"id": "b", "project_mode": "default"}]}
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "protocol.json"
             for value in (None, False, 0, [], {}, "default", "off", "LOW", " low "):
@@ -40,7 +40,7 @@ class ScheduleTest(unittest.TestCase):
             path.write_text(json.dumps(base))
             self.assertEqual(pair.load_spec(path), base)
 
-    def test_work_ledger_arms_use_real_yaml_booleans(self):
+    def test_graph_arms_use_real_yaml_booleans(self):
         base = {"version": 1, "runs": 1, "arms": [{"id": "a", "project_mode": "default"},
                                                    {"id": "b", "project_mode": "default"}]}
         with tempfile.TemporaryDirectory() as tmp:
@@ -48,25 +48,25 @@ class ScheduleTest(unittest.TestCase):
             protocol_path = root / "protocol.json"
             for value in (None, 0, 1, "true", [], {}):
                 spec = copy.deepcopy(base)
-                spec["arms"][1]["work_ledger"] = value
+                spec["arms"][1]["graph"] = value
                 protocol_path.write_text(json.dumps(spec))
-                with self.subTest(value=value), self.assertRaisesRegex(ValueError, "work_ledger"):
+                with self.subTest(value=value), self.assertRaisesRegex(ValueError, "graph"):
                     pair.load_spec(protocol_path)
             for value in (False, True):
                 spec = copy.deepcopy(base)
-                spec["arms"][1]["work_ledger"] = value
+                spec["arms"][1]["graph"] = value
                 protocol_path.write_text(json.dumps(spec))
                 self.assertEqual(pair.load_spec(protocol_path), spec)
                 data = root / str(value)
                 data.mkdir()
-                pair.runner.seed_data_dir(data, {}, None, 4096, work_ledger=value)
+                pair.runner.seed_data_dir(data, {}, None, 4096, graph=value)
                 config = data / "config.yaml"
                 self.assertEqual(config.read_text(), "swarm:\n    max_completion_tokens: 4096\n"
-                                 f"    work_ledger: {json.dumps(value)}\n")
+                                 f"    graph: {json.dumps(value)}\n")
                 self.assertEqual(config.stat().st_mode & 0o777, 0o600)
 
     def test_project_instruction_rejects_nonstring_values(self):
-        base = {"version": 1, "runs": 1, "arms": [{"id": "a", "project_mode": "default"}, {"id": "b", "project_mode": "nuwa"}]}
+        base = {"version": 1, "runs": 1, "arms": [{"id": "a", "project_mode": "default"}, {"id": "b", "project_mode": "default"}]}
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "protocol.json"
             for value in (None, False, 0, [], {}):
@@ -85,9 +85,9 @@ class ScheduleTest(unittest.TestCase):
 
     def test_paired_runs_keep_arm_instruction_separate_from_common_task(self):
         spec = {"version": 1, "runs": 1, "tasks": ["task"], "arms": [
-            {"id": "a", "project_mode": "default", "project_instruction": "Use independent evidence checks.", "reasoning_effort": "low", "work_ledger": False},
-            {"id": "b", "project_mode": "nuwa", "project_instruction": "Keep a compact audit trail.", "reasoning_effort": "high", "work_ledger": True},
-            {"id": "c", "project_mode": "nuwa"}]}
+            {"id": "a", "project_mode": "default", "project_instruction": "Use independent evidence checks.", "reasoning_effort": "low", "graph": False},
+            {"id": "b", "project_mode": "default", "project_instruction": "Keep a compact audit trail.", "reasoning_effort": "high", "graph": True},
+            {"id": "c", "project_mode": "default"}]}
         observed, reasoning, ledger = {}, {}, {}
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -105,7 +105,7 @@ class ScheduleTest(unittest.TestCase):
                 arm = args.run_identity["arm"]
                 observed[arm] = getattr(args, "project_instruction", None)
                 reasoning[arm] = getattr(args, "reasoning_effort", None)
-                ledger[arm] = args.work_ledger
+                ledger[arm] = args.graph
                 self.assertEqual(current, original)
                 row = result(arm, args.run_identity["pair_id"])
                 row["task_sha256"] = pair.protocol.task_fingerprint(current)
@@ -135,7 +135,7 @@ class ScheduleTest(unittest.TestCase):
         self.assertEqual(reasoning, {"a": "low", "b": "high", "c": None})
 
     def test_unrecognized_budget_or_external_score_claim_is_refused(self):
-        base = {"version": 1, "runs": 1, "arms": [{"id": "a", "project_mode": "default"}, {"id": "b", "project_mode": "nuwa"}]}
+        base = {"version": 1, "runs": 1, "arms": [{"id": "a", "project_mode": "default"}, {"id": "b", "project_mode": "default"}]}
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "protocol.json"
             for change in ({"budget": {"total_tokens": 100}}, {"benchmark": "unverified-external-benchmark"}):

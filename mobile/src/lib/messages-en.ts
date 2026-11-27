@@ -1,11 +1,9 @@
-import { knowledgeEn } from "./messages-knowledge"
 import { accountEn } from "./messages-account"
 import { pcWaitEn } from "./messages-pc-wait"
 import { generationEn } from "./messages-generation"
 import { speechEn } from "./messages-speech"
 export const en = {
   ...pcWaitEn,
-  ...knowledgeEn,
   ...speechEn,
   "account.capabilitiesUnknown": "Gateway capabilities could not be verified. Your saved settings are retained; retry below.",
   "selection.actions": "Selected text actions",
@@ -470,20 +468,14 @@ export const en = {
   "projects.workdirHint": "Use an existing directory on this PC; leave blank for a managed directory.",
   "projects.memory": "Project memory",
   "projects.memoryOff": "Global memory is disabled on this PC.",
-  "projects.nuwa": "Nuwa collaboration",
-  "projects.planner": "Planner model",
-  "projects.executor": "Executor model",
-  "projects.modelsHint": "Project settings apply to subsequent tasks; running workers retain their model.",
   "projects.empty": "No projects yet.",
   "projects.loading": "Loading project settings…",
   "projects.saving": "Saving…",
   "projects.failed": "Could not load or save the project. Please retry.",
   "projects.unsupported": "Update the PC app to manage projects.",
   "projects.back": "Back to projects",
-  "projects.defaultModels": "Use the PC default model pair",
   "projects.saved": "Project saved.",
   "projects.catalogFailed": "Could not load PC models and memory settings. Please retry.",
-  "projects.unavailable": "Saved, currently unavailable",
   "mermaid.source": "View / copy diagram source",
   "mermaid.controls": "Diagram zoom",
   "mermaid.zoomOut": "Zoom out diagram",

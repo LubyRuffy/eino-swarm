@@ -61,12 +61,12 @@ func (e *Engine) panelSource(ctx context.Context, turn *store.Turn) (taskpanel.S
 	return taskpanel.Source{ThreadID: turn.ThreadID, TurnID: turn.ID, AgentID: caller.AgentID, Generation: caller.Generation, ToolCallID: call}, nil
 }
 
-func (e *Engine) taskPanelTools(turn *store.Turn, set *tools.Set, readOnly, planner bool) []tool.BaseTool {
+func (e *Engine) taskPanelTools(turn *store.Turn, set *tools.Set, readOnly bool) []tool.BaseTool {
 	if turn == nil || !*e.cfg.Snapshot().TaskPanels.WithDefaults().Enabled {
 		return nil
 	}
 	makeTool := func(name, desc string, params map[string]*schema.ParameterInfo, run func(context.Context, string) (any, error)) tool.BaseTool {
-		return &nuwaTool{name: name, description: desc, params: params, run: func(ctx context.Context, args string) (string, error) {
+		return &funcTool{name: name, description: desc, params: params, run: func(ctx context.Context, args string) (string, error) {
 			if _, err := e.panelSource(ctx, turn); err != nil {
 				return "", err
 			}
@@ -88,7 +88,7 @@ func (e *Engine) taskPanelTools(turn *store.Turn, set *tools.Set, readOnly, plan
 		var in struct {
 			PanelID string `json:"panel_id"`
 		}
-		if err := decodeNuwaArgs(args, &in); err != nil {
+		if err := decodeToolArgs(args, &in); err != nil {
 			return nil, err
 		}
 		if in.PanelID != "" {
@@ -113,7 +113,7 @@ func (e *Engine) taskPanelTools(turn *store.Turn, set *tools.Set, readOnly, plan
 		var in struct {
 			PluginID string `json:"plugin_id"`
 		}
-		if err := decodeNuwaArgs(args, &in); err != nil {
+		if err := decodeToolArgs(args, &in); err != nil {
 			return nil, err
 		}
 		source, err := e.panelSource(ctx, turn)
@@ -137,7 +137,7 @@ func (e *Engine) taskPanelTools(turn *store.Turn, set *tools.Set, readOnly, plan
 		"protocol_version": {Type: schema.Integer, Required: true}, "panel_id": {Type: schema.String, Required: true}, "operation_id": {Type: schema.String, Required: true}, "base_revision": {Type: schema.Integer, Required: true}, "kind": {Type: schema.String, Required: true}, "state": {Type: schema.Object}, "operations": {Type: schema.Array, ElemInfo: &schema.ParameterInfo{Type: schema.Object}},
 	}, func(ctx context.Context, args string) (any, error) {
 		var in taskpanel.Update
-		if err := decodeNuwaArgs(args, &in); err != nil {
+		if err := decodeToolArgs(args, &in); err != nil {
 			return nil, err
 		}
 		source, err := e.panelSource(ctx, turn)
@@ -147,11 +147,9 @@ func (e *Engine) taskPanelTools(turn *store.Turn, set *tools.Set, readOnly, plan
 		return e.publishTaskPanel(ctx, source, in)
 	})
 	out := []tool.BaseTool{read, open, publish}
-	if !planner {
-		out = append(out, makeTool("run_panel_source", "Run an installed panel's registered data source for this task. Input must follow that source's schema; progress reaches the panel directly. A source run is merged into the panel state the call starts from, so a source that accepts batches can be run again for the next batch. It performs external work only when the user requested it. The tool finishes after collecting and joining all work.", map[string]*schema.ParameterInfo{"panel_id": {Type: schema.String, Required: true}, "input": {Type: schema.Object, Required: true}}, func(ctx context.Context, args string) (any, error) {
-			return e.runPanelSource(ctx, turn, set, args)
-		}))
-	}
+	out = append(out, makeTool("run_panel_source", "Run an installed panel's registered data source for this task. Input must follow that source's schema; progress reaches the panel directly. A source run is merged into the panel state the call starts from, so a source that accepts batches can be run again for the next batch. It performs external work only when the user requested it. The tool finishes after collecting and joining all work.", map[string]*schema.ParameterInfo{"panel_id": {Type: schema.String, Required: true}, "input": {Type: schema.Object, Required: true}}, func(ctx context.Context, args string) (any, error) {
+		return e.runPanelSource(ctx, turn, set, args)
+	}))
 	return out
 }
 
@@ -183,7 +181,7 @@ func (e *Engine) runPanelSource(ctx context.Context, turn *store.Turn, set *tool
 		PanelID string          `json:"panel_id"`
 		Input   json.RawMessage `json:"input"`
 	}
-	if err := decodeNuwaArgs(args, &in); err != nil {
+	if err := decodeToolArgs(args, &in); err != nil {
 		return nil, err
 	}
 	source, err := e.panelSource(ctx, turn)
@@ -207,7 +205,7 @@ func (e *Engine) runPanelSource(ctx context.Context, turn *store.Turn, set *tool
 		if err != nil {
 			return nil, err
 		}
-		if !e.turnMountsMCP(thread, turn.NuwaReadOnly) {
+		if !e.turnMountsMCP(thread) {
 			set = &tools.Set{WorkspaceDir: set.WorkspaceDir}
 		}
 	}

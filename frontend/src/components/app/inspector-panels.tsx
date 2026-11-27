@@ -4,7 +4,7 @@ import type { Translate } from "@/lib/use-t"
 import { useTaskPanelConnection, useTaskPanels } from "@/store/task-panels"
 import { panelText } from "@/task-panels/messages"
 import type { TaskPanel } from "@/task-panels/types"
-import { NuwaPanel } from "./nuwa-panel"
+import { GraphPanel } from "./graph/graph-panel"
 import { TaskPanels } from "./task-panels"
 
 interface TaskPanelProjection {
@@ -15,9 +15,8 @@ interface TaskPanelProjection {
 interface InspectorContext {
   threadId?: string
   project?: Project
-  threadProjectId?: string
   dataGeneration?: number
-  workLedger?: boolean
+  graph?: boolean
   taskPanels: TaskPanelProjection
 }
 
@@ -61,30 +60,23 @@ const registrations = [
     },
   },
   {
-    id: "nuwa",
+    id: "graph",
     renderer: "react",
     mount: "active",
-    label: (t) => t("nuwa.tab"),
-    bind: ({ project, threadId, threadProjectId, dataGeneration, workLedger }) => {
-      if (workLedger === false || (!threadId && !project)) return
-      const projectId = threadId ? threadProjectId ?? project?.id : project?.id
+    label: (t) => t("graph.tab"),
+    bind: ({ project, threadId, dataGeneration, graph }) => {
+      if (graph === false || (!threadId && !project)) return
       return {
         ownerId: threadId ?? project!.id,
         scope: threadId ? "thread" : "project",
         activation: threadId ? "thread_open" : "project_mode",
-        render: ({ latestTurn, openFiles, selectAgent }) => (
-          <NuwaPanel
-            key={JSON.stringify([threadId, projectId, dataGeneration])}
-            project={project}
-            projectId={projectId}
+        render: ({ visible, latestTurn }) => (
+          <GraphPanel
+            key={JSON.stringify([threadId, project?.id, dataGeneration])}
             threadId={threadId}
-            dataGeneration={dataGeneration}
-            activity={threadId && latestTurn ? {
-              id: latestTurn.id,
-              status: latestTurn.status,
-              onOpenFiles: openFiles,
-            } : undefined}
-            onSelectAgent={selectAgent}
+            projectId={threadId ? undefined : project?.id}
+            running={latestTurn?.status === "running"}
+            visible={visible}
           />
         ),
       }

@@ -25,11 +25,11 @@ const ToolQueryHistory = "query_history"
 const historyQueryTimeout = 5 * time.Second
 
 type historyQueryTool struct {
-	reader    historyQueryReader
-	maxChars  int
-	context   historyContext
-	guard     func(context.Context, string, string) error
-	knowledge bool
+	reader   historyQueryReader
+	maxChars int
+	context  historyContext
+	guard    func(context.Context, string, string) error
+	graph    bool
 }
 
 type historyContext struct {
@@ -39,8 +39,8 @@ type historyContext struct {
 }
 
 // turnMountsMCP gates construction of the MCP surface for a turn.
-func (e *Engine) turnMountsMCP(th *store.Thread, readOnly bool) bool {
-	if e.mcp == nil || th == nil || th.PlanMode || readOnly {
+func (e *Engine) turnMountsMCP(th *store.Thread) bool {
+	if e.mcp == nil || th == nil || th.PlanMode {
 		return false
 	}
 	restrict, _ := e.pool.AccountToolPolicy(th.ProviderID)
@@ -50,10 +50,10 @@ func (e *Engine) turnMountsMCP(th *store.Thread, readOnly bool) bool {
 // conversationTools is shared by new, restored and parked turns. Keeping the
 // host reader here also gives delegated workers the same original sources.
 func (e *Engine) conversationTools(ctx context.Context, th *store.Thread) (*tools.Set, error) {
-	return e.conversationToolsForExecution(ctx, th, e.turnWebExecution(th, nil), false)
+	return e.conversationToolsForExecution(ctx, th, e.turnWebExecution(th, nil))
 }
 
-func (e *Engine) conversationToolsForExecution(ctx context.Context, th *store.Thread, execution string, readOnly bool, knowledgeEnabled ...bool) (*tools.Set, error) {
+func (e *Engine) conversationToolsForExecution(ctx context.Context, th *store.Thread, execution string) (*tools.Set, error) {
 	workdir, err := e.executionWorkspace(th)
 	if err != nil {
 		return nil, err
@@ -67,7 +67,7 @@ func (e *Engine) conversationToolsForExecution(ctx context.Context, th *store.Th
 		set = tools.AllowWorkspace(set, allow)
 	}
 	set.TaskFileInstruction = e.taskWorkspaceInstruction(th)
-	if e.turnMountsMCP(th, readOnly) {
+	if e.turnMountsMCP(th) {
 		cfg := e.cfg.Snapshot()
 		set.MCPAdmission = &tools.MCPAdmission{Config: cfg.MCP, Panel: cfg.TaskPanels.EASM}
 		external, err := e.mcp.Tools(ctx, cfg.MCP.Servers, set.WorkspaceDir, cfg.Tools.ToolResultLimit())
@@ -98,7 +98,7 @@ func (e *Engine) conversationToolsForExecution(ctx context.Context, th *store.Th
 		reader = history.NewProject(e.cfg.DBPath(), th.ProjectID)
 	}
 	set.Tools = append(set.Tools, &historyQueryTool{reader: reader.ForThread(th.ID), maxChars: e.cfg.Tools.ToolResultLimit(), context: identity, guard: e.admitHistoryRead,
-		knowledge: len(knowledgeEnabled) > 0 && knowledgeEnabled[0]})
+		graph: e.cfg.SwarmSnapshot().Graph})
 	set.Names = append(set.Names, ToolQueryHistory)
 	return set, nil
 }
@@ -108,8 +108,8 @@ func (t *historyQueryTool) Info(context.Context) (*schema.ToolInfo, error) {
 	parameters.Set("sql", &jsonschema.Schema{Type: "string", Description: "Optional single read-only SQLite SELECT/WITH query. Empty returns available tables, columns and current identity. Project tables are already bound to the current project; predicates cannot change that binding."})
 	parameters.Set("params", &jsonschema.Schema{Type: "array", Items: &jsonschema.Schema{TypeEnhanced: []string{"string", "number", "boolean", "null"}}, Description: "Positional ? parameters: strings, numbers, booleans or null; no objects or arrays."})
 	report := "After you or your workers read history, the manager must submit the structured source report described in the system instructions; the host resolves original sources and renders the answer."
-	if t.knowledge {
-		report = "Submit the structured source report only when the System instructions explicitly require it. For ordinary work such as recording knowledge, inspect original records, cite exact history locators and answer the human’s request normally."
+	if t.graph {
+		report = "Submit the structured source report only when the System instructions explicitly require it. For ordinary work such as recording to the graph, inspect original records, cite exact history locators and answer the human’s request normally."
 	}
 	return &schema.ToolInfo{
 		Name:        ToolQueryHistory,

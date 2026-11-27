@@ -83,20 +83,16 @@ func Open(path string) (*Store, error) {
 	if err := s.dropThreadOwnership(); err != nil {
 		return nil, err
 	}
-	if err := db.AutoMigrate(&Project{}, &Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}, &Schedule{}, &ScheduleRun{}, &RemoteDevice{}, &ThreadWakeDecision{}, &ComposerDraft{}, &ComposerDraftBlob{}, &PendingScheduleAnswer{}, &NuwaNode{}, &NuwaRevision{}, &NuwaVerifySlot{}, &TaskPanelRow{}, &TaskPanelMutation{}, &TaskPanelChangeRow{}, &ProjectDistillation{}, &ProjectWikiBuild{}, &ProjectDistillationSource{}, &WikiSourceScan{}); err != nil {
+	if err := db.AutoMigrate(&Project{}, &Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}, &Schedule{}, &ScheduleRun{}, &RemoteDevice{}, &ThreadWakeDecision{}, &ComposerDraft{}, &ComposerDraftBlob{}, &PendingScheduleAnswer{}, &TaskPanelRow{}, &TaskPanelMutation{}, &TaskPanelChangeRow{}, &ProjectDistillation{}, &ProjectDistillationSource{}, &GraphSubject{}, &GraphSubjectKey{}, &GraphLink{}, &GraphTodo{}, &GraphRevision{}); err != nil {
 		return nil, fmt.Errorf("store: migrate: %w", err)
 	}
-	if err := ensureWikiSourceScanInvalidation(db); err != nil {
+	if err := dropWikiSourceScanTriggers(db); err != nil {
 		_ = sqlDB.Close()
-		return nil, fmt.Errorf("store: invalidate wiki scan sources: %w", err)
+		return nil, fmt.Errorf("store: drop wiki scan triggers: %w", err)
 	}
 	if err := backfillTaskPanelObservations(db); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("store: backfill task panel observations: %w", err)
-	}
-	if err := migrateWorkScopes(db); err != nil {
-		_ = sqlDB.Close()
-		return nil, fmt.Errorf("store: migrate work scopes: %w", err)
 	}
 	if err := s.ensureThreadOwnership(); err != nil {
 		return nil, err
@@ -309,7 +305,10 @@ func (s *Store) DeleteThread(id string) error {
 		if err := deleteTaskPanels(tx, id); err != nil {
 			return err
 		}
-		if err := deleteNuwaThread(tx, id); err != nil {
+		if err := deleteLegacyThreadRows(tx, id); err != nil {
+			return err
+		}
+		if err := deleteGraphOwners(tx, []string{id}); err != nil {
 			return err
 		}
 		if err := cancelWakesForThread(tx, id); err != nil {

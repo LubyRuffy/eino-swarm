@@ -42,9 +42,9 @@ func TestOmittingAMovedConversationPurgesAllAffectedReviewReceipts(t *testing.T)
 		}
 		return thread, turn
 	}
-	start := func(owner *store.Project, thread *store.Thread, wiki bool) string {
+	start := func(owner *store.Project, thread *store.Thread) string {
 		t.Helper()
-		job := store.ProjectDistillation{ProjectID: owner.ID, ID: "receipt-" + owner.ID, State: "running", WikiGraph: wiki}
+		job := store.ProjectDistillation{ProjectID: owner.ID, ID: "receipt-" + owner.ID, State: "running"}
 		if total, err := src.st.StartDistillationQueue(ctx, job, thread.ID, func(int) ([]byte, error) {
 			return []byte("{\"state\":\"running\"}"), nil
 		}); err != nil || total != 1 {
@@ -52,9 +52,9 @@ func TestOmittingAMovedConversationPurgesAllAffectedReviewReceipts(t *testing.T)
 		}
 		return job.ID
 	}
-	save := func(owner *store.Project, wiki bool, receipt []byte) {
+	save := func(owner *store.Project, receipt []byte) {
 		t.Helper()
-		job := store.ProjectDistillation{ProjectID: owner.ID, ID: "completed-" + owner.ID, State: "completed", Receipt: receipt, WikiGraph: wiki}
+		job := store.ProjectDistillation{ProjectID: owner.ID, ID: "completed-" + owner.ID, State: "completed", Receipt: receipt}
 		if err := src.st.StartProjectDistillation(ctx, job); err != nil {
 			t.Fatal(err)
 		}
@@ -66,18 +66,16 @@ func TestOmittingAMovedConversationPurgesAllAffectedReviewReceipts(t *testing.T)
 	if err := src.st.SetThreadProject(moved.ID, queueOwner.ID); err != nil {
 		t.Fatal(err)
 	}
-	privateQueue := start(queueOwner, moved, true)
+	privateQueue := start(queueOwner, moved)
 	if err := src.st.SetThreadProject(moved.ID, src.project.ID); err != nil {
 		t.Fatal(err)
 	}
-	save(src.project, false, nil)
-	save(src.other, false, []byte("{\"state\":\"completed\",\"changes\":[{\"text\":\"omitted testimony from the original owner\"}]}"))
-	save(src.other, true, []byte("{"))
-	save(threadAnchorOwner, false, []byte(fmt.Sprintf("{\"thread_id\":%q}", moved.ID)))
-	save(turnAnchorOwner, true, []byte(fmt.Sprintf("{\"turn_id\":%q}", originalTurn.ID)))
+	save(src.project, nil)
+	save(src.other, []byte("{\"state\":\"completed\",\"changes\":[{\"text\":\"omitted testimony from the original owner\"}]}"))
+	save(threadAnchorOwner, []byte(fmt.Sprintf("{\"thread_id\":%q}", moved.ID)))
+	save(turnAnchorOwner, []byte(fmt.Sprintf("{\"turn_id\":%q}", originalTurn.ID)))
 	peer, _ := conversation(untouched)
-	unrelatedQueue := start(untouched, peer, false)
-	save(untouched, true, []byte("{"))
+	unrelatedQueue := start(untouched, peer)
 
 	standalone := store.Thread{}
 	if err := src.st.CreateThread(&standalone); err != nil {
@@ -103,14 +101,8 @@ func TestOmittingAMovedConversationPurgesAllAffectedReviewReceipts(t *testing.T)
 		}
 	}
 	for _, p := range []*store.Project{src.project, src.other, queueOwner, threadAnchorOwner, turnAnchorOwner} {
-		for _, wiki := range []bool{false, true} {
-			get := dst.ProjectDistillationReceipt
-			if wiki {
-				get = dst.ProjectWikiBuildReceipt
-			}
-			if receipt, err := get(ctx, p.ID); err != nil || receipt != nil {
-				t.Fatalf("%s restored an omitted conversation's receipt, wiki=%t, error=%v", p.Name, wiki, err)
-			}
+		if receipt, err := dst.ProjectDistillationReceipt(ctx, p.ID); err != nil || receipt != nil {
+			t.Fatalf("%s restored an omitted conversation's receipt, error=%v", p.Name, err)
 		}
 	}
 	if window, err := dst.DistillationWindow(ctx, privateQueue, 0, 8); err != nil || len(window) != 0 {
@@ -122,15 +114,21 @@ func TestOmittingAMovedConversationPurgesAllAffectedReviewReceipts(t *testing.T)
 	if row, err := dst.ProjectDistillationReceipt(ctx, untouched.ID); err != nil || row == nil || row.ID != unrelatedQueue {
 		t.Fatalf("omission removed an unrelated review: %+v %v", row, err)
 	}
-	if row, err := dst.ProjectWikiBuildReceipt(ctx, untouched.ID); err != nil || row == nil || string(row.Receipt) != "{" {
-		t.Fatalf("unrelated legacy receipt was lost or caused invalid JSON processing: %+v %v", row, err)
-	}
 }
 
-func TestBackupPublishesNothingWhenAnOmittedWikiReceiptCannotBeErased(t *testing.T) {
+// An upgraded database can still hold the removed Wiki build's receipts. They
+// summarise the omitted conversation's sources, so omission must reach them,
+// and a trigger that refuses the erase must stop the archive being published.
+func TestBackupPublishesNothingWhenAnOmittedLegacyReceiptCannotBeErased(t *testing.T) {
 	src := seed(t)
 	ctx := t.Context()
-	eventID := seedWikiBackupAck(t, src.st, src.thread)
+	if err := src.st.DB().Exec(`CREATE TABLE project_wiki_builds (project_id TEXT PRIMARY KEY, receipt BLOB)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	receipt := fmt.Sprintf(`{"thread_id":%q}`, src.thread.ID)
+	if err := src.st.DB().Exec(`INSERT INTO project_wiki_builds (project_id, receipt) VALUES (?, ?)`, src.project.ID, receipt).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := src.st.DB().Exec(`CREATE TRIGGER fixture_refuse_wiki_receipt_omission
 		BEFORE DELETE ON project_wiki_builds
 		BEGIN SELECT RAISE(ABORT, 'fixture refused to erase the Wiki receipt'); END`).Error; err != nil {
@@ -145,7 +143,7 @@ func TestBackupPublishesNothingWhenAnOmittedWikiReceiptCannotBeErased(t *testing
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("failed privacy filtering published an archive: %v", err)
 	}
-	if row, err := src.st.ProjectWikiBuildReceipt(ctx, src.project.ID); err != nil || row == nil || row.CursorEventID != eventID {
-		t.Fatalf("failed archive creation changed the live Wiki review: %+v %v", row, err)
+	if n := legacyRows(t, src.st, "project_wiki_builds", "project_id", src.project.ID); n != 1 {
+		t.Fatalf("failed archive creation changed the live legacy receipt: %d rows", n)
 	}
 }

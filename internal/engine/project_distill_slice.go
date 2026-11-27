@@ -13,13 +13,13 @@ import (
 
 func newDistillationBatch(e *Engine, job *projectDistillWork, cursor uint) *projectDistillWork {
 	return &projectDistillWork{
-		projectID: job.projectID, kb: job.kb, route: job.route,
+		projectID: job.projectID, route: job.route,
 		checkpoint: &distillCheckpoint{e: e, current: &job.result, projectID: job.projectID, from: cursor, to: cursor},
 		result: DistillationResult{
 			ReviewID: job.result.ReviewID, Scope: job.result.Scope, Uncertain: job.result.Uncertain,
-			FullText: job.result.FullText, WikiGraph: job.result.WikiGraph,
-			MemoryEnabled: job.result.MemoryEnabled, KnowledgeEnabled: job.result.KnowledgeEnabled,
-			ThreadID: job.result.ThreadID, TurnID: job.result.TurnID,
+			FullText:      job.result.FullText,
+			MemoryEnabled: job.result.MemoryEnabled,
+			ThreadID:      job.result.ThreadID, TurnID: job.result.TurnID,
 		},
 	}
 }
@@ -92,10 +92,7 @@ func (e *Engine) distillationSliceFromRows(ctx context.Context, job *projectDist
 	batch.result.HistoryOmitted = batch.sources.omitted
 	visible := make(map[uint]bool, len(batch.sources.sources))
 	for handle, source := range batch.sources.sources {
-		ev, ok := batch.sources.memory[handle]
-		if !ok {
-			ev = batch.sources.wiki[handle]
-		}
+		ev := batch.sources.memory[handle]
 		visible[source.event.ID] = len(ev.Text) < len(strings.TrimSpace(source.event.Text))
 	}
 	for _, row := range rows[:checkpoint.count] {

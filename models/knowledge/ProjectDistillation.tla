@@ -4,7 +4,7 @@ EXTENDS Naturals, FiniteSets
 CONSTANTS AllowConcurrent, AllowForeignSource, ReceiptWithoutWrite
 
 Runs == {1, 2}
-Targets == {"notes", "skills", "knowledge"}
+Targets == {"notes", "skills"}
 Sources == {"inside", "outside"}
 VARIABLES active, started, proposed, written, receipts, finished
 vars == <<active, started, proposed, written, receipts, finished>>
@@ -61,5 +61,5 @@ TypeOK ==
 OneManualRun == Cardinality(active) <= 1
 ScopedWrites == \A pair \in written : proposed[pair[1]] = "inside"
 RealReceipts == receipts \subseteq written
-NeverThreeTargets == ~ (\E r \in finished : \A t \in Targets : <<r, t>> \in receipts)
+NeverBothTargets == ~ (\E r \in finished : \A t \in Targets : <<r, t>> \in receipts)
 =============================================================================

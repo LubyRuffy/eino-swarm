@@ -138,38 +138,38 @@ func TestMCPToolReauthenticatesOnlyForAnExpiredSession(t *testing.T) {
 			e, requests := newScheduleCompletionHTTPEngine(t, func(w http.ResponseWriter, _ *http.Request, step int, request scheduleCompletionRequest) {
 				switch step {
 				case 1:
-					nuwaValidationTool(w, request, "lookup-call", toolName, args)
+					scriptedToolReply(w, request, "lookup-call", toolName, args)
 				case 2:
 					if tc.timeout {
-						receipt := nuwaValidationReceipt(request, "lookup-call")
+						receipt := scriptedToolReceipt(request, "lookup-call")
 						if !strings.Contains(receipt, `"code":"timeout"`) || !strings.Contains(receipt, `"outcome":"unknown"`) {
 							t.Errorf("the model lost the timeout or uncertain outcome: %q", receipt)
 						}
-						nuwaValidationTool(w, request, "independent-call", nextTool, nextArgs)
+						scriptedToolReply(w, request, "independent-call", nextTool, nextArgs)
 						return
 					}
 					if tc.rateLimit {
-						receipt := nuwaValidationReceipt(request, "lookup-call")
+						receipt := scriptedToolReceipt(request, "lookup-call")
 						if !strings.Contains(receipt, "Upstream HTTP 429 Too Many Requests") ||
 							!strings.Contains(receipt, "Verify it before repeating") || !strings.Contains(receipt, `"isError":true`) {
 							t.Errorf("the original model receipt lost the rate limit: %q", receipt)
 						}
-						nuwaValidationTool(w, request, "independent-call", nextTool, nextArgs)
+						scriptedToolReply(w, request, "independent-call", nextTool, nextArgs)
 						return
 					}
 					if tc.first == http.StatusUnauthorized {
-						nuwaValidationTool(w, request, "repaired-lookup", toolName, args)
+						scriptedToolReply(w, request, "repaired-lookup", toolName, args)
 						return
 					}
-					if tc.ok && !strings.Contains(nuwaValidationReceipt(request, "lookup-call"), "lookup verified") {
+					if tc.ok && !strings.Contains(scriptedToolReceipt(request, "lookup-call"), "lookup verified") {
 						t.Error("the model did not receive the recovered result")
 					}
-					nuwaValidationTool(w, request, "next-tool", "exec", `{"command":"printf should-run-only-after-a-success"}`)
+					scriptedToolReply(w, request, "next-tool", "exec", `{"command":"printf should-run-only-after-a-success"}`)
 				default:
-					if (tc.timeout || tc.rateLimit) && !strings.Contains(nuwaValidationReceipt(request, "independent-call"), "independent lookup verified") {
+					if (tc.timeout || tc.rateLimit) && !strings.Contains(scriptedToolReceipt(request, "independent-call"), "independent lookup verified") {
 						t.Error("the model did not receive the later independent result")
 					}
-					if tc.first == http.StatusUnauthorized && !strings.Contains(nuwaValidationReceipt(request, "repaired-lookup"), "lookup verified") {
+					if tc.first == http.StatusUnauthorized && !strings.Contains(scriptedToolReceipt(request, "repaired-lookup"), "lookup verified") {
 						t.Error("the human retry did not receive the repaired result")
 					}
 					writeContextFlowReply(w, request.Stream, map[string]any{"content": "Fixture finished."}, "stop")

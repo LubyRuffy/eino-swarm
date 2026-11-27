@@ -57,7 +57,7 @@ func TestManagerCommentaryAppearsBeforeItsToolInLiveAndStoredOrder(t *testing.T)
 		}
 	})
 	defer releaseFinal()
-	project, err := e.CreateProject("Artifact comparison", "", workspace, false, false)
+	project, err := e.CreateProject("Artifact comparison", "", workspace, false)
 	if err != nil {
 		t.Fatal(err)
 	}

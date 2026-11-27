@@ -32,7 +32,7 @@ listed by more than one server does not select a proxy.
 Give sub-agents `SendTool()` as well and any agent can message any other (a mesh
 rather than a star).
 
-### Optional model selection and recursive delegation
+### Worker configuration
 
 The ordinary library default remains unchanged. A host can install a
 `WorkerConfig` through `ConfigureWorkers`; a detached copy is available from
@@ -43,78 +43,32 @@ consumers that have not started work.
 
 `WorkerConfig.WorkerMiddlewares(identity)` optionally builds ADK model handlers
 once per worker generation, after the built-in Injector. The supplied identity
-is the actual worker ID, role, parent and generation. Workers with a non-nil
-factory and their descendants retain it in their configuration snapshot,
-including when resumed; a tagged cold restore uses the host's original
-configuration resolver. Legacy untagged workers created without a factory keep
-their existing resume compatibility path. For transient host context, wrap the
-model's Generate/Stream request without rewriting ADK history or fork seeds.
+is the actual worker ID, role and generation. Workers with a non-nil
+factory retain it in their configuration snapshot, including when resumed; a
+tagged cold restore uses the host's original configuration resolver. Legacy
+untagged workers created without a factory keep their existing resume
+compatibility path. For transient host context, wrap the model's
+Generate/Stream request without rewriting ADK history or fork seeds.
 
 Before each worker model call, the Injector supplies its fixed invocation
 identity in the request context. Model-call recording uses the worker generation
 only when that identity's agent ID matches the actual model caller; manager and
 auxiliary models do not inherit it. This is diagnostic identity, not a new tool
-permission or completion receipt. The ordinary and Nuwa worker paths share it;
-an absent legacy identity remains unknown.
+permission or completion receipt; an absent legacy identity remains unknown.
 
-`WorkerTask(ctx)` returns the task supplied when the current worker generation
-started, plus a presence flag. Spawn, resume and restore set it independently of
-the parent's context; ordinary manager contexts do not supply it. It is task
-data, not authority. Later inbox messages do not change this value. Hosts can use
-it for task-related retrieval without parsing a composed System instruction.
-An unknown legacy assignment returns an empty string and a false flag.
 `RestoredWorker.ResumeMessage` optionally supplies recovery input separately
 from `Task`. This preserves the checkpoint's assignment without replaying it as
 a fresh request. When only recovery input is known, `Task` can remain empty;
 nonempty saved instructions are preserved. Empty instructions keep the existing
 configuration fallback from the actual recovery input, independently of any
-known assignment retained for retrieval.
+known assignment.
 
-`WorkerConfig.SelectWorkerModel(ctx, ref)` returns a credential-free
-`ModelBinding`, per-agent `ModelBuilder` and error. When configured, the actual
-`spawn_agent` schema includes optional `model_ref`. Selection errors refuse
-before side effects. Same-role reuse preserves the old binding, and an explicit
-different binding refuses before steering/resuming. `RestoreWorkerModel`
-reconstructs concrete provider/model/reasoning identity, not a changed default
-or label. Missing restoration support fails rather than silently switching.
-The host owns ref syntax: consumers copy the opaque token from its catalog
-without decoding or constructing it. zwai's tool token is separate from its
-UI/CLI ChoiceID; a saved `ModelBinding.Ref` remains source provenance.
-The generic Registry adds no explicit-reference requirement; omission keeps its
-existing default or host-selector behavior.
-The zwai Nuwa host uses the executor copied onto the turn when the project has
-saved one. Omission or that exact ref selects it; a different ref is refused
-before a worker is created. A project that has not saved a pair still rejects
-omission for a new role when multiple ready choices exist, before forking or
-dispatch, and points the caller to `list_models`. Its schema stays optional for
-same-role reuse; single-ready-model and existing worker bindings keep their
-current behavior. This host policy adds no library configuration field.
-
-`WorkerConfig.VerifyAdmission(ctx, intent, target, callID)` is optional. Nil
-ignores `intent` and `target`: ordinary mode and a generic Registry do not
-advertise or require them. When the callback is set, `spawn_agent` accepts
-`intent` (`work`, `verify`, or `fix`; omit means `work`) and `target`. `verify`
-and `fix` require a target and a real tool-call id. The callback runs before
-fork, dispatch, queue, steer or resume. A refusal becomes `{"error": …}` and
-starts no worker; context cancellation stays a Go error. The library does not
-count or store the allowance. The zwai host allows one verify and one fix per
-turn and shared record, persisted in `nuwa_verify_slots`.
-
-`EnableDelegation` gives workers the lifecycle tools under their captured
-configuration. Worker callers carry trusted ID/parent/generation; they may only
-control descendants. Roles and capacity remain global to the Registry. A child
-with `fork_context` receives its spawning worker's non-System history. Closing
-a subtree returns `closed_agents` with exact generations and genuine
-`cancelled`/`already_finished` results. Pending descendants keep ancestry and
-collection state across archive pruning, manager turns and cold replay.
-
-Hosts can enable per-worker selection with a non-nil
-`WorkerConfig.SelectableToolNames` drawn from `SubAgentTools`. The catalog lists
-currently selectable names. An explicit `spawn_agent.tool_names` array selects
-which of them a new worker receives. The host's remaining tools are mounted
-according to the captured configuration. Selection is scoped to the worker,
-and descendants may further narrow it. Resuming a scoped worker reapplies
-the saved `WorkerToolNames` before claiming a generation.
+`WorkerConfig.RestoreWorkerModel` reconstructs the concrete provider/model/
+reasoning identity of a `ModelBinding` saved in a checkpoint, not a changed
+default or label. A binding is credential-free and its `Ref` is source
+provenance only. A checkpoint with a binding and no restorer fails rather than
+silently switching models. The `spawn_agent` schema has no model selection; a
+new worker uses `ModelBuilder`.
 
 `ToolCallerHasWorkerTool(ctx, name)` reads the exact registered tools of the
 calling Worker from the trusted invocation context. A host tool that delegates
@@ -123,19 +77,16 @@ context without a Worker executor grants no tool through this query.
 
 For durable configuration, set a host-owned `WorkerConfig.Tag` and implement
 `Registry.ResolveWorkerConfig(ctx, tag)`. Checkpoints, `RestoredWorker` and
-`FinishedWorker` retain `ConfigTag`, `DelegationEnabled`, `ParentID` and
-`ModelBinding`. A resolver must reconstruct that original surface; mismatched
-tags/mode or resolution errors refuse before claim/resume. Go tool instances and
-secrets are not serialized. An optional host-authorized `WorkerConfig.RecoveredModels`
-map replaces a removed provider only at actual Restore/Resume execution;
-ConfigureWorkers and WorkerConfiguration clone the map. PlantFinished preserves
-the completed result's original binding. Hosts must persist and authorize these
-replacements themselves; ordinary defaults never grant recovery authority.
-The zwai app binds the tag to a durable turn and
-validates its conversation/project owner; see [Nuwa](NUWA.md).
-The app's shared-work idempotency returns a frozen same-call/same-argument receipt
-only after current ownership and input validation; it does not bypass
-cancellation, deleted owners/targets or artifact-file validity.
+`FinishedWorker` retain `ConfigTag` and `ModelBinding`. A resolver must
+reconstruct that original surface; resolution errors refuse before
+claim/resume. Go tool instances and secrets are not serialized. An optional
+host-authorized `WorkerConfig.RecoveredModels` map replaces a removed provider
+only at actual Restore/Resume execution; ConfigureWorkers and
+WorkerConfiguration clone the map. PlantFinished preserves the completed
+result's original binding. Hosts must persist and authorize these replacements
+themselves; ordinary defaults never grant recovery authority.
+The zwai app binds the tag to a durable turn and validates its conversation
+owner before rebuilding the configuration.
 
 HITL tools (`ask_user`, `propose_plan`, `complete_goal`, `block_goal`,
 `reopen_goal`,

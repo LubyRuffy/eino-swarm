@@ -6,15 +6,14 @@
 | 能力 | 手机状态 | 实现依据／缺口 |
 | --- | --- | --- |
 | 本机备份还原后的对话列表 | 轮询识别 | 手机不写备份；`meta.data_generation` 在同一连接上变化后清空已加载列表并重读第一页。`mobile/src/lib/roster-generation.ts`、`mobile/src/components/phone-app.tsx` |
-| 项目新建、名称、指令、工作目录、记忆、女娲开关 | 本次实现 | `mobile/src/components/project-manager.tsx`、`internal/remote/project_settings.go` |
-| 女娲项目规划／执行模型组合 | 本次实现 | 同一项目编辑器及 PC 就绪模型目录；保存整组、关闭保留，后续任务使用 |
+| 项目新建、名称、指令、工作目录、记忆 | 本次实现 | `mobile/src/components/project-manager.tsx`、`internal/remote/project_settings.go` |
 | MCP 长调用实时进度 | 已有 | `mobile/src/components/thread-blocks-mcp-progress.test.tsx`、`mobile/src/lib/transcript.ts`；不是本次新增 |
 | Markdown 代码高亮 | 已有 | `mobile/src/components/markdown.tsx` 复用 `frontend/src/lib/highlighted-lines.tsx` |
 | 文件上传、下载、HTML／表格／文档预览 | 已有 | `mobile/src/lib/stage-files.ts`、`mobile/src/components/document-preview.tsx`、`mobile/e2e/file-preview-controls.spec.ts`；手机不使用桌面本地文件选择器 |
 | 官方账号、电脑选择、可读设备名 | 已有 | `mobile/src/components/gateway-account-shell.tsx`、`mobile/src/components/host-chrome.tsx`、`mobile/e2e/gateway-account.spec.ts` |
 | 独立任务侧聊 | 待同步 | PC 有 `internal/engine/side_chat.go`；手机缺独立请求／取消／临时历史入口，不能借主对话 Send 代替 |
 | 被移除服务的工作者模型显式恢复 | 待同步 | PC 有 `internal/engine/worker_model_recovery.go`；手机缺专用 RPC 和人工确认入口，普通模型切换不能替代恢复 |
-| 女娲协作图和共享状态面板 | 待同步 | 手机可配置项目女娲模式，但没有 desktop 协作图入口 |
+| 工作记录（图与有序待办，只读） | 已有 | 手机通过加密 RPC `graph` 轮询同一张图，不依赖事件流；`mobile/src/components/work-records.tsx`、`internal/remote/graph.go`、`mobile/e2e/work-records.spec.ts`。图超过一帧时拒绝并提示在桌面打开，见 [工作图](GRAPH.md) |
 | 外部 Skills 包管理 | 待同步 | PC 已有独立包安装／加载接口；手机缺包目录与安装管理入口，不能与项目学习技能混为一体 |
 | PC MCP 服务配置和工具检查 | 待同步 | 手机已有工具进度展示，缺配置与检查入口 |
 | Mermaid 图预览、缩放 | 本次实现 | 配对对话与直连 Chat 复用 desktop 严格渲染；触控适应、缩放、原始尺寸和可复制源码 |

@@ -2,8 +2,7 @@ import type { SwarmEvent, ThreadStatus } from "./types"
 import { publishTaskPanelEvent } from "./task-panel-events"
 import type { PanelChange, TaskPanel } from "@/task-panels/types"
 
-import { parseWorkVersion } from "./nuwa"
-import { publishWorkEvent } from "./nuwa-events"
+import { parseGraphRevision, publishGraphEvent } from "./graph/events"
 
 export interface StreamHandlers {
   onEvent: (ev: SwarmEvent) => void
@@ -108,7 +107,7 @@ export function subscribeEvents(
   const query = new URLSearchParams()
   if (since > 0) query.set("since", String(since))
   query.set("panels", "1")
-  query.set("work", "1")
+  query.set("graph", "1")
   const url = `/api/threads/${threadId}/events?${query}`
   const source = new EventSource(url)
   let closed = false
@@ -116,7 +115,7 @@ export function subscribeEvents(
   source.onopen = () => {
     if (closed) return
     publishTaskPanelEvent(threadId, { kind: "connection", connected: true })
-    publishWorkEvent(threadId, { kind: "connection", connected: true })
+    publishGraphEvent(threadId, { kind: "connection", connected: true })
     handlers.onOpen?.()
   }
   source.onerror = (event) => {
@@ -125,7 +124,7 @@ export function subscribeEvents(
     if (event instanceof MessageEvent) return
     if (!closed) {
       publishTaskPanelEvent(threadId, { kind: "connection", connected: false })
-      publishWorkEvent(threadId, { kind: "connection", connected: false })
+      publishGraphEvent(threadId, { kind: "connection", connected: false })
     }
     // EventSource retries by itself unless the connection was closed for
     // good; only a terminal state is worth telling the UI about.
@@ -168,17 +167,17 @@ export function subscribeEvents(
     if (!closed) publishTaskPanelEvent(threadId, { kind: "error", error: "Panel state unavailable" })
   })
 
-  source.addEventListener("nuwa_updated", (event) => {
+  source.addEventListener("graph_updated", (event) => {
     if (closed) return
-    const version = parseWorkVersion((event as MessageEvent).data, threadId)
-    if (version) publishWorkEvent(threadId, { kind: "revision", version })
+    const revision = parseGraphRevision((event as MessageEvent).data, threadId)
+    if (revision !== undefined) publishGraphEvent(threadId, { kind: "revision", revision })
   })
 
   return () => {
     closed = true
     source.close()
     publishTaskPanelEvent(threadId, { kind: "connection", connected: false })
-    publishWorkEvent(threadId, { kind: "connection", connected: false })
+    publishGraphEvent(threadId, { kind: "connection", connected: false })
     handlers.onClose?.("closed")
   }
 }

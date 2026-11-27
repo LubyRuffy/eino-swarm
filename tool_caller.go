@@ -11,7 +11,6 @@ import (
 // AgentIdentity identifies the actual runtime invocation of a model or tool.
 // A manager has generation zero; a worker's generation is fixed for its run.
 type AgentIdentity struct {
-	ParentID   string `json:"parent_id,omitempty"`
 	AgentID    string `json:"agent_id"`
 	Role       string `json:"role"`
 	Generation int    `json:"generation"`
@@ -20,12 +19,10 @@ type AgentIdentity struct {
 type toolCallerKey struct{}
 type toolReceiptScopeKey struct{}
 
-// A worker captures this value when its generation starts. Its binding is a
-// private clone and does not follow subsequent roster or provider changes.
+// A worker captures this value when its generation starts.
 type toolInvocation struct {
-	identity     AgentIdentity
-	modelBinding *ModelBinding
-	workerTools  []tool.BaseTool
+	identity    AgentIdentity
+	workerTools []tool.BaseTool
 }
 
 func (caller toolInvocation) context(ctx context.Context) context.Context {
@@ -46,16 +43,6 @@ func ToolCallerHasWorkerTool(ctx context.Context, name string) bool {
 	return name != "" && slices.ContainsFunc(caller.workerTools, func(candidate tool.BaseTool) bool {
 		return toolName(candidate) == name
 	})
-}
-
-// ToolCallerModelBinding returns a value copy of the current worker invocation's
-// resolved model. An unbound worker or manager has no recorded worker binding.
-func ToolCallerModelBinding(ctx context.Context) (ModelBinding, bool) {
-	caller, _ := ctx.Value(toolCallerKey{}).(toolInvocation)
-	if caller.modelBinding == nil {
-		return ModelBinding{}, false
-	}
-	return *caller.modelBinding, true
 }
 
 // ToolReceiptScope returns the runtime's receipt scope for a worker tool call.
@@ -81,7 +68,7 @@ func (r *Registry) workerIdentity(id string) AgentIdentity {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return AgentIdentity{AgentID: h.ID, Role: h.Role, ParentID: h.ParentID, Generation: h.gen}
+	return AgentIdentity{AgentID: h.ID, Role: h.Role, Generation: h.gen}
 }
 
 func (r *Registry) bindToolOutput(ctx context.Context, agentID, role string, tc *adk.ToolContext) context.Context {
@@ -96,7 +83,7 @@ func (r *Registry) bindToolOutput(ctx context.Context, agentID, role string, tc 
 	return binder(ctx, func(text string) {
 		r.emit(Notification{
 			Kind: NotifyToolDelta, AgentID: agentID, Role: role,
-			Text: text, ToolCallID: tc.CallID, ParentID: caller.ParentID, WorkerGeneration: caller.Generation,
+			Text: text, ToolCallID: tc.CallID, WorkerGeneration: caller.Generation,
 		})
 	}, tc.Name, tc.CallID)
 }

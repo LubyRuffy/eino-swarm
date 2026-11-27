@@ -18,16 +18,12 @@ func (e *Engine) distillationFullSlice(ctx context.Context, job *projectDistillW
 		return nil, err
 	}
 	batch := newDistillationBatch(e, job, cursor)
-	batch.sources = distillInput{sources: make(map[int64]distillSource), memory: make(map[int64]store.Event), wiki: make(map[int64]store.Event)}
+	batch.sources = distillInput{sources: make(map[int64]distillSource), memory: make(map[int64]store.Event)}
 	checkpoint := batch.checkpoint
 	offset := job.result.Progress.SegmentBytes
 	var transcript strings.Builder
 	transcript.WriteString(reviewSourceHeader)
 	for _, row := range rows {
-		if row.WikiReviewed && offset == 0 {
-			checkpoint.to, checkpoint.count = row.Position, checkpoint.count+1
-			continue
-		}
 		handle := int64(len(batch.sources.sources) + 1)
 		header := distillationFullHeader(row, handle, offset, calls[row.CallID])
 		room := maxBytes - transcript.Len() - len(header) - len("\n\n")
@@ -55,9 +51,6 @@ func (e *Engine) distillationFullSlice(ctx context.Context, job *projectDistillW
 				checkpoint.segmentBytes = next
 				checkpoint.segmentTotalBytes = part.TotalBytes
 				break
-			}
-			if job.result.WikiGraph {
-				checkpoint.wikiReviewed = append(checkpoint.wikiReviewed, row.Position)
 			}
 		}
 		checkpoint.to, checkpoint.count = row.Position, checkpoint.count+1
@@ -100,15 +93,8 @@ func (e *Engine) distillationFullText(ctx context.Context, job *projectDistillWo
 	}
 	// One extra byte reveals whether the end of the window falls inside a
 	// rune, without fetching the rest of the record into the Go process.
-	read := e.store.ReadDistillationText
 	start := offset
-	if job.result.WikiGraph {
-		read = e.store.ReadWikiSourceText
-		// Preserve context for names, relationships and events straddling a
-		// segment boundary. The checkpoint only advances by newly read bytes.
-		start = max(0, offset-384)
-	}
-	part, err := read(ctx, job.result.ReviewID, position, start, room+1)
+	part, err := e.store.ReadDistillationText(ctx, job.result.ReviewID, position, start, room+1)
 	if errors.Is(err, store.ErrHistorySourceUnavailable) {
 		return store.DistillationText{}, nil
 	}
@@ -139,9 +125,6 @@ func (batch *projectDistillWork) addDistillationPart(handle int64, row store.Dis
 	batch.sources.sources[handle] = distillSource{event: ev, failed: failed, offset: part.Offset, steerSeq: part.MessageSeq}
 	if ev.Kind != swarm.NotifyAgentMessage.String() {
 		batch.sources.memory[handle] = ev
-	}
-	if !failed {
-		batch.sources.wiki[handle] = ev
 	}
 	batch.anchor = row.Turn
 	batch.result.ThreadID, batch.result.TurnID = row.Turn.ThreadID, row.Turn.ID

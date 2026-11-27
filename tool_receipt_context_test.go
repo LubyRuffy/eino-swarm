@@ -6,7 +6,7 @@ import (
 )
 
 func TestWorkerToolReceiptScopeDoesNotChangeCallerIdentity(t *testing.T) {
-	identity := AgentIdentity{ParentID: "parent", AgentID: "reader", Role: "reader", Generation: 2}
+	identity := AgentIdentity{AgentID: "reader", Role: "reader", Generation: 2}
 	original := withToolCaller(t.Context(), identity)
 	ctx := context.WithValue(original, toolReceiptScopeKey{}, "current-execution")
 	if got, ok := ToolCaller(ctx); !ok || got != identity {

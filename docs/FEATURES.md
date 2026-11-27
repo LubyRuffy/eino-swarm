@@ -10,10 +10,12 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-125` Unread completion attention
     - `F-130` Agent runs, tools, and live control
     - `F-135` Independent task coordination
-    - `F-136` Nuwa project collaboration
+    - `F-131` Work graph tools and per-request digest
+    - `F-132` Graph subjects: identity, merge, versions and credentials
+    - `F-133` Graph to-dos and evidence rules
+    - `F-134` Work records panel on desktop
+    - `F-141` Worker model binding and explicit recovery
     - `F-137` HTML/JS task panels
-    - `F-138` Project Markdown knowledge base
-    - `F-139` Conversation work records
     - `F-140` Files and attachments
     - `F-145` Durable composer drafts
     - `F-146` Next-step composer suggestions
@@ -21,10 +23,12 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-148` Voice input and spoken answers
     - `F-150` Goals and scheduled waits
     - `F-160` Trace and diagnostics
+    - `F-161` Trace reports unrecorded graph results
     - `F-170` Settings and providers
     - `F-171` Official server first: sign-in, welcome and account models
     - `F-172` Official model profile
     - `F-173` FOFA install and local model controls
+    - `F-174` Work graph switch in Settings
     - `F-175` Provider cloud built-in tools
     - `F-176` External MCP tools
     - `F-180` PC text quoting
@@ -38,11 +42,13 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-221` Quote PC conversation text
     - `F-222` Inspect sub-agents on the phone
     - `F-225` Manage PC projects from the phone
+    - `F-226` Work records screen on the phone
     - `F-224` Browse and preview PC conversation files on the phone
     - `F-230` Direct model chat
     - `F-240` Phone updates
   - `F-300` Programmatic access
     - `F-310` HTTP API and live events
+    - `F-311` Graph HTTP, live event and kind catalog
     - `F-320` CLI commands
     - `F-330` Swarm library
   - `F-400` Persistence and operations
@@ -51,6 +57,7 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-421` External Agent Skills packages
     - `F-422` Local backup and restore
     - `F-430` Build and release paths
+    - `F-431` Graph evaluation tasks
 
 ### F-148 Voice input and spoken answers
 
@@ -216,38 +223,50 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：让不同 PC 对话的管理 Agent 发现活跃任务、协商共享资源的处理顺序；使用者：PC 用户和配对手机用户；入口：manager 工具 `list_tasks`、`send_task_message`、`read_task_messages`，对话内的协作消息通知；输入：真实 conversation ID、消息和可选收件游标；输出：活跃任务的工作目录/请求/状态、持久化发送回执、来源可追溯的消息和明确回复；前置条件：同一 host 的未归档对话；失败表现：未知/归档目标、非法参数或数据库错误返回工具错误，不伪造送达；关联契约：`C-021`、`C-012`；实现证据：`internal/engine/task_coordination.go`、`internal/engine/task_coordination_flow_test.go`、`internal/store/event_kind.go`、`frontend/e2e/task-coordination.spec.ts`、`mobile/src/lib/task-message.test.ts`。
 - 这是通信协商能力。发现结果不是资源锁，发送成功不是接收方已同意；双方明确回复后才可依赖分工或执行顺序。消息不会代替用户授权、自动启动空闲对话、解除暂停或打断另一个任务。
 
-### F-136 Nuwa project collaboration
+### F-131 Work graph tools and per-request digest
 
-- 项目设置保存规划／执行模型，宿主按回合冻结模式和工具范围。项目指令、真实模型选择、Registry 分工及恢复由 `C-037` 约束。缺失模型、越权派工或超额度验收明确拒绝。工作记录另见 `F-139`。入口：项目创建／编辑中的 Nuwa collaboration 和 `list_models` 工具。实现证据：`internal/engine/nuwa_models.go` 和 `internal/engine/nuwa_model_pair_http_test.go`。见 [Nuwa](NUWA.md)。
+- 目的：让模型在工作过程中维护“这项工作关于什么”（subjects 与 links）和有序 to-do，而不是把过程只留在对话文本里。宿主只提供方法与存储，任务内容和每个 to-do 由模型决定；说明见 [Work graph](GRAPH.md)。
+- 入口：模型工具 `update_graph`（一次原子写入 `subjects`、`links`、`todos`，附 `evidence` 或 `own_tool_call_ids`）和 `read_graph`（分页读主体、to-do，或按 `id` 读单个主体及其连线、邻接主体与相关 to-do）；规划回合只挂 `read_graph`。每个模型请求（主管和 worker）带一条被替换而不是叠加的有界摘要：revision、按 kind 和状态的计数、不含 retracted 的当前计数、至多 12 条未完成 to-do、至多 12 个最新主体，以及自上次被接受的 `update_graph` 以来未被记录的工具结果数。一次调用把 lead 连到同 kind 的 confirmed 主体时，宿主把该 lead 存为 retracted；两条 lead 或两条 confirmed 保持调用所写的状态。
+- 输入与输出：批次写入返回逐项回执；`read_graph` 返回页面与 `more`。工具定义只在 `update_graph` 里列出 kind 目录，提示词不点名任何 kind 或任务。凭据只在按 id 读取时回到模型。
+- 失败表现：非法批次、版本冲突、多主体歧义以模型可修复的工具结果返回，整批不写入，回合不失败；存储错误才使调用失败。关闭 `swarm.graph`（`F-174`）后工具和摘要不再挂载，迟到写入被拒绝。回合结束不检查图是否完整，未记录数是唯一的压力并出现在 Trace（`F-161`）。
+- 关联契约：`C-057`、`C-059`、`C-062`；相关 `F-132`、`F-133`。
+- 实现证据：`internal/engine/graph_tools.go`、`internal/engine/graph_tool_run.go`、`internal/engine/graph_digest.go`、`internal/engine/graph_prompt.go`、`internal/store/graph_write.go`、`internal/store/graph_read.go`、`internal/store/graph_digest.go`。验证证据：`internal/engine/graph_tools_http_test.go`（真实 Registry／HTTP 模型边界）、`internal/engine/graph_digest_test.go`、`internal/engine/graph_acceptance_http_test.go`、`internal/store/graph_digest_test.go`、`models/graph/GraphStore.tla`。
 
+### F-132 Graph subjects: identity, merge, versions and credentials
 
-失效模型恢复：桌面错误行提供“使用当前所选模型修复恢复配置”，仅显式迁移已移除的提供商；保存后继续／重试，保留 worker 身份、历史和工具范围。空闲／无 parked Registry 才可操作；失败不部分更新。契约 `C-037`；证据 `internal/engine/worker_model_recovery_http_test.go`、`frontend/src/components/app/worker-model-recovery.test.tsx`。
+- 目的：同一事物只记一个主体，修订有版本，凭据不外泄。主体有 `kind`、`attrs`、`status`（`lead`／`confirmed`／`retracted`）和 `version`。
+- 入口：`update_graph.subjects`；kind 目录 `frontend/src/graph/kinds.json`（13 个内置 kind 加通用 `other`，Go、桌面和手机共用，`GET /api/graph/kinds` 提供，见 `F-311`）。新增 kind 只需在目录增加条目，缺少规范化器时在 `internal/graph/normalize.go` 增加并测试。
+- 输入与输出：每个 kind 声明一个或多个身份键（可组合多个属性），写入时按规范化后的键匹配；匹配到一个主体则合并，匹配到两个不同主体则拒绝并返回两个 id，由模型决定。身份键的值不可改，不同的值是另一个主体并用连线关联；修订后的 FOFA 查询因此是链接到草稿的新主体，失败草稿标为 `retracted` 并保留。不带 `id` 的写入只追加新属性、保留已有值；覆盖属性或改状态需要 `id` 和当前 `version`，过期版本返回冲突，由模型读后重试。`secret` 属性只返回给按 id 的 `read_graph`，摘要、HTTP、手机、面板、日志和 Trace 只显示属性名。
+- 失败表现：歧义、版本冲突、身份键变更、未知 kind 或属性值类型不对整批拒绝且不写入。kind 没有声明的属性名会从该主体去掉并在回执里列出，不因此重发整批。和 ref 相同的新 id、链接端点上的 `ref:` 前缀，以及本进程里早先用过的 ref，在写入前被收成真正的 ref 或已存 id。
+- 关联契约：`C-056`、`C-057`、`C-061`。
+- 实现证据：`internal/graph/catalog.go`、`internal/graph/normalize.go`、`internal/graph/attrs.go`、`frontend/src/graph/kinds.json`、`internal/store/graph_write.go`、`internal/store/graph_models.go`。验证证据：`internal/store/graph_write_test.go`、`internal/graph/catalog_test.go`、`internal/graph/normalize_test.go`、`internal/graph/crosscheck_test.go`、`models/graph/GraphStore.tla`。
 
-- 女娲执行者每次收到当前 generation 已实际绑定的身份及模型；`list_models.current` 显示同一事实，和会话轮次的 `default` 分开。原绑定跨续办和冷恢复保留；旧未绑定执行标为未知。提示是临时运行事实，不改变普通模式、项目指令、工具权限或可委派范围。关联 `C-037`；实际输入及工具验证见 `internal/engine/nuwa_context_worker_http_test.go`、`internal/engine/nuwa_context_restore_http_test.go`。
-- Nuwa manager 只负责规划、派工、协调和基于 worker 证据验收，不挂 workspace／MCP 实际执行工具，并禁用其 provider-hosted builtin 执行；worker 和普通模式保留原 provider 配置。需要操作的任务由 worker 执行。无需操作的纯讨论不强制创建 worker。角色、任务拆分和工具选择由 AI 根据目标决定，不固定领域角色表或工作流。
-- 勾选女娲时，项目保存一对可修改的规划模型和执行模型，默认来自就绪目录顺序，不按能力排序，也不写死模型名。之后的回合用规划模型；新角色、验收和修复用回合开始时复制的执行模型。冲突的 `model_ref` 在创建 worker 前拒绝。同角色恢复保留原 binding。关闭女娲保留这一对。四列仍为空的旧项目保持原来的显式选择。已保存模型不可用时，下一回合在模型请求前失败。会话输入框在已保存规划模型时改的是项目规划模型；手机端不新增编辑入口。验证：`internal/engine/nuwa_model_pair_http_test.go`、`internal/server/nuwa_model_pair_test.go`、`frontend/src/components/app/project-dialog.test.tsx`、`frontend/e2e/nuwa.spec.ts`。
-- Nuwa 执行者通过独立项目上下文直接获得用户的项目目标、约束和验收指令，memory 关闭时仍可读取；不继承规划者完整 System／personality，不改变既有角色和工具权限。普通模式不变；非空已存 Instruction 首次恢复保留原文，旧空 Instruction 保留按配置重建的兼容路径。实际模型 HTTP 输入与已保存 worker 恢复验证：`internal/engine/nuwa_project_instructions_http_test.go`。
-- 规划者可查询 worker 的完整可选工具目录，并在派工时为新角色选择所需的 workspace／MCP 工具；manager 不挂执行工具不会缩减 worker 的可选目录。省略选择时使用 worker 可用范围，显式选择随身份恢复，后代可继承或缩小。见 `C-037` 和 [Nuwa](NUWA.md)。既有工具选择验证：`internal/engine/worker_tool_scope_flow_test.go`、`internal/engine/worker_tool_scope_restore_test.go`；规划／执行分离验证：`internal/engine/nuwa_planner_separation_http_test.go`、`internal/engine/nuwa_planner_responses_http_test.go`、`internal/provider/nuwa_planner_builtin_test.go`。
-- 女娲验收次数由主机计数：同一回合、同一可见工作记录最多一次 `verify` 和一次 `fix`。超额在创建 worker 之前拒绝，同一次调用重送不重复扣次，重启后额度仍在。普通实现和普通模式不占这个额度，也不按任务原文猜测意图。额度不是设置项。验证：`internal/engine/nuwa_verify_budget_http_test.go`、`internal/store/nuwa_verify_test.go`、`verify_admission_test.go`。
+### F-133 Graph to-dos and evidence rules
 
-- 升级时回填旧 turn 未记录的项目归属，既有 worker 可跨重启恢复。已记录归属与当前项目不符时，显式继续目标返回冲突并保留 checkpoint，归属修复后可继续。见 [归属迁移](DATA_MODEL.md#turns--one-request-and-everything-done-to-answer-it)。
+- 目的：把“接下来做什么、做完凭什么算完”变成有序、可核对的列表，而不是图节点。状态为 `open`、`doing`、`done`、`failed`，位置即优先级，`before` 指定插在哪条前面，可用 `about` 指向一个主体。
+- 入口：`update_graph.todos`。`done` 需要证据，`failed` 需要 `result`，`confirmed` 主体的写入需要证据。证据是本会话事件（`thread_id` 加 `seq`）或 `http(s)` URL，或模型自己已完成工具调用的 `own_tool_call_ids`；两者在同一批次互斥。同一调用中写入的主体与连线记入该 to-do（`found_by_todo`），面板据此高亮它触及的内容。
+- 输入与输出：宿主只校验证据格式有效、被引用的自有工具调用确实完成，不判断含义；证据不能引用图工具本身的流量；证据所指事件之后消失（例如倒带）时显示为不可用，不被信任。当前没有进行中的 to-do 时，第一条新完成的 to-do 会先记为 `doing` 并保持短暂可见，然后由宿主在同一次调用里标成 `done`，不再要求模型另发一轮只为改状态。
+- 失败表现：缺少证据、引用未完成或不存在的事件／调用、同批混用两种证据均整批拒绝，返回可修复的工具结果。
+- 关联契约：`C-058`、`C-057`。
+- 实现证据：`internal/store/graph_todo.go`、`internal/store/graph_evidence.go`、`internal/store/graph_write.go`、`internal/graph/types.go`。验证证据：`internal/store/graph_write_test.go`、`internal/engine/graph_acceptance_http_test.go`、`models/graph/GraphStore.tla`。
 
-### F-139 Conversation work records
+### F-134 Work records panel on desktop
 
-- 入口：PC／Web 右侧工作记录、配对手机会话顶部的工作记录、宿主 `read_work`／`record_work` 与会话工作接口。手机可以只读查看当前会话和项目协作路径。新记录默认归会话，可单向合并到所属项目并保留身份、历史和依赖。规划回合只读。非法共享、版本冲突和存储故障有明确反馈。见 `C-055` 和 [工作记录](WORK.md)。
-- 面板默认展示会话私有记录，可切换至项目共享记录。没有自有工作记录的历史会话可提炼。Agent 与模型默认折叠，选择节点打开单独详情。保留 worker、Trace 和文件入口。可展开发现已剪枝记录，状态恢复时自动回显，仍需要重新确认的依赖有独立提示。实现证据：`internal/store/nuwa.go`、`internal/engine/nuwa_tools.go`、`internal/server/nuwa.go`、`frontend/src/components/app/nuwa-panel.tsx` 和 `frontend/e2e/nuwa.spec.ts`。
+- 目的：让用户看见工作如何展开，同时不能由用户或界面改写模型的记录；面板只读。
+- 入口：PC／Web 右侧“工作记录／Work records”标签；会话属于项目时显示项目共享图，否则显示会话图。上方是图（泛化的 EASM 图组件），下方是有序 to-do。点击 to-do 高亮其主体和结算它的那一批，点击主体把列表筛到与它有关的 to-do。主体环的状态由 to-do 推导而不存储：没有 to-do 为未分析（虚线）；有 open 或 `doing` 但回合没有运行为待办（虚线）；回合运行中存在 `doing` 为流动虚线；全部结清为实线；`retracted` 为灰色。对已结清主体新增 to-do 会重新打开其环。减少动画偏好下流动环退化为静态虚线。
+- 输入与输出：数据来自 `F-311` 的 HTTP 快照和 `graph_updated` 事件，按 revision 增量刷新。主体颜色取目录槽位的 `--easm-*` 令牌。力导向图节点显式声明命中区域（`nodePointerAreaPaint`），否则节点不可点击。
+- 失败表现：`swarm.graph` 关闭时标签隐藏；加载失败显示可重试错误；空图显示空状态；EASM 画像插件不受影响。
+- 关联契约：`C-059`、`C-060`、`C-061`。
+- 实现证据：`frontend/src/components/app/graph/graph-panel.tsx`、`frontend/src/components/app/graph/graph-view.tsx`、`frontend/src/components/app/graph/graph-canvas.ts`、`frontend/src/components/app/graph/todo-list.tsx`、`frontend/src/components/app/graph/subject-detail.tsx`、`frontend/src/components/app/graph/kind-style.ts`。验证证据：`frontend/src/components/app/graph/graph-panel.test.tsx`、`frontend/src/components/app/graph/graph-canvas.test.ts`、`frontend/e2e/graph-panel.spec.ts`。
 
-### F-138 Project Markdown knowledge base
+### F-141 Worker model binding and explicit recovery
 
-- 目的：在一个项目内用可编辑的 Markdown 页面积累、查找和追溯跨对话的知识。
-- 入口：PC／Web 右侧 Knowledge 标签、提炼菜单、对话 wikilink、项目回合的 `read_knowledge`／`record_knowledge` 和项目知识库 HTTP 路由。Agents、Files、Trace、工作记录和任务面板可绑定当前会话，Memory 和 Knowledge 属项目范围，所有标签共用一条标签栏并用浅底色区分。
-- 输入与输出：项目 schema、稳定页面 ID、Markdown、历史引用；提供类型或关系树、待处理项、单页、反链、来源、Trace 和宽幅预览。Knowledge 的「关系图」从项目根节点可达所有可浏览页面，归属线连接各关系簇。大量未关联页面折叠为可浏览分组，搜索仍覆盖这些页面。可缩放、按标题或别名查找并打开页面。Memory 与 Knowledge 共用一次后台提炼，支持最近成功回合、当前任务和当前项目。启用项目记忆、自动复盘和知识库后，成功非计划回合的自动复盘也可写入知识库。当前任务和当前项目按保存的历史范围分批合并笔记、Skills 与知识库变更，可暂停和继续。两个面板显示已处理数、剩余数、同一回执与 Trace。
-- 前置与失败：Settings 中的全局开关默认开启。首次非计划回合可初始化项目知识库，也可在面板先手动初始化。关闭后隐藏面板并停止知识库提炼。部分提交保留实际写入回执。无项目对话提示移动到项目。相同名称、旧 revision 和错误来源拒绝写入；已保存来源失效时给出提示。
-- 提炼进度条反映已保存的批次进度，区分只读摘录与整条跳过。当前任务和当前项目默认摘录，也可选择全文分段，两个面板显示当前长记录的进度，暂停和重启后继续。引文校验与暂时性服务失败可触发一次未写入批次的重试，配置类失败给出对应的调整提示。
-- 「构建 Wiki 图谱」默认在本地扫描当前任务或项目的可引用历史，发布带原文来源的节点、明确关系和文档，无需模型。菜单也可选择「含模型复核」；图谱在扫描后即可搜索和浏览，正文分批补写。明确属于操作、状态或栏目标签的生成候选会被排除，已生成的同类页面可从待处理打开。面板分别展示扫描、文档及所选复核的进度。重新构建会复用已确认的历史记录，暂停与续跑保留原方式。
-- iOS／Android 配对后的项目列表和项目对话提供知识库入口。手机可搜索和翻页，打开 Markdown、Wiki 链接、关联页面、反链及可用原文摘录，并从来源打开原始对话。项目知识库未启用或电脑端版本较旧时给出明确状态。
-- 契约：`C-053`、`C-054`、`C-036`、`C-044`。
-- 实现证据：`internal/knowledge`、`internal/engine/knowledge.go`、`internal/server/project_knowledge.go`、`frontend/src/components/app/knowledge-panel.tsx`、`frontend/e2e/project-knowledge.spec.ts`、`internal/remote/knowledge.go`、`mobile/src/components/knowledge-screen.tsx`、`mobile/e2e/project-knowledge.spec.ts`。
+- 目的：worker 恢复、续办和重启后继续使用实际绑定的提供商、模型和推理档位，不静默改用新默认值；已移除提供商的恢复必须由用户显式确认。
+- 入口：库侧 `ModelBinding` 随 worker checkpoint 保存；桌面错误行“使用当前所选模型修复恢复配置”，对应 `POST /api/threads/:id/worker-model-recovery`。
+- 输入与输出：绑定只含 ref（出处）、`provider_id`、`model`、`reasoning_effort`，不含凭据。恢复只替换已不存在的提供商，健康 worker 保持原绑定；覆盖保存在原始配置轮次，原绑定与历史保持不变，保存后由人类 Continue／Retry，接口本身不启动模型或工具。旧 turn 缺失的项目归属在升级时回填，既有 worker 可跨重启恢复；已记录归属与当前项目不符时，显式继续目标返回冲突并保留 checkpoint，归属修复后可继续。
+- 失败表现：会话忙碌、有 parked Registry、目标无效或存储失败时拒绝且不部分更新；绑定缺字段或模型无法重建时在 claim 之前拒绝；已保存模型不可用时下一回合在模型请求前失败。见 [归属迁移](DATA_MODEL.md#turns--one-request-and-everything-done-to-answer-it)。
+- 关联契约：`C-037`。
+- 实现证据：`model_binding.go`、`worker_config.go`、`restore.go`、`internal/engine/worker_model_recovery.go`、`internal/server/worker_model_recovery.go`、`internal/store/worker_model_recovery.go`、`frontend/src/components/app/worker-model-recovery.tsx`。验证证据：`model_binding_test.go`、`worker_model_recovery_test.go`、`internal/engine/worker_model_recovery_test.go`、`internal/server/worker_model_recovery_test.go`、`internal/store/worker_model_recovery_test.go`、`internal/store/turn_project_owner_test.go`、`internal/engine/legacy_turn_project_recovery_test.go`、`frontend/src/components/app/worker-model-recovery.test.tsx`、`frontend/e2e/worker-model-recovery.spec.ts`。
 
 ### F-140 Files and attachments
 
@@ -335,6 +354,15 @@ This is the current user-facing capability map. The code and tests named below a
 - 设置 → 集群可关闭答复调度声明核对，或选择自动、决策模型、跟随聊天模型。既有配置默认启用并跟随聊天。自动优先使用有授权的会话网关决策角色，缺失时跟随聊天；显式决策模式缺失时显示错误。疑似声明仍取出具体字段并核对已保存计划及回执。模型调用归属原 turn Trace。关联契约 `C-009`、`C-012`；证据 `internal/engine/schedule_answer_model_http_test.go`、`frontend/e2e/settings.spec.ts`。
 - 模型流的错误或 EOF 在本次调用记录回调结束后才交给消费端；部分 usage、调用者及错误类别保持，消费端在保存期间关闭也只记录一次。关联契约：`C-012`；证据：`internal/provider/provider.go`、`internal/provider/stream_terminal_order_test.go`。
 
+### F-161 Trace reports unrecorded graph results
+
+- 目的：让一次运行里“做了但没有记进图”的程度可被事后查到，而不用回合结束闸门去阻拦。
+- 入口：`GET /api/trace/:turn`（`zwai trace <id>`、Trace 标签的 Full log）；`update_graph` 与 `read_graph` 本身是该回合时间线里的普通工具事件。
+- 输入与输出：本回合开启了图时，响应多一个 `graph_unrecorded`，即自上次被接受的 `update_graph` 以来未被记录的工具结果数，与每次模型请求摘要里的数相同。
+- 失败表现：回合没有开启图时不带该字段；计数读取失败按 Trace 的错误处理返回，不伪造 0。
+- 关联契约：`C-062`、`C-012`。
+- 实现证据：`internal/server/settings.go`、`internal/store/graph_digest.go`。验证证据：`internal/store/graph_digest_test.go`。HTTP 字段本身尚无专门的 server 回归。
+
 ### F-170 Settings and providers
 
 - YAML 或 Settings API 可通过 `swarm.default_reasoning_effort` 为未显式选择档位的模型调用设置 `none`／`low`／`medium`／`high`，默认空保留原调用行为。显式会话／调用档位优先。省略或 `null` 保存保留已存值，空字符串清除，非法类型拒绝且不写配置。关联 `C-009`。实现与验证见 `internal/config/config.go`、`internal/server/settings.go`、`internal/provider/provider.go`、`internal/provider/worker_model.go`、`internal/provider/default_reasoning_test.go`、`internal/config/default_reasoning_effort_test.go`、`internal/server/default_reasoning_effort_settings_test.go`、`internal/engine/default_reasoning_http_test.go`。
@@ -383,6 +411,15 @@ This is the current user-facing capability map. The code and tests named below a
 - 客户端区分 LOCAL 与 gateway，持久默认值仍为 fofa。默认必须登录且账号 ready；仅用户中心头像三击保留 LOCAL 调试入口，没有普通模式配置。桌面调试切换不要求进行中的回合或 worker 空闲：已打开的模型继续打原来的接口，下一次新解析使用新来源。已经登录时，桌面 LOCAL 保留登录，并按服务端授权返回可切换的第三方预置模型和原始网关模型；个人 provider 仍在列表中。未授权或空目录不显示该组，也不要求重新登录。保存的 gateway 选择继续用对应来源，切回 gateway 后恢复托管预置。普通对话请求等待响应时可以切换，已发出的请求使用原模型完成；语音、决策及旧版固定角色调用结束前仍会拒绝切换，语义索引回填不阻塞。备份、还原和重启仍拒绝。手机 LOCAL 同样分别聚合这两类授权目录。普通 gateway 可配置 provider 和功能模型，未覆盖项跟随服务端更新，显式覆盖保持，恢复默认删覆盖。`decisions` 只作后台调用，不出现在功能模型、输入框、账号类型计数或角色清单里，结果也不进入对话。托管第三方账号隐藏所有模型配置，只用预置。接口也拒绝越权，旧 full 偏好不能解锁。手机 gateway 的 PC 工作区需要同账号在线且就绪的 PC；没有 PC 时，PC 页保留连接引导，手机仍可用已授权的网关模型直接聊天。入口：用户中心头像三击、模型设置和网关 bootstrap；关联 `C-040`／`C-046`／`C-013`；实现证据：`internal/provider/model_policy_test.go`、`internal/remote/account_local_sources_test.go`、`internal/engine/account_model_test.go`、`internal/engine/model_policy_test.go`、`internal/server/settings_model_policy_test.go`、`frontend/src/lib/models.test.ts`、`frontend/src/components/app/model-picker.test.tsx`、`frontend/e2e/model-policy.spec.ts`、`frontend/e2e/product-mode.spec.ts`、`mobile/e2e/phone-account-mode.spec.ts`。
 - 既有服务端角色保持兼容：title／compact 关闭时使用 conversation；embedding／decisions／transcription／speech 按开关执行。网关的 `ocr` 能力用于已发送图片预览中的主动文字提取。translation、naming 的专用路由按 F-181／C-049 和现有命名实现生效；LOCAL 忽略服务端角色。托管配置不可由客户端替换。
 
+### F-174 Work graph switch in Settings
+
+- 目的：让用户整体开关工作图，不影响其他设置。
+- 入口：Settings → Swarm 的工作记录开关，对应配置键 `swarm.graph`，默认开启；旧的 `work_ledger`、`knowledge` 键被忽略。
+- 输入与输出：开启时挂载工具、摘要和面板；回合开始时冻结开关，关闭后新回合不挂载，已开始的回合的写入立即被拒绝。
+- 失败表现：设置保存请求省略 `swarm.graph` 时保留原值；关闭只隐藏入口并拒绝写入，不删除已有图数据。
+- 关联契约：`C-062`、`C-059`。
+- 实现证据：`internal/config/config.go`、`frontend/src/components/app/settings-swarm.tsx`、`internal/server/settings.go`、`internal/engine/graph_tools.go`。验证证据：`internal/config/graph_test.go`、`frontend/src/components/app/settings-swarm.test.tsx`、`internal/engine/graph_tools_http_test.go`。
+
 ### F-175 Provider cloud built-in tools
 
 - 目的：让支持 Responses 的 provider 在云端执行自带工具；使用者：PC 用户及 API 配置管理者；入口：Settings → Models 的 provider API 模式和工具 JSON、`PUT /api/settings`、`config.yaml`；输入：`api_mode` 和 `builtin_tools`，工具对象包含唯一非空 `type` 及服务商参数；输出：云端工具与本地函数工具共同供模型选择，流式回答含可点击来源，同 turn 的 `builtin_tool` Trace 回执；前置条件：端点、模型及所配置工具支持 Responses；失败表现：无效配置拒绝且保留草稿，服务端拒绝或流错误沿现有模型错误通道显示；关联契约：`C-030`、`C-009`、`C-012`；实现证据：`internal/config/provider_tools.go`、`internal/provider/responses.go`、`internal/engine/builtin_tools.go`、`frontend/src/components/app/model-settings.tsx`；验证：`internal/config/provider_tools_test.go`、`internal/server/settings_provider_tools_test.go`、`internal/engine/builtin_tools_test.go`、`frontend/e2e/builtin-tools.spec.ts`。
@@ -395,7 +432,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：接入用户配置的外部 MCP 工具并查看工具目录；使用者：PC Desktop/Web 用户；入口：Settings → Tools 的 MCP 标签、`/api/mcp` 管理／inspect API，以及对话工具记录和 Trace。输入框工具菜单的「工具设置」也打开这一页。
 - 输入：显示名称、stdio command/args/env 或 Streamable HTTP/SSE URL/headers、启用状态和超时。设置表单不收集 ID，也不改写已输入文本；新建时分配唯一 ID，编辑保持原 ID。配置文件和 API 仍以该 ID 标识服务器。输出：持久化连接配置、脱敏字段、工具原名、描述／高亮的输入 Schema，以及实际调用结果。连接行用颜色分别标记启用状态和最近一次检查结果。前置条件：命令或远程服务可用，模型支持函数工具；本机命令使用会话工作区作为 cwd，保留应用访问权限。
 - JSON 文本：Edit JSON 直接编辑与其他客户端相同的 `mcpServers` 文本，也可提交 `servers` 对象或数组。编辑时设置页右侧整栏是这份文档，并使用与工具 Schema 相同的 JSON 语法色，原文仍可直接修改。取消或应用后回到连接列表。表单仍用于单条连接。文本中的项新增或更新；未出现的连接及其凭据保持不变。省略 env／headers 保留，`{}` 清除。省略 `disabled_tools` 保留已保存的远端工具例外，显式数组替换。一行命令拆成程序和参数，不经过 shell。`envFile` 与 `cwd` 拒绝且不读取。非法文本不写入任何服务器。实现和验证：`internal/config/mcpjson.go`、`internal/config/mcpjson_test.go`、`internal/server/mcp.go`、`frontend/src/lib/mcp-settings.ts`、`frontend/src/components/app/mcp-json-editor.tsx`、`frontend/e2e/mcp-settings.spec.ts`。
-- 配置读取不连接；显式 inspect 建立临时连接，禁用服务器也可检查，并把成功的目录写入缓存。Settings 在完成一次检查（含失败）之前不展示工具目录。`mcp.direct_load_percent` 缺省 5，Settings → Tools 可改，`0` 始终使用目录代理。回合准入不做外部 I/O。准入之后、第一次模型请求之前，按即将挂载的 MCP schema 占所选模型上下文窗口的比例决定：未超过则每个启用的远端工具是可直接调用的函数，调用时才连接；超过、窗口未知时改用 `swarm.auto_compact_tokens` 仍超过、或列目录失败，则保留带名字索引的 `list_tools`／`call_tool`。`list_tools` 可用 `query` 查名字和描述，精确 `name` 才返回完整 schema。缓存命中不再连接。Stop 取消尚未完成的列表。本回合的决定冻结；中途新出现的远端工具下一回合才进入工具表。Settings 拥有服务器 `enabled`。输入框「工具」写入 `disabled_tools`：直接函数从下一次请求撤下，渐进披露时 list 省略该名字，call 在连接前返回 `tool_switched_off` 且不执行，包括正在进行的回合；这不关闭服务器，也不使会话失效。本回合开始后才启用的服务器或单个远端工具，下一回合才挂上。已挂载的名字重新勾选后，下一次请求恢复。plan、Nuwa 只读和账号工具白名单不挂 MCP。Nuwa 主管不拿这些执行工具，`list_worker_tools` 看到本回合实际挂上的名字。恢复保持 checkpoint 里的原工具名。运行中的 MCP 工具确认旧会话在执行前失效时，用同一连接的最新保存凭据重连一次。Streamable HTTP 工具调用达到本地截止时间时，保留 `timeout` 回执和未知的远端结果，同一回合的后续独立调用仍可复用原会话。重连失败、连接关闭或其他阻断错误发生时，停止该任务的新模型与工具请求，保留失败原因并提示修复后重试。执行结果不明的调用不自动重放。连接／目录失败留下渐进代理并保留内置工具；每个 server/configuration 最多保留 8 个闲置 workspace session，不保证调用间保留。
+- 配置读取不连接；显式 inspect 建立临时连接，禁用服务器也可检查，并把成功的目录写入缓存。Settings 在完成一次检查（含失败）之前不展示工具目录。`mcp.direct_load_percent` 缺省 5，Settings → Tools 可改，`0` 始终使用目录代理。回合准入不做外部 I/O。准入之后、第一次模型请求之前，按即将挂载的 MCP schema 占所选模型上下文窗口的比例决定：未超过则每个启用的远端工具是可直接调用的函数，调用时才连接；超过、窗口未知时改用 `swarm.auto_compact_tokens` 仍超过、或列目录失败，则保留带名字索引的 `list_tools`／`call_tool`。`list_tools` 可用 `query` 查名字和描述，精确 `name` 才返回完整 schema。缓存命中不再连接。Stop 取消尚未完成的列表。本回合的决定冻结；中途新出现的远端工具下一回合才进入工具表。Settings 拥有服务器 `enabled`。输入框「工具」写入 `disabled_tools`：直接函数从下一次请求撤下，渐进披露时 list 省略该名字，call 在连接前返回 `tool_switched_off` 且不执行，包括正在进行的回合；这不关闭服务器，也不使会话失效。本回合开始后才启用的服务器或单个远端工具，下一回合才挂上。已挂载的名字重新勾选后，下一次请求恢复。plan 和账号工具白名单不挂 MCP。恢复保持 checkpoint 里的原工具名。运行中的 MCP 工具确认旧会话在执行前失效时，用同一连接的最新保存凭据重连一次。Streamable HTTP 工具调用达到本地截止时间时，保留 `timeout` 回执和未知的远端结果，同一回合的后续独立调用仍可复用原会话。重连失败、连接关闭或其他阻断错误发生时，停止该任务的新模型与工具请求，保留失败原因并提示修复后重试。执行结果不明的调用不自动重放。连接／目录失败留下渐进代理并保留内置工具；每个 server/configuration 最多保留 8 个闲置 workspace session，不保证调用间保留。
 - MCP 调用参数缺少必填字段或与目录中明确声明的字段／数组元素类型不匹配时，工具记录显示字段错误，模型可在当前回合重新提交修正参数。远端工具报告 HTTP 429 时，工具记录显示具体限流错误，模型可继续完成同一回合中可独立执行的工作。适配器不自动重放被限流的调用。
 - 直接挂载和目录代理都在发送调用前检查工具 Schema 明确要求且无默认值的顶层字段。原工具记录显示缺少的字段，模型可在同一回合补齐，同一批其他工具仍可完成。证据为 `internal/engine/mcp_validation_http_test.go`、`frontend/e2e/mcp-progress.spec.ts`。关联 `C-041`。
 - 直接挂载时模型调用远端工具本身。渐进披露的代理描述要求先按任务查询目录，不能凭服务器标题判断没有匹配，并遵循用户明确指定的路径。采用技能中保存的命令行或直连 API 备用路径时，以本轮目录或调用结果为依据，并遵守现有授权边界。仅凭过去的失败不能绕过。把未注册的名字，或渐进目录里的远端原名，当作函数调用时，模型收到 `tool_not_registered`，该调用不执行，同一条回复里的其他工具继续。该原名只属于一台渐进服务器时，回执带上对应的 `call_tool`。证据：`unknown_tool_test.go`、`internal/engine/unknown_tool_review_test.go`、`internal/engine/mcp_mount_test.go`。
@@ -526,9 +563,18 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-225 Manage PC projects from the phone
 
-- 目的：手机直接创建和配置已配对 PC 的项目；入口：首页菜单 → 项目管理、新建会话 → 项目管理；输入：名称、项目指令、PC 已存在的工作目录、记忆开关、女娲开关和规划／执行模型；输出：PC 中同一项目的持久化设置，新建后可直接用于手机新会话。
-- 前置条件：PC 在线且支持项目 RPC；全局关闭记忆时禁用项目记忆开关；女娲使用 PC 就绪模型目录。失败表现：旧版 PC 提示升级、加载失败可重试、保存失败保留输入；恢复阶段拒绝写入。只发送编辑过的字段，切换 PC／关闭面板后忽略迟到回复，不把配置写入手机直连模型的 Chat。
+- 目的：手机直接创建和配置已配对 PC 的项目；入口：首页菜单 → 项目管理、新建会话 → 项目管理；输入：名称、项目指令、PC 已存在的工作目录、记忆开关；输出：PC 中同一项目的持久化设置，新建后可直接用于手机新会话。
+- 前置条件：PC 在线且支持项目 RPC；全局关闭记忆时禁用项目记忆开关；旧客户端仍可能发送 `nuwa_*` 字段，PC 接受并忽略它们（`C-064`）。失败表现：旧版 PC 提示升级、加载失败可重试、保存失败保留输入；恢复阶段拒绝写入。只发送编辑过的字段，切换 PC／关闭面板后忽略迟到回复，不把配置写入手机直连模型的 Chat。
 - 关联契约：`C-006`、`C-026`；实现证据：`internal/remote/project_settings.go`、`internal/remote/project_settings_test.go`、`mobile/src/components/project-manager.tsx`、`mobile/src/components/project-manager.test.tsx`、`mobile/e2e/project-management.spec.ts`。
+
+### F-226 Work records screen on the phone
+
+- 目的：在手机上只读查看配对 PC 当前会话或项目的工作图和 to-do。
+- 入口：配对手机会话顶部的“工作记录”；加密 RPC `graph`，带手机已持有的 revision。
+- 输入与输出：revision 未变时返回一帧很小的 `unchanged`；变化时返回有界快照（主体、连线、to-do），凭据值不出现。项目会话读项目所有者的图。
+- 失败表现：图超过一个配对帧时以 `graph_too_large` 明确拒绝，提示在桌面打开，不返回半张图；PC 的启动元数据未报告 `graph_available`（旧版 PC 或关闭 `swarm.graph`）时不显示入口；手机不能编辑。
+- 关联契约：`C-063`、`C-061`、`C-059`。
+- 实现证据：`internal/remote/graph.go`、`mobile/src/components/work-records.tsx`、`mobile/src/lib/mock-graph.ts`、`mobile/src/lib/rpc.ts`、`mobile/src/components/phone-app.tsx`。验证证据：`internal/remote/graph_test.go`、`mobile/src/components/work-records.test.tsx`、`mobile/e2e/work-records.spec.ts`。
 
 ### F-230 Direct model chat
 
@@ -550,6 +596,15 @@ This is the current user-facing capability map. The code and tests named below a
 - 缺失记录诊断：404 区分会话不存在、排队消息已离队和通用记录缺失；附请求 ID、方法、路由和可用的记录身份，使用同 ID 在默认 WARN 日志定位，避免裸存储哨兵。关联契约：`C-012`；证据：`internal/server/missing_record.go`、`internal/server/missing_record_test.go`。
 
 - 目的：给 PC 客户端提供相同服务；使用者：内置客户端及本机调用方；入口：`/api`、SSE、WebSocket；输入：同源请求；输出：状态和事件；前置条件：引擎在线；失败表现：HTTP 状态和 code；关联契约：`C-002`, `C-003`, `C-005`；实现证据：`internal/server`, `docs/API.md`。
+
+### F-311 Graph HTTP, live event and kind catalog
+
+- 目的：给桌面面板和其他调用方稳定的只读图接口。
+- 入口：`GET /api/threads/:id/graph`、`GET /api/projects/:id/graph`、`GET /api/graph/kinds`；线程 `events` 流在 `graph=1` 时发送命名 SSE 帧 `graph_updated`。
+- 输入与输出：快照含 revision、主体、连线、to-do 与 `more`，单页至多 2000 行；`graph_updated` 携带线程和新 revision，在写入提交之后发送，不带重放 id，也不占用聊天 seq。目录接口返回共享 kind 目录。字段见 [API](API.md)。
+- 失败表现：未知会话为 404（经 `server.fail` 映射）；非法 `offset`／`limit` 为 400；连接丢失后客户端按 revision 重新读取快照，而不是依赖重放；读取接口不受 `swarm.graph` 开关限制，开关只决定面板入口和工具（`F-174`）。
+- 关联契约：`C-060`、`C-061`、`C-059`。
+- 实现证据：`internal/server/graph.go`、`internal/server/server.go`、`frontend/src/lib/stream.ts`、`frontend/src/lib/api.ts`。验证证据：`internal/server/graph_http_test.go`、`frontend/src/lib/stream.test.ts`。
 
 ### F-320 CLI commands
 
@@ -586,6 +641,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-420 Configuration and project memory
 
+- 项目 Memory 的 Distill（提炼）：入口为项目菜单的提炼面板，范围可选最近成功回合、当前任务或当前项目。宿主在项目内合并重复请求，按历史顺序分批读取已保留的原始记录，模型每批提交一份来源绑定的笔记／Skills 提案，宿主校验引文与来源归属后保存；进度条、已处理与剩余计数和回执跨暂停、失败与重启保留，已提交批次不重跑。需要项目记忆开启；记忆关闭时请求被拒（`ErrDistillationTargets`）。关联契约：`C-054`、`C-025`；实现证据：`internal/engine/project_distill.go`、`internal/engine/project_distill_batch.go`、`internal/store/distillation.go`、`internal/server/project_distill.go`、`frontend/src/components/app/project-distill.tsx`；验证证据：`internal/engine/project_distill_test.go`、`internal/server/project_distill_test.go`、`frontend/e2e/memory-review.spec.ts`、`models/knowledge/ProjectDistillation.tla`、`models/knowledge/DistillationProgress.tla`。
+
 - 设置 → 记忆支持「核验并修正项目技能」。成功会话读过现有技能并产生完整的后续工具证据时，可自动核对其历史补丁。适用的回退进入原回合 Trace，后续会话可读取修订版。默认开启，显式关闭后保留设置。关联 `C-025`；实现证据：`internal/engine/dream.go`、`internal/engine/dream_discovery.go`；验证证据：`internal/engine/dream_http_test.go`。
 
 - 用户触发的“整理记忆”支持原笔记升为技能、无步骤短技能降为笔记；完整保留源文字、唯一匹配、预算与目标冲突校验后先存目标再删源，部分失败记录已保存内容，重试按已有最终状态幂等。自动复盘／worker／共享库不获搬家权限。结果显示升降类计数与流式动作，有既有 turn 时动作和陈旧名单进入同 turn Trace。失败摘要按已提交笔记及完整搬家回执判断保存结果，不将仅创建技能的半完成提升当作笔记已保存。入口：项目 Memory 整理按钮、既有 tidy-skills API；关联契约：`C-025`、`C-012`；实现证据：`internal/memory/reclassify.go`、`internal/engine/review_tidy.go`；测试证据：`internal/engine/review_reclassify_test.go`、`internal/server/memory_reclassify_test.go`、`frontend/e2e/memory-boundary.spec.ts`、`frontend/e2e/memory-tidy-partial.spec.ts`。
@@ -604,7 +661,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 - Settings → Memory 的 Review thinking 可独立指定回合复盘推理档位，默认“默认（低）”，可选跟随会话、关闭推理或显式低/中/高；只影响自动复盘和 Review now。记忆关闭时只保留总开关；自动复盘关闭时不展示复盘通知、推理级别、复盘回合和技能核验。笔记上限和技能索引在记忆开启后仍可编辑。入口证据：`frontend/src/components/app/memory-settings.tsx`、`frontend/e2e/settings.spec.ts`、`internal/config/memory.go`、`internal/engine/review_profile_test.go`；关联契约 `C-025`。
 - 来源身份 framing 超过单源 rune 上限时整组省略，配对工具不拆开，被省略正文不能作为写入证据。技能提炼指令区分常规路径与已发生故障的独立恢复分支，明确有证据的进入、恢复及回归/结束条件，不要求重演失败探测。该指令仍须效果评测验证。关联契约：`C-025`；证据：`internal/engine/review_source_select_test.go`、`internal/memory/prompt_test.go`。
-- 自动复盘不再因 manager 曾写入一项记忆而跳过整轮；成功回合复盘完整有效来源，启用项目知识库时，成功非计划回合在同一自动提案中复盘笔记、Skills 与知识库；失败项目回合只保留真实人类长期要求，不提炼技能、工具结果或派生摘要；取消不触发自动复盘。当前 notes 在项目复盘锁内、模型调用前读取；源事件优先保留人类纠正，再选择近期完整工具配对，按 rune 限额包含来源 framing；现有 notes、技能目录及系统指令另计。入口：正常/失败回合后的自动复盘、共享 Skills 的 Review now（最近成功回合）、项目 Memory 的 Distill（`C-054`）；实现证据：`internal/engine/review.go`、`internal/engine/review_human.go`、`internal/engine/review_source_select.go`、`internal/engine/review_quality_test.go`、`internal/engine/review_source_select_test.go`。
+- 自动复盘不再因 manager 曾写入一项记忆而跳过整轮；成功回合复盘完整有效来源，成功非计划回合在同一自动提案中复盘笔记与 Skills；失败项目回合只保留真实人类长期要求，不提炼技能、工具结果或派生摘要；取消不触发自动复盘。当前 notes 在项目复盘锁内、模型调用前读取；源事件优先保留人类纠正，再选择近期完整工具配对，按 rune 限额包含来源 framing；现有 notes、技能目录及系统指令另计。入口：正常/失败回合后的自动复盘、共享 Skills 的 Review now（最近成功回合）、项目 Memory 的 Distill（`F-420`、`C-054`）；实现证据：`internal/engine/review.go`、`internal/engine/review_human.go`、`internal/engine/review_source_select.go`、`internal/engine/review_quality_test.go`、`internal/engine/review_source_select_test.go`。
 - 自动 reviewer 用一次完整批次提交 notes/skills 变更；notes 在内存草稿复用既有校验，最终按首次模型输入的同一 notes revision 一次提交，普通拒绝后不重基；思考期间的并发编辑终止本轮，不追加修复请求，失败或冲突不半写；skills 仍即时落盘，后续失败也记录真实技能变化，不声称跨文件事务。每项变更引用源 seq 与原文，notes 的新增数字须出现在引文或被替换旧条目中；这是来源/拼写约束，不证明语义真值。成功后程序收尾，不再请求模型写结束语；拒绝可在原迭代上限内修复，同 turn Trace 保留可选 evidence/refused。关联契约：`C-025`、`C-012`；实现证据：`internal/engine/review_batch.go`、`internal/engine/review_evidence.go`、`internal/memory/notes_draft.go`、`internal/engine/review_batch_test.go`、`internal/engine/review_evidence_test.go`、`internal/memory/notes_draft_test.go`。
 - 提案预检一次返回全部可独立发现的引用、数字和 notes 校验问题；容量反馈给出拒绝候选用量、当前空闲及可写内容上限。reviewer 在原预算内自动缩写相关条目或合入本轮新事实，保留事实、条件、否定、范围和数字拼写；无关条目不变，任一预检问题都不写 notes 或 skills。语义保留仍依赖模型，来源与长度校验不证明语义等值。关联契约：`C-025`、`C-012`；证据：`internal/engine/review_validation.go`、`internal/engine/review_validation_all_test.go`、`internal/memory/capacity_feedback_test.go`、`frontend/e2e/memory-review.spec.ts`。
 - `memory.review_deduplicate_feedback` 可选择减少复盘 reviewer 的聚合拒绝反馈中的重复字段，完整保留每条问题和修复数据。默认关闭。入口：`config.yaml`；关联契约：`C-025`；证据：`internal/config/memory.go`、`internal/engine/review_validation.go`、`TestReviewFeedbackDedupOpenSSLReplay`。
@@ -688,6 +745,15 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：从一个已验收、已分配版本的完整主线批次发布实际受影响的 macOS、Android 和 iOS 端；使用者：维护者；入口：`make release`, `make release-check`, `make mobile-ios-release`, `python3 tools/audit_pending_batch.py`；输入：干净源码、统一版本/SHA、签名配置（可选 `marketing_version` 显式开启新 TestFlight 版本）、测试组与源码中的授权应用合规声明（无字段的旧源码使用按 SHA/build 持久保留的精确确认）、交付台账及经验证的额外主线平台变更；输出：所需平台的 GitHub macOS zip/APK、TestFlight 构建与组/审核状态（常规更新沿用最近成功版本，仅增加 build number；已有候选冻结版本；同版本仍可能审核）、逐 Issue 交付结果，以及未分配变更的提交数、等待时长和发布平台；旧版仍待交付时保留冻结批次并独立恢复；前置条件：Go、Node、SDK、gh、私有 iOS CLI/签名资料，主线自上个公开版本超过三次提交或最早待发布修复等待超过 24 小时；失败表现：各端独立报错或等待，未交付时退出非零；关联契约：`C-010`；实现证据：`Makefile`, `tools/release.py`, `tools/release_ios.py`, `tools/test_release.py`, `tools/test_release_ios_versions.py`, `tools/audit_pending_batch.py`, `tools/test_audit_pending_batch.py`, `internal/release`, `internal/desktop/pack`, `mobile/scripts/android-release.ts`, `docs/RELEASE.md`。
 
 语音设置按当前来源协商到的 transcription／speech 能力分别显示；LOCAL 个人配置保留自身能力。可配置网关来源在 Models 显示获准角色的模型选择，固定来源仅在 Speech 显示已获准的语音参数。缺失或失败的能力清单不能由旧 configurable 布尔值重新开放控件；保存的选择保留，重试后恢复。
+
+### F-431 Graph evaluation tasks
+
+- 目的：在真实模型上度量工作图是否被用对，属于测量而不是完成检查。
+- 入口：`make eval EVAL_PROVIDER=<id>` 的任务 `graph-exposure-analysis`（暴露面分析：主体完整、连线与 to-do 结清）和 `graph-fofa-query`（带错误草稿的查询修订：当前查询精确，失败草稿以 `retracted` 保留并与当前主体连线）。
+- 输入与输出：评分器新增 `graph_count` 检查，按 `of`（`subjects`、`links`、`todos`）、`kind`、`status`、`min`、`max` 统计已保存的图；其余检查沿用命令和文件不变检查。
+- 失败表现：`of` 非法或任务缺字段在加载任务时报错；图为空时计数为 0 并使对应检查失败。
+- 关联契约：`C-058`、`C-056`。
+- 实现证据：`evals/tasks/graph-exposure-analysis/task.json`、`evals/tasks/graph-fofa-query/task.json`、`tools/agent_eval_grade.py`、`tools/agent_eval.py`。验证证据：`tools/test_agent_eval_graph.py`。
 
 ### F-137 HTML/JS task panels
 

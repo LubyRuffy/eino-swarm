@@ -253,27 +253,3 @@ func TestEmbeddingBackfillDoesNotBlockDebugSourceSwitch(t *testing.T) {
 		t.Fatal("embedding did not finish after the endpoint replied")
 	}
 }
-
-func TestManagedNuwaUsesPresetWithoutReplacingSavedPersonalPair(t *testing.T) {
-	e := newTestEngine(t)
-	if err := e.UpdateConfig(func(c *config.Config) error { c.Product.Mode = ""; return nil }); err != nil {
-		t.Fatal(err)
-	}
-	src, err := provider.NewAccountProfile("gateway:0123456789abcdef0123456789abcdef", "https://gateway.invalid/v1", "private", provider.AccountProfile{Label: "Managed"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The mock pool intentionally ignores account sources; exercise policy on a
-	// real pool without sending a model request.
-	e.pool = provider.New(e.Config())
-	e.pool.SetAccountSource(src)
-	if pair, err := e.ResolveNuwaModelPair(true, nil, nil); err != nil || pair != nil {
-		t.Fatalf("implicit preset was stored as a personal pair: %v %v", pair, err)
-	}
-	if _, err := e.ResolveNuwaModelPair(true, nil, &NuwaModelPair{}); !errors.Is(err, provider.ErrModelPolicy) {
-		t.Fatalf("explicit pair bypassed preset: %v", err)
-	}
-	if _, err := e.SaveNuwaModelPair("unused", NuwaModelPair{}); !errors.Is(err, provider.ErrModelPolicy) {
-		t.Fatalf("saved pair bypassed preset: %v", err)
-	}
-}

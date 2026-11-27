@@ -31,13 +31,13 @@ func TestDistillationReachesEveryBatchInLongConversation(t *testing.T) {
 			}
 		}
 		mu.Unlock()
-		nuwaValidationTool(w, req, fmt.Sprintf("batch-%d", step), distillBatchName, `{"changes":[],"knowledge":[]}`)
+		scriptedToolReply(w, req, fmt.Sprintf("batch-%d", step), distillBatchName, `{"changes":[]}`)
 	})
 	p, err := e.CreateProject("Long history", "", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	th := knowledgeFixtureThread(t, e, p.ID, "Long task")
+	th := distillFixtureThread(t, e, p.ID, "Long task")
 	turn, _ := distillEvent(t, e, th, store.TurnDone, KindUser, "Initialize the task.")
 	for i := range 30 {
 		err := e.store.AppendEvent(&store.Event{ThreadID: th.ID, TurnID: turn.ID, Kind: KindUser,
@@ -68,8 +68,7 @@ func TestDistillationResumesAfterPauseAndEngineRestart(t *testing.T) {
 		"changes":[
 			{"target":"memory","action":"add","content":"Keep the measurement convention.","evidence":[{"seq":1,"quote":"Keep the measurement convention."}]},
 			{"target":"skill_manage","action":"create","name":"measurement","description":"Measurement workflow","content":"Read the retained measurement convention.","evidence":[{"seq":1,"quote":"Keep the measurement convention."}]}
-		],
-		"knowledge":[{"action":"write_page","id":"measurement","type":"entry","title":"Measurement","body":"Keep the measurement convention.","evidence":[{"seq":1,"quote":"Keep the measurement convention."}]}]
+		]
 	}`
 	var calls atomic.Int32
 	entered := make(chan string, 1)
@@ -84,7 +83,7 @@ func TestDistillationResumesAfterPauseAndEngineRestart(t *testing.T) {
 		step := calls.Add(1)
 		switch step {
 		case 1:
-			nuwaValidationTool(w, input, "first", distillBatchName, proposal)
+			scriptedToolReply(w, input, "first", distillBatchName, proposal)
 			return
 		case 2:
 			entered <- input.Messages[1].Content
@@ -93,7 +92,7 @@ func TestDistillationResumesAfterPauseAndEngineRestart(t *testing.T) {
 		case 3:
 			resumed <- input.Messages[1].Content
 		}
-		nuwaValidationTool(w, input, fmt.Sprintf("batch-%d", step), distillBatchName, `{"changes":[],"knowledge":[]}`)
+		scriptedToolReply(w, input, fmt.Sprintf("batch-%d", step), distillBatchName, `{"changes":[]}`)
 	}))
 	t.Cleanup(endpoint.Close)
 
@@ -114,8 +113,8 @@ func TestDistillationResumesAfterPauseAndEngineRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		projectID = p.ID
-		th := knowledgeFixtureThread(t, e, p.ID, "Main task")
-		other := knowledgeFixtureThread(t, e, p.ID, "Peer task")
+		th := distillFixtureThread(t, e, p.ID, "Main task")
+		other := distillFixtureThread(t, e, p.ID, "Peer task")
 		a, _ := distillEvent(t, e, th, store.TurnDone, KindUser, convention)
 		b, _ := distillEvent(t, e, other, store.TurnDone, KindUser, "Retain the peer observation.")
 		for i := range 40 {
@@ -129,7 +128,7 @@ func TestDistillationResumesAfterPauseAndEngineRestart(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		start, err := e.StartProjectDistillation(t.Context(), projectID, DistillationRequest{Scope: "project", EnableKnowledge: true})
+		start, err := e.StartProjectDistillation(t.Context(), projectID, DistillationRequest{Scope: "project"})
 		if err != nil || start.Progress == nil || start.Progress.Total != 42 {
 			t.Fatalf("wrong frozen scope: %+v %v", start, err)
 		}
@@ -141,7 +140,7 @@ func TestDistillationResumesAfterPauseAndEngineRestart(t *testing.T) {
 		}
 		current, err := e.ProjectDistillationStatus(t.Context(), projectID)
 		if err != nil || current.State != "running" || current.Progress.Batches != 1 || current.Progress.Remaining == 0 ||
-			len(current.Changes) != 2 || len(current.Knowledge) != 1 {
+			len(current.Changes) != 2 {
 			t.Fatalf("first batch was not durably visible: %+v %v", current, err)
 		}
 		if _, err := e.StartProjectDistillation(t.Context(), projectID, DistillationRequest{PauseReviewID: "wrong"}); !errors.Is(err, store.ErrNotFound) {
@@ -180,7 +179,7 @@ func TestDistillationResumesAfterPauseAndEngineRestart(t *testing.T) {
 		}
 		result := waitDistill(t, e, projectID)
 		if result.State != "completed" || result.ReviewID != reviewID || result.Progress.Processed != 42 ||
-			result.Progress.Remaining != 0 || len(result.Changes) != 2 || len(result.Knowledge) != 1 {
+			result.Progress.Remaining != 0 || len(result.Changes) != 2 {
 			t.Fatalf("lost coverage or repeated a committed write: %+v progress=%+v", result, result.Progress)
 		}
 		mem, err := e.ProjectMemory(projectID).Read()
@@ -190,10 +189,6 @@ func TestDistillationResumesAfterPauseAndEngineRestart(t *testing.T) {
 		skills, err := e.ProjectMemory(projectID).ListSkills()
 		if err != nil || len(skills) != 1 || skills[0].Name != "measurement" {
 			t.Fatalf("wrong Skills after resume: %+v %v", skills, err)
-		}
-		page, err := e.ProjectKnowledgePage(t.Context(), projectID, "measurement")
-		if err != nil || len(page.Sources) != 1 || page.Sources[0].Available == nil || !*page.Sources[0].Available {
-			t.Fatalf("lost the page or its source: %+v %v", page, err)
 		}
 		again, err := e.StartProjectDistillation(t.Context(), projectID, DistillationRequest{ResumeReviewID: reviewID})
 		if err != nil || again.State != "completed" {
@@ -205,17 +200,17 @@ func TestDistillationResumesAfterPauseAndEngineRestart(t *testing.T) {
 func TestDistillationKeepsUnconfirmedWritesWhenCheckpointFails(t *testing.T) {
 	const observation = "The measurement was preserved."
 	e, calls := distillWire(t, func(w http.ResponseWriter, req scheduleCompletionRequest, step int) {
-		body := `{"changes":[],"knowledge":[]}`
+		body := `{"changes":[]}`
 		if step == 1 {
-			body = `{"changes":[],"knowledge":[{"action":"write_page","id":"measurement","type":"entry","title":"Measurement","body":"The measurement was preserved.","evidence":[{"seq":1,"quote":"The measurement was preserved."}]}]}`
+			body = `{"changes":[{"target":"memory","action":"add","content":"The measurement was preserved.","evidence":[{"seq":1,"quote":"The measurement was preserved."}]}]}`
 		}
-		nuwaValidationTool(w, req, fmt.Sprintf("checkpoint-%d", step), distillBatchName, body)
+		scriptedToolReply(w, req, fmt.Sprintf("checkpoint-%d", step), distillBatchName, body)
 	})
-	p, err := e.CreateProject("Checkpoint failure", "", "", false)
+	p, err := e.CreateProject("Checkpoint failure", "", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	th := knowledgeFixtureThread(t, e, p.ID, "Task")
+	th := distillFixtureThread(t, e, p.ID, "Task")
 	distillEvent(t, e, th, store.TurnDone, KindUser, observation)
 	db := e.store.DB()
 	if err := db.Exec(`CREATE TRIGGER reject_distillation_cursor
@@ -224,18 +219,14 @@ func TestDistillationKeepsUnconfirmedWritesWhenCheckpointFails(t *testing.T) {
 		BEGIN SELECT RAISE(ABORT,'fixture checkpoint failure'); END`).Error; err != nil {
 		t.Fatal(err)
 	}
-	start, err := e.StartProjectDistillation(t.Context(), p.ID, DistillationRequest{Scope: "thread", ThreadID: th.ID, EnableKnowledge: true})
+	start, err := e.StartProjectDistillation(t.Context(), p.ID, DistillationRequest{Scope: "thread", ThreadID: th.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
 	first := waitDistill(t, e, p.ID)
 	if first.State != "partial" || !first.Uncertain || first.Progress.Processed != 0 ||
-		first.Progress.Remaining != 1 || len(first.Knowledge) != 1 {
+		first.Progress.Remaining != 1 || len(first.Changes) != 1 {
 		t.Fatalf("SQLite failure discarded a write or advanced the queue: %+v %+v", first, first.Progress)
-	}
-	original, err := e.ProjectKnowledgePage(t.Context(), p.ID, "measurement")
-	if err != nil {
-		t.Fatal(err)
 	}
 	if err := db.Exec("DROP TRIGGER reject_distillation_cursor").Error; err != nil {
 		t.Fatal(err)
@@ -260,10 +251,10 @@ func TestDistillationKeepsUnconfirmedWritesWhenCheckpointFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	final := waitDistill(t, e, p.ID)
-	page, err := e.ProjectKnowledgePage(t.Context(), p.ID, "measurement")
-	if err != nil || page.Revision != original.Revision || final.State != "completed" || final.Uncertain ||
-		final.Progress.Processed != 1 || final.Progress.Remaining != 0 || len(final.Knowledge) != 1 || calls.Load() != 2 {
-		t.Fatalf("resuming the pending checkpoint rewrote or lost a prior page: %+v %+v %v", final, final.Progress, err)
+	mem, err := e.ProjectMemory(p.ID).Read()
+	if err != nil || len(mem.Entries) != 1 || final.State != "completed" || final.Uncertain ||
+		final.Progress.Processed != 1 || final.Progress.Remaining != 0 || len(final.Changes) != 1 || calls.Load() != 2 {
+		t.Fatalf("resuming the pending checkpoint rewrote or lost a prior write: %+v %+v %v", final, final.Progress, err)
 	}
 }
 
@@ -278,13 +269,13 @@ func TestDistillationCarriesToolContextAndCountsUnavailableInputs(t *testing.T) 
 				t.Errorf("an ineligible source reached the reviewer: %q", text)
 			}
 		}
-		nuwaValidationTool(w, req, "inspect", distillBatchName, `{"changes":[],"knowledge":[]}`)
+		scriptedToolReply(w, req, "inspect", distillBatchName, `{"changes":[]}`)
 	})
 	p, err := e.CreateProject("Evidence pairs", "", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	th := knowledgeFixtureThread(t, e, p.ID, "Task")
+	th := distillFixtureThread(t, e, p.ID, "Task")
 	turn, _ := distillEvent(t, e, th, store.TurnDone, KindUser, "Review existing evidence.")
 	var invalidSteer *store.Event
 	for _, ev := range []*store.Event{
@@ -349,13 +340,13 @@ func TestDistillationRefusesToCompleteWhenItsSavedSourceQueueIsMissing(t *testin
 
 func TestDistillationKeepsRemainingWorkWhenAnEnabledDestinationIsDisabled(t *testing.T) {
 	e, calls := distillWire(t, func(w http.ResponseWriter, req scheduleCompletionRequest, _ int) {
-		nuwaValidationTool(w, req, "after-enable", distillBatchName, `{"changes":[],"knowledge":[]}`)
+		scriptedToolReply(w, req, "after-enable", distillBatchName, `{"changes":[]}`)
 	})
 	p, err := e.CreateProject("Changing settings", "", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	th := knowledgeFixtureThread(t, e, p.ID, "Task")
+	th := distillFixtureThread(t, e, p.ID, "Task")
 	distillEvent(t, e, th, store.TurnDone, KindUser, "Retained requirement.")
 	gate := e.reviews.begin(p.ID)
 	gate <- struct{}{}

@@ -111,5 +111,5 @@ it("defaults work records on and lets the user disable them for future ordinary 
   const ledger = screen.getByRole("switch", { name: "Work records" })
   expect(ledger).toBeChecked()
   fireEvent.click(ledger)
-  expect((onChange.mock.calls[0][0] as Settings).swarm.work_ledger).toBe(false)
+  expect((onChange.mock.calls[0][0] as Settings).swarm.graph).toBe(false)
 })

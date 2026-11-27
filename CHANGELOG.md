@@ -8,19 +8,110 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Changed
 
+- A successful graph write returns the subject ids and a link count instead of
+  every link, and the kind list on the tool no longer repeats each kind's
+  prose, so each later model call carries less.
+- A graph write no longer refuses a batch because a new subject repeats its ref
+  as an id, a link end is prefixed with `ref:`, or a subject carries an
+  attribute its kind does not declare. Those are repaired or omitted, and a ref
+  from an earlier write in this process still resolves. A subject or to-do id
+  that the host did not mint (no `sj_` / `td_` prefix) is treated as a new one,
+  an empty `own_tool_call_ids` is the same as omitting it, and a named tool call
+  that never happened falls back to citing the caller's real results. The
+  omitted-attribute list is deduplicated. The `app` kind is named "Product or
+  app" so a product is not filed as `other`.
+- The graph tool definitions and guidance are shorter (parameter prose, the
+  read tool, link/evidence extras), which cuts the per-call cost of keeping the
+  graph on. Evidence given by hand is an external address; the model cites its
+  own tool calls with `own_tool_call_ids`. The exposure and query evaluation
+  prompts say the input files are in the workspace root, and the exposure prompt
+  names the task `results` directory for its answer.
+- A newly finished to-do is shown in progress and then marked done by the host
+  in the same graph write, so the model does not spend another call only to
+  flip that status. Guidance also says each distinct thing is its own subject.
+- A graph write that links a lead to a confirmed subject of the same kind stores
+  that lead as retracted. Two leads, or two confirmed subjects, stay as written.
+  The digest lists current subjects separately from retracted ones, and the
+  guidance tells the model not to hand the same check to a second worker.
+- The exposure and query acceptance tasks allow 20 minutes. A finished graph was
+  being cut off at 15 minutes while the model was still checking the deliverable.
+- A graph write with no usable evidence cites the caller's own completed tool
+  results instead of refusing the batch. The first newly finished to-do stays
+  in progress until a later call settles it, including a call that repeats its
+  title. The query-extraction task asks for one current statement and retracted
+  earlier ones.
+- The working-graph guidance records to-dos first and the findings in one later
+  call, and a corrected identity is a new subject linked to the retracted one.
+  The digest no longer asks for a graph write per tool result. Eval checks for
+  the exposure and query tasks read the task `results/` deliverable.
+- Work records and the project Knowledge base are replaced by one work graph.
+  The model records what the work is about (subjects and links) and keeps an
+  ordered to-do list; the host stores it and never decides what a to-do is.
+  The turn is not blocked at its end for an incomplete graph; the number of
+  unrecorded tool results appears in Trace instead. Memory distillation now
+  covers project Memory only. See [Work graph](GRAPH.md).
+  (`F-131`, `F-132`, `F-133`, `F-141`, `C-037`, `C-054`, `C-056`, `C-062`)
+- Compatibility: legacy Nuwa, work-record and Knowledge/Wiki tables stay on
+  disk, are not imported, shown or sent to the model, are still deleted with
+  their conversation or project, and are still carried and filtered by backups.
+  The phone project RPC still accepts and ignores the `nuwa_*` fields. The older
+  `work_ledger` and `knowledge` settings keys are ignored. A turn that started
+  in Nuwa mode before the upgrade ends with "the Nuwa mode was removed" when
+  continued, retried or recovered after a restart. (`C-064`)
+- Worker model binding and the explicit stale-model recovery stay; the
+  contract that also covered Nuwa orchestration now covers only those.
+  (`F-141`, `C-037`)
+
 - The FOFA palette now restyles components through tokens the components read, instead of global overrides outside the cascade layers. A class passed by a caller (for example a round voice button) keeps working under FOFA. Palette tokens moved to `frontend/src/styles/palettes.css`. zwai keeps its colors; its tooltips take the translucent glass described below.
 
 - Under FOFA, the context-usage hover card uses the ordinary dark tooltip instead of a bordered solid panel, its ring icon has no hover slab, and a card waiting on your answer keeps a neutral border with the orange heading.
 
 ### Fixed
 
+- Force-graph nodes in the Work records panel were not clickable because the
+  graph library's hit-testing needs an explicit `nodePointerAreaPaint`; the
+  canvas now declares one. Found while writing the desktop end-to-end test.
+  (`F-134`)
+
 - The native window-corner cover test expects the colour actually painted at the sampled corner, which is the title bar rail when the sidebar is open.
 
 ### Removed
 
+- The Nuwa project mode (planner/executor model split, `nuwa_*` project
+  fields, verify and fix budgets), the work-record ledger (`record_work`,
+  `read_work`, `/api/threads/:id/work*`, phone `thread_work`) and the project
+  Knowledge base with the Wiki graph build (`/knowledge*` routes,
+  `read_knowledge`, `record_knowledge`, phone `project_knowledge*`, the `wiki_*`
+  distillation fields and the Knowledge global setting) are gone, along with
+  the swarm-library capabilities only Nuwa used (recursive delegation,
+  verification admission and the worker tool scope). Their features and
+  contracts (`F-136`, `F-138`, `F-139`, `C-053`, `C-055`) leave the current
+  lists and are not reused. Legacy data is kept as described under Changed.
+  (`C-064`)
+
 - PC and Web no longer scan or show local Claude, Codex or Cursor tasks, even with old enabled settings. Paired phones receive no local task data and hide the entry when connected to older hosts. This retires `F-223`, `C-014` and `C-018`. (`F-220`, `C-006`)
 
 ### Added
+
+- Work graph: the tools `update_graph` and `read_graph`, a bounded digest on
+  every model request, `GET /api/threads/:id/graph`,
+  `GET /api/projects/:id/graph`, `GET /api/graph/kinds`, the `graph_updated`
+  stream event, the phone RPC `graph` (bounded by `graph_too_large`, with a
+  short reply when the revision is unchanged), `graph_unrecorded` in Trace and
+  the `swarm.graph` setting (default on). Subjects merge by declared identity
+  keys, an ambiguous write is refused, identity values never change, credentials
+  never leave the model's by-id read, and confirming or finishing needs
+  evidence. (`F-131`, `F-132`, `F-133`, `F-161`, `F-174`, `F-311`,
+  `C-056`, `C-057`, `C-058`, `C-059`, `C-060`, `C-061`, `C-062`, `C-063`)
+- The Work records panel on desktop and Web shows the graph above the ordered
+  to-dos, read-only, with 13 built-in subject kinds and a generic one. A ring
+  is dashed while unanalysed or pending, flowing while a to-do is being done,
+  solid when settled, and grey when retracted. Paired phones show the same
+  records. The EASM portrait plugin is unchanged. (`F-134`, `F-226`)
+- The model-checked write protocol `models/graph/GraphStore.tla` runs in
+  `make model-check`. (`C-057`, `C-059`, `C-060`)
+- Evaluation tasks `graph-exposure-analysis` and `graph-fofa-query`, and the
+  `graph_count` check that grades the stored graph. (`F-431`, `C-058`)
 
 - Paired phones open task files directly from conversation messages and worker
   logs. When several files share a name, choose the path before opening the

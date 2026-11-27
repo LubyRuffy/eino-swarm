@@ -118,17 +118,6 @@ export interface Project {
   /** Where the agents actually work, so the UI never derives a path itself. */
   resolved_workdir: string
   memory_enabled: boolean
-  /** Opt-in project collaboration; absent on older hosts means standard mode. */
-  nuwa_enabled?: boolean
-  nuwa_configured?: boolean
-  /** Saved planner for later Nuwa turns. Empty means this project has not chosen a pair. */
-  nuwa_planner_provider_id?: string
-  nuwa_planner_model?: string
-  /** Saved model for a new worker role. Closing Nuwa keeps the pair. */
-  nuwa_executor_provider_id?: string
-  nuwa_executor_model?: string
-  /** Recorded shared work remains readable after collaboration is switched off. */
-  nuwa_revision?: number
   memory_dir: string
   /** Names and one-line descriptions, for the sidebar listing. Bodies stay
    *  behind `GET /skills/:name`, the same way the prompt does not inline them. */
@@ -279,8 +268,6 @@ export interface ReviewOutcome {
   notes?: Record<string, number>
   skills?: MemoryChange[]
   changes?: MemoryChange[]
-  knowledgeCount?: number
-  projectId?: string
   note?: string
   err?: string
   /** How chatty this review is in the transcript: off | on | verbose. */
@@ -593,8 +580,8 @@ export interface SwarmLimits {
   auto_title: boolean
   /** Missing means on. Off stops the extra next-step call. */
   composer_predictions?: boolean
-  work_ledger?: boolean
-  knowledge?: boolean
+  /** Missing means on. Off stops the graph and to-do list and hides the panel. */
+  graph?: boolean
   /** Empty follows this conversation's model. */
   title_provider?: string
   title_model?: string

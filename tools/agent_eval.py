@@ -184,22 +184,22 @@ def load_tasks(selected: list[str], root: Path = TASKS_DIR) -> list[dict]:
 
 
 def seed_data_dir(data_dir: Path, task: dict, provider: dict | None, max_completion_tokens: int = 0,
-                  models: dict | None = None, work_ledger: bool | None = None) -> None:
-    if provider is not None or models is not None or work_ledger is not None:
+                  models: dict | None = None, graph: bool | None = None) -> None:
+    if provider is not None or models is not None or graph is not None:
         # Both configurations write their optional swarm cap as a section.
-        # When setting the ledger explicitly, build that section once here.
-        cap = 0 if work_ledger is not None else max_completion_tokens
+        # When setting the graph explicitly, build that section once here.
+        cap = 0 if graph is not None else max_completion_tokens
         if models is not None:
             body = protocol.render_model_config(models, cap)
         elif provider is not None:
             body = grade.render_eval_config(provider, EVAL_PROVIDER_ID, cap)
         else:
             body = ""
-        if work_ledger is not None:
+        if graph is not None:
             body += "swarm:\n"
             if max_completion_tokens:
                 body += f"    max_completion_tokens: {max_completion_tokens}\n"
-            body += f"    work_ledger: {json.dumps(work_ledger)}\n"
+            body += f"    graph: {json.dumps(graph)}\n"
         cfg = data_dir / "config.yaml"
         fd = os.open(cfg, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "w") as fh:
@@ -240,6 +240,22 @@ def drive_conversation(base: str, thread_id: str, task: dict, now: Callable[[], 
     deadline = start + task["timeout_s"]
     wait_deadline = None
     outcome = {"state": "done", "asked": False, "iteration_cap": False, "waited": False}
+    # A graph task is watched while it runs, so a later check can see that the
+    # picture moved more than once and that a to-do was doing before the end.
+    watch_graph = any(c.get("type") == "graph_count" for c in task.get("checks") or [])
+    timeline: list[dict] = []
+
+    def note_graph() -> None:
+        if not watch_graph:
+            return
+        try:
+            view = http_json(base, "GET", f"/api/threads/{thread_id}/graph?todos=1") or {}
+        except Exception:
+            return
+        doing = any((t.get("status") == "doing") for t in (view.get("todos") or []))
+        sample = {"t": round(now() - start, 1), "revision": view.get("revision") or 0, "doing": doing}
+        if not timeline or (timeline[-1]["revision"], timeline[-1]["doing"]) != (sample["revision"], sample["doing"]):
+            timeline.append(sample)
     pending = list(task.get("replay") or [])
     if pending:
         outcome["replayed"] = 0
@@ -255,6 +271,8 @@ def drive_conversation(base: str, thread_id: str, task: dict, now: Callable[[], 
             interrupt(base, thread_id)
             return _with_unused(outcome, pending)
         st = (http_json(base, "GET", f"/api/threads/{thread_id}") or {}).get("status") or {}
+        note_graph()
+        outcome["graph_timeline"] = timeline
         if st.get("running"):
             seen_running = True
             if pending and pending[0]["kind"] == "steer" and now() - start >= pending[0].get("after_s", 0):
@@ -262,7 +280,7 @@ def drive_conversation(base: str, thread_id: str, task: dict, now: Callable[[], 
                 continue
             if st.get("awaiting_answer") and pending and pending[0]["kind"] == "answer":
                 send("answers")
-                sleep(POLL_S)
+                sleep(0.1 if watch_graph else POLL_S)
                 continue
             if st.get("awaiting_answer"):
                 outcome["asked"] = True
@@ -299,7 +317,7 @@ def drive_conversation(base: str, thread_id: str, task: dict, now: Callable[[], 
             if turns and all(t.get("status") != "running" for t in turns):
                 seen_running = True
                 continue
-        sleep(POLL_S)
+        sleep(0.1 if watch_graph else POLL_S)
 
 
 def _with_unused(outcome: dict, pending: list[dict]) -> dict:
@@ -407,17 +425,17 @@ def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict 
             evidence / name, grade.redact(json.dumps(value, indent=2, ensure_ascii=False), secrets)))
 
     try:
-        work_ledger = getattr(args, "work_ledger", None)
-        seed_data_dir(data_dir, task, provider, getattr(args, "max_completion_tokens", 0), models, work_ledger)
+        graph = getattr(args, "graph", None)
+        seed_data_dir(data_dir, task, provider, getattr(args, "max_completion_tokens", 0), models, graph)
         engine.start()
         phase("boot")
-        configured_ledger = None
-        if hasattr(args, "work_ledger"):
+        configured_graph = None
+        if hasattr(args, "graph"):
             settings = http_json(engine.base, "GET", "/api/settings")["settings"]
-            configured_ledger = settings.get("swarm", {}).get("work_ledger")
-            if work_ledger is not None and configured_ledger is not work_ledger:
-                raise EvalError("settings API did not acknowledge the work_ledger arm")
-            record["work_ledger_configured"] = configured_ledger
+            configured_graph = settings.get("swarm", {}).get("graph")
+            if graph is not None and configured_graph is not graph:
+                raise EvalError("settings API did not acknowledge the graph arm")
+            record["graph"] = configured_graph
         # Untitled, as a human creates one, so automatic naming is measured too.
         thread_body = {}
         workspace = data_dir / "eval-workspace"
@@ -426,20 +444,9 @@ def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict 
             project_body = {
                 "name": task["id"] + " eval", "workdir": str(workspace),
                 "system_prompt": protocol.project_prompt(task, models, getattr(args, "project_instruction", "")),
-                "nuwa_enabled": args.project_mode == "nuwa",
             }
-            if args.project_mode == "nuwa" and models:
-                project_body.update(protocol.nuwa_model_pair(models))
             project = http_json(engine.base, "POST", "/api/projects", project_body)["project"]
-            if args.project_mode == "nuwa" and project.get("nuwa_enabled") is not True:
-                raise EvalError("project API did not acknowledge nuwa_enabled")
-            if args.project_mode == "nuwa" and models:
-                for key, value in protocol.nuwa_model_pair(models).items():
-                    if project.get(key) not in (None, value):
-                        raise EvalError("project API did not acknowledge the Nuwa model pair")
             thread_body["project_id"] = project["id"]
-            if hasattr(args, "work_ledger"):
-                record["work_ledger"] = True if project.get("nuwa_enabled") is True else configured_ledger
         if models:
             thread_body["provider_id"] = models["planner"]["provider_id"]
         thread = http_json(engine.base, "POST", "/api/threads", thread_body)["thread"]
@@ -471,7 +478,24 @@ def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict 
         phase("review")
         outcome = settled_outcome(outcome, traces)
         answer = grade.final_answer(traces)
-        checks = grade.run_checks(grade.expand_task_dir(task["checks"], task["dir"]), workspace, answer, traces, baseline_hashes)
+        final_graph = None
+        if any(c["type"] == "graph_count" for c in task["checks"]):
+            final_graph = http_json(engine.base, "GET", f"/api/threads/{thread_id}/graph")
+        checks = grade.run_checks(grade.expand_task_dir(task["checks"], task["dir"]), workspace, answer, traces,
+                                  baseline_hashes, final_graph)
+        if record.get("graph") is True:
+            samples = outcome.get("graph_timeline") or []
+            revisions = []
+            for sample in samples:
+                rev = sample.get("revision") or 0
+                if rev and rev not in revisions:
+                    revisions.append(rev)
+            doing = any(sample.get("doing") for sample in samples)
+            # The picture has to move at least twice while the turn is running,
+            # and one of those frames has to show a to-do being done.
+            ok = len(revisions) >= 2 and doing
+            checks = [*checks, {"name": "progress was visible", "type": "graph_progress", "ok": ok,
+                                "detail": "" if ok else f"revisions {revisions}, doing {doing}"}]
         record.update({
             "outcome": outcome,
             "checks": checks,
@@ -556,9 +580,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--provider", help="provider id in --config; required unless --mock")
     p.add_argument("--config", default=str(DEFAULT_CONFIG), help="config.yaml to read the provider from (read-only)")
     p.add_argument("--model", default="", help="another model on the same provider (default: its configured model)")
-    p.add_argument("--project-mode", choices=("default", "nuwa"), default="default", help="project execution mode")
+    p.add_argument("--project-mode", choices=("default",), default="default", help="project execution mode")
     p.add_argument("--planner-ref", default="", help="exact provider<TAB>model choice; takes priority over --model")
-    p.add_argument("--executor-ref", default="", help="ready catalog choice saved as the Nuwa project executor")
+    p.add_argument("--executor-ref", default="", help="ready catalog choice recorded as the executor preference")
     p.add_argument("--runs", type=int, default=2, help="runs per task")
     p.add_argument("--max-completion-tokens", type=int, default=0,
                    help="output cap per model request (default: the engine's default, not the source config's)")

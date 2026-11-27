@@ -379,7 +379,7 @@ func TestRestrictedAccountPanelSourceMakesNoMCPCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.turnMountsMCP(stored, false) {
+	if e.turnMountsMCP(stored) {
 		t.Fatal("a restricted account still mounts MCP tools")
 	}
 	turn, err := e.StartTurn(thread.ID, "Build the portrait of the confirmed subject.")
@@ -520,7 +520,7 @@ func TestTurnMCPAdmissionFollowsPlanAndReadOnly(t *testing.T) {
 		writeContextFlowReply(w, request.Stream, map[string]any{"content": "done"}, "stop")
 	})
 	th := &store.Thread{}
-	if !e.turnMountsMCP(th, false) || e.turnMountsMCP(th, true) || e.turnMountsMCP(&store.Thread{PlanMode: true}, false) || e.turnMountsMCP(nil, false) {
-		t.Fatal("admission does not follow plan and read-only modes")
+	if !e.turnMountsMCP(th) || e.turnMountsMCP(&store.Thread{PlanMode: true}) || e.turnMountsMCP(nil) {
+		t.Fatal("admission does not follow plan mode")
 	}
 }

@@ -25,6 +25,7 @@ MANAGER_ID = "manager"
 AUX_AGENTS = agent_eval_usage.AUX_AGENT_IDS
 DELEGATION = ("none", "optional", "parallel")
 CHECK_TYPES = (
+    "graph_count",
     "file_exists",
     "file_regex",
     "json_equals",
@@ -134,6 +135,8 @@ def _validate_check(task_id: str, check: dict) -> None:
         raise TaskError(f"{task_id}: {kind} needs pattern")
     if kind == "command" and not check.get("argv"):
         raise TaskError(f"{task_id}: command needs argv")
+    if kind == "graph_count" and check.get("of", "subjects") not in ("subjects", "links", "todos"):
+        raise TaskError(f"{task_id}: graph_count of must be subjects, links or todos")
 
 
 # ------------------------------------------------------------- provider
@@ -239,6 +242,8 @@ def render_eval_config(provider: dict, provider_id: str, max_completion_tokens: 
     require_copyable_provider(provider)
     q = json.dumps
     out = [
+        "product:",
+        "    mode: local",
         "models:",
         f"    default: {provider_id}",
         "    providers:",
@@ -474,8 +479,10 @@ def expand_task_dir(checks: list[dict], task_dir: Path) -> list[dict]:
 
 
 def run_checks(checks: list[dict], workspace: Path, answer: str, traces: list[dict],
-               baseline: dict[str, str]) -> list[dict]:
-    return [_run_check(c, workspace, answer, traces, baseline) for c in checks]
+               baseline: dict[str, str], graph: dict | None = None) -> list[dict]:
+    """graph is the owner's final GraphView as the HTTP API returns it, or
+    None when the run did not fetch one."""
+    return [_run_check(c, workspace, answer, traces, baseline, graph) for c in checks]
 
 
 def _result(check: dict, ok: bool, detail: str = "") -> dict:
@@ -508,8 +515,11 @@ def _read_all(workspace: Path, rel: str) -> list[str]:
     return out
 
 
-def _run_check(check: dict, workspace: Path, answer: str, traces: list[dict], baseline: dict[str, str]) -> dict:
+def _run_check(check: dict, workspace: Path, answer: str, traces: list[dict], baseline: dict[str, str],
+               graph: dict | None = None) -> dict:
     kind = check["type"]
+    if kind == "graph_count":
+        return _graph_count(check, graph)
     if kind == "file_exists":
         found = bool(_read_all(workspace, check["path"]))
         return _result(check, found, "" if found else "missing")
@@ -577,10 +587,37 @@ def _run_check(check: dict, workspace: Path, answer: str, traces: list[dict], ba
         n = sum(1 for e in _events(traces) if e.get("kind") == check["kind"])
         return _bounded(check, n)
     if kind == "any_of":
-        subs = [_run_check(c, workspace, answer, traces, baseline) for c in check["checks"]]
+        subs = [_run_check(c, workspace, answer, traces, baseline, graph) for c in check["checks"]]
         ok = any(s["ok"] for s in subs)
         return _result(check, ok, "" if ok else "; ".join(f"{s['name']}: {s['detail']}" for s in subs))
     raise TaskError(f"unknown check type {kind!r}")
+
+
+def _graph_count(check: dict, graph: dict | None) -> dict:
+    """Count the graph rows a filter selects: `of` is subjects, links or todos;
+    `kind`, `status` (one or a list), `rel`, and `attrs` (name -> regex that must
+    match the stringified attribute) narrow it. Tasks assert on structure the
+    graph keeps, never on a sample's wording."""
+    if graph is None:
+        return _result(check, False, "no graph was fetched")
+    of = check.get("of", "subjects")
+    if of not in ("subjects", "links", "todos"):
+        raise TaskError(f"graph_count of must be subjects, links or todos, not {of!r}")
+    statuses = check.get("status")
+    statuses = [statuses] if isinstance(statuses, str) else statuses
+    n = 0
+    for row in graph.get(of) or []:
+        if check.get("kind") and row.get("kind") != check["kind"]:
+            continue
+        if check.get("rel") and row.get("rel") != check["rel"]:
+            continue
+        if statuses is not None and row.get("status") not in statuses:
+            continue
+        attrs = row.get("attrs") or {}
+        if any(re.search(pat, str(attrs.get(name, ""))) is None for name, pat in (check.get("attrs") or {}).items()):
+            continue
+        n += 1
+    return _bounded(check, n)
 
 
 def _bounded(check: dict, n: int) -> dict:

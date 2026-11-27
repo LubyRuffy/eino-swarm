@@ -34,11 +34,8 @@ func (r *Registry) Tools() []tool.BaseTool {
 func (r *Registry) toolsWithWorkerConfig(config WorkerConfig) []tool.BaseTool {
 	n := r.advertisedCap()
 	spawnDesc := fmt.Sprintf("start a sub-agent in the background; returns its agent_id immediately. A second call with the same role does not mint a twin: if that worker is still running, the new task is queued for its next turn; if it already finished, it continues in place under the same agent_id. fork_context only applies when this role has no worker yet — it copies this manager conversation so far into the new worker, not a previous worker's. A missing role or task returns {error}; it does not fail the turn. Supply both in one corrected call. In manager runs, same-error invalid calls in one reply are coalesced with rejected_calls; they did not create workers. The concurrency cap is %d. Do not start a larger batch. If %d sub-agents are already running, returns {error} and does not start or queue another worker: wait for one to finish, then resume that id or spawn the next piece.", n, n)
-	if config.VerifyAdmission != nil {
-		spawnDesc += " For an acceptance check, set intent to verify or fix and target to the shared record id. This turn allows one verify and one fix for each record; another is refused before a worker starts. Omit intent for ordinary implementation work."
-	}
 	tools := []tool.BaseTool{
-		&ctlTool{name: "spawn_agent", desc: spawnDesc, fn: r.spawn, modelSelection: config.SelectWorkerModel != nil, toolSelection: config.SelectableToolNames != nil, verifyAdmission: config.VerifyAdmission != nil},
+		&ctlTool{name: "spawn_agent", desc: spawnDesc, fn: r.spawn},
 		&ctlTool{name: "send_message", desc: sendMessageDesc, fn: r.send},
 		&ctlTool{name: "wait_agents", desc: "wait until the next listed agent reaches a final status, or the timeout hits; " +
 			"returns every listed agent's status (running/done/failed), the finished ones' results, " +
@@ -48,9 +45,6 @@ func (r *Registry) toolsWithWorkerConfig(config WorkerConfig) []tool.BaseTool {
 			"and tell the human what came back between calls.", fn: r.wait},
 		&ctlTool{name: "close_agent", desc: "cancel a still-running agent. A leftover finished id is already stopped: the result is already_finished, not cancelled. Do not close leftover ids as cleanup. An unknown agent_id returns {error}; it does not fail the turn.", fn: r.close},
 		&ctlTool{name: "resume_agent", desc: fmt.Sprintf("continue a finished or failed worker in place under the same agent_id, seeded with that worker's conversation. Use it when you mean one particular id, for instance one of several leftover workers that share a role. After three consecutive worker-watchdog timeouts, recovery stops the manager and requires an explicit human retry; changing role does not repair a stalled task. Returns the same agent_id. Do not spawn a replacement with the same role. Do not use this on a running agent — send_message instead. A missing agent_id or task, or a still-running target, returns {error}; it does not fail the turn. The concurrency cap is %d. If %d sub-agents are already running, returns {error} and does not queue this worker.", n, n), fn: r.resume},
-	}
-	if config.SelectableToolNames != nil {
-		tools = append(tools, &ctlTool{name: "list_worker_tools", desc: "List the selectable workspace tools available to a new worker. Copy exact names into spawn_agent tool_names. Put directions for using already mounted shared-work and lifecycle tools in task.", fn: r.listWorkerTools})
 	}
 	return tools
 }
@@ -95,12 +89,9 @@ func toolName(t tool.BaseTool) string {
 
 // ctlTool is a minimal invokable tool driven by a closure.
 type ctlTool struct {
-	name            string
-	desc            string
-	fn              func(ctx context.Context, args string) (string, error)
-	modelSelection  bool
-	toolSelection   bool
-	verifyAdmission bool
+	name string
+	desc string
+	fn   func(ctx context.Context, args string) (string, error)
 }
 
 func (t *ctlTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
@@ -111,17 +102,6 @@ func (t *ctlTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 			"role":         {Type: schema.String, Required: true, Desc: "short job name: letters, digits, and hyphens. No slashes, spaces, or a previous agent_id. One worker per role: a later spawn with this role continues or steers that agent. A second simultaneous worker of the same job needs its own short name"},
 			"task":         {Type: schema.String, Required: true, Desc: "task for the sub-agent"},
 			"fork_context": {Type: schema.Boolean, Desc: "on the first worker for this role, inherit this manager conversation so far. Ignored when a worker with this role already exists"},
-		}
-		if t.modelSelection {
-			params["model_ref"] = &schema.ParameterInfo{Type: schema.String, Desc: "exact model reference from the host catalog. The host may require an explicit choice for a new role; omit only when it permits default selection or to preserve an existing worker model. A worker keeps its model across resumption"}
-		}
-		if t.toolSelection {
-			params["tool_names"] = &schema.ParameterInfo{Type: schema.Array, ElemInfo: &schema.ParameterInfo{Type: schema.String},
-				Desc: "Optional exact subset of workspace tool names from list_worker_tools. Put directions for using already mounted shared-work and lifecycle tools in task. An empty array removes all selectable tools. Omit to inherit the available tools or retain the existing worker selection."}
-		}
-		if t.verifyAdmission {
-			params["intent"] = &schema.ParameterInfo{Type: schema.String, Desc: "work, verify, or fix. Omit for ordinary implementation. verify checks an existing shared record; fix repairs one that failed that check. The host allows one of each per record in this turn."}
-			params["target"] = &schema.ParameterInfo{Type: schema.String, Desc: "Existing shared record id from record_work or read_work. Required when intent is verify or fix."}
 		}
 	case "send_message":
 		params = map[string]*schema.ParameterInfo{
@@ -186,27 +166,7 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 	}
 	config := r.workerConfigurationForContext(ctx)
 	ctx = withWorkerConfig(ctx, config)
-	parentID, err := r.delegationParent(ctx)
-	if err != nil {
-		return ctlRefuse(err.Error())
-	}
-	selected, err := config.withWorkerToolSelection(ctx, a.ToolNames)
-	if err != nil {
-		return ctlRefuse("spawn_agent: " + err.Error())
-	}
-	var requested *[]string
-	if a.ToolNames != nil {
-		requested = selected.workerToolNames
-	}
-	var binding *ModelBinding
-	var builder ModelBuilder
-	if a.ModelRef != "" {
-		var err error
-		binding, builder, err = r.selectWorkerModel(ctx, a.ModelRef)
-		if err != nil {
-			return ctlRefuse(err.Error())
-		}
-	}
+	builder := config.ModelBuilder
 	// A path is not a second worker. Rewrite it before the one-role lock,
 	// or two calls with different paths collapse onto one resumed id.
 	if dirtySpawnRole(a.Role) {
@@ -217,52 +177,15 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 	lk.Lock()
 	defer lk.Unlock()
 	if id := r.runningID(a.Role); id != "" {
-		if err := r.requireWorkerTargets(ctx, []string{id}); err != nil {
-			return ctlRefuse(err.Error())
-		}
 		h, ok := r.get(id)
 		if ok {
 			if _, _, finished := h.Result(); !finished {
-				h.mu.Lock()
-				existing := h.workerToolNames
-				h.mu.Unlock()
-				if err := checkWorkerToolSelection(existing, requested); err != nil {
-					return ctlRefuse(err.Error())
-				}
-				if a.ModelRef != "" {
-					if err := checkWorkerModel(r.workerModelBinding(id), binding); err != nil {
-						return ctlRefuse(err.Error())
-					}
-				}
-				if out, err, refused := r.refuseVerification(ctx, a); refused {
-					return out, err
-				}
 				h.pushInbox(a.Task)
 				return marshal(map[string]any{"agent_id": h.ID, "generation": h.generation(), "steered": "true"}), nil
 			}
 		}
 	}
 	if id := r.reusableFinishedID(a.Role); id != "" {
-		if err := r.requireWorkerTargets(ctx, []string{id}); err != nil {
-			return ctlRefuse(err.Error())
-		}
-		if a.ModelRef != "" || requested != nil {
-			past, err := r.recall(id)
-			if err != nil {
-				return ctlRefuse(err.Error())
-			}
-			if err := checkWorkerToolSelection(past.checkpoint.WorkerToolNames, requested); err != nil {
-				return ctlRefuse(err.Error())
-			}
-			if a.ModelRef != "" {
-				if err := checkWorkerModel(past.checkpoint.ModelBinding, binding); err != nil {
-					return ctlRefuse(err.Error())
-				}
-			}
-		}
-		if out, err, refused := r.refuseVerification(ctx, a); refused {
-			return out, err
-		}
 		h, err := r.resumeAdmitted(ctx, id, a.Task, config.ModelBuilder)
 		if err != nil {
 			var exhausted *WorkerTimeoutLimitError
@@ -276,29 +199,17 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 		}
 		return marshal(map[string]any{"agent_id": h.ID, "generation": h.generation(), "resumed_from": id}), nil
 	}
-	if builder == nil {
-		var err error
-		binding, builder, err = r.selectWorkerModel(ctx, "")
-		if err != nil {
-			return ctlRefuse(err.Error())
-		}
-	}
-	if out, err, refused := r.refuseVerification(ctx, a); refused {
-		return out, err
-	}
 	seed := ""
 	if a.ForkContext {
-		messages := r.spawnContext(parentID)
-		if parentID == "" {
-			filter, _ := ctx.Value(managerForkContextFilterKey{}).(func([]adk.Message) []adk.Message)
-			if filter != nil {
-				messages = filter(messages)
-			}
+		messages := r.historySnapshot()
+		filter, _ := ctx.Value(managerForkContextFilterKey{}).(func([]adk.Message) []adk.Message)
+		if filter != nil {
+			messages = filter(messages)
 		}
 		seed = forkContext(messages)
 	}
-	tools := append(append([]tool.BaseTool(nil), selected.SubAgentTools...), r.SendTool())
-	h, err := r.spawnAgentWithModel(withWorkerConfig(ctx, selected), a.Role, a.Task, builder, binding, parentID, seed, true, tools...)
+	tools := append(append([]tool.BaseTool(nil), config.SubAgentTools...), r.SendTool())
+	h, err := r.spawnAgent(ctx, a.Role, a.Task, builder, seed, true, tools...)
 	if err != nil {
 		if out, rerr, ok := refuseAdmit(err); ok {
 			return out, rerr
@@ -457,9 +368,6 @@ func (r *Registry) wait(ctx context.Context, args string) (string, error) {
 	if err := json.Unmarshal([]byte(args), &a); err != nil {
 		return ctlRefuse("wait_agents: could not read the arguments")
 	}
-	if err := r.requireWorkerTargets(ctx, a.AgentIDs); err != nil {
-		return ctlRefuse(err.Error())
-	}
 	timeout := 30 * time.Second
 	if a.TimeoutS > 0 {
 		timeout = time.Duration(a.TimeoutS) * time.Second
@@ -552,15 +460,6 @@ func (r *Registry) close(ctx context.Context, args string) (string, error) {
 	a.AgentID = strings.TrimSpace(a.AgentID)
 	if a.AgentID == "" {
 		return ctlRefuse("close_agent: agent_id is required")
-	}
-	if err := r.requireWorkerTargets(ctx, []string{a.AgentID}); err != nil {
-		return ctlRefuse(err.Error())
-	}
-	r.mu.Lock()
-	delegationUsed := r.delegationUsed || r.EnableDelegation
-	r.mu.Unlock()
-	if delegationUsed || r.workerConfigurationForContext(ctx).EnableDelegation {
-		return r.closeSubtree(a.AgentID)
 	}
 	h, ok := r.get(a.AgentID)
 	if !ok {

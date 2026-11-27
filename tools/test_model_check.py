@@ -168,7 +168,7 @@ class RegistrationGuards(unittest.TestCase):
 
     def test_inspector_registry_keeps_observed_faults_and_focus_witnesses(self):
         for name in ("fallback", "project-status", "foreign-row", "signal-owner", "signal-replaced", "signal-deleted", "signal-replayed",
-                     "work-mode", "work-focus"):
+                     "work-focus"):
             with self.subTest(case=name):
                 remaining = [c for c in mc.CASES if c.name != "inspector-registry-" + name]
                 self.assert_case_table_fails("test_every_safety_invariant_is_shown_to_catch_something", remaining)
@@ -177,46 +177,15 @@ class RegistrationGuards(unittest.TestCase):
                 remaining = [c for c in mc.CASES if c.name != "inspector-registry-reach-" + name]
                 self.assert_case_table_fails("test_every_witness_is_checked_alone_on_the_current_design", remaining)
 
-    def test_work_pruning_keeps_faults_and_restore_witnesses(self):
-        for name in ("deletes-record", "direct-only", "keeps-all", "sticky",
-                     "reconfirm-on-restore", "reconfirm-on-patch", "ignores-version", "ignores-inactive"):
+    def test_graph_store_keeps_every_seeded_fault_and_reach_witness(self):
+        for name in ("lost-update", "replay-changed-body", "silent-merge", "confirm-without-evidence",
+                     "rewrite-identity", "late-write", "additive-overwrite"):
             with self.subTest(case=name):
-                remaining = [c for c in mc.CASES if c.name != "work-pruning-" + name]
+                remaining = [c for c in mc.CASES if c.name != "graph-store-fault-" + name]
                 self.assert_case_table_fails("test_every_switch_is_shown_to_break_an_invariant", remaining)
-        for name in ("collapsed-branch", "inactive-chain", "restored-id", "restored-stale", "confirmed", "reveal"):
+        for name in ("confirmed", "replay", "stale-refusal", "merge-refusal"):
             with self.subTest(witness=name):
-                remaining = [c for c in mc.CASES if c.name != "work-pruning-reach-" + name]
-                self.assert_case_table_fails("test_every_witness_is_checked_alone_on_the_current_design", remaining)
-
-    def test_work_records_keep_scope_faults_and_read_witnesses(self):
-        for name in ("nuwa-promote-without-closure", "nuwa-private-leak"):
-            with self.subTest(case=name):
-                remaining = [c for c in mc.CASES if c.name != name]
-                self.assert_case_table_fails("test_every_safety_invariant_is_shown_to_catch_something", remaining)
-        for name in ("nuwa-reach-peer-promotion", "nuwa-reach-standalone-work"):
-            with self.subTest(witness=name):
-                remaining = [c for c in mc.CASES if c.name != name]
-                self.assert_case_table_fails("test_every_witness_is_checked_alone_on_the_current_design", remaining)
-
-    def test_work_merge_keeps_commit_faults_and_targeted_outcomes(self):
-        faults = {
-            "stale-thread": ("PromoteIgnoresThreadRevision", "MergeAdmissionUsesSnapshot"),
-            "stale-project": ("PromoteIgnoresProjectRevision", "MergeAdmissionUsesSnapshot"),
-            "moved-owner": ("PromoteIgnoresMove", "MergeAdmissionUsesSnapshot"),
-            "stale-generation": ("PromoteIgnoresDataGeneration", "MergeAdmissionUsesSnapshot"),
-            "partial-commit": ("PromotePartiallyCommits", "MergeRollbackKeepsCommittedState"),
-            "early-publication": ("PromotePublishesStaged", "MergePublicationIsCommitted"),
-            "open-closure": ("PromoteWithoutClosure", "MergeCommitsClosureAndRevisions"),
-        }
-        cases = {case.name: case for case in mc.CASES}
-        for name, (switch, invariant) in faults.items():
-            with self.subTest(fault=name):
-                case = cases["nuwa-merge-" + name]
-                self.assertEqual(case.switches, {switch})
-                self.assertEqual(case.violates, invariant)
-        for name in ("publication", "rollback", "stale-thread", "stale-project", "moved-owner", "restore", "standalone"):
-            with self.subTest(witness=name):
-                remaining = [case for case in mc.CASES if case.name != "nuwa-merge-reach-" + name]
+                remaining = [c for c in mc.CASES if c.name != "graph-store-reach-" + name]
                 self.assert_case_table_fails("test_every_witness_is_checked_alone_on_the_current_design", remaining)
 
     def assert_case_table_fails(self, method, cases):

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { KINDS, subscribeEvents } from "./stream"
 import type { EventKind } from "./types"
 import { subscribeTaskPanelEvents } from "./task-panel-events"
-import { subscribeWorkEvents } from "./nuwa-events"
+import { subscribeGraphEvents } from "./graph/events"
 
 /** A stand-in for the browser's EventSource that records what was subscribed
  *  to and can deliver a named event. */
@@ -131,7 +131,7 @@ describe("the event stream", () => {
     source.deliver("panel_ready", { panels: [], cursor: 17 })
     source.deliver("panel_update", { thread_id: "multiplex", panel_id: "p", cursor: 18, revision: 2, kind: "snapshot", state: { count: 3 }, seq: 999 })
     source.deliver("panel_error", { error: "private failure body" })
-    expect(source.url).toBe("/api/threads/multiplex/events?panels=1&work=1")
+    expect(source.url).toBe("/api/threads/multiplex/events?panels=1&graph=1")
     expect(onEvent).not.toHaveBeenCalled()
     expect(panelEvent).toHaveBeenCalledWith({ kind: "ready", panels: [], cursor: 17 })
     expect(panelEvent).toHaveBeenCalledWith(expect.objectContaining({ kind: "update" }))
@@ -142,30 +142,30 @@ describe("the event stream", () => {
     expect(panelEvent).toHaveBeenCalledTimes(count)
     stopPanel()
   })
-  it("delivers valid work versions independently of the transcript", () => {
-    const onEvent = vi.fn(), workEvent = vi.fn()
-    const unsubscribe = subscribeWorkEvents("ledger", workEvent)
+  it("delivers valid graph revisions independently of the transcript", () => {
+    const onEvent = vi.fn(), graphEvent = vi.fn()
+    const unsubscribe = subscribeGraphEvents("ledger", graphEvent)
     const close = subscribeEvents("ledger", { onEvent })
     const source = FakeEventSource.last
+    expect(source.url).toContain("graph=1")
     source.onopen?.()
-    const version = { thread_id: "ledger", project_id: "", thread_revision: 9, project_revision: 0, data_generation: 0 }
-    source.deliver("nuwa_updated", { ...version, thread_id: "foreign" })
-    source.deliver("nuwa_updated", { ...version, project_revision: -1 })
-    source.deliver("nuwa_updated", version)
-    expect(workEvent.mock.calls).toEqual([
+    source.deliver("graph_updated", { thread_id: "foreign", revision: 4 })
+    source.deliver("graph_updated", { thread_id: "ledger", revision: -1 })
+    source.deliver("graph_updated", { thread_id: "ledger", revision: 4 })
+    expect(graphEvent.mock.calls).toEqual([
       [{ kind: "connection", connected: false }],
       [{ kind: "connection", connected: true }],
-      [{ kind: "revision", version }],
+      [{ kind: "revision", revision: 4 }],
     ])
     expect(onEvent).not.toHaveBeenCalled()
     close()
-    source.deliver("nuwa_updated", { ...version, thread_revision: 10 })
-    expect(workEvent).toHaveBeenLastCalledWith({ kind: "connection", connected: false })
+    source.deliver("graph_updated", { thread_id: "ledger", revision: 5 })
+    expect(graphEvent).toHaveBeenLastCalledWith({ kind: "connection", connected: false })
     unsubscribe()
   })
   it("subscribes to every kind the server sends", () => {
     subscribeEvents("th_1", { onEvent: vi.fn() })
-    expect([...FakeEventSource.last.listeners.keys()]).toEqual([...KINDS, "ready", "panel_ready", "panel_update", "panel_error", "nuwa_updated"])
+    expect([...FakeEventSource.last.listeners.keys()]).toEqual([...KINDS, "ready", "panel_ready", "panel_update", "panel_error", "graph_updated"])
     for (const kind of wireKinds) {
       expect(KINDS).toContain(kind)
       expect(FakeEventSource.last.listeners.has(kind)).toBe(true)
@@ -242,7 +242,7 @@ describe("the event stream", () => {
 
   it("resumes from where the app left off", () => {
     subscribeEvents("th_1", { onEvent: vi.fn() }, 12)
-    expect(FakeEventSource.last.url).toBe("/api/threads/th_1/events?since=12&panels=1&work=1")
+    expect(FakeEventSource.last.url).toBe("/api/threads/th_1/events?since=12&panels=1&graph=1")
   })
 
   it("closes the connection when the caller unsubscribes", () => {

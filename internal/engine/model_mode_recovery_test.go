@@ -8,7 +8,6 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
-	"github.com/LubyRuffy/eino-swarm/internal/tools"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -78,23 +77,6 @@ func TestRestartAfterModeSwitchKeepsTurnModelUntilNextTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := configuration.ModelBuilder("worker", "tagged-model-check").Generate(t.Context(), []*schema.Message{schema.UserMessage("continue")}); err != nil {
-		t.Fatal(err)
-	}
-	// A frozen Nuwa executor is part of this turn too, including a role
-	// spawned after the mode switch. Arbitrary new references stay refused.
-	turn.NuwaEnabled = true
-	turn.NuwaExecutorProviderID, turn.NuwaExecutorModel = accountCatalogID, "original-model"
-	pc := &projectContext{project: &store.Project{ID: "mode-test-project", NuwaEnabled: true}}
-	nuwa := e.newTurnRegistry(parked.ModelBuilder, &tools.Set{}, pc, turn)
-	defer nuwa.Close()
-	if _, _, err := nuwa.SelectWorkerModel(t.Context(), "unknown-model-ref"); err == nil {
-		t.Fatal("mode switch allowed an arbitrary executor reference")
-	}
-	binding, executor, err := nuwa.SelectWorkerModel(t.Context(), "")
-	if err != nil || binding.ProviderID != accountCatalogID || binding.Model != "original-model" {
-		t.Fatalf("frozen executor changed after mode switch: %+v %v", binding, err)
-	}
-	if _, err := executor("worker", "nuwa-mode-check").Generate(t.Context(), []*schema.Message{schema.UserMessage("continue")}); err != nil {
 		t.Fatal(err)
 	}
 	waitTurn(t, e, turn.ID)

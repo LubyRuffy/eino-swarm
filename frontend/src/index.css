@@ -73,9 +73,6 @@
   --color-file-config: hsl(var(--file-config));
   --color-file-image: hsl(var(--file-image));
 
-  --color-nuwa-task-bg: hsl(var(--nuwa-task-bg));
-  --color-nuwa-fact-bg: hsl(var(--nuwa-fact-bg));
-  --color-nuwa-artifact-bg: hsl(var(--nuwa-artifact-bg));
 
   --color-syntax-keyword: hsl(var(--syntax-keyword));
   --color-syntax-command: hsl(var(--syntax-command));

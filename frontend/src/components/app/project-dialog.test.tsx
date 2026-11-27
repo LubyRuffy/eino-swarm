@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ProjectDialog } from "./project-dialog"
 import { ToastStack } from "./toast-stack"
 import { ApiError } from "@/lib/api"
-import type { ModelInfo, Project } from "@/lib/types"
+import type { Project } from "@/lib/types"
 
 HTMLElement.prototype.scrollIntoView = function () {}
 
@@ -51,103 +51,14 @@ function renderDialog(props: Partial<Parameters<typeof ProjectDialog>[0]> = {}) 
 }
 
 describe("Project dialog", () => {
-  it("opts a project into Nuwa collaboration while keeping its instruction", async () => {
+  it("keeps the instruction the user typed when creating a project", async () => {
     const { onSave } = renderDialog()
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Shared work" } })
     fireEvent.change(screen.getByLabelText("Instruction"), { target: { value: "Explore and verify the goal" } })
-    fireEvent.click(screen.getByRole("switch", { name: "Nuwa collaboration" }))
     fireEvent.click(screen.getByRole("button", { name: "Create project" }))
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
-      nuwa_enabled: true, system_prompt: "Explore and verify the goal",
+      system_prompt: "Explore and verify the goal",
     })))
-  })
-
-  it("keeps standard collaboration as the default for an existing project", async () => {
-    const { onSave } = renderDialog({ project })
-    expect(screen.getByRole("switch", { name: "Nuwa collaboration" })).not.toBeChecked()
-    expect(screen.getByText(/Applies from the next turn; current work continues/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Save" }))
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ nuwa_enabled: false })))
-  })
-
-  it("shows the conversation model and another ready model when Nuwa is turned on", async () => {
-    const models: ModelInfo[] = [
-      { id: "a\talpha", provider_id: "a", provider_label: "One", label: "alpha", model: "alpha", ready: true, default: true },
-      { id: "a\tbeta", provider_id: "a", provider_label: "One", label: "beta", model: "beta", ready: true },
-      { id: "hidden", provider_id: "a", provider_label: "One", label: "hidden", model: "hidden", ready: false },
-    ]
-    const { onSave } = renderDialog({ models, plannerHint: { providerId: "a", model: "beta" } })
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Shared work" } })
-    expect(screen.queryByRole("button", { name: "Planner model" })).toBeNull()
-    fireEvent.click(screen.getByRole("switch", { name: "Nuwa collaboration" }))
-    expect(screen.getByRole("button", { name: "Planner model" })).toHaveTextContent("beta")
-    expect(screen.getByRole("button", { name: "Executor model" })).toHaveTextContent("alpha")
-    fireEvent.click(screen.getByRole("button", { name: "Executor model" }))
-    fireEvent.click(screen.getByRole("option", { name: /beta/ }))
-    fireEvent.click(screen.getByRole("button", { name: "Create project" }))
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
-      nuwa_enabled: true,
-      nuwa_planner_provider_id: "a",
-      nuwa_planner_model: "beta",
-      nuwa_executor_provider_id: "a",
-      nuwa_executor_model: "beta",
-    })))
-  })
-
-  it("changes the planner from the menu without closing the dialog", async () => {
-    const models: ModelInfo[] = [
-      { id: "a\talpha", provider_id: "a", provider_label: "One", label: "alpha", model: "alpha", ready: true, default: true },
-      { id: "b\tgamma", provider_id: "b", provider_label: "Two", label: "gamma", model: "gamma", ready: true },
-    ]
-    renderDialog({
-      models,
-      project: {
-        ...project,
-        nuwa_enabled: true,
-        nuwa_planner_provider_id: "a",
-        nuwa_planner_model: "alpha",
-        nuwa_executor_provider_id: "b",
-        nuwa_executor_model: "gamma",
-      },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "Planner model" }))
-    const menu = document.querySelector(".toast-layer")
-    expect(menu).toHaveClass("pointer-events-auto")
-    const search = screen.getByLabelText("Search models")
-    await waitFor(() => expect(search).toHaveFocus())
-    fireEvent.pointerDown(screen.getByRole("option", { name: /gamma/ }))
-    fireEvent.click(screen.getByRole("option", { name: /gamma/ }))
-    expect(screen.getByRole("dialog")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Planner model" })).toHaveTextContent("gamma")
-    expect(screen.getByRole("button", { name: "Executor model" })).toHaveTextContent("gamma")
-  })
-
-  it("keeps a saved pair when Nuwa is already on", async () => {
-    const models: ModelInfo[] = [
-      { id: "a\talpha", provider_id: "a", provider_label: "One", label: "alpha", model: "alpha", ready: true, default: true },
-      { id: "b\tgamma", provider_id: "b", provider_label: "Two", label: "gamma", model: "gamma", ready: true },
-    ]
-    renderDialog({
-      models,
-      plannerHint: { providerId: "a", model: "alpha" },
-      project: {
-        ...project,
-        nuwa_enabled: true,
-        nuwa_planner_provider_id: "b",
-        nuwa_planner_model: "gamma",
-        nuwa_executor_provider_id: "a",
-        nuwa_executor_model: "alpha",
-      },
-    })
-    await waitFor(() => expect(screen.getByRole("button", { name: "Planner model" })).toHaveTextContent("gamma"))
-    expect(screen.getByRole("button", { name: "Executor model" })).toHaveTextContent("alpha")
-  })
-
-  it("preserves an enabled project's collaboration independently of memory", async () => {
-    const { onSave } = renderDialog({ project: { ...project, nuwa_enabled: true }, memoryAvailable: false })
-    expect(screen.getByRole("switch", { name: "Nuwa collaboration" })).toBeChecked()
-    fireEvent.click(screen.getByRole("button", { name: "Save" }))
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ nuwa_enabled: true })))
   })
 
   it("lets a directory selection fill the project without saving it", async () => {

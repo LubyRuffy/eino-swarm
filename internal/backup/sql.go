@@ -35,6 +35,11 @@ var copyOrder = []string{
 	"nuwa_nodes",
 	"nuwa_revisions",
 	"nuwa_verify_slots",
+	"graph_subjects",
+	"graph_subject_keys",
+	"graph_links",
+	"graph_todos",
+	"graph_revisions",
 	"task_panel_rows",
 	"task_panel_mutations",
 	"task_panel_change_rows",
@@ -66,7 +71,7 @@ func failNext() error {
 
 var autoincTables = []string{
 	"messages", "events", "llm_calls", "attachments",
-	"nuwa_revisions", "nuwa_verify_slots", "search_docs", "search_chunks",
+	"nuwa_revisions", "nuwa_verify_slots", "graph_subject_keys", "graph_revisions", "search_docs", "search_chunks",
 	"task_panel_mutations", "task_panel_change_rows",
 }
 
@@ -178,7 +183,7 @@ func knownTables(ctx context.Context, conn *sql.Conn, schema string) error {
 		return err
 	}
 	for _, name := range copyOrder {
-		if _, ok := found[name]; !ok {
+		if _, ok := found[name]; !ok && !legacyTables[name] && !graphTables[name] {
 			return invalidf("missing table %s", name)
 		}
 	}
@@ -227,6 +232,17 @@ type queryer interface {
 func copyTable(ctx context.Context, q queryer, src, dst, table, where string, args []any, offset int64) error {
 	if err := failNext(); err != nil {
 		return err
+	}
+	if legacyTables[table] {
+		carried, err := carryLegacyTable(ctx, q, src, dst, table)
+		if err != nil || !carried {
+			return err
+		}
+	}
+	if graphTables[table] {
+		if have, err := tableExists(ctx, q, src, table); err != nil || !have {
+			return err
+		}
 	}
 	srcCols, err := tableColumns(ctx, q, src, table)
 	if err != nil {
@@ -295,6 +311,10 @@ func projectFilter(table, projectID string) (string, []any, bool, error) {
 		return `project_id = ? OR (scope = 'thread' AND thread_id IN (` + threads + `))`, []any{projectID, projectID}, false, nil
 	case "nuwa_revisions":
 		return `project_id = ? OR (project_id = '' AND thread_id IN (` + threads + `))`, []any{projectID, projectID}, false, nil
+	case "graph_subjects", "graph_subject_keys", "graph_links", "graph_todos", "graph_revisions":
+		// A graph belongs to the project, or to a conversation that was
+		// standalone when its turn began.
+		return `owner_id = ? OR owner_id IN (` + threads + `)`, []any{projectID, projectID}, false, nil
 	case "wiki_source_scans":
 		// The event deletion trigger invalidates cache entries under any
 		// project, including a moved conversation's previous owner.
@@ -387,6 +407,11 @@ func deleteProjectRows(ctx context.Context, q queryer, projectID string) error {
 			return err
 		}
 		if skip {
+			continue
+		}
+		if present, err := presentOrOptional(ctx, q, "main", table); err != nil {
+			return err
+		} else if !present {
 			continue
 		}
 		name, err := quoteIdent(table)
@@ -536,6 +561,11 @@ func replaceAllRows(ctx context.Context, conn *sql.Conn, incomingPath string, ro
 	return withFKOff(ctx, conn, func() error {
 		return withTx(ctx, conn, func(tx *sql.Tx) error {
 			for i := len(copyOrder) - 1; i >= 0; i-- {
+				if present, err := presentOrOptional(ctx, tx, "main", copyOrder[i]); err != nil {
+					return err
+				} else if !present {
+					continue
+				}
 				name, err := quoteIdent(copyOrder[i])
 				if err != nil {
 					return err
@@ -637,6 +667,11 @@ func withTx(ctx context.Context, conn *sql.Conn, fn func(*sql.Tx) error) error {
 func maxAutoinc(ctx context.Context, q queryer) (int64, error) {
 	var max int64
 	for _, table := range autoincTables {
+		if present, err := presentOrOptional(ctx, q, "main", table); err != nil {
+			return 0, err
+		} else if !present {
+			continue
+		}
 		name, err := quoteIdent(table)
 		if err != nil {
 			return 0, err
@@ -667,6 +702,11 @@ func bumpSequences(ctx context.Context, q queryer, schema string) error {
 		return nil
 	}
 	for _, table := range autoincTables {
+		if present, err := presentOrOptional(ctx, q, schema, table); err != nil {
+			return err
+		} else if !present {
+			continue
+		}
 		name, err := quoteIdent(table)
 		if err != nil {
 			return err
@@ -715,7 +755,6 @@ func countSchema(ctx context.Context, q queryer, schema string) (Counts, error) 
 		{&c.Messages, "messages"},
 		{&c.Turns, "turns"},
 		{&c.Schedules, "schedules"},
-		{&c.NuwaNodes, "nuwa_nodes"},
 	}
 	for _, scan := range scans {
 		if err := q.QueryRowContext(ctx, `SELECT count(*) FROM `+schema+`.`+scan.name).Scan(scan.dest); err != nil {
@@ -817,6 +856,33 @@ func findConflicts(ctx context.Context, conn *sql.Conn, projectID string, replac
 			func(v []string) { add("turns", v[0], v[1], v[1] == projectID) }},
 		{`SELECT i.id, CASE WHEN COALESCE(m.project_id, '') <> '' THEN m.project_id ELSE COALESCE(th.project_id, '') END FROM incoming.schedules AS i JOIN main.schedules AS m ON m.id = i.id LEFT JOIN main.threads AS th ON th.id = m.thread_id`, 2,
 			func(v []string) { add("schedules", v[0], v[1], v[1] == projectID) }},
+		{`SELECT i.id, COALESCE(th.project_id, '') FROM incoming.task_panel_rows AS i JOIN main.task_panel_rows AS m ON m.id = i.id LEFT JOIN main.threads AS th ON th.id = m.thread_id`, 2,
+			func(v []string) { add("task_panel_rows", v[0], v[1], v[1] == projectID) }},
+		{`SELECT i.draft_key FROM incoming.composer_drafts AS i JOIN main.composer_drafts AS m ON m.draft_key = i.draft_key`, 1,
+			func(v []string) {
+				owner, owned := draftOwner(ctx, conn, v[0], projectID)
+				add("composer_drafts", v[0], owner, owned)
+			}},
+	}
+	for _, table := range []string{"graph_subjects", "graph_links", "graph_todos"} {
+		both := true
+		for _, schema := range []string{"incoming", "main"} {
+			ok, err := tableExists(ctx, conn, schema, table)
+			if err != nil {
+				return nil, err
+			}
+			both = both && ok
+		}
+		if !both {
+			continue
+		}
+		queries = append(queries, query{
+			`SELECT i.id, CASE WHEN m.owner_id IN (SELECT id FROM main.projects) THEN m.owner_id
+				ELSE COALESCE((SELECT project_id FROM main.threads WHERE id = m.owner_id), '') END
+			FROM incoming.` + table + ` AS i JOIN main.` + table + ` AS m ON m.id = i.id`, 2,
+			func(v []string) { add(table, v[0], v[1], v[1] == projectID) }})
+	}
+	legacy := []query{
 		{`SELECT i.id, CASE WHEN m.scope = 'thread' THEN COALESCE(th.project_id, '') ELSE COALESCE(m.project_id, '') END
 			FROM incoming.nuwa_nodes AS i JOIN main.nuwa_nodes AS m ON m.id = i.id
 			LEFT JOIN main.threads AS th ON th.id = m.thread_id`, 2,
@@ -825,13 +891,19 @@ func findConflicts(ctx context.Context, conn *sql.Conn, projectID string, replac
 			FROM incoming.nuwa_revisions AS i JOIN main.nuwa_revisions AS m ON m.request_key = i.request_key
 			LEFT JOIN main.threads AS th ON th.id = m.thread_id`, 2,
 			func(v []string) { add("nuwa_revisions", v[0], v[1], v[1] == projectID) }},
-		{`SELECT i.id, COALESCE(th.project_id, '') FROM incoming.task_panel_rows AS i JOIN main.task_panel_rows AS m ON m.id = i.id LEFT JOIN main.threads AS th ON th.id = m.thread_id`, 2,
-			func(v []string) { add("task_panel_rows", v[0], v[1], v[1] == projectID) }},
-		{`SELECT i.draft_key FROM incoming.composer_drafts AS i JOIN main.composer_drafts AS m ON m.draft_key = i.draft_key`, 1,
-			func(v []string) {
-				owner, owned := draftOwner(ctx, conn, v[0], projectID)
-				add("composer_drafts", v[0], owner, owned)
-			}},
+	}
+	for i, table := range []string{"nuwa_nodes", "nuwa_revisions"} {
+		both := true
+		for _, schema := range []string{"incoming", "main"} {
+			ok, err := tableExists(ctx, conn, schema, table)
+			if err != nil {
+				return nil, err
+			}
+			both = both && ok
+		}
+		if both {
+			queries = append(queries, legacy[i])
+		}
 	}
 	for _, item := range queries {
 		if err := readStrings(ctx, conn, item.sql, nil, item.n, func(v []string) error {

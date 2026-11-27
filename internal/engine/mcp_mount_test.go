@@ -312,43 +312,6 @@ func TestFailedCatalogListKeepsTheTurnOnTheProxy(t *testing.T) {
 	t.Fatal("missing catalog failure")
 }
 
-func TestNuwaManagerSeesDirectMCPNamesOnlyOnTheWorker(t *testing.T) {
-	server, _ := engineMCPFixture(t)
-	e, _ := newScheduleCompletionHTTPEngine(t, func(w http.ResponseWriter, _ *http.Request, step int, request scheduleCompletionRequest) {
-		for _, offered := range request.Tools {
-			if strings.HasPrefix(offered.Function.Name, "mcp_") {
-				t.Errorf("Nuwa manager received an MCP tool: %s", offered.Function.Name)
-			}
-		}
-		if step == 1 {
-			writeScheduleCompletionTool(w, request, "list_worker_tools", "{}")
-			return
-		}
-		raw, _ := json.Marshal(request.Messages)
-		text := string(raw)
-		if !strings.Contains(text, "inspect_record") || strings.Contains(text, "_list_tools_") || strings.Contains(text, "_call_tool_") {
-			t.Errorf("worker catalog did not list the direct tool: %s", text)
-		}
-		writeContextFlowReply(w, request.Stream, map[string]any{"content": "The worker tools were listed."}, "stop")
-	})
-	e.cfg.MCP.Servers = []config.MCPServer{server}
-	project, err := e.CreateProject("Direct worker tools", "", "", false, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	thread, err := e.CreateThread("Nuwa direct tools", "", project.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	turn, err := e.StartTurn(thread.ID, "List the worker tools.")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if finished := waitForTurn(t, e, turn.ID); finished.Status != store.TurnDone {
-		t.Fatalf("status=%s err=%q", finished.Status, finished.Error)
-	}
-}
-
 func TestMCPMountFileKeepsTheDecisionAndRejectsABadTurnID(t *testing.T) {
 	if _, err := mcpMountPath("", "tn_mount"); err == nil {
 		t.Fatal("empty directory built a path")

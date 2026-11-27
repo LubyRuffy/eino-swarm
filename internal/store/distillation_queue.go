@@ -83,11 +83,10 @@ func (s *Store) StartDistillationQueue(ctx context.Context, row ProjectDistillat
 // available evidence. A vanished source still has a position to account for.
 type DistillationSourceRow struct {
 	Event
-	Turn         Turn `gorm:"embedded;embeddedPrefix:origin_"`
-	Position     uint
-	CallID       uint
-	Oversize     bool
-	WikiReviewed bool
+	Turn     Turn `gorm:"embedded;embeddedPrefix:origin_"`
+	Position uint
+	CallID   uint
+	Oversize bool
 }
 
 const distillationEventIdentity = "e.id,e.thread_id,e.turn_id,e.seq,e.kind,e.agent_id,e.role,e.tool_call_id,e.created_at"

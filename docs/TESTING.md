@@ -249,8 +249,6 @@ When running the full race check on a shared host, use `-p 2` to limit
 concurrently running Go packages while retaining all tests and the 25-minute
 deadline. Run browser and Python suites after the race check when the host is
 busy. The goal retry fixture waits for a durable successor or hold decision.
-The Nuwa verification fixture waits only on agents still outstanding in the
-previous receipt, so an already completed ID cannot return a wait early.
 
 The 2026-11-05 whole-repository `go test -p 2 -race -cover -count=1 -timeout 25m ./...`
 passed. On the same Darwin host and flags, the fetched `e20562b6` baseline's
@@ -467,217 +465,126 @@ output, final AX/pixel result and its own `smoke.json`; cleanup and a separate
 fresh inventory confirmed deleted case data and no owned processes. Its bound
 records are retained separately in `native-smoke-revision3-readygate01` and do
 not change the earlier failed baseline or accept a future public installer.
-## Conversation work records (`F-139`, `C-055`)
+## Work graph
 
-Start with the Nuwa and Inspector cases in `make model-check`. The current
-design permits a standalone conversation to read its records and a peer to
-read both records after closure promotion. Seeded private leaks, missing
-closure and focus stealing each violate their own invariant. The EventStream
-case also rejects using the work revision as the conversation cursor.
+One graph kernel replaced the work-record ledger, the project Knowledge base,
+the Wiki build and the Nuwa planner/executor mode. [Work graph](GRAPH.md) is the
+authoritative description; this section maps each layer of it to its tests.
+Start with the model: `make model-check` runs `models/graph/GraphStore.tla`
+(`graph-store-*`): additive merge, version-checked overwrite, receipt replay and
+owner deletion, with one seeded fault per invariant (lost update, a replayed call
+id with a changed body, a silent merge of two subjects, confirmation without
+evidence, a rewritten identity key, a write after owner deletion, and an
+additive write that replaces another worker's attributes) and reachability
+cases for confirmation, replay, stale refusal, merge refusal and owner deletion.
+The `stream-work-revision` case rejects emitting a work revision as the
+conversation's SSE cursor, and the Inspector cases cover the Work records tab's
+availability and focus. The model checks the protocol, not Go's atomicity.
 
-The `nuwa-merge-*` cases model confirmation against the original destination,
-conversation and project revisions, and restore generation. Failure between
-prerequisite and root writes leaves no partial merge. The first publishable
-snapshot includes the full dependency closure and both revisions. The
-`work-pruning-*` cases model a bounded dependency graph. Inactive ancestors
-of an active result remain visible, an entirely inactive branch collapses,
-and restoration returns the same record ID. A dependent keeps its version
-warning until it explicitly reconfirms the restored prerequisite. Fault cases
-check the corresponding invariants and reachability cases exercise both
-refusal and successful outcomes. The models cover these bounded protocols.
+- `go test -race -cover ./internal/graph ./internal/store` runs `internal/graph`
+  and `internal/store/graph_*_test.go`. They check the catalog and its Go/front-end
+  agreement (`crosscheck_test.go`), the normalizers, attribute and batch
+  validation, and on real SQLite: identity merge, concurrent additive writers,
+  version conflicts, evidence scope (including refusal to cite graph tool traffic
+  and rewound events), atomic refusal, to-do ordering and settlement, call-id
+  replay, per-owner revisions, owner and project deletion, paging/search and
+  credential masking. The store package is large; add `-run` with a graph test
+  name for a focused run.
+- `go test -race ./internal/engine -run 'Test(ManagerWritesAndReads|GraphSwitchOff|GraphGuidance|DelegatedWorkerWritesTheGraph|Digest)'`
+  drives `update_graph`/`read_graph` through the real Registry, ADK and HTTP
+  adapter: the schemas offered, atomic refusals returned as repairable tool
+  results, the switch frozen per turn and a late write refused after it is off,
+  a task-agnostic prompt, a delegated worker writing under its own identity, and a
+  digest that lists identifiers and never attribute values.
+- `go test -race ./internal/server -run 'Test(GraphRoutes|ProjectGraphRoute|GraphUpdatedFrame)'`
+  covers `GET /api/threads/:id/graph`, `GET /api/projects/:id/graph`,
+  `GET /api/graph/kinds`, credential masking and the `graph_updated` SSE frame
+  after each commit on the real listener. `go test -race ./internal/remote -run 'TestPhone(Graph|ProjectGraph)'`
+  covers the sealed phone RPC: an unchanged revision returns one small frame, a
+  graph larger than a frame is refused, and a project graph reads its owner.
+- The offline acceptance runs `TestAcceptance*` in
+  `internal/engine/graph_acceptance_http_test.go` script a real manager through
+  the HTTP adapter while sampling the graph the way the panel does:
 
-Exercise versioned promotion and its failures at the Store and HTTP boundaries.
-Use actual model HTTP inputs for ordinary and standalone tools, planning,
-setting changes, original-turn restore, preview revision matching and inactive
-record budgeting. Project and full backup tests cover scope-aware row
-ownership and omission. Use the work panel E2E for explicit sharing, navigation,
-failed preconditions and retraction/restoration. Exercise draft saves from a
-second window while both work panels receive native chat-stream invalidations.
-The Playwright run uses an isolated server, data directory and evidence output.
+  ```bash
+  go test -race -count=1 -run 'TestAcceptance' ./internal/engine
+  ```
 
-For the paired phone, `TestPairedPhoneWorkRecords*` exercises scope, the PC
-switch, and frame budget through a sealed link. `mobile/e2e/work-records.spec.ts`
-checks the path, details, scope switching, and the live PC setting on phone
-viewports. Run the mobile lint, unit tests and production build in a clean
-checkout after installing only the mobile dependencies to verify resolution
-of the shared graph's styling packages.
+  `TestAcceptanceExposureAnalysisBuildsACompleteGraphWithVisibleProgress`
+  (enterprise exposure analysis) and
+  `TestAcceptanceQueryRefinementKeepsTheFailedDraftAndLinksTheCorrection`
+  (the failed draft is retracted and the correction is a new linked subject)
+  require at least three observed revisions, a `doing` to-do seen while the run
+  was in flight, and no `open` or `doing` to-do left at the end. They prove the
+  progress is observable and the final graph is complete for a scripted model;
+  they do not measure a real model (see [Graph evals](#graph-evals)).
+- Front-end unit tests: `cd frontend && npx vitest run src/lib/graph src/store/graph.test.ts src/components/app/graph`
+  cover the ring derivation from to-dos (`analysis.test.ts`), the canvas drawing
+  rules (`graph-canvas.test.ts`), the shared kind catalog and revision frames,
+  the store's revision/race handling and the read-only panel (to-do order,
+  highlight and filter clicks, credential masks, failed read and retry).
+- Desktop browser: `frontend/e2e/graph-panel.spec.ts` draws the real force-graph
+  canvas, reads the rings through the `__graphScene` test hook, clicks to-dos and
+  nodes, and pushes `graph_updated` over the real SSE listener. Give a
+  concurrent run its own port, data and output directories (the launcher
+  removes the data directory), and do not rebuild a served `dist`:
 
-For native acceptance, prepare the matching AX helpers on the host.
+  ```bash
+  cd frontend
+  ZWAI_E2E_PORT=18868 ZWAI_E2E_DATA_DIR=/absolute/private/new-graph-case \
+    npx playwright test e2e/graph-panel.spec.ts --output=/absolute/private/new-graph-results
+  ```
 
-```bash
-make native-smoke-prepare
-xcrun clang -fobjc-arc -mmacosx-version-min=13.0 \
-  -framework Foundation -framework AppKit -framework ApplicationServices \
-  -framework CoreGraphics tools/native_generation_interruption_ax.m \
-  -o bin/native-work-record-controls
-shasum -a 256 bin/native-work-record-controls
-```
+- Phone: `cd mobile && npx vitest run src/components/work-records.test.tsx`
+  checks hiding after the PC setting turns off, polling with the held revision,
+  keeping the picture when a poll fails and the too-large refusal.
+  `cd mobile && ZWAI_MOBILE_E2E_PORT=4180 npx playwright test e2e/work-records.spec.ts`
+  runs the MockLink cases `?mock=1&tick=0&graph=on|large|off` (graph and to-dos
+  on the real canvas, the over-frame message, the setting turned off). The
+  preview server owns its built `dist`; never rebuild it during a case.
+- Backup and legacy data: old `nuwa_nodes`, work-record and knowledge rows are
+  neither imported nor shown. The backup tests keep omitting them as before, and
+  `TestRestartEndsAnOrphanedNuwaTurnWithAClearCause` ends a turn that the upgrade
+  finds still running in the removed Nuwa mode with an explicit cause instead of
+  continuing it as an ordinary turn.
 
-Transfer the helpers, their sources, `tools/`, and the frozen app to the
-guest. In the authorized `ci-macOS` Terminal, use the recorded control-helper
-digest and a new evidence directory.
+No native macOS or phone-device case covers the graph panel yet:
+`tools/native_work_records.py` was removed with the work-record panel, and a new
+case has not been written or accepted in `ci-macOS`. Browser and unit passes are
+not native acceptance.
 
-```bash
-python3 -B tools/native_work_records.py --case --app "$APP" --evidence "$EVIDENCE" \
-  --ax bin/native-macos-ax --controls bin/native-work-record-controls \
-  --control-sha256 "$CONTROL_SHA256"
-```
+## Project ownership and worker recovery (`C-037`)
 
-The case sends through the native composer to a private loopback fixture,
-merges from the record detail, and checks the graph before and after
-retraction and restoration. Keep the native press and screenshot receipts,
-the durable record ID and version snapshots, and the cleanup receipt outside
-case data. The targeted round allows 100 seconds including cleanup. The
-ordinary native smoke keeps its 60-second budget.
-
-## Nuwa project collaboration (`F-136`, `C-037`)
-
-A saved Nuwa planner and executor are checked through project create/update and
-the real model adapter: omission uses the frozen executor, a conflicting ref
-creates no worker, same-role resume keeps the old binding, one ready model is
-used for both, ordinary mode ignores the columns, and an unavailable saved
-model fails before a model request. `nuwa_model_pair_http_test.go` and
-`nuwa_model_pair_test.go` cover that boundary. The mode is captured per turn. Test changes across a parked Registry and cold
-recovery, not only project JSON. Existing workers must retain their original
-configuration tag, delegation mode, model binding and trusted owner; bad tags,
-model selection conflicts and old generations must refuse before side effects.
-The planning/execution separation boundary requires the actual manager model
-input to omit workspace/MCP execution tools while workers retain their configured
-optional catalog. Cover discovery, selected tools and actual worker execution;
-a manager prompt alone cannot prove this boundary. Pure discussion may finish
-without spawning a worker, while required operations belong to workers.
-`nuwa_context_http_test.go` and `nuwa_context_worker_http_test.go` exercise the
-automatic shared-state preview through actual Engine/Registry/ADK HTTP input:
-first call, between-call correction and stale prerequisites, frozen mode on
-recovery, selected-model workers, project isolation and full fork input. They
-must work without an explicit `read_work`, leave durable human input unchanged
-and avoid accumulating runtime blocks. `worker_model_middleware_test.go` checks
-per-generation identity, nil behavior and retained factories on resume/restore.
-These scripted requests prove visibility and isolation, not real-model benefit.
-`nuwa_context_config_race_test.go` exercises real model HTTP requests and
-`read_work` while `Engine.UpdateConfig` repeatedly saves and publishes changed
-result budgets. It then joins the writer and checks committed small/large caps,
-whole-node omission, complete JSON and unchanged human input/source detail.
-The preview and shared-work readers must take one config snapshot per call.
-Keep the existing live project-move/admission cases: an unavailable optional
-preview must not prevent a running worker from receiving its actual shared-tool
-refusals, or change claim/Move ordering. It supplies no graph or raw error text.
-The tool-scope flow still checks actual selected schemas and evidence retrieval;
-its manager can now see the worker's reported shared summary before requesting
-that record's details through `read_work`.
-Check `/plan` and accepted-plan instructions at actual model HTTP input, including
-recovery after the project switch changes: neither may direct a Nuwa planner to
-call execution tools. `nuwa_plan_prompt_http_test.go` covers this boundary.
-The Work records panel must retain the live status, exact Trace and worker
-result files even when no graph nodes are recorded.
-The browser suite also creates two dependency-free artifacts with different recorded authors in
-one turn, checks each dashed origin link against the persisted identities before
-and after browser reload, and checks that explicit dependencies remain solid.
-`worker_config_test.go`, `model_binding_http_test.go` and
-`delegation_http_test.go` cover the library/actual HTTP model boundaries.
-`internal/engine/nuwa_collection_replay_test.go` covers descendant collection,
-subtree close receipts and late finish replay. The lifecycle model remains a
-protocol check, not proof that all Go operations are atomic.
+A turn freezes its project owner, and a worker keeps the configuration tag it was
+created under, so project moves and restarts must not hand a retained worker to a
+different owner. `worker_config_test.go` and `worker_model_middleware_test.go`
+check that a missing, unavailable or wrong tag cannot claim or resume a worker,
+that a tagged restore rebuilds the original tool surface, and that per-generation
+identity and nil behavior survive resume and restore.
 
 `internal/store/turn_project_owner_test.go` opens an old SQLite schema,
 exercises an old writer against the upgraded schema, and checks rollback and
 retry after an interrupted backfill. `internal/engine/legacy_turn_project_recovery_test.go`
 reopens the Store twice and drives the original worker through HTTP and a real
-project file read before and after its checkpoint gains a tag. It also covers
-legacy Nuwa planning and refusal before occupying the runtime after a recorded
-owner change. `internal/engine/goal_worker_project_test.go` exercises repeated
-Continue refusals, followed by recovery and collection of the same worker
-generation after its project is corrected.
-`live_nuwa_project_owner_test.go` and `fresh_project_move_claim_test.go` place
-a real project move at the admission boundary for a retained Registry,
-explicit goal continuation and a fresh turn. They check model requests and
-durable receipts. `ProjectMoveAdmission.tla` checks both orderings and retains
-counterexamples for a stale Registry claim and a false goal-resume receipt.
-The Nuwa HTTP/SSE and browser suites move the source of an already visible
-record to another project and back. The open view updates the evidence link
-without a reload. Store fault injection checks that a failed second revision
-receipt rolls back both revisions and the move.
-
-`internal/server/nuwa_source_lifecycle_test.go` keeps the project SSE open
-through edit/resend and explicit deletion after a move. It checks committed
-revision delivery, unavailable references and removal of the deleted
-author's private history. Store tests inject failed revision writes and
-check transaction rollback. The Nuwa model reproduces stale revisions for
-both mutations. The browser scenario drives the open Work records view
-through the same source changes.
-
-`internal/store/nuwa_test.go` exercises CAS races, full correction provenance,
-atomic rollback, duplicate real-call receipts, owner deletion/cancellation,
-evidence scope, cycles and stale dependency versions.
-`internal/engine/nuwa_engine_http_test.go` drives `record_work`/`read_work` through
-the real manager adapter. `nuwa_validation_test.go` covers forged callers,
-actual artifact paths, read-only planning and bounded complete JSON.
-The worker tool-scope flow attaches an actual read receipt and verifies the
-same stored reference through the manager's targeted read. Its storage fault
-still delivers the read reply to the worker, then refuses the evidence write.
-`internal/store/nuwa_own_tool_evidence_test.go` checks exact caller scope,
-metadata-only indexed resolution, atomic refusal and replay.
-`internal/engine/nuwa_adopted_evidence_test.go` waits for a later wake's
-actual manager request before releasing the retained worker. The worker cites
-its new result while retaining its original author turn. The parked-worker
-HTTP recovery fixture checks the same provenance after restoring a newer
-checkpoint under the original worker configuration.
-`internal/engine/nuwa_recall_http_test.go` checks task-specific older metadata
-at the actual worker HTTP input, full `read_work` receipts, live correction,
-dependency warnings and project isolation with and without forked history.
-The cold worker HTTP fixture also bounds recent metadata so only a retained
-assignment can prioritize the related older source. `worker_task_test.go`
-checks actual model/tool context across spawn, resume and restore, keeping
-recovery input separate from the task and refusing to infer unknown assignments.
-The focused race run reached 100% statement coverage in the new task-context,
-recall ordering and tokenization helpers; this is not whole-package coverage
-or evidence of real-model benefit.
-`internal/server/nuwa_stream_test.go` uses actual GET/SSE readers across project
-conversations. A revision is a snapshot invalidation, never a transcript seq.
+project file read before and after its checkpoint gains a tag, and refuses
+before occupying the runtime after a recorded owner change.
+`internal/engine/goal_worker_project_test.go` exercises repeated Continue
+refusals, followed by recovery and collection of the same worker generation after
+its project is corrected. `cold_finished_owner_test.go` and
+`fresh_project_move_claim_test.go` place a real project move at the admission
+boundary for a retained Registry, explicit goal continuation and a fresh turn,
+and check model requests and durable receipts. `models/lifecycle/ProjectMoveAdmission.tla`
+(`project-move-*`) checks both orderings and retains a counterexample for a stale
+Registry claim. The model is a protocol check, not proof that all Go operations
+are atomic.
 
 ```bash
-go test -race -timeout 25m . -run 'Test(SelectedHTTPWorkerModel|WorkerCanDelegate|ParkedHTTPWorker|Delegation|Tagged|WorkerConfiguration)'
-go test -race -timeout 25m ./internal/store ./internal/engine ./internal/server -run TestNuwa
-go test -race -timeout 25m ./internal/provider -run 'Test(NuwaPlannerBuiltinRestriction|WithoutBuiltinTools)'
-python3 -m unittest tools.test_agent_eval tools.test_agent_eval_limits tools.test_agent_eval_compare tools.test_agent_eval_prereview tools.test_agent_eval_nuwa tools.test_agent_eval_pair tools.test_agent_eval_proxy tools.test_agent_eval_reconcile
+go test -race -timeout 25m . -run 'Test(Tagged|WorkerConfiguration|WorkerMiddlewares|WorkerHostMiddleware|DelayedFinished)'
+go test -race -timeout 25m ./internal/store -run 'TestTurnProjectOwnership'
+go test -race -timeout 25m ./internal/engine -run 'Test(LegacyProjectWorker|GoalResume|ProjectMovesRefuse|RestartEndsAnOrphanedNuwaTurn|NuwaMoveBefore|NuwaColdRestore)'
 ```
 
-Frontend coverage includes project create/edit, mode-off historical visibility,
-project/conversation scope, prerequisite paths, source/worker/result navigation,
-detail/expand views and stale/project-response races. The dedicated browser
-case uses a keyless loopback model fixture and actual app routes:
-
-```bash
-cd frontend
-ZWAI_E2E_NUWA=1 ZWAI_E2E_PORT=18867 ZWAI_E2E_DATA_DIR=/absolute/private/new-nuwa-case npx playwright test --output=/absolute/private/new-nuwa-results
-```
-
-Use a fresh owned data directory: the Playwright launcher removes that directory.
-Concurrent suites need their own port, data, output and built frontend; do not
-rebuild a served dist. This browser fixture is not native macOS acceptance or a
-real-model capability measurement.
-
-Nuwa `native-case-06` retained its original timeout after its turn, three nodes,
-artifact and model binding were correct: WKWebView exposed only the worker's
-overriding action label, hiding its visible model/status from AX. Worker-opening
-tests now assert the actual accessible name, including the recorded or unknown
-model and status; finding model text in the DOM alone is insufficient. Preserve
-that native failure separately. Unit/browser passes do not accept a subsequent
-native rerun, which still needs the guest's real AX and pixel evidence.
-
-The [generic paired protocol](../evals/nuwa/README.md) freezes source/binary/task
-identities, model choices, limits and seeded interleaved repetitions. It rejects
-fixture/budget mismatch, duplicate pair identity and unverified external-score
-labels. Actual routing, no delegation, failed attempts and missing usage remain
-observations; unknown usage cannot establish token savings. Fast failures do
-not become successful speedups. Mock comparisons are explicitly marked
-synthetic and do not export real token/time improvements.
-
-The legacy f3 six-row calibration (A 1/2, B 2/2, C 1/2; zero worker/DS requests)
-does not satisfy mandatory planning/execution separation. Retain its original
-results without using them to accept this mode. New source-boundary tests, an
-identified ELF/image and fresh calibration are required. Formal hard54 has
-executed zero rows; its admission remains separate from these historical results.
+## Eval harness contracts
 
 Task evals retain provisional pre-cleanup evidence and a separate cleanup
 receipt. A failed stop cannot erase the original request or grader error or
@@ -686,21 +593,27 @@ allow the batch to start another case. The real `run_once` HTTP regressions in
 and interrupted control flow; successful cleanup still removes credential data.
 
 Task fingerprints exclude only generated `__pycache__/*.pyc`; the ordinary
-fixture/workspace hashing remains unchanged. `test_agent_eval_nuwa.py` verifies
+fixture/workspace hashing remains unchanged. `test_agent_eval_models.py` verifies
 that caches do not invalidate a task while other files still do. Its real
 command-grader regression and `test_agent_eval_reconcile.py` accept a component
 map or unique-component array, reject incorrect current-record semantics and
-retain all four source-record byte guards. The [generic model observation](../evals/nuwa/RESULTS.md)
-keeps raw and uniformly corrected task scores separate; controller recovery did
-not repeat completed model requests.
+retain all four source-record byte guards.
 
-The ordinary development `--mock` smoke completed default and Nuwa project API
-lifecycles without harness errors and with owned engines gone. Both scripted
-direct-lookup task checks were 0/1: the fixed offline script is not a solver for
-that task. This is API/cleanup evidence only. CyberGym execution was stopped by
-platform safety review; source/data/image preparation and an architecture smoke
-are not official task results. No CyberGym score, native acceptance or measured
-real-model efficiency improvement is established by those receipts.
+`tools/agent_eval_pair.py` freezes source/binary/task identities, model choices,
+limits and seeded interleaved repetitions in a version-1 protocol file. It rejects
+fixture/budget mismatch, duplicate pair identity and unverified external-score
+labels. Actual routing, no delegation, failed attempts and missing usage remain
+observations; unknown usage cannot establish token savings. Fast failures do
+not become successful speedups. Mock comparisons are explicitly marked
+synthetic and do not export real token/time improvements. An arm may set
+`graph` (a real boolean) to turn the work graph on or off for that arm.
+`python3 -m unittest tools.test_agent_eval tools.test_agent_eval_limits tools.test_agent_eval_compare tools.test_agent_eval_prereview tools.test_agent_eval_models tools.test_agent_eval_pair tools.test_agent_eval_proxy tools.test_agent_eval_reconcile tools.test_agent_eval_graph`
+runs the offline harness suites.
+
+The ordinary development `--mock` smoke completes default project API
+lifecycles without harness errors and with owned engines gone. The fixed offline
+script is not a solver for the eval tasks, so its task checks are not capability
+evidence: this is API/cleanup evidence only.
 
 ## Returning to the live edge (`F-120`)
 
@@ -799,11 +712,6 @@ strips the guidance and does not request `/v1/models`.
 `models/account/DefaultSourceChoice.tla` adds `OfficialStartsOnServer` and
 `OfficialHidesOwnProviders`; `make model-check` includes the cases that break
 each one.
-
-`internal/engine/nuwa_account_default_http_test.go` starts a real Nuwa manager
-against account and private HTTP routes that expose the same model name. It
-checks the persisted default source, exact catalog-selected private worker and
-same-generation collection, plus explicit-source and signed-out boundaries.
 
 Go tests prove the projection against a loopback server that speaks the desktop
 model routes: `internal/remote/account_models_test.go` covers bootstrap identity
@@ -1049,114 +957,40 @@ own server port, data directory and output directory. Do not rebuild its served
 `dist` during a run. Browser results do not substitute for candidate-specific
 native macOS acceptance in `ci-macOS`.
 
-## Unified project distillation (`F-138`, `F-420`, `C-054`)
+## Unified project distillation (`F-420`, `C-054`)
 
+Distillation writes two destinations, notes and Skills, in one reviewer batch.
+The project Knowledge base and Wiki build were removed; the work graph replaced
+them (see [Work graph](GRAPH.md)).
 `go test -race ./internal/engine ./internal/server -run 'Test(Project)?Distill'`
 exercises the provider and HTTP tool boundaries, distinct conversation sources
 with the same event sequence, partial storage conflicts and interrupted
-receipts. The Playwright project knowledge suite walks all three scopes,
-switches between both panels and follows the Trace receipt.
-The real reviewer receives the exact allowed quote and source number on a
-wiki citation refusal. An exhausted unwritten batch or transient outage
-can retry once without counting progress twice. The browser test checks
-that a failed request retains the progress bar and opens the relevant
-model settings before continuing.
+receipts. `TestProjectDistillOneReviewWritesNotesAndSkillWithRealTrace` drives one
+review through the HTTP route and checks that its Trace receipt covers both
+destinations. The browser test `Project distillation says when there is no
+retained evidence` in `frontend/e2e/projects.spec.ts` covers the empty-evidence
+status.
 The long-history regression checks that every batch reaches the reviewer.
 Full-text coverage reconstructs the admitted UTF-8 bytes from model inputs,
 pauses inside a record, resumes after reopening the store and checks that a
-quote from the tail can update notes, Skills and Knowledge with the original
-source identity. The excerpt regression distinguishes excerpts, oversized
-skips and other ineligible records. The browser exercises both full-text
-scope actions and the progress within a record.
-The pause and restart regression saves all three destinations, interrupts the
-next batch, reopens the same SQLite store, and checks that resuming neither
-repeats the committed batch nor admits history added after the snapshot.
-The pause response stays pending until the reviewer exits. Browser coverage
-checks the toolbar resumes the original task after reopening, and the real
-reviewer checks that an explicit resume after failure still excludes peers.
-The Wiki loopback tests hold model review while the local scan publishes
-searchable observations, check source drill-down, replay partially published
-files after a receipt failure and verify incremental reuse. Actual model
-requests exercise item-level repair, a smaller retry that covers the original
-UTF-8 data, and pauses inside a source. Test the default build against the real
-loopback model adapter. It publishes cited documents while the model-review slot
-is held and makes zero model requests. A later opt-in build reviews the same
-source with its local result already saved. Resume older scan and graph receipts
-without the mode field and check that both retain model review. The Web suite
-exercises both menu choices and progress displays and verifies that an open graph
-refreshes, search reaches nodes outside a large overview and an available
-citation shows its excerpt. Measure the time from the actual build action to
-searchable graph and original citation on an isolated history copy.
-
-`wiki-build-*` checks the bounded scan/review/document protocol in
-`models/knowledge/WikiBuild.tla`. A local scan checkpoint requires publication,
-review requires a complete local scan and an explicit review mode. Final
-completion requires saved documents and, in review mode, all semantic windows.
-Fault switches admit review without a request and documents before a full local
-scan. Negated witnesses find successful completion in both modes and pause during
-local scan and article publication. The model represents complete source and
-document units, with file publication and receipt acknowledgement distinct.
-SQLite/file failure and exact source identity are verified in behavioral tests.
-Full and project backup tests also check that portable copies omit the
-derived source acknowledgements and that an internal rollback restores them.
+quote from the tail can update notes and Skills with the original source
+identity. The excerpt regression distinguishes excerpts, oversized skips and
+other ineligible records.
+The pause and restart regression saves both destinations, interrupts the next
+batch, reopens the same SQLite store, and checks that resuming neither repeats
+the committed batch nor admits history added after the snapshot. The pause
+response stays pending until the reviewer exits.
+`internal/engine/dream_http_test.go` asserts that the review tool no longer
+offers a `knowledge` parameter.
+`TestDistillationQueueExcludesWorkRecordPayloadsFromNewAndResumedReviews` keeps
+events tagged as private work-record payloads out of new and resumed reviews.
+Full and project backup tests also check that portable copies omit the derived
+source acknowledgements and that an internal rollback restores them.
 `distillation-progress-*` TLC cases cover completion only at the end of the
 scope, acceptance before advancing, counting a record after its final segment,
 and retaining both checkpoint positions across resume.
 `distillation-*` TLC cases cover exclusive admission, scoped publication,
-committed receipts, and a reachable run that saves all three targets.
-`TestCompletedTurnAutomaticallyKeepsNotesSkillsAndKnowledgeInOneReviewerBatch`
-drives a real completed turn and its automatic reviewer through the model
-adapter, and checks that one proposal and one original-turn receipt cover all
-three destinations. The Dream loopback test covers audit deferral while
-Knowledge is enabled. The offline browser regression keeps Knowledge visible
-and verifies its automatic refresh before reading Trace.
-
-## Project Markdown knowledge (`F-138`, `C-053`)
-
-`TestKnowledgeGraphRetainsOneNodePerPageAcrossTitleChanges` checks stable IDs,
-merged evidence from reciprocal links, isolated pages and aliases. The HTTP route
-test checks project scoping and missing targets. The knowledge Playwright suite
-checks that the project root and titled pages are drawn, locates a page by
-alias, opens a legacy workflow label from Pending, and browses and opens a
-page in a collapsed unlinked branch.
-`TestLegacyWikiLabelsRemainInspectableOutsideBrowsing` checks that generated
-labels and their graph edges stay out of normal navigation while saved
-citations, manual pages and observed events remain accessible.
-`TestWikiReviewRepairsOnlyTheUnresolvedItemsAtTheModelBoundary` checks host
-omission of workflow labels and their dependent links alongside citation repair
-through the model adapter.
-`frontend/src/lib/knowledge-layout.test.ts` checks reachability from the
-project root for disconnected components, cycles and a 6,270-page sparse
-graph with 316 saved links. It checks that opening a leaf retains its path
-and that saved page relationships are preserved.
-
-- `go test -race -cover ./internal/knowledge ./internal/engine ./internal/server ./internal/backup`
-  exercises schema and file validation, graph derivation, revision conflicts,
-  original history sources, HTTP project scope and backup round trips. The
-  Registry regression uses the real model adapter with a loopback scripted
-  response and checks the tool receipts. Core statement coverage is 92.8%;
-  the focused HTTP route tests exercise every statement of
-  `internal/server/project_knowledge.go`.
-- `cd frontend && npm run lint && npm test` checks knowledge tree/filter
-  helpers, navigation stack, Markdown links, inspector scopes and refresh.
-- `make e2e` includes `project-knowledge.spec.ts`. It exercises no-project
-  admission, project scope labels, enable, file-backed page views, pending
-  items, drilldown, preview, unavailable sources, transcript and Trace links and both ordinary distill
-  routes. The task panels spec also verifies registration in the task group
-  while retaining auto-open.
-- The bounded [ProjectKnowledge TLC model](../models/knowledge/README.md)
-  checks project write authority, revision conflicts and historical source
-  identity. Its reachability cases and seeded faults check the model's
-  sensitivity. The Go and browser tests exercise the implementation.
-- Native desktop acceptance uses the isolated ci-macOS candidate procedure.
-- `internal/remote/knowledge_test.go` drives real sealed pairlink frames
-  through project search and pagination, full Unicode page reads, scope/token
-  refusal, mid-read edits and global disable. The phone transfer tests check
-  scope, chunk identity and checksums before accepting a page.
-  `mobile/e2e/project-knowledge.spec.ts` exercises project entry, search,
-  navigation, source excerpts and old-PC feedback in both browser profiles.
-  The packaged iOS check uses `IOS_LAYOUT_SCENARIO=ios-project-knowledge.swift`
-  with the disposable fixture and reaches a source through the native app.
+committed receipts, and a reachable run that saves both targets.
 
 ## Original project-history SQL and source reports (`F-410`, `C-036`)
 
@@ -1679,7 +1513,7 @@ Continue 只增加一次尝试；Stop／拒绝取消，重启保持原收取状�
 状态、同 ID 新 generation、checkpoint、cleanup、legacy unknown 及整条预算省略。
 `internal/server/model_call_generation_test.go` 将两代请求及旧未知／显式 0、
 manager／辅助记录实际落库，再经 `GET /api/trace/:turn` 断言正代次保留、未知
-字段省略，且最新 roster 代次不能回填旧请求；同时覆盖 ordinary／Nuwa。
+字段省略，且最新 roster 代次不能回填旧请求；同时覆盖 ordinary 轮次与带旧 `nuwa_enabled` 标记的历史轮次。
 该 HTTP 契约测试不替代 provider／engine 对真实请求身份来源、退避准入和
 流结束归属的验证，也不接受按时间推断缺失代次。
 PC `worker-completion.spec.ts` 验证真实 SSE 完成唤醒、候选正文被扣留及刷新重放；
@@ -5133,6 +4967,7 @@ otherwise require a model endpoint or API key.
 | End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, directory rows tracking UI size, scheduled inbox / wake banner, Phone settings without a pairing QR (Bound phones paints a reported model) | `cd frontend && npm run e2e` |
 | Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no native override of the configurable Gateway or QR-selected Hub; offer URI parse, Noise session, scan/paste screen, live viewfinder (frame, sweeping beam, chime on a pairlink QR), saved-ticket host chips + connecting skeleton (not the scan form), multiple tickets, computer name from `hello`/`list` `host` (not the hub hostname), slim list, resume picker (live turn / last thread / parked wait), compact transcript / watch session (goal flags + waiting), ticket-socket keepalive and reconnect banner, goal/wait banners, device model line from platform+UA (`hello`), launcher is the zwai mark not Capacitor's default; Android system back pops Add a PC, then the new-conversation screen, then a conversation, and finishes only from the inbox or the unbound scan screen; inbox search filters the roster already on the phone; a project row starts a conversation in that project; Android release Gradle reads version/signing from env (no password in git); `android-release` refuses a store upload without a keystore, skips JDK 17, copies the APK to `bin/` | `cd mobile && npm test` |
 | Phone E2E | scan screen opens a live viewfinder (frame, sweeping beam, fake-camera preview) and paste of the same `pairlink:v1` URI; a saved ticket shows host chips and Connecting, not Scan QR; Add a PC is a menu sheet; New chat and a project row open the start screen, and on a 320px-wide viewport the project row and the message box stay inside it; sub-agent header counts running workers only, finished history stays grouped and opens a separate activity log without painting worker answers as manager answers; Check for updates shows fetching, then current, an install question, or the stubbed feed error | `cd mobile && npm run e2e` |
+| Work graph | `internal/graph` and `internal/store/graph_*` (catalog, merge, evidence, to-dos), `update_graph`/`read_graph` and the `TestAcceptance*` progress runs in `internal/engine`, graph HTTP/SSE and phone RPC, the desktop and phone panels, `models/graph/GraphStore.tla`, and the graph evals | see [Work graph](#work-graph) and [Graph evals](#graph-evals) |
 | Phone simulators | packaged iOS/Android apps bind via paste of that URI, list the seed thread, New chat, Start; native iOS Menu shows the version without Android's update action | see `mobile/README.md` (not in `make check`) |
 
 PC palette verification (`F-410`): `cd frontend && npm test -- src/components/app/palette.test.tsx`
@@ -5182,6 +5017,13 @@ Observed Go coverage on the 2026-09-27 integrated candidate, from
 | `cmd/zwai` | 85.9% |
 | `internal/remote` | 92.7% |
 | `internal/wakeup` | 95.7% |
+
+The table above predates the graph kernel and is not a fresh whole-repository
+run. A later partial measurement of the current tree, `go test -cover` without
+`-race` on only these packages, read `internal/graph` 82.4% (below the 90%
+target for new code; it has not been raised yet), `internal/store` 91.3%,
+`internal/remote` 93.9% and `internal/server` 90.8%. Re-measure with the
+whole-repository command before quoting any of them as a baseline.
 
 `internal/wakeup` is the phone-host sleep assertion. `TestSetDoesNotBounceTheAssertion`
 is why a settings reload cannot release and re-acquire (idle sleep wins that
@@ -6560,6 +6402,72 @@ on any change to the Delegating section.
 
 The visible-history projection also runs six bounded TLC cases in `models/stream/VisibleHistory.tla`. The idle tail scans two deferred work rows, reads the preceding visible message and gives SSE a distinct watermark. Seeded cursors and a stale rewind range break the modeled invariants. The model abstracts the SQL and React rendering, which the real HTTP and Playwright tests exercise.
 
+## Graph evals
+
+The graph kernel ([Work graph](GRAPH.md)) has two opt-in task evals under
+`evals/tasks/`. Like every eval they call a real model, never run in `make test`,
+`make check` or CI, and report a measurement, not a pass/fail gate.
+
+- `graph-exposure-analysis` gives an offline export of an organisation's
+  addresses. The answer key (`report.json`: address count, addresses by country
+  and by cloud, products) is computed from the seeded `generate.py` export, so a
+  wrong number fails regardless of how the graph looks. The graph checks then ask
+  that the graph holds the company, all 30 addresses and the four products, is
+  connected, has at least one `done` to-do and no `open` or `doing` to-do left.
+- `graph-fofa-query` seeds a wrong query draft that several corrections must
+  fix against a fixture simulator. `check_query.py` requires the final query to
+  be exact and the simulator and corpus to be unchanged; the graph checks
+  require exactly one current (`lead`/`confirmed`) `fofa_query`, at least one
+  `retracted` draft, a link between revisions and no `open` or `doing` to-do.
+
+The `graph_count` check type (`tools/agent_eval_grade.py`) counts the rows of
+`GET /api/threads/:id/graph` that the runner fetches once after the run, only for
+tasks that declare such a check. `of` is `subjects`, `links` or `todos`; `kind`,
+`status` (one value or a list), `rel` and `attrs` (attribute name to regex)
+narrow the rows, and `min`/`max` bound the count. A run without a fetched graph
+fails rather than passing vacuously, an unknown `of` is refused when the task
+loads, and it nests in `any_of`. Tasks assert on the structure the graph keeps,
+never on a sample's wording.
+
+```bash
+python3 -m unittest tools.test_agent_eval_graph   # offline: the check type and both tasks' fixtures
+make eval EVAL_PROVIDER=<id> EVAL_RUNS=3 EVAL_TASKS=graph-exposure-analysis,graph-fofa-query
+python3 tools/agent_eval_pair.py --protocol <protocol.json> --dry-run   # freeze the arms, no engine or model
+```
+
+`tools/test_agent_eval_graph.py` runs without a model or network: the check's
+filters, a missed bound reporting its count, the no-graph failure, the refused
+unknown collection, nesting, both tasks loading with a graph check, the exposure
+answer key matching the generated export, and the query grader rejecting the
+draft and a loose rewrite while accepting the exact query.
+
+To compare the graph against the baseline, give `tools/agent_eval_pair.py` a
+version-1 protocol with two arms that differ only in `graph: true` and
+`graph: false`; each arm owns fresh engine, data and workspace state, repetitions
+are interleaved, and the report keeps unknown usage unknown. The acceptance
+target for the graph is that its token use stays within 120% of the
+baseline arm on these tasks, with the answer-key checks still passing.
+
+The latest real-model measurement is the 2026-11-27 paired run
+`20261127-133145-201328` against `fofa-ai` / `glm-5.3-flash` with reasoning
+`low`, two replicates, each task allowed 20 minutes, with the graph-count
+checks reading the task `results/` deliverable. The harness exited 0 in about
+eight minutes; all eight runs finished `done`, review settled, none cut off.
+The graph arm passed 4 / 4 with every check (answer key, graph shape, visible
+progress, no open or doing to-do). The baseline arm failed only the graph-count
+checks, as expected, and passed the answer keys. Per pair, graph over baseline
+total tokens: exposure replicate 1 12% (95,542 / 808,473; that baseline run
+wandered, so the pair passes on an outlier and says little), exposure
+replicate 2 93% (63,698 / 68,772), query replicate 1 107% (136,790 / 127,304),
+query replicate 2 119% (98,282 / 82,440). Every pair is within 120%, but query
+replicate 2 only just. Earlier runs with the same build family were mixed: the
+two runs before it passed 3 of 4 pairs, the missed pair being a 124-134% ratio
+or a 180% one where the graph arm spent extra calls looking for its inputs.
+Baseline cost varies from about 70k to 800k tokens for one task, so a pair
+ratio at two replicates is noisy; treat a single passing run as evidence, not
+as a guarantee. The graph arm's fixed cost is the tool definitions and guidance
+on every manager call (about 1.2k tokens) plus one write of the batch.
+
 ## The scripted offline provider
 
 `--mock` (or `provider.NewMock`) replaces the model with a script that behaves
@@ -6576,9 +6484,7 @@ Playwright (`go run`) still emit them.
 
 It answers as a **memory reviewer** too: the post-turn script submits a complete
 `apply_memory_review` batch derived from effective source events, with exact
-seq/quote citations. A normal project review can store a note and a skill;
-when Knowledge is enabled, the same mock review can also commit a cited wiki
-page. Failed-turn requirements-only input stores notes without skills. Shared-library
+seq/quote citations. A normal project review can store a note and a skill. Failed-turn requirements-only input stores notes without skills. Shared-library
 review submits skills only. The batch exits the agent and the program supplies
 the result line, rather than billing a closing model call. A manager write does
 not skip this path. Explicit Review now selects the latest successful turn.
@@ -9708,8 +9614,8 @@ Tool tests cover observation cancellation and deadline ownership.
 ### Phone project management
 
 `internal/remote/project_settings_test.go` covers actual LinkPump dispatch,
-project create/read/partial update, Nuwa ready-model pairs, startup write refusal,
-working-directory identity and frame limits. The phone editor regressions are
+project create/read/partial update, an older phone's removed Nuwa fields being
+ignored, startup write refusal, working-directory identity and frame limits. The phone editor regressions are
 `mobile/src/components/project-manager.test.tsx`; browser acceptance is
 `mobile/e2e/project-management.spec.ts` on Chromium and WebKit. Tests create
 projects only on private engines or the offline MockLink. Browser screenshots do
@@ -9920,10 +9826,10 @@ separately from the independent capability refresh.
 
 Personal/offline engine fixtures select LOCAL explicitly; account-routing
 fixtures select Gateway explicitly. Source-switch tests retain an already-opened
-client's endpoint while requiring new lookups to use the new source. Nuwa
-planner, planning and scoped-worker HTTP regressions inspect the explicit
-`tool_not_registered` receipt on the next real model request and continue to
-assert no workspace, MCP or shared-state write occurred.
+client's endpoint while requiring new lookups to use the new source. Planning
+and scoped-worker HTTP regressions inspect the explicit `tool_not_registered`
+receipt on the next real model request and continue to assert no workspace, MCP
+or shared-state write occurred.
 Selection-translation regressions exercise the dedicated offline translator and
 legacy role-off fallback; `internal/provider/translation_policy_test.go` keeps
 negotiated denial separate. `frontend/e2e/legacy-local-settings.spec.ts` removes
@@ -9937,20 +9843,18 @@ identity check and rejects failed, absent, relative or ambiguous cwd results.
 
 ## Task panels and the FOFA example
 
-Inspector coverage in `frontend/src/components/app/nuwa-project-mode.test.tsx`
-exercises both registered tabs together, including a hidden iframe, project and
-conversation isolation, and fallback to Agents without changing the requested
-tab. The task-panel browser spec runs in the default suite and checks frame and
-zoom retention across tabs and scope changes to a conversation without a
-panel. The dedicated Nuwa browser fixture above covers history after disabling
-the mode and opening the tab without automatic focus. These are browser
-checks, separate from native acceptance.
+Inspector coverage in `frontend/src/components/app/inspector-panels.test.tsx`
+checks that an automatic-open signal opens the task-panel tab only for a present
+instance owned by the selected conversation, and that the host-only Work records
+tab stays out of the embedded plugin catalog. The task-panel browser spec runs
+in the default suite and checks frame and zoom retention across tabs and scope
+changes to a conversation without a panel. These are browser checks, separate
+from native acceptance.
 
 `InspectorRegistry.tla` checks finite render combinations and delayed
-automatic-open signals. The `nuwa-panel-ownership.test.tsx` regression uses a
-layout effect to inspect the first committed DOM for the next project before
-its passive reconnect; the previous project's Live indicator and alert cannot
-appear there. See the [panel model bounds](../models/panels/README.md).
+automatic-open signals. `frontend/src/store/graph.test.ts` drops a read that
+finishes after the panel moved to another conversation, so one owner's graph
+never renders under the next. See the [panel model bounds](../models/panels/README.md).
 
 Protocol and source tests use versioned state plus actual Registry/model HTTP, CLI and local HTTP boundaries. `internal/panelplugins/fofaworld` tests the installed compatible CLI only against a loopback fake API, with fictional credentials and no public targets. Two-batch blocking verifies actual overlap; counters and accepted receipts distinguish errors/unknown/cancellation from completion. `frontend/e2e/task-panels.spec.ts` verifies the actual bundled iframe and map without reloading on data updates. See [Task panels](TASK_PANELS.md) for the protocol and remaining native acceptance gate.
 
@@ -9973,14 +9877,6 @@ behavior through the real model, Registry, MCP HTTP and SQLite boundary.
 Manager cancellation is not evidence that the source or remote service joined.
 
 `internal/engine/task_panel_easm_http_test.go` drives the real model, Registry, streamable MCP HTTP and durable panel. It checks restricted account refusal, zero HTTP contact for a server enabled after model dispatch, successful next-turn admission, restored binding identity and immediate tool disable. `internal/engine/task_panel_graph_http_test.go` exercises direct publication through the model tool. It checks that cycles, removal of a saved source or its target, and a rootless replacement leave the stored revision and original source intact. Confirmation-downgrade cases include patches, whole-edge replacement, snapshots, omitted confirmation and valid enrichment mixed with a downgrade; refusal preserves state, revision, source, mutation rows and the delivery journal. It also covers retained confirmation, enrichment, confirmation upgrades, first sources for previously unsourced clues and a new subject. `internal/mcpclient/producer_test.go` covers exact text replies and isolation from task execution failures.
-
-`internal/engine/task_panel_worker_scope_http_test.go` exercises the actual
-Nuwa Worker model and panel source with a counted loopback MCP endpoint. A
-Worker with an empty selection or a listing-only proxy still publishes its
-observations, and the aggregation is unavailable with zero MCP requests during
-the panel call. The call proxy and the matching direct tool allow collection.
-A Worker with only the direct heat tool cannot use the same server's statistics
-binding.
 
 The desktop and phone E2E specs exercise the same saved graph with detached clues and duplicate historical certificate serials. They check the first discovery's card, hide detached and duplicate observations, then publish another batch and reopen the panel. `mobile/src/components/task-panels.test.tsx` uses the real conversation, EASM sheet and supply-chain detail and calls the JavaScript entry used by Android Back. It checks detail → sheet after initial open and reopening, including a refreshed sheet over Outputs. After triggering the real lazy EASM import, the test waits for `vi.dynamicImportSettled()` inside `act` before querying the detail button. The outer sheet alone is not a readiness signal. A controlled 2400ms module-evaluation delay in an isolated source copy reproduces the old 8/10 result and passes 10/10 with this wait; each of the three entries also passes in its own cold test process. This calibrates the test waiting gap, without establishing the cause of every historical failure or accepting native phone behavior.
 

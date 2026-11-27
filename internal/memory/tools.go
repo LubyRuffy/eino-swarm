@@ -55,12 +55,12 @@ const changeTextMax = 160
 // ViewTools: they may open a recorded procedure, not curate the store.
 // With a NotesDraft.Store, note callbacks describe pending draft edits; the
 // caller must wait for Commit before reporting them as persisted changes.
-func Tools(s *Store, onChange func(Change), knowledgeEnabled ...bool) []tool.BaseTool {
+func Tools(s *Store, onChange func(Change), graphEnabled ...bool) []tool.BaseTool {
 	if onChange == nil {
 		onChange = func(Change) {}
 	}
 	return []tool.BaseTool{
-		&memoryTool{store: s, onChange: onChange, knowledgeEnabled: len(knowledgeEnabled) > 0 && knowledgeEnabled[0]},
+		&memoryTool{store: s, onChange: onChange, graphEnabled: len(graphEnabled) > 0 && graphEnabled[0]},
 		&skillViewTool{store: s},
 		&skillManageTool{store: s, onChange: onChange},
 	}
@@ -106,9 +106,9 @@ func WriteNames() []string { return []string{ToolMemory, ToolSkillManage} }
 // ---------- memory ----------
 
 type memoryTool struct {
-	store            *Store
-	onChange         func(Change)
-	knowledgeEnabled bool
+	store        *Store
+	onChange     func(Change)
+	graphEnabled bool
 }
 
 type entryCapacityError struct {
@@ -122,7 +122,7 @@ func (t *memoryTool) Info(context.Context) (*schema.ToolInfo, error) {
 	return &schema.ToolInfo{
 		Name: ToolMemory,
 		Desc: "Curate the notes carried into every future conversation in this project. " +
-			memoryBoundaryForKnowledge([]bool{t.knowledgeEnabled}) +
+			memoryBoundaryForGraph([]bool{t.graphEnabled}) +
 			"Do not store this conversation's working details, a remaining count or other " +
 			"status that will change again, or anything easily looked up again. A pointer " +
 			"must name an existing skill without restating its body. A note that restates " +

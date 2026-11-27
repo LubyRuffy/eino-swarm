@@ -65,7 +65,7 @@ export const memoryZh: { [K in keyof typeof memoryEn]: string } = {
     "关闭后停用项目笔记和自动记录的技能（包括共享技能库），已安装的项目技能仍可使用。",
   "settings.memory.autoReview": "会话结束时复盘",
   "settings.memory.autoReviewHint":
-    "复盘已完成的回合，保留长期笔记和可复用技能。已启用知识库的项目可以在同一次复盘中更新知识库。独立会话的流程写入共享技能库。",
+    "复盘已完成的回合，保留长期笔记和可复用技能。独立会话的流程写入共享技能库。",
   "settings.memory.autoDream": "核验并修正项目技能",
   "settings.memory.autoDreamHint":
     "回合成功结束后，读取项目历史和成功的工具结果，核验此前自动复盘写入的技能。证据与更新内容明确矛盾时，自动复盘可以恢复上一版本。需要开启记忆和自动复盘。",

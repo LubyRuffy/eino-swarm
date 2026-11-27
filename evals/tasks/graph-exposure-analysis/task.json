@@ -1,0 +1,23 @@
+{
+  "id": "graph-exposure-analysis",
+  "purpose": "Enterprise exposure analysis over an offline export. Measures that the numbers are computed and that the graph ends up with the company, every address, the products and a settled to-do list.",
+  "expect_delegation": "optional",
+  "generate": "generate.py",
+  "timeout_s": 1200,
+  "checks": [
+    {"name": "ip_count", "type": "json_equals", "path": ".zwai-tasks/**/results/report.json", "pointer": "/ip_count", "value": 30},
+    {"name": "ips_by_country", "type": "json_equals", "path": ".zwai-tasks/**/results/report.json", "pointer": "/ips_by_country",
+     "value": {"BR": 6, "DE": 6, "JP": 5, "SG": 7, "US": 6}},
+    {"name": "ips_by_cloud", "type": "json_equals", "path": ".zwai-tasks/**/results/report.json", "pointer": "/ips_by_cloud",
+     "value": {"Cloud Alpha": 8, "Cloud Beta": 8, "Cloud Gamma": 7, "self-hosted": 7}},
+    {"name": "products", "type": "json_equals", "path": ".zwai-tasks/**/results/report.json", "pointer": "/products",
+     "value": ["Gateway-X", "Mail-Q", "Panel-Y", "Store-Z"]},
+    {"name": "graph holds every address", "type": "graph_count", "of": "subjects", "kind": "ip", "status": ["lead", "confirmed"], "min": 30, "max": 30},
+    {"name": "graph holds the company", "type": "graph_count", "of": "subjects", "kind": "company", "status": ["lead", "confirmed"], "min": 1},
+    {"name": "graph holds the products", "type": "graph_count", "of": "subjects", "kind": "app", "status": ["lead", "confirmed"], "min": 4},
+    {"name": "graph is connected", "type": "graph_count", "of": "links", "min": 30},
+    {"name": "to-dos were worked", "type": "graph_count", "of": "todos", "status": "done", "min": 1},
+    {"name": "no open to-do left", "type": "graph_count", "of": "todos", "status": "open", "max": 0},
+    {"name": "no doing to-do left", "type": "graph_count", "of": "todos", "status": "doing", "max": 0}
+  ]
+}

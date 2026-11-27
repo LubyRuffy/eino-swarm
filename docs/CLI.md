@@ -428,6 +428,10 @@ Generation lifecycle rows retain the original output's `message_id` and turn.
 worker successful. Use `--full` to inspect both payloads after a restart or a
 worker crossing several manager checks.
 
+A turn that had the work graph on also has `graph_unrecorded` over HTTP only: the
+count of tool results the graph was never told about. `zwai trace` shows the
+`update_graph` / `read_graph` calls as ordinary tool events but not that count.
+
 The same data is available over HTTP at `GET /api/trace/:turn`. The UI Trace
 tab shows that turn's status, error and billed tokens; **Full log** is the
 on-screen timeline, folded by default so a long run is not a sidebar syslog.

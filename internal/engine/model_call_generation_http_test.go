@@ -71,7 +71,7 @@ func TestWorkerLLMCallGenerationsPersistAcrossResumeRestoreAndTurnOwnershipAtHTT
 		}
 	})
 	collect := func(current *swarm.Registry, id string, generation int) {
-		out := invokeModelRequirementTool(t, current, "wait_agents", fmt.Sprintf(`{"agent_ids":[%q],"timeout_s":5}`, id))
+		out := invokeRegistryTool(t, current, "wait_agents", fmt.Sprintf(`{"agent_ids":[%q],"timeout_s":5}`, id))
 		var receipt toolScopeWait
 		if err := json.Unmarshal([]byte(out), &receipt); err != nil || receipt.TimedOut || len(receipt.Agents) != 1 ||
 			receipt.Agents[0].AgentID != id || receipt.Agents[0].Generation != generation || receipt.Agents[0].Status != "done" {
@@ -98,7 +98,7 @@ func TestWorkerLLMCallGenerationsPersistAcrossResumeRestoreAndTurnOwnershipAtHTT
 	awaitAccounting(t, h.Done())
 	collect(reg, h.ID, 1)
 	for generation := 2; generation <= 3; generation++ {
-		out := invokeModelRequirementTool(t, reg, "resume_agent", fmt.Sprintf(`{"agent_id":%q,"task":"Inspect the next supplied evidence."}`, h.ID))
+		out := invokeRegistryTool(t, reg, "resume_agent", fmt.Sprintf(`{"agent_id":%q,"task":"Inspect the next supplied evidence."}`, h.ID))
 		var resumed toolScopeWorkerID
 		if err := json.Unmarshal([]byte(out), &resumed); err != nil || resumed.AgentID != h.ID || resumed.Generation != generation {
 			t.Fatalf("resume changed worker identity/generation: %s err=%v", out, err)

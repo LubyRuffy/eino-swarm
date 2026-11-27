@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LubyRuffy/eino-swarm/internal/knowledge"
 	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
@@ -17,60 +16,38 @@ import (
 
 // DistillationRequest selects the saved history for one manual project review.
 type DistillationRequest struct {
-	Scope           string `json:"scope"`
-	ThreadID        string `json:"thread_id"`
-	EnableKnowledge bool   `json:"enable_knowledge"`
-	FullText        bool   `json:"full_text"`
-	WikiGraph       bool   `json:"wiki_graph"`
-	WikiReview      *bool  `json:"wiki_review"`
-	ResumeReviewID  string `json:"resume_review_id"`
-	PauseReviewID   string `json:"pause_review_id"`
+	Scope          string `json:"scope"`
+	ThreadID       string `json:"thread_id"`
+	FullText       bool   `json:"full_text"`
+	ResumeReviewID string `json:"resume_review_id"`
+	PauseReviewID  string `json:"pause_review_id"`
 }
 
 // ErrDistillationScope reports an invalid combination of scope and conversation.
 var ErrDistillationScope = errors.New("invalid distillation scope or conversation")
 
 // ErrDistillationTargets reports that none of the requested project's stores is enabled.
-var ErrDistillationTargets = errors.New("enable Memory or Knowledge before distilling")
+var ErrDistillationTargets = errors.New("enable Memory before distilling")
 
 // ErrDistillationPending protects the existing checkpoint from a new scope.
 var ErrDistillationPending = errors.New("continue the incomplete distillation before starting another")
 
 // DistillationResult is the durable status shared by both project panels.
 type DistillationResult struct {
-	ReviewID          string                `json:"review_id,omitempty"`
-	State             string                `json:"state"`
-	Scope             string                `json:"scope,omitempty"`
-	FullText          bool                  `json:"full_text,omitempty"`
-	WikiGraph         bool                  `json:"wiki_graph,omitempty"`
-	WikiReview        *bool                 `json:"wiki_review,omitempty"`
-	WikiPhase         string                `json:"wiki_phase,omitempty"`
-	WikiScanCursor    uint                  `json:"wiki_scan_cursor,omitempty"`
-	WikiScanProcessed int                   `json:"wiki_scan_processed,omitempty"`
-	WikiScanSkipped   int                   `json:"wiki_scan_skipped,omitempty"`
-	WikiScanDeferred  int                   `json:"wiki_scan_deferred,omitempty"`
-	WikiScanComplete  bool                  `json:"wiki_scan_complete,omitempty"`
-	WikiDocuments     int                   `json:"wiki_documents,omitempty"`
-	WikiDocumented    int                   `json:"wiki_documented,omitempty"`
-	ThreadID          string                `json:"thread_id,omitempty"`
-	TurnID            string                `json:"turn_id,omitempty"`
-	Progress          *DistillationProgress `json:"progress,omitempty"`
-	HistoryOmitted    bool                  `json:"history_omitted,omitempty"`
-	MemoryEnabled     bool                  `json:"memory_enabled,omitempty"`
-	KnowledgeEnabled  bool                  `json:"knowledge_enabled,omitempty"`
-	Changes           []memory.Change       `json:"changes,omitempty"`
-	Knowledge         []distillChange       `json:"knowledge,omitempty"`
-	Error             string                `json:"error,omitempty"`
-	ErrorCode         string                `json:"error_code,omitempty"`
-	ErrorProviderID   string                `json:"error_provider_id,omitempty"`
-	Uncertain         bool                  `json:"uncertain,omitempty"`
-}
-
-type distillChange struct {
-	Action   string `json:"action"`
-	ID       string `json:"id,omitempty"`
-	Title    string `json:"title,omitempty"`
-	Revision string `json:"revision"`
+	ReviewID        string                `json:"review_id,omitempty"`
+	State           string                `json:"state"`
+	Scope           string                `json:"scope,omitempty"`
+	FullText        bool                  `json:"full_text,omitempty"`
+	ThreadID        string                `json:"thread_id,omitempty"`
+	TurnID          string                `json:"turn_id,omitempty"`
+	Progress        *DistillationProgress `json:"progress,omitempty"`
+	HistoryOmitted  bool                  `json:"history_omitted,omitempty"`
+	MemoryEnabled   bool                  `json:"memory_enabled,omitempty"`
+	Changes         []memory.Change       `json:"changes,omitempty"`
+	Error           string                `json:"error,omitempty"`
+	ErrorCode       string                `json:"error_code,omitempty"`
+	ErrorProviderID string                `json:"error_provider_id,omitempty"`
+	Uncertain       bool                  `json:"uncertain,omitempty"`
 }
 
 type projectDistillWork struct {
@@ -79,44 +56,25 @@ type projectDistillWork struct {
 	anchor     store.Turn
 	route      distillationRoute
 	sources    distillInput
-	kb         *knowledge.Store
 	checkpoint *distillCheckpoint
 }
 
 // ProjectDistillationStatus reads the last explicit review without starting work.
 func (e *Engine) ProjectDistillationStatus(ctx context.Context, projectID string) (DistillationResult, error) {
-	return e.projectReviewStatus(ctx, projectID, false)
+	return e.projectReviewStatus(ctx, projectID)
 }
 
-func (e *Engine) ProjectWikiBuildStatus(ctx context.Context, projectID string) (DistillationResult, error) {
-	return e.projectReviewStatus(ctx, projectID, true)
-}
-
-func (e *Engine) projectReviewStatus(ctx context.Context, projectID string, wikiGraph bool) (DistillationResult, error) {
+func (e *Engine) projectReviewStatus(ctx context.Context, projectID string) (DistillationResult, error) {
 	e.distillMu.Lock()
 	defer e.distillMu.Unlock()
 	if _, err := e.store.GetProject(projectID); err != nil {
 		return DistillationResult{}, err
 	}
-	return e.projectDistillationStatus(ctx, projectID, wikiGraph)
+	return e.projectDistillationStatus(ctx, projectID)
 }
 
-func distillationKey(projectID string, wikiGraph bool) string {
-	if wikiGraph {
-		return "wiki:" + projectID
-	}
-	return projectID
-}
-
-func (e *Engine) distillationReceipt(ctx context.Context, projectID string, wikiGraph bool) (*store.ProjectDistillation, error) {
-	if wikiGraph {
-		return e.store.ProjectWikiBuildReceipt(ctx, projectID)
-	}
-	return e.store.ProjectDistillationReceipt(ctx, projectID)
-}
-
-func (e *Engine) projectDistillationStatus(ctx context.Context, projectID string, wikiGraph bool) (DistillationResult, error) {
-	row, err := e.distillationReceipt(ctx, projectID, wikiGraph)
+func (e *Engine) projectDistillationStatus(ctx context.Context, projectID string) (DistillationResult, error) {
+	row, err := e.store.ProjectDistillationReceipt(ctx, projectID)
 	if err != nil {
 		return DistillationResult{}, err
 	}
@@ -128,7 +86,7 @@ func (e *Engine) projectDistillationStatus(ctx context.Context, projectID string
 		return DistillationResult{}, err
 	}
 	if result.State == "running" {
-		active := e.distilling[distillationKey(projectID, wikiGraph)]
+		active := e.distilling[projectID]
 		if active.id != row.ID {
 			result.State = "interrupted"
 			result.Uncertain = result.Uncertain || result.Progress == nil
@@ -154,18 +112,15 @@ func (e *Engine) projectDistillationStatus(ctx context.Context, projectID string
 
 // StartProjectDistillation admits at most one manual review per project.
 func (e *Engine) StartProjectDistillation(ctx context.Context, projectID string, req DistillationRequest) (DistillationResult, error) {
-	if req.WikiReview != nil && !req.WikiGraph {
-		return DistillationResult{}, ErrDistillationScope
-	}
 	if req.ResumeReviewID != "" || req.PauseReviewID != "" {
-		if req.Scope != "" || req.ThreadID != "" || req.EnableKnowledge || req.FullText || req.WikiReview != nil || (req.ResumeReviewID != "" && req.PauseReviewID != "") {
+		if req.Scope != "" || req.ThreadID != "" || req.FullText || (req.ResumeReviewID != "" && req.PauseReviewID != "") {
 			return DistillationResult{}, ErrDistillationScope
 		}
 		return e.controlDistillation(ctx, projectID, req)
 	}
 	switch req.Scope {
 	case "latest_turn", "thread":
-		if req.ThreadID == "" || (req.Scope == "latest_turn" && (req.FullText || req.WikiGraph)) {
+		if req.ThreadID == "" || (req.Scope == "latest_turn" && req.FullText) {
 			return DistillationResult{}, ErrDistillationScope
 		}
 	case "project":
@@ -198,8 +153,8 @@ func (e *Engine) StartProjectDistillation(ctx context.Context, projectID string,
 			return DistillationResult{}, store.ErrNotFound
 		}
 	}
-	if e.distilling[distillationKey(projectID, req.WikiGraph)].id != "" {
-		return e.projectDistillationStatus(ctx, projectID, req.WikiGraph)
+	if e.distilling[projectID].id != "" {
+		return e.projectDistillationStatus(ctx, projectID)
 	}
 	gate := e.reviews.begin(projectID)
 	if gate == nil {
@@ -211,7 +166,7 @@ func (e *Engine) StartProjectDistillation(ctx context.Context, projectID string,
 			e.reviews.done()
 		}
 	}()
-	last, err := e.projectDistillationStatus(ctx, projectID, req.WikiGraph)
+	last, err := e.projectDistillationStatus(ctx, projectID)
 	if err != nil {
 		return DistillationResult{}, err
 	}
@@ -240,39 +195,15 @@ func (e *Engine) StartProjectDistillation(ctx context.Context, projectID string,
 			return DistillationResult{State: "no_work", Scope: req.Scope}, nil
 		}
 	}
-	kb, err := e.ProjectKnowledge(projectID)
-	if err != nil {
-		return DistillationResult{}, err
-	}
-	var knowledgeEnabled bool
-	if e.cfg.SwarmSnapshot().Knowledge {
-		snap, err := kb.Snapshot()
-		if err != nil {
-			return DistillationResult{}, err
-		}
-		if (req.EnableKnowledge || req.WikiGraph) && !snap.Enabled() {
-			snap, err = e.enableKnowledgeFiles(ctx, projectID, kb)
-			if err != nil {
-				return DistillationResult{}, err
-			}
-		}
-		knowledgeEnabled = snap.Enabled()
-	} else if req.EnableKnowledge || req.WikiGraph {
-		return DistillationResult{}, ErrDistillationTargets
-	}
 	result := DistillationResult{
-		ReviewID: store.NewID("distill_"), State: "running", Scope: req.Scope, FullText: req.FullText || req.WikiGraph, WikiGraph: req.WikiGraph,
+		ReviewID: store.NewID("distill_"), State: "running", Scope: req.Scope, FullText: req.FullText,
 		ThreadID: anchor.ThreadID, TurnID: anchor.ID, HistoryOmitted: input.omitted,
-		MemoryEnabled: !req.WikiGraph && e.MemoryEnabled(p), KnowledgeEnabled: knowledgeEnabled,
+		MemoryEnabled: e.MemoryEnabled(p),
 	}
-	if req.WikiGraph {
-		result.WikiPhase = "scan"
-		result.WikiReview = new(req.WikiReview != nil && *req.WikiReview)
-	}
-	if !result.MemoryEnabled && !result.KnowledgeEnabled {
+	if !result.MemoryEnabled {
 		return DistillationResult{}, ErrDistillationTargets
 	}
-	work := projectDistillWork{projectID: projectID, result: result, anchor: anchor, route: distillationRoute{anchor.ProviderID, anchor.Model, anchor.ReasoningEffort}, sources: input, kb: kb}
+	work := projectDistillWork{projectID: projectID, result: result, anchor: anchor, route: distillationRoute{anchor.ProviderID, anchor.Model, anchor.ReasoningEffort}, sources: input}
 	if req.Scope == "latest_turn" {
 		row, err := result.row(projectID)
 		if err == nil {
@@ -283,7 +214,7 @@ func (e *Engine) StartProjectDistillation(ctx context.Context, projectID string,
 		}
 	} else {
 		row := store.ProjectDistillation{ProjectID: projectID, ID: result.ReviewID, State: result.State,
-			ProviderID: anchor.ProviderID, Model: anchor.Model, ReasoningEffort: anchor.ReasoningEffort, WikiGraph: req.WikiGraph}
+			ProviderID: anchor.ProviderID, Model: anchor.Model, ReasoningEffort: anchor.ReasoningEffort}
 		_, err := e.store.StartDistillationQueue(ctx, row, req.ThreadID, func(total int) ([]byte, error) {
 			result.Progress = &DistillationProgress{Total: total, Remaining: total, CoverageKnown: true}
 			return json.Marshal(result)
@@ -306,13 +237,13 @@ func (e *Engine) launchDistillation(gate chan struct{}, work projectDistillWork,
 	if e.distilling == nil {
 		e.distilling = make(map[string]activeDistillation)
 	}
-	e.distilling[distillationKey(work.projectID, work.result.WikiGraph)] = activeDistillation{id: work.result.ReviewID, ctx: ctx, cancel: cancel}
+	e.distilling[work.projectID] = activeDistillation{id: work.result.ReviewID, ctx: ctx, cancel: cancel}
 	go e.runProjectDistillation(ctx, cancel, gate, work, cursor)
 }
 
 func (r DistillationResult) row(projectID string) (store.ProjectDistillation, error) {
 	body, err := json.Marshal(r)
-	return store.ProjectDistillation{ProjectID: projectID, ID: r.ReviewID, State: r.State, Receipt: body, WikiGraph: r.WikiGraph}, err
+	return store.ProjectDistillation{ProjectID: projectID, ID: r.ReviewID, State: r.State, Receipt: body}, err
 }
 
 func (e *Engine) runProjectDistillation(ctx context.Context, cancel context.CancelCauseFunc, gate chan struct{}, work projectDistillWork, cursor uint) {
@@ -328,7 +259,7 @@ func (e *Engine) runProjectDistillation(ctx context.Context, cancel context.Canc
 		}
 		e.distillMu.Lock()
 		defer e.distillMu.Unlock()
-		delete(e.distilling, distillationKey(work.projectID, work.result.WikiGraph))
+		delete(e.distilling, work.projectID)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		row, err := work.result.row(work.projectID)
@@ -339,10 +270,6 @@ func (e *Engine) runProjectDistillation(ctx context.Context, cancel context.Canc
 			e.log.Error("could not retain project distillation receipt", "review", work.result.ReviewID, "err", err)
 		}
 	}()
-	if work.result.WikiGraph {
-		e.runWikiBuild(ctx, gate, &work, cursor)
-		return
-	}
 	if work.result.Progress != nil {
 		e.runDistillationQueue(ctx, gate, &work, cursor)
 		return
@@ -394,13 +321,6 @@ func (e *Engine) reviewDistillationAttempt(ctx context.Context, work *projectDis
 	}
 	if work.result.MemoryEnabled {
 		instruction += "\nMemory is enabled. Use \"changes\" for both notes and Skills."
-		if work.result.KnowledgeEnabled {
-			instruction += "\nKeep subject-matter knowledge in the wiki."
-		}
-	}
-	if work.result.KnowledgeEnabled {
-		instruction += "\nKnowledge is enabled. Use \"knowledge\" for wiki mutations. Search existing pages and inspect schema first. Read page or schema revisions before editing. Wiki history references come only from proposal evidence."
-		tools = append(tools, batch.knowledgeReader())
 	}
 	settings := e.cfg.Snapshot().Memory
 	effort, optional := settings.ReviewEffort(work.route.effort)
@@ -435,7 +355,7 @@ func (e *Engine) reviewDistillationAttempt(ctx context.Context, work *projectDis
 		if batch.lastRefusal != "" {
 			work.result.Error = batch.lastRefusal
 		}
-	case work.result.Error != "" && (len(work.result.Changes) > 0 || len(work.result.Knowledge) > 0):
+	case work.result.Error != "" && len(work.result.Changes) > 0:
 		work.result.State = "partial"
 	case work.result.Error != "":
 		work.result.State = "failed"

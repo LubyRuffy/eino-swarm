@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { emptyTranscript, placePendingEdit, rewindTranscript } from "@/lib/transcript"
 import type { SwarmEvent } from "@/lib/types"
 import { dropQueued, queueEvent, type StreamSnapshot } from "./app-stream"
-import { useKnowledge } from "./knowledge"
 import {
   applyAgentLog,
   applyTail,
@@ -45,7 +44,6 @@ beforeEach(() => {
   fake.threadLog.mockReset()
   dropQueued()
   resetThreadHistory()
-  useKnowledge.setState({ refreshByProject: {} })
   paint = undefined
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { paint = callback; return 1 })
   vi.stubGlobal("cancelAnimationFrame", () => { paint = undefined })
@@ -82,22 +80,6 @@ describe("history and live event overlap", () => {
     expect(state.refreshThreads).toHaveBeenCalledTimes(1)
     expect(state.refreshFollowups).toHaveBeenCalledTimes(1)
     expect(state.refreshSchedules).toHaveBeenCalledTimes(1)
-  })
-
-  it("refreshes the current project's wiki after a recorded result, rewind, and terminal event", () => {
-    state.threads = [{
-      id: "th_1", project_id: "project-one", title: "Example", provider_id: "test", reasoning_effort: "",
-      archived: false, running: false, created_at: "2026-01-01T00:00:00Z", last_active_at: "2026-01-01T00:00:00Z",
-    }]
-    emit(event(1, "tool_call", "record_knowledge({})", { agent_id: "manager", tool_call_id: "call" }))
-    expect(useKnowledge.getState().refreshByProject).toEqual({})
-    const result = event(2, "tool_result", "saved", { agent_id: "manager", tool_call_id: "call" })
-    emit(result)
-    emit(result)
-    expect(useKnowledge.getState().refreshByProject).toEqual({ "project-one": 1 })
-    emit(event(3, "rewound", "1", { agent_id: "manager" }))
-    emit(event(4, "done", "finished", { agent_id: "manager" }))
-    expect(useKnowledge.getState().refreshByProject).toEqual({ "project-one": 3 })
   })
 
   it("does not replay terminal side effects already loaded in history", () => {

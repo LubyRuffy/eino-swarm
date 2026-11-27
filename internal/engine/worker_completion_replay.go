@@ -86,29 +86,15 @@ func (calls workerCollectionCalls) apply(ev store.Event, slots map[string]*worke
 	if ev.Err != "" {
 		return
 	}
-	canControl := func(id string) bool {
-		if isManagerAgent(ev.AgentID) {
-			return true
-		}
-		caller := slots[ev.AgentID]
-		if caller == nil || caller.generation != ev.WorkerGeneration {
-			return false
-		}
-		return replayDescendant(slots, id, ev.AgentID)
-	}
+	// Only the manager owns worker lifecycle tools.
+	canControl := func(string) bool { return isManagerAgent(ev.AgentID) }
 	var receipt struct {
 		AgentID         string `json:"agent_id"`
 		Generation      int    `json:"generation"`
 		Error           string `json:"error"`
 		Cancelled       bool   `json:"cancelled"`
 		AlreadyFinished bool   `json:"already_finished"`
-		ClosedAgents    []struct {
-			AgentID         string `json:"agent_id"`
-			Generation      int    `json:"generation"`
-			Cancelled       bool   `json:"cancelled"`
-			AlreadyFinished bool   `json:"already_finished"`
-		} `json:"closed_agents"`
-		Agents []struct {
+		Agents          []struct {
 			AgentID    string `json:"agent_id"`
 			Generation int    `json:"generation"`
 			Status     string `json:"status"`
@@ -152,38 +138,5 @@ func (calls workerCollectionCalls) apply(ev store.Event, slots map[string]*worke
 		if receipt.AlreadyFinished {
 			s.collected = true
 		}
-		if call.name == "close_agent" {
-			for _, item := range receipt.ClosedAgents {
-				child := slots[item.AgentID]
-				if child == nil || !canControl(item.AgentID) || item.Generation <= 0 || child.generation != item.Generation || item.Cancelled == item.AlreadyFinished {
-					continue
-				}
-				if item.AgentID != receipt.AgentID && !replayDescendant(slots, item.AgentID, receipt.AgentID) {
-					continue
-				}
-				if item.Cancelled {
-					child.closeRequested = true
-				}
-				if item.AlreadyFinished {
-					child.collected = true
-				}
-			}
-		}
 	}
-}
-
-func replayDescendant(slots map[string]*workerSlot, id, ancestor string) bool {
-	seen := map[string]bool{}
-	for id != "" && !seen[id] {
-		seen[id] = true
-		slot := slots[id]
-		if slot == nil {
-			return false
-		}
-		id = slot.parentID
-		if id == ancestor {
-			return true
-		}
-	}
-	return false
 }

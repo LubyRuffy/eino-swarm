@@ -178,15 +178,18 @@ func (e *Engine) hasParkedRestoreWorkers(turn *store.Turn, snapshot *restoreSnap
 }
 
 func (e *Engine) parkedRegistry(th *store.Thread, turn *store.Turn) (*swarm.Registry, error) {
-	pc, err := e.projectContextFor(th, turn)
+	pc, err := e.projectContextFor(th)
 	if err != nil {
 		return nil, err
 	}
-	set, err := e.conversationToolsForExecution(context.Background(), th, e.turnWebExecution(th, turn), turn.NuwaReadOnly, pc.hasKnowledge())
+	set, err := e.conversationToolsForExecution(context.Background(), th, e.turnWebExecution(th, turn))
 	if err != nil {
 		return nil, err
 	}
-	if th.PlanMode || turn.NuwaReadOnly {
+	if err := rejectRemovedNuwa(turn); err != nil {
+		return nil, err
+	}
+	if th.PlanMode {
 		set = tools.ExploreOnly(set)
 	}
 	providerID := strings.TrimSpace(turn.ProviderID)

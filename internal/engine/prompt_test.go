@@ -582,7 +582,7 @@ func TestPromptHeadIsOneLineAndTruncates(t *testing.T) {
 }
 
 func TestManagerExtraKeepsScheduleLinesWithoutAThread(t *testing.T) {
-	extra := managerExtra(&config.Config{}, nil, nil, "## Scheduled\n\n- id=sch_x\n", false)
+	extra := managerExtra(&config.Config{}, nil, nil, "## Scheduled\n\n- id=sch_x\n")
 	if !strings.Contains(extra, "## Scheduled") || !strings.Contains(extra, "sch_x") {
 		t.Fatalf("schedule lines dropped:\n%s", extra)
 	}
@@ -641,7 +641,7 @@ func TestEmptyPersonalityAddsNothingToTheManagerPrompt(t *testing.T) {
 	if got := PersonalityPrompt("  \n\t"); got != "" {
 		t.Fatalf("blank personality must omit the section, got %q", got)
 	}
-	extra := managerExtra(&config.Config{}, nil, nil, "", false)
+	extra := managerExtra(&config.Config{}, nil, nil, "")
 	if extra != "" {
 		t.Fatalf("empty config must add nothing, got %q", extra)
 	}
@@ -657,7 +657,7 @@ func TestPersonalityLandsBeforeTheProjectInstruction(t *testing.T) {
 	cfg := &config.Config{Personality: config.PersonalityConfig{Instructions: persona}}
 	pc := &projectContext{sections: "## This project\n\n" + project + "\n"}
 	th := &store.Thread{CompactSummary: "briefing", Goal: "keep going"}
-	extra := managerExtra(cfg, th, pc, "", false)
+	extra := managerExtra(cfg, th, pc, "")
 	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, extra)
 
 	if !strings.Contains(prompt, persona) {

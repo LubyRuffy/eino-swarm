@@ -39,7 +39,7 @@ func runFOFAWorldSource(ctx context.Context, raw json.RawMessage, _ json.RawMess
 		Query     string `json:"query"`
 		MaxAssets int    `json:"max_assets,omitempty"`
 	}
-	if err := decodeNuwaArgs(string(raw), &input); err != nil {
+	if err := decodeToolArgs(string(raw), &input); err != nil {
 		return nil, err
 	}
 	maxAssets := settings.MaxAssets
@@ -54,7 +54,7 @@ func runFOFAWorldSource(ctx context.Context, raw json.RawMessage, _ json.RawMess
 
 func (e *Engine) runEASMSource(ctx context.Context, raw json.RawMessage, current json.RawMessage, settings config.TaskPanelConfig, set *tools.Set, publish func(context.Context, json.RawMessage) error) (any, error) {
 	var input easm.Input
-	if err := decodeNuwaArgs(string(raw), &input); err != nil {
+	if err := decodeToolArgs(string(raw), &input); err != nil {
 		return nil, err
 	}
 	names := make(map[string]string, len(set.PanelMCP))

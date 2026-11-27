@@ -17,16 +17,6 @@ func (s *Store) ReadDistillationText(ctx context.Context, reviewID string, posit
 	return s.readDistillationText(ctx, reviewID, position, offset, limit, "e.text")
 }
 
-// A command receipt also contains the original command, its execution path
-// and diagnostics. Only the observed output can support wiki claims.
-const wikiSourceProjection = `CASE WHEN e.kind='tool_result' AND json_valid(e.text) THEN
-	CASE WHEN json_type(e.text,'$.full_command')='text' AND json_type(e.text,'$.stdout')='text' THEN
-		CASE WHEN json_type(e.text,'$.failed')='true' OR COALESCE(json_extract(e.text,'$.exit_code'),0)<>0 THEN ''
-			WHEN COALESCE(json_extract(e.text,'$.stderr'),'')='' THEN json_extract(e.text,'$.stdout')
-			ELSE json_extract(e.text,'$.stdout') || char(10) || json_extract(e.text,'$.stderr') END
-		ELSE e.text END
-	ELSE e.text END`
-
 const distillationToolSucceeded = `CASE
 	WHEN NOT json_valid(e.text) THEN 1
 	WHEN json_type(e.text)<>'object' THEN 1
@@ -34,10 +24,6 @@ const distillationToolSucceeded = `CASE
 		SELECT 1 FROM json_each(e.text) j
 		WHERE j.key IN ('ok','success') AND j.type='false'
 	) END`
-
-func (s *Store) ReadWikiSourceText(ctx context.Context, reviewID string, position uint, offset, limit int) (DistillationText, error) {
-	return s.readDistillationText(ctx, reviewID, position, offset, limit, wikiSourceProjection)
-}
 
 func (s *Store) readDistillationText(ctx context.Context, reviewID string, position uint, offset, limit int, projection string) (DistillationText, error) {
 	var rows []DistillationText

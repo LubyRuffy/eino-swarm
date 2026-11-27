@@ -71,9 +71,6 @@
     /* Collaboration kinds. A fact and a result used to share one fill, so
        the panel could not be scanned by kind. These are quiet surfaces,
        not status colors: a reported result must not look finished. */
-    --nuwa-task-bg: 211 75% 88%;
-    --nuwa-fact-bg: 262 65% 91%;
-    --nuwa-artifact-bg: 168 48% 84%;
 
     /* Shell highlighting on exec rows. Same hues as the file glyphs so
        light/dark stay in one family; a hardcoded theme would break one of them. */
@@ -196,9 +193,6 @@
     --file-config: 32 70% 62%;
     --file-image: 152 40% 56%;
 
-    --nuwa-task-bg: 211 45% 24%;
-    --nuwa-fact-bg: 262 38% 28%;
-    --nuwa-artifact-bg: 168 36% 22%;
 
     --syntax-keyword: 252 55% 78%;
     --syntax-command: 211 75% 72%;
@@ -285,9 +279,6 @@
     --file-config: 32 95% 44%;
     --file-image: 180 93% 27%;
 
-    --nuwa-task-bg: 213 80% 88%;
-    --nuwa-fact-bg: 262 60% 91%;
-    --nuwa-artifact-bg: 168 48% 84%;
 
     --syntax-keyword: 214 90% 42%;
     --syntax-command: 180 95% 32%;
@@ -463,9 +454,6 @@
     --file-config: 38 92% 50%;
     --file-image: 180 93% 40%;
 
-    --nuwa-task-bg: 213 50% 24%;
-    --nuwa-fact-bg: 262 38% 28%;
-    --nuwa-artifact-bg: 168 36% 22%;
 
     --syntax-keyword: 214 90% 72%;
     --syntax-command: 180 96% 48%;

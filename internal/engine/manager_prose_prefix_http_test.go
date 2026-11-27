@@ -82,7 +82,7 @@ func TestManagerCommentaryCannotPublishASchedulingClaimSplitAcrossToolRounds(t *
 	e.cfg.Models.Providers[0].APIKey = ""
 	e.cfg.Models.Providers[0].Model = "offline-manager-prose-prefix"
 	e.pool = provider.New(e.cfg)
-	project, err := e.CreateProject("Split scheduling claim", "", workspace, false, false)
+	project, err := e.CreateProject("Split scheduling claim", "", workspace, false)
 	if err != nil {
 		t.Fatal(err)
 	}

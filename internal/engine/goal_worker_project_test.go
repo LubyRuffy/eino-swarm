@@ -25,9 +25,9 @@ func TestGoalResumeWaitsForTaggedWorkerProjectRepair(t *testing.T) {
 			e, fixture := newScheduleCompletionHTTPEngine(t, func(w http.ResponseWriter, _ *http.Request, step int, request scheduleCompletionRequest) {
 				switch step {
 				case 1:
-					nuwaValidationTool(w, request, "repair-wait", "wait_agents", fmt.Sprintf(`{"agent_ids":[%q],"timeout_s":5}`, workerID))
+					scriptedToolReply(w, request, "repair-wait", "wait_agents", fmt.Sprintf(`{"agent_ids":[%q],"timeout_s":5}`, workerID))
 				case 2:
-					nuwaValidationTool(w, request, "repair-complete", ToolCompleteGoal, `{"summary":"Recovered and collected the original worker."}`)
+					scriptedToolReply(w, request, "repair-complete", ToolCompleteGoal, `{"summary":"Recovered and collected the original worker."}`)
 				default:
 					writeContextFlowReply(w, request.Stream, map[string]any{"content": "Recovery finished."}, "stop")
 				}

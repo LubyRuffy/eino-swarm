@@ -212,8 +212,7 @@ type putSwarmSettings struct {
 	// Absent keeps the stored choice. A missing bool would otherwise
 	// unmarshal as false and turn the next-step call off.
 	ComposerPredictions *bool `json:"composer_predictions"`
-	WorkLedger          *bool `json:"work_ledger"`
-	Knowledge           *bool `json:"knowledge"`
+	Graph               *bool `json:"graph"`
 	// Omitted or null preserves the stored choice for older clients.
 	IncrementalExecution *bool `json:"incremental_execution"`
 	// Omitted or null preserves the choice. An explicit empty string clears it.
@@ -320,13 +319,9 @@ func (s *Server) putSettings(c *gin.Context) {
 			if req.Swarm.ComposerPredictions != nil {
 				next.Swarm.ComposerPredictions = *req.Swarm.ComposerPredictions
 			}
-			next.Swarm.WorkLedger = cfg.Swarm.WorkLedger
-			if req.Swarm.WorkLedger != nil {
-				next.Swarm.WorkLedger = *req.Swarm.WorkLedger
-			}
-			next.Swarm.Knowledge = cfg.Swarm.Knowledge
-			if req.Swarm.Knowledge != nil {
-				next.Swarm.Knowledge = *req.Swarm.Knowledge
+			next.Swarm.Graph = cfg.Swarm.Graph
+			if req.Swarm.Graph != nil {
+				next.Swarm.Graph = *req.Swarm.Graph
 			}
 			next.Swarm.IncrementalExecution = cfg.Swarm.IncrementalExecution
 			if req.Swarm.IncrementalExecution != nil {
@@ -612,5 +607,16 @@ func (s *Server) getTrace(c *gin.Context) {
 		s.fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"turn": turn, "events": events, "llm_calls": calls})
+	body := gin.H{"turn": turn, "events": events, "llm_calls": calls}
+	if turn.GraphTools {
+		// Tool results the graph was never told about: the measure of how much
+		// of the run the graph actually reflects.
+		unrecorded, err := s.engine.Store().GraphUnrecorded(c.Request.Context(), turn.ThreadID, turnID)
+		if err != nil {
+			s.fail(c, err)
+			return
+		}
+		body["graph_unrecorded"] = unrecorded
+	}
+	c.JSON(http.StatusOK, body)
 }

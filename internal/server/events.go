@@ -68,11 +68,7 @@ func (s *Server) streamEvents(c *gin.Context) {
 		return
 	}
 	panels := s.startTaskPanelDelivery(c, th.ID)
-	var work *workDelivery
-	if c.Query("work") == "1" {
-		work = &workDelivery{threadID: th.ID}
-		_, _ = s.pollWorkDelivery(c, work)
-	}
+	graphs := s.startGraphDelivery(c, th.ID)
 	// Tell the client the replay is over so it can stop showing a loading
 	// state and start rendering streamed text.
 	writeSSE(c, "ready", gin.H{
@@ -95,8 +91,10 @@ func (s *Server) streamEvents(c *gin.Context) {
 			return
 		case <-lagTicker.C:
 			panelChanged := s.pollTaskPanelDelivery(c, panels)
-			workChanged, _ := s.pollWorkDelivery(c, work)
-			if panelChanged || workChanged {
+			if s.pollGraphDelivery(c, graphs) {
+				panelChanged = true
+			}
+			if panelChanged {
 				w.Flush()
 			}
 			if sub.Lagged() {

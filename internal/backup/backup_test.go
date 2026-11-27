@@ -87,10 +87,7 @@ func seed(t *testing.T) seeded {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	node := store.NuwaNode{ProjectID: project.ID, Kind: "fact", Title: "nuwa-title", ThreadID: thread.ID, TurnID: turn.ID, AgentID: "worker-1", Generation: 1}
-	if err := st.UpsertNuwaNode(context.Background(), &node, 0); err != nil {
-		t.Fatal(err)
-	}
+	seedLegacyWork(t, st, project.ID, thread, "project", "nuwa-title")
 	if _, err := st.SaveComposerDraft(context.Background(), store.ComposerDraft{
 		Key: "thread:" + thread.ID, Text: "draft-text", State: "editing",
 		Files: []store.DraftFile{{ID: "file1", Name: "a.txt", MIME: "text/plain", Kind: "file", Size: int64(len("blob-bytes"))}},
@@ -310,9 +307,8 @@ func assertRestored(t *testing.T, dir string, src seeded, full bool) {
 	if err := st.DB().Where("project_id = ? AND prompt = ?", src.project.ID, "schedule-body").First(&schedule).Error; err != nil {
 		t.Fatal(err)
 	}
-	var node store.NuwaNode
-	if err := st.DB().Where("project_id = ? AND title = ?", src.project.ID, "nuwa-title").First(&node).Error; err != nil {
-		t.Fatal(err)
+	if n := legacyRows(t, st, "nuwa_nodes", "title", "nuwa-title"); n != 1 {
+		t.Fatalf("legacy work rows after restore = %d, want the carried one", n)
 	}
 	draft, err := st.GetComposerDraft(context.Background(), "thread:"+src.thread.ID)
 	if err != nil || draft.Text != "draft-text" {

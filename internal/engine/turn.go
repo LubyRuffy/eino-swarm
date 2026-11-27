@@ -260,10 +260,9 @@ func (e *Engine) wireWorkerSurface(reg *swarm.Registry, toolset *tools.Set, pc *
 		return nil, fmt.Errorf("workers cannot ask")
 	}))
 	workers = append(workers, denyScheduleTools()...)
-	reg.SubAgentTools = append(workers, e.knowledgeTools(pc, turn, false)...)
+	reg.SubAgentTools = workers
 	reg.WorkerPreamble = JoinPromptSections(WorkerEnvironmentPrompt(toolset.WorkspaceDir), toolset.TaskFileInstruction,
-		ExecFileSearchPrompt(toolset.Names), historyPrompt(toolset, historyForWorker), pc.workerPreambleTail(),
-		pc.knowledgePrompt(turn != nil && turn.NuwaReadOnly))
+		ExecFileSearchPrompt(toolset.Names), historyPrompt(toolset, historyForWorker), pc.workerPreambleTail())
 	reg.ToolOutputBinder = tools.BindToolOutput
 	if reg.WorkerContextValues == nil {
 		reg.WorkerContextValues = historyWorkerContextValues
@@ -418,27 +417,8 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 	if err != nil {
 		return nil, err
 	}
-	var executorProvider, executorModel string
-	if e.pool.OfficialOnly() {
-		executorProvider = prov.ID
-		executorModel = prov.Model
-	} else if pc != nil && pc.project != nil && pc.project.NuwaEnabled && nuwaPairSaved(pc.project) {
-		// The saved pair is the manager and the new-role executor for this
-		// turn. A model that left the ready catalog stops the turn here,
-		// before a model request can run on some other name.
-		planner, err := e.readyNuwaProvider(pc.project.NuwaPlannerProviderID, pc.project.NuwaPlannerModel)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := e.readyNuwaProvider(pc.project.NuwaExecutorProviderID, pc.project.NuwaExecutorModel); err != nil {
-			return nil, err
-		}
-		prov = planner
-		executorProvider = strings.TrimSpace(pc.project.NuwaExecutorProviderID)
-		executorModel = strings.TrimSpace(pc.project.NuwaExecutorModel)
-	}
 	webExecution := e.turnWebExecution(th, nil)
-	toolset, err := e.conversationToolsForExecution(context.Background(), th, webExecution, false, pc.hasKnowledge())
+	toolset, err := e.conversationToolsForExecution(context.Background(), th, webExecution)
 	if err != nil {
 		return nil, err
 	}
@@ -472,11 +452,7 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 		ScheduleContinue: in.ContinueSchedule,
 		ScheduleRunID:    in.ScheduleRunID,
 	}
-	turn.NuwaEnabled = pc != nil && pc.project != nil && pc.project.NuwaEnabled
-	turn.NuwaReadOnly = turn.NuwaEnabled && th.PlanMode
-	e.freezeWorkLedger(turn, th.PlanMode)
-	turn.NuwaExecutorProviderID = executorProvider
-	turn.NuwaExecutorModel = executorModel
+	e.freezeGraph(turn, th.PlanMode)
 	if err := e.store.CreateTurn(turn); err != nil {
 		return nil, err
 	}

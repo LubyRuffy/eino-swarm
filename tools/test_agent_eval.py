@@ -74,7 +74,7 @@ def call(agent, tokens, chars=0, cached=0):
 
 
 class ProviderConfigTest(unittest.TestCase):
-    def test_nuwa_keeps_every_catalog_choice_instead_of_only_the_default(self):
+    def test_provider_keeps_every_catalog_choice_instead_of_only_the_default(self):
         p = grade.extract_provider(CONFIG, "default")
         self.assertEqual(p["catalog"], ["model-one", "other"])
 

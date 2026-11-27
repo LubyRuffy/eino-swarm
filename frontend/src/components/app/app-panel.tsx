@@ -5,7 +5,6 @@ import { LIBRARY_ID } from "@/lib/library"
 import { useApp } from "@/store/app"
 import { projectOf, useProjects } from "@/store/projects"
 import { useCoveredTranscript } from "@/store/settings-sheet"
-import { openProjectReviewTrace } from "./project-distill"
 
 export function AppPanel({
   tab,
@@ -62,7 +61,7 @@ export function AppPanel({
   const reviewProjectId = useProjects((s) => s.reviewProjectId)
   const activeThread = threads.find(({ id }) => id === activeId)
   const conversationProject = projectOf(projects, activeThread?.project_id)
-  const knowledgeProject = activeId ? conversationProject : projectOf(projects, selectedProjectId)
+  const scopeProject = activeId ? conversationProject : projectOf(projects, selectedProjectId)
   useEffect(() => {
     if (tab === "files") void refreshFiles()
     return () => setFileScope("task")
@@ -73,7 +72,7 @@ export function AppPanel({
   // time, so merely filtering the list does not swap the notes under you.
   const project =
     (focusSkill ? projectOf(projects, focusSkill.projectId) : undefined) ??
-    knowledgeProject
+    scopeProject
   // No project means the shared library: procedures from conversations that
   // belong to none, kept so they can be copied into an agent later.
   const memoryTarget = project?.id ?? (activeId ? LIBRARY_ID : undefined)
@@ -110,16 +109,7 @@ export function AppPanel({
       turns={turns}
       meta={meta}
       threadId={activeId}
-      nuwaProject={knowledgeProject}
-      threadProjectId={activeThread?.project_id}
-      knowledge={activeId || knowledgeProject ? {
-        project: knowledgeProject,
-        thread: activeThread,
-        onOpenThread: async (threadId) => {
-          await useApp.getState().openThread(threadId)
-        },
-        onTrace: openProjectReviewTrace,
-      } : undefined}
+      scopeProject={scopeProject}
       memory={
         memoryTarget
           ? {

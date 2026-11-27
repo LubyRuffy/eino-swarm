@@ -101,9 +101,9 @@ type SwarmConfig struct {
 	// empty input's placeholder. Tab inserts it; Enter sends it. Off stops
 	// the extra call. An older file without the key stays on.
 	ComposerPredictions bool `yaml:"composer_predictions" json:"composer_predictions"`
-	// WorkLedger and Knowledge enable the corresponding tools and inspector panels.
-	WorkLedger bool `yaml:"work_ledger" json:"work_ledger"`
-	Knowledge  bool `yaml:"knowledge" json:"knowledge"`
+	// Graph mounts the graph tools and the Work-record panel's graph. The
+	// older work_ledger and knowledge keys are ignored.
+	Graph bool `yaml:"graph" json:"graph"`
 	// IncrementalExecution adds implementation-first and requirement-based
 	// verification guidance to ordinary manager turns. It is opt-in.
 	IncrementalExecution bool `yaml:"incremental_execution" json:"incremental_execution"`
@@ -484,8 +484,7 @@ func Default() *Config {
 			DeltaCoalesceMS:            DefaultDeltaCoalesceMS,
 			AutoTitle:                  true,
 			ComposerPredictions:        true,
-			WorkLedger:                 true,
-			Knowledge:                  true,
+			Graph:                      true,
 			ContextCharBudget:          DefaultContextCharBudget,
 			CompactKeepMessages:        DefaultCompactKeepMessages,
 			AutoCompactTokens:          DefaultAutoCompactTokens,

@@ -35,34 +35,29 @@ import { t } from "@/lib/i18n"
 import { HighlightedLines } from "../../../frontend/src/lib/highlighted-lines"
 
 import { mermaidFenceIsClosed } from "../../../frontend/src/lib/markdown-mermaid"
-import { knowledgePageFromHref, remarkKnowledgeLinks } from "../../../frontend/src/lib/knowledge-link-ref"
 import { remarkWorkspaceFiles, workspaceFileFromHref, workspaceFileHref, workspaceFilePath } from "../../../frontend/src/lib/workspace-file-ref"
 
 const MarkdownSource = createContext("")
-const KnowledgePageOpen = createContext<((id: string) => void) | undefined>(undefined)
 export const PhoneFileLinkContext = createContext<((path: string, trigger: HTMLElement) => void) | undefined>(undefined)
 const Mermaid = lazy(() => import("./phone-mermaid").then((mod) => ({ default: mod.PhoneMermaid })))
 
 const PLUGINS = [remarkGfm, remarkMath]
 const FILE_PLUGINS = [...PLUGINS, remarkWorkspaceFiles]
-const KNOWLEDGE_PLUGINS = [...PLUGINS, remarkKnowledgeLinks]
 const MATH_LANGS = new Set(["math", "latex", "tex", "katex"])
 
-export function PhoneMarkdown({ text, className, streaming = false, onKnowledgePage }: {
-  text: string; className?: string; streaming?: boolean; onKnowledgePage?: (id: string) => void
+export function PhoneMarkdown({ text, className, streaming = false }: {
+  text: string; className?: string; streaming?: boolean
 }) {
   const openFile = useContext(PhoneFileLinkContext)
-  const fileLinks = Boolean(openFile) && !streaming && !onKnowledgePage
-  const plugins = onKnowledgePage ? KNOWLEDGE_PLUGINS : fileLinks ? FILE_PLUGINS : PLUGINS
+  const fileLinks = Boolean(openFile) && !streaming
+  const plugins = fileLinks ? FILE_PLUGINS : PLUGINS
   return (
     <div className={cn("md-body wrap-break-word text-sm", className)}>
-      <KnowledgePageOpen.Provider value={onKnowledgePage}>
         <MarkdownSource.Provider value={text}>
           <Markdown remarkPlugins={plugins} components={COMPONENTS} urlTransform={fileLinks ? workspaceUrl : safeUrl}>
             {text}
           </Markdown>
         </MarkdownSource.Provider>
-      </KnowledgePageOpen.Provider>
     </div>
   )
 }
@@ -73,12 +68,7 @@ function PhoneLink({
   node: _node,
   ...props
 }: ComponentPropsWithoutRef<"a"> & { node?: unknown }) {
-  const open = useContext(KnowledgePageOpen)
   const openFile = useContext(PhoneFileLinkContext)
-  const pageId = open && knowledgePageFromHref(href)
-  if (open && pageId) {
-    return <button type="button" className="inline break-words text-left text-primary underline underline-offset-2" onClick={() => open(pageId)}>{children}</button>
-  }
   if (href?.startsWith(workspaceFileHref(""))) {
     const path = workspaceFileFromHref(href)
     if (!path || !openFile) return <>{children}</>

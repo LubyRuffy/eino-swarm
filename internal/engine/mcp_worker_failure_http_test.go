@@ -54,7 +54,7 @@ func TestWorkerMCPFailureBlocksItsManagerAndKeepsTheOriginalCall(t *testing.T) {
 		if manager {
 			switch managerCalls.Add(1) {
 			case 1:
-				nuwaValidationTool(w, request, "assign-lookup", "spawn_agent", `{"role":"research","task":"Use the remote record tool."}`)
+				scriptedToolReply(w, request, "assign-lookup", "spawn_agent", `{"role":"research","task":"Use the remote record tool."}`)
 			case 2:
 				// The request is already in flight when the worker fails. It must
 				// return even though this model response has no other release.
@@ -71,7 +71,7 @@ func TestWorkerMCPFailureBlocksItsManagerAndKeepsTheOriginalCall(t *testing.T) {
 			return
 		}
 		if workerCalls.Add(1) == 1 {
-			nuwaValidationTool(w, request, "worker-lookup", remoteCall, `{"name":"inspect_record","arguments":{"key":"record"}}`)
+			scriptedToolReply(w, request, "worker-lookup", remoteCall, `{"name":"inspect_record","arguments":{"key":"record"}}`)
 			return
 		}
 		t.Error("worker requested after its MCP failure")

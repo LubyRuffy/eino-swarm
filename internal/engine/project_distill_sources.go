@@ -26,14 +26,12 @@ type distillInput struct {
 	transcript string
 	sources    map[int64]distillSource
 	memory     map[int64]store.Event
-	wiki       map[int64]store.Event
 	omitted    bool
 }
 
 func selectDistillationSources(turns []store.DistillationTurn, omitted bool) distillInput {
 	out := distillInput{
-		sources: make(map[int64]distillSource), memory: make(map[int64]store.Event),
-		wiki: make(map[int64]store.Event), omitted: omitted,
+		sources: make(map[int64]distillSource), memory: make(map[int64]store.Event), omitted: omitted,
 	}
 	var items []reviewSourceItem
 	var groups []reviewSourceGroup
@@ -83,24 +81,16 @@ func selectDistillationSources(turns []store.DistillationTurn, omitted bool) dis
 			if ev, ok := visible.Events[handle]; ok {
 				ev.Seq = seq
 				selected[seq] = ev
-				if !original.failed && ev.Kind == swarm.NotifyAgentMessage.String() {
-					out.wiki[handle] = ev
-				}
 			}
 		}
 		for seq, ev := range reviewEvidenceSources(original.events, selected) {
 			handle := original.handles[seq]
 			out.memory[handle] = ev
-			if !original.failed {
-				out.wiki[handle] = ev
-			}
 		}
 	}
 	for key := range out.sources {
 		if _, mem := out.memory[key]; !mem {
-			if _, wiki := out.wiki[key]; !wiki {
-				delete(out.sources, key)
-			}
+			delete(out.sources, key)
 		}
 	}
 	out.transcript = visible.Transcript
@@ -136,11 +126,11 @@ func distillOriginalEvents(events []store.Event) []store.Event {
 }
 
 func derivedDistillationTool(name string) bool {
-	return memoryWriteTool(name) || name == ToolReadKnowledge || name == ToolRecordKnowledge ||
-		name == reviewBatchToolName || name == distillBatchName || name == wikiExtractTool || name == ToolQueryHistory
+	return memoryWriteTool(name) || isWorkRecordTool(name) ||
+		name == reviewBatchToolName || name == distillBatchName || name == ToolQueryHistory
 }
 
-func (e *Engine) verifyDistillationSources(ctx context.Context, work *projectDistillWork, handles []int64) (map[int64]knowledgeSourceRef, error) {
+func (e *Engine) verifyDistillationSources(ctx context.Context, work *projectDistillWork, handles []int64) error {
 	refs := make([]store.HistoryReference, len(handles))
 	for i, key := range handles {
 		ev := work.sources.sources[key].event
@@ -148,37 +138,32 @@ func (e *Engine) verifyDistillationSources(ctx context.Context, work *projectDis
 	}
 	rows, err := e.store.ReadProjectHistoryIdentities(ctx, work.projectID, refs)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	verified := make(map[int64]knowledgeSourceRef, len(handles))
 	for i, key := range handles {
 		source := work.sources.sources[key]
 		ev, row := source.event, rows[i]
 		if row == nil || row.RowID != ev.ID || row.TurnID != ev.TurnID ||
 			!row.CreatedAt.Valid || !row.CreatedAt.Time.Equal(ev.CreatedAt) {
-			return nil, fmt.Errorf("%w: source %d changed or left the project", store.ErrHistorySourceUnavailable, key)
+			return fmt.Errorf("%w: source %d changed or left the project", store.ErrHistorySourceUnavailable, key)
 		}
-		ref := knowledgeSourceRef{Kind: "event", ThreadID: ev.ThreadID, Seq: ev.Seq}
 		if source.steerSeq != 0 {
 			part, err := e.store.ReadDistillationText(ctx, work.result.ReviewID, ev.ID, source.offset, len(ev.Text))
 			if err != nil {
-				return nil, err
+				return err
 			}
 			if part.MessageSeq != source.steerSeq || part.Text != ev.Text {
-				return nil, fmt.Errorf("%w: steer source %d changed", store.ErrHistorySourceUnavailable, key)
+				return fmt.Errorf("%w: steer source %d changed", store.ErrHistorySourceUnavailable, key)
 			}
-			ref.Kind, ref.Seq = "message", source.steerSeq
 		} else if ev.Kind == KindSteer {
 			msg, err := e.store.DistillationSteerMessage(ctx, ev)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			if msg.Content != steerModelCaption(ev.Text) {
-				return nil, fmt.Errorf("%w: steer source %d changed", store.ErrHistorySourceUnavailable, key)
+				return fmt.Errorf("%w: steer source %d changed", store.ErrHistorySourceUnavailable, key)
 			}
-			ref.Kind, ref.Seq = "message", msg.Seq
 		}
-		verified[key] = ref
 	}
-	return verified, nil
+	return nil
 }

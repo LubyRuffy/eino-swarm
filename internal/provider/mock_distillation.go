@@ -24,7 +24,7 @@ func mockProjectDistillation(turn int, messages []*schema.Message) *schema.Messa
 		return schema.AssistantMessage("Project distillation proposal submitted.", nil)
 	}
 	seq, quote := mockReviewSource(messages)
-	changes, pages := []map[string]any{}, []map[string]any{}
+	changes := []map[string]any{}
 	if seq > 0 {
 		evidence := []map[string]any{{"seq": seq, "quote": quote}}
 		tag := conversationTag(quote)
@@ -46,17 +46,7 @@ func mockProjectDistillation(turn int, messages []*schema.Message) *schema.Messa
 					"description": "Recorded workflow", "content": "- Inspect the workspace.\n- Collect results.\n- Report first.", "evidence": evidence})
 			}
 		}
-		if !failed && systemContains(messages, "Knowledge is enabled.") {
-			pages = append(pages, mockKnowledgeObservation(seq, quote))
-		}
 	}
-	raw, _ := json.Marshal(map[string]any{"changes": changes, "knowledge": pages})
+	raw, _ := json.Marshal(map[string]any{"changes": changes})
 	return &schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{call("mock-project-distillation", "apply_project_distillation", string(raw))}}
-}
-
-func mockKnowledgeObservation(seq int64, quote string) map[string]any {
-	return map[string]any{
-		"action": "write_page", "id": "observation-" + conversationTag(quote), "type": "entry",
-		"title": quote, "body": quote, "evidence": []map[string]any{{"seq": seq, "quote": quote}},
-	}
 }

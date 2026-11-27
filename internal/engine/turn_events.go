@@ -15,7 +15,7 @@ import (
 
 func isAuxiliaryAgent(id string) bool {
 	switch id {
-	case TitleAgentID, CompactAgentID, SessionMemoryAgentID, ComposerPredictionAgentID, workDistiller:
+	case TitleAgentID, CompactAgentID, SessionMemoryAgentID, ComposerPredictionAgentID:
 		return true
 	default:
 		return false
@@ -92,6 +92,10 @@ func (e *Engine) emit(ev store.Event) {
 // swarm returns starts with the system instruction and then replays the input
 // messages, so only the tail past them is new.
 func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Message, inputCount int, stoppedAsks ...stoppedAskReceipt) {
+	// The graph digest is added to every model request and is not part of the
+	// input count; left in, it moves the tail one message early and stores the
+	// last input again.
+	transcript = withoutGraphDigest(transcript)
 	start := min(compactPersistStart(transcript, inputCount), len(transcript))
 	tail := e.stoppedAskTranscript(threadID, turnID, transcript[start:], stoppedAsks)
 	if len(tail) == 0 {

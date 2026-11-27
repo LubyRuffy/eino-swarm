@@ -27,12 +27,6 @@ func (s *Store) AppendEventsAtomic(events []*Event) error {
 	}
 	if err := s.threadWriteErr(events[0].ThreadID, s.db.Transaction(func(tx *gorm.DB) error {
 		for _, event := range events {
-			if invalidatesWorkRoster(event) {
-				if err := appendWorkRosterEvent(tx, event); err != nil {
-					return err
-				}
-				continue
-			}
 			if err := tx.Create(event).Error; err != nil {
 				return err
 			}

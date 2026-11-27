@@ -12,8 +12,8 @@ import { draftZH } from "./messages-draft"
 import { agentFailureZh } from "./messages-agent-failure-zh"
 import { mcpZH } from "./messages-mcp"
 import { backupZh } from "./messages-backup-zh"
-import { knowledgeZh } from "./messages-knowledge"
-import { workZh } from "./messages-work"
+import { graphZh } from "./messages-graph"
+import { distillZh } from "./messages-distill"
 
 import type { en } from "./messages-en"
 
@@ -26,7 +26,8 @@ export const zh: { [K in keyof typeof en]: string } = {
   ...modelSettingsZh,
   ...speechZh,
   ...backupZh,
-  ...knowledgeZh,
+  ...graphZh,
+  ...distillZh,
   ...mcpZH,
   ...backoffZh,
   ...scheduleAnswerSettingsZh,
@@ -762,10 +763,6 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.swarm.autoTitle": "自动给会话起名",
   "settings.swarm.autoTitleHint":
     "第一条发出后立刻起名，定过就不再改。关掉则一直用首条消息。你亲手起的名字不会被覆盖。可在模型页钉一个不同的模型。",
-  "settings.swarm.workLedger": "工作记录",
-  "settings.swarm.workLedgerHint": "提炼并展示工作记录。关闭后隐藏面板。",
-  "settings.swarm.knowledge": "知识库",
-  "settings.swarm.knowledgeHint": "整理项目知识。关闭后停止知识库提炼并隐藏面板。",
   "settings.swarm.predictions": "建议下一步",
   "settings.swarm.predictionsHint":
     "回复结束后，空的输入框显示一条可能的下一步。Tab 填入，回车才会发送。关闭后不再生成。",
@@ -914,12 +911,6 @@ export const zh: { [K in keyof typeof en]: string } = {
   "project.workdirDesktopHint": "桌面端支持选择目录。",
   "project.workdirChooseFailed": "没法选择目录：{error}",
   "project.memory": "记忆",
-  "project.nuwa": "女娲协作",
-  "project.nuwaHint": "从下一轮生效，当前任务会继续。下面的规划模型和执行模型会保存在这个项目上。Agent 规划分工，并在项目内共享事实与成果。在项目指令中描述目标和协作原则即可。",
-  "project.nuwaPlanner": "规划模型",
-  "project.nuwaExecutor": "执行模型",
-  "project.nuwaModelsHint": "新的角色使用执行模型。会话里的模型选择改的是规划模型，从下一轮生效。",
-  ...workZh,
   "project.memoryOn": "每次会话后留下值得带走的：笔记和可复用流程。",
   "project.memoryOff": "这次安装关掉了记忆；请先在设置里打开。",
   "project.storedIn": "存放在 {path}",

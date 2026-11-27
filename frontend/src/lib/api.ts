@@ -44,7 +44,6 @@ import type { ClientCatalog } from "./local-clients"
 import type { SendImage } from "./paste-image"
 import type { ThreadLog } from "./thread-log"
 import { distillationPath, type DistillRequest, type DistillResult } from "./distillation"
-import { knowledgePath, type KnowledgeGraph, type KnowledgePage, type KnowledgeStatus, type KnowledgeTree } from "./knowledge"
 import type { ComposerDraftRecord } from "./composer-draft"
 import type { MCPServerInput, MCPServerView, MCPToolCatalog } from "./mcp-settings"
 
@@ -55,11 +54,6 @@ export interface ProjectPatch {
   system_prompt?: string
   workdir?: string
   memory_enabled?: boolean
-  nuwa_enabled?: boolean
-  nuwa_planner_provider_id?: string
-  nuwa_planner_model?: string
-  nuwa_executor_provider_id?: string
-  nuwa_executor_model?: string
 }
 
 export interface SideChatExchange {
@@ -583,25 +577,10 @@ export const api = {
       body: JSON.stringify({ ids }),
     }).then((r) => r.projects),
 
-  distillStatus: (projectId: string, signal?: AbortSignal, wikiGraph = false) =>
-    request<DistillResult>(distillationPath(projectId, wikiGraph), { signal, cache: "no-store" }),
-  startDistillation: (projectId: string, input: DistillRequest, wikiGraph = false) =>
-    request<DistillResult>(distillationPath(projectId), {
-      method: "POST", body: JSON.stringify(wikiGraph ? { ...input, wiki_graph: true } : input),
-    }),
-
-  knowledgeStatus: (projectId: string, signal?: AbortSignal) =>
-    request<KnowledgeStatus>(knowledgePath(projectId), { signal, cache: "no-store" }),
-  enableKnowledge: (projectId: string) =>
-    request<KnowledgeStatus>(knowledgePath(projectId), { method: "POST" }),
-  knowledgeTree: (projectId: string, view: string, signal?: AbortSignal) =>
-    request<KnowledgeTree>(`${knowledgePath(projectId)}/tree?view=${encodeURIComponent(view)}`, { signal, cache: "no-store" }),
-  knowledgeGraph: (projectId: string, signal?: AbortSignal) =>
-    request<KnowledgeGraph>(`${knowledgePath(projectId)}/graph`, { signal, cache: "no-store" }),
-  knowledgePage: (projectId: string, page: string, signal?: AbortSignal) =>
-    request<KnowledgePage>(`${knowledgePath(projectId)}/pages/${encodeURIComponent(page)}`, { signal, cache: "no-store" }),
-  revealKnowledge: (projectId: string) =>
-    request<void>(`${knowledgePath(projectId)}/reveal`, { method: "POST" }),
+  distillStatus: (projectId: string, signal?: AbortSignal) =>
+    request<DistillResult>(distillationPath(projectId), { signal, cache: "no-store" }),
+  startDistillation: (projectId: string, input: DistillRequest) =>
+    request<DistillResult>(distillationPath(projectId), { method: "POST", body: JSON.stringify(input) }),
 
   memory: (projectId: string) =>
     request<{ memory: ProjectMemory }>(`/api/projects/${projectId}/memory`).then(

@@ -42,7 +42,7 @@ func IsImageCommand(text string) bool {
 }
 
 func (rt *runtime) imageTool(ctx context.Context, th *store.Thread, turn *store.Turn, audience historyAudience) tool.BaseTool {
-	if th == nil || th.PlanMode || turn.NuwaReadOnly || turn.GoalContinue || turn.ScheduleContinue || audience == historyForManagerReport {
+	if th == nil || th.PlanMode || turn.GoalContinue || turn.ScheduleContinue || audience == historyForManagerReport {
 		return nil
 	}
 	// Use the conversation's source even when a saved planner model is

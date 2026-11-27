@@ -70,9 +70,6 @@ func (s *Store) TruncateFromEventSeq(threadID string, fromSeq int64) error {
 			if err := tx.Where("thread_id = ? AND turn_id IN ?", threadID, ids).Delete(&PendingScheduleAnswer{}).Error; err != nil {
 				return err
 			}
-			if err := deleteNuwaVerifySlots(tx, "", "", ids); err != nil {
-				return err
-			}
 			if err := tx.Where("thread_id = ? AND id IN ?", threadID, ids).Delete(&Turn{}).Error; err != nil {
 				return err
 			}
@@ -89,7 +86,7 @@ func (s *Store) TruncateFromEventSeq(threadID string, fromSeq int64) error {
 		if removed.RowsAffected == 0 && len(ids) == 0 {
 			return nil
 		}
-		return invalidateNuwaRewind(tx, threadID)
+		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("store: truncate from seq %d: %w", fromSeq, err)
@@ -98,24 +95,6 @@ func (s *Store) TruncateFromEventSeq(threadID string, fromSeq int64) error {
 	delete(s.followupSeq, threadID)
 	s.mu.Unlock()
 	return s.IndexThread(threadID)
-}
-
-func invalidateNuwaRewind(tx *gorm.DB, threadID string) error {
-	if err := bumpWorkRevision(tx, threadID); err != nil {
-		return err
-	}
-	// Resolve membership inside the truncation transaction. The source may
-	// have moved since the caller read the thread or its original turn.
-	var project Project
-	err := tx.Select("id").Where(`id = (SELECT project_id FROM threads WHERE id = ?)
-		AND (nuwa_enabled = ? OR nuwa_revision > 0)`, threadID, true).Take(&project).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	return bumpNuwaRevision(tx, project.ID)
 }
 
 // GetEvent loads one timeline row by its per-conversation sequence number.

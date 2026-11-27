@@ -34,19 +34,6 @@ type Project struct {
 	Workdir string `gorm:"size:1000" json:"workdir"`
 	// MemoryEnabled lets one project opt out of memory while the rest keep it.
 	MemoryEnabled bool `json:"memory_enabled"`
-	// NuwaEnabled enables prompt-driven collaboration for subsequent turns.
-	NuwaEnabled bool `json:"nuwa_enabled"`
-	// NuwaPlannerProviderID and NuwaPlannerModel are the manager model for
-	// subsequent Nuwa turns. Both empty means this project has not saved a
-	// pair, so new roles keep the previous model-choice rules.
-	NuwaPlannerProviderID string `gorm:"size:64" json:"nuwa_planner_provider_id,omitempty"`
-	NuwaPlannerModel      string `gorm:"size:200" json:"nuwa_planner_model,omitempty"`
-	// NuwaExecutorProviderID and NuwaExecutorModel are the model for a new
-	// worker role. Closing Nuwa keeps the pair so the next open restores it.
-	NuwaExecutorProviderID string `gorm:"size:64" json:"nuwa_executor_provider_id,omitempty"`
-	NuwaExecutorModel      string `gorm:"size:200" json:"nuwa_executor_model,omitempty"`
-	// NuwaRevision identifies the latest committed shared-work snapshot.
-	NuwaRevision int64 `json:"nuwa_revision"`
 	// SortRank is the sidebar's manual order. Zero means "never dragged":
 	// those rows interleave by UpdatedAt with ranked rows, so an idle
 	// unranked project cannot sit above one that was just used.
@@ -72,7 +59,6 @@ type Thread struct {
 	// clears it so a later namer cannot overwrite the sidebar.
 	TitleAuto     bool   `json:"title_auto"`
 	ProjectID     string `gorm:"index;size:64" json:"project_id"`
-	WorkRevision  int64  `gorm:"not null;default:0" json:"work_revision"`
 	TaskWorkspace string `gorm:"not null;default:''" json:"-"`
 	ProviderID    string `gorm:"size:64" json:"provider_id"`
 	// Model is the name this conversation sends. Empty follows a user-configured
@@ -206,19 +192,16 @@ type Turn struct {
 	// WebExecution is the preference captured when this turn started, so a
 	// later conversation/config edit cannot change its restart behavior.
 	WebExecution string `gorm:"size:16" json:"web_execution,omitempty"`
-	// NuwaEnabled freezes the project's collaboration mode for this turn and
-	// its recovered workers; editing the project affects subsequent turns.
-	NuwaEnabled bool `json:"nuwa_enabled"`
-	// NuwaExecutorProviderID and NuwaExecutorModel freeze the project's
-	// executor at turn start. Empty means the project had not saved a pair.
-	// A later project edit does not retarget this turn or its workers.
-	NuwaExecutorProviderID string `gorm:"size:64" json:"nuwa_executor_provider_id,omitempty"`
-	NuwaExecutorModel      string `gorm:"size:200" json:"nuwa_executor_model,omitempty"`
-	// NuwaReadOnly preserves planning's read-only tool surface after recovery.
-	NuwaReadOnly bool `json:"nuwa_read_only"`
-	// WorkLedger and WorkLedgerReadOnly freeze the work tools for later recovery.
-	WorkLedger         bool `gorm:"not null;default:false" json:"work_ledger"`
-	WorkLedgerReadOnly bool `gorm:"not null;default:false" json:"work_ledger_read_only"`
+	// NuwaEnabled only identifies turns recorded by the removed collaboration
+	// mode so recovery can end them with a clear cause instead of running them
+	// as ordinary turns. Nothing sets it any more.
+	NuwaEnabled bool `json:"-"`
+	// GraphTools and GraphReadOnly freeze whether this turn had the graph
+	// tools, and whether planning limited them to reading, for later recovery.
+	// The columns keep the names they had when the same flags froze the work
+	// tools, so an interrupted turn recovers with the graph tools.
+	GraphTools    bool `gorm:"column:work_ledger;not null;default:false" json:"graph_tools"`
+	GraphReadOnly bool `gorm:"column:work_ledger_read_only;not null;default:false" json:"graph_read_only"`
 	// ImageCommand belongs to an explicit /image turn and never resumes as a chat-model turn.
 	ImageCommand bool `gorm:"not null;default:false" json:"image_command,omitempty"`
 	// GoalContinue is true when the engine started this turn to keep pursuing
@@ -262,11 +245,8 @@ type Event struct {
 	AgentID            string              `gorm:"size:64" json:"agent_id"`
 	Role               string              `gorm:"size:64" json:"role,omitempty"`
 	ModelBinding       *swarm.ModelBinding `gorm:"serializer:json" json:"model_binding,omitempty"`
-	ParentID           string              `gorm:"size:64" json:"parent_id,omitempty"`
 	WorkerGeneration   int                 `json:"generation,omitempty"`
 	ConfigTag          string              `json:"config_tag,omitempty"`
-	DelegationEnabled  *bool               `json:"delegation_enabled,omitempty"`
-	WorkerToolNames    *[]string           `gorm:"serializer:json" json:"worker_tool_names,omitempty"`
 	Text               string              `json:"text"`
 	ToolCallID         string              `gorm:"size:128;index:idx_evt_tool_receipt_scope,priority:2" json:"tool_call_id,omitempty"`
 	ToolReceiptScope   string              `gorm:"size:64;index:idx_evt_tool_receipt_scope,priority:1,where:tool_receipt_scope <> ''" json:"-"`

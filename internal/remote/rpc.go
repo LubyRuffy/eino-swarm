@@ -45,7 +45,7 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req R
 			return mapErr(req.ID, path, sessionID, genErr)
 		}
 		resp.DataGeneration = &generation
-		resp.WorkRecordsAvailable = eng.Config().SwarmSnapshot().WorkLedger
+		resp.GraphAvailable = eng.Config().SwarmSnapshot().Graph
 		resp.ProductMode = eng.Config().Snapshot().Product.Resolved()
 		policy := eng.Providers().ModelPolicy()
 		resp.ModelPolicy = &policy
@@ -79,10 +79,10 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req R
 			return fail(req.ID, path, sessionID, "bad_request", "before must be a byte offset")
 		}
 		return fail(req.ID, path, sessionID, "not_found", "task not found")
+	case OpGraph:
+		return handleGraph(eng, req, path, sessionID)
 	case OpTaskPanels:
 		return handleTaskPanels(eng, req, path, sessionID)
-	case OpThreadWork:
-		return handleThreadWork(eng, req, path, sessionID)
 	case OpTaskPanelRead, OpTaskPanelCancel, OpTaskPanelClose:
 		return fail(req.ID, path, sessionID, "link_required", "panel transfers require a paired link")
 	case OpFiles:
@@ -112,10 +112,6 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req R
 		return handleTimeoutSettings(eng, req, path, sessionID)
 	case OpProjectGet, OpProjectCreate, OpProjectUpdate:
 		return handleProjectSettings(eng, req, path, sessionID)
-	case OpProjectKnowledge:
-		return handleKnowledgeList(eng, req, path, sessionID)
-	case OpKnowledgePage, OpKnowledgeCancel:
-		return fail(req.ID, path, sessionID, "link_required", "knowledge page transfers require a paired link")
 	case OpCatalog:
 		return handleCatalog(eng, req, path, sessionID)
 	case OpRefreshCatalog:

@@ -268,11 +268,10 @@ type reviewOutcome struct {
 	Dream     *dreamReceipt `json:"dream,omitempty"`
 	// Changes describes writes that landed. Available before/after snapshots
 	// keep transcript details tied to this review rather than later file edits.
-	Changes   []memory.Change `json:"changes,omitempty"`
-	Knowledge []distillChange `json:"knowledge,omitempty"`
-	Note      string          `json:"note,omitempty"`
-	Err       string          `json:"err,omitempty"`
-	failure   error
+	Changes []memory.Change `json:"changes,omitempty"`
+	Note    string          `json:"note,omitempty"`
+	Err     string          `json:"err,omitempty"`
+	failure error
 	// Notify is how chatty this review should be in the transcript, stamped
 	// at record time so a later settings change does not rewrite history.
 	Notify       string           `json:"notify,omitempty"`
@@ -361,7 +360,7 @@ func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectCo
 	}
 	memorySettings := e.cfg.Snapshot().Memory
 	deduplicateFeedback := memorySettings.ReviewDeduplicateFeedback
-	instruction := memory.ReviewPromptWithFeedback(deduplicateFeedback, pc.hasKnowledge() && e.cfg.SwarmSnapshot().Knowledge)
+	instruction := memory.ReviewPromptWithFeedback(deduplicateFeedback, e.cfg.SwarmSnapshot().Graph)
 	description := "curates this project's memory after a conversation"
 	batch := &reviewBatchTool{store: pc.memory, sources: reviewEvidenceSources(sourceEvents, input.Events),
 		humanOnly: turn.Status == store.TurnError, library: pc.library, mu: &mu, outcome: &outcome,
@@ -387,11 +386,6 @@ func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectCo
 	userMsg := e.reviewUserMessageWithNotes(pc, input.Transcript, notes)
 	if automatic {
 		batch.dream = e.prepareDream(turn, pc, sourceEvents, input.Events)
-		batch.knowledge = e.automaticReviewKnowledge(turn, pc, sourceEvents, input.Events)
-		if batch.knowledge != nil {
-			instruction += "\n" + automaticKnowledgeReviewPrompt
-			tools = append(tools, batch.knowledge.knowledgeReader())
-		}
 	}
 	effort, optionalEffort := memorySettings.ReviewEffort(turn.ReasoningEffort)
 	e.driveReviewer(reviewRun{

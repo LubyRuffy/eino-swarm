@@ -42,11 +42,6 @@ func (s *Store) nextEventSeq(threadID string) (int64, error) {
 // A reader can acknowledge the event even while FinishTurn is still pending.
 func (s *Store) appendCompletionEvent(db *gorm.DB, e *Event) error {
 	e.Completion = false
-	if invalidatesWorkRoster(e) {
-		return db.Transaction(func(tx *gorm.DB) error {
-			return appendWorkRosterEvent(tx, e)
-		})
-	}
 	if !primaryTerminal(e) {
 		return db.Create(e).Error
 	}

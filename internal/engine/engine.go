@@ -80,8 +80,12 @@ type Engine struct {
 	restoreMu       sync.Mutex
 
 	// recordMu keeps a stored event's sequence number and its delivery in the
-	// same order. See record.
+	// same order. See record. Graph ref aliases below are read and written
+	// only while this lock is held.
 	recordMu sync.Mutex
+	// graphRefs remembers a ref the model used for a subject, so a later call
+	// in this process can link to that ref instead of only the stored id.
+	graphRefs map[string]map[string]string
 	// goalWakeMu orders the three manager lifecycle tools. Store transactions
 	// also recheck human edits, which do not acquire this tool-only lock.
 	goalWakeMu sync.Mutex
@@ -95,8 +99,6 @@ type Engine struct {
 
 	// memory holds one store per project, shared so its lock means something.
 	memory projectMemory
-	// knowledge holds the shared file store and revision lock for each project.
-	knowledge sync.Map
 	// reviews tracks the post-turn memory reviews still running, so shutdown
 	// can wait for a write instead of killing it halfway.
 	reviews reviewPool

@@ -8,7 +8,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/LubyRuffy/eino-swarm/internal/knowledge"
 	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
@@ -35,7 +34,7 @@ type distillationRoute struct {
 var errDistillationPaused = errors.New("distillation paused by user")
 
 func (r DistillationResult) hasPending() bool {
-	return r.Progress != nil && (r.Progress.Remaining > 0 || (r.WikiGraph && r.State != "completed"))
+	return r.Progress != nil && (r.Progress.Remaining > 0)
 }
 
 type activeDistillation struct {
@@ -61,7 +60,7 @@ func (e *Engine) controlDistillation(ctx context.Context, projectID string, req 
 	if _, err := e.store.GetProject(projectID); err != nil {
 		return DistillationResult{}, err
 	}
-	row, err := e.distillationReceipt(ctx, projectID, req.WikiGraph)
+	row, err := e.store.ProjectDistillationReceipt(ctx, projectID)
 	if err != nil {
 		return DistillationResult{}, err
 	}
@@ -72,7 +71,7 @@ func (e *Engine) controlDistillation(ctx context.Context, projectID string, req 
 	if err := json.Unmarshal(row.Receipt, &result); err != nil {
 		return DistillationResult{}, err
 	}
-	active := e.distilling[distillationKey(projectID, req.WikiGraph)]
+	active := e.distilling[projectID]
 	if active.id == row.ID {
 		if req.PauseReviewID != "" && result.State == "running" {
 			active.cancel(errDistillationPaused)
@@ -81,14 +80,7 @@ func (e *Engine) controlDistillation(ctx context.Context, projectID string, req 
 		return result, nil
 	}
 	if req.PauseReviewID != "" || !result.hasPending() {
-		return e.projectDistillationStatus(ctx, projectID, req.WikiGraph)
-	}
-	if req.WikiGraph && !e.cfg.SwarmSnapshot().Knowledge {
-		return DistillationResult{}, ErrDistillationTargets
-	}
-	kb, err := e.ProjectKnowledge(projectID)
-	if err != nil {
-		return DistillationResult{}, err
+		return e.projectDistillationStatus(ctx, projectID)
 	}
 	gate := e.reviews.begin(projectID)
 	if gate == nil {
@@ -104,7 +96,7 @@ func (e *Engine) controlDistillation(ctx context.Context, projectID string, req 
 		e.reviews.done()
 		return DistillationResult{}, err
 	}
-	e.launchDistillation(gate, projectDistillWork{projectID: projectID, result: result, kb: kb,
+	e.launchDistillation(gate, projectDistillWork{projectID: projectID, result: result,
 		route: distillationRoute{row.ProviderID, row.Model, row.ReasoningEffort}}, row.CursorEventID)
 	return result, nil
 }
@@ -122,10 +114,9 @@ type distillCheckpoint struct {
 	excerpted, oversizedSkipped     int
 	segmentBytes, segmentTotalBytes int
 	accepted                        bool
-	wikiReviewed                    []uint
 }
 
-func (c *distillCheckpoint) save(result DistillationResult, cursor uint, wikiReviewed ...uint) error {
+func (c *distillCheckpoint) save(result DistillationResult, cursor uint) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	row, err := result.row(c.projectID)
@@ -133,9 +124,6 @@ func (c *distillCheckpoint) save(result DistillationResult, cursor uint, wikiRev
 		return err
 	}
 	row.CursorEventID = cursor
-	if len(wikiReviewed) > 0 {
-		return c.e.store.CheckpointWikiReview(ctx, row, c.from, wikiReviewed)
-	}
 	return c.e.store.CheckpointDistillation(ctx, row, c.from)
 }
 
@@ -166,15 +154,10 @@ func (c *distillCheckpoint) accept(batch DistillationResult, changes []memory.Ch
 	result.HistoryOmitted = result.HistoryOmitted || batch.HistoryOmitted
 	result.Uncertain = result.Uncertain && !reviewed
 	result.Changes = append(slices.Clone(result.Changes), changes...)
-	result.Knowledge = append(slices.Clone(result.Knowledge), batch.Knowledge...)
-	if progress.Remaining == 0 && !result.WikiGraph {
+	if progress.Remaining == 0 {
 		result.State = "completed"
 	}
-	var wikiReviewed []uint
-	if reviewed {
-		wikiReviewed = c.wikiReviewed
-	}
-	if err := c.save(result, c.to, wikiReviewed...); err != nil {
+	if err := c.save(result, c.to); err != nil {
 		return err
 	}
 	*c.current = result
@@ -222,7 +205,7 @@ func (e *Engine) runDistillationSlice(ctx context.Context, job *projectDistillWo
 		}
 		return checkpoint.to, true
 	}
-	if err := e.validateDistillationDestinations(job.projectID, job.kb, job.result); err != nil {
+	if err := e.validateDistillationDestinations(job.projectID, job.result); err != nil {
 		stopDistillation(ctx, &job.result, err)
 		return cursor, false
 	}
@@ -233,32 +216,19 @@ func (e *Engine) runDistillationSlice(ctx context.Context, job *projectDistillWo
 	job.result.State, job.result.Error = batch.result.State, batch.result.Error
 	job.result.ErrorCode, job.result.ErrorProviderID = batch.result.ErrorCode, batch.result.ErrorProviderID
 	job.result.Changes = append(job.result.Changes, batch.result.Changes...)
-	job.result.Knowledge = append(job.result.Knowledge, batch.result.Knowledge...)
-	if len(batch.result.Changes)+len(batch.result.Knowledge) > 0 {
+	if len(batch.result.Changes) > 0 {
 		job.result.State = "partial"
 	}
 	return cursor, false
 }
 
-func (e *Engine) validateDistillationDestinations(projectID string, kb *knowledge.Store, result DistillationResult) error {
+func (e *Engine) validateDistillationDestinations(projectID string, result DistillationResult) error {
 	project, err := e.store.GetProject(projectID)
 	if err != nil {
 		return err
 	}
 	if result.MemoryEnabled && !e.MemoryEnabled(project) {
 		return errors.New("Memory was disabled during distillation")
-	}
-	if result.KnowledgeEnabled {
-		if !e.cfg.SwarmSnapshot().Knowledge {
-			return knowledge.ErrDisabled
-		}
-		snapshot, err := kb.Snapshot()
-		if err != nil {
-			return err
-		}
-		if !snapshot.Enabled() {
-			return knowledge.ErrDisabled
-		}
 	}
 	return nil
 }
@@ -275,9 +245,6 @@ func (e *Engine) loadDistillationSlice(ctx context.Context, job *projectDistillW
 	load := e.store.DistillationWindow
 	if job.result.FullText {
 		load = e.store.DistillationMetadataWindow
-	}
-	if job.result.WikiGraph {
-		load = e.store.WikiReviewMetadataWindow
 	}
 	rows, err := load(ctx, job.result.ReviewID, cursor, 128)
 	if err != nil {

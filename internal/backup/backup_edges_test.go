@@ -133,10 +133,6 @@ func TestPreviewOfAForeignDraftScheduleAndNode(t *testing.T) {
 	if err := src.st.DB().Where("thread_id = ?", src.thread.ID).First(&turn).Error; err != nil {
 		t.Fatal(err)
 	}
-	var node store.NuwaNode
-	if err := src.st.DB().Where("project_id = ?", src.project.ID).First(&node).Error; err != nil {
-		t.Fatal(err)
-	}
 	destDir := t.TempDir()
 	clearEnv(t)
 	st, err := store.Open(filepath.Join(destDir, "zwai.db"))
@@ -160,14 +156,7 @@ func TestPreviewOfAForeignDraftScheduleAndNode(t *testing.T) {
 	if err := st.DB().Create(&schedule).Error; err != nil {
 		t.Fatal(err)
 	}
-	node.ProjectID = owner.ID
-	node.ThreadID = src.thread.ID
-	node.DependsOn = []string{}
-	node.DependencyVersions = map[string]int64{}
-	node.Evidence = []store.NuwaEvidence{}
-	if err := st.DB().Create(&node).Error; err != nil {
-		t.Fatal(err)
-	}
+	seedLegacyWork(t, st, owner.ID, &store.Thread{ID: src.thread.ID}, "project", "nuwa-title")
 	if _, err := st.SaveComposerDraft(context.Background(), store.ComposerDraft{
 		Key: "thread:" + src.thread.ID, Text: "kept-draft", State: "editing",
 	}, nil); err != nil {

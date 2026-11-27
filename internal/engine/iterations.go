@@ -139,14 +139,14 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		audience = historyForManagerReport
 	}
 	executionGuidance := ""
-	if e.cfg.SwarmSnapshot().IncrementalExecution && !turn.NuwaEnabled && (th == nil || !th.PlanMode) {
+	if e.cfg.SwarmSnapshot().IncrementalExecution && (th == nil || !th.PlanMode) {
 		executionGuidance = incrementalExecutionInstruction
 	}
 	managedExecIndex := rt.managedExecToolIndex(turn, th, toolset, resumed)
-	knowledgeReadOnly := turn.NuwaReadOnly || (th != nil && th.PlanMode)
-	tail := applyAccountInstruction(managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID), turn.NuwaEnabled), e.pool.AccountInstruction(turn.ProviderID))
+	planning := th != nil && th.PlanMode
+	tail := applyAccountInstruction(managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID)), e.pool.AccountInstruction(turn.ProviderID))
 	instruction := managerPrompt(toolset, JoinPromptSections(historyPrompt(toolset, audience), taskCoordinationPrompt, executionGuidance,
-		tail, pc.knowledgePrompt(knowledgeReadOnly), humanReply, rt.finalGoalWorkerSection(th), e.taskPanelInstruction(), toolset.TaskFileInstruction), turn.NuwaEnabled, managedExecIndex >= 0)
+		tail, humanReply, rt.finalGoalWorkerSection(th), e.taskPanelInstruction(), toolset.TaskFileInstruction), managedExecIndex >= 0)
 	// Fresh slice: pc.managerTools may return the workspace toolset's
 	// backing array, and appending complete_goal / block_goal in place
 	// would hand them to every sub-agent.
@@ -165,24 +165,11 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		managerTools[managedExecIndex] = tools.ManagedExec(managerTools[managedExecIndex], execSessions)
 		managerTools = append(managerTools, execSessions.ObservationTools()...)
 	}
-	if turn.NuwaEnabled {
-		managerTools = nuwaPlannerTools(toolset, pc)
-		instruction = JoinPromptSections(instruction, nuwaInstruction)
-		if reg.WorkerConfiguration().SelectableToolNames != nil {
-			instruction = JoinPromptSections(instruction, nuwaWorkerToolHint)
-		}
-		managerTools = append(managerTools, e.nuwaModelTool(turn))
+	if e.graphEnabled(turn) {
+		managerTools = append(managerTools, e.graphTools(turn, planning)...)
+		instruction = JoinPromptSections(instruction, graphInstruction(planning))
 	}
-	if e.workLedgerEnabled(turn) {
-		readOnly := workLedgerReadOnly(turn)
-		managerTools = append(managerTools, e.nuwaWorkTools(toolset.WorkspaceDir, turn, readOnly)...)
-		instruction = JoinPromptSections(instruction, workLedgerInstruction(readOnly))
-		if turn.NuwaEnabled && !readOnly {
-			instruction = JoinPromptSections(instruction, nuwaWorkVerification)
-		}
-	}
-	managerTools = append(managerTools, e.knowledgeTools(pc, turn, knowledgeReadOnly)...)
-	if knowledgeReadOnly {
+	if planning {
 		managerTools = dropPlanMutatingManagerTools(managerTools)
 		tid := rt.threadID
 		managerTools = append(managerTools, ProposePlanTool(func(markdown string) (string, error) {
@@ -196,7 +183,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	if imageTool := rt.imageTool(ctx, th, turn, audience); imageTool != nil {
 		managerTools = append(managerTools, imageTool)
 	}
-	if pursuingGoal(th) && !turn.NuwaReadOnly && (th == nil || !th.PlanMode) {
+	if pursuingGoal(th) && !planning {
 		tid := rt.threadID
 		managerTools = append(managerTools,
 			CompleteGoalTool(func(summary string) (string, error) {
@@ -213,7 +200,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	managerTools = append(managerTools, AskUserTool(rt.waitAsk))
 	managerTools = append(managerTools, rt.managerScheduleTools(turn)...)
 	managerTools = append(managerTools, rt.managerTaskTools(turn)...)
-	managerTools = append(managerTools, e.taskPanelTools(turn, toolset, turn.NuwaReadOnly || (th != nil && th.PlanMode), turn.NuwaEnabled)...)
+	managerTools = append(managerTools, e.taskPanelTools(turn, toolset, planning)...)
 	budget := e.cfg.SwarmSnapshot().ManagerIterations()
 	if pursuingGoal(th) && !pausedStandingGoal(th) {
 		budget = e.cfg.SwarmSnapshot().GoalSessionIterations()
@@ -276,7 +263,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 				return e.admitManagerCommentary(policyCtx, turn, acc.event(note, note.Kind.String()), prefix)
 			}
 			middlewares := append(e.autoCompactHandlers(rt.threadID, turn.ID, th, forceCompact), answer)
-			middlewares = append(middlewares, e.nuwaContextHandlers(turn)...)
+			middlewares = append(middlewares, e.graphContextHandlers(turn)...)
 			if execSessions != nil {
 				middlewares = append(middlewares,
 					&managedExecDelivery{sessions: execSessions, adaptive: adaptiveExecObservation, reg: reg, acc: acc},
@@ -300,10 +287,6 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 			if recoveryModel == nil {
 				if builder := reg.WorkerConfiguration().ModelBuilder; builder != nil {
 					runConfig.Model = builder(swarm.DefaultManagerID, swarm.DefaultManagerID)
-					if turn.NuwaEnabled {
-						// Hosted tools execute upstream. Restrict only this planner.
-						runConfig.Model = provider.WithoutBuiltinTools(runConfig.Model)
-					}
 				}
 			}
 			runConfig.Model = provider.WithResponsesContinuation(runConfig.Model, &rt.responses)

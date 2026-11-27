@@ -35,16 +35,13 @@ import (
 // so those are the most recent thing the model read. Empty for a
 // conversation that has none of those.
 func ManagerPrompt(set *tools.Set, extra string) string {
-	return managerPrompt(set, extra, false, false)
+	return managerPrompt(set, extra, false)
 }
 
-func managerPrompt(set *tools.Set, extra string, plannerOnly, managedExec bool) string {
+func managerPrompt(set *tools.Set, extra string, managedExec bool) string {
 	var b strings.Builder
 
-	if plannerOnly {
-		b.WriteString(nuwaPlannerInstruction)
-	} else {
-		b.WriteString(`You are the manager of a team of AI agents, working alongside a human.
+	b.WriteString(`You are the manager of a team of AI agents, working alongside a human.
 You hold the conversation: plan, steer, and answer. Spawn when a swarm would
 save time or improve quality — do not wait for the human to ask. Otherwise
 do the work yourself.
@@ -94,7 +91,6 @@ When you spawn:
   writer and fan out the reads.
 
 `)
-	}
 
 	b.WriteString(HostEnvironmentPrompt())
 	b.WriteString("\n")
@@ -102,10 +98,6 @@ When you spawn:
 	b.WriteString("## Working files\n\n")
 	fileInspection := "Read those first."
 	artifactInspection := "read it back from there"
-	if plannerOnly {
-		fileInspection = "Have an executor inspect those first."
-		artifactInspection = "have an executor verify the resulting files"
-	}
 	fmt.Fprintf(&b, `This conversation has a workspace directory, named under "Workspace path"
 below. Relative paths in tool calls resolve there, so prefer them over absolute
 paths. Files the human uploads arrive in the workspace's %q directory, and
@@ -133,30 +125,18 @@ present; a message with only <selected_text> is pointing at that snippet.
 `)
 
 	if len(set.Names) > 0 {
-		if plannerOnly {
-			b.WriteString("## Executor tools\n\nThe configured workspace tools available for delegation are: ")
-		} else {
-			b.WriteString("## Tools\n\nBesides the delegation tools you have: ")
-		}
+		b.WriteString("## Tools\n\nBesides the delegation tools you have: ")
 		b.WriteString(strings.Join(set.Names, ", "))
 		search := ExecFileSearchPrompt(set.Names)
-		if plannerOnly {
-			b.WriteString(".\nDiscover exact names with list_worker_tools and assign useful scopes to executors. Your coordination tools have their own registered schemas.\n")
-			if search != "" {
-				b.WriteString("Executors list directories, find files, and search file contents with exec.\n")
-			}
-			b.WriteString("\n")
-		} else {
-			b.WriteString(".\n")
-			if search != "" {
-				b.WriteString(search)
-			}
-			b.WriteString("Your sub-agents have the same workspace tools.")
-			if managedExec {
-				b.WriteString("\nThis manager also has exec_status and wait_exec for its owned commands.")
-			}
-			b.WriteString("\n\n")
+		b.WriteString(".\n")
+		if search != "" {
+			b.WriteString(search)
 		}
+		b.WriteString("Your sub-agents have the same workspace tools.")
+		if managedExec {
+			b.WriteString("\nThis manager also has exec_status and wait_exec for its owned commands.")
+		}
+		b.WriteString("\n\n")
 	}
 
 	b.WriteString(`## Asking the human
@@ -348,14 +328,14 @@ func JoinPromptSections(parts ...string) string {
 // wins when the two conflict. scheduleLines is the open-wake section for
 // this conversation; it is folded into the conversation extra so the model
 // can upsert instead of minting a second wait.
-func managerExtra(cfg *config.Config, th *store.Thread, pc *projectContext, scheduleLines string, plannerOnly bool) string {
+func managerExtra(cfg *config.Config, th *store.Thread, pc *projectContext, scheduleLines string) string {
 	var persona string
 	if cfg != nil {
 		persona = PersonalityPrompt(cfg.Personality.Instructions)
 	}
 	var conv string
 	if th != nil {
-		conv = conversationExtraForRole(th, pc, scheduleLines, plannerOnly)
+		conv = conversationExtra(th, pc, scheduleLines)
 		scheduleLines = ""
 	} else if pc != nil {
 		conv = pc.promptSections()
@@ -367,10 +347,6 @@ func managerExtra(cfg *config.Config, th *store.Thread, pc *projectContext, sche
 // Compact first (old context), then the project, then the goal, then open
 // wakes, then the plan so a live plan is the last thing the model read.
 func conversationExtra(th *store.Thread, pc *projectContext, scheduleLines string) string {
-	return conversationExtraForRole(th, pc, scheduleLines, false)
-}
-
-func conversationExtraForRole(th *store.Thread, pc *projectContext, scheduleLines string, plannerOnly bool) string {
 	var parts []string
 	if th != nil {
 		if s := compactSection(th.CompactSummary); s != "" {
@@ -391,7 +367,7 @@ func conversationExtraForRole(th *store.Thread, pc *projectContext, scheduleLine
 		parts = append(parts, s)
 	}
 	if th != nil {
-		if s := planSection(th.PlanMode, th.PlanMarkdown, plannerOnly); s != "" {
+		if s := planSection(th.PlanMode, th.PlanMarkdown); s != "" {
 			parts = append(parts, s)
 		}
 	}

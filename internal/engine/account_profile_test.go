@@ -113,56 +113,6 @@ func TestOfficialProfileSendsTheAliasAndLeavesTheStoredProvider(t *testing.T) {
 	}
 }
 
-func TestOfficialProfileDoesNotUseTheSavedNuwaPair(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
-		writeCheckedCompletion(w, raw)
-	}))
-	defer srv.Close()
-	e := newAccountEngine(t, srv.URL+"/v1", "vendor-secret-model")
-	if err := e.cfg.Update(func(c *config.Config) error {
-		c.Models.Providers = []config.Provider{{
-			ID: "own", BaseURL: srv.URL + "/v1", Model: "planner-model",
-			Catalog: []string{"planner-model", "executor-model"},
-		}}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	e.pool.SetAccountSource(nil)
-	project, err := e.CreateProject("Chosen models", "", t.TempDir(), false, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := e.SaveNuwaModelPair(project.ID, NuwaModelPair{
-		PlannerProviderID: "own", PlannerModel: "planner-model",
-		ExecutorProviderID: "own", ExecutorModel: "executor-model",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	th, err := e.CreateThread("", "own", project.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	src, err := provider.NewAccountProfile(accountCatalogID, srv.URL+"/v1", "token", provider.AccountProfile{Label: "Partner model"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	e.pool.SetAccountSource(src)
-	turn, err := e.StartTurn(th.ID, "Continue the current task.")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = e.Interrupt(th.ID) })
-	stored, err := e.store.GetTurn(turn.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stored.Model != config.OfficialModelAlias || stored.ProviderID != accountCatalogID || stored.NuwaExecutorModel != config.OfficialModelAlias {
-		t.Fatalf("official nuwa turn used the saved pair: %+v", stored)
-	}
-}
-
 func assertProfileRequest(t *testing.T, raw []byte, marker string, official bool) {
 	t.Helper()
 	text := string(raw)

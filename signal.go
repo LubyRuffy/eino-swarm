@@ -128,18 +128,15 @@ const DefaultManagerID = "manager"
 // accumulators and reset on NotifyTurn. Tool deltas key on ToolCallID and
 // reset when that call's NotifyToolResult arrives.
 type Notification struct {
-	ToolReceiptScope  string        `json:"-"`
-	ConfigTag         string        `json:"config_tag,omitempty"`
-	DelegationEnabled *bool         `json:"delegation_enabled,omitempty"`
-	WorkerToolNames   *[]string     `json:"worker_tool_names,omitempty"`
-	ParentID          string        `json:"parent_id,omitempty"`
-	WorkerGeneration  int           `json:"generation,omitempty"`
-	ModelBinding      *ModelBinding `json:"model_binding,omitempty"`
-	Kind              NotifyKind
-	AgentID           string // emitting agent (DefaultManagerID for the top level)
-	Role              string
-	Text              string // accumulated text / tool summary / result
-	Err               error  // failure cause; interrupted generation causes are classified by the host
+	ToolReceiptScope string        `json:"-"`
+	ConfigTag        string        `json:"config_tag,omitempty"`
+	WorkerGeneration int           `json:"generation,omitempty"`
+	ModelBinding     *ModelBinding `json:"model_binding,omitempty"`
+	Kind             NotifyKind
+	AgentID          string // emitting agent (DefaultManagerID for the top level)
+	Role             string
+	Text             string // accumulated text / tool summary / result
+	Err              error  // failure cause; interrupted generation causes are classified by the host
 
 	// ToolCallID pairs NotifyToolCall with its NotifyToolResult. Agents issue
 	// several calls in one turn, so matching by position or name is wrong;
@@ -214,19 +211,16 @@ func (r *Registry) emitSpawned(role, agentID, instruction string) {
 	h := r.agents[agentID]
 	r.mu.Unlock()
 	tag := ""
-	var enabled *bool
-	var toolNames *[]string
 	if h != nil {
 		h.mu.Lock()
-		tag, enabled = h.configTag, h.delegationEnabled
-		toolNames = cloneWorkerToolNames(h.workerToolNames)
+		tag = h.configTag
 		h.mu.Unlock()
 	}
-	r.emit(Notification{Kind: NotifySpawned, ConfigTag: tag, DelegationEnabled: enabled, WorkerToolNames: toolNames, AgentID: agentID, Role: role, Text: instruction, ModelBinding: r.workerModelBinding(agentID), ParentID: identity.ParentID, WorkerGeneration: identity.Generation})
+	r.emit(Notification{Kind: NotifySpawned, ConfigTag: tag, AgentID: agentID, Role: role, Text: instruction, ModelBinding: r.workerModelBinding(agentID), WorkerGeneration: identity.Generation})
 }
 
 func (r *Registry) emitFinished(role, agentID, result string, err error, identity AgentIdentity) {
-	r.emit(Notification{Kind: NotifyFinished, AgentID: agentID, Role: role, Text: result, Err: err, ParentID: identity.ParentID, WorkerGeneration: identity.Generation})
+	r.emit(Notification{Kind: NotifyFinished, AgentID: agentID, Role: role, Text: result, Err: err, WorkerGeneration: identity.Generation})
 }
 
 func (r *Registry) sink() Callback {
@@ -276,7 +270,6 @@ func (r *Registry) emitComplete(role, agentID string, ev *adk.AgentEvent, owners
 	emit := func(n Notification) {
 		if len(owners) > 0 {
 			owner := owners[0]
-			n.ParentID = owner.identity.ParentID
 			n.WorkerGeneration = owner.identity.Generation
 			if n.Kind == NotifyToolCall || n.Kind == NotifyToolResult {
 				n.ToolReceiptScope = owner.receiptScope
@@ -386,7 +379,6 @@ func itoa(i int) string {
 // at every turn boundary. Both the manager loop and each worker goroutine own
 // one instance per agent for the whole run.
 type streamAcc struct {
-	parentID         string
 	workerGeneration int
 	toolReceiptScope string
 	reg              *Registry
@@ -668,7 +660,7 @@ func (s *streamAcc) answerText() string {
 }
 
 func (s *streamAcc) emit(n Notification) {
-	n.ParentID, n.WorkerGeneration = s.parentID, s.workerGeneration
+	n.WorkerGeneration = s.workerGeneration
 	if n.Kind == NotifyToolCall {
 		n.ToolReceiptScope = s.toolReceiptScope
 	}

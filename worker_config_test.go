@@ -13,8 +13,7 @@ import (
 )
 
 func TestTaggedWorkerConfigurationFailureCannotClaimOrResumeAWorker(t *testing.T) {
-	enabled := true
-	for _, mode := range []string{"missing-resolver", "unavailable", "wrong-tag", "wrong-mode"} {
+	for _, mode := range []string{"missing-resolver", "unavailable", "wrong-tag"} {
 		t.Run(mode, func(t *testing.T) {
 			reg := NewRegistry()
 			defer reg.Close()
@@ -24,21 +23,19 @@ func TestTaggedWorkerConfigurationFailureCannotClaimOrResumeAWorker(t *testing.T
 					switch mode {
 					case "unavailable":
 						return WorkerConfig{}, errors.New("original owner deleted")
-					case "wrong-tag":
-						return WorkerConfig{Tag: "another-turn", EnableDelegation: true}, nil
 					default:
-						return WorkerConfig{Tag: "original-turn", EnableDelegation: false}, nil
+						return WorkerConfig{Tag: "another-turn"}, nil
 					}
 				}
 			}
-			worker := RestoredWorker{ID: "worker-4", Role: "worker", Task: "restore assigned work", ConfigTag: "original-turn", DelegationEnabled: &enabled}
+			worker := RestoredWorker{ID: "worker-4", Role: "worker", Task: "restore assigned work", ConfigTag: "original-turn"}
 			if _, err := reg.Restore(context.Background(), worker, nil); err == nil {
 				t.Fatal("invalid tagged restoration accepted")
 			}
 			if len(reg.SnapshotWorkers()) != 0 || reg.seq != 0 {
 				t.Fatal("failed config restoration claimed worker")
 			}
-			if err := reg.PlantFinished(FinishedWorker{ID: worker.ID, Role: worker.Role, ConfigTag: worker.ConfigTag, DelegationEnabled: &enabled, Generation: 1}); err != nil {
+			if err := reg.PlantFinished(FinishedWorker{ID: worker.ID, Role: worker.Role, ConfigTag: worker.ConfigTag, Generation: 1}); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := reg.Resume(context.Background(), worker.ID, "next part", nil); err == nil {
@@ -51,12 +48,12 @@ func TestTaggedWorkerConfigurationFailureCannotClaimOrResumeAWorker(t *testing.T
 	}
 }
 
-func TestWorkerConfigurationCopiesToolSlicesAndLegacyModeRemainsExplicit(t *testing.T) {
+func TestWorkerConfigurationCopiesToolSlices(t *testing.T) {
 	reg := NewRegistry()
 	defer reg.Close()
 	first := &ctlTool{name: "first"}
 	second := &ctlTool{name: "second"}
-	config := WorkerConfig{ModelBuilder: finishedBindingBuilder, SubAgentTools: []tool.BaseTool{first}, EnableDelegation: true}
+	config := WorkerConfig{ModelBuilder: finishedBindingBuilder, SubAgentTools: []tool.BaseTool{first}}
 	reg.ConfigureWorkers(config)
 	config.SubAgentTools[0] = second
 	snapshot := reg.WorkerConfiguration()
@@ -66,11 +63,6 @@ func TestWorkerConfigurationCopiesToolSlicesAndLegacyModeRemainsExplicit(t *test
 	snapshot.SubAgentTools[0] = second
 	if toolName(reg.WorkerConfiguration().SubAgentTools[0]) != "first" {
 		t.Fatal("caller mutated current tool configuration")
-	}
-	disabled := false
-	legacy, err := reg.restoreWorkerConfiguration(context.Background(), "", &disabled)
-	if err != nil || legacy.EnableDelegation {
-		t.Fatalf("explicit legacy mode was ignored %+v %v", legacy, err)
 	}
 	if got := workerInstructionWithConfig(WorkerConfig{WorkerPreamble: "  environment  "}, "task"); got != "environment\n\ntask" {
 		t.Fatalf("worker instruction compatibility changed %q", got)
@@ -97,12 +89,12 @@ func TestDelayedFinishedNotificationRetainsItsInvocationGeneration(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitDelegationDone(t, h)
+	waitWorkerDone(t, h)
 	h, err = reg.Resume(context.Background(), h.ID, "second part", reg.ModelBuilder)
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitDelegationDone(t, h)
+	waitWorkerDone(t, h)
 	close(release)
 	select {
 	case <-delivered:
@@ -138,7 +130,7 @@ func TestTaggedRestoreRebuildsTheOriginalToolSurface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitDelegationDone(t, h)
+	waitWorkerDone(t, h)
 	if _, err, done := h.Result(); !done || err != nil {
 		t.Fatalf("original surface was not restored %v %v", done, err)
 	}
@@ -152,5 +144,14 @@ func TestTaggedRestoreRebuildsTheOriginalToolSurface(t *testing.T) {
 	}
 	if cp := reg.SnapshotWorkers()[0]; !strings.Contains(cp.ConfigTag, "original") {
 		t.Fatal("restoration lost configuration provenance")
+	}
+}
+
+func waitWorkerDone(t *testing.T, h *Handle) {
+	t.Helper()
+	select {
+	case <-h.Done():
+	case <-time.After(3 * time.Second):
+		t.Fatalf("worker %s did not exit", h.ID)
 	}
 }

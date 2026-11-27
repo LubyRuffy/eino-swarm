@@ -15,9 +15,9 @@ the URL in `engine.json` (a random loopback port unless `--addr` was set).
 
 | status | meaning |
 |---|---|
-| `400` | malformed body, bad path, or a rejected value; `code: "workdir"` — a project's working directory is not an absolute path to an existing directory |
+| `400` | malformed body, bad path, or a rejected value; `code: "workdir"` — a project's working directory is not an absolute path to an existing directory; `code: "graph_invalid"` a graph request was refused as malformed |
 | `404` | no such conversation / turn / file / project / skill / unread steer / schedule / schedule run |
-| `409` | `code: "restoring"` startup recovery has not finished;  `code: "update_busy"` a desktop update is installing or restarting; `code: "busy"` a turn is already running; `code: "idle"` nothing is waiting; `code: "no_steer"` Interrupt was asked with no unread steering; `code: "ask_mismatch"` that `ask_user` call is not the open questionnaire; `code: "nothing_to_compact"` compact had nothing to fold; `code: "conflict"` a stale memory write; `code: "skipped_busy"` Run now skipped because the target conversation is already running or a fire is already claimed; `code: "remote_offline"` phone pairing is off or the hub is unreachable; `code: "exists"` copying a skill onto a name the destination already has; `code: "local"` or `"diverged"` pulling a skill would replace local edits |
+| `409` | `code: "restoring"` startup recovery has not finished;  `code: "update_busy"` a desktop update is installing or restarting; `code: "busy"` a turn is already running; `code: "idle"` nothing is waiting; `code: "no_steer"` Interrupt was asked with no unread steering; `code: "ask_mismatch"` that `ask_user` call is not the open questionnaire; `code: "nothing_to_compact"` compact had nothing to fold; `code: "conflict"` a stale memory write; `code: "graph_conflict"` a graph write carried a stale version; `code: "skipped_busy"` Run now skipped because the target conversation is already running or a fire is already claimed; `code: "remote_offline"` phone pairing is off or the hub is unreachable; `code: "exists"` copying a skill onto a name the destination already has; `code: "local"` or `"diverged"` pulling a skill would replace local edits |
 | `429` | too many terminals are already open |
 | `501` | the shell cannot do this (`reveal` / `open` when this process is not a loopback engine or the desktop app) |
 
@@ -311,7 +311,7 @@ Client startup metadata. During recovery, clients poll it until `startup` is `re
   "swarm": { "max_concurrent": 6, "agent_timeout_seconds": 3600,
              "max_turns": 200, "manager_max_iterations": 200,
              "progress_interval_seconds": 5, "delta_coalesce_ms": 50,
-             "auto_title": true, "composer_predictions": true,
+             "auto_title": true, "composer_predictions": true, "graph": true,
              "title_provider": "", "title_model": "",
              "compact_provider": "", "compact_model": "",
              "context_char_budget": 80000, "compact_keep_messages": 6,
@@ -381,7 +381,7 @@ available. Other state changes return `409` with `code: "restoring"`; clients ke
 unsent input and do not automatically retry a send. The schedule-create form
 also closes only after a successful acknowledgement and retains inputs on refusal. Recovery finishes before the
 scheduler starts. The paired-phone read-only `meta` RPC returns the same `startup`
-and `restore` fields; work mutations reject `code: "restoring"` before changing state.
+and `restore` fields; mutating requests reject `code: "restoring"` before changing state.
 
 `data_generation` is a monotonic count of committed restores. It is `0` before
 the first one. Desktop and web reload when it changes. A phone poll that sees
@@ -521,7 +521,7 @@ JSON `{ "path": "/Users/me/zwai.zwai-backup" }`, or a raw
 ```json
 {
   "manifest": { "format": 1, "kind": "project", "includes_secrets": false,
-                "counts": { "projects": 1, "threads": 2, "messages": 0, "turns": 0, "schedules": 0, "nuwa_nodes": 0 },
+                "counts": { "projects": 1, "threads": 2, "messages": 0, "turns": 0, "schedules": 0 },
                 "external_workdirs": [{ "project_id": "pj_ab12", "path": "/work" }] },
   "conflicts": [],
   "action": "add-project"
@@ -1274,7 +1274,7 @@ The slim RPC the phone sends over pairlink is not an HTTP API. Request ops:
 `followup_drop` / `followup_steer` / `preempt` /
 `answer` / `continue` / `watch` / `unwatch` / `log` / `run_now` / `cancel_wait` /
 `resume_goal` / `project_get` / `project_create` / `project_update` / `catalog` / `refresh_catalog` / `get_timeouts` / `set_timeouts` / `set_product_mode` /
-`project_knowledge` / `project_knowledge_page` / `project_knowledge_cancel` /
+`graph` /
 `tune` / `put` / `clients` / `files` /
 `file_chunk` / `input_image_chunk`. `hello` `{text}` is the phone's one-line model; the host
 keys it by the pairlink fingerprint, not a client-supplied id.
@@ -1444,10 +1444,8 @@ bodies are stripped; `tool_delta` is one line; other text is capped by
 tearing the link.
 
 `project_get` takes `project_id` and returns one `project` with name,
-`system_prompt`, `workdir`, `resolved_workdir`, `memory_enabled`, `nuwa_enabled`
-and optional `nuwa_planner_provider_id` / `nuwa_planner_model` /
-`nuwa_executor_provider_id` / `nuwa_executor_model`. It also returns the PC's
-`memory_available` global setting. An oversized explicit read is `too_large`;
+`system_prompt`, `workdir`, `resolved_workdir` and `memory_enabled`. It also
+returns the PC's `memory_available` global setting. An oversized explicit read is `too_large`;
 ordinary inbox lists remain name/ID only.
 
 `project_create` and `project_update` take `project_patch` with those editable
@@ -1456,29 +1454,28 @@ Omitted fields remain unchanged. Unknown fields, empty/null patches and patches
 over half the reply frame budget are `bad_request`. Create requires a name;
 omitted memory uses the PC default. Workdir is an existing path on the PC,
 retains its exact selected identity, and an unusable path returns `workdir`.
-All four Nuwa model fields must be supplied together and name ready models.
-Enabling without a saved pair selects the same catalog defaults as desktop;
-disabling preserves the pair. Model resolution precedes project writes.
-Successful mutations return a single ID/name in `projects`, without repeating
+An older phone may still send the removed Nuwa project fields (`nuwa_enabled`,
+`nuwa_planner_provider_id`, `nuwa_planner_model`, `nuwa_executor_provider_id`,
+`nuwa_executor_model`). They are accepted, ignored and never stored or returned,
+so such a save is not refused as an unknown field; a patch that carries only
+those fields changes no stored setting. Successful mutations return a single ID/name in `projects`, without repeating
 potentially large instructions. Both mutations refuse with `restoring` during
 engine restoration. These operations use the existing paired, encrypted RPC
 channel and add no unauthenticated HTTP or cross-origin surface.
+Conversation detail includes `project_id` for a project conversation.
 
-Paired phones browse an existing knowledge base using read-only RPCs.
-`project_knowledge` takes `project_id`, optional search `text` (up to 512 bytes)
-and `offset`. The `knowledge` reply includes the project ID, `enabled`, up to
-32 page references and `next_offset` if another page exists. Conversation
-detail includes `project_id` for a project conversation.
-`project_knowledge_page` takes `project_id` and the `knowledge_page_id` slug.
-It reads one immutable JSON page detail with the same content and source
-resolution as the HTTP page route. Continue using both IDs, the returned
-`knowledge_transfer_id` (first chunk's `id`) and `next_offset` as `offset`.
-`knowledge_chunk` includes both scope IDs, transfer ID, total size, SHA-256,
-offsets, Base64 data and `more`. Raw chunks are at most 36 KiB and encoded page
-JSON at most 16 MiB. `project_knowledge_cancel` releases an unfinished transfer
-using the same IDs and token. A completed or cancelled token cannot be reused.
-Global disable returns `knowledge_disabled`, a missing page returns
-`knowledge_page_not_found` and an oversized page returns `too_large`.
+`graph` reads the work graph ([Work graph](GRAPH.md)) of a conversation or a
+project: send exactly one of `thread_id` and `project_id`, otherwise
+`bad_request`; an unknown ID is `not_found`. `since` is the revision the phone
+already holds. When it equals the current revision the reply is only
+`graph: {revision, unchanged: true}`, so polling costs one small frame.
+Otherwise `graph` is `{revision, subjects, links, todos, total, more}` with
+the same rows as the HTTP snapshot below, at most 2000 per list; `total` and
+`more` describe the subjects. Credential attribute values are never sent, only
+their names in each subject's `credentials`. A graph that does not fit one
+reply frame is refused with `graph_too_large` instead of being cut, so the
+phone never draws half of one. `meta` carries `graph_available` while
+`swarm.graph` is on; the phone shows the Work records entry only then.
 
 `catalog` additionally returns `memory_available`; older PCs omit it, so the
 mobile editor requests an upgrade rather than assuming an editable default.
@@ -1726,9 +1723,6 @@ A non-empty `workdir` is a literal absolute path: leading/trailing whitespace is
                "system_prompt": "…", "workdir": "/Users/me/work/report",
                "resolved_workdir": "/Users/me/work/report",
                "memory_enabled": true,
-               "nuwa_enabled": false, "nuwa_revision": 0,
-               "nuwa_planner_provider_id": "", "nuwa_planner_model": "",
-               "nuwa_executor_provider_id": "", "nuwa_executor_model": "",
                "memory_dir": "/Users/me/.zwai-swarm/projects/pj_ab12…/memory",
                "skills": [{"name": "weekly-rollup", "description": "…", "updated_at": "…"}],
                "sort_rank": 0, "created_at": "…", "updated_at": "…"}]}
@@ -1751,13 +1745,7 @@ positive rank and pins relative order.
 ### `POST /api/projects` → `201`
 
 Body `{"name": "…", "system_prompt": "optional", "workdir": "optional",
-"memory_enabled": true, "nuwa_enabled": false}`. Enabling Nuwa without a model
-pair stores the ready-catalog default: the planner is the first ready default,
-otherwise the first ready row, and the executor is the first other ready row,
-or the same row when only one is ready. Send all four of
-`nuwa_planner_provider_id`, `nuwa_planner_model`, `nuwa_executor_provider_id`
-and `nuwa_executor_model` to choose both. A half pair or a name that is not
-ready is `400` with `code: "nuwa_model"`, and the new project is not kept.
+"memory_enabled": true}`. Unknown fields, including the removed `nuwa_*` ones, are ignored.
 A name is required (`400`). `workdir` must be an
 absolute path to an existing directory — anything else is `400` with
 `code: "workdir"`, which the project dialog shows against that field. Left
@@ -1767,13 +1755,14 @@ memory off.
 
 ### `GET /api/projects/:id` · `PATCH /api/projects/:id`
 
-`PATCH` accepts `name`, `system_prompt`, `workdir`, `memory_enabled`, `nuwa_enabled`
-and the four Nuwa model fields. The four model fields are replaced together;
-omitting all four leaves a saved pair in place. Enabling Nuwa when none is
-saved fills the same ready-catalog default as create. Closing Nuwa keeps the
-pair. A half pair or a model that is not ready is `400` with `code: "nuwa_model"`
-and does not change the project. Any other omitted field is left alone. Both
-respond `{"project": {…}}`.
+`PATCH` accepts `name`, `system_prompt`, `workdir` and `memory_enabled`; any
+omitted field is left alone. Both respond `{"project": {…}}`.
+
+A turn that was started in the removed Nuwa mode before the upgrade cannot be
+restored or retried: both are refused with `the Nuwa mode was removed; this turn
+cannot be continued or retried`, and startup restoration ends such a turn with
+that error. The mode's old records stay on disk, are neither imported nor shown,
+are deleted with their conversation or project, and are omitted from backups.
 
 `system_prompt` is also the global description saved by the manager's
 project-bound `update_project_description` tool. A successful tool result
@@ -1781,87 +1770,81 @@ contains the saved description. Subsequent GET requests and
 turns read the saved value. When editing another field, omit `system_prompt`
 to preserve the current description.
 
-Nuwa defaults off when omitted on create. Changing it applies to subsequent
-turns; running/parked workers retain their original mode and concrete model
-binding. Disabling does not delete shared records. Actual mode changes atomically
-advance `nuwa_revision`, retaining the view before a pending first result;
-identical settings and unrelated edits do not. See [Nuwa](NUWA.md).
+### `GET /api/threads/:id/graph` · `GET /api/projects/:id/graph`
 
-### `GET /api/projects/:id/nuwa`
+Read-only view of the work graph ([Work graph](GRAPH.md)): subjects, links and an
+ordered to-do list. A conversation reads the graph of its owner, which is its
+project when it is in one and otherwise the conversation itself. The project
+route reads the project's graph directly, so both give the same answer for a
+project conversation. An unknown conversation is `404` with
+`code: "thread_not_found"`, an unknown project `404`.
 
-Returns `{"project_id":"pj_…","revision":4,"nodes":[…],"workers":[…]}`.
-Nodes are project-scoped task/fact/artifact records with version, dependencies,
-source-version stamps, evidence references and original/correction provenance.
-`missing_dependencies`, `stale_dependencies` and `unavailable_evidence` retain
-unavailable or changed inputs. Worker rows contain actual `agent_id`, `role`,
-`status`, source `thread_id`/`turn_id`, `generation`, optional `parent_id` and
-`model_binding`. They are reconstructed from durable lifecycle receipts rather
-than node prose. Missing projects return `404`; snapshot database failures
-return `500` with an error rather than an assumed complete snapshot. Existing
-records can be read after the mode is off.
+Query parameters, all optional:
 
-### `GET /api/projects/:id/nuwa/events`
+| parameter | meaning |
+|---|---|
+| `id` | one subject in full: the subject, up to 2000 of its links, the subjects they reach, and the to-dos about it. An unknown subject is `404`. Takes precedence over `todos` |
+| `todos=1` | the ordered to-do list instead of subjects |
+| `status` | with `todos=1`, only to-dos in this status (`open`, `doing`, `done`, `failed`) |
+| `text` | only subjects whose name or an identity key contains this text, case-insensitively |
+| `offset`, `limit` | page subjects, or to-dos with `todos=1`. A missing `limit` returns everything up to 2000 rows; `0` returns the default page of 50. A non-numeric value or a negative `offset` is `400` |
 
-Project-level `text/event-stream`, separate from conversation SSE. The named
-`nuwa_updated` event carries `{"project_id":"pj_…","revision":4}` and uses the
-revision as its SSE id. An initial current revision is sent on connect, then
-committed revision changes invalidate the snapshot; heartbeat events retain the
-connection. Clients refetch GET rather than applying event payloads as node
-patches. Reconnect reads current state, not a chat-sequence replay. Revisions may
-skip intermediate updates and must never be used as conversation `seq` values.
+Without `id` or `todos`, the reply is the snapshot the panel draws: a page of
+subjects (newest update first), the links between the returned subjects, and
+the first page of to-dos (`limit` applies, `offset` and `status` do not).
 
-The node `scope` is `project` in this snapshot. The work-record tools
-and the conversation endpoints below provide the two read scopes. See
-[Work records](WORK.md) and `C-055`.
+```json
+{"owner_id": "pj_ab12…", "revision": 7,
+ "subjects": [{"id": "sj_…", "kind": "domain", "name": "example.com",
+               "attrs": {"domain": "example.com"}, "status": "lead",
+               "evidence": [], "found_by_todo": "td_…",
+               "version": 2, "thread_id": "th_…", "turn_id": "tn_…",
+               "agent_id": "manager", "created_at": "…", "updated_at": "…"}],
+ "links": [{"id": "lk_…", "from": "sj_…", "to": "sj_…", "rel": "resolves_to",
+            "evidence": [], "created_at": "…"}],
+ "todos": [{"id": "td_…", "title": "…", "about": "sj_…", "status": "done",
+            "result": "", "evidence": [], "position": 0, "version": 3,
+            "settled_at": "…"}],
+ "total": 1, "more": false}
+```
 
-### `GET /api/threads/:id/work`
+`revision` counts committed batches for the owner and is `0` for an empty graph;
+clients compare it to learn whether anything changed. `total` is the number of
+rows the query matched before paging (subjects, or to-dos with `todos=1`), and
+`more` is true when rows remain after this page. `status` is `lead`,
+`confirmed` or `retracted` on a subject. An `evidence` entry is
+`{thread_id, turn_id, seq}` for an event of a conversation or `{url}`, with an
+optional `label`, and `unavailable: true` when its event no longer exists (after
+a rewind, for example). Every row also carries who wrote it (`thread_id`,
+`turn_id`, `agent_id`, `generation`) and the `updated_*` counterparts on
+subjects and to-dos. Attributes the catalog marks `secret` are left out of
+`attrs`; their names are listed in the subject's `credentials` (omitted when there are none).
 
-Returns `thread_id`, `project_id`, `thread_revision`, `project_revision`,
-`data_generation`, `nodes`, and `workers`. `has_own_work` is true when the conversation has already created any work records, including promoted records. A standalone thread has an empty project ID and zero
-project revision. The snapshot includes the thread's own private records and
-its current project's shared records. Workers are limited to this thread and
-come from durable lifecycle records. The response ETag identifies this snapshot
-and is the precondition for promotion and manual extraction.
+No HTTP route writes the graph: the model's `update_graph` and `read_graph`
+tools do. The shared error map returns `400` with `code: "graph_invalid"` for a
+refused graph request and `409` with `code: "graph_conflict"` for a stale
+version or a replayed tool call with a different body. A refusal inside a turn
+reaches the model as a tool result it can repair, not as a turn failure.
 
-Both work snapshot endpoints set `incomplete_basis` on a reported artifact
-whose visible prerequisite chain lacks an active task or a reported fact.
-New writes of reported artifacts require both prerequisites.
+### `GET /api/graph/kinds`
 
-Paired phones use the encrypted `thread_work` RPC with `thread_id`.
-The reply includes `work_snapshot` and `data_generation`. Only the
-conversation's private records and its current project's shared records
-are eligible. A compatible PC with work records enabled advertises
-`work_records_available` in `meta`. The RPC returns `work_disabled` when
-disabled and `work_too_large` when the full graph exceeds the frame budget.
+The catalog of subject kinds (`frontend/src/graph/kinds.json`) as
+`application/json`: each kind's `id`, localized `name`, `description`, `attrs`,
+identity `keys` and `display` attributes. It is the one file the panel, the
+phone and the `update_graph` tool definition share.
 
-### `GET /api/threads/:id/work/events`
+### `graph_updated` frame
 
-Sends a named `nuwa_updated` frame for the current thread, project, revision pair
-and data generation on connect and when that identity changes. Refetch the snapshot
-on notification. Clients may receive the same named frames over
-`GET /api/threads/:id/events?work=1`. Work frames use no SSE id and do not affect
-the conversation replay cursor.
-
-### `POST /api/threads/:id/work/promote`
-
-Body `{"ids":["nw_…"]}`, with the current work snapshot's ETag in `If-Match`.
-Moves the requested private records and their private prerequisites to the
-current project in one transaction. Returns `200` with the committed `thread_id`, `project_id`, revision pair, `data_generation`, promoted `nodes` and a new ETag. A changed snapshot or membership returns `409`. Invalid
-input or a standalone destination returns `400`.
-
-### `POST /api/threads/:id/work/distill`
-
-Extracts private work records from the saved history of a conversation that
-has no records of its own. Send its work snapshot ETag in `If-Match`. The
-request returns `200` with `{"created":n}`; zero means there was nothing to
-keep. Concurrent extraction, changed ownership or history, and records created
-during the request return `409 work_conflict`. The global Work records switch
-rejects extraction with `409 work_disabled`. The model can cite only offered
-source events, and records are published in one storage transaction.
+`GET /api/threads/:id/events?graph=1` also delivers named `graph_updated` frames
+with `{"thread_id":"th_…","revision":7}`: one after the replay, before `ready`,
+and another whenever the owner's graph revision changes (sampled roughly every
+200 ms, so intermediate revisions may be skipped). The frame has no SSE `id:` and
+never enters the replay cursor. It carries no rows: refetch
+`GET /api/threads/:id/graph`. Without `graph=1` the stream sends no such frame.
 
 ### `DELETE /api/projects/:id` → `204`
 
-Deletes the project, **its conversations, memory and knowledge files**. A
+Deletes the project, **its conversations, its memory and its graph**. A
 `workdir` the user supplied is never touched; a directory zwai created for the
 project is removed with it.
 
@@ -1876,8 +1859,7 @@ Body `{"ids": ["pj_a", "pj_b"]}`. Pins that order in the sidebar. Unknown ids ar
 Start one background review of retained project history. The JSON request
 contains `scope: "latest_turn" | "thread" | "project"`. Supply `thread_id`
 for the first two scopes. The conversation must currently belong to the
-project. Supply `enable_knowledge: true` to explicitly initialize Knowledge
-if needed. For `thread` or `project`, supply `full_text: true` to review the
+project. For `thread` or `project`, supply `full_text: true` to review the
 full text of eligible records in bounded segments. Omit it to use excerpts.
 Both panels use the same project endpoint. For an existing batch
 job, send only `{"pause_review_id":"…"}` to request a pause or
@@ -1887,44 +1869,18 @@ the reviewer is stopping. An unknown
 review ID returns `404`. Starting a different review while a previous batch
 job still has pending records returns `409 distillation_pending`.
 
-Use `wiki_graph: true` on POST to start a graph build with `thread` or
-`project` scope, or to pause or resume that graph build with its review ID.
-With the global Knowledge setting enabled, the build initializes the project
-wiki if needed and uses an independent checkpoint. New builds default to
-local scanning followed by document publication, with zero model requests.
-Supply `wiki_review: true` to include model review. Only a new graph build
-accepts this option. Pause and resume preserve the original choice.
-Use `GET /api/projects/:id/distill?wiki_graph=true` for status. New receipts
-include the selected `wiki_review` boolean. Older receipts with the field
-absent retain their original review behavior. `wiki_phase` is `scan`,
-`graph` (model review), or `documents`.
-`wiki_scan_processed` counts frozen records accounted for locally, including
-`wiki_scan_skipped` for unavailable or ineligible records and `wiki_scan_deferred`
-for records above the 8 MiB local parsing limit. A reviewed build can still
-read the latter in segments. `wiki_scan_complete` follows local publication.
-For local builds, `progress` counts the scan and includes both types of skips.
-For builds with model review, it counts semantic review, including previously
-accepted immutable records and skips. `wiki_documents` and `wiki_documented`
-track pages and written documents, including batches during semantic review.
-A generated page exposes `wiki.kind`, `wiki.category` and
-`wiki.document_pending`. Its optional `wiki_observations` array holds
-`{source, quote}` excerpts confirmed against still-available source records.
-Each retained excerpt has the original conversation, event or message
-sequence, and turn when available.
-
 An admitted request returns `202` with `review_id`, `state: "running"`,
 `scope` and, while the original anchor is available, `thread_id` and
 `turn_id`. A duplicate request returns the current run. A scope with no
 evidence returns `200` with `state: "no_work"`. Invalid scope arguments,
-foreign conversations and all destinations disabled return `400`, `404`
+foreign conversations and Memory switched off return `400`, `404`
 and `409 distillation_disabled`, respectively.
 
 GET returns the latest durable receipt, or `state: "idle"`. It reports
 `pausing` while an acknowledged pause is still waiting on the reviewer.
 Settled states are `paused`, `completed`, `partial`, `failed` and
 `interrupted`. Optional fields
-include `changes` for committed notes and Skills, `knowledge` for committed
-pages or schema revisions, `error`, `history_omitted` and `uncertain` for
+include `changes` for committed notes and Skills, `error`, `history_omitted` and `uncertain` for
 possible unconfirmed writes following interruption, plus `full_text: true`
 for a job started in full-text mode. For `thread` and
 `project`, `progress` has `total`, `processed`, `remaining`, `skipped` and
@@ -1938,73 +1894,6 @@ full-text record stays in `remaining` and exposes `progress.segment_bytes` and
 `progress.segment_total_bytes` until its final segment commits.
 A job reaches `completed` when its remaining count reaches zero. Partial
 success retains its committed items. Both panels poll this endpoint.
-
-### `GET /api/projects/:id/knowledge` · `POST /api/projects/:id/knowledge`
-
-Both return a status object with `enabled`, `page_count` and
-`pending_count`. The page count includes stored pages flagged for review.
-An enabled project also returns `schema` and its content
-`revision`. POST needs no body. It publishes a neutral starting schema
-only when absent. GET for an existing project with no schema returns
-`{"enabled":false,"page_count":0,"pending_count":0}`. An unknown project
-returns `404`.
-
-### `GET /api/projects/:id/knowledge/tree?view=type`
-
-Use `type` for the type tree (the default), `pending` for lint items, or a
-view ID defined in the project schema. The response contains `view`,
-`nodes` and, when present, `issues`. A node has `id`, `label`, `kind`
-(`type`, `relation`, `page`), and optional `type`, `aliases`, `children`
-and `cycle`. A bounded graph view can set `truncated`. Lint can report
-`broken_link`, `stale`, `missing_relation`, `invalid_page` and
-`wiki_non_subject`. The last code flags a generated workflow or editorial
-label. Those pages are available by ID and appear in the pending view. An unknown
-view is `400`; a disabled knowledge base is `404` with `knowledge_disabled`.
-
-### `GET /api/projects/:id/knowledge/graph`
-
-Return the project's read-only relationship graph. `nodes` contains one
-entry per browsable page, including unlinked pages, with its stable `id`, display
-`title`, `type` and optional `aliases`. Each `edges` entry connects one pair
-of pages. The `source` and `target` fields give the endpoint IDs in lexical
-order. The optional `relations` and `wikilink` flag combine the evidence
-from both pages. Missing targets and pages flagged as `wiki_non_subject`
-remain in the pending view. A disabled
-knowledge base returns `404 knowledge_disabled`.
-
-### `GET /api/projects/:id/knowledge/pages/:page`
-
-The page ID uses lowercase ASCII letters, digits and single hyphens between
-components, up to 100 bytes. Windows device names, colon and path separators
-are refused. The response includes page metadata, `body` (Markdown),
-`revision`, `outgoing`, `incoming`, `mentions`, `unresolved` and
-`sources`. Relationship entries carry `relation`, `label`, `target`,
-`resolved` and a `page` reference when resolved. Historical sources carry
-`kind`, `thread_id`, `seq`, their original `timestamp` and
-`classification`, current `available` and, when available, `turn_id`.
-An external URI has classification `external`. `updated_thread` and
-`updated_turn` together link to the original update when it is still
-available in the project. Missing pages return `404` with
-`knowledge_page_not_found`. The HTTP surface reads pages and schema. The
-project's `record_knowledge` agent tool handles writes. An un-stamped locator
-inserted by direct file editing resolves against current history. Tool-created
-citations carry the original record identity across project backup and restore.
-An editable steer message includes its caption's content fingerprint in that
-identity, so changing its text makes a citation of the former text unavailable.
-
-The agent reads with `read_knowledge` actions `schema`, `search`, `page`
-and `lint`. `record_knowledge` accepts `write_page`, `delete_page` or
-`append_schema`. A page write supplies its ID, type, title, Markdown body
-and optional fields, aliases, links, as-of date and sources. Existing page or
-schema mutations require the revision returned by a read. Source arguments
-are either `{uri}` or `{kind, thread_id, seq}`; a full page update preserves
-source references when it omits `sources` and clears them with an empty array.
-
-### `POST /api/projects/:id/knowledge/reveal`
-
-On a desktop with the reveal capability, open the enabled knowledge folder
-in the file manager and return `{"revealed":"<directory>"}`. The route
-takes no body. Without the desktop capability it returns `501`.
 
 ### `GET /api/projects/:id/memory`
 
@@ -2321,8 +2210,7 @@ A normal model PATCH does not grant this recovery authority.
 Requires an idle conversation without a parked Registry (`409 busy` otherwise).
 Only missing provider bindings are replaced; healthy bindings and historical
 turn selections remain unchanged. All source-turn overlays commit atomically
-under their conversation/project ownership. Frozen Nuwa executor selection and
-actual Restore/Resume apply the same explicit overlay. Completed results keep
+under their conversation/project ownership. Actual Restore/Resume apply the same explicit overlay. Completed results keep
 the model that produced them. No task or tool starts on save: the user then
 Continues or Retries. Invalid choices/no missing retained binding return `400`,
 a missing conversation `404`, and storage failures retain all prior bindings.
@@ -3122,7 +3010,7 @@ shortening only the bounded detail text.
 | `ask_recovered` | the existing unanswered human wait is restored, not executed again; original `tool_call_id`, `text` is original `{"questions":[...]}`. A confirmed answer wins over duplicate recovery or unknown-result replay; private checkpoint history is excluded |
 | `tool_delta` | live tool output while a call still runs, paired by `tool_call_id`. For `exec`, `text` is the current `{stdout,stderr}` JSON snapshot. For MCP calls, it is the latest bounded plain-text progress reported by the server. `seq` is 0 and the event is not stored. The model still receives one `tool_result` when the call finishes |
 | `tool_call_delta` | the model is still writing a tool call. `text` is `name(N)` where `N` is the argument size in runes so far, paired by `tool_call_id`. `seq` is 0, not stored. The call has not run; `tool_call` arrives when the stream ends and replaces this row |
-| `spawned` | a sub-agent started; `text` is its system prompt, `role` is its role, `agent_id` is its id. A slash-shaped role is stored as the job word (`-2`, `-3` when that word is taken), not the path. Older rows stored the role in `text` too. A later `spawn_agent` for that role reuses the same id: steering while running, a second `spawned` after it finished. A Nuwa verify or fix that exceeds this turn's one-each allowance for that shared record returns `{error}` and does not emit `spawned` |
+| `spawned` | a sub-agent started; `text` is its system prompt, `role` is its role, `agent_id` is its id. A slash-shaped role is stored as the job word (`-2`, `-3` when that word is taken), not the path. Older rows stored the role in `text` too. A later `spawn_agent` for that role reuses the same id: steering while running, a second `spawned` after it finished. |
 | `finished` | a sub-agent finished; `err` set when it failed |
 | `turn` | an agent started a model turn (`turn N`) |
 | `steer` | human guidance was accepted. `images` as on `user_message` when the steer carried a paste. The `/goal` session wrap-up cue is **not** this event — it is delivered to the in-flight manager only. Retracting unread steering does not delete this row |
@@ -3515,17 +3403,14 @@ the context used.
 ### Memory reviews
 
 With memory and auto-review enabled, a successful turn receives a full review
-regardless of manager writes. When Knowledge is already enabled for that
-project, the same automatic proposal can include wiki updates. A failed project turn can retain explicit human
+regardless of manager writes. A failed project turn can retain explicit human
 requirements as notes only, excluding task-tool output, assistant/derived text,
 skill edits and skill folding. Cancellation starts no automatic review.
 After a transient Gateway discovery outage, review can wait for one fresh
 authorization check. If access remains unavailable, the original turn records
 a review error with zero proposals and no reviewer model request.
 `memory_review` is stored under the original turn id, with model calls attributed
-to `memory-reviewer`. A receipt with wiki writes includes `project_id` and a
-`knowledge` array of committed actions. A page action includes `id`, `title`
-and `revision`; a schema append includes its new `revision`.
+to `memory-reviewer`.
 `text` is JSON:
 
 ```json
@@ -4113,6 +3998,12 @@ cancellation retain their separate behavior.
                 "cached_tokens": 20, "reasoning_tokens": 0}]}
 ```
 
+When the turn had the work graph on (`turn.graph_tools`), the response adds
+`graph_unrecorded`: how many of the turn's tool results the graph has not been
+told about since its last accepted `update_graph`, the measure of how much of the
+run the graph reflects. The graph tools themselves appear as ordinary
+`tool_call` / `tool_result` events. `zwai trace` does not print this field.
+
 Model calls record sizes, billed tokens and durations, not prompts: enough to
 explain why a turn was slow, expensive or failed, without turning the database
 into a transcript archive. Token fields are `0` when the endpoint did not say.
@@ -4123,7 +4014,7 @@ the request. It is a positive worker generation, separate from the model-output
 failure and resumption of the same worker. Manager and auxiliary calls omit it.
 Legacy or otherwise unknown `0` values are also omitted and are not backfilled
 from timestamps, event order or the worker's latest roster entry. This metadata
-is recorded in ordinary mode as well as Nuwa; it does not establish completion
+is recorded for every worker; it does not establish completion
 or collection without the matching lifecycle and tool receipts.
 
 ## Static assets
@@ -4378,6 +4269,8 @@ browser streams reject redirects too. Personal provider compatibility is unchang
 `GET /api/task-panels/catalog` returns `{plugins}`. `GET/PUT /api/task-panels/settings` reads and merges task-panel settings independently of other settings. Invalid settings and unknown or null top-level fields return 400. The `easm` object contains `server_id`, `tools`, `max_domains`, `max_components`, `max_clouds` and `max_services`. Both cloud limits default to 5. `max_clouds` allows 1–5 hosting provider rows. GET returns the effective value, and PUT rejects values outside that range. `max_services` allows 1–10 services per provider. Omitting either limit in a PUT preserves its current value.
 
 A catalog definition may set `renderer:"native"` with an empty `entry`; such panels are drawn by a bundled app component and have no plugin document. `GET /api/threads/:id/panels` returns `{panels,cursor}`; `GET /api/threads/:id/panels/:panel` returns one visible owned instance, or404. Both reads admit instances with a running source or a committed observation. `DELETE /api/threads/:id/panels/:panel` persistently closes that instance, emits a deletion, and interrupts its running source. A successful close or retry returns 204; a missing or foreign instance returns 404. `GET /api/threads/:id/panels/events` emits an atomic `ready` snapshot and committed `panel_update` snapshot/patch/deleted records on its own cursor. Reconnect does not execute work. There are no renderer-facing data-write or source-start endpoints. Agent tool and iframe contracts are documented in [Task panels](TASK_PANELS.md).
+
+The work graph's `graph_updated` frame, requested with `graph=1`, is described under [Projects](#get-apithreadsidgraph--get-apiprojectsidgraph).
 
 Browser task panels negotiate `panels=1` on the existing conversation events URL. Named `panel_ready`, `panel_update`, `panel_error` frames have no SSE id and carry only their own body cursor. They never enter transcript replay or consume another persistent browser connection. Legacy subscriptions without the query retain their original frames.
 

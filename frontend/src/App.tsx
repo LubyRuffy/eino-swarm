@@ -19,7 +19,6 @@ import { DeleteProjectDialog } from "@/components/app/delete-project-dialog"
 import { EmptyState } from "@/components/app/empty-state"
 import { ExternalSkillsDialog } from "@/components/app/external-skills-dialog"
 import { FindBar, useFindController } from "@/components/app/find-bar"
-import { KnowledgeLinkProvider } from "@/components/app/knowledge-link-open"
 import type { PanelTab } from "@/components/app/panel"
 import { AppPanel } from "@/components/app/app-panel"
 import { useRegisteredInspectorAutoOpen } from "@/components/app/inspector-panels"
@@ -39,7 +38,6 @@ import { api } from "@/lib/api"
 import { toggleContentWidth, toggleTranscriptMode } from "@/lib/appearance"
 import { attachExternalLinkHandler } from "@/lib/external-links"
 import { findShortcut } from "@/lib/find"
-import { nuwaPlannerPatch, savedNuwaPlanner } from "@/lib/nuwa-models"
 import { appendQuote } from "@/lib/quote"
 import { composerDraftKey, composerDraftSession } from "@/lib/composer-draft"
 import { installComposerRecoveryAttribution } from "@/lib/composer-recovery"
@@ -58,7 +56,6 @@ import { desktopShell, openLinksNatively } from "@/lib/shell"
 import { applyTheme, useApp } from "@/store/app"
 import { waitingThreadIds } from "@/store/app-schedule"
 import { useSideChat } from "@/store/app-side-chat"
-import { useKnowledge } from "@/store/knowledge"
 import { useTraceFocus } from "@/store/trace-focus"
 import { useProjects } from "@/store/projects"
 import { useTerminal } from "@/store/terminal"
@@ -200,13 +197,6 @@ function AppShell() {
     setPanelOpen(true)
     setPanelTab(tab)
   }, [])
-  const openKnowledgePage = useCallback((page: string) => {
-    const { activeId, threads, meta } = useApp.getState()
-    if (meta?.swarm?.knowledge === false) return
-    const owner = threads.find(({ id }) => id === activeId)?.project_id
-    if (owner) useKnowledge.getState().openPage(owner, page)
-    showInspector("knowledge")
-  }, [showInspector])
   useRegisteredInspectorAutoOpen(activeId, showInspector)
   const traceRequest = useTraceFocus((s) => s.request)
   useEffect(() => useTraceFocus.getState().clear(), [activeId])
@@ -472,7 +462,6 @@ function AppShell() {
             inert={loginWall || undefined}
           >
             <div className="absolute inset-0 flex min-h-0 min-w-0 flex-col overflow-hidden">
-              <KnowledgeLinkProvider open={openKnowledgePage}>
                 <TranscriptPane
                   onSelectAgent={openAgent}
                   onPickIdea={pickIdea}
@@ -481,7 +470,6 @@ function AppShell() {
                   findIndex={findIndex}
                   onFindCount={setFindTotal}
                 />
-              </KnowledgeLinkProvider>
             </div>
             <AppComposer
               prefill={prefill}
@@ -514,7 +502,6 @@ function AppShell() {
         </div>
 
         {panelOpen && !side.shown ? (
-          <KnowledgeLinkProvider open={openKnowledgePage}>
             <AppPanel
               tab={panelTab}
               onTabChange={(tab) => {
@@ -523,7 +510,6 @@ function AppShell() {
               }}
               focusSkill={focusSkill}
             />
-          </KnowledgeLinkProvider>
         ) : null}
       </ShellColumns>
 
@@ -607,8 +593,6 @@ function AppProjectDialog({
   const create = useProjects((s) => s.create)
   const update = useProjects((s) => s.update)
   const memoryAvailable = useApp((s) => s.meta?.capabilities?.memory ?? false)
-  const models = useApp((s) => s.models)
-  const thread = useApp((s) => s.threads.find((row) => row.id === s.activeId))
   const selectProject = useApp((s) => s.selectProject)
   const project = state?.project
   return (
@@ -616,8 +600,6 @@ function AppProjectDialog({
       open={Boolean(state?.open)}
       project={project}
       memoryAvailable={memoryAvailable}
-      models={models}
-      plannerHint={thread ? { providerId: thread.provider_id, model: thread.model } : undefined}
       onOpenChange={onOpenChange}
       onSave={async (patch) => {
         if (project) return update(project.id, patch)
@@ -814,14 +796,9 @@ function AppComposer({
   const newThread = useApp((s) => s.newThread)
   const creatingThread = useApp((s) => s.creatingThread)
   const projectId = useProjects((s) => s.selectedId)
-  const projects = useProjects((s) => s.projects)
-  const updateProject = useProjects((s) => s.update)
-  const scopedProjectId = thread ? thread.project_id : projectId
-  const scopedProject = projects.find((row) => row.id === scopedProjectId)
-  const planner = savedNuwaPlanner(scopedProject)
   const pinnedCatalog = useRef("")
   useEffect(() => {
-    if (planner || !thread) return
+    if (!thread) return
     const remember = rememberedCatalogModel(
       displayedModel(models, thread.provider_id || meta?.default_provider, thread.model),
       thread.model,
@@ -831,7 +808,7 @@ function AppComposer({
     if (pinnedCatalog.current === key) return
     pinnedCatalog.current = key
     void api.patchThread(thread.id, { provider_id: remember.providerId, model: remember.model }).then(() => refreshThreads())
-  }, [planner, thread, models, meta?.default_provider, refreshThreads])
+  }, [thread, models, meta?.default_provider, refreshThreads])
   const setGoal = useApp((s) => s.setGoal)
   const editGoal = useApp((s) => s.editGoal)
   const resumeGoal = useApp((s) => s.resumeGoal)
@@ -848,14 +825,10 @@ function AppComposer({
       running={running}
       compressing={compressing}
       models={models}
-      provider={planner?.providerId || thread?.provider_id || meta?.default_provider}
-      model={planner ? planner.model : thread?.model}
+      provider={thread?.provider_id || meta?.default_provider}
+      model={thread?.model}
       onModelChange={(providerId, name) => {
         void (async () => {
-          if (planner && scopedProject) {
-            await updateProject(scopedProject.id, nuwaPlannerPatch(scopedProject, providerId, name))
-            return
-          }
           const id = activeId ?? (await newThread(projectId, composerDraftKey(activeId, projectId)))
           if (!id) return
           await api.patchThread(id, { provider_id: providerId, model: name })

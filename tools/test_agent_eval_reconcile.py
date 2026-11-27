@@ -11,7 +11,7 @@ import tempfile
 import unittest
 
 import importlib.util
-_source = Path(__file__).resolve().parents[1] / "evals/tasks/nuwa-source-reconcile/check_decision.py"
+_source = Path(__file__).resolve().parents[1] / "evals/tasks/source-reconcile/check_decision.py"
 _spec = importlib.util.spec_from_file_location("reconcile_grader", _source)
 grader = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(grader)

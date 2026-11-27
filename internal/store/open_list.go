@@ -7,7 +7,7 @@ import "fmt"
 // result, and they sit in overflow pages the Agents list does not paint.
 // The worker's own log still returns them. cleanup, workers_retained and
 // error keep text; those rows are small and the reducer uses them.
-const rosterIdentityColumns = `completion, source_thread_id, source_turn_id, id, thread_id, turn_id, seq, kind, agent_id, role, model_binding, parent_id, worker_generation, config_tag, delegation_enabled, worker_tool_names, tool_call_id, tool_receipt_scope, message_id, CASE WHEN kind IN ('spawned', 'finished') THEN '' ELSE text END AS text, err, images, created_at`
+const rosterIdentityColumns = `completion, source_thread_id, source_turn_id, id, thread_id, turn_id, seq, kind, agent_id, role, model_binding, worker_generation, config_tag, tool_call_id, tool_receipt_scope, message_id, CASE WHEN kind IN ('spawned', 'finished') THEN '' ELSE text END AS text, err, images, created_at`
 
 // ListRosterIdentities is the open-conversation roster. Resume and the worker
 // log keep using ListRosterEvents and ListAgentEvents, which still return the
@@ -32,7 +32,7 @@ const turnOpeningColumns = `project_id, id, thread_id, seq, status,
 CASE WHEN goal_continue <> 0 OR schedule_continue <> 0 THEN '' ELSE user_text END AS user_text,
 '' AS final,
 error, provider_id, model, worker_model_recovery, reasoning_effort, web_execution,
-nuwa_enabled, nuwa_executor_provider_id, nuwa_executor_model, nuwa_read_only, work_ledger, work_ledger_read_only,
+nuwa_enabled, work_ledger, work_ledger_read_only,
 image_command, goal_continue, schedule_run_id, retry_turn_id, quiet, schedule_continue,
 started_at, ended_at, duration_ms`
 

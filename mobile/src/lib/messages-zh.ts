@@ -1,4 +1,3 @@
-import { knowledgeZh } from "./messages-knowledge"
 import { accountZh } from "./messages-account"
 import { pcWaitZh } from "./messages-pc-wait"
 import { generationZh } from "./messages-generation"
@@ -7,7 +6,6 @@ import type { MessageKey } from "./messages-en"
 
 export const zh: Record<MessageKey, string> = {
   ...pcWaitZh,
-  ...knowledgeZh,
   ...speechZh,
   "account.capabilitiesUnknown": "暂时无法确认网关可用功能，已保留设置，请点击下方重试。",
   "selection.actions": "选中文字操作",
@@ -463,20 +461,14 @@ export const zh: Record<MessageKey, string> = {
   "projects.workdirHint": "填写此电脑上已存在的目录；留空使用托管目录。",
   "projects.memory": "项目记忆",
   "projects.memoryOff": "电脑的全局记忆已关闭。",
-  "projects.nuwa": "女娲协作",
-  "projects.planner": "规划模型",
-  "projects.executor": "执行模型",
-  "projects.modelsHint": "项目设置应用于后续任务；已运行的工作者保留原模型。",
   "projects.empty": "还没有项目。",
   "projects.loading": "正在加载项目配置…",
   "projects.saving": "正在保存…",
   "projects.failed": "无法加载或保存项目，请重试。",
   "projects.unsupported": "请更新电脑端以管理项目。",
   "projects.back": "返回项目列表",
-  "projects.defaultModels": "使用电脑默认模型组合",
   "projects.saved": "项目已保存。",
   "projects.catalogFailed": "无法加载电脑模型和记忆设置，请重试。",
-  "projects.unavailable": "已保存，当前不可用",
   "mermaid.source": "查看／复制图源码",
   "mermaid.controls": "图缩放",
   "mermaid.zoomOut": "缩小图",

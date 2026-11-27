@@ -33,17 +33,17 @@ func TestNuwaColdRestoreCannotExposeFinishedFormerProjectWorker(t *testing.T) {
 							t.Error("fixture marker reached manager before the worker tool call")
 						}
 					}
-					nuwaValidationTool(w, req, waitID(step), "wait_agents", fmt.Sprintf(`{"agent_ids":[%q],"timeout_s":5}`, workerID))
+					scriptedToolReply(w, req, waitID(step), "wait_agents", fmt.Sprintf(`{"agent_ids":[%q],"timeout_s":5}`, workerID))
 				} else {
 					writeContextFlowReply(w, req.Stream, map[string]any{"content": "The destination check ended."}, "stop")
 				}
 			})
 			e.cfg.Memory.AutoReview = false
-			a, err := e.CreateProject("Original project", "", t.TempDir(), false, true)
+			a, err := e.CreateProject("Original project", "", t.TempDir(), false)
 			if err != nil {
 				t.Fatal(err)
 			}
-			b, err := e.CreateProject("Destination project", "", t.TempDir(), false, true)
+			b, err := e.CreateProject("Destination project", "", t.TempDir(), false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -87,8 +87,8 @@ func TestNuwaColdRestoreCannotExposeFinishedFormerProjectWorker(t *testing.T) {
 					t.Fatalf("expected two actual manager requests, got %d", len(requests)-before)
 				}
 				callID := waitID(before + 1)
-				reply := nuwaValidationReceipt(requests[before+1], callID)
-				receipt, err := awaitNuwaToolResult(t.Context(), e.store, callID)
+				reply := scriptedToolReceipt(requests[before+1], callID)
+				receipt, err := awaitToolResult(t.Context(), e.store, callID)
 				if err != nil || receipt.TurnID != next.ID || receipt.Text != reply {
 					t.Fatalf("actual manager wait was not durably observed: %+v, %v", receipt, err)
 				}

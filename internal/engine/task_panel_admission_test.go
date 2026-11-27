@@ -156,7 +156,7 @@ func TestTaskPanelDelegatedWorkerPublishesAtActualHTTPBoundary(t *testing.T) {
 				panelAdmissionCall(w, request, "panel-worker-spawn", "spawn_agent", `{"role":"observer","task":"Open the matching visualization and publish the supplied structured observation."}`)
 			case 2:
 				var spawned toolScopeWorkerID
-				if err := json.Unmarshal([]byte(nuwaValidationReceipt(request, "panel-worker-spawn")), &spawned); err != nil || spawned.AgentID == "" {
+				if err := json.Unmarshal([]byte(scriptedToolReceipt(request, "panel-worker-spawn")), &spawned); err != nil || spawned.AgentID == "" {
 					t.Errorf("spawn=%+v %v", spawned, err)
 				}
 				args, _ := json.Marshal(map[string]any{"agent_ids": []string{spawned.AgentID}, "timeout_s": 5})
@@ -176,14 +176,14 @@ func TestTaskPanelDelegatedWorkerPublishesAtActualHTTPBoundary(t *testing.T) {
 			panelAdmissionCall(w, request, "worker-panel-open", "open_task_panel", `{"plugin_id":"fofa-world-map"}`)
 		case 2:
 			var panel taskpanel.Panel
-			if err := json.Unmarshal([]byte(nuwaValidationReceipt(request, "worker-panel-open")), &panel); err != nil || panel.ID == "" {
+			if err := json.Unmarshal([]byte(scriptedToolReceipt(request, "worker-panel-open")), &panel); err != nil || panel.ID == "" {
 				t.Errorf("worker open=%+v %v", panel, err)
 			}
 			args := fmt.Sprintf(`{"protocol_version":1,"panel_id":%q,"operation_id":"worker-observed","base_revision":%d,"kind":"patch","operations":[{"op":"replace","path":"/collection/phase","value":"finished"}]}`, panel.ID, panel.Revision)
 			panelAdmissionCall(w, request, "worker-panel-publish", "publish_panel_update", args)
 		case 3:
-			if !strings.Contains(nuwaValidationReceipt(request, "worker-panel-publish"), `"revision":2`) {
-				t.Errorf("worker publication did not reach next model: %s", nuwaValidationReceipt(request, "worker-panel-publish"))
+			if !strings.Contains(scriptedToolReceipt(request, "worker-panel-publish"), `"revision":2`) {
+				t.Errorf("worker publication did not reach next model: %s", scriptedToolReceipt(request, "worker-panel-publish"))
 			}
 			panelAdmissionCall(w, request, "worker-panel-index", "read_panel_state", `{}`)
 		default:
@@ -191,7 +191,7 @@ func TestTaskPanelDelegatedWorkerPublishesAtActualHTTPBoundary(t *testing.T) {
 				Plugins []taskpanel.Definition `json:"plugins"`
 				Panels  []map[string]any       `json:"panels"`
 			}
-			if err := json.Unmarshal([]byte(nuwaValidationReceipt(request, "worker-panel-index")), &index); err != nil || len(index.Plugins) == 0 || len(index.Panels) != 1 {
+			if err := json.Unmarshal([]byte(scriptedToolReceipt(request, "worker-panel-index")), &index); err != nil || len(index.Plugins) == 0 || len(index.Panels) != 1 {
 				t.Errorf("worker panel index=%+v %v", index, err)
 			}
 			if len(index.Panels) > 0 {

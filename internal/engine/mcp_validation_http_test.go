@@ -79,15 +79,15 @@ func testMCPArgumentCanBeCorrected(t *testing.T, property, invalid, valid, wantF
 						map[string]any{"index": 1, "id": "independent-check", "type": "function", "function": map[string]any{"name": sibling, "arguments": other}},
 					}}, "tool_calls")
 				case 2:
-					if got := nuwaValidationReceipt(request, "invalid-arg"); !strings.Contains(got, wantField) || !strings.Contains(got, `"isError":true`) {
+					if got := scriptedToolReceipt(request, "invalid-arg"); !strings.Contains(got, wantField) || !strings.Contains(got, `"isError":true`) {
 						t.Errorf("model did not receive the field error on the original call: %q", got)
 					}
-					if got := nuwaValidationReceipt(request, "independent-check"); !strings.Contains(got, "independent check finished") {
+					if got := scriptedToolReceipt(request, "independent-check"); !strings.Contains(got, "independent check finished") {
 						t.Errorf("model did not receive the independent result: %q", got)
 					}
-					nuwaValidationTool(w, request, "corrected-call", lookup, corrected)
+					scriptedToolReply(w, request, "corrected-call", lookup, corrected)
 				default:
-					if got := nuwaValidationReceipt(request, "corrected-call"); !strings.Contains(got, "record found") {
+					if got := scriptedToolReceipt(request, "corrected-call"); !strings.Contains(got, "record found") {
 						t.Errorf("corrected call was not delivered to the model: %q", got)
 					}
 					writeContextFlowReply(w, request.Stream, map[string]any{"content": "Record verified."}, "stop")

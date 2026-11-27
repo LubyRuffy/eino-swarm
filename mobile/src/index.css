@@ -11,7 +11,7 @@
 @source '../../frontend/src/components/app/task-panel-frame.tsx';
 @source '../../frontend/src/components/app/easm';
 @source '../../frontend/src/components/app/native-task-panels.tsx';
-@source '../../frontend/src/components/app/{nuwa-graph,nuwa-status}.tsx';
+@source '../../frontend/src/components/app/graph';
 @source '../../frontend/src/components/ui/{badge,button,dialog,input,tooltip}.tsx';
 
 @theme inline {
@@ -31,9 +31,6 @@
   --color-running: hsl(var(--running));
   --color-done: hsl(var(--done));
   --color-ask: hsl(var(--ask));
-  --color-nuwa-task-bg: hsl(var(--nuwa-task-bg));
-  --color-nuwa-fact-bg: hsl(var(--nuwa-fact-bg));
-  --color-nuwa-artifact-bg: hsl(var(--nuwa-artifact-bg));
 
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
@@ -268,9 +265,6 @@
     --ask: 252 55% 46%;
     --online: 142 72% 36%;
     --done: var(--online);
-    --nuwa-task-bg: 211 75% 88%;
-    --nuwa-fact-bg: 262 65% 91%;
-    --nuwa-artifact-bg: 168 48% 84%;
     --qr-plate: 0 0% 100%;
     --scrim: 240 10% 4%;
   }
@@ -309,9 +303,6 @@
     --ask: 252 58% 72%;
     --online: 142 72% 36%;
     --done: var(--online);
-    --nuwa-task-bg: 211 45% 24%;
-    --nuwa-fact-bg: 262 38% 28%;
-    --nuwa-artifact-bg: 168 36% 22%;
     --qr-plate: 0 0% 100%;
     --scrim: 240 10% 4%;
   }

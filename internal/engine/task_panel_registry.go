@@ -11,11 +11,11 @@ func (e *Engine) wireTaskPanelRegistry(reg *swarm.Registry, set *tools.Set, turn
 	if reg == nil || set == nil || turn == nil {
 		return
 	}
-	readOnly := turn.NuwaReadOnly
+	readOnly := false
 	if thread, err := e.store.GetThread(turn.ThreadID); err == nil {
-		readOnly = readOnly || thread.PlanMode
+		readOnly = thread.PlanMode
 	}
-	reg.SubAgentTools = append(reg.SubAgentTools, e.taskPanelTools(turn, set, readOnly, false)...)
+	reg.SubAgentTools = append(reg.SubAgentTools, e.taskPanelTools(turn, set, readOnly)...)
 	reg.WorkerPreamble = JoinPromptSections(reg.WorkerPreamble, e.taskPanelInstruction())
 }
 

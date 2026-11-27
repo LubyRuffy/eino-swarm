@@ -6,10 +6,9 @@ import { Input, Textarea } from "@/components/ui/input"
 import { installAndroidBack } from "@/lib/android-back"
 import { t } from "@/lib/i18n"
 import type { RemoteLink } from "@/lib/link"
-import { OpCatalog, OpProjectCreate, OpProjectGet, OpProjectUpdate, type ModelChoice, type ProjectPatch, type ProjectSettings, type ProjectView } from "@/lib/rpc"
+import { OpCatalog, OpProjectCreate, OpProjectGet, OpProjectUpdate, type ProjectPatch, type ProjectSettings, type ProjectView } from "@/lib/rpc"
 
-const blank: ProjectSettings = { id: "", name: "", system_prompt: "", workdir: "", memory_enabled: false, nuwa_enabled: false }
-const modelKey = (provider?: string, model?: string) => provider && model ? JSON.stringify([provider, model]) : ""
+const blank: ProjectSettings = { id: "", name: "", system_prompt: "", workdir: "", memory_enabled: false }
 
 // A mounted editor belongs to exactly one link. Its parent keys it by PC/link,
 // and unmounting invalidates pending reads/writes before another PC can render.
@@ -23,10 +22,8 @@ export function ProjectManager({ link, projects, onSaved, onClose }: {
   const [draft, setDraft] = useState<ProjectSettings>()
   const [original, setOriginal] = useState<ProjectSettings>()
   const [selected, setSelected] = useState<string>()
-  const [models, setModels] = useState<ModelChoice[]>([])
   const [memory, setMemory] = useState(false)
   const [catalogReady, setCatalogReady] = useState(false)
-  const [configurable,setConfigurable]=useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
@@ -73,8 +70,7 @@ export function ProjectManager({ link, projects, onSaved, onClose }: {
         setUnsupported(catalog.ok)
         setError(t(catalog.ok ? "projects.unsupported" : "projects.catalogFailed")); return
       }
-      setConfigurable(catalog.model_policy?.configurable ?? !catalog.models?.some(m=>m.locked))
-      setModels(catalog.models ?? []); setMemory(catalog.memory_available); setCatalogReady(true)
+      setMemory(catalog.memory_available); setCatalogReady(true)
       const next = response?.project ?? { ...blank, memory_enabled: catalog.memory_available }
       setDraft({ ...next }); setOriginal({ ...next })
     } catch { if (mounted.current && generation.current === gen) setError(t("projects.failed")) }
@@ -86,12 +82,8 @@ export function ProjectManager({ link, projects, onSaved, onClose }: {
     if (!draft || !original || saving) return
     const gen = generation.current
     const patch: ProjectPatch = {}
-    for (const key of ["name", "system_prompt", "workdir", "memory_enabled", "nuwa_enabled"] as const) {
+    for (const key of ["name", "system_prompt", "workdir", "memory_enabled"] as const) {
       if (!draft.id || draft[key] !== original[key]) Object.assign(patch, { [key]: key === "name" ? draft.name.trim() : draft[key] })
-    }
-    const fields = ["nuwa_planner_provider_id", "nuwa_planner_model", "nuwa_executor_provider_id", "nuwa_executor_model"] as const
-    if (configurable && fields.every((key) => draft[key]) && fields.some((key) => draft[key] !== original[key])) {
-      for (const key of fields) patch[key] = draft[key]
     }
     if (!Object.keys(patch).length) return
     setSaving(true); setError("")
@@ -109,20 +101,6 @@ export function ProjectManager({ link, projects, onSaved, onClose }: {
     finally { if (mounted.current && generation.current === gen) setSaving(false) }
   }
   const busy = loading || saving
-  const pickModel = (role: "planner" | "executor", value: string) => {
-    if (!value) return
-    const [provider, model] = JSON.parse(value) as [string, string]
-    change({ [`nuwa_${role}_provider_id`]: provider, [`nuwa_${role}_model`]: model })
-  }
-  const toggleNuwa = (enabled: boolean) => {
-    const patch: ProjectPatch = { nuwa_enabled: enabled }
-    if (configurable && enabled && !draft?.nuwa_planner_provider_id && models.length) {
-      const planner = models.find((m) => m.default) ?? models[0]
-      const executor = models.find((m) => modelKey(m.provider_id, m.model) !== modelKey(planner.provider_id, planner.model)) ?? planner
-      Object.assign(patch, { nuwa_planner_provider_id: planner.provider_id, nuwa_planner_model: planner.model, nuwa_executor_provider_id: executor.provider_id, nuwa_executor_model: executor.model })
-    }
-    change(patch)
-  }
   const dirty = draft && original && JSON.stringify(draft) !== JSON.stringify(original)
   return createPortal(<div className="fixed inset-0 z-50 flex flex-col justify-end">
     <div className="absolute inset-0 bg-foreground/40" onClick={onClose} />
@@ -147,20 +125,6 @@ export function ProjectManager({ link, projects, onSaved, onClose }: {
               <p className="break-all text-xs text-muted-foreground">{t("projects.workdirHint")}{draft.resolved_workdir ? ` (${draft.resolved_workdir})` : ""}</p>
               <label className="flex items-center justify-between gap-3 text-sm">{t("projects.memory")}<input type="checkbox" checked={draft.memory_enabled && memory} disabled={!memory} onChange={(e) => change({ memory_enabled: e.target.checked })} /></label>
               {!memory ? <p className="text-xs text-muted-foreground">{t("projects.memoryOff")}</p> : null}
-              <label className="flex items-center justify-between gap-3 text-sm">{t("projects.nuwa")}<input type="checkbox" checked={draft.nuwa_enabled} onChange={(e) => toggleNuwa(e.target.checked)} /></label>
-              {configurable && draft.nuwa_enabled ? <>
-                {(["planner", "executor"] as const).map((role) => {
-                  const value = modelKey(draft[`nuwa_${role}_provider_id`], draft[`nuwa_${role}_model`])
-                  return <label key={role} className="flex min-w-0 flex-col gap-1 text-sm">{t(role === "planner" ? "projects.planner" : "projects.executor")}
-                    <select className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2 text-base" value={value} onChange={(e) => pickModel(role, e.target.value)}>
-                      <option value="" disabled>{t("projects.defaultModels")}</option>
-                      {value && !models.some((m) => modelKey(m.provider_id, m.model) === value) ? <option value={value}>{draft[`nuwa_${role}_model`]} · {t("projects.unavailable")}</option> : null}
-                      {models.map((m) => <option key={modelKey(m.provider_id, m.model)} value={modelKey(m.provider_id, m.model)}>{m.provider_label || m.provider_id} · {m.label || m.model}</option>)}
-                    </select>
-                  </label>
-                })}
-                <p className="text-xs text-muted-foreground">{t("projects.modelsHint")}</p>
-              </> : null}
             </fieldset>
             <Button type="submit" disabled={busy || unsupported || !catalogReady || !draft.name.trim() || Boolean(draft.id && !dirty)}>{t(saving ? "projects.saving" : draft.id ? "projects.save" : "projects.create")}</Button>
           </form> : null}

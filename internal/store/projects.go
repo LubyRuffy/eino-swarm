@@ -58,12 +58,6 @@ func (s *Store) UpdateProject(id string, fields map[string]any) error {
 	if len(fields) == 0 {
 		return nil
 	}
-	if enabled, supplied := fields["nuwa_enabled"]; supplied {
-		// Retain the view when mode changes before the first worker/result.
-		// Compare and increment in this statement so concurrent shared writes
-		// retain their revisions, and unchanged ordinary edits stay at zero.
-		fields["nuwa_revision"] = gorm.Expr("CASE WHEN COALESCE(nuwa_enabled, 0) <> ? THEN COALESCE(nuwa_revision, 0) + 1 ELSE COALESCE(nuwa_revision, 0) END", enabled)
-	}
 	fields["updated_at"] = time.Now().UTC()
 	res := s.db.Model(&Project{}).Where("id = ?", id).Updates(fields)
 	if res.Error != nil {
@@ -111,7 +105,10 @@ func (s *Store) DeleteProject(id string) error {
 		if err := tx.Model(&Thread{}).Where("project_id = ?", id).Pluck("id", &threadIDs).Error; err != nil {
 			return err
 		}
-		if err := deleteNuwaProject(tx, id, threadIDs); err != nil {
+		if err := deleteLegacyProjectRows(tx, id, threadIDs); err != nil {
+			return err
+		}
+		if err := deleteGraphOwners(tx, append([]string{id}, threadIDs...)); err != nil {
 			return err
 		}
 		draftKeys := []string{"new:" + id}
@@ -145,10 +142,7 @@ func (s *Store) DeleteProject(id string) error {
 		if err := tx.Delete(&ProjectDistillation{}, "project_id = ?", id).Error; err != nil {
 			return err
 		}
-		if err := tx.Delete(&ProjectWikiBuild{}, "project_id = ?", id).Error; err != nil {
-			return err
-		}
-		if err := tx.Delete(&WikiSourceScan{}, "project_id = ?", id).Error; err != nil {
+		if err := deleteLegacyProjectTables(tx, id); err != nil {
 			return err
 		}
 		return tx.Where("id = ?", id).Delete(&Project{}).Error
@@ -202,19 +196,6 @@ func (s *Store) SetThreadProject(threadID, projectID string) error {
 		}
 		if thread.ProjectID == projectID {
 			return nil
-		}
-		if err := bumpWorkRevision(tx, threadID); err != nil {
-			return fmt.Errorf("store: invalidate work after project move: %w", err)
-		}
-		var visible []string
-		if err := tx.Model(&Project{}).Where("id IN ? AND (nuwa_enabled = ? OR nuwa_revision > 0)",
-			[]string{thread.ProjectID, projectID}, true).Order("id").Pluck("id", &visible).Error; err != nil {
-			return fmt.Errorf("store: find affected collaboration views: %w", err)
-		}
-		for _, id := range visible {
-			if err := bumpNuwaRevision(tx, id); err != nil {
-				return fmt.Errorf("store: invalidate collaboration after project move: %w", err)
-			}
 		}
 		return nil
 	})

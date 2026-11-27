@@ -47,5 +47,5 @@ it("automatically opens only a present instance owned by the selected conversati
 })
 
 it("keeps host-only project collaboration out of the embedded agent plugin catalog", () => {
-  expect(catalog.map((entry) => entry.id)).not.toContain("nuwa")
+  expect(catalog.map((entry) => entry.id)).not.toContain("graph")
 })

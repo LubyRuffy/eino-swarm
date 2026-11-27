@@ -49,7 +49,7 @@ func TestEASMSourceRechecksAccountRestrictionAfterTheTurnMountedMCP(t *testing.T
 				t.Error("the unrestricted turn never mounted its MCP call proxy")
 			}
 			var panel taskpanel.Panel
-			if err := json.Unmarshal([]byte(nuwaValidationReceipt(request, openCall)), &panel); err != nil || panel.ID == "" {
+			if err := json.Unmarshal([]byte(scriptedToolReceipt(request, openCall)), &panel); err != nil || panel.ID == "" {
 				t.Errorf("open receipt did not identify the panel: %v", err)
 			}
 			panelID = panel.ID

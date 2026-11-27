@@ -56,17 +56,16 @@ func TestDistillationFullTextReachesLongRecordTail(t *testing.T) {
 		}
 		assembled.WriteString(part)
 		mu.Unlock()
-		proposal := `{"changes":[],"knowledge":[]}`
+		proposal := `{"changes":[]}`
 		if strings.HasSuffix(part, last) {
 			proposal = `{
 				"changes":[
 					{"target":"memory","action":"add","content":"Retain the final observation.","evidence":[{"seq":1,"quote":"Retain the final observation."}]},
 					{"target":"skill_manage","action":"create","name":"retain","description":"Retention workflow","content":"Retain the final observation.","evidence":[{"seq":1,"quote":"Retain the final observation."}]}
-				],
-				"knowledge":[{"action":"write_page","id":"final-observation","type":"entry","title":"Final Observation","body":"Retain the final observation.","evidence":[{"seq":1,"quote":"Retain the final observation."}]}]
+				]
 			}`
 		}
-		nuwaValidationTool(w, req, fmt.Sprintf("batch-%d", step), distillBatchName, proposal)
+		scriptedToolReply(w, req, fmt.Sprintf("batch-%d", step), distillBatchName, proposal)
 	}))
 	t.Cleanup(endpoint.Close)
 	dir := t.TempDir()
@@ -77,8 +76,7 @@ func TestDistillationFullTextReachesLongRecordTail(t *testing.T) {
 		e.pool = provider.New(e.cfg)
 		return e
 	}
-	var projectID, reviewID, threadID string
-	var eventSeq int64
+	var projectID, reviewID string
 	var saved DistillationProgress
 	t.Run("pause inside a record", func(t *testing.T) {
 		e := engine(t)
@@ -86,10 +84,10 @@ func TestDistillationFullTextReachesLongRecordTail(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		th := knowledgeFixtureThread(t, e, p.ID, "Long task")
-		_, event := distillEvent(t, e, th, store.TurnDone, KindUser, body)
-		projectID, threadID, eventSeq = p.ID, th.ID, event.Seq
-		start, err := e.StartProjectDistillation(t.Context(), p.ID, DistillationRequest{Scope: "thread", ThreadID: th.ID, FullText: true, EnableKnowledge: true})
+		th := distillFixtureThread(t, e, p.ID, "Long task")
+		distillEvent(t, e, th, store.TurnDone, KindUser, body)
+		projectID = p.ID
+		start, err := e.StartProjectDistillation(t.Context(), p.ID, DistillationRequest{Scope: "thread", ThreadID: th.ID, FullText: true})
 		if err != nil || !start.FullText {
 			t.Fatalf("full text not admitted: %+v %v", start, err)
 		}
@@ -119,19 +117,14 @@ func TestDistillationFullTextReachesLongRecordTail(t *testing.T) {
 		result := waitDistill(t, e, projectID)
 		if !result.FullText || result.State != "completed" || result.HistoryOmitted ||
 			result.Progress.Processed != 1 || result.Progress.Skipped != 0 || result.Progress.Remaining != 0 ||
-			result.Progress.SegmentBytes != 0 || len(result.Changes) != 2 || len(result.Knowledge) != 1 {
-			t.Fatalf("large source was not reviewed across all three destinations: %+v progress=%+v", result, result.Progress)
+			result.Progress.SegmentBytes != 0 || len(result.Changes) != 2 {
+			t.Fatalf("large source was not reviewed across both destinations: %+v progress=%+v", result, result.Progress)
 		}
 		mu.Lock()
 		matches := assembled.String() == body
 		mu.Unlock()
 		if !matches {
 			t.Fatal("model inputs did not reconstruct the original UTF-8 bytes")
-		}
-		page, err := e.ProjectKnowledgePage(t.Context(), projectID, "final-observation")
-		if err != nil || len(page.Sources) != 1 || page.Sources[0].ThreadID != threadID ||
-			page.Sources[0].Seq != eventSeq || page.Sources[0].Available == nil || !*page.Sources[0].Available {
-			t.Fatalf("a citation to the tail lost its original attribution: %+v %v", page, err)
 		}
 	})
 }
@@ -142,13 +135,13 @@ func TestDistillationDefaultReportsExcerptsAndOversizedSkipsSeparately(t *testin
 		if !strings.Contains(input, "visible prefix") || strings.Contains(input, "hidden tail") || strings.Contains(input, "oversized record") {
 			t.Error("default distillation must keep its bounded excerpt policy")
 		}
-		nuwaValidationTool(w, req, "excerpt", distillBatchName, `{"changes":[],"knowledge":[]}`)
+		scriptedToolReply(w, req, "excerpt", distillBatchName, `{"changes":[]}`)
 	})
 	p, err := e.CreateProject("Long history", "", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	th := knowledgeFixtureThread(t, e, p.ID, "Long task")
+	th := distillFixtureThread(t, e, p.ID, "Long task")
 	distillEvent(t, e, th, store.TurnDone, KindUser, "visible prefix"+strings.Repeat("x", reviewMaxCharsPerMessage)+"hidden tail")
 	distillEvent(t, e, th, store.TurnDone, KindUser, "oversized record"+strings.Repeat("x", 65<<10))
 	distillEvent(t, e, th, store.TurnDone, KindSteer, "caption is missing")
@@ -179,16 +172,16 @@ func TestDistillationFullTextKeepsEvidenceEligibilityAndSteerAttribution(t *test
 				t.Errorf("ineligible evidence reached the model: %q", excluded)
 			}
 		}
-		nuwaValidationTool(w, req, "steer", distillBatchName, `{"changes":[],"knowledge":[
-			{"action":"write_page","id":"corrected","type":"entry","title":"Corrected observation","body":"Retain the corrected observation.","evidence":[{"seq":2,"quote":"Retain the corrected observation."}]}
+		scriptedToolReply(w, req, "steer", distillBatchName, `{"changes":[
+			{"target":"memory","action":"add","content":"Retain the corrected observation.","evidence":[{"seq":2,"quote":"Retain the corrected observation."}]}
 		]}`)
 	})
 	p, err := e.CreateProject("Full project", "", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	th := knowledgeFixtureThread(t, e, p.ID, "Main task")
-	peer := knowledgeFixtureThread(t, e, p.ID, "Peer task")
+	th := distillFixtureThread(t, e, p.ID, "Main task")
+	peer := distillFixtureThread(t, e, p.ID, "Peer task")
 	turn, _ := distillEvent(t, e, th, store.TurnDone, KindUser, "Initial request.")
 	steer := store.Event{Kind: KindSteer, Text: "Original caption."}
 	for _, ev := range []*store.Event{
@@ -214,17 +207,15 @@ func TestDistillationFullTextKeepsEvidenceEligibilityAndSteerAttribution(t *test
 	distillEvent(t, e, peer, store.TurnDone, KindUser, "Peer history.")
 	distillEvent(t, e, peer, store.TurnDone, "agent_message", "Assistant observation.")
 	distillEvent(t, e, peer, store.TurnError, KindUser, "Requirement from a failed turn.")
-	if _, err := e.StartProjectDistillation(t.Context(), p.ID, DistillationRequest{Scope: "project", FullText: true, EnableKnowledge: true}); err != nil {
+	if _, err := e.StartProjectDistillation(t.Context(), p.ID, DistillationRequest{Scope: "project", FullText: true}); err != nil {
 		t.Fatal(err)
 	}
 	result := waitDistill(t, e, p.ID)
 	if result.State != "completed" || result.Progress.Processed != 11 || result.Progress.Skipped != 5 || calls.Load() != 1 {
 		t.Fatalf("full project review changed evidence admission: %+v progress=%+v", result, result.Progress)
 	}
-	page, err := e.ProjectKnowledgePage(t.Context(), p.ID, "corrected")
-	if err != nil || len(page.Sources) != 1 || page.Sources[0].Kind != "message" ||
-		page.Sources[0].ThreadID != th.ID || page.Sources[0].Available == nil || !*page.Sources[0].Available {
-		t.Fatalf("steer lost its canonical source after publication: %+v %v", page, err)
+	if len(result.Changes) != 1 {
+		t.Fatalf("a steer citation was not accepted at its canonical source: %+v", result)
 	}
 }
 
@@ -234,13 +225,13 @@ func TestDistillationFullTextDefersTheNextRecordAtTheBatchBoundary(t *testing.T)
 		if strings.Contains(req.Messages[1].Content, next) != (step == 2) {
 			t.Errorf("second record appeared in the wrong batch: %d", step)
 		}
-		nuwaValidationTool(w, req, fmt.Sprintf("boundary-%d", step), distillBatchName, `{"changes":[],"knowledge":[]}`)
+		scriptedToolReply(w, req, fmt.Sprintf("boundary-%d", step), distillBatchName, `{"changes":[]}`)
 	})
 	p, err := e.CreateProject("Boundary", "", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	th := knowledgeFixtureThread(t, e, p.ID, "Task")
+	th := distillFixtureThread(t, e, p.ID, "Task")
 	event := store.Event{ID: 1, Seq: 1, Kind: KindUser, ThreadID: th.ID}
 	header := distillationFullHeader(store.DistillationSourceRow{Event: event}, 1, 0, store.Event{})
 	distillEvent(t, e, th, store.TurnDone, KindUser, strings.Repeat("x", reviewMaxChars-len(reviewSourceHeader+header+"\n\n")))
@@ -260,7 +251,7 @@ func TestDistillationFullTextAccountsForSourcesLostBetweenSegments(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	th := knowledgeFixtureThread(t, e, p.ID, "Task")
+	th := distillFixtureThread(t, e, p.ID, "Task")
 	turn, changed := distillEvent(t, e, th, store.TurnDone, KindUser, "Saved text with a longer tail.")
 	_, removed := distillEvent(t, e, th, store.TurnDone, KindUser, "Will disappear.")
 	result := DistillationResult{ReviewID: "saved", State: "running", Scope: "thread", FullText: true,

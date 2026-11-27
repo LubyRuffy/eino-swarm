@@ -27,11 +27,6 @@ func (r *Registry) Spawn(ctx context.Context, role, task string,
 // the registry lock so parallel tool calls cannot all slip through.
 func (r *Registry) spawnAgent(ctx context.Context, role, task string,
 	modelOpt ModelBuilder, seed string, admit bool, extraTools ...tool.BaseTool) (*Handle, error) {
-	return r.spawnAgentWithModel(ctx, role, task, modelOpt, nil, "", seed, admit, extraTools...)
-}
-
-func (r *Registry) spawnAgentWithModel(ctx context.Context, role, task string,
-	modelOpt ModelBuilder, binding *ModelBinding, parentID, seed string, admit bool, extraTools ...tool.BaseTool) (*Handle, error) {
 	config := r.workerConfigurationForContext(ctx)
 	instruction := workerInstructionWithConfig(config, task)
 	r.mu.Lock()
@@ -43,32 +38,15 @@ func (r *Registry) spawnAgentWithModel(ctx context.Context, role, task string,
 		r.mu.Unlock()
 		return nil, fmt.Errorf("swarm: registry closed")
 	}
-	if parentID != "" {
-		caller, ok := ToolCaller(ctx)
-		if err := ctx.Err(); err != nil {
-			r.mu.Unlock()
-			return nil, err
-		}
-		if !ok || caller.AgentID != parentID {
-			r.mu.Unlock()
-			return nil, fmt.Errorf("delegation requires its trusted caller")
-		}
-		if err := r.validateParentLocked(caller); err != nil {
-			r.mu.Unlock()
-			return nil, err
-		}
-	}
 	if admit && r.liveCountLocked() >= r.capLocked() {
 		n := r.capLocked()
 		r.mu.Unlock()
 		return nil, &atCapacityError{n: n}
 	}
-	r.delegationUsed = r.delegationUsed || config.EnableDelegation
 	r.seq++
 	id := fmt.Sprintf("%s-%d", role, r.seq)
-	enabled := config.EnableDelegation
-	h := &Handle{configTag: config.Tag, delegationEnabled: &enabled, workerConfig: &config,
-		workerToolNames: cloneWorkerToolNames(config.workerToolNames), ID: id, Role: role, ParentID: parentID, done: make(chan struct{}), spawned: time.Now(), gen: 1, modelBinding: cloneModelBinding(binding)}
+	h := &Handle{configTag: config.Tag, workerConfig: &config,
+		ID: id, Role: role, done: make(chan struct{}), spawned: time.Now(), gen: 1}
 	h.handoff.task, h.handoff.instruction = task, instruction
 	r.agents[id] = h
 	r.notePendingLocked(h)

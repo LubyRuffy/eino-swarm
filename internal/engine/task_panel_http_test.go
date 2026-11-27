@@ -74,22 +74,19 @@ func TestTaskPanelPlanningAndDisabledSurfaces(t *testing.T) {
 	if err := e.store.CreateTurn(turn); err != nil {
 		t.Fatal(err)
 	}
-	if got := toolNames(t, e.taskPanelTools(turn, nil, true, false)); len(got) != 1 || !got["read_panel_state"] {
+	if got := toolNames(t, e.taskPanelTools(turn, nil, true)); len(got) != 1 || !got["read_panel_state"] {
 		t.Fatalf("planning tools=%v", got)
-	}
-	if got := toolNames(t, e.taskPanelTools(turn, nil, false, true)); got["run_panel_source"] || !got["open_task_panel"] {
-		t.Fatalf("planner tools=%v", got)
 	}
 	if _, err := e.panelSource(t.Context(), turn); err == nil {
 		t.Fatal("unowned publisher accepted")
 	}
-	if e.taskPanelTools(nil, nil, false, false) != nil {
+	if e.taskPanelTools(nil, nil, false) != nil {
 		t.Fatal("nil turn mounted tools")
 	}
 	if err := e.cfg.Update(func(c *config.Config) error { off := false; c.TaskPanels.Enabled = &off; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if e.taskPanelInstruction() != "" || e.taskPanelTools(turn, nil, false, false) != nil || e.toolOfferAllowed("open_task_panel") {
+	if e.taskPanelInstruction() != "" || e.taskPanelTools(turn, nil, false) != nil || e.toolOfferAllowed("open_task_panel") {
 		t.Fatal("disabled panel tools still offered")
 	}
 }

@@ -61,12 +61,6 @@ func accountWorkerConfig(config swarm.WorkerConfig, owner *workerAccounting) swa
 		}
 	}
 	config.ModelBuilder = wrapBuilder(config.ModelBuilder)
-	if selectModel := config.SelectWorkerModel; selectModel != nil {
-		config.SelectWorkerModel = func(ctx context.Context, ref string) (swarm.ModelBinding, swarm.ModelBuilder, error) {
-			binding, builder, err := selectModel(ctx, ref)
-			return binding, wrapBuilder(builder), err
-		}
-	}
 	if restoreModel := config.RestoreWorkerModel; restoreModel != nil {
 		config.RestoreWorkerModel = func(ctx context.Context, binding swarm.ModelBinding) (swarm.ModelBuilder, error) {
 			builder, err := restoreModel(ctx, binding)

@@ -19,33 +19,13 @@ type ProjectDistillation struct {
 	Receipt                            []byte
 	CursorEventID                      uint `gorm:"not null;default:0"`
 	ProviderID, Model, ReasoningEffort string
-	WikiGraph                          bool `gorm:"-"`
 }
 
-// ProjectWikiBuild keeps a graph build and its resume position independent of
-// the project's last Memory review.
-type ProjectWikiBuild struct {
-	ProjectDistillation `gorm:"embedded"`
-}
-
-func (r ProjectDistillation) table() string {
-	if r.WikiGraph {
-		return "project_wiki_builds"
-	}
-	return "project_distillations"
-}
+func (r ProjectDistillation) table() string { return "project_distillations" }
 
 // ProjectDistillationReceipt reads the latest run, if any.
 func (s *Store) ProjectDistillationReceipt(ctx context.Context, projectID string) (*ProjectDistillation, error) {
-	return s.distillationReceipt(ctx, projectID, false)
-}
-
-func (s *Store) ProjectWikiBuildReceipt(ctx context.Context, projectID string) (*ProjectDistillation, error) {
-	return s.distillationReceipt(ctx, projectID, true)
-}
-
-func (s *Store) distillationReceipt(ctx context.Context, projectID string, wikiGraph bool) (*ProjectDistillation, error) {
-	row := ProjectDistillation{WikiGraph: wikiGraph}
+	row := ProjectDistillation{}
 	err := s.db.WithContext(ctx).Table(row.table()).Take(&row, "project_id = ?", projectID).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil

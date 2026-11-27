@@ -180,7 +180,7 @@ func seenDreamInput(c *dreamCandidate, digest string) bool {
 func (e *Engine) prepareDream(turn *store.Turn, pc *projectContext, events []store.Event, visible map[int64]store.Event) *dreamReview {
 	settings := e.cfg.Snapshot().Memory
 	if e.reviews.dreamCtx.Err() != nil || e.restarting() || !settings.Enabled || !settings.AutoReview || !settings.AutoDream || len(events) == 0 ||
-		turn.Status != store.TurnDone || turn.GoalContinue || turn.ScheduleContinue || turn.NuwaReadOnly ||
+		turn.Status != store.TurnDone || turn.GoalContinue || turn.ScheduleContinue ||
 		pc == nil || pc.library || pc.planning || pc.project == nil || pc.memory == nil || turn.ProviderID == "" || e.pool.RouteUnavailable(turn.ProviderID) {
 		return nil
 	}

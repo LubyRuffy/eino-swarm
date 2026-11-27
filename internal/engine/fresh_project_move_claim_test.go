@@ -32,11 +32,11 @@ func TestNuwaMoveBeforeFreshClaimRefusesStaleProjectSnapshot(t *testing.T) {
 		{ID: "project-move-fixture", BaseURL: endpoint.URL, Model: "fixture/planner"},
 	}}
 	e.pool = provider.New(e.cfg)
-	old, err := e.CreateProject("Original owner", "", t.TempDir(), false, true)
+	old, err := e.CreateProject("Original owner", "", t.TempDir(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	destination, err := e.CreateProject("Current owner", "", t.TempDir(), false, true)
+	destination, err := e.CreateProject("Current owner", "", t.TempDir(), false)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -52,8 +52,7 @@ func TestPhoneProjectRefusalsDoNotMutateSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, patch := range []string{
-		`null`, `{}`, `{"unknown":true}`, `{"name":"After","nuwa_planner_model":"partial"}`,
-		`{"name":"After","nuwa_enabled":true,"nuwa_planner_provider_id":"missing","nuwa_planner_model":"missing","nuwa_executor_provider_id":"missing","nuwa_executor_model":"missing"}`, `{"name":"After","workdir":"/missing-phone-project-dir"}`,
+		`null`, `{}`, `{"unknown":true}`, `{"name":"After","workdir":"/missing-phone-project-dir"}`,
 		`{"name":"` + strings.Repeat("x", 65000) + `"}`,
 	} {
 		var req Request
@@ -65,7 +64,7 @@ func TestPhoneProjectRefusalsDoNotMutateSettings(t *testing.T) {
 			t.Fatalf("accepted invalid settings: %s", patch[:min(len(patch), 100)])
 		}
 		got, _ := e.GetProject(p.ID)
-		if got.Name != p.Name || got.NuwaEnabled || got.SystemPrompt != p.SystemPrompt {
+		if got.Name != p.Name || got.SystemPrompt != p.SystemPrompt {
 			t.Fatalf("mutated on refusal: %+v", got)
 		}
 	}
@@ -99,22 +98,26 @@ func TestPhoneProjectModelsDefaultsAndFrameLimits(t *testing.T) {
 		}
 		return Handle(e, config.RemoteConfig{}, Request{Op: op, ProjectID: id, ProjectPatch: raw}, "relay", "s")
 	}
-	r := call("project_create", "", map[string]any{"name": "With pair", "nuwa_enabled": true, "system_prompt": "initial", "memory_enabled": false})
+	// An older phone still sends the removed Nuwa fields with every save.
+	legacy := map[string]any{"nuwa_enabled": true, "nuwa_planner_provider_id": "gone", "nuwa_planner_model": "gone", "nuwa_executor_provider_id": "gone", "nuwa_executor_model": "gone"}
+	r := call("project_create", "", map[string]any{"name": "Older phone", "nuwa_enabled": true, "system_prompt": "initial", "memory_enabled": false})
 	if !r.OK || len(r.Projects) != 1 {
 		t.Fatalf("create: %+v", r)
 	}
 	id := r.Projects[0].ID
 	p, _ := e.GetProject(id)
-	if p.NuwaPlannerProviderID == "" || p.NuwaExecutorModel == "" || p.MemoryEnabled {
-		t.Fatalf("pair/default: %+v", p)
+	if p.MemoryEnabled || p.SystemPrompt != "initial" {
+		t.Fatalf("defaults: %+v", p)
 	}
-	pair := map[string]any{"nuwa_planner_provider_id": p.NuwaPlannerProviderID, "nuwa_planner_model": p.NuwaPlannerModel, "nuwa_executor_provider_id": p.NuwaExecutorProviderID, "nuwa_executor_model": p.NuwaExecutorModel, "nuwa_enabled": false}
-	if r := call(" project_update ", id, pair); !r.OK {
-		t.Fatalf("pair update: %+v", r)
+	if r := call(" project_update ", id, legacy); !r.OK {
+		t.Fatalf("legacy-only update: %+v", r)
 	}
-	p, _ = e.GetProject(id)
-	if p.NuwaEnabled || p.NuwaPlannerProviderID == "" {
-		t.Fatalf("disabled lost pair: %+v", p)
+	legacy["name"] = "Renamed by older phone"
+	if r := call("project_update", id, legacy); !r.OK {
+		t.Fatalf("legacy update: %+v", r)
+	}
+	if p, _ = e.GetProject(id); p.Name != "Renamed by older phone" {
+		t.Fatalf("legacy fields blocked the real change: %+v", p)
 	}
 	for _, patch := range []any{map[string]any{"workdir": "/does-not-exist"}, map[string]any{"memory_enabled": true}} {
 		r := call("project_create", "", patch)
@@ -158,7 +161,7 @@ func TestPhoneProjectModelsDefaultsAndFrameLimits(t *testing.T) {
 func TestPhoneProjectRPCTraversesTheSealedLinkDispatcher(t *testing.T) {
 	e := testEngine(t)
 	p, replies := catalogPump(t, e)
-	p.Dispatch([]byte(`{"v":1,"id":"create-project","op":"project_create","project_patch":{"name":"From phone","nuwa_enabled":true}}`))
+	p.Dispatch([]byte(`{"v":1,"id":"create-project","op":"project_create","project_patch":{"name":"From phone"}}`))
 	r := takeCatalogReply(t, replies)
 	if !r.OK || len(r.Projects) != 1 || r.ID != "create-project" {
 		t.Fatalf("wire create: %+v", r)
@@ -167,7 +170,7 @@ func TestPhoneProjectRPCTraversesTheSealedLinkDispatcher(t *testing.T) {
 	raw, _ := json.Marshal(map[string]any{"v": 1, "id": "get-project", "op": "project_get", "project_id": id})
 	p.Dispatch(raw)
 	r = takeCatalogReply(t, replies)
-	if !r.OK || r.Project == nil || !r.Project.NuwaEnabled || r.MemoryAvailable == nil {
+	if !r.OK || r.Project == nil || r.Project.Name != "From phone" || r.MemoryAvailable == nil {
 		t.Fatalf("wire get: %+v", r)
 	}
 }

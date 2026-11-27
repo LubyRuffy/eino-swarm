@@ -43,6 +43,9 @@ func omitThreads(ctx context.Context, q queryer, schema string, ids []string) er
 	runArgs := make([]any, 0, len(args)*2)
 	runArgs = append(runArgs, args...)
 	runArgs = append(runArgs, args...)
+	if err := omitGraphRows(ctx, q, prefix, args); err != nil {
+		return err
+	}
 	steps := []struct {
 		table string
 		query string
@@ -72,6 +75,12 @@ func omitThreads(ctx context.Context, q queryer, schema string, ids []string) er
 		{"threads", `DELETE FROM ` + prefix + `threads WHERE ` + in("id"), args},
 	}
 	for _, step := range steps {
+		schemaName := strings.TrimSuffix(prefix, ".")
+		if present, err := presentOrOptional(ctx, q, schemaName, step.table); err != nil {
+			return err
+		} else if !present {
+			continue
+		}
 		if _, err := q.ExecContext(ctx, step.query, step.args...); err != nil {
 			return fmt.Errorf("backup: omit %s: %w", step.table, err)
 		}
@@ -84,11 +93,19 @@ func omitThreads(ctx context.Context, q queryer, schema string, ids []string) er
 // no longer have a source queue or a saved anchor.
 func omitReviewReceipts(ctx context.Context, q queryer, prefix string, threadIDs []any) error {
 	values := strings.TrimRight(strings.Repeat("(?),", len(threadIDs)), ",")
+	// The removed Wiki build kept receipts of its own; an older database may
+	// still hold them, and they summarise the omitted sources too.
+	wiki := ""
+	if present, err := tableExists(ctx, q, strings.TrimSuffix(prefix, "."), "project_wiki_builds"); err != nil {
+		return err
+	} else if present {
+		wiki = "UNION ALL SELECT project_id, CAST(receipt AS TEXT) FROM " + prefix + "project_wiki_builds"
+	}
 	query := `WITH omitted_threads(id) AS (VALUES ` + values + `),
 		omitted_turns AS (SELECT id, project_id FROM ` + prefix + `turns WHERE thread_id IN omitted_threads),
 		review_receipts AS (
 			SELECT project_id, CAST(receipt AS TEXT) AS body FROM ` + prefix + `project_distillations
-			UNION ALL SELECT project_id, CAST(receipt AS TEXT) FROM ` + prefix + `project_wiki_builds
+			` + wiki + `
 		)
 		SELECT project_id FROM (
 			SELECT project_id FROM ` + prefix + `threads WHERE id IN omitted_threads
@@ -111,6 +128,11 @@ func omitReviewReceipts(ctx context.Context, q queryer, prefix string, threadIDs
 	}
 	marks := strings.TrimRight(strings.Repeat("?,", len(affected)), ",")
 	for _, table := range []string{"project_distillation_sources", "project_distillations", "project_wiki_builds"} {
+		if present, err := presentOrOptional(ctx, q, strings.TrimSuffix(prefix, "."), table); err != nil {
+			return err
+		} else if !present {
+			continue
+		}
 		if _, err := q.ExecContext(ctx, "DELETE FROM "+prefix+table+" WHERE project_id IN ("+marks+")", affected...); err != nil {
 			return fmt.Errorf("backup: omit %s: %w", table, err)
 		}

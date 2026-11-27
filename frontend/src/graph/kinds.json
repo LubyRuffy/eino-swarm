@@ -1,0 +1,802 @@
+{
+  "version": 1,
+  "other": "other",
+  "kinds": [
+    {
+      "id": "ip",
+      "name": {
+        "en": "IP",
+        "zh": "IP"
+      },
+      "description": "One IP address. Not a service: an IP with a port and protocol is an asset.",
+      "display": [
+        "ip"
+      ],
+      "attrs": [
+        {
+          "name": "ip",
+          "type": "string",
+          "label": {
+            "en": "IP",
+            "zh": "IP"
+          }
+        },
+        {
+          "name": "country",
+          "type": "string",
+          "label": {
+            "en": "Country",
+            "zh": "国家"
+          }
+        },
+        {
+          "name": "org",
+          "type": "string",
+          "label": {
+            "en": "Organization",
+            "zh": "所属机构"
+          }
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "label": {
+            "en": "Note",
+            "zh": "说明"
+          }
+        }
+      ],
+      "keys": [
+        {
+          "name": "ip",
+          "normalizer": "ip",
+          "parts": [
+            "ip"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "domain",
+      "name": {
+        "en": "Domain",
+        "zh": "域名"
+      },
+      "description": "A registered or sub domain name, without scheme or path.",
+      "display": [
+        "domain"
+      ],
+      "attrs": [
+        {
+          "name": "domain",
+          "type": "string",
+          "label": {
+            "en": "Domain",
+            "zh": "域名"
+          }
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "label": {
+            "en": "Note",
+            "zh": "说明"
+          }
+        }
+      ],
+      "keys": [
+        {
+          "name": "domain",
+          "normalizer": "domain",
+          "parts": [
+            "domain"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "url",
+      "name": {
+        "en": "URL",
+        "zh": "URL"
+      },
+      "description": "One web page address. Use the most specific kind: a code repository address is a code repository, a network service is an asset.",
+      "display": [
+        "url"
+      ],
+      "attrs": [
+        {
+          "name": "url",
+          "type": "string",
+          "label": {
+            "en": "URL",
+            "zh": "地址"
+          },
+          "max": 2048
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "label": {
+            "en": "Title",
+            "zh": "标题"
+          }
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "label": {
+            "en": "Note",
+            "zh": "说明"
+          }
+        }
+      ],
+      "keys": [
+        {
+          "name": "url",
+          "normalizer": "url",
+          "parts": [
+            "url"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asset",
+      "name": {
+        "en": "Asset",
+        "zh": "资产"
+      },
+      "description": "One network service as FOFA sees it: IP, port, protocol and optional host together. Only IP and port are required; with only a domain or URL it is not yet an asset.",
+      "display": [
+        "host",
+        "{ip}:{port}"
+      ],
+      "attrs": [
+        {
+          "name": "ip",
+          "type": "string",
+          "label": {
+            "en": "IP",
+            "zh": "IP"
+          }
+        },
+        {
+          "name": "port",
+          "type": "int",
+          "label": {
+            "en": "Port",
+            "zh": "端口"
+          },
+          "min": 1,
+          "max_value": 65535
+        },
+        {
+          "name": "protocol",
+          "type": "string",
+          "label": {
+            "en": "Protocol",
+            "zh": "协议"
+          }
+        },
+        {
+          "name": "host",
+          "type": "string",
+          "label": {
+            "en": "Host",
+            "zh": "主机"
+          }
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "label": {
+            "en": "Title",
+            "zh": "标题"
+          }
+        },
+        {
+          "name": "country",
+          "type": "string",
+          "label": {
+            "en": "Country",
+            "zh": "国家"
+          }
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "label": {
+            "en": "Note",
+            "zh": "说明"
+          }
+        }
+      ],
+      "keys": [
+        {
+          "name": "asset",
+          "normalizer": "asset",
+          "parts": [
+            "ip",
+            "port",
+            "protocol",
+            "host"
+          ],
+          "required": [
+            "ip",
+            "port"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "app",
+      "name": {
+        "en": "Product or app",
+        "zh": "APP"
+      },
+      "description": "A product or component, as FOFA's product dimension. Matches by rule id or by product name.",
+      "display": [
+        "name",
+        "rule_id"
+      ],
+      "attrs": [
+        {
+          "name": "name",
+          "type": "string",
+          "label": {
+            "en": "Name",
+            "zh": "名称"
+          }
+        },
+        {
+          "name": "rule_id",
+          "type": "string",
+          "label": {
+            "en": "Rule ID",
+            "zh": "规则编号"
+          }
+        },
+        {
+          "name": "vendor",
+          "type": "string",
+          "label": {
+            "en": "Vendor",
+            "zh": "厂商"
+          }
+        },
+        {
+          "name": "version",
+          "type": "string",
+          "label": {
+            "en": "Version",
+            "zh": "版本"
+          }
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "label": {
+            "en": "Note",
+            "zh": "说明"
+          }
+        }
+      ],
+      "keys": [
+        {
+          "name": "rule_id",
+          "normalizer": "identifier",
+          "parts": [
+            "rule_id"
+          ]
+        },
+        {
+          "name": "name",
+          "normalizer": "text",
+          "parts": [
+            "name"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cert",
+      "name": {
+        "en": "Certificate",
+        "zh": "证书"
+      },
+      "description": "A TLS certificate, identified by serial number.",
+      "display": [
+        "subject",
+        "serial"
+      ],
+      "attrs": [
+        {
+          "name": "serial",
+          "type": "string",
+          "label": {
+            "en": "Serial",
+            "zh": "序列号"
+          }
+        },
+        {
+          "name": "subject",
+          "type": "string",
+          "label": {
+            "en": "Subject",
+            "zh": "主题"
+          }
+        },
+        {
+          "name": "issuer",
+          "type": "string",
+          "label": {
+            "en": "Issuer",
+            "zh": "颁发者"
+          }
+        },
+        {
+          "name": "not_after",
+          "type": "string",
+          "label": {
+            "en": "Expires",
+            "zh": "到期时间"
+          }
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "label": {
+            "en": "Note",
+            "zh": "说明"
+          }
+        }
+      ],
+      "keys": [
+        {
+          "name": "serial",
+          "normalizer": "identifier",
+          "parts": [
+            "serial"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "company",
+      "name": {
+        "en": "Company",
+        "zh": "公司"
+      },
+      "description": "An organization. Identified by registration number when known, otherwise by name.",
+      "display": [
+        "name",
+        "reg_no"
+      ],
+      "attrs": [
+        {
+          "name": "name",
+          "type": "string",
+          "label": {
+            "en": "Name",
+            "zh": "名称"
+          }
+        },
+        {
+          "name": "reg_no",
+          "type": "string",
+          "label": {
+            "en": "Registration number",
+            "zh": "注册号"
+          }
+        },
+        {
+          "name": "country",
+          "type": "string",
+          "label": {
+            "en": "Country",
+            "zh": "国家"
+          }
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "label": {
+            "en": "Note",
+            "zh": "说明"
+          }
+        }
+      ],
+      "keys": [
+        {
+          "name": "reg_no",
+          "normalizer": "identifier",
+          "parts": [
+            "reg_no"
+          ]
+        },
+        {
+          "name": "name",
+          "normalizer": "text",
+          "parts": [
+            "name"
+          ],
+          "only_without": [
+            "reg_no"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "icp",
+      "name": {
+        "en": "ICP filing",
+        "zh": "ICP 备案"
+      },
+      "description": "An ICP filing number.",
+      "display": [
+        "number"
+      ],
+      "attrs": [
+        {
+          "name": "number",
+          "type": "string",
+          "label": {
+            "en": "Number",
+            "zh": "备案号"
+          }
+        },
+        {
+          "name": "company",
+          "type": "string",
+          "label": {
+            "en": "Company",
+            "zh": "主办单位"
+          }
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "label": {
+            "en": "Note",
+            "zh": "说明"
+          }
+        }
+      ],
+      "keys": [
+        {
+          "name": "number",
+          "normalizer": "identifier",
+          "parts": [
+            "number"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "person",
+      "name": {
+        "en": "Person",
+        "zh": "人员"
+      },
+      "description": "A person. Email addresses and the name are attributes; matches by any email, or by name when there is none.",
+      "display": [
+        "name",
+        "email"
+      ],
+      "attrs": [
+        {
+          "name": "name",
+          "type": "string",
+          "label": {
+            "en": "Name",
+            "zh": "姓名"
+          }
+        },
+        {
+          "name": "email",
+          "type": "list",
+          "label": {
+            "en": "Email",
+            "zh": "邮箱"
+          }
+        },
+        {
+          "name": "role",
+          "type": "string",
+          "label": {
+            "en": "Role",
+            "zh": "职务"
+          }
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "label": {
+            "en": "Note",
+            "zh": "说明"
+          }
+        }
+      ],
+      "keys": [
+        {
+          "name": "email",
+          "normalizer": "email",
+          "parts": [
+            "email"
+          ]
+        },
+        {
+          "name": "name",
+          "normalizer": "text",
+          "parts": [
+            "name"
+          ],
+          "only_without": [
+            "email"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "address",
+      "name": {
+        "en": "Address",
+        "zh": "地址"
+      },
+      "description": "A physical address such as a registered or office address.",
+      "display": [
+        "address"
+      ],
+      "attrs": [
+        {
+          "name": "address",
+          "type": "string",
+          "label": {
+            "en": "Address",
+            "zh": "地址"
+          },
+          "max": 512
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "label": {
+            "en": "Note",
+            "zh": "说明"
+          }
+        }
+      ],
+      "keys": [
+        {
+          "name": "address",
+          "normalizer": "text",
+          "parts": [
+            "address"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "vuln",
+      "name": {
+        "en": "Vulnerability",
+        "zh": "漏洞"
+      },
+      "description": "A vulnerability. Identified by its number (such as a CVE id) when it has one, otherwise by title.",
+      "display": [
+        "number",
+        "title"
+      ],
+      "attrs": [
+        {
+          "name": "number",
+          "type": "string",
+          "label": {
+            "en": "Number",
+            "zh": "编号"
+          }
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "label": {
+            "en": "Title",
+            "zh": "标题"
+          }
+        },
+        {
+          "name": "severity",
+          "type": "string",
+          "label": {
+            "en": "Severity",
+            "zh": "严重程度"
+          }
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "label": {
+            "en": "Note",
+            "zh": "说明"
+          }
+        }
+      ],
+      "keys": [
+        {
+          "name": "number",
+          "normalizer": "identifier",
+          "parts": [
+            "number"
+          ]
+        },
+        {
+          "name": "title",
+          "normalizer": "text",
+          "parts": [
+            "title"
+          ],
+          "only_without": [
+            "number"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "repo",
+      "name": {
+        "en": "Code repository",
+        "zh": "代码仓库"
+      },
+      "description": "A git, svn or similar repository. Shown by its path (owner/name); the full address and the credential are attributes. Credentials embedded in an address move to the credential attribute.",
+      "display": [
+        "path",
+        "url"
+      ],
+      "attrs": [
+        {
+          "name": "path",
+          "type": "string",
+          "label": {
+            "en": "Path",
+            "zh": "路径"
+          }
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "label": {
+            "en": "Address",
+            "zh": "完整地址"
+          },
+          "max": 2048,
+          "strip_userinfo_to": "credential",
+          "derive_path_to": "path"
+        },
+        {
+          "name": "vcs",
+          "type": "string",
+          "label": {
+            "en": "VCS",
+            "zh": "版本控制"
+          }
+        },
+        {
+          "name": "credential",
+          "type": "string",
+          "label": {
+            "en": "Credential",
+            "zh": "凭证"
+          },
+          "secret": true
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "label": {
+            "en": "Note",
+            "zh": "说明"
+          }
+        }
+      ],
+      "keys": [
+        {
+          "name": "url",
+          "normalizer": "repo",
+          "parts": [
+            "url"
+          ]
+        },
+        {
+          "name": "path",
+          "normalizer": "repo_path",
+          "parts": [
+            "path"
+          ],
+          "only_without": [
+            "url"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fofa_query",
+      "name": {
+        "en": "FOFA query",
+        "zh": "FOFA 查询"
+      },
+      "description": "One FOFA query statement that was actually executed. Every revised statement is a new subject linked to the previous one; do not rewrite an old one.",
+      "display": [
+        "query"
+      ],
+      "attrs": [
+        {
+          "name": "query",
+          "type": "string",
+          "label": {
+            "en": "Query",
+            "zh": "查询语句"
+          },
+          "max": 2048
+        },
+        {
+          "name": "purpose",
+          "type": "text",
+          "label": {
+            "en": "Purpose",
+            "zh": "用途"
+          },
+          "max": 500
+        }
+      ],
+      "keys": [
+        {
+          "name": "query",
+          "normalizer": "query",
+          "parts": [
+            "query"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "other",
+      "name": {
+        "en": "Other",
+        "zh": "其他"
+      },
+      "description": "Only when no other kind fits.",
+      "display": [
+        "name"
+      ],
+      "attrs": [
+        {
+          "name": "name",
+          "type": "string",
+          "label": {
+            "en": "Name",
+            "zh": "名称"
+          }
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "label": {
+            "en": "Note",
+            "zh": "说明"
+          },
+          "max": 500
+        }
+      ],
+      "keys": [
+        {
+          "name": "name",
+          "normalizer": "text",
+          "parts": [
+            "name"
+          ]
+        }
+      ]
+    }
+  ]
+}

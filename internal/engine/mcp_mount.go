@@ -425,27 +425,19 @@ func (e *Engine) loadMCPMount(turnID string) (mcpMountRecord, bool) {
 }
 
 // republishWorkerSurface replaces the tools a registry already snapshotted at
-// construction. ConfigureWorkers is what list_worker_tools and new workers read.
+// construction. ConfigureWorkers is what new workers read.
 func (e *Engine) republishWorkerSurface(reg *swarm.Registry, toolset *tools.Set, pc *projectContext, turn *store.Turn) {
 	if e == nil || reg == nil {
 		return
 	}
 	e.wireWorkerSurface(reg, toolset, pc, turn)
-	e.wireNuwaRegistry(reg, toolset, pc, turn)
-	e.wireWorkLedgerRegistry(reg, toolset, turn)
+	e.wireWorkerModelRecovery(reg, turn)
+	e.wireGraphRegistry(reg, turn)
 	e.wireTaskPanelRegistry(reg, toolset, turn)
 	config := reg.WorkerConfiguration()
 	config.SubAgentTools = append([]tool.BaseTool(nil), reg.SubAgentTools...)
-	if reg.SelectableToolNames == nil {
-		config.SelectableToolNames = nil
-	} else {
-		config.SelectableToolNames = append([]string(nil), reg.SelectableToolNames...)
-	}
 	config.WorkerPreamble = reg.WorkerPreamble
-	config.SelectWorkerModel = reg.SelectWorkerModel
 	config.RestoreWorkerModel = reg.RestoreWorkerModel
-	config.VerifyAdmission = reg.VerifyAdmission
-	config.EnableDelegation = reg.EnableDelegation
 	reg.ConfigureWorkers(config)
 }
 

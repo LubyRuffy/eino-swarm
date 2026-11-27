@@ -205,7 +205,7 @@ func TestWorkerMiddlewaresKeepNilWorkerBehavior(t *testing.T) {
 			}
 			reg.ConfigureWorkers(config)
 			h := workerMiddlewareControl(t, reg, "spawn_agent", `{"role":"plain","task":"perform assigned work"}`)
-			waitDelegationDone(t, h)
+			waitWorkerDone(t, h)
 			if result, err, done := h.Result(); !done || err != nil || result != "complete:plain" {
 				t.Fatalf("ordinary completion changed: %q %v %v", result, err, done)
 			}
@@ -252,13 +252,13 @@ func TestWorkerMiddlewaresRetainTheirGenerationConfiguration(t *testing.T) {
 	first := workerMiddlewareRequestAt(t, requests)
 	reg.ConfigureWorkers(configuration("replacement", nil))
 	close(release)
-	waitDelegationDone(t, h)
+	waitWorkerDone(t, h)
 	assertWorkerMiddlewareRequests(t, []workerMiddlewareRequest{first, workerMiddlewareRequestAt(t, requests)}, "stream", "original", AgentIdentity{AgentID: h.ID, Role: "reader", Generation: 1}, true)
 	h = workerMiddlewareControl(t, reg, "resume_agent", fmt.Sprintf(`{"agent_id":%q,"task":"continue original work"}`, h.ID))
-	waitDelegationDone(t, h)
+	waitWorkerDone(t, h)
 	assertWorkerMiddlewareRequests(t, []workerMiddlewareRequest{workerMiddlewareRequestAt(t, requests), workerMiddlewareRequestAt(t, requests)}, "stream", "original", AgentIdentity{AgentID: h.ID, Role: "reader", Generation: 2}, true)
 	latest := workerMiddlewareControl(t, reg, "spawn_agent", `{"role":"latest","task":"perform new work"}`)
-	waitDelegationDone(t, latest)
+	waitWorkerDone(t, latest)
 	assertWorkerMiddlewareRequests(t, []workerMiddlewareRequest{workerMiddlewareRequestAt(t, requests), workerMiddlewareRequestAt(t, requests)}, "stream", "replacement", AgentIdentity{AgentID: latest.ID, Role: "latest", Generation: 1}, true)
 	for _, want := range []workerMiddlewareInvocation{
 		{factory: "original", identity: AgentIdentity{AgentID: h.ID, Role: "reader", Generation: 1}},
@@ -297,12 +297,12 @@ func TestWorkerMiddlewaresRestoreFromOriginalTag(t *testing.T) {
 		}
 		return original, nil
 	}
-	h, err := reg.Restore(t.Context(), RestoredWorker{ID: "reader-9", Role: "reader", Task: "restore assigned work", ConfigTag: original.Tag, ParentID: "parent-1", Generation: 7}, nil)
+	h, err := reg.Restore(t.Context(), RestoredWorker{ID: "reader-9", Role: "reader", Task: "restore assigned work", ConfigTag: original.Tag, Generation: 7}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitDelegationDone(t, h)
-	want := AgentIdentity{AgentID: h.ID, Role: "reader", ParentID: "parent-1", Generation: 7}
+	waitWorkerDone(t, h)
+	want := AgentIdentity{AgentID: h.ID, Role: "reader", Generation: 7}
 	assertWorkerMiddlewareRequests(t, []workerMiddlewareRequest{workerMiddlewareRequestAt(t, requests)}, "stream", "original", want, true)
 	if got := workerMiddlewareValueAt(t, factories, "restored factory identity"); got != (workerMiddlewareInvocation{factory: "original", identity: want}) || len(factories) != 0 {
 		t.Fatalf("restored factory identity=%+v want=%+v", got, want)

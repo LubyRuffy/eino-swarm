@@ -245,12 +245,10 @@ in this database: notes and skills are files, so a person can read and fix them
 | `system_prompt` | text | global description added to the manager's prompt on each project turn. The project editor and the project-bound manager tool can save it. |
 | `workdir` | text | the directory the user chose; empty means zwai manages one |
 | `memory_enabled` | bool | whether this project remembers anything. `memory.enabled` in the config can override it off, never on |
-| `nuwa_enabled` | bool | opt-in collaboration mode for subsequent turns; existing projects default off |
-| `nuwa_planner_provider_id`, `nuwa_planner_model` | text | manager model for later Nuwa turns. Both empty, together with the executor columns, means the project has not saved a pair |
-| `nuwa_executor_provider_id`, `nuwa_executor_model` | text | model for a new worker role. Closing Nuwa keeps the pair. A later edit does not retarget a turn that already copied it |
-| `nuwa_revision` | int64 | committed mode/shared-node/worker-view invalidation revision, independent of conversation seq |
 | `sort_rank` | int | sidebar drag order. `0` means never dragged: those rows interleave by `updated_at` with ranked rows |
 | `created_at`, `updated_at` | time | gorm-managed. `updated_at` is also bumped when a conversation in the project is used, so the default project list is last used, not created |
+
+Projects written before the Nuwa mode was removed may still carry its `nuwa_*` columns. The application neither reads nor writes them. See [Legacy tables and columns](#legacy-tables-and-columns).
 
 ## `project_distillations` — latest manual project review receipt (`C-054`)
 
@@ -260,76 +258,143 @@ Each admission replaces the previous receipt. Completion compares the same
 run ID and running state. The running owner lives in the engine. A saved
 running row without that owner indicates possible interruption. Deleting a
 project removes the row. Full database backups include the receipt unless a conversation in that project
-is omitted. Portable project bundles carry notes, Skills and knowledge files.
+is omitted. Portable project bundles carry notes and Skills.
 Their restore resets the latest receipt for the replaced project.
 
-## `project_wiki_builds` — independent wiki build receipt (`C-054`)
+## The work graph (`graph_*`)
 
-This per-project row keeps the source cursor, route and JSON receipt for a
-wiki build. It shares the frozen `project_distillation_sources` queue by
-review ID. The JSON receipt writes an explicit `wiki_review` boolean for new
-runs. An absent field retains the old model-review mode. The local cursor
-advances with the scan and the semantic cursor advances only with review.
-Full database backup, omitted conversations and project deletion
-follow the same receipt policy as manual reviews. The Markdown files hold
-node kind, category, verified observations and the number of observations
-already written to the article. This lets the document pass recover its
-position from the published files.
+One graph per **owner**: the project when the conversation is in one, otherwise
+the conversation. `owner_id` holds that project or conversation ID; it is frozen
+when a turn starts (`turns.project_id`), so moving a conversation never splits
+its record. Five tables hold it. The behavior (merge, identity keys, statuses,
+evidence, limits) is in [Work graph](GRAPH.md); this is the schema. Models:
+`internal/store/graph_models.go`; writes: `internal/store/graph_write.go`,
+`graph_todo.go`; reads: `graph_read.go`, `graph_digest.go`.
 
-## `nuwa_nodes` / `nuwa_revisions` — work records (`C-055`)
+Every row except `graph_subject_keys` records the conversation (`thread_id`),
+turn (`turn_id`), agent (`agent_id`) and worker generation that wrote it.
+Identity and origin stay fixed. Subjects and to-dos also carry
+`updated_thread_id`, `updated_turn_id`, `updated_by`, `updated_generation` for
+the last writer.
 
-`nuwa_nodes` stores task/fact/artifact records. It is separate from memory files
-and the conversation transcript. Each `nw_…` node contains scope, optional project ID, kind,
-title/summary/detail, status, `depends_on`, `dependency_versions`, event evidence
-references and optional workspace-relative `artifact_path`. Original
-`thread_id`, `turn_id`, `agent_id`, `generation` and creation time remain fixed;
-`updated_by`, `updated_thread_id`, `updated_turn_id`, `updated_generation`,
-`version` and update time identify the actual correction.
+### `graph_subjects`
 
-Scope is `thread` or `project`. Thread records have an empty project ID and
-follow the originating thread. Project records retain their project ID when a
-thread moves. Existing rows and missing legacy scope values read as project
-records. `threads.work_revision` advances the thread side of a work snapshot.
+| column | type | notes |
+|---|---|---|
+| `id` | text, PK | `sj_` + random hex |
+| `owner_id` | text, not null | project or conversation. Index `idx_graph_subject_owner` (`owner_id`, `updated_at`) |
+| `kind` | text, not null | a catalog kind (`frontend/src/graph/kinds.json`), up to 32 characters |
+| `name` | text | display name derived from the kind's `display` attributes |
+| `attrs` | JSON object | the subject's attributes. A kind's `secret` attributes are stored here but returned only to the model's by-id read; backups can strip them |
+| `status` | text, not null | `lead`, `confirmed` or `retracted` |
+| `evidence` | JSON array | event references (`thread_id`, `turn_id`, `seq`) or `http(s)` URLs; `confirmed` requires it |
+| `found_by_todo` | text, indexed | the to-do whose settlement first brought the subject in |
+| `version` | int64, not null | starts at 1; changing an attribute or status needs the current value |
+| `thread_id`, `turn_id`, `agent_id`, `generation` | | original author; never change |
+| `updated_*` | | last writer, see above |
+| `created_at`, `updated_at` | time | |
 
-A write transaction validates owner and cancellation, scope-appropriate evidence,
-and acyclic dependencies. It checks the expected node version, increments the
-applicable revision and saves the full version payload. The audit uniqueness
-key is (project, thread, revision), with the other owner column empty. The
-globally unique tool-call `request_key` and its argument `request_hash` control
-replay. Empty-node rows represent invalidation. Promotion verifies the private
-dependency closure and replaces its scope in one transaction, committing both
-revision domains and audit together.
+`credentials` on the Go struct is computed on read from the catalog and never
+stored.
 
-When a write supplies its own tool call IDs, the transaction resolves the
-caller's matching persisted results to existing event references. Manager
-receipts resolve within the current turn. Worker call and result rows carry an
-indexed `tool_receipt_scope` for the current execution. It is generated by the
-runtime, retained across manager turns and regenerated on worker recovery.
-The result's observation turn and thread sequence identify the saved evidence.
-The node keeps its original author turn. This metadata does not enter the
-event JSON. Older unscoped rows retain their original explicit event
-references.
+### `graph_subject_keys`
 
-Snapshots annotate missing dependencies, changed/superseded/retracted/cancelled source
-versions and unavailable events without inventing new stored conclusions.
-Omitted dependencies preserve their prior version stamps; explicit reviewed
-`depends_on` refreshes them. Thread/project deletion removes owned nodes and
-their audit history, retaining surviving nodes' unavailable references.
-Event evidence validates identity, not truth; artifact paths do not freeze file
-bytes. See `internal/store/nuwa.go` and [Work records](WORK.md).
+One row per identity key of a subject (`id` is an integer, PK). Unique index
+`idx_graph_key_identity` on (`owner_id`, `kind`, `key_name`, `value`) is what
+turns two writes about the same thing into one subject: `value` is the
+normalizer's output (up to 2200 bytes). `subject_id` points at the subject and
+is indexed. A key's value never changes; a different value is a different
+subject.
 
-## `nuwa_verify_slots` — one verify and one fix (`C-037`)
+### `graph_links`
 
-One row is one committed `verify` or `fix` of a `nuwa_nodes` id during a turn.
-`request_key` is the trusted tool-call identity (thread, turn, agent,
-generation, call id). `request_hash` binds that call to its intent and target.
-Replaying the same call and arguments adds no row. A second distinct call for
-the same turn, target and intent is refused before insert. A unique
-turn/target/intent index keeps the allowance at one even if two writes overlap.
-Deleting the thread, deleting the project, or rewinding the owning turn removes
-these rows. An earlier turn's rows stay, so restart does not reset the
-allowance. The table is not a chat event and not a Settings value. See
-`internal/store/nuwa_verify.go`.
+| column | type | notes |
+|---|---|---|
+| `id` | text, PK | `lk_` + random hex |
+| `owner_id`, `from_id`, `to_id`, `rel` | text, not null | unique index `idx_graph_link_identity` over all four, so repeating a link merges. `to_id` is also indexed. `rel` is at most 64 characters |
+| `attrs` | JSON object | optional, at most 16 entries of 2048 bytes |
+| `evidence` | JSON array | as for subjects |
+| `found_by_todo` | text, indexed | |
+| `thread_id`, `turn_id`, `agent_id`, `generation`, `created_at` | | author. Links are not updated in place |
+
+### `graph_todos`
+
+An ordered list; not nodes of the graph.
+
+| column | type | notes |
+|---|---|---|
+| `id` | text, PK | `td_` + random hex |
+| `owner_id` | text, not null | index `idx_graph_todo_owner` (`owner_id`, `position`) |
+| `title` | text, not null | at most 300 characters (column 1200 bytes) |
+| `about` | text, indexed | optional subject ID the to-do is about |
+| `status` | text, not null | `open`, `doing`, `done`, `failed` |
+| `result` | text | required for `failed`; at most 4000 characters |
+| `evidence` | JSON array | `done` requires it |
+| `position` | int, not null | priority: dense, zero-based, owned by the list; a write places an item with `before` |
+| `version` | int64, not null | |
+| `settled_at` | time, nullable | set when the to-do became `done` or `failed` |
+| `thread_id`, `turn_id`, `agent_id`, `generation`, `updated_*`, `created_at`, `updated_at` | | as above |
+
+A subject's analysis state (unanalysed, pending, running, settled) is not
+stored; the front end derives it from these to-dos.
+
+### `graph_revisions`
+
+One row per committed batch. `revision` counts batches per owner, so a client
+asks whether anything changed with one integer. Unique index `idx_graph_revision`
+on (`owner_id`, `revision`).
+
+| column | type | notes |
+|---|---|---|
+| `id` | integer, PK | |
+| `owner_id`, `revision` | | see above |
+| `request_key` | text, nullable, unique | the trusted tool-call identity; absent for writes without a receipt |
+| `request_hash` | text | binds the call to its exact body; the same call id with a different body is refused, the same body returns the original receipt |
+| `payload` | text | the committed result (frozen receipt) as JSON |
+| `thread_id` | text, indexed | the conversation that committed the batch, so omitting it from a backup can drop its batches from a shared graph |
+| `created_at` | time | |
+
+### Lifecycle
+
+- **Atomicity.** A batch is one transaction; a refused batch writes nothing and
+  advances no revision.
+- **Delete a conversation** removes the graph that conversation owns (rows with
+  `owner_id` = its ID). Rows it wrote into its project's graph stay, with their
+  evidence reading as unavailable.
+- **Delete a project** removes the project's graph and the graphs owned by its
+  conversations.
+- **Backup.** A full or project backup carries the graph tables. A backup that
+  omits conversations removes what they wrote (all of a graph they own; only the
+  rows and batches they wrote in a shared project graph, plus links and keys
+  that pointed at a removed subject). A credential-free backup, and every
+  project bundle, strips `secret` attributes using the catalog. Archives written
+  before the graph have none of these tables and still restore.
+- **Evidence** is validated for identity at write time, never for truth. An
+  event that later disappears (a rewind, for example) reads as unavailable.
+- **Turn flags.** `turns.work_ledger` and `turns.work_ledger_read_only` are the
+  frozen switches (see [`turns`](#turns--one-request-and-everything-done-to-answer-it)).
+
+## Legacy tables and columns
+
+The Nuwa mode, the work-record ledger and the project knowledge base were
+replaced by the work graph. Their data is not imported or shown, and nothing
+creates their tables. Existing databases keep them on disk:
+
+| legacy | what it held |
+|---|---|
+| tables `nuwa_nodes`, `nuwa_revisions`, `nuwa_verify_slots` | work records, their audit history and the verify/fix allowance |
+| tables `project_wiki_builds`, `wiki_source_scans` | the wiki graph build receipt and its scan cache (the triggers on `events` that fed the scan cache are dropped when the database opens) |
+| columns `projects.nuwa_*`, `threads.work_revision`, `turns.nuwa_executor_*`, `turns.nuwa_read_only` | mode, model pair and revision counters; unmodeled and never read |
+| column `turns.nuwa_enabled` | still read, only to recognise a turn started in Nuwa mode before the upgrade. Such a turn ends with "the Nuwa mode was removed; this turn cannot be continued or retried" instead of resuming as an ordinary turn (`internal/engine/nuwa_removed.go`) |
+
+Rows in the legacy tables are deleted with their conversation or project
+(`internal/store/legacy_rows.go`, tolerating a missing table). Backups carry
+them when present, and omitting a conversation removes its rows from the
+thread-keyed tables.
+
+Project knowledge files under `projects/<id>/knowledge/` are no longer read.
+They stay in the project directory, so a backup of that directory still carries
+them and deleting the project removes them with it.
 
 ## `threads` — one conversation
 
@@ -556,7 +621,7 @@ The `id` is the handle the whole troubleshooting story hangs off: the UI shows i
 |---|---|
 | `id` | `tn_` + hex |
 | `thread_id` | |
-| `project_id` | project/workspace owner captured at turn creation for tagged worker and Nuwa turn restoration. An explicit empty string records a standalone conversation |
+| `project_id` | project/workspace owner captured at turn creation for tagged worker restoration and as the frozen graph owner. An explicit empty string records a standalone conversation |
 | `seq` | per-conversation turn number |
 | `status` | `running`, `done`, `error`, `cancelled` |
 | `user_text` | what was asked. On `goal_continue` / `schedule_continue` this is the protocol prompt the model saw, not a human send |
@@ -566,10 +631,8 @@ The `id` is the handle the whole troubleshooting story hangs off: the UI shows i
 | `provider_id`, `model` | what actually ran, not what is configured now — settings change. An official-source turn stores the alias `account` here even when the conversation row still names an own provider |
 | `reasoning_effort` | the thinking level this turn ran with, so a trace shows what produced the answer |
 | `web_execution` | captured Web-tool preference at turn start; restoration and parked workers use it before later conversation/global settings. Old rows remain empty and use the current inherited policy |
-| `nuwa_enabled` | collaboration mode captured at turn start; later project edits do not change this turn or its workers |
-| `nuwa_executor_provider_id`, `nuwa_executor_model` | executor copied from the project at turn start. Empty means the project had not saved a pair. In-flight workers keep the binding recorded for their role |
-| `nuwa_read_only` | planning's read-only Nuwa surface retained through recovery |
-| `work_ledger`, `work_ledger_read_only` | work tools and planning mode frozen when the turn starts. Legacy Nuwa rows also enable work tools through their saved Nuwa flag |
+| `nuwa_enabled` | legacy: set only by turns the removed Nuwa mode started. Nothing writes it now; recovery reads it to end such a turn with "the Nuwa mode was removed" instead of resuming it |
+| `work_ledger`, `work_ledger_read_only` | whether this turn had the graph tools (`swarm.graph` on when it started) and whether planning limited them to reading, frozen for recovery. The columns keep the names they had when the same flags froze the removed work tools; the Go fields are `GraphTools` / `GraphReadOnly` and the JSON is `graph_tools` / `graph_read_only`. An interrupted turn with the flag recovers with the graph tools |
 | `goal_continue` | true when the runtime started this turn to keep pursuing an open `/goal`. The timeline records `goal_continued`, not `user_message` |
 | `schedule_run_id` | set when this turn is a scheduled fire; empty for every other origin. Trace joins the run through it |
 | `quiet` | true when a scheduled turn had nothing to report. The row stays for `zwai trace`; the transcript hides the bubbles |
@@ -942,9 +1005,6 @@ $ZWAI_HOME (default ~/.zwai-swarm)/
         ├── workspace/         only when the project has no workdir of its own
         ├── installed-skills/  external packages, by manifest name
         │   └── <skill-name>/  original SKILL.md and package resources
-        ├── knowledge/
-        │   ├── schema.yaml    presence enables the project wiki
-        │   └── pages/<type-dir>/<page-id>.md
         └── memory/
             ├── MEMORY.md      notes, one per blank-line-separated paragraph
             └── skills/
@@ -961,13 +1021,6 @@ while conversations are still running can omit those conversations and their
 `omitted_threads`. The live rows and files stay. A symbolic link inside a
 copied tree is left out of the archive and is not followed; the manifest
 counts those links in `skipped_symlinks`. See `C-044`.
-
-The knowledge library has no SQLite tables or project flags. Each page's front
-matter contains a stable ID, type and title, plus optional aliases, typed fields,
-outgoing links, an as-of date and sources. Engine writes stamp the update time,
-conversation and turn. A historical source stores its kind, conversation,
-sequence, original time, classification and durable record identity when
-available. Backlinks, unresolved links, navigation trees and lint are derived.
 
 `engine.lock` is an `flock` held by the one process that may open
 `zwai.db`. `engine.json` is rewritten atomically when that process starts
@@ -1154,11 +1207,11 @@ not wipe `label`.
   whose `thread_id` is one of those conversations, and standalone schedules
   pinned to that `project_id`, are cancelled in the same transaction. Then the
   project row, then the directories zwai created for it — its managed workspace
-  and its memory and knowledge files. A `workdir` the user supplied is never touched.
+  and its memory files. A `workdir` the user supplied is never touched.
 - **Nothing is pruned automatically.** Events are the only table that grows fast;
   if a database ever gets uncomfortable, delete old conversations.
 - **Backup** is copying `~/.zwai-swarm` while the app is not running. The
-  workspaces and the projects' memory and knowledge are files, so a backup that skips them
+  workspaces and the projects' memory are files, so a backup that skips them
   loses agent output and everything the projects learned.
 
 ## Reading it directly
@@ -1225,19 +1278,17 @@ checkpoint／roster 按 legacy 已结束兼容，不追加追溯收取义务；�
 收取，新 `generation>0` 保留精确状态。冷回放只从同 manager 配对工具回执恢复，
 不能凭旧 ID 或正文推断收取；人工 Continue 暂停仍由同一 checkpoint 保存。
 
-Nuwa workers additionally preserve `parent_id`, `config_tag`,
-`delegation_enabled` and `model_binding` in running and finished checkpoints.
-`worker_tool_names` stores a worker's explicit tool selection in its spawned
-event and checkpoint. An empty array preserves a selection of zero workspace
-tools. Older rows without the field keep their previous restore semantics.
-The binding stores concrete provider/model/reasoning and an optional source ref,
-never credentials. The host configuration tag identifies the original turn;
-restoration validates conversation/project ownership and rebuilds its saved
-mode/tool surface. Missing/invalid tagged configuration or concrete binding
-refuses before a new generation is claimed. Legacy absent tags/bindings retain
-the explicit old compatibility path. Tool implementations and private credentials
-are not serialized. Subtree close receipts include exact affected generations
-for cold replay; late finish events cannot settle a newer invocation.
+Tagged workers additionally preserve `config_tag` and `model_binding` in
+running and finished checkpoints. The binding stores concrete
+provider/model/reasoning and an optional source ref, never credentials. The host
+configuration tag identifies the original turn; restoration validates
+conversation/project ownership and rebuilds its saved tool surface.
+Missing/invalid tagged configuration or concrete binding refuses before a new
+generation is claimed. Legacy absent tags/bindings retain the explicit old
+compatibility path. Checkpoints written by an earlier version may still hold
+`parent_id`, `delegation_enabled` and `worker_tool_names` (worker delegation and
+tool selection were removed); restoration ignores those fields. Tool
+implementations and private credentials are not serialized.
 
 The latest valid checkpoint supplies recovery state; confirmed lifecycle
 events remain authoritative for subsequent completed work. Summaries are

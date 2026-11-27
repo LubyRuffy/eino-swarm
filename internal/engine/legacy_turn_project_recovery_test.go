@@ -73,7 +73,7 @@ func ownershipRecoveryTurn(t *testing.T, e *Engine, projectID string, nuwa, lega
 	turn := &store.Turn{
 		ThreadID: thread.ID, ProjectID: projectID, UserText: recoveryWorkerTask,
 		ProviderID: recoveryProjectProvider, Model: recoveryProjectModel,
-		NuwaEnabled: nuwa, NuwaReadOnly: nuwa,
+		NuwaEnabled: nuwa,
 	}
 	if err := e.store.CreateTurn(turn); err != nil {
 		t.Fatal(err)
@@ -254,8 +254,13 @@ func TestLegacyProjectWorkerRestoresBeforeAndAfterCheckpointGainsTag(t *testing.
 	}
 }
 
-func TestNuwaResumeRestoresLegacyProjectOwnerAndPlanningTools(t *testing.T) {
+// A turn the upgrade finds still running in the removed Nuwa mode cannot be
+// continued as an ordinary turn: its planner/executor split no longer exists.
+// It ends with that cause on the real startup path, the model is never asked,
+// and an ordinary conversation restored in the same startup is unaffected.
+func TestRestartEndsAnOrphanedNuwaTurnWithAClearCause(t *testing.T) {
 	var calls atomic.Int32
+	var thread *store.Thread
 	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request scheduleCompletionRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -267,37 +272,43 @@ func TestNuwaResumeRestoresLegacyProjectOwnerAndPlanningTools(t *testing.T) {
 			return
 		}
 		calls.Add(1)
-		names := ownershipToolNames(request)
-		if !slices.Contains(names, "read_work") || !slices.Contains(names, "list_models") ||
-			slices.Contains(names, "record_work") || slices.Contains(names, "exec") {
-			t.Errorf("legacy Nuwa manager lost its planning-only surface: %v", names)
-		}
-		writeContextFlowReply(w, request.Stream, map[string]any{"content": "Ready for review."}, "stop")
+		writeContextFlowReply(w, request.Stream, map[string]any{"content": "Ordinary turn resumed."}, "stop")
 	}))
 	t.Cleanup(endpoint.Close)
 	cfg := ownershipRecoveryConfig(t, endpoint.URL)
 	old, closeOld := openOwnershipRecoveryEngine(t, cfg)
-	project, err := old.CreateProject("Original Nuwa owner", "", "", false, true)
+	project, err := old.CreateProject("Original owner", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	thread, turn := ownershipRecoveryTurn(t, old, project.ID, true, true)
-	if err := old.store.AppendMessages(thread.ID, turn.ID, []store.Message{{Role: "user", Content: recoveryWorkerTask}}); err != nil {
+	thread, nuwaTurn := ownershipRecoveryTurn(t, old, project.ID, true, true)
+	if err := old.store.AppendMessages(thread.ID, nuwaTurn.ID, []store.Message{{Role: "user", Content: recoveryWorkerTask}}); err != nil {
+		t.Fatal(err)
+	}
+	ordinaryThread, ordinaryTurn := ownershipRecoveryTurn(t, old, project.ID, false, false)
+	if err := old.store.AppendMessages(ordinaryThread.ID, ordinaryTurn.ID, []store.Message{{Role: "user", Content: recoveryWorkerTask}}); err != nil {
 		t.Fatal(err)
 	}
 	closeOld()
 	next, _ := openOwnershipRecoveryEngine(t, cfg)
 	if err := next.Restore(t.Context(), nil); err != nil {
-		t.Fatalf("startup refused legacy Nuwa turn in its original project: %v", err)
-	}
-	if got := waitForTurn(t, next, turn.ID); got.Status != store.TurnDone || got.ProjectID != project.ID || calls.Load() != 1 {
-		t.Fatalf("Nuwa recovery did not finish in the original project: %+v calls=%d", got, calls.Load())
+		t.Fatalf("a removed mode must not fail startup: %v", err)
 	}
 	waitSettled(t, next, thread.ID)
+	got, err := next.store.GetTurn(nuwaTurn.ID)
+	if err != nil || got.Status != store.TurnError || !strings.Contains(got.Error, "Nuwa mode was removed") {
+		t.Fatalf("orphaned Nuwa turn was not ended with its cause: %+v err=%v", got, err)
+	}
+	if done := waitForTurn(t, next, ordinaryTurn.ID); done.Status != store.TurnDone || calls.Load() != 1 {
+		t.Fatalf("ordinary conversation was disturbed: %+v calls=%d", done, calls.Load())
+	}
+	if _, err := next.RetryFailedTurn(thread.ID, nuwaTurn.ID); err == nil || !errors.Is(err, errNuwaModeRemoved) {
+		t.Fatalf("retry of a removed mode was not refused: %v", err)
+	}
 }
 
 func TestProjectMovesRefuseRecordedOwnershipBeforeRestoreClaim(t *testing.T) {
-	for _, mode := range []string{"parked worker", "running turn with worker", "running Nuwa turn"} {
+	for _, mode := range []string{"parked worker", "running turn with worker"} {
 		for _, fromProject := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s/from-project=%t", mode, fromProject), func(t *testing.T) {
 				var calls atomic.Int32
@@ -308,11 +319,11 @@ func TestProjectMovesRefuseRecordedOwnershipBeforeRestoreClaim(t *testing.T) {
 				t.Cleanup(endpoint.Close)
 				cfg := ownershipRecoveryConfig(t, endpoint.URL)
 				old, closeOld := openOwnershipRecoveryEngine(t, cfg)
-				projectA, err := old.CreateProject("Project A", "", "", false, true)
+				projectA, err := old.CreateProject("Project A", "", "", false)
 				if err != nil {
 					t.Fatal(err)
 				}
-				projectB, err := old.CreateProject("Project B", "", "", false, true)
+				projectB, err := old.CreateProject("Project B", "", "", false)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -320,7 +331,7 @@ func TestProjectMovesRefuseRecordedOwnershipBeforeRestoreClaim(t *testing.T) {
 				if fromProject {
 					origin = projectA.ID
 				}
-				thread, turn := ownershipRecoveryTurn(t, old, origin, mode == "running Nuwa turn", false)
+				thread, turn := ownershipRecoveryTurn(t, old, origin, false, false)
 				switch mode {
 				case "parked worker":
 					parkOwnershipRecoveryWorker(t, old, turn, turn.ID)

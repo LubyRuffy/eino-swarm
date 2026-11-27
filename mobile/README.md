@@ -79,10 +79,8 @@ settings remain visible.
 
 After connecting to a PC, open **Menu → Manage projects**, or **Manage projects**
 from New conversation. Create or edit the PC's project name, shared instruction,
-existing PC working directory (blank uses a managed directory), project memory,
-and Nuwa collaboration mode. Nuwa's planner and executor selectors use that PC's
-ready model catalog and save the pair together. Closing Nuwa retains the pair;
-settings apply to subsequent tasks, while running workers retain their model.
+existing PC working directory (blank uses a managed directory) and project memory.
+Settings apply to subsequent tasks, while running workers retain their model.
 
 In a paired conversation, **Files** opens the task's **Results** first. Its
 working files and uploads are separate. **Project folder** is a read-only
@@ -95,11 +93,15 @@ This requires a PC version supporting the project RPCs; older PCs show an update
 message. No project settings are stored in the phone's direct-model Chat scope.
 Recent desktop/mobile differences are tracked in [the parity audit](../docs/MOBILE_DESKTOP_PARITY.md).
 
-Tap the book icon beside a project or in one of its conversations to browse
-**Knowledge** on the paired PC. Search and open Markdown pages, follow links and
-related pages, and expand verified source excerpts. Tap an available history
-source to open its original conversation. The PC hosts the library and handles
-edits and distillation.
+In a paired conversation, **Work records** shows what the agents found as the
+same graph the desktop panel draws, with their ordered to-dos below. Tap a to-do
+to mark what it touched, or a subject to filter the list. It is read-only. The
+phone has no event stream: it polls the PC with the revision it holds, every
+3 seconds while the task runs and every 10 seconds otherwise, so an unchanged
+graph costs one small frame, and a failed poll keeps the picture on screen. A
+graph too large for one frame is refused with a message; open it on the desktop.
+The entry is hidden when the PC has work records switched off or is too old to
+serve them. Credential values never reach the phone.
 
 Paired PC conversations can show the same task panels as desktop. A matching
 panel opens once, and **Task panels** in the conversation header reopens it.

@@ -171,7 +171,7 @@ func rankRecallSkills(skills []memory.SkillInfo, query string) []memory.SkillInf
 }
 
 // Terms preserve whole Unicode words and overlapping CJK bigrams, following
-// the project's current Nuwa recall tokenizer without importing engine state.
+// the project's current recall tokenizer without importing engine state.
 func recallTerms(text string) map[string]struct{} {
 	terms := make(map[string]struct{})
 	var word, cjk []rune

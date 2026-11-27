@@ -110,6 +110,11 @@ func (e *Engine) resumeOrphanedTurn(ctx context.Context, t store.Turn, snapshot 
 			Err: err.Error(),
 		})
 		e.blockOpenGoalOnTurnError(t.ThreadID)
+		if errors.Is(err, errNuwaModeRemoved) {
+			// The turn is concluded with its cause recorded; startup has
+			// nothing left to report as a failed restoration.
+			return 0, nil
+		}
 		return 0, err
 	}
 	return 1, nil
@@ -154,10 +159,8 @@ func (e *Engine) resumeTurn(restoreCtx context.Context, turn *store.Turn, snapsh
 	if err != nil {
 		return err
 	}
-	if turn.NuwaEnabled {
-		if err := validateTurnProjectOwner(turn, th); err != nil {
-			return fmt.Errorf("cannot resume Nuwa turn after its %w", err)
-		}
+	if err := rejectRemovedNuwa(turn); err != nil {
+		return err
 	}
 	if turn.ScheduleContinue && strings.TrimSpace(th.Goal) != "" {
 		if err := e.bindScheduledTurn(turn); err != nil {
@@ -171,15 +174,15 @@ func (e *Engine) resumeTurn(restoreCtx context.Context, turn *store.Turn, snapsh
 	if err != nil {
 		return err
 	}
-	pc, err := e.projectContextFor(th, turn)
+	pc, err := e.projectContextFor(th)
 	if err != nil {
 		return err
 	}
-	toolset, err := e.conversationToolsForExecution(restoreCtx, th, e.turnWebExecution(th, turn), turn.NuwaReadOnly, pc.hasKnowledge())
+	toolset, err := e.conversationToolsForExecution(restoreCtx, th, e.turnWebExecution(th, turn))
 	if err != nil {
 		return err
 	}
-	if th.PlanMode || turn.NuwaReadOnly {
+	if th.PlanMode {
 		toolset = tools.ExploreOnly(toolset)
 	}
 

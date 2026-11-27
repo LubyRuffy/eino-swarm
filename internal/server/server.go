@@ -16,6 +16,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/backup"
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
+	"github.com/LubyRuffy/eino-swarm/internal/graph"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/remote"
 	"github.com/LubyRuffy/eino-swarm/internal/search"
@@ -151,9 +152,7 @@ func New(opts Options) (*Server, error) {
 		api.POST("/projects", s.createProject)
 		api.PUT("/projects/reorder", s.reorderProjects)
 		api.GET("/projects/:id", s.getProject)
-		api.GET("/projects/:id/nuwa", s.getNuwa)
-		api.GET("/projects/:id/nuwa/events", s.streamNuwa)
-		s.registerProjectKnowledge(api)
+		api.GET("/projects/:id/graph", s.getProjectGraph)
 		api.GET("/projects/:id/distill", s.getProjectDistillation)
 		api.POST("/projects/:id/distill", s.startProjectDistillation)
 		api.PATCH("/projects/:id", s.patchProject)
@@ -186,11 +185,9 @@ func New(opts Options) (*Server, error) {
 		api.POST("/threads/:id/worker-model-recovery", s.recoverWorkerModels)
 		api.DELETE("/threads/:id", s.deleteThread)
 
+		api.GET("/threads/:id/graph", s.getThreadGraph)
+		api.GET("/graph/kinds", s.getGraphKinds)
 		api.GET("/threads/:id/events", s.streamEvents)
-		api.GET("/threads/:id/work", s.getThreadWork)
-		api.GET("/threads/:id/work/events", s.streamThreadWork)
-		api.POST("/threads/:id/work/promote", s.promoteThreadWork)
-		api.POST("/threads/:id/work/distill", s.distillThreadWork)
 		api.GET("/threads/:id/log", s.listLog)
 		api.GET("/threads/:id/agents/:agent/log", s.listAgentLog)
 		api.POST("/threads/:id/turns", s.startTurn)
@@ -321,10 +318,6 @@ func (s *Server) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "file_root_changed"})
 	case errors.Is(err, engine.ErrRestoring):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "restoring"})
-	case errors.Is(err, store.ErrNuwaConflict):
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "work_conflict"})
-	case errors.Is(err, store.ErrInvalidNuwaNode):
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "work_invalid"})
 	case errors.Is(err, store.ErrDraftConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "draft_conflict"})
 	case errors.Is(err, store.ErrInvalidDraft):
@@ -394,12 +387,14 @@ func (s *Server) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "ask_mismatch"})
 	case errors.Is(err, engine.ErrNothingToCompact):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "nothing_to_compact"})
-	case errors.Is(err, engine.ErrNuwaModelUnavailable), errors.Is(err, engine.ErrNuwaModelInvalid):
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "nuwa_model"})
 	case errors.Is(err, engine.ErrInvalidWorkdir):
 		// Its own code so the project dialog can put the message under the
 		// working directory field instead of somewhere the user has to hunt.
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "workdir"})
+	case errors.Is(err, graph.ErrConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "graph_conflict"})
+	case errors.Is(err, graph.ErrInvalid):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "graph_invalid"})
 	case errors.Is(err, store.ErrInvalidReorder):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, store.ErrInvalidCompletionSeq):

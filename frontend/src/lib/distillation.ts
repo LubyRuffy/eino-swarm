@@ -8,9 +8,7 @@ export type DistillErrorCode = "evidence" | "first_byte_timeout" | "idle_timeout
 export type DistillRequest = {
   scope: DistillScope
   thread_id?: string
-  enable_knowledge?: boolean
   full_text?: boolean
-  wiki_review?: boolean
 } | { pause_review_id: string } | { resume_review_id: string }
 
 export interface DistillResult {
@@ -18,15 +16,6 @@ export interface DistillResult {
   review_id?: string
   scope?: DistillScope
   full_text?: boolean
-  wiki_graph?: boolean
-  wiki_review?: boolean
-  wiki_phase?: "scan" | "graph" | "documents"
-  wiki_scan_processed?: number
-  wiki_scan_skipped?: number
-  wiki_scan_deferred?: number
-  wiki_scan_complete?: boolean
-  wiki_documents?: number
-  wiki_documented?: number
   thread_id?: string
   turn_id?: string
   progress?: {
@@ -39,22 +28,19 @@ export interface DistillResult {
   }
   history_omitted?: boolean
   memory_enabled?: boolean
-  knowledge_enabled?: boolean
   changes?: MemoryChange[]
-  knowledge?: { action: "write_page" | "append_schema"; id?: string; title?: string; revision: string }[]
   error?: string
   error_code?: DistillErrorCode
   error_provider_id?: string
   uncertain?: boolean
 }
 
-export function distillationPath(projectId: string, wikiGraph = false): string {
-  return `/api/projects/${encodeURIComponent(projectId)}/distill${wikiGraph ? "?wiki_graph=true" : ""}`
+export function distillationPath(projectId: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/distill`
 }
 
 export function hasPendingDistillation(result?: DistillResult): boolean {
-  return (result?.progress?.remaining ?? 0) > 0 ||
-    Boolean(result?.wiki_graph && result.progress && result.state !== "completed")
+  return (result?.progress?.remaining ?? 0) > 0
 }
 
 export function isActiveDistillation(state?: DistillState): boolean {

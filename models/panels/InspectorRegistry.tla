@@ -13,7 +13,6 @@ CONSTANTS
     IgnoreSupersededSignal,
     AcceptDeletedSignal,
     ReplayStealsFocus,
-    RequireNuwaMode,
     WorkStealsFocus
 
 NoOwner == "none"
@@ -22,7 +21,7 @@ Projects == {"P", "Q"}
 ThreadKeys == Threads \cup {NoOwner, "standalone"}
 ProjectKeys == Projects \cup {NoOwner}
 PanelIDs == {"one", "two"}
-Tabs == {"agents", "nuwa", "task"}
+Tabs == {"agents", "work", "task"}
 
 ProjectOf(thread) ==
     CASE thread = "A" -> "P" [] thread = "B" -> "Q" [] OTHER -> NoOwner
@@ -57,8 +56,8 @@ Init ==
 BoundProject ==
     IF BorrowSidebarProject /\ ProjectOf(view.thread) = NoOwner
     THEN view.sidebar ELSE ExpectedProject(view.thread, view.sidebar)
-NuwaAvailable ==
-    \/ view.thread # NoOwner /\ ~RequireNuwaMode
+WorkAvailable ==
+    \/ view.thread # NoOwner
     \/ BoundProject # NoOwner /\
        (view.mode = "enabled" \/ (view.mode = "history" /\ ~ForgetHistory))
 TaskAvailable ==
@@ -66,10 +65,10 @@ TaskAvailable ==
     /\ IF IgnoreThreadScope THEN view.rows # {}
        ELSE view.store = view.thread /\ \E row \in view.rows : RowThread(row) = view.thread
 Available ==
-    {"agents"} \cup (IF NuwaAvailable THEN {"nuwa"} ELSE {})
+    {"agents"} \cup (IF WorkAvailable THEN {"work"} ELSE {})
                \cup (IF TaskAvailable THEN {"task"} ELSE {})
 Displayed ==
-    IF WorkStealsFocus /\ view.thread # NoOwner /\ NuwaAvailable THEN "nuwa"
+    IF WorkStealsFocus /\ view.thread # NoOwner /\ WorkAvailable THEN "work"
     ELSE IF BlankFallback \/ view.wanted \in Available THEN view.wanted ELSE "agents"
 MountTask == TaskAvailable /\ (Displayed = "task" \/ ~UnmountHiddenFrame)
 MountedRows ==
@@ -77,7 +76,7 @@ MountedRows ==
     ELSE IF ExposeForeignTaskRows THEN view.rows
     ELSE {row \in view.rows : RowThread(row) = view.thread}
 StatusVisible ==
-    Displayed = "nuwa" /\ view.statusOwner # NoOwner /\
+    Displayed = "work" /\ view.statusOwner # NoOwner /\
     (ExposeForeignProjectStatus \/ view.statusOwner = BoundProject)
 
 (* The store's deduplication is per thread and instance. There is at most one
@@ -157,7 +156,7 @@ TypeOK ==
        latest: BOOLEAN, present: BOOLEAN, replay: BOOLEAN], step: 0..6]
 
 ProjectScopeCorrect ==
-    branch = "render" /\ NuwaAvailable => BoundProject = ExpectedProject(view.thread, view.sidebar)
+    branch = "render" /\ WorkAvailable => BoundProject = ExpectedProject(view.thread, view.sidebar)
 ThreadScopeCorrect ==
     branch = "render" /\ TaskAvailable =>
     view.store = view.thread /\ (\E row \in view.rows : RowThread(row) = view.thread)
@@ -165,8 +164,7 @@ EveryMountedRowIsOwned ==
     branch = "render" => \A row \in MountedRows : RowThread(row) = view.thread
 HistoryRemainsVisible ==
     branch = "render" /\ view.thread = NoOwner /\ BoundProject # NoOwner
-    /\ view.mode = "history" => NuwaAvailable
-OpenConversationHasWork == branch = "render" /\ view.thread # NoOwner => NuwaAvailable
+    /\ view.mode = "history" => WorkAvailable
 WorkAvailabilityKeepsFocus ==
     branch = "render" /\ view.wanted \in Available => Displayed = view.wanted
 FallbackSelectsAvailable == branch = "render" => Displayed \in Available
@@ -179,12 +177,12 @@ AutoOpenRequiresPresentInstance == focus.receipt.opened => focus.receipt.present
 ReplayDoesNotOpen == focus.receipt.opened => ~focus.receipt.replay
 
 NeverStandaloneWork ==
-    ~(branch = "render" /\ view.thread = "standalone" /\ NuwaAvailable
+    ~(branch = "render" /\ view.thread = "standalone" /\ WorkAvailable
       /\ view.wanted = "agents" /\ Displayed = "agents")
-NeverBothAvailable == ~(branch = "render" /\ NuwaAvailable /\ TaskAvailable)
-NeverHistorySelected == ~(branch = "render" /\ view.thread = NoOwner /\ view.mode = "history" /\ Displayed = "nuwa")
+NeverBothAvailable == ~(branch = "render" /\ WorkAvailable /\ TaskAvailable)
+NeverHistorySelected == ~(branch = "render" /\ view.thread = NoOwner /\ view.mode = "history" /\ Displayed = "work")
 NeverSafeFallback == ~(branch = "render" /\ view.wanted = "task" /\ Displayed = "agents")
-NeverHiddenIframe == ~(branch = "render" /\ Displayed = "nuwa" /\ MountTask)
+NeverHiddenIframe == ~(branch = "render" /\ Displayed = "work" /\ MountTask)
 NeverFilteredForeignRow == ~(branch = "render" /\ MountTask /\ MountedRows # {}
     /\ (\E row \in view.rows : RowThread(row) # view.thread))
 NeverAutoOpened == ~focus.receipt.opened

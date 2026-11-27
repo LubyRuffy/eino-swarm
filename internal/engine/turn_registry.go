@@ -21,14 +21,14 @@ func (e *Engine) newTurnRegistry(builder swarm.ModelBuilder, toolset *tools.Set,
 	}
 	e.wireWorkerSurface(reg, toolset, pc, turn)
 	if turn != nil {
-		e.wireNuwaRegistry(reg, toolset, pc, turn)
-		e.wireWorkLedgerRegistry(reg, toolset, turn)
+		e.wireWorkerModelRecovery(reg, turn)
+		e.wireGraphRegistry(reg, turn)
 		e.wireTaskPanelRegistry(reg, toolset, turn)
 		config := reg.WorkerConfiguration()
 		config.Tag = turn.ID
 		config.RecoveredModels = turn.WorkerModelRecovery
 		ownerTurn := turn
-		if handlers := e.nuwaContextHandlers(ownerTurn); len(handlers) > 0 {
+		if handlers := e.graphContextHandlers(ownerTurn); len(handlers) > 0 {
 			config.WorkerMiddlewares = func(swarm.AgentIdentity) []adk.ChatModelAgentMiddleware {
 				return append([]adk.ChatModelAgentMiddleware(nil), handlers...)
 			}
@@ -48,7 +48,7 @@ func (e *Engine) newTurnRegistry(builder swarm.ModelBuilder, toolset *tools.Set,
 	return reg
 }
 
-// installLiveToolOffer gives every worker its own filter. Nuwa handlers stay
+// installLiveToolOffer gives every worker its own filter. Graph handlers stay
 // outside it; each spawn reads the switches again on its next model request.
 func (e *Engine) installLiveToolOffer(reg *swarm.Registry) {
 	config := reg.WorkerConfiguration()

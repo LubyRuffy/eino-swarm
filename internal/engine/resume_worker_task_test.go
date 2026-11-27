@@ -40,8 +40,6 @@ func TestWorkerCheckpointTaskAndRecoveryMessageStaySeparate(t *testing.T) {
 			if got.ID != original.ID || got.Role != original.Role || got.Generation != original.Generation ||
 				got.ConfigTag != original.ConfigTag || got.Instruction != original.Instruction ||
 				!reflect.DeepEqual(got.ModelBinding, original.ModelBinding) ||
-				!reflect.DeepEqual(got.WorkerToolNames, original.WorkerToolNames) ||
-				!reflect.DeepEqual(got.DelegationEnabled, original.DelegationEnabled) ||
 				!reflect.DeepEqual(got.History, original.History) || !reflect.DeepEqual(got.Inbox, original.Inbox) {
 				t.Errorf("assignment recovery changed the original worker surface: %+v", got)
 			}
@@ -104,12 +102,9 @@ func TestRecoveredTaskDoesNotCrossGenerationOrComeFromInstruction(t *testing.T) 
 }
 
 func workerTaskRecoveryCheckpoint(task string, generation int) restartCheckpoint {
-	enabled := true
-	names := []string{"read"}
 	return restartCheckpoint{Version: 1, Workers: []swarm.WorkerCheckpoint{{
 		ID: "reader-1", Role: "reader", Generation: generation, ConfigTag: "original-turn",
 		Task: task, Instruction: "Saved instruction contains a different objective.",
-		DelegationEnabled: &enabled, WorkerToolNames: &names,
 		ModelBinding: &swarm.ModelBinding{ProviderID: "fixture", Model: "fixture-model", Ref: "fixture-ref"},
 		History:      []*schema.Message{schema.UserMessage("original request"), schema.AssistantMessage("retained observation", nil)},
 		Inbox:        []string{"unread peer message"}, Summary: "retained handoff summary",

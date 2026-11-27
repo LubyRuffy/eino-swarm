@@ -363,7 +363,7 @@ func markBackgroundExecUnknown(messages []*schema.Message) {
 // tools begin with the workspace toolset in the same order, so its copy can
 // replace just this slot without touching the worker toolset.
 func (rt *runtime) managedExecToolIndex(turn *store.Turn, th *store.Thread, toolset *tools.Set, resumed bool) int {
-	if resumed || th == nil || th.PlanMode || turn.NuwaReadOnly || hasOpenGoal(th) ||
+	if resumed || th == nil || th.PlanMode || hasOpenGoal(th) ||
 		turn.GoalContinue || turn.ScheduleContinue || turn.ScheduleRunID != "" || toolset == nil {
 		return -1
 	}

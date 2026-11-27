@@ -81,7 +81,6 @@ type Counts struct {
 	Messages  int `json:"messages"`
 	Turns     int `json:"turns"`
 	Schedules int `json:"schedules"`
-	NuwaNodes int `json:"nuwa_nodes"`
 }
 
 // Manifest is what a restore trusts. SHA256 covers every file except the

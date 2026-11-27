@@ -67,7 +67,6 @@ func TestProjectPathsStayUnderTheDataDirectory(t *testing.T) {
 		"project":   cfg.ProjectDir("pj_1"),
 		"workspace": cfg.ProjectWorkspaceDir("pj_1"),
 		"memory":    cfg.ProjectMemoryDir("pj_1"),
-		"knowledge": cfg.ProjectKnowledgeDir("pj_1"),
 	} {
 		if !strings.HasPrefix(got, cfg.ProjectsDir()+string(filepath.Separator)) {
 			t.Fatalf("%s dir %q escaped %q", name, got, cfg.ProjectsDir())

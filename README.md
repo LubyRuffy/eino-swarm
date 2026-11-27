@@ -7,8 +7,8 @@ back — while you watch every agent, every tool call and every file it produced
 One Go binary. The native window, the browser and the terminal are clients of the
 same engine, so uploads, downloads and the live event stream have one implementation.
 
-Projects can opt into **Nuwa collaboration**: a planner model coordinates, and an
-executor model does the workspace and external-service work. See [Nuwa](docs/NUWA.md).
+While agents work, the **Work records** panel shows what the work is about as a
+graph, with an ordered to-do list below it. See [Work graph](docs/GRAPH.md).
 Paste an image to send it with your message to the conversation model.
 With an authorized gateway image model, ask chat to draw or type `/image`
 followed by a description. Open or save the finished image from the conversation.
@@ -110,7 +110,7 @@ a follow-up; ⌘Enter steers the current turn. **Stop** cancels it.
 What you get is a plan, workers in the Agents tab, a workspace in the Files tab,
 and a Trace tab with the turn id (`zwai trace <id>`). `/goal` keeps pursuing a
 standing objective. `/plan` explores and writes a plan before changing files.
-Composer, schedule, projects and memory are in [Using zwai](docs/USAGE.md). Use **Distill** in a project’s Memory or Knowledge panel to update notes, Skills and the wiki in one run. In Knowledge, **Build wiki graph** extracts entities and events from retained history, shows their sources, and then fills in their pages.
+Composer, schedule, projects and memory are in [Using zwai](docs/USAGE.md). Use **Distill** in a project’s Memory panel to update notes and Skills in one run.
 
 ## Common commands
 
@@ -139,7 +139,7 @@ one engine per data directory. Closing a window does not stop a running turn.
 ├── remote/               Host Token and device identity; not in yaml
 ├── workspaces/<thread>/  standalone task files
 ├── library/skills/       procedures recorded from conversations in no project
-└── projects/<project>/   managed working directory, memory and knowledge
+└── projects/<project>/   managed working directory and memory
 ```
 
 New project conversations have their own `.zwai-tasks/<thread>/` under the
@@ -183,7 +183,7 @@ Run it on tasks and machines where that is acceptable. There is no approval flow
 | [docs/TESTING.md](docs/TESTING.md) | how to run and extend the tests |
 | [docs/LIBRARY.md](docs/LIBRARY.md) | the swarm library on its own, for your code |
 | [docs/RELEASE.md](docs/RELEASE.md) | issue closure and publishing a batch |
-| [docs/NUWA.md](docs/NUWA.md) | Nuwa collaboration |
+| [docs/GRAPH.md](docs/GRAPH.md) | the work graph and Work records panel |
 | [AGENTS.md](AGENTS.md) | rules for anyone (human or AI) changing this repo |
 | [CHANGELOG.md](CHANGELOG.md) | what changed |
 

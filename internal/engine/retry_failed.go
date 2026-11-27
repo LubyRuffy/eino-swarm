@@ -39,24 +39,22 @@ func (e *Engine) RetryFailedTurn(threadID, turnID string) (*store.Turn, error) {
 	if err != nil {
 		return nil, err
 	}
-	if turn.NuwaEnabled {
-		if err := validateTurnProjectOwner(turn, th); err != nil {
-			return nil, err
-		}
+	if err := rejectRemovedNuwa(turn); err != nil {
+		return nil, err
 	}
 	messages, err := e.failureRetryMessages(turn)
 	if err != nil {
 		return nil, err
 	}
-	pc, err := e.projectContextFor(th, turn)
+	pc, err := e.projectContextFor(th)
 	if err != nil {
 		return nil, err
 	}
-	toolset, err := e.conversationToolsForExecution(context.Background(), th, e.turnWebExecution(th, turn), turn.NuwaReadOnly, pc.hasKnowledge())
+	toolset, err := e.conversationToolsForExecution(context.Background(), th, e.turnWebExecution(th, turn))
 	if err != nil {
 		return nil, err
 	}
-	if th.PlanMode || turn.NuwaReadOnly {
+	if th.PlanMode {
 		toolset = tools.ExploreOnly(toolset)
 	}
 	builder, err := e.failureRetryModel(context.Background(), th, turn)

@@ -5,5 +5,4 @@ export const builtinInspectorScopes = {
   files: "thread",
   trace: "thread",
   memory: "project",
-  knowledge: "project",
 } as const satisfies Record<string, InspectorScope>

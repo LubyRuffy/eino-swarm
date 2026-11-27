@@ -124,7 +124,7 @@ func TestEASMDirectPublishPreservesSavedFirstSources(t *testing.T) {
 						previousCall = "open-portrait"
 					}
 					var panel taskpanel.Panel
-					result := nuwaValidationReceipt(request, previousCall)
+					result := scriptedToolReceipt(request, previousCall)
 					if err := json.Unmarshal([]byte(result), &panel); err != nil || panel.ID == "" {
 						t.Errorf("invalid panel receipt %q: %v", result, err)
 					}
@@ -162,7 +162,7 @@ func TestEASMDirectPublishPreservesSavedFirstSources(t *testing.T) {
 				t.Fatalf("turn=%+v, model requests=%d", finished, len(requests))
 			}
 			var panel taskpanel.Panel
-			read := nuwaValidationReceipt(requests[4], "read-portrait")
+			read := scriptedToolReceipt(requests[4], "read-portrait")
 			if err := json.Unmarshal([]byte(read), &panel); err != nil || panel.ID == "" {
 				t.Fatalf("invalid readback %q: %v", read, err)
 			}
@@ -178,7 +178,7 @@ func TestEASMDirectPublishPreservesSavedFirstSources(t *testing.T) {
 				Revision int64  `json:"revision"`
 				Error    string `json:"error"`
 			}
-			result := nuwaValidationReceipt(requests[3], "publish-candidate")
+			result := scriptedToolReceipt(requests[3], "publish-candidate")
 			if err := json.Unmarshal([]byte(result), &receipt); err != nil {
 				t.Fatalf("invalid publication receipt %q: %v", result, err)
 			}

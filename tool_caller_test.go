@@ -16,9 +16,6 @@ func TestToolCallerIdentifiesActualWorkerGenerationAndManager(t *testing.T) {
 	if _, ok := ToolCaller(context.Background()); ok {
 		t.Fatal("plain context has a runtime caller")
 	}
-	if _, ok := ToolCallerModelBinding(t.Context()); ok {
-		t.Fatal("plain context has a resolved worker binding")
-	}
 	if ToolCallerHasWorkerTool(t.Context(), "record_identity") {
 		t.Fatal("plain context has a worker tool")
 	}
@@ -38,14 +35,7 @@ func TestToolCallerIdentifiesActualWorkerGenerationAndManager(t *testing.T) {
 		}}
 	}
 	reg.ModelBuilder = builder
-	binding := ModelBinding{Ref: "resolved", ProviderID: "worker-account", Model: "worker-choice", ReasoningEffort: "low"}
-	reg.RestoreWorkerModel = func(_ context.Context, saved ModelBinding) (ModelBuilder, error) {
-		if saved != binding {
-			t.Errorf("resume did not receive the original model binding: %+v", saved)
-		}
-		return builder, nil
-	}
-	h, err := reg.spawnAgentWithModel(t.Context(), "reader", "inspect input", builder, &binding, "", "", false, probe)
+	h, err := reg.spawnAgent(t.Context(), "reader", "inspect input", builder, "", false, probe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,20 +62,6 @@ func TestToolCallerIdentifiesActualWorkerGenerationAndManager(t *testing.T) {
 			}
 			if ToolCallerHasWorkerTool(ctx, "") || ToolCallerHasWorkerTool(ctx, "not_registered") {
 				t.Fatalf("generation %d granted a missing tool", want.Generation)
-			}
-			got, known := ToolCallerModelBinding(ctx)
-			if want.Generation == 0 {
-				if known || got != (ModelBinding{}) {
-					t.Fatalf("manager inherited a worker binding: %+v", got)
-				}
-				continue
-			}
-			if !known || got != binding {
-				t.Fatalf("generation %d lost its binding: %+v", want.Generation, got)
-			}
-			got.Model = "changed by caller"
-			if again, _ := ToolCallerModelBinding(ctx); again != binding {
-				t.Fatalf("binding copy changed the actual caller: %+v", again)
 			}
 		case <-time.After(time.Second):
 			t.Fatal("tool did not execute")

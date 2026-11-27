@@ -1,0 +1,17 @@
+{
+  "id": "graph-fofa-query",
+  "purpose": "Query extraction with a seeded wrong draft and several corrections. Measures that the final query is exact and that the graph keeps the failed draft as retracted, linked to the current statement.",
+  "expect_delegation": "optional",
+  "generate": "generate.py",
+  "timeout_s": 1200,
+  "checks": [
+    {"name": "query is exact", "type": "command", "argv": ["python3", "{task_dir}/check_query.py"], "timeout_s": 20},
+    {"name": "fixture simulator unchanged", "type": "file_unchanged", "path": "fofa_sim.py"},
+    {"name": "corpus unchanged", "type": "file_unchanged", "path": "corpus.jsonl"},
+    {"name": "one current query", "type": "graph_count", "of": "subjects", "kind": "fofa_query", "status": ["lead", "confirmed"], "min": 1, "max": 1},
+    {"name": "failed draft kept as retracted", "type": "graph_count", "of": "subjects", "kind": "fofa_query", "status": "retracted", "min": 1},
+    {"name": "revisions are linked", "type": "graph_count", "of": "links", "min": 1},
+    {"name": "no open to-do left", "type": "graph_count", "of": "todos", "status": "open", "max": 0},
+    {"name": "no doing to-do left", "type": "graph_count", "of": "todos", "status": "doing", "max": 0}
+  ]
+}

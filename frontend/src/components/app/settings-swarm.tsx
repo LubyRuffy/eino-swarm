@@ -99,24 +99,13 @@ export function SwarmTab({
         </Field>
         <Field
           query={query}
-          label={t("settings.swarm.workLedger")}
-          hint={t("settings.swarm.workLedgerHint")}
+          label={t("settings.swarm.graph")}
+          hint={t("settings.swarm.graphHint")}
         >
           <Switch
-            checked={settings.swarm.work_ledger !== false}
-            onCheckedChange={(work_ledger) => update({ work_ledger })}
-            aria-label={t("settings.swarm.workLedger")}
-          />
-        </Field>
-        <Field
-          query={query}
-          label={t("settings.swarm.knowledge")}
-          hint={t("settings.swarm.knowledgeHint")}
-        >
-          <Switch
-            checked={settings.swarm.knowledge !== false}
-            onCheckedChange={(knowledge) => update({ knowledge })}
-            aria-label={t("settings.swarm.knowledge")}
+            checked={settings.swarm.graph !== false}
+            onCheckedChange={(graph) => update({ graph })}
+            aria-label={t("settings.swarm.graph")}
           />
         </Field>
       </SettingsSection>

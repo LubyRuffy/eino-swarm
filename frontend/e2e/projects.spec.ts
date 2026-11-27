@@ -255,7 +255,7 @@ test("Project distillation says when there is no retained evidence", async ({ pa
   await createProject(page, project)
   await startInProject(page, project)
   await openMemory(page)
-  await page.getByTestId("knowledge-distill").click()
+  await page.getByTestId("project-distill").click()
   await page.getByRole("menuitem", { name: "Latest turn", exact: true }).click()
   await expect(page.getByTestId("project-distill-status")).toContainText("No retained evidence to distill.")
 })

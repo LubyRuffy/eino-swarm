@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/LubyRuffy/eino-swarm/internal/knowledge"
 	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/skills"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
@@ -34,7 +33,7 @@ type projectMemory struct {
 }
 
 // CreateProject opens a new project and prepares the directories it needs.
-func (e *Engine) CreateProject(name, systemPrompt, workdir string, memoryEnabled bool, nuwaEnabled ...bool) (*store.Project, error) {
+func (e *Engine) CreateProject(name, systemPrompt, workdir string, memoryEnabled bool) (*store.Project, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, fmt.Errorf("engine: a project needs a name")
@@ -48,9 +47,6 @@ func (e *Engine) CreateProject(name, systemPrompt, workdir string, memoryEnabled
 		SystemPrompt:  strings.TrimSpace(systemPrompt),
 		Workdir:       workdir,
 		MemoryEnabled: memoryEnabled,
-	}
-	if len(nuwaEnabled) > 0 {
-		p.NuwaEnabled = nuwaEnabled[0]
 	}
 	if err := e.store.CreateProject(p); err != nil {
 		return nil, err
@@ -67,7 +63,7 @@ func (e *Engine) CreateProject(name, systemPrompt, workdir string, memoryEnabled
 // UpdateProject applies the fields the caller set. Each is a pointer so
 // clearing the working directory (back to the managed one) is a different
 // request from leaving it alone.
-func (e *Engine) UpdateProject(id string, name, systemPrompt, workdir *string, memoryEnabled *bool, nuwaEnabled ...*bool) (*store.Project, error) {
+func (e *Engine) UpdateProject(id string, name, systemPrompt, workdir *string, memoryEnabled *bool) (*store.Project, error) {
 	e.workspaceMu.Lock()
 	defer e.workspaceMu.Unlock()
 	if _, err := e.store.GetProject(id); err != nil {
@@ -93,9 +89,6 @@ func (e *Engine) UpdateProject(id string, name, systemPrompt, workdir *string, m
 	}
 	if memoryEnabled != nil {
 		fields["memory_enabled"] = *memoryEnabled
-	}
-	if len(nuwaEnabled) > 0 && nuwaEnabled[0] != nil {
-		fields["nuwa_enabled"] = *nuwaEnabled[0]
 	}
 	e.generations.Lock()
 	err := e.store.UpdateProject(id, fields)
@@ -154,7 +147,6 @@ func (e *Engine) DeleteProject(id string) error {
 		e.removeManagedTaskWorkspace(th)
 	}
 	e.forgetProjectMemory(id)
-	e.knowledge.Delete(id)
 	dir := e.cfg.ProjectDir(p.ID)
 	if err := removeProjectFiles(dir, e.cfg.ProjectWorkspaceDir(p.ID)); err != nil {
 		e.log.Warn("could not remove a project directory", "project", p.ID, "path", dir, "err", err)
@@ -271,10 +263,6 @@ type projectContext struct {
 	memory   *memory.Store
 	sections string
 	planning bool
-	// Knowledge is mounted once per execution start. The prompt and tool
-	// admission stay fixed while the shared store serves live reads/writes.
-	knowledge        *knowledge.Store
-	knowledgeSummary string
 	// tools is the manager set. Workers get the read-only skill tools in
 	// viewTools alongside their workspace tools.
 	tools     []tool.BaseTool
@@ -363,7 +351,7 @@ func (pc *projectContext) memoryLive() bool {
 // projectContextFor assembles a turn's project contribution. A conversation
 // in no project gets the shared skill library: the index in the prompt and
 // skill_view, with no notes and no write tools.
-func (e *Engine) projectContextFor(th *store.Thread, original ...*store.Turn) (*projectContext, error) {
+func (e *Engine) projectContextFor(th *store.Thread) (*projectContext, error) {
 	if strings.TrimSpace(th.ProjectID) == "" {
 		return e.libraryLiveContext(), nil
 	}
@@ -379,10 +367,7 @@ func (e *Engine) projectContextFor(th *store.Thread, original ...*store.Turn) (*
 		return nil, err
 	}
 	pc := &projectContext{project: p, planning: th.PlanMode}
-	if len(original) == 0 || original[0].ProjectID == p.ID {
-		e.snapshotProjectKnowledge(pc)
-	}
-	knowledgeEnabled := pc.hasKnowledge()
+	graphEnabled := e.cfg.SwarmSnapshot().Graph
 	var snap memory.Snapshot
 	var skills []memory.SkillInfo
 	if e.MemoryEnabled(p) {
@@ -394,16 +379,16 @@ func (e *Engine) projectContextFor(th *store.Thread, original ...*store.Turn) (*
 			e.log.Warn("could not read a project's memory", "project", p.ID, "err", err)
 		} else {
 			pc.memory = mem
-			pc.tools = memory.Tools(mem, nil, knowledgeEnabled)
+			pc.tools = memory.Tools(mem, nil, graphEnabled)
 			pc.viewTools = memory.ViewTools(mem)
 			// An unreadable skills directory costs the index, not the notes.
 			if skills, err = mem.ListSkills(); err != nil {
 				e.log.Warn("could not list a project's skills", "project", p.ID, "err", err)
 			}
-			pc.workerText = memory.WorkerPromptSections(snap, skills, e.cfg.Memory.IndexMax(), knowledgeEnabled)
+			pc.workerText = memory.WorkerPromptSections(snap, skills, e.cfg.Memory.IndexMax(), graphEnabled)
 		}
 	}
-	pc.sections = memory.PromptSections(p.SystemPrompt, snap, skills, e.cfg.Memory.IndexMax(), pc.memory != nil, knowledgeEnabled)
+	pc.sections = memory.PromptSections(p.SystemPrompt, snap, skills, e.cfg.Memory.IndexMax(), pc.memory != nil, graphEnabled)
 	e.attachExternalSkills(pc)
 	return pc, nil
 }

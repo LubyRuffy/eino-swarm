@@ -18,7 +18,7 @@ func TestProjectDistillRejectsForeignConversationAndKeepsEmptyProjectIdle(t *tes
 		t.Fatalf("initial status: %v", status)
 	}
 	if status := h.json(http.MethodPost, base+"/distill", map[string]any{
-		"scope": "project", "enable_knowledge": true,
+		"scope": "project",
 	}, http.StatusOK); status["state"] != "no_work" {
 		t.Fatalf("empty project started work: %v", status)
 	}
@@ -36,18 +36,11 @@ func TestProjectDistillRejectsForeignConversationAndKeepsEmptyProjectIdle(t *tes
 	h.json(http.MethodPost, base+"/distill", map[string]any{"scope": "latest_turn", "thread_id": "th_unused", "full_text": true}, http.StatusBadRequest)
 	h.json(http.MethodPost, base+"/distill", map[string]any{"scope": "unknown"}, http.StatusBadRequest)
 	h.json(http.MethodPost, base+"/distill", map[string]any{"scope": "project", "resume_review_id": "a"}, http.StatusBadRequest)
-	h.json(http.MethodPost, base+"/distill", map[string]any{"scope": "project", "wiki_review": true}, http.StatusBadRequest)
-	h.json(http.MethodPost, base+"/distill", map[string]any{"scope": "project", "wiki_review": false}, http.StatusBadRequest)
-	h.json(http.MethodPost, base+"/distill", map[string]any{"resume_review_id": "a", "wiki_graph": true, "wiki_review": true}, http.StatusBadRequest)
-	h.json(http.MethodPost, base+"/distill", map[string]any{"pause_review_id": "a", "wiki_graph": true, "wiki_review": false}, http.StatusBadRequest)
 	h.json(http.MethodPost, base+"/distill", map[string]any{"resume_review_id": "a", "pause_review_id": "a"}, http.StatusBadRequest)
 	h.json(http.MethodPost, base+"/distill", map[string]any{"resume_review_id": "a", "full_text": true}, http.StatusBadRequest)
 	h.json(http.MethodPost, base+"/distill", map[string]any{"pause_review_id": "missing"}, http.StatusNotFound)
 	foreignID := h.newThread()
 	h.json(http.MethodPost, base+"/distill", map[string]any{"scope": "thread", "thread_id": foreignID}, http.StatusNotFound)
-	if status := h.json(http.MethodGet, base+"/knowledge", nil, http.StatusOK); status["enabled"] != false {
-		t.Fatalf("declined request created a schema: %v", status)
-	}
 	disabled := h.newProject(map[string]any{"name": "Disabled destinations", "memory_enabled": false})["id"].(string)
 	th := h.json(http.MethodPost, "/api/threads", map[string]any{"title": "Retained source", "project_id": disabled}, http.StatusCreated)["thread"].(map[string]any)
 	turn := &store.Turn{ThreadID: th["id"].(string), ProjectID: disabled, Status: store.TurnDone}
@@ -72,7 +65,7 @@ func TestProjectDistillRejectsForeignConversationAndKeepsEmptyProjectIdle(t *tes
 
 }
 
-func TestProjectDistillOneReviewWritesNotesSkillAndKnowledgeWithRealTrace(t *testing.T) {
+func TestProjectDistillOneReviewWritesNotesAndSkillWithRealTrace(t *testing.T) {
 	h := newHarness(t)
 	project := h.newProject(map[string]any{"name": "Subject", "memory_enabled": true})
 	id := project["id"].(string)
@@ -88,7 +81,7 @@ func TestProjectDistillOneReviewWritesNotesSkillAndKnowledgeWithRealTrace(t *tes
 		t.Fatal(err)
 	}
 	path := "/api/projects/" + id + "/distill"
-	started := h.json(http.MethodPost, path, map[string]any{"scope": "thread", "thread_id": threadID, "enable_knowledge": true}, http.StatusAccepted)
+	started := h.json(http.MethodPost, path, map[string]any{"scope": "thread", "thread_id": threadID}, http.StatusAccepted)
 	var result map[string]any
 	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
 		result = h.json(http.MethodGet, path, nil, http.StatusOK)
@@ -112,17 +105,6 @@ func TestProjectDistillOneReviewWritesNotesSkillAndKnowledgeWithRealTrace(t *tes
 	}
 	if changes, ok := result["changes"].([]any); !ok || len(changes) != 2 {
 		t.Fatalf("missing actual memory and skill receipts: %v", result)
-	}
-	knowledge, ok := result["knowledge"].([]any)
-	if !ok || len(knowledge) != 1 {
-		t.Fatalf("missing actual knowledge receipt: %v", result)
-	}
-	pageID := knowledge[0].(map[string]any)["id"].(string)
-	page := h.json(http.MethodGet, "/api/projects/"+id+"/knowledge/pages/"+pageID, nil, http.StatusOK)
-	source := page["sources"].([]any)[0].(map[string]any)
-	if source["thread_id"] != threadID || source["seq"] != float64(event.Seq) || source["classification"] != "primary" ||
-		source["available"] != true || source["timestamp"] == nil || page["updated_turn"] != turn.ID {
-		t.Fatalf("invalid knowledge provenance: %v", page)
 	}
 	notes, err := h.app.Engine.ProjectMemory(id).Read()
 	if err != nil || len(notes.Entries) != 1 || !strings.Contains(notes.Entries[0], event.Text) {

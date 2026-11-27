@@ -10,14 +10,13 @@ import { IterationLimitCard } from "@/components/iteration-limit-card"
 import { Composer, type ComposerExtra } from "@/components/composer"
 import { DeliveryMenu } from "@/components/delivery-menu"
 import { FileBrowser } from "@/components/file-browser"
-import { KnowledgeButton } from "@/components/knowledge-screen"
 import { PhoneFileLinkContext } from "@/components/markdown"
 import { GoalBanner, ScheduleBanner } from "@/components/status-banners"
 import { SelectionActions } from "@/components/selection-actions"
 import { ThreadLog } from "@/components/thread-blocks"
 import { pairedTurnDestinations, scrollToTranscriptRow, TurnNavigation } from "@/components/turn-navigation"
 import { PhoneTaskPanelButton, PhoneTaskPanelSheet, usePhoneTaskPanelView } from "@/components/task-panels"
-import { PhoneWorkRecords, phoneWorkText } from "@/components/work-records"
+import { PhoneWorkRecords, phoneGraphText } from "@/components/work-records"
 import { Button } from "@/components/ui/button"
 import { agentRosterText } from "@/lib/agent-label"
 import { installAndroidBack } from "@/lib/android-back"
@@ -49,7 +48,6 @@ export function ThreadScreen({
   caughtUp = true,
   onBack,
   onOpenAccount,
-  onOpenKnowledge,
   onOlder,
   followups = [],
   onSend,
@@ -88,7 +86,6 @@ export function ThreadScreen({
   caughtUp?: boolean
   onBack: () => void
   onOpenAccount?: () => void
-  onOpenKnowledge?: () => void
   onOlder?: (turnId?: string) => Promise<number | undefined> | void
   followups?: FollowupView[]
   onSend: (text: string, extra?: ComposerExtra) => void
@@ -362,7 +359,7 @@ export function ThreadScreen({
 
   if (workOpen && fileLink && workRecordsGeneration !== undefined) {
     return <>
-      <PhoneWorkRecords key={workOwner} link={fileLink} threadId={detail.id} generation={workRecordsGeneration}
+      <PhoneWorkRecords key={workOwner} link={fileLink} threadId={detail.id} generation={workRecordsGeneration} running={running}
         covered={taskPanels.open} onBack={closeWork} />
       <PhoneTaskPanelSheet view={taskPanels} />
     </>
@@ -410,11 +407,10 @@ export function ThreadScreen({
         <PhoneTaskPanelButton view={taskPanels} />
         {agentPage === "chat" && workOwner && fileLink ? (
           <Button type="button" variant="ghost" className="size-10 shrink-0 px-0"
-            aria-label={phoneWorkText("nuwa.tab")} onClick={() => setWorkView({ owner: workOwner, link: fileLink })}>
+            aria-label={phoneGraphText("graph.tab")} onClick={() => setWorkView({ owner: workOwner, link: fileLink })}>
             <GitBranch className="size-5" aria-hidden />
           </Button>
         ) : null}
-        {agentPage === "chat" && onOpenKnowledge ? <KnowledgeButton onClick={onOpenKnowledge} /> : null}
         {agentPage === "chat" && onOpenAccount ? <AccountButton onClick={onOpenAccount} /> : null}
       </header>
       <GoalBanner

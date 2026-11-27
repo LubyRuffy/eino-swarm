@@ -6,7 +6,6 @@ import { AgentPromptButton } from "@/components/app/agent-prompt"
 import { AgentFailure } from "@/components/app/agent-failure"
 import { ConversationSchedules } from "@/components/app/conversation-schedules"
 import { FilesTab } from "@/components/app/files-tab"
-import { KnowledgePanel, type KnowledgePanelProps } from "@/components/app/knowledge-panel"
 import { MemoryPanel, type MemoryPanelProps } from "@/components/app/memory-panel"
 import { ResizeHandle } from "@/components/app/resize-handle"
 import { TraceTab } from "@/components/app/trace-tab"
@@ -60,7 +59,6 @@ export function RightPanel({
   meta,
   threadId,
   memory,
-  knowledge: projectKnowledge,
   onUpload,
   onDeleteFile,
   onRefreshFiles,
@@ -70,8 +68,7 @@ export function RightPanel({
   onOpenDir,
   onSearch,
   usage,
-  nuwaProject,
-  threadProjectId,
+  scopeProject,
 }: {
   tab: PanelTab
   onTabChange: (tab: PanelTab) => void
@@ -89,7 +86,6 @@ export function RightPanel({
   /** Absent when nothing is open. A conversation in no project shows the
    *  shared skill library instead of a project's notes. */
   memory?: MemoryPanelProps
-  knowledge?: KnowledgePanelProps
   onUpload: (files: File[]) => Promise<unknown>
   onDeleteFile: (path: string) => void
   onRefreshFiles: () => void
@@ -99,19 +95,17 @@ export function RightPanel({
   onOpenDir?: (path: string) => void
   onSearch?: (query: string) => Promise<FileEntry[]>
   usage?: UsageSnapshot | null
-  nuwaProject?: Project
-  threadProjectId?: string
+  /** The project the open conversation (or the selected project) belongs to. */
+  scopeProject?: Project
 }) {
   const t = useT()
-  const knowledge = meta?.swarm?.knowledge === false ? undefined : projectKnowledge
   const storedTaskPanels = useTaskPanels((state) => state.panels)
   const taskPanelThread = useTaskPanels((state) => state.threadId)
   const registeredPanels = resolveInspectorPanels({
     threadId,
-    project: nuwaProject,
-    threadProjectId,
+    project: scopeProject,
     dataGeneration: meta?.data_generation,
-    workLedger: meta?.swarm?.work_ledger,
+    graph: meta?.swarm?.graph,
     taskPanels: { threadId: taskPanelThread, panels: storedTaskPanels },
   })
   const tabs = [
@@ -120,10 +114,8 @@ export function RightPanel({
     { id: "trace", scope: builtinInspectorScopes.trace, label: t("panel.trace") },
     ...(memory ? [{ id: "memory", scope: builtinInspectorScopes.memory, label: t("panel.memory") }] : []),
     ...registeredPanels.map(({ id, scope, label }) => ({ id, scope, label: label(t) })),
-    ...(knowledge ? [{ id: "knowledge", scope: builtinInspectorScopes.knowledge, label: t("panel.knowledge") }] : []),
   ]
-  const visibleTab = ((isRegisteredInspectorTab(tab) && !registeredPanels.some((panel) => panel.id === tab)) ||
-    (tab === "knowledge" && !knowledge)) ? "agents" : tab
+  const visibleTab = isRegisteredInspectorTab(tab) && !registeredPanels.some((panel) => panel.id === tab) ? "agents" : tab
   const traceFocus = useTraceFocus()
   const previousThread = useRef(threadId)
   const changeTab = useRef(onTabChange)
@@ -170,7 +162,7 @@ export function RightPanel({
                 value={id}
                 data-scope={scope}
                 title={scope === "thread" ? t("panel.scopeThread") :
-                  knowledge?.project?.name ?? nuwaProject?.name ?? t("panel.scopeShared")}
+                  scopeProject?.name ?? t("panel.scopeShared")}
                 className={cn(
                   chromeTypeClass, "px-1.5",
                   scope === "thread" ? "bg-muted/55 data-[state=active]:bg-muted" :
@@ -258,11 +250,6 @@ export function RightPanel({
               className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card"
             >
               <MemoryPanel {...memory} />
-            </TabsContent>
-          ) : null}
-          {knowledge ? (
-            <TabsContent value="knowledge" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
-              <KnowledgePanel key={knowledge.project?.id ?? "shared"} {...knowledge} />
             </TabsContent>
           ) : null}
         </div>

@@ -1,7 +1,7 @@
 """Model-catalog snapshots and immutable identities for opt-in paired evals.
 
 Resources are configured by the human. Tasks and roles are left to the model.
-A Nuwa executor is the project pair the host enforces, not a role name.
+An executor is a recorded model preference, not a role name.
 """
 
 from __future__ import annotations
@@ -52,7 +52,10 @@ def model_summary(models: dict) -> dict:
 
 def render_model_config(models: dict, cap: int = 0) -> str:
     q = json.dumps
-    lines = ["models:", "    default: " + q(models["planner"]["provider_id"]), "    providers:"]
+    # The binary defaults to the FOFA product, which refuses selecting a
+    # configured provider on a thread. This file is the eval's private config,
+    # so it runs local and the named provider is the one that answers.
+    lines = ["product:", "    mode: local", "models:", "    default: " + q(models["planner"]["provider_id"]), "    providers:"]
     for provider in models["providers"]:
         grade.require_copyable_provider(provider)
         lines.append("        - id: " + q(provider["id"]))
@@ -73,22 +76,6 @@ def render_model_config(models: dict, cap: int = 0) -> str:
     if cap:
         lines.extend(["swarm:", f"    max_completion_tokens: {cap}"])
     return "\n".join(lines) + "\n"
-
-
-def nuwa_model_pair(models: dict) -> dict:
-    """The planner the eval selected, and the executor the host must enforce."""
-    planner = models["planner"]
-    executor = models.get("executor")
-    if not executor:
-        executor = next((choice for choice in models["catalog"]
-                         if choice["provider_id"] != planner["provider_id"] or choice["model"] != planner["model"]),
-                        planner)
-    return {
-        "nuwa_planner_provider_id": planner["provider_id"],
-        "nuwa_planner_model": planner["model"],
-        "nuwa_executor_provider_id": executor["provider_id"],
-        "nuwa_executor_model": executor["model"],
-    }
 
 
 def project_prompt(task: dict, models: dict | None, extra: str = "") -> str:

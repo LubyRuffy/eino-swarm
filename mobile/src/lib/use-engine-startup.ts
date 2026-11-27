@@ -22,7 +22,7 @@ export function useEngineStartup(link: RemoteLink | null): EngineStartup | undef
             model_policy: r.model_policy,
             restore: r.restore,
             data_generation: typeof r.data_generation === "number" ? r.data_generation : undefined,
-            work_records_available: r.work_records_available === true || undefined,
+            graph_available: r.graph_available === true || undefined,
           }
           if (r.product_mode === "fofa" || r.product_mode === "local") value.product_mode = r.product_mode
           setSnapshot(previous => previous?.link === link && JSON.stringify(previous.value) === JSON.stringify(value) ? previous : { link, value })
