@@ -57,14 +57,20 @@ async function officialCatalog(page: Page) {
   })
 }
 
-test("a managed official profile stays locked despite a legacy full preference", async ({ page }) => {
+test("a managed official profile exposes feature switches without exposing model configuration", async ({ page }) => {
   await officialCatalog(page)
   await page.goto("/")
   await expect(page.getByLabel("Model", { exact: true })).toHaveCount(0)
   await page.getByRole("button", { name: "Settings", exact: true }).click()
-  const dialog = page.getByRole("dialog")
-  await expect(dialog.getByRole("tab", { name: "Models", exact: true })).toHaveCount(0)
+  const dialog = page.getByRole("dialog", { name: "Settings", exact: true })
+  await dialog.getByRole("tab", { name: "Models", exact: true }).click()
+  await expect(dialog.getByRole("heading", { name: "Optional AI features", exact: true })).toBeVisible()
+  await expect(dialog.getByRole("heading", { name: "Functional models", exact: true })).toHaveCount(0)
   await expect(dialog.getByRole("combobox", { name: "Model list" })).toHaveCount(0)
   await expect(dialog.getByText("Your own model services")).toHaveCount(0)
   await expect(dialog.getByText("vendor-secret-model")).toHaveCount(0)
+  await dialog.getByRole("button", { name: "Configure Name conversations automatically", exact: true }).click()
+  const naming = page.getByRole("dialog", { name: "Name conversations automatically", exact: true })
+  await expect(naming.getByRole("switch", { name: "Name conversations automatically", exact: true })).toBeVisible()
+  await expect(naming.getByRole("combobox")).toHaveCount(0)
 })
