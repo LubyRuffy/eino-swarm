@@ -360,7 +360,7 @@ test("personality round-trips through settings", async ({ page, request }) => {
   }
 })
 
-test("pins a title-generation model when more than one name is listed", async ({
+test("pins a suggestion model in its drawer when more than one name is listed", async ({
   page,
   request,
 }) => {
@@ -378,32 +378,36 @@ test("pins a title-generation model when more than one name is listed", async ({
           },
         ],
       },
-      swarm: { ...settings.swarm, title_provider: "", title_model: "" },
+      swarm: { ...settings.swarm, composer_predictions: false },
     },
   })
   try {
     await page.goto("/")
     await page.getByRole("button", { name: "Settings" }).click()
-    const dialog = page.getByRole("dialog")
+    const dialog = page.getByRole("dialog", { name: "Settings", exact: true })
     await dialog.getByRole("tab", { name: "Models" }).click()
-    const picker = dialog.getByRole("combobox", { name: "Conversation title Provider", exact: true })
-    await expect(picker).toContainText("Use default")
+    const entry = dialog.getByRole("button", { name: "Configure Suggest a next step", exact: true })
+    await entry.click()
+    const drawer = page.getByRole("dialog", { name: "Suggest a next step", exact: true })
+    const picker = drawer.getByRole("combobox", { name: "Model", exact: true })
+    await expect(picker).toHaveCount(0)
+    await drawer.getByRole("switch", { name: "Suggest a next step", exact: true }).setChecked(true)
+    await expect(picker).toContainText("Follow the conversation model")
     await picker.click()
     await page.getByRole("option", { name: "beta", exact: true }).click()
-    await dialog.getByLabel("Conversation title Model", { exact: true }).fill("beta")
-    await dialog.getByLabel("Conversation title Model", { exact: true }).press("Tab")
+    await expect.poll(async () => {
+      const saved = await (await request.get("/api/settings")).json()
+      return saved.settings.models.bindings?.composer_prediction
+    }).toEqual({ provider_id: provider.id, model: "beta" })
+    await drawer.getByRole("button", { name: "Close", exact: true }).click()
     await dialog.getByRole("button", { name: "Back to app" }).click()
     await expect(dialog).toBeHidden()
 
-    const saved = await (await request.get("/api/settings")).json()
-    expect(saved.settings.models.bindings.title).toEqual({ provider_id: provider.id, model: "beta" })
-
+    await page.reload()
     await page.getByRole("button", { name: "Settings" }).click()
-    await page.getByRole("dialog").getByRole("tab", { name: "Models" }).click()
-    await expect(
-      page.getByRole("dialog").getByLabel("Conversation title Model", { exact: true }),
-    ).toHaveValue("beta")
-    await page.getByRole("dialog").getByRole("button", { name: "Back to app" }).click()
+    await dialog.getByRole("tab", { name: "Models" }).click()
+    await entry.click()
+    await expect(drawer.getByLabel("Model Model", { exact: true })).toHaveValue("beta")
   } finally {
     await request.put("/api/settings", {
       data: { models: settings.models, swarm: settings.swarm },
