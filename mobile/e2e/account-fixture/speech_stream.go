@@ -179,6 +179,7 @@ func (f *fixture) setupSpeech(ctx context.Context) error {
 		cfg.Swarm.ComposerPredictions = false
 		cfg.Memory.Enabled = false
 		cfg.Speech.Output.Enabled = true
+		cfg.Speech.Output.GatewayDisabled = false
 		cfg.Speech.Output.Source = config.SpeechSourceAccount
 		cfg.Speech.Output.Format = "pcm"
 		cfg.Speech.Output.Voice = "native-fixture-voice"
