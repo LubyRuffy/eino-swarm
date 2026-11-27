@@ -45,9 +45,11 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req R
 			return mapErr(req.ID, path, sessionID, genErr)
 		}
 		resp.DataGeneration = &generation
-		resp.GraphAvailable = eng.Config().SwarmSnapshot().Graph
+		swarm := eng.Config().SwarmSnapshot()
+		resp.GraphAvailable = swarm.Graph
+		resp.ComposerPredictions = &swarm.ComposerPredictions
 		resp.ProductMode = eng.Config().Snapshot().Product.Resolved()
-		policy := eng.Providers().ModelPolicy()
+		policy := eng.ModelPolicyView()
 		resp.ModelPolicy = &policy
 		resp.WebExecutionSupported = true
 		webStatus := tools.DescribeWebExecution(eng.Config())

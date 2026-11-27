@@ -582,6 +582,8 @@ export interface SwarmLimits {
   composer_predictions?: boolean
   /** Missing means on. Off stops the graph and to-do list and hides the panel. */
   graph?: boolean
+  graph_auto_record?: boolean
+  selection_translation?: boolean
   /** Empty follows this conversation's model. */
   title_provider?: string
   title_model?: string
@@ -643,7 +645,7 @@ export interface Settings {
   speech?: SpeechSettings
   server: { addr: string; open_browser: boolean }
   models: {
-	bindings?: Partial<Record<ModelRole, ModelRef>>
+	bindings?: Partial<Record<ModelRole | "composer_prediction", ModelRef>>
     default: string
     /** Whose models a new conversation starts on when both exist. */
     default_source?: ModelSource
@@ -681,14 +683,14 @@ export type SettingsPatch = Omit<Partial<Settings>, "models" | "swarm" | "ui"> &
   /** The server keeps every field a patch leaves out. */
   ui?: Partial<UISettings>
   models?: {
-    bindings?: Partial<Record<ModelRole, ModelRef>>
+    bindings?: Partial<Record<ModelRole | "composer_prediction", ModelRef>>
     default: string
     default_source?: ModelSource
     account_model?: string
     account_presentation?: "official" | "full"
     providers: ProviderSettingsWrite[]
   }
-  swarm?: Omit<SwarmLimits, "agent_timeout_seconds"> & { agent_timeout_seconds?: number }
+  swarm?: Omit<SwarmLimits, "agent_timeout_seconds" | "auto_title"> & { agent_timeout_seconds?: number; auto_title?: boolean }
   /** Writes local into the install. Omitted leaves the stored mode alone. */
   product?: { mode: "fofa" | "local" }
 }

@@ -70,16 +70,6 @@ describe("Swarm schedule caps", () => {
 // The classifiers hold a finished answer until they decide, so their thinking
 // level is a separate setting that defaults to Low and can follow the
 // conversation only when chosen.
-describe("Next-step suggestion", () => {
-  it("turns the placeholder off", () => {
-    const onChange = vi.fn()
-    render(<SwarmTab settings={base} onChange={onChange} />)
-    fireEvent.click(screen.getByRole("switch", { name: "Suggest a next step" }))
-    const next = onChange.mock.calls[0][0] as Settings
-    expect(next.swarm.composer_predictions).toBe(false)
-  })
-})
-
 describe("Policy check thinking", () => {
   it("shows Low for settings written before the field and saves inherit explicitly", () => {
     const onChange = vi.fn()
@@ -103,13 +93,4 @@ describe("Tool result limit", () => {
     fireEvent.change(limit, { target: { value: "12000" } })
     expect(onChange).toHaveBeenCalledWith({ ...base, tools: { ...base.tools, result_max_chars: 12000 } })
   })
-})
-
-it("defaults work records on and lets the user disable them for future ordinary turns", () => {
-  const onChange = vi.fn()
-  render(<SwarmTab settings={base} onChange={onChange} />)
-  const ledger = screen.getByRole("switch", { name: "Work records" })
-  expect(ledger).toBeChecked()
-  fireEvent.click(ledger)
-  expect((onChange.mock.calls[0][0] as Settings).swarm.graph).toBe(false)
 })

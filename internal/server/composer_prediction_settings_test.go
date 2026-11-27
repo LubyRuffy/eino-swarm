@@ -7,13 +7,13 @@ import (
 
 func TestOmittedComposerPredictionSaveKeepsTheStoredChoice(t *testing.T) {
 	h := newHarness(t)
-	if !h.app.Config.Swarm.ComposerPredictions {
-		t.Fatal("next-step suggestions default off")
+	if h.app.Config.Swarm.ComposerPredictions {
+		t.Fatal("next-step suggestions must default off for a fresh installation")
 	}
 	h.json(http.MethodPut, "/api/settings", map[string]any{
 		"swarm": map[string]any{"max_concurrent": 4},
 	}, http.StatusOK)
-	if !h.app.Config.Swarm.ComposerPredictions || h.app.Config.Swarm.MaxConcurrent != 4 {
+	if h.app.Config.Swarm.ComposerPredictions || h.app.Config.Swarm.MaxConcurrent != 4 {
 		t.Fatalf("an older settings save changed suggestions: %+v", h.app.Config.Swarm)
 	}
 

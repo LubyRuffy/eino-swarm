@@ -28,10 +28,21 @@ export function persistPayload(
   }
   if (!same(next.ui, normalizeUISettings(baseline.ui))) patch.ui = next.ui
   if (!same(next.swarm, baseline.swarm)) {
-    const { agent_timeout_seconds, graph, schedule_answer_check, schedule_answer_model, ...rest } = next.swarm
+    const { agent_timeout_seconds, auto_title, composer_predictions, graph, graph_auto_record, selection_translation,
+      schedule_answer_check, schedule_answer_model, ...rest } = next.swarm
     patch.swarm = { ...rest }
     if (agent_timeout_seconds !== baseline.swarm.agent_timeout_seconds) {
       patch.swarm.agent_timeout_seconds = agent_timeout_seconds
+    }
+    if (auto_title !== baseline.swarm.auto_title) patch.swarm.auto_title = auto_title
+    if (composer_predictions !== undefined && composer_predictions !== baseline.swarm.composer_predictions) {
+      patch.swarm.composer_predictions = composer_predictions
+    }
+    if (graph_auto_record !== undefined && graph_auto_record !== baseline.swarm.graph_auto_record) {
+      patch.swarm.graph_auto_record = graph_auto_record
+    }
+    if (selection_translation !== undefined && selection_translation !== baseline.swarm.selection_translation) {
+      patch.swarm.selection_translation = selection_translation
     }
     if (graph !== undefined && graph !== baseline.swarm.graph) {
       patch.swarm.graph = graph

@@ -1,4 +1,4 @@
-import { publishPairedCapabilities } from "@/lib/paired-capabilities"
+import { publishPairedCapabilities, publishPairedSelectionTranslation } from "@/lib/paired-capabilities"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, expect, it, vi } from "vitest"
 import { defaultSpeechSettings } from "../../../frontend/src/lib/speech-types"
@@ -127,4 +127,20 @@ it("dismisses and stops owned work when backgrounded", () => {
   fireEvent(document, new Event("visibilitychange"))
   expect(p.onDismiss).toHaveBeenCalledOnce()
   Object.defineProperty(document, "hidden", { configurable: true, value: false })
+})
+
+it("removes and cancels selection translation when the paired PC switches it off", async () => {
+  let resolve!: (value: unknown) => void
+  const rpc = vi.fn((request: { op: string }) => request.op === "cancel_translation"
+    ? Promise.resolve({ ok: true }) : new Promise(done => { resolve = done }))
+  const target = link(rpc)
+  render(<SelectionActions {...props()} link={target} />)
+  fireEvent.click(screen.getByRole("button", { name: "翻译" }))
+  act(() => publishPairedSelectionTranslation(target, false))
+  expect(screen.queryByRole("button", { name: "翻译" })).toBeNull()
+  expect(rpc).toHaveBeenLastCalledWith(expect.objectContaining({ op: "cancel_translation" }), expect.anything())
+  await act(async () => resolve({ ok: true, translation: "stale" }))
+  expect(screen.queryByRole("region", { name: "译文" })).toBeNull()
+  act(() => publishPairedSelectionTranslation(target, true))
+  expect(screen.getByRole("button", { name: "翻译" })).toBeVisible()
 })

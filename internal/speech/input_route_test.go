@@ -11,7 +11,11 @@ import (
 
 func TestDefaultGatewayRecognitionGoesDirectWhilePersonalOverrideStaysOnPC(t *testing.T) {
 	cfg, svc := configuredSpeech(t, "https://account.invalid/v1")
-	if err := cfg.Update(func(c *config.Config) error { c.Product.Mode = config.ProductModeFOFA; return nil }); err != nil {
+	if err := cfg.Update(func(c *config.Config) error {
+		c.Product.Mode = config.ProductModeFOFA
+		c.Speech.Input.GatewayDisabled, c.Speech.Output.GatewayDisabled = false, false
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	source, err := provider.NewAccountSource("gateway:voice", "Gateway", "https://account.invalid/client/desktop/v1", "private-account-token", provider.Catalog{Names: []string{"default-recognizer", "default-speaker"}})
@@ -43,7 +47,7 @@ func TestDefaultGatewayRecognitionGoesDirectWhilePersonalOverrideStaysOnPC(t *te
 	}
 }
 
-func TestGatewayVoiceDefaultsFollowAuthorizedAudioModelsIndependently(t *testing.T) {
+func TestOptedInGatewayVoiceUsesOnlyTheAuthorizedAudioModel(t *testing.T) {
 	cfg, svc := configuredSpeech(t, "https://personal.invalid/v1")
 	if err := cfg.Update(func(c *config.Config) error {
 		c.Product.Mode = config.ProductModeFOFA
@@ -67,6 +71,15 @@ func TestGatewayVoiceDefaultsFollowAuthorizedAudioModelsIndependently(t *testing
 		"transcription": {Supported: true, Available: true, Configurable: true, Endpoints: []string{"audio_transcriptions"}},
 	}})
 	svc.pool.SetAccountSource(source)
+	if view := svc.Snapshot(); view.Input.Enabled || view.Output.Enabled {
+		t.Fatalf("available audio models bypassed the fresh off preference: %+v", view)
+	}
+	if err := cfg.Update(func(c *config.Config) error {
+		c.Speech.Input.GatewayDisabled, c.Speech.Output.GatewayDisabled = false, false
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	view := svc.Snapshot()
 	if !view.Input.Enabled || !view.Input.Ready || view.Input.Model != "recognizer" || view.Output.Enabled || view.Output.Ready {
 		t.Fatalf("typed catalog auto-enabled the wrong roles: %+v", view)

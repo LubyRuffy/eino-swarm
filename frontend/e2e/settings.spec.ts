@@ -126,9 +126,6 @@ test("settings round-trip through the config file", async ({ page }) => {
   await expect(dialog.getByText(/Stored in/)).toHaveCount(0)
 
   await dialog.getByRole("tab", { name: "Swarm" }).click()
-  await expect(
-    dialog.getByLabel("Name conversations automatically"),
-  ).toBeChecked()
   const concurrency = dialog.getByLabel("Sub-agents at once")
   await concurrency.fill("3")
   await dialog.getByRole("button", { name: "Back to app" }).click()
@@ -766,5 +763,54 @@ test("directory rows track UI size, not conversation size", async ({
         },
       },
     })
+  }
+})
+
+test("each optional AI feature owns a right-side drawer and its saved setting", async ({ page, request }) => {
+  const { settings: original } = await (await request.get("/api/settings")).json()
+  const panels = [
+    ["Name conversations automatically", "auto_title"],
+    ["Suggest a next step", "composer_predictions"],
+    ["Automatic graph recording", "graph_auto_record"],
+    ["Translation", "selection_translation"],
+    ["Voice input", "input"],
+    ["Read aloud", "output"],
+  ] as const
+
+  try {
+    await page.goto("/")
+    await page.getByRole("button", { name: "Settings", exact: true }).click()
+    await page.getByRole("tab", { name: "Models", exact: true }).click()
+    await expect(page.getByRole("heading", { name: "Optional AI features" })).toBeVisible()
+    for (const [label, field] of panels) {
+      const entry = page.getByRole("button", { name: `Configure ${label}`, exact: true })
+      await expect(entry).toHaveCount(1)
+      await entry.click()
+      const drawer = page.getByRole("dialog", { name: label, exact: true })
+      const toggle = drawer.getByRole("switch", { name: label, exact: true })
+      await expect(toggle).toBeVisible()
+      await expect.poll(async () => {
+        const bounds = await drawer.boundingBox()
+        return bounds ? Math.abs(bounds.x + bounds.width - page.viewportSize()!.width) : Infinity
+      }).toBeLessThan(2)
+      if (field === "auto_title") {
+        await expect(drawer.getByText("Uses the default conversation model from local settings.")).toBeVisible()
+        await expect(drawer.getByRole("combobox")).toHaveCount(0)
+      }
+      const checked = !(await toggle.isChecked())
+      await toggle.setChecked(checked)
+      await expect.poll(async () => {
+        const { settings } = await (await request.get("/api/settings")).json()
+        return field === "input" || field === "output" ? settings.speech[field].enabled : settings.swarm[field]
+      }).toBe(checked)
+      await page.keyboard.press("Escape")
+      await expect(drawer).toBeHidden()
+      await expect(entry).toBeFocused()
+      await entry.click()
+      await expect(toggle).toHaveAttribute("aria-checked", String(checked))
+      await drawer.getByRole("button", { name: "Close", exact: true }).click()
+    }
+  } finally {
+    await request.put("/api/settings", { data: { swarm: original.swarm, speech: original.speech } })
   }
 })

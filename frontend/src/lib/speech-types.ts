@@ -52,9 +52,11 @@ export interface SpeechRoute {
 export interface SpeechSnapshot extends SpeechRoute {
   input: Pick<SpeechInputSettings, "enabled" | "language" | "prompt" | "recording_format" | "max_duration_seconds" | "timeout_seconds"> & {
     device_id?: string
+    user_disabled?: boolean
     ready: boolean; reason?: string; model: string; label: string; audio?: AudioParameterView
   } & Partial<SpeechRoute>
   output: Pick<SpeechOutputSettings, "enabled" | "voice" | "speed" | "format" | "instructions" | "timeout_seconds"> & {
+    user_disabled?: boolean
     ready: boolean; reason?: string; model: string; label: string; audio?: AudioParameterView
   } & Partial<SpeechRoute>
   limits: SpeechLimits

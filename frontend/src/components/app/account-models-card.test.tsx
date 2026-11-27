@@ -90,7 +90,7 @@ describe("server models on the Models page", () => {
     expect(screen.queryByRole("button", { name: "Add a provider" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Endpoint details" })).toBeNull()
     expect(screen.queryByRole("heading", { name: "Auxiliary models" })).toBeNull()
-    expect(screen.getByRole("heading", { name: "Voice input" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "Configure Voice input" })).toBeVisible()
   })
 
   it("ignores a retained account profile in LOCAL without offering an account-presentation switch", () => {

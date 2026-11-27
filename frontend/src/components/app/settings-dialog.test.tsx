@@ -149,12 +149,11 @@ describe("Settings dialog", () => {
     vi.mocked(api.settings).mockResolvedValue({ ...base, speech, model_policy })
     useApp.setState({ meta: { product_mode: "fofa", account_models, model_policy } as Meta })
     renderDialog({ initialSection: "speech" })
-    await screen.findByRole("heading", { name: "Voice input" })
-    expect(screen.getByRole("tab", { name: "Speech" })).toHaveAttribute("aria-selected", "true")
-    expect(screen.getByRole("heading", { name: "Speech", level: 2 })).toBeVisible()
-    expect(screen.queryByRole("tab", { name: "Models" })).toBeNull()
-    expect(screen.queryByTestId("account-models-card")).toBeNull()
-    expect(screen.getByRole("heading", { name: "Read aloud" })).toBeVisible()
+    fireEvent.click(await screen.findByRole("button", { name: "Configure Voice input" }))
+    expect(screen.getByRole("dialog", { name: "Voice input" })).toBeVisible()
+    expect(screen.queryByRole("tab", { name: "Speech" })).toBeNull()
+    expect(within(screen.getByRole("dialog", { name: "Voice input" })).queryByTestId("account-models-card")).toBeNull()
+    expect(screen.queryByRole("heading", { name: "Read aloud" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Add a provider" })).toBeNull()
     expect(screen.queryByRole("combobox", { name: "Model list" })).toBeNull()
     expect(screen.queryByLabelText("API base URL")).toBeNull()
@@ -169,18 +168,17 @@ describe("Settings dialog", () => {
     renderDialog({ initialSection: "models" })
     await screen.findByRole("heading", { name: "Models", level: 2 })
     expect(screen.getByRole("button", { name: "Add a provider" })).toBeVisible()
-    expect(screen.getByRole("heading", { name: "Voice input" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "Configure Voice input" })).toBeVisible()
     expect(screen.queryByRole("tab", { name: "Speech" })).toBeNull()
   })
 
   it("saves voice switches from Models without rewriting the model configuration", async () => {
     useApp.setState({ meta: { product_mode: "local" } as Meta })
     renderDialog({ initialSection: "models" })
-    await screen.findByRole("heading", { name: "Voice input" })
-    expect(screen.getByRole("heading", { name: "Models", level: 2 })).toBeVisible()
-    expect(screen.queryByRole("heading", { name: "Speech", level: 2 })).toBeNull()
+    fireEvent.click(await screen.findByRole("button", { name: "Configure Voice input" }))
+    expect(screen.getByRole("dialog", { name: "Voice input" })).toBeVisible()
     expect(screen.queryByRole("tab", { name: "Speech" })).toBeNull()
-    fireEvent.click(screen.getAllByLabelText("Enabled")[0])
+    fireEvent.click(screen.getByRole("switch", { name: "Voice input" }))
     await waitFor(() => expect(api.saveSettings).toHaveBeenCalled())
     const patch = vi.mocked(api.saveSettings).mock.lastCall![0]
     expect(patch.speech?.input.enabled).toBe(true)
@@ -194,7 +192,7 @@ describe("Settings dialog", () => {
     await waitSettingsLoaded()
     fireEvent.change(screen.getByLabelText("Search settings"), { target: { value: query } })
     expect(await screen.findByRole("tab", { name: "Models" })).toHaveAttribute("aria-selected", "true")
-    expect(screen.getAllByLabelText("Enabled")).toHaveLength(2)
+    expect(screen.getByRole("button", { name: "Configure Voice input" })).toBeVisible()
     expect(screen.queryByRole("tab", { name: "Speech" })).toBeNull()
     fireEvent.change(screen.getByLabelText("Search settings"), { target: { value: "" } })
     expect(screen.getByRole("tab", { name: "Models" })).toHaveAttribute("aria-selected", "true")
@@ -204,6 +202,8 @@ describe("Settings dialog", () => {
     const speech = defaultSpeechSettings()
     speech.input.has_api_key = true
     speech.output.has_api_key = true
+    speech.input.enabled = true
+    speech.output.enabled = true
     vi.mocked(api.settings).mockResolvedValue({ ...base, speech })
     useApp.setState({ meta: { product_mode: "local" } as Meta })
     const onOpenChange = vi.fn()
@@ -212,8 +212,8 @@ describe("Settings dialog", () => {
     const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ models: ["voice-model"] })))
     try {
       renderDialog({ initialSection: "models", onOpenChange })
-      await screen.findByRole("heading", { name: "Voice input" })
-      const input = within(screen.getByRole("heading", { name: "Voice input" }).closest("section")!)
+      fireEvent.click(await screen.findByRole("button", { name: "Configure Voice input" }))
+      const input = within(screen.getByRole("dialog", { name: "Voice input" }))
       fireEvent.change(input.getByLabelText("API base URL"), { target: { value: "http://speech.invalid/v1" } })
       fireEvent.click(input.getByRole("button", { name: "Discover models" }))
       await waitFor(() => expect(api.saveSettings).toHaveBeenCalledOnce())
@@ -224,7 +224,10 @@ describe("Settings dialog", () => {
       await waitFor(() => expect(fetcher).toHaveBeenCalledOnce())
       expect(fetcher.mock.calls[0][0]).toBe("/api/audio/models")
       vi.mocked(api.saveSettings).mockReturnValueOnce(new Promise((done) => { finishSave = done }))
+      fireEvent.click(input.getByRole("button", { name: "Close" }))
+      fireEvent.click(screen.getByRole("button", { name: "Configure Read aloud" }))
       fireEvent.change(screen.getByLabelText("Voice ID"), { target: { value: "speaker" } })
+      fireEvent.click(within(screen.getByRole("dialog", { name: "Read aloud" })).getByRole("button", { name: "Close" }))
       fireEvent.click(screen.getByRole("button", { name: "Back to app" }))
       await waitFor(() => expect(api.saveSettings).toHaveBeenCalledTimes(2))
       expect(onOpenChange).not.toHaveBeenCalled()
@@ -239,7 +242,7 @@ describe("Settings dialog", () => {
     } finally { fetcher.mockRestore() }
   })
 
-  it("saves gateway voice opt-out through the independent Speech page", async () => {
+  it("saves gateway voice opt-out from its drawer", async () => {
     const model_policy = gatewayVoicePolicy()
     vi.mocked(api.settings).mockResolvedValue({ ...base, model_policy })
     const speech = defaultSpeechSettings()
@@ -249,8 +252,8 @@ describe("Settings dialog", () => {
       output: { ...speech.output, ready: false, label: "" },
     } } as unknown as Meta })
     renderDialog({ initialSection: "speech" })
-    await screen.findByRole("heading", { name: "Voice input" })
-    fireEvent.click(screen.getAllByLabelText("Enabled")[0])
+    fireEvent.click(await screen.findByRole("button", { name: "Configure Voice input" }))
+    fireEvent.click(screen.getByRole("switch", { name: "Voice input" }))
     await waitFor(() => expect(api.saveSettings).toHaveBeenCalled())
     const patch = vi.mocked(api.saveSettings).mock.lastCall![0]
     expect(patch.speech?.input.gateway_disabled).toBe(true)
@@ -572,7 +575,6 @@ describe("Settings dialog", () => {
         "active",
       ),
     )
-    expect(screen.queryByRole("tab", { name: "Models" })).toBeNull()
     expect(screen.getByLabelText("Manager tool rounds")).toBeInTheDocument()
     expect(screen.queryByLabelText("Stream coalesce (ms)")).not.toBeInTheDocument()
   })

@@ -534,6 +534,7 @@ func TestSaveAndReplaceRoundTrip(t *testing.T) {
 	next.Server.OpenBrowser = false
 	next.Swarm.MaxConcurrent = 3
 	next.Swarm.AutoTitle = false
+	next.Swarm.ComposerPredictions = true
 	next.Swarm.TitleProvider = "local"
 	next.Swarm.TitleModel = "tiny"
 	next.Swarm.AutoCompactTokens = 12_000

@@ -12,6 +12,9 @@ type ModelRef struct {
 	Model      string `yaml:"model" json:"model"`
 }
 
+// ComposerPredictionRole is a client binding that uses the conversation capability.
+const ComposerPredictionRole = "composer_prediction"
+
 // ModelRoles is the existing functional model surface, in settings order.
 func ModelRoles() []string {
 	return []string{"conversation", "title", "compact", "translation", "embedding", "ocr", "decisions", "transcription", "speech", "image"}
@@ -49,7 +52,7 @@ func (c *Config) validateModelBindings() error {
 			if role == "embedding" && ref == (ModelRef{}) {
 				continue
 			}
-			if !KnownModelRole(role) || strings.TrimSpace(ref.ProviderID) == "" || strings.TrimSpace(ref.Model) == "" {
+			if (!KnownModelRole(role) && role != ComposerPredictionRole) || strings.TrimSpace(ref.ProviderID) == "" || strings.TrimSpace(ref.Model) == "" {
 				return errors.New("config: a model binding needs a known role, provider_id and model")
 			}
 			// A gateway: id in the local scope names a signed-in catalog. It is

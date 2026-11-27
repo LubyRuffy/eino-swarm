@@ -81,7 +81,11 @@ func TestPCMStreamStopsWhenTheSameEndpointChangesFromAccountToPersonal(t *testin
 	defer upstream.Close()
 	cfg, svc := configuredSpeech(t, upstream.URL+"/v1")
 	setPCM(t, cfg)
-	if err := cfg.Update(func(c *config.Config) error { c.Product.Mode = config.ProductModeFOFA; return nil }); err != nil {
+	if err := cfg.Update(func(c *config.Config) error {
+		c.Product.Mode = config.ProductModeFOFA
+		c.Speech.Output.GatewayDisabled = false
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	source, err := provider.NewAccountSource("gateway:voice", "Gateway", upstream.URL+"/v1", "same-token", provider.Catalog{Names: []string{"configured-voice"}})
@@ -151,6 +155,7 @@ func TestPCMStreamRequestsTheResolvedSourcesIncrementalProtocol(t *testing.T) {
 				c.Speech.Output.Model = "speech"
 				if name != "personal named speech" {
 					c.Product.Mode = config.ProductModeFOFA
+					c.Speech.Output.GatewayDisabled = false
 				}
 				return nil
 			}); err != nil {

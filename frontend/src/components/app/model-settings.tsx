@@ -30,7 +30,7 @@ import { AccountModelsCard } from "./account-models-card"
 import { AuxiliaryModels } from "./auxiliary-models"
 import { FunctionalModels } from "./functional-models"
 import { SearchSettingsPanel } from "./settings-search"
-import { SpeechSettings } from "./settings-speech"
+import { OptionalAIFeatures } from "./optional-ai-features"
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog"
 import { ProviderWindows } from "./provider-windows"
 import { ProviderCloudTools } from "./provider-cloud-tools"
@@ -196,6 +196,7 @@ export function ModelsTab({
     >
       <AccountModelsCard settings={settings} onChange={onChange} query={query} />
       {officialOnly ? null : settings.model_policy ? <FunctionalModels settings={settings} onChange={onChange} query={query} /> : <AuxiliaryModels settings={settings} onChange={onChange} query={query} />}
+      <OptionalAIFeatures settings={settings} onChange={onChange} onFlush={onFlush} query={query} />
       {officialOnly || settings.model_policy ? null : <SearchSettingsPanel settings={settings} onChange={onChange} query={query} />}
 
       {officialOnly ? null : <SettingsSection
@@ -284,7 +285,6 @@ export function ModelsTab({
           {t("settings.models.add")}
         </Button>
       ) : null}
-      <SpeechSettings settings={settings} onChange={onChange} onFlush={onFlush} query={query} />
       <ConfirmDeleteDialog
         open={!officialOnly && Boolean(doomed)}
         title={t("provider.deleteTitle", {

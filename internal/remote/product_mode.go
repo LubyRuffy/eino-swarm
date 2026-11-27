@@ -27,7 +27,7 @@ func handleProductMode(e *engine.Engine, req Request, path, sessionID string) Re
 	}
 	resp := okBase(req.ID, path, sessionID)
 	resp.ProductMode = mode.Resolved()
-	policy := e.Providers().ModelPolicy()
+	policy := e.ModelPolicyView()
 	resp.ModelPolicy = &policy
 	return resp
 }

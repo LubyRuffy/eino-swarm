@@ -18,7 +18,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
-func TestGatewaySpeechHTTPDefaultsOnAndReleasesTheHeldUpstreamOnStop(t *testing.T) {
+func TestGatewaySpeechHTTPRequiresOptInAndReleasesTheHeldUpstreamOnStop(t *testing.T) {
 	first := []byte("event: speech.audio.delta\ndata: {\"type\":\"speech.audio.delta\",\"audio\":\"AQI=\"}\n\n")
 	canceled := make(chan struct{})
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +67,17 @@ func TestGatewaySpeechHTTPDefaultsOnAndReleasesTheHeldUpstreamOnStop(t *testing.
 	}
 	httpServer := httptest.NewServer(app.Handler())
 	defer httpServer.Close()
+	blocked, err := httpServer.Client().Post(httpServer.URL+"/api/audio/speech", "application/json", strings.NewReader(`{"text":"answer"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocked.Body.Close()
+	if blocked.StatusCode != http.StatusForbidden {
+		t.Fatalf("fresh Gateway speech returned HTTP %d", blocked.StatusCode)
+	}
+	if err := cfg.Update(func(c *config.Config) error { c.Speech.Output.GatewayDisabled = false; return nil }); err != nil {
+		t.Fatal(err)
+	}
 	request, _ := http.NewRequest(http.MethodPost, httpServer.URL+"/api/audio/speech", strings.NewReader(`{"text":"answer"}`))
 	request.Header.Set("Content-Type", "application/json")
 	client := &http.Client{Timeout: 3 * time.Second}

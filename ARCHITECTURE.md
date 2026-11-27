@@ -2181,8 +2181,7 @@ the turn, and tool results report the live write outcome. Regression coverage:
    gate; standalone conversations share the library gate and
    `POST /api/library/tidy-skills`. `Shutdown` waits for in-flight reviews.
 9. **Title** (untitled conversations and untitled waits, `swarm.auto_title`): a goroutine asks the
-   configured namer (the conversation's model, or `swarm.title_provider` /
-   `swarm.title_model` when pinned) for a short sidebar name from the opening
+   Gateway title model or LOCAL default conversation model for a short sidebar name from the opening
    message, or a short inbox label from a wait's prompt. The first message /
    truncated prompt stays as a placeholder until it lands. Waiting for
    the first finish used to rename the sidebar after a long first turn. A user
@@ -2191,12 +2190,20 @@ the turn, and tool results report the live write outcome. Regression coverage:
   carries the name; the transcript does not render it. Naming a wait does **not**
   emit that event — it would rename the origin conversation. The Trace tab's Full
   log still lists the conversation event. `Shutdown` waits for namers too.
-10. **Next step** (`swarm.composer_predictions`, on by default): after a visible
-   idle completion, a goroutine asks the conversation's own model for one next
-   human message. It records `composer_prediction` and a `composer-prediction`
+10. **Next step** (`swarm.composer_predictions`, off on fresh installs): after a
+   visible idle completion, a goroutine asks the scoped suggestion model, the
+   Gateway default conversation model, or the LOCAL conversation model for one
+   next human message. It records `composer_prediction` and a `composer-prediction`
    call on that turn. The PC composer shows the line as the empty input's
    placeholder; it is not a message and does not enter the next prompt.
    A goal continuation, queued follow-up, or new turn drops it. `Shutdown` waits.
+
+PC settings expose six independent feature drawers. Saved preferences govern
+engine admission, and PC metadata and paired-phone replies project preferences
+separately from provider permissions. Automatic graph writes share the existing
+configuration lock at commit. Read-only graph turns retain access to recorded
+work. A paired phone also rechecks the PC's voice opt-out before a direct Gateway
+call when the PC publishes that preference.
 
 ## Why the event stream is built this way
 

@@ -515,3 +515,49 @@ describe("phone speech capability follows the selected PC", () => {
     expect(loadSpeechCache(pc)).toBeUndefined()
   })
 })
+
+it("rechecks a paired PC voice opt-out before using the direct Gateway", async () => {
+  signIn()
+  const enabled = { ...speech, input: { ...speech.input, user_disabled: false } }
+  const disabled = { ...enabled, input: { ...enabled.input, user_disabled: true, enabled: false, ready: false } }
+  const rpc = vi.fn<RemoteLink["rpc"]>().mockResolvedValue({ ok: true, speech: disabled } as RemoteResponse)
+  setPhoneSpeechSource(pc, { alive: () => true, rpc } as unknown as RemoteLink)
+  expect(acceptPhoneSpeechConfig(pc, enabled)).toBe(true)
+  const view = renderHook(() => usePhoneSpeech())
+  expect(view.result.current.inputReady).toBe(true)
+  const fetcher = vi.fn<typeof fetch>()
+  vi.stubGlobal("fetch", fetcher)
+  await act(async () => {
+    await expect(transcribePhoneSpeech(new Blob(["recording"]), new AbortController().signal)).rejects.toMatchObject({ name: "AbortError" })
+  })
+  expect(rpc).toHaveBeenCalledWith({ op: "speech_config" }, expect.anything())
+  expect(fetcher).not.toHaveBeenCalled()
+  expect(view.result.current.inputReady).toBe(false)
+})
+
+it("cancels the paired preference read when voice is canceled before Gateway admission", async () => {
+  signIn()
+  const enabled = { ...speech, input: { ...speech.input, user_disabled: false } }
+  const waitForAbort = vi.fn()
+  const rpc = vi.fn<RemoteLink["rpc"]>((_request, options) => {
+    const signal = options?.signal
+    if (!signal) return Promise.resolve({ v: 1, id: "config", ok: true, speech: enabled })
+    return new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => {
+        waitForAbort()
+        reject(new DOMException("Aborted", "AbortError"))
+      }, { once: true })
+    })
+  })
+  setPhoneSpeechSource(pc, { alive: () => true, rpc } as unknown as RemoteLink)
+  expect(acceptPhoneSpeechConfig(pc, enabled)).toBe(true)
+  const fetcher = vi.fn<typeof fetch>()
+  vi.stubGlobal("fetch", fetcher)
+  const controller = new AbortController()
+  const outcome = transcribePhoneSpeech(new Blob(["recording"]), controller.signal).catch(error => error)
+  expect(rpc).toHaveBeenCalledOnce()
+  controller.abort()
+  expect(await outcome).toMatchObject({ name: "AbortError" })
+  expect(waitForAbort).toHaveBeenCalledOnce()
+  expect(fetcher).not.toHaveBeenCalled()
+})

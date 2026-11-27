@@ -201,6 +201,14 @@ async function call(operation: "transcribe" | "speak", input: Blob | string, sig
     if (owner === "phone") {
       result = await localPhoneSpeechCall(operation, input, controller.signal)
     } else if (owner === "gateway") {
+      const pairedLink = target?.link
+      if (target && pairedLink?.alive() && typeof target.cached?.snapshot[kind].user_disabled === "boolean") {
+        const response = await pairedLink.rpc({ op: OpSpeechConfig }, { dropOnTimeout: false, timeoutMs: 5000, signal: controller.signal })
+        check()
+        if (source?.link !== pairedLink || !pairedLink.alive() || !response.ok || !response.speech ||
+            !acceptPhoneSpeechConfig(target.pc, response.speech)) throw new SpeechCallError("unavailable")
+        check()
+      }
       const session = loadGatewaySession()
       if (!session) throw new SpeechCallError("unavailable")
       result = await gatewaySpeechCall(speech!, session, operation, input, controller.signal)

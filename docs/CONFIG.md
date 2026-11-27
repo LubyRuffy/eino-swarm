@@ -35,20 +35,16 @@ empty value from the archive.
 
 ## Voice settings
 
-The PC's **Settings → Models** controls input/output switches, recording and
-playback parameters and limits. Gateway mode defaults each direction on when
-the signed-in normal or third-party Gateway resolves a model for that role.
-Each direction stores its opt-out in `gateway_disabled`. Legacy configurations
-without this field follow model availability in Gateway mode. LOCAL and personal
-services continue to use `enabled`, which defaults to false. **Models → Functional
-models** selects recognition and spoken-answer models independently of conversation.
-LOCAL and an editable gateway allow personal providers. A managed third-party
-gateway supplies the models and hides model and endpoint controls. Voice
-parameters follow the model's declared permissions. In LOCAL, `source: account` uses the signed-in
-account's enabled recognition or speech role when no functional binding
-overrides that direction. A personal binding, provider, or custom endpoint
-remains the request target. Without that login or role, the direction stays
-not ready.
+The PC's **Settings → Models → Optional AI features** has a separate drawer
+for Voice input and Read aloud. Both directions default off on a fresh install.
+In Gateway mode `gateway_disabled` controls a resolved Gateway route. An old
+file without that key continues to follow Gateway model availability. Personal
+routes use `enabled`. The drawer updates both switches for that direction and
+retains the model and parameters when disabled. Editable accounts can select
+an authorized Gateway model or personal provider. Managed accounts follow
+the Gateway model and expose its editable parameters. In LOCAL,
+`source: account` follows the signed-in account role when no explicit binding
+overrides it. A missing login or model keeps that direction unavailable.
 
 `speech.input.device_id` is the preferred PC or Web microphone's browser audio input ID. Empty follows the operating-system default. When capture cannot find the saved device, it tries the system default once and keeps the preference for when that device returns. Selecting **System default** clears the saved ID. Phones use their own microphone.
 
@@ -110,7 +106,9 @@ swarm:
     progress_interval_seconds: 5
     delta_coalesce_ms: 50
     auto_title: true
-    composer_predictions: true
+    composer_predictions: false
+    graph_auto_record: false
+    selection_translation: false
     graph: true
     incremental_execution: false
     default_reasoning_effort: ""
@@ -426,13 +424,13 @@ A LOCAL binding may name a signed-in catalog with a `gateway:` provider id. That
 id is still not a `models.providers` entry. After sign-out the binding stays
 stored and execution fails closed instead of using a personal provider with the
 same model name. An absent binding does not inherit a gateway preset.
-Each scope maps `conversation`, `title`, `compact`, `embedding`, `transcription`,
-`speech`, `ocr` and `decisions` to `{provider_id, model}`. Settings does not
+Each scope maps supported roles such as `conversation`, `compact`, `translation`,
+`composer_prediction`, `embedding`, `transcription`, `speech`, `ocr`, `image` and `decisions` to `{provider_id, model}`. Settings does not
 list `decisions`; that role is a background call. Missing roles follow the
 latest gateway default. **Use default** removes the override; server defaults are
 never copied into the saved map. Existing conversation-specific selections remain
-explicit selections. LOCAL retains the existing title/compression/voice defaults
-when no functional override is set.
+explicit selections. LOCAL retains its compression and voice fallbacks. An existing `title` binding
+is retained for file compatibility. Automatic naming resolves the default title source directly.
 
 The Settings API projects only the current scope as `models.bindings`; its PUT
 replaces that scope's map and accepts a bindings-only body. Other scopes survive.
@@ -447,7 +445,7 @@ cleared with **Use default**.
 The scoped `conversation` binding takes priority over `default_source`. In
 LOCAL, `default_source: account` prefers the authorized original Gateway chat
 catalog, then an available account preset, then `models.default`.
-An ordinary Gateway's first binding save retires the global `account_model`
+Changing the scoped Gateway conversation binding retires the global `account_model`
 pin and resets `default_source` to `account`.
 `account_presentation` remains a validated compatibility field (`official`/`full`),
 with no model-unlocking UI or authority over a managed policy. Managed settings
@@ -487,14 +485,16 @@ Runtime limits and model-call defaults for the swarm.
 | `manager_max_iterations` | `200` | iterations for the manager. Lower it and complex plans get truncated mid-way; the manager also spends turns waiting for workers. Reaching the cap **pauses** the turn and asks whether to add another slice of this size, rather than failing with eino's iteration error. On desktop and web, that pause and a later stop open Settings → Swarm → Manager tool rounds and focus this field. The continuation already offered keeps the size recorded on the pause; the next pause reads the saved value. A paired phone names this PC setting and does not edit it. A pause whose reason is `classification_deferred` is an answer-verification deferral: its `limit` is rounds already used, and that card does not open this field. |
 | `progress_interval_seconds` | `5` | how often a running turn emits a progress pulse. It is the only thing that moves while every agent sits in a slow tool call, so a higher value makes a busy run look stuck for longer. Zero or negative falls back to the default; pulses cannot be switched off. Settings does not show it. |
 | `delta_coalesce_ms` | `50` | how long streamed tokens wait to be sent as one event. A token every few milliseconds would redraw the whole UI; one pulse per interval keeps the screen moving without a frame per token. Zero or negative falls back to the default. Settings does not show it. |
-| `auto_title` | `true` | on the first user message, ask the model for a short sidebar name instead of leaving the truncated first message. The same namer labels an untitled scheduled wait from its prompt. Off keeps the placeholder. A title the user typed is never overwritten. An older config file without the key stays on. |
-| `composer_predictions` | `true` | after a visible reply, ask the conversation's model for one next message and show it as the empty PC composer's placeholder. Tab inserts it; Enter sends it. Off stops the extra call. An older file without the key stays on. A settings save that omits the field keeps the stored value. The line is Trace metadata, not a message in the next prompt. Errors, cancellation, an empty reply, a quiet completion, and a turn that starts immediately are skipped. |
-| `graph` | `true` | mount the work graph: the `update_graph` / `read_graph` tools (planning turns get only `read_graph`), the per-request digest and the read-only Work records panel. Off hides the panel and stops collection. A turn freezes the switch when it starts; turning it off stops writes at once. The older `work_ledger` and `knowledge` keys are ignored if an old file still has them. See [Work graph](GRAPH.md). |
+| `auto_title` | `true` | Automatically names new conversations and untitled waits. Gateway mode uses its preset naming model. LOCAL uses the configured default conversation model. Off leaves the placeholder. A title the user typed is preserved. |
+| `composer_predictions` | `false` | After a visible reply, request one next-input suggestion. The default source is the Gateway conversation model in Gateway mode or the current conversation model in LOCAL. A scoped `composer_prediction` binding selects a different permitted model. Existing files without the key retain the previous enabled behavior. Off stops the extra request. |
+| `graph` | `true` | Enables graph reads, context and the Work records panel. The `graph_auto_record` switch controls automatic writes separately. The older `work_ledger` and `knowledge` keys are ignored. See [Work graph](GRAPH.md). |
+| `graph_auto_record` | `false` | Enables automatic graph writes on new ordinary turns. Turning it off immediately refuses later commits and keeps existing records readable. Existing files without the key retain their previous write behavior when `graph` is enabled. |
+| `selection_translation` | `false` | Enables the text-selection translation action and its HTTP and phone RPC requests. Existing files without the key keep the action enabled subject to model capability. |
 | `incremental_execution` | `false` | opt-in guidance for ordinary manager implementation turns to start with a small runnable increment and verify each requested requirement. Configure in YAML or through the Settings API. Omitted or `null` in a settings save preserves the stored choice. An explicit boolean replaces it. Invalid types return `400` before changing the configuration. Model behavior and benchmark gains require measurement. |
 | `default_reasoning_effort` | `""` | default reasoning level for model calls that do not specify one. Empty preserves existing call defaults. Explicit per-call levels, including a conversation's chosen level, take priority. Supports `none` (off) / `low` / `medium` / `high`. Values are trimmed/lowercased and unsupported strings normalize to empty. Configure in YAML or through the Settings API. Omitted or `null` preserves the stored choice. An explicit empty string clears it. Non-string values return `400` before changing live or saved configuration. A new worker pins its effective level when selected. Restoring a worker retains its saved level, including an empty legacy binding. |
-| `title_provider` | empty | endpoint the namer calls. Empty follows the conversation's provider. An id that is no longer in `providers` is cleared on load. |
-| `title_model` | empty | model name the namer calls. Empty (with an empty provider) follows the conversation's model. A name with no provider stays on the conversation's endpoint. Pin one in Settings → Models when an endpoint lists more than one name and automatic naming is on. The pin is hidden while `auto_title` is off; the saved name stays. |
-| `compact_provider` | empty | endpoint `/compact` calls. Same empty-means-follow rule as `title_provider`. A deleted id is cleared on load. |
+| `title_provider` | empty | Legacy title pin retained in the config. Automatic naming uses the product default. |
+| `title_model` | empty | Legacy title pin retained in the config. Automatic naming uses the product default. |
+| `compact_provider` | empty | Endpoint `/compact` calls. Empty follows the conversation's provider. A deleted id is cleared on load. |
 | `compact_model` | empty | model name `/compact` calls. Same pin rules as `title_model`. Pin one in Settings → Models. |
 | `context_char_budget` | `80000` | rune count treated as 100% full on the `/compact` hint when the model has not reported a token window. Zero or negative is repaired to the default. Settings does not show it. |
 | `compact_keep_messages` | `6` | recent user/assistant replay messages that stay verbatim after `/compact` or auto-compact. The rest become the briefing. Zero or negative is repaired to the default. |
@@ -508,7 +508,7 @@ Runtime limits and model-call defaults for the swarm.
 | `reasoning_output_recovery_effort` | empty | Optional override for exactly the recovery request after a fresh turn's first manager generation, only when that turn has no explicit reasoning effort. Empty preserves the original builder's behavior. Mid-turn and resumed recovery preserve the original effort, including an omitted value; explicit effort is always retained. Requires `recover_reasoning_output_limit`; it does not change the model or completion cap. |
 | `schedule_min_interval_seconds` | `30` | shortest cadence a schedule may use, in seconds. Zero or negative is repaired to the default so a hand-edit cannot arm a sub-second loop. Editable in Settings → Swarm. |
 | `schedule_tick_ms` | `1000` | how often the process looks for due schedules. Zero or negative is repaired to the default so the ticker cannot silently stop. Settings does not show it; change it in `config.yaml` or `PUT /api/settings`. |
-| `schedule_max_active` | `32` | schedule runs that may execute at once. Overflow waits for the next tick. Zero or negative is repaired to the default so a hand-edit cannot refuse every fire or unbounded fan-out. Editable in Settings → Swarm. A supplied `swarm` section replaces its fields before normalization, except omitted or `null` `agent_timeout_seconds`, `composer_predictions`, `graph`, `incremental_execution`, `default_reasoning_effort`, `recover_reasoning_output_limit`, `reasoning_output_recovery_effort`, `schedule_answer_check`, and `schedule_answer_model` keep their latest stored values. Desktop autosave includes the other swarm fields when that section changes. |
+| `schedule_max_active` | `32` | schedule runs that may execute at once. Overflow waits for the next tick. Zero or negative is repaired to the default so a hand-edit cannot refuse every fire or unbounded fan-out. Editable in Settings → Swarm. A supplied `swarm` section replaces its fields before normalization, except omitted or `null` `agent_timeout_seconds`, `auto_title`, `composer_predictions`, `graph`, `graph_auto_record`, `selection_translation`, `incremental_execution`, `default_reasoning_effort`, `recover_reasoning_output_limit`, `reasoning_output_recovery_effort`, `schedule_answer_check`, and `schedule_answer_model` keep their latest stored values. Desktop autosave includes the other swarm fields when that section changes. |
 | `schedule_answer_check` | `true` | Verify scheduling claims in manager answers, tool commentary and scheduled findings. Turning it off skips this check. Schedule execution and wake authorization still use their own rules. Editable in Settings → Swarm. |
 | `schedule_answer_model` | `chat` | `chat` follows the conversation model. `auto` first calls the authorized Gateway Decisions role when available, otherwise it follows the conversation model. `decision` requires the Gateway role and reports `decision_model_unavailable` if it is absent. A probability below 0.1 skips claim extraction. At 0.1 or above, the chat model extracts exact claims for verification against persisted schedules. Request or response errors use the existing answer-check retry budget. A personal conversation in LOCAL mode uses its own provider. Missing and unknown selections default to `chat`. The saved model choice is retained while the check is off. Editable in Settings → Swarm. |
 | `policy_reasoning_effort` | `""` | reasoning level for the two policy classifiers: the schedule-answer check that verifies a claimed armed check before a finished answer is published, and the wake-permission check. Empty is the background default, `low`; `inherit` follows the conversation's thinking level; `none` explicitly disables thinking; `low` / `medium` / `high` are sent as chosen. Values are trimmed/lowercased; unknown values normalize to empty. These calls classify, so the default keeps them off the answer's critical path: thinking at a high conversation level once held an answer for 57s and 10K reasoning tokens. Only the empty default is optional: an endpoint that rejects it with HTTP 400 is asked once more without `reasoning_effort`, and Trace keeps the refused call. An explicitly chosen or inherited level keeps the endpoint's error. Editable as **Swarm → Policy check thinking**. |
@@ -1088,7 +1088,7 @@ remain package-derived and must increase beyond all remote builds/uploads.
 This signing configuration is managed outside the application Settings; see
 [release setup and recovery](RELEASE.md#testflight-version-and-build-number).
 
-语音设置入口随模型配置权限显示：LOCAL 和可配置的普通网关账号在 Settings → Models 编辑功能模型及语音参数；托管第三方账号隐藏 Models，只在 Speech 入口显示语音开关、音色和资源参数，不显示模型、Provider 或凭据配置。
+语音输入和朗读在「设置 → 模型 → 可选 AI 功能」各有一个抽屉。可配置账号可以选择功能模型，托管账号跟随网关，并调整网关允许编辑的语音参数。
 
 旧版 LOCAL 设置没有 `model_policy` 时，明确的本地产品模式仍允许编辑原有语音配置；网关模式缺少已验证的能力清单时不推断语音权限，也不显示语音控制。
 

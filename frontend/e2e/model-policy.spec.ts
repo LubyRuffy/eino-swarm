@@ -5,26 +5,29 @@ test("functional model overrides save and restore without switching product mode
   const provider = settings.models.providers[0]
   const { models } = await (await request.get("/api/models")).json()
   const initial = models.find((row: { provider_id: string }) => row.provider_id === provider.id).model
-  expect((await request.put("/api/settings", { data: { models: { bindings: { title: { provider_id: provider.id, model: initial } } } } })).ok()).toBeTruthy()
+  expect((await request.put("/api/settings", { data: { swarm: { ...settings.swarm, selection_translation: true }, models: { bindings: { translation: { provider_id: provider.id, model: initial } } } } })).ok()).toBeTruthy()
   try {
     await page.goto("/")
     await page.getByRole("button", { name: "Settings", exact: true }).click()
     const dialog = page.getByRole("dialog")
     await dialog.getByRole("tab", { name: "Models", exact: true }).click()
-    await expect(dialog.getByLabel("Conversation title Model", { exact: true })).toHaveValue(initial)
-    await dialog.getByLabel("Conversation title Model", { exact: true }).fill("role-choice")
-    await dialog.getByLabel("Conversation title Model", { exact: true }).press("Tab")
-    await expect.poll(async () => (await (await request.get("/api/settings")).json()).settings.models.bindings.title.model).toBe("role-choice")
-    await dialog.getByRole("button", { name: "Use default", exact: true }).click()
+    await dialog.getByRole("button", { name: "Configure Translation", exact: true }).click()
+    const drawer = page.getByRole("dialog", { name: "Translation", exact: true })
+    await expect(drawer.getByLabel("Translation Model", { exact: true })).toHaveValue(initial)
+    await drawer.getByLabel("Translation Model", { exact: true }).fill("role-choice")
+    await drawer.getByLabel("Translation Model", { exact: true }).press("Tab")
+    await expect.poll(async () => (await (await request.get("/api/settings")).json()).settings.models.bindings.translation.model).toBe("role-choice")
+    await drawer.getByRole("button", { name: "Use default", exact: true }).click()
     await expect.poll(async () => (await (await request.get("/api/settings")).json()).settings.models.bindings ?? {}).toEqual({})
-    await expect(dialog.getByLabel("Conversation title Model", { exact: true })).toHaveCount(0)
+    await expect(drawer.getByLabel("Translation Model", { exact: true })).toHaveCount(0)
+    await page.keyboard.press("Escape")
     await expect(dialog.getByRole("combobox", { name: /^(Product|Execution) mode$/i })).toHaveCount(0)
   } finally {
-    await request.put("/api/settings", { data: { models: { bindings: settings.models.bindings ?? {} } } })
+    await request.put("/api/settings", { data: { swarm: settings.swarm, models: { bindings: settings.models.bindings ?? {} } } })
   }
 })
 
-test("managed policy removes model settings and composer selection", async ({ page }) => {
+test("managed policy keeps feature controls and hides editable model selection", async ({ page }) => {
   // This fixture exercises the UI projection. Direct mutation rejection is
   // covered separately through the real Go HTTP and phone RPC handlers.
   const policy = { mode: "gateway", configurable: false, ready: true, scope: "gateway:managed", defaults: { conversation: { provider_id: "gateway:managed", model: "account" } } }
@@ -40,7 +43,8 @@ test("managed policy removes model settings and composer selection", async ({ pa
   await expect(page.getByLabel("Model", { exact: true })).toHaveCount(0)
   await page.getByRole("button", { name: "Settings", exact: true }).click()
   const dialog = page.getByRole("dialog")
-  await expect(dialog.getByRole("tab", { name: "Models", exact: true })).toHaveCount(0)
+  await dialog.getByRole("tab", { name: "Models", exact: true }).click()
+  await expect(dialog.getByRole("button", { name: "Configure Translation", exact: true })).toBeVisible()
   await expect(dialog.getByText("Functional models", { exact: true })).toHaveCount(0)
 })
 
@@ -55,7 +59,7 @@ test("embedding configuration alone enables search and clearing it survives relo
     await dialog.getByRole("tab", { name: "Models", exact: true }).click()
     await expect(dialog.getByText("Image generation", { exact: true })).toBeVisible()
     await expect(dialog.getByRole("combobox", { name: "Image generation", exact: true })).toContainText("Use default")
-    await expect(dialog.getByLabel("Translation Provider", { exact: true })).toBeVisible()
+    await expect(dialog.getByRole("button", { name: "Configure Translation", exact: true })).toBeVisible()
     await expect(dialog.getByRole("switch", { name: "Semantic search", exact: true })).toHaveCount(0)
     await expect(dialog.getByRole("heading", { name: "Conversation search", exact: true })).toHaveCount(0)
     const picker = dialog.getByLabel("Embedding model Provider", { exact: true })

@@ -15,6 +15,7 @@ import (
 
 func TestSelectionTranslationReturnsTextWithoutChangingTheConversation(t *testing.T) {
 	h := newHarness(t)
+	h.json(http.MethodPut, "/api/settings", map[string]any{"swarm": map[string]bool{"selection_translation": true}}, http.StatusOK)
 	id := h.newThread()
 	const source = "Do not restart 2 hosts."
 	got := h.json(http.MethodPost, "/api/threads/"+id+"/translation", map[string]string{"text": "  " + source + "  "}, http.StatusOK)
@@ -32,6 +33,7 @@ func TestSelectionTranslationReturnsTextWithoutChangingTheConversation(t *testin
 
 func TestSelectionTranslationRejectsInvalidRequests(t *testing.T) {
 	h := newHarness(t)
+	h.json(http.MethodPut, "/api/settings", map[string]any{"swarm": map[string]bool{"selection_translation": true}}, http.StatusOK)
 	path := "/api/threads/" + h.newThread() + "/translation"
 	overlong := `{"text":"` + strings.Repeat("a", 8001) + `"}`
 	for _, tc := range []struct {
@@ -76,6 +78,7 @@ func TestSelectionTranslationRejectsInvalidRequests(t *testing.T) {
 
 func TestSelectionTranslationHidesProviderErrors(t *testing.T) {
 	h := newHarness(t)
+	h.json(http.MethodPut, "/api/settings", map[string]any{"swarm": map[string]bool{"selection_translation": true}}, http.StatusOK)
 	provider.SetMockFailure(errors.New("private-upstream-detail"))
 	t.Cleanup(func() { provider.SetMockFailure(nil) })
 	got := h.json(http.MethodPost, "/api/threads/"+h.newThread()+"/translation", map[string]string{"text": "Hello"}, http.StatusBadGateway)
@@ -86,6 +89,7 @@ func TestSelectionTranslationHidesProviderErrors(t *testing.T) {
 
 func TestSelectionTranslationWritesNothingWhenTheCallerAlreadyLeft(t *testing.T) {
 	h := newHarness(t)
+	h.json(http.MethodPut, "/api/settings", map[string]any{"swarm": map[string]bool{"selection_translation": true}}, http.StatusOK)
 	id := h.newThread()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -95,5 +99,22 @@ func TestSelectionTranslationWritesNothingWhenTheCallerAlreadyLeft(t *testing.T)
 	h.app.Server.Handler().ServeHTTP(rec, req)
 	if rec.Body.Len() != 0 {
 		t.Fatalf("canceled caller received %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSelectionTranslationSwitchRejectsHTTPAndProjectsItsCurrentState(t *testing.T) {
+	h := newHarness(t)
+	path := "/api/threads/" + h.newThread() + "/translation"
+	for _, enabled := range []bool{false, true, false} {
+		h.json(http.MethodPut, "/api/settings", map[string]any{"swarm": map[string]bool{"selection_translation": enabled}}, http.StatusOK)
+		meta := h.json(http.MethodGet, "/api/meta", nil, http.StatusOK)
+		if meta["model_policy"].(map[string]any)["selection_translation"] != enabled {
+			t.Fatalf("the menu would see stale translation settings: %v", meta["model_policy"])
+		}
+		if enabled {
+			h.json(http.MethodPost, path, map[string]string{"text": "Selected text."}, http.StatusOK)
+		} else if got := h.json(http.MethodPost, path, map[string]string{"text": "Selected text."}, http.StatusForbidden); got["code"] != "selection_translation_disabled" {
+			t.Fatalf("disabled request: %v", got)
+		}
 	}
 }

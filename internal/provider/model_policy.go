@@ -16,17 +16,18 @@ var ErrModelPolicy = errors.New("model_selection_disabled: model is outside the 
 
 // ModelPolicy is the safe, account-scoped projection consumed by PC and phone.
 type ModelPolicy struct {
-	AccountSources     map[string]*SourceCapabilities `json:"account_sources,omitempty"`
-	Capabilities       *SourceCapabilities            `json:"capabilities,omitempty"`
-	CapabilityStatus   string                         `json:"capability_status,omitempty"`
-	Mode               string                         `json:"mode"`
-	Configurable       bool                           `json:"configurable"`
-	Ready              bool                           `json:"ready"`
-	Scope              string                         `json:"scope"`
-	Defaults           map[string]config.ModelRef     `json:"defaults,omitempty"`
-	Bindings           map[string]config.ModelRef     `json:"bindings,omitempty"`
-	Roles              []AccountRole                  `json:"roles,omitempty"`
-	FunctionalCatalogs []FunctionalCatalog            `json:"functional_catalogs,omitempty"`
+	AccountSources       map[string]*SourceCapabilities `json:"account_sources,omitempty"`
+	Capabilities         *SourceCapabilities            `json:"capabilities,omitempty"`
+	CapabilityStatus     string                         `json:"capability_status,omitempty"`
+	SelectionTranslation *bool                          `json:"selection_translation,omitempty"`
+	Mode                 string                         `json:"mode"`
+	Configurable         bool                           `json:"configurable"`
+	Ready                bool                           `json:"ready"`
+	Scope                string                         `json:"scope"`
+	Defaults             map[string]config.ModelRef     `json:"defaults,omitempty"`
+	Bindings             map[string]config.ModelRef     `json:"bindings,omitempty"`
+	Roles                []AccountRole                  `json:"roles,omitempty"`
+	FunctionalCatalogs   []FunctionalCatalog            `json:"functional_catalogs,omitempty"`
 }
 
 // FunctionalCatalog is one signed-in catalog's non-conversation names.
@@ -263,14 +264,19 @@ func (p *Pool) RoleProvider(role string) (config.Provider, bool, error) {
 	if ref.ProviderID == "" || ref.Model == "" {
 		return config.Provider{}, true, ErrModelPolicy
 	}
+	prov, err := p.resolveRoleProvider(role, ref)
+	return prov, true, err
+}
+
+func (p *Pool) resolveRoleProvider(role string, ref config.ModelRef) (config.Provider, error) {
 	if err := p.validateModelSelection(ref.ProviderID, ref.Model); err != nil {
-		return config.Provider{}, true, err
+		return config.Provider{}, err
 	}
 	prov, err := p.Resolve(ref.ProviderID)
 	prov.Model = ref.Model
 	if src := p.accountForExecution(ref.ProviderID); src != nil && src.negotiated {
 		if !src.allowsRole(role) {
-			return config.Provider{}, true, ErrModelPolicy
+			return config.Provider{}, ErrModelPolicy
 		}
 		prov.APIMode = src.chatAPI(role)
 	}
@@ -281,7 +287,7 @@ func (p *Pool) RoleProvider(role string) (config.Provider, bool, error) {
 			}
 		}
 	}
-	return prov, true, err
+	return prov, err
 }
 
 func (p *Pool) validateModelSelection(id, name string) error {

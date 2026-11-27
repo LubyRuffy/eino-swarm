@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/components/model"
@@ -148,7 +149,7 @@ func (e *Engine) scheduleComposerPrediction(threadID string, turn *store.Turn, s
 }
 
 func (e *Engine) runComposerPrediction(threadID, turnID, providerID, modelName, userText, final string, gen uint64) {
-	if !e.predictions.current(threadID, gen) || e.Status(threadID).Running {
+	if !e.predictions.current(threadID, gen) || e.Status(threadID).Running || !e.composerPredictionsOn() {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), predictionCallTimeout)
@@ -158,6 +159,15 @@ func (e *Engine) runComposerPrediction(threadID, turnID, providerID, modelName, 
 	if err != nil {
 		e.finishPrediction(threadID, turnID, gen, "", err.Error())
 		return
+	}
+	if ref, selected := e.pool.ModelPolicy().Bindings[config.ComposerPredictionRole]; selected {
+		providerID, modelName = ref.ProviderID, ref.Model
+		if err := e.pool.ValidateConversationSelection(providerID, modelName); err != nil && !e.pool.AllowsPersonalFeatureModel(providerID, "conversation") {
+			e.finishPrediction(threadID, turnID, gen, "", err.Error())
+			return
+		}
+	} else if accountID := e.pool.AccountSourceID(); e.cfg.ProductSnapshot().FOFA() && accountID != "" {
+		providerID, modelName = accountID, ""
 	}
 	builder, err := e.pool.ModelBuilder(ctx, providerID, modelName, "", e.callRecorder(threadID, turnID))
 	if err != nil {

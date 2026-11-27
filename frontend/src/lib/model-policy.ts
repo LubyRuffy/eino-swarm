@@ -5,13 +5,14 @@ export type ModelRole = "conversation" | "title" | "compact" | "translation" | "
 export type ModelPolicy = {
   account_sources?: Record<string, SourceCapabilities | undefined>
   capabilities?: SourceCapabilities
+  selection_translation?: boolean
   capability_status?: "ready" | "unavailable"
   mode: "local" | "gateway"
   configurable: boolean
   ready: boolean
   scope: string
   defaults?: Partial<Record<ModelRole, ModelRef>>
-  bindings?: Partial<Record<ModelRole, ModelRef>>
+  bindings?: Partial<Record<ModelRole | "composer_prediction", ModelRef>>
   roles?: { id: string; enabled: boolean; label: string }[]
   /** Typed names omitted from the conversation list, one entry per signed-in catalog. */
   functional_catalogs?: FunctionalCatalog[]
@@ -44,4 +45,8 @@ export function selectedFeatureAllows(policy: ModelPolicy | undefined, providerI
   if (policy?.mode === "gateway") return policyAllows(policy, role)
   if (providerId?.startsWith("gateway:")) return capabilityAllows(policy?.account_sources?.[providerId], role)
   return policy?.mode === "local"
+}
+
+export function selectionTranslationAvailable(policy: ModelPolicy | undefined, providerId: string | undefined): boolean {
+  return policy?.selection_translation !== false && selectedFeatureAllows(policy, providerId, "translation")
 }

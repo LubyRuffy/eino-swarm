@@ -1,5 +1,7 @@
 package engine
 
+import "github.com/LubyRuffy/eino-swarm/internal/provider"
+
 // roleModel picks the fixed role for a FOFA account provider. ok is false when
 // this install or provider is not in role mode, and the caller keeps its own
 // model. An enabled role returns its id. Title and compact stay on when their
@@ -30,4 +32,12 @@ func (e *Engine) enabledAccountRole(role string) (providerID, modelName string, 
 		return "", "", false
 	}
 	return id, role, true
+}
+
+// ModelPolicyView adds client preferences to the provider's permission view.
+func (e *Engine) ModelPolicyView() provider.ModelPolicy {
+	policy := e.pool.ModelPolicy()
+	translation := e.cfg.SwarmSnapshot().SelectionTranslation
+	policy.SelectionTranslation = &translation
+	return policy
 }

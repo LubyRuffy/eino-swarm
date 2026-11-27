@@ -14,6 +14,7 @@ import (
 )
 
 var (
+	ErrSelectionTranslationDisabled    = errors.New("engine: selection translation is switched off")
 	ErrInvalidSelectionTranslation     = errors.New("engine: invalid selection translation")
 	ErrSelectionTranslationTooLong     = errors.New("engine: selection translation is too long")
 	ErrSelectionTranslationUnavailable = errors.New("engine: selection translation returned no text")
@@ -50,6 +51,9 @@ func (e *Engine) TranslateSelection(ctx context.Context, threadID, text string) 
 	if utf8.RuneCountInString(text) > selectionTranslationMaxRunes {
 		return "", ErrSelectionTranslationTooLong
 	}
+	if !e.cfg.SwarmSnapshot().SelectionTranslation {
+		return "", ErrSelectionTranslationDisabled
+	}
 	snapshot, err := e.store.ReadSideChatContext(ctx, threadID)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -77,7 +81,7 @@ func (e *Engine) TranslateSelection(ctx context.Context, threadID, text string) 
 	}
 	ctx, cancel := context.WithTimeout(ctx, selectionTranslationTimeout)
 	defer cancel()
-	if id, _, ok := e.enabledAccountRole("translation"); ok {
+	if id, _, ok := e.enabledAccountRole("translation"); ok && id == providerID {
 		limit := min(selectionTranslationMaxTokens, e.cfg.SwarmSnapshot().CompletionTokenLimit())
 		translated, err := e.pool.CompleteFixedChat(ctx, id, "translation", selectionTranslationPrompt(), text, limit)
 		if ctx.Err() != nil {

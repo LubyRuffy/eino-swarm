@@ -813,7 +813,7 @@ export function PhoneApp() {
           <ThreadScreen
             key={locale + detail.id}
             detail={detail}
-            prediction={phonePrediction(view.events, detail, predictionsEnabled && !catalogBusy)}
+            prediction={phonePrediction(view.events, detail, (startup?.composer_predictions ?? predictionsEnabled) && !catalogBusy)}
             onReadVisibility={(visible) => { managerVisible.current = visible }}
             fileLink={link ?? undefined}
             panelOwnerKey={activeFp ? `${activeFp}:${startup?.data_generation ?? 0}` : ""}

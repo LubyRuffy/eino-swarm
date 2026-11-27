@@ -49,7 +49,7 @@ complete-segment semantics.
 `speech.output` and `speech.limits`. Each direction has `enabled`, `source`
 (`account`, `provider`, `custom`), `provider_id`, `base_url`, `model` and
 direction-specific parameters. `enabled` controls LOCAL and personal services.
-For a resolved account model in Gateway mode, `gateway_disabled: true`
+Fresh voice directions are off. For a resolved account model in Gateway mode, `gateway_disabled: true`
 disables that direction. `false` follows model availability, and omitting the
 field on PUT preserves its stored value. `speech.input.device_id` is optional; empty
 uses the system microphone, and a non-empty value is that browser's audio
@@ -59,7 +59,7 @@ Functional bindings resolve each direction's model. Managed gateways supply
 their enabled roles; editable accounts and LOCAL can select personal providers.
 The request cannot supply a replacement upstream URL, key or model.
 
-PC metadata and phone `speech_config`/catalog replies publish only a safe voice
+PC metadata and phone `speech_config`/catalog replies may report per-direction `user_disabled` to keep a paired phone from falling back to direct Gateway voice after a PC opt-out. They publish only a safe voice
 snapshot: `execution` (`gateway`/`pc_local`), verified `gateway_origin` when
 applicable, effective input/output `enabled`, `ready`, reason, model/label, parameters and
 limits. Both `input` and `output` additionally publish their own `execution`
@@ -311,7 +311,8 @@ Client startup metadata. During recovery, clients poll it until `startup` is `re
   "swarm": { "max_concurrent": 6, "agent_timeout_seconds": 3600,
              "max_turns": 200, "manager_max_iterations": 200,
              "progress_interval_seconds": 5, "delta_coalesce_ms": 50,
-             "auto_title": true, "composer_predictions": true, "graph": true,
+             "auto_title": true, "composer_predictions": false, "graph": true,
+             "graph_auto_record": false, "selection_translation": false,
              "title_provider": "", "title_model": "",
              "compact_provider": "", "compact_model": "",
              "context_char_budget": 80000, "compact_keep_messages": 6,
@@ -569,7 +570,8 @@ provider carries `has_api_key` and `ready` instead.
   "swarm": {"max_concurrent": 6, "agent_timeout_seconds": 3600,
             "max_turns": 200, "manager_max_iterations": 200,
             "progress_interval_seconds": 5, "delta_coalesce_ms": 50,
-            "auto_title": true, "composer_predictions": true,
+            "auto_title": true, "composer_predictions": false,
+            "graph_auto_record": false, "selection_translation": false,
             "title_provider": "", "title_model": "",
             "compact_provider": "", "compact_model": "",
             "context_char_budget": 80000, "compact_keep_messages": 6,
@@ -1501,7 +1503,7 @@ in `catalog`.
 Rows for other providers can still mark the default used by a conversation
 that already selected that provider.
 
-`catalog` and `refresh_catalog` report `composer_predictions`; an explicit
+`meta`, `catalog` and `refresh_catalog` report `composer_predictions`; an explicit
 `false` hides paired-PC suggestions. The phone uses only the latest completed
 turn’s `composer_prediction` event and never sends it without a human submit.
 
@@ -1569,7 +1571,7 @@ output at most 12000, and the escaped response must fit one sealed frame. The
 model call has a 60-second budget. `cancel_translation` `{call_id}` cancels only
 the original RPC id; closing the link cancels and joins its request. Translation
 uses normal work/startup/backup admission. Errors include `bad_request`,
-`not_found`, `selection_translation_too_long`, `selection_translation_busy`,
+`not_found`, `selection_translation_disabled`, `selection_translation_too_long`, `selection_translation_busy`,
 `selection_translation_timeout`, `selection_translation_cancelled`, and
 `selection_translation_unavailable`, without upstream bodies or credentials.
 Older hosts return `unknown_op` and the phone requests a PC update.
@@ -2452,7 +2454,9 @@ run at once.
 The text is trimmed. Blank text is `400 selection_translation_invalid`. More
 than 8000 Unicode characters is `400 selection_translation_too_long`. A body
 over 96 KiB is `413 selection_translation_too_long`. A missing conversation is
-`404`. A signed-out FOFA install is `403 login_required`. A third concurrent
+`404`. A signed-out FOFA install is `403 login_required`. A disabled feature returns
+`403 selection_translation_disabled` before requesting a model. `model_policy.selection_translation`
+reports the saved preference in PC metadata and phone model-policy replies. A third concurrent
 call is `429 selection_translation_busy`. An empty or tool-shaped model answer
 is `502 selection_translation_unavailable`. A timeout is `504
 selection_translation_timeout`. Those errors use a fixed message and do not
@@ -3548,17 +3552,16 @@ the event — a title is metadata, not a chat row — but the Trace tab's Full l
 lists it.
 A later turn does not name the conversation again. A title the user typed
 (`POST /api/threads` or rename) is never overwritten. `swarm.auto_title: false`
-leaves the placeholder. Empty `title_provider` / `title_model` follow the
-conversation's model; pin another name in Settings → Models when an endpoint
-lists more than one.
+leaves the placeholder. The Gateway title preset or the LOCAL default conversation
+model supplies the name. The conversation’s temporary model selection is independent.
 
 Compact uses the same pin: empty `compact_provider` / `compact_model` follow
 the conversation; Settings → Models has a Compact summary picker.
 
 ### Next-step suggestion
 
-After a visible reply, when the conversation is idle, the engine may ask that
-conversation's model for one next message (`swarm.composer_predictions`, on by
+After a visible reply, when the conversation is idle, the engine may ask the
+configured suggestion model for one next message (`swarm.composer_predictions`, off by
 default). The result is a `composer_prediction` event on the same turn
 (`agent_id: "composer-prediction"`). The PC composer shows `text` as the empty
 input's placeholder. Tab inserts it; Enter sends it. The event is Trace

@@ -19,6 +19,7 @@ type InputView struct {
 	SourceID           string            `json:"source_id,omitempty"`
 	Execution          string            `json:"execution"`
 	GatewayOrigin      string            `json:"gateway_origin,omitempty"`
+	UserDisabled       *bool             `json:"user_disabled,omitempty"`
 	Enabled            bool              `json:"enabled"`
 	Ready              bool              `json:"ready"`
 	Reason             string            `json:"reason,omitempty"`
@@ -38,6 +39,7 @@ type OutputView struct {
 	SourceID       string            `json:"source_id,omitempty"`
 	Execution      string            `json:"execution"`
 	GatewayOrigin  string            `json:"gateway_origin,omitempty"`
+	UserDisabled   *bool             `json:"user_disabled,omitempty"`
 	Enabled        bool              `json:"enabled"`
 	Ready          bool              `json:"ready"`
 	Reason         string            `json:"reason,omitempty"`
@@ -80,6 +82,9 @@ func (s *Service) Snapshot() SnapshotView {
 	if s.pool != nil && s.pool.OfficialOnly() {
 		v.Execution = "gateway"
 	}
+	inputDisabled := !input.Enabled && input.GatewayDisabled
+	outputDisabled := !output.Enabled && output.GatewayDisabled
+	v.Input.UserDisabled, v.Output.UserDisabled = &inputDisabled, &outputDisabled
 	for _, isInput := range []bool{true, false} {
 		selection, err := s.selectTarget(cfg, isInput)
 		ready, reason := err == nil, ""

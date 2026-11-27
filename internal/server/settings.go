@@ -62,7 +62,7 @@ func (s *Server) getMeta(c *gin.Context) {
 		clients = []PresenceClient{}
 	}
 	c.JSON(http.StatusOK, metaView{
-		ModelPolicy: pool.ModelPolicy(),
+		ModelPolicy: s.engine.ModelPolicyView(),
 		Startup:     startup, Restore: progress,
 		Version:         s.opts.Version,
 		Mode:            s.opts.Mode,
@@ -211,8 +211,11 @@ type putSwarmSettings struct {
 	AgentTimeoutSeconds *int `json:"agent_timeout_seconds"`
 	// Absent keeps the stored choice. A missing bool would otherwise
 	// unmarshal as false and turn the next-step call off.
-	ComposerPredictions *bool `json:"composer_predictions"`
-	Graph               *bool `json:"graph"`
+	AutoTitle            *bool `json:"auto_title"`
+	ComposerPredictions  *bool `json:"composer_predictions"`
+	Graph                *bool `json:"graph"`
+	GraphAutoRecord      *bool `json:"graph_auto_record"`
+	SelectionTranslation *bool `json:"selection_translation"`
 	// Omitted or null preserves the stored choice for older clients.
 	IncrementalExecution *bool `json:"incremental_execution"`
 	// Omitted or null preserves the choice. An explicit empty string clears it.
@@ -314,6 +317,18 @@ func (s *Server) putSettings(c *gin.Context) {
 			next.Swarm.AgentTimeoutSeconds = cfg.Swarm.AgentTimeoutSeconds
 			if req.Swarm.AgentTimeoutSeconds != nil {
 				next.Swarm.AgentTimeoutSeconds = *req.Swarm.AgentTimeoutSeconds
+			}
+			next.Swarm.AutoTitle = cfg.Swarm.AutoTitle
+			if req.Swarm.AutoTitle != nil {
+				next.Swarm.AutoTitle = *req.Swarm.AutoTitle
+			}
+			next.Swarm.GraphAutoRecord = cfg.Swarm.GraphAutoRecord
+			if req.Swarm.GraphAutoRecord != nil {
+				next.Swarm.GraphAutoRecord = *req.Swarm.GraphAutoRecord
+			}
+			next.Swarm.SelectionTranslation = cfg.Swarm.SelectionTranslation
+			if req.Swarm.SelectionTranslation != nil {
+				next.Swarm.SelectionTranslation = *req.Swarm.SelectionTranslation
 			}
 			next.Swarm.ComposerPredictions = cfg.Swarm.ComposerPredictions
 			if req.Swarm.ComposerPredictions != nil {
@@ -487,8 +502,9 @@ func (s *Server) putSettings(c *gin.Context) {
 					next.Models.Bindings = map[string]map[string]config.ModelRef{}
 				}
 				next.Models.Bindings[scope] = *req.Models.Bindings
-				if next.Product.FOFA() && policy.Configurable {
-					// Functional selections replace legacy global gateway pins.
+				if next.Product.FOFA() && policy.Configurable &&
+					cfg.Models.Bindings[scope]["conversation"] != next.Models.Bindings[scope]["conversation"] {
+					// An explicit conversation selection replaces the legacy global pin.
 					next.Models.AccountModel = ""
 					next.Models.DefaultSource = config.DefaultSourceAccount
 				}

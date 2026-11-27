@@ -49,9 +49,9 @@ const base: Settings = {
 }
 
 describe("AuxiliaryModels", () => {
-  it("hides title generation while automatic naming is off", () => {
+  it("keeps legacy title pins out of the auxiliary model list", () => {
     render(<AuxiliaryModels
-      settings={{ ...base, swarm: { ...base.swarm, auto_title: false, title_model: "beta" } }}
+      settings={{ ...base, swarm: { ...base.swarm, auto_title: true, title_model: "beta" } }}
       onChange={vi.fn()}
     />)
     expect(screen.queryByText("Title generation")).toBeNull()
@@ -67,38 +67,26 @@ describe("AuxiliaryModels", () => {
       },
     }
     render(<AuxiliaryModels settings={one} onChange={vi.fn()} />)
-    expect(screen.getByText("Title generation")).toBeTruthy()
     expect(screen.getByText("Compact summary")).toBeTruthy()
     expect(screen.queryByLabelText("Title generation model")).toBeNull()
     expect(screen.queryByLabelText("Compact summary model")).toBeNull()
-  })
-
-  it("pins a catalog name instead of following the conversation", () => {
-    const onChange = vi.fn()
-    render(<AuxiliaryModels settings={base} onChange={onChange} />)
-    fireEvent.click(screen.getByLabelText("Title generation model"))
-    fireEvent.click(screen.getByRole("option", { name: "beta" }))
-    expect(onChange).toHaveBeenCalled()
-    const next = onChange.mock.calls[0][0] as Settings
-    expect(next.swarm.title_provider).toBe("default")
-    expect(next.swarm.title_model).toBe("beta")
   })
 
   it("clears a pin back to automatic", () => {
     const onChange = vi.fn()
     const pinned: Settings = {
       ...base,
-      swarm: { ...base.swarm, title_provider: "default", title_model: "beta" },
+      swarm: { ...base.swarm, compact_provider: "default", compact_model: "beta" },
     }
     render(<AuxiliaryModels settings={pinned} onChange={onChange} />)
-    expect(screen.getByLabelText("Title generation model").textContent).toContain("beta")
-    fireEvent.click(screen.getByLabelText("Title generation model"))
+    expect(screen.getByLabelText("Compact summary model").textContent).toContain("beta")
+    fireEvent.click(screen.getByLabelText("Compact summary model"))
     fireEvent.click(
       screen.getByRole("option", { name: "Automatic · this conversation's model" }),
     )
     const next = onChange.mock.calls[0][0] as Settings
-    expect(next.swarm.title_provider).toBe("")
-    expect(next.swarm.title_model).toBe("")
+    expect(next.swarm.compact_provider).toBe("")
+    expect(next.swarm.compact_model).toBe("")
   })
 
   it("pins a compact summarizer independently of the namer", () => {

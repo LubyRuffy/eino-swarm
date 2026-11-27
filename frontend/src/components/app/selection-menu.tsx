@@ -1,4 +1,4 @@
-import { selectedFeatureAllows } from "@/lib/model-policy"
+import { selectionTranslationAvailable } from "@/lib/model-policy"
 import { refreshCapabilities } from "@/lib/refresh-capabilities"
 import { Languages, Loader2, MessageSquare, MessageSquarePlus, Square, Volume2 } from "lucide-react"
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
@@ -50,7 +50,7 @@ export function SelectionMenu({
   const selectionText = active?.text ?? ""
   const prose = useMemo(() => speechText(selectionText), [selectionText])
   const canRead = Boolean(speech?.output.enabled && speech.output.ready && prose)
-  const translationAllowed = useApp(s => selectedFeatureAllows(s.meta?.model_policy, s.threads.find(th => th.id === threadId)?.provider_id || s.meta?.default_provider, "translation"))
+  const translationAllowed = useApp(s => selectionTranslationAvailable(s.meta?.model_policy, s.threads.find(th => th.id === threadId)?.provider_id || s.meta?.default_provider))
   useEffect(() => { if (active) void refreshCapabilities().catch(() => undefined) }, [Boolean(active)])
   const showTranslate = translationAllowed && t.locale === "zh" && Boolean(threadId) && englishSelection(selectionText)
   const reading = playback.key === selectionSpeechKey && playback.state !== "idle"
@@ -170,6 +170,12 @@ export function SelectionMenu({
   useEffect(() => {
     setTranslation(null)
   }, [selectionText])
+
+  useEffect(() => {
+    if (translationAllowed) return
+    translateAbort.current?.abort()
+    setTranslation(null)
+  }, [translationAllowed])
 
   useEffect(() => () => {
     translateAbort.current?.abort()

@@ -183,6 +183,7 @@ func TestGraphWritesAreRefusedWithoutTrustedRuntimeProvenance(t *testing.T) {
 // settings change switched off, and must not outlive a cancellation.
 func TestGraphWriteLockRefusesDroppedTurnsDisabledGraphAndCancellation(t *testing.T) {
 	e := newTestEngine(t)
+	e.cfg.Swarm.GraphAutoRecord = true
 	unlock, err := e.lockGraphWrite(context.Background(), "tn_live")
 	if err != nil {
 		t.Fatal(err)
@@ -208,6 +209,14 @@ func TestGraphWriteLockRefusesDroppedTurnsDisabledGraphAndCancellation(t *testin
 	unlock()
 
 	e.configUpdateMu.Lock()
+	e.cfg.Swarm.GraphAutoRecord = false
+	e.configUpdateMu.Unlock()
+	if _, err := e.lockGraphWrite(context.Background(), "tn_live"); !errors.Is(err, ErrGraphDisabled) {
+		t.Errorf("automatic recording switched off: %v", err)
+	}
+
+	e.configUpdateMu.Lock()
+	e.cfg.Swarm.GraphAutoRecord = true
 	e.cfg.Swarm.Graph = false
 	e.configUpdateMu.Unlock()
 	if _, err := e.lockGraphWrite(context.Background(), "tn_live"); !errors.Is(err, ErrGraphDisabled) {

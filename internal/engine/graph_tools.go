@@ -29,8 +29,9 @@ func (e *Engine) graphEnabled(turn *store.Turn) bool {
 }
 
 func (e *Engine) freezeGraph(turn *store.Turn, planning bool) {
-	turn.GraphTools = e.cfg.SwarmSnapshot().Graph
-	turn.GraphReadOnly = planning && turn.GraphTools
+	settings := e.cfg.SwarmSnapshot()
+	turn.GraphTools = settings.Graph
+	turn.GraphReadOnly = turn.GraphTools && (planning || !settings.GraphAutoRecord)
 }
 
 func (e *Engine) graphTools(turn *store.Turn, readOnly bool) []tool.BaseTool {

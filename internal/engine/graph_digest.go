@@ -65,7 +65,7 @@ func (h *graphDigestHandler) BeforeModelRewriteState(ctx context.Context, state 
 		return ctx, state, nil
 	}
 	turnID := h.turnID
-	if h.readOnly {
+	if h.readOnly || !h.engine.cfg.SwarmSnapshot().GraphAutoRecord {
 		turnID = ""
 	}
 	digest, err := h.engine.store.ReadGraphDigest(ctx, h.owner, h.threadID, turnID)

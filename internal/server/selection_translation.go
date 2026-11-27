@@ -70,6 +70,12 @@ func (s *Server) translateSelection(c *gin.Context) {
 }
 
 func selectionTranslationFailure(err error) (int, gin.H) {
+	if errors.Is(err, engine.ErrSelectionTranslationDisabled) {
+		return http.StatusForbidden, gin.H{
+			"error": "Selection translation is switched off.",
+			"code":  "selection_translation_disabled",
+		}
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return http.StatusGatewayTimeout, gin.H{
 			"error": "The translation timed out.",

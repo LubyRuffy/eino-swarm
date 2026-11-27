@@ -75,40 +75,6 @@ export function SwarmTab({
       title={t("settings.swarm.title")}
       description={t("settings.swarm.desc")}
     >
-      <SettingsSection title={t("settings.swarm.conversations")}>
-        <Field
-          query={query}
-          label={t("settings.swarm.autoTitle")}
-          hint={t("settings.swarm.autoTitleHint")}
-        >
-          <Switch
-            checked={settings.swarm.auto_title !== false}
-            onCheckedChange={(auto_title) => update({ auto_title })}
-          />
-        </Field>
-        <Field
-          query={query}
-          label={t("settings.swarm.predictions")}
-          hint={t("settings.swarm.predictionsHint")}
-        >
-          <Switch
-            checked={settings.swarm.composer_predictions !== false}
-            onCheckedChange={(composer_predictions) => update({ composer_predictions })}
-            aria-label={t("settings.swarm.predictions")}
-          />
-        </Field>
-        <Field
-          query={query}
-          label={t("settings.swarm.graph")}
-          hint={t("settings.swarm.graphHint")}
-        >
-          <Switch
-            checked={settings.swarm.graph !== false}
-            onCheckedChange={(graph) => update({ graph })}
-            aria-label={t("settings.swarm.graph")}
-          />
-        </Field>
-      </SettingsSection>
 
       <SettingsSection title={t("settings.swarm.subagents")}>
         <Field

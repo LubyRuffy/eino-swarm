@@ -69,6 +69,9 @@ finishes. The speech service must provide mono signed-16 LE PCM at 24 kHz.
 Explicit PC or personal output settings retain their format and segment limits.
 Select PCM in those settings for incremental direct HTTP playback; MP3/WAV and
 the encrypted PC-local route wait for a completed segment.
+A paired PC’s explicit Voice input or Read aloud opt-out applies to that direction.
+When connected, the phone rechecks the preference before a direct Gateway call.
+Standalone phone voice follows its own settings.
 The PC snapshot declares read-aloud execution separately from dictation: an
 ordinary configurable Gateway output uses the phone's matching Mobile login
 directly, while personal PC outputs use encrypted PC RPC. Older PC snapshots

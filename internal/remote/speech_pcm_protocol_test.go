@@ -29,6 +29,7 @@ func TestBufferedPhonePCMRPCStillRequestsAudioForAnAccountModel(t *testing.T) {
 	if err := e.Config().Update(func(c *config.Config) error {
 		c.Product.Mode = config.ProductModeFOFA
 		c.Speech.Output.Format = "pcm"
+		c.Speech.Output.GatewayDisabled = false
 		return nil
 	}); err != nil {
 		t.Fatal(err)

@@ -166,8 +166,8 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		managerTools = append(managerTools, execSessions.ObservationTools()...)
 	}
 	if e.graphEnabled(turn) {
-		managerTools = append(managerTools, e.graphTools(turn, planning)...)
-		instruction = JoinPromptSections(instruction, graphInstruction(planning))
+		managerTools = append(managerTools, e.graphTools(turn, turn.GraphReadOnly)...)
+		instruction = JoinPromptSections(instruction, graphInstruction(turn.GraphReadOnly))
 	}
 	if planning {
 		managerTools = dropPlanMutatingManagerTools(managerTools)

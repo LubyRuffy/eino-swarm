@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )
@@ -36,7 +37,13 @@ type fixedChatRequest struct {
 // body stays out of the error.
 func (p *Pool) CompleteFixedChat(ctx context.Context, providerID, role, system, user string, maxTokens int) (string, error) {
 	if source := p.accountForExecution(providerID); source != nil && source.negotiated {
-		prov, _, err := p.RoleProvider(role)
+		var prov config.Provider
+		var err error
+		if role == "title" {
+			prov, err = p.resolveRoleProvider(role, config.ModelRef{ProviderID: source.id, Model: source.titleModelName()})
+		} else {
+			prov, _, err = p.RoleProvider(role)
+		}
 		if err != nil {
 			return "", err
 		}

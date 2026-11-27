@@ -23,6 +23,10 @@ func TestSelectionTranslationUsesTheConversationModelWithoutRecordingIt(t *testi
 		requests <- req
 		writeContextFlowReply(w, false, map[string]any{"content": translated}, "stop")
 	})
+	e.cfg.Swarm.SelectionTranslation = true
+	if view := e.ModelPolicyView(); view.SelectionTranslation == nil || !*view.SelectionTranslation {
+		t.Fatalf("client model policy lost the selection translation preference: %+v", view)
+	}
 	thread, err := e.CreateThread("translation", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -78,6 +82,7 @@ func TestSelectionTranslationPromptStaysGeneric(t *testing.T) {
 
 func TestSelectionTranslationRejectsEmptyAndOverlongTextBeforeTheModel(t *testing.T) {
 	e := newTestEngine(t)
+	e.cfg.Swarm.SelectionTranslation = true
 	thread, err := e.CreateThread("translation", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -115,6 +120,7 @@ func TestSelectionTranslationRejectsEmptyAndOverlongTextBeforeTheModel(t *testin
 
 func TestSelectionTranslationKeepsModelFailuresAndBoundsTheAnswer(t *testing.T) {
 	e := newTestEngine(t)
+	e.cfg.Swarm.SelectionTranslation = true
 	thread, err := e.CreateThread("translation", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -160,6 +166,7 @@ func TestSelectionTranslationKeepsModelFailuresAndBoundsTheAnswer(t *testing.T) 
 
 func TestSelectionTranslationStopsWhenTheCallerCancels(t *testing.T) {
 	e := newTestEngine(t)
+	e.cfg.Swarm.SelectionTranslation = true
 	thread, err := e.CreateThread("translation", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -199,6 +206,7 @@ func TestSelectionTranslationStopsWhenTheCallerCancels(t *testing.T) {
 
 func TestOfflineSelectionTranslationEchoesTheSource(t *testing.T) {
 	e := newTestEngine(t)
+	e.cfg.Swarm.SelectionTranslation = true
 	thread, err := e.CreateThread("translation", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -220,6 +228,7 @@ func TestSelectionTranslationUsesAnEnabledTranslationRole(t *testing.T) {
 		requests <- req
 		writeContextFlowReply(w, false, map[string]any{"content": translated}, "stop")
 	})
+	e.cfg.Swarm.SelectionTranslation = true
 	src := accountCatalog(t, e.cfg.Models.Providers[0].BaseURL, "conversation")
 	e.cfg.Product.Mode = config.ProductModeFOFA
 	src.SetRoles([]provider.AccountRole{
@@ -268,6 +277,7 @@ func TestEnabledTitleRoleUsesTheExclusiveNamingRoute(t *testing.T) {
 	})
 	src := accountCatalog(t, e.cfg.Models.Providers[0].BaseURL, "conversation")
 	e.cfg.Product.Mode = config.ProductModeFOFA
+	e.cfg.Swarm.AutoTitle = true
 	src.SetRoles([]provider.AccountRole{
 		{ID: "conversation", Enabled: true},
 		{ID: "title", Enabled: false, Label: "对话命名"},
@@ -282,10 +292,10 @@ func TestEnabledTitleRoleUsesTheExclusiveNamingRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.runTitle(thread.ID, turn, "迁移这批主机", "迁移已经完成。")
-	if got := (<-requests).Model; got != "conversation" {
+	if got := waitSideChatResult(t, requests).Model; got != "conversation" {
 		t.Fatalf("disabled title role model = %q", got)
 	}
-	if got := <-paths; got != "/chat/completions" {
+	if got := waitSideChatResult(t, paths); got != "/chat/completions" {
 		t.Fatalf("disabled title role path = %q", got)
 	}
 	src.SetRoles([]provider.AccountRole{
@@ -293,10 +303,10 @@ func TestEnabledTitleRoleUsesTheExclusiveNamingRoute(t *testing.T) {
 		{ID: "title", Enabled: true, Label: "对话命名"},
 	})
 	e.runTitle(thread.ID, turn, "迁移这批主机", "迁移已经完成。")
-	if got := (<-requests).Model; got != "title" {
+	if got := waitSideChatResult(t, requests).Model; got != "title" {
 		t.Fatalf("enabled title role model = %q", got)
 	}
-	if got := <-paths; got != "/naming" {
+	if got := waitSideChatResult(t, paths); got != "/naming" {
 		t.Fatalf("enabled title role path = %q", got)
 	}
 }

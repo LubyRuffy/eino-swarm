@@ -520,13 +520,14 @@ func TestANilTurnPanicDoesNotKillTheProcess(t *testing.T) {
 	t.Fatal("a nil-turn namer never released the conversation")
 }
 
-func TestRunTitleRecordsAnUnknownProvider(t *testing.T) {
+func TestRunTitleRecordsAnUnknownDefaultProvider(t *testing.T) {
 	e := newTestEngine(t)
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	turn := &store.Turn{ID: "tn_noprov", ThreadID: th.ID, ProviderID: "nope"}
+	e.Config().Models.Default = "nope"
+	turn := &store.Turn{ID: "tn_noprov", ThreadID: th.ID, ProviderID: e.Config().Models.Providers[0].ID}
 	e.runTitle(th.ID, turn, "ask", "ans")
 	ev := waitForTitle(t, e, "tn_noprov")
 	if ev.Err == "" {
@@ -631,10 +632,11 @@ func TestRunTitleRecordsAStoreFailure(t *testing.T) {
 	e.runTitle(th.ID, turn, "look into the reporting pipeline", "final")
 }
 
-func TestRunTitleHonoursAPinnedModel(t *testing.T) {
+func TestRunTitleUsesLocalDefaultInsteadOfConversationOrLegacyTitleModel(t *testing.T) {
 	e := newTestEngine(t)
 	e.Config().Swarm.TitleProvider = e.Config().Models.Default
 	e.Config().Swarm.TitleModel = "tiny"
+	e.Config().Models.Providers[0].Model = "default-chat"
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -656,8 +658,8 @@ func TestRunTitleHonoursAPinnedModel(t *testing.T) {
 	for _, c := range calls {
 		if c.AgentID == TitleAgentID {
 			found = true
-			if c.Model != "tiny" {
-				t.Fatalf("namer model=%q want the pinned name", c.Model)
+			if c.Model != "default-chat" {
+				t.Fatalf("namer model=%q want the local default name", c.Model)
 			}
 			if c.ProviderID != e.Config().Models.Default {
 				t.Fatalf("namer provider=%q", c.ProviderID)
@@ -666,21 +668,6 @@ func TestRunTitleHonoursAPinnedModel(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("the namer's model call is missing from the turn's trace")
-	}
-}
-
-func TestAPinnedUnknownProviderFailsEvenWhenTheTurnIsFine(t *testing.T) {
-	e := newTestEngine(t)
-	e.Config().Swarm.TitleProvider = "nope"
-	th, err := e.CreateThread("", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	turn := &store.Turn{ID: "tn_pin_bad", ThreadID: th.ID, ProviderID: e.Config().Models.Default}
-	e.runTitle(th.ID, turn, "ask", "ans")
-	ev := waitForTitle(t, e, "tn_pin_bad")
-	if ev.Err == "" {
-		t.Fatal("want an error for a pinned unknown provider")
 	}
 }
 

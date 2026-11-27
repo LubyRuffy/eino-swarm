@@ -8,6 +8,12 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Changed
 
+- Grouped six optional AI functions under Models with one configuration drawer
+  per function. Fresh installs enable automatic naming and opt in separately to
+  suggestions, graph recording, translation and voice. Naming follows the
+  Gateway title model or LOCAL default conversation model. Graph history stays
+  readable with automatic recording off.
+
 - A successful graph write returns the subject ids and a link count instead of
   every link, and the kind list on the tool no longer repeats each kind's
   prose, so each later model call carries less.

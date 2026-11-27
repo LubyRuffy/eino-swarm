@@ -15,6 +15,9 @@ import (
 
 func TestPhoneSelectionTranslationDoesNotCreateATurn(t *testing.T) {
 	e := testEngine(t)
+	if err := e.Config().Update(func(c *config.Config) error { c.Swarm.SelectionTranslation = true; return nil }); err != nil {
+		t.Fatal(err)
+	}
 	thread, err := e.CreateThread("translation", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -64,6 +67,9 @@ func TestPhoneSelectionUsesPCModelAndBoundsPrivateFailures(t *testing.T) {
 			}))
 			defer server.Close()
 			e := catalogEngine(t, config.Provider{ID: "translation-fixture", Model: "phone-fixture", BaseURL: server.URL, APIMode: config.APIModeChatCompletions})
+			if err := e.Config().Update(func(c *config.Config) error { c.Swarm.SelectionTranslation = true; return nil }); err != nil {
+				t.Fatal(err)
+			}
 			thread, err := e.CreateThread("translation", "", "")
 			if err != nil {
 				t.Fatal(err)
@@ -89,6 +95,9 @@ func TestPhoneSelectionUsesPCModelAndBoundsPrivateFailures(t *testing.T) {
 
 func TestPhoneSelectionValidationAndCancellation(t *testing.T) {
 	e := testEngine(t)
+	if err := e.Config().Update(func(c *config.Config) error { c.Swarm.SelectionTranslation = true; return nil }); err != nil {
+		t.Fatal(err)
+	}
 	thread, err := e.CreateThread("translation", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -146,6 +155,9 @@ func TestPhoneSelectionDoesNotBlockStopAndOnlyMatchingCancelStopsUpstream(t *tes
 			}))
 			defer server.Close()
 			e := catalogEngine(t, config.Provider{ID: "fixture", Model: "fixture", BaseURL: server.URL, APIMode: config.APIModeChatCompletions})
+			if err := e.Config().Update(func(c *config.Config) error { c.Swarm.SelectionTranslation = true; return nil }); err != nil {
+				t.Fatal(err)
+			}
 			thread, err := e.CreateThread("translation", "", "")
 			if err != nil {
 				t.Fatal(err)
@@ -219,5 +231,17 @@ func TestPhoneSelectionRequiresWorkAuthorization(t *testing.T) {
 	dispatchCatalog(p, Request{ID: "cancel", Op: OpCancelTranslation})
 	if r := takeCatalogReply(t, replies); !r.OK {
 		t.Fatalf("cancellation should remain available: %+v", r)
+	}
+}
+
+func TestPairedPhoneCannotTranslateAfterTheHostSwitchesItOff(t *testing.T) {
+	e := testEngine(t)
+	thread, err := e.CreateThread("Read a quote", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := Request{Op: OpTranslateSelection, ThreadID: thread.ID, Text: "Selected text."}
+	if resp := Handle(e, config.RemoteConfig{}, req, "relay", "session"); resp.OK || resp.Code != "selection_translation_disabled" {
+		t.Fatalf("disabled RPC: %+v", resp)
 	}
 }

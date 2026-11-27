@@ -13,7 +13,7 @@ import (
 func (s *Server) currentSettingsView() settingsView {
 	cfg := s.engine.Config().Snapshot()
 	v := toSettingsView(cfg)
-	policy := s.engine.Providers().ModelPolicy()
+	policy := s.engine.ModelPolicyView()
 	v.ModelPolicy = policy
 	if policy.Configurable {
 		v.Models.Bindings = cfg.Models.Bindings[policy.Scope]
@@ -44,14 +44,18 @@ func validatePresetSettings(old, next *config.Config, policy provider.ModelPolic
 	}
 	if next.Product.Resolved() != config.ProductModeLocal && policy.CapabilityStatus != "" {
 		previous, incoming := old.Models.Bindings[policy.Scope], next.Models.Bindings[policy.Scope]
-		for _, role := range config.ModelRoles() {
+		for _, role := range append(config.ModelRoles(), config.ComposerPredictionRole) {
 			if reflect.DeepEqual(previous[role], incoming[role]) {
 				continue
 			}
 			if role == "image" && policy.Configurable && image == (config.ModelRef{}) {
 				continue
 			}
-			if policy.Capabilities == nil || !policy.Capabilities.Allows(role) || !policy.Capabilities.Capabilities[role].Configurable {
+			capability := role
+			if role == config.ComposerPredictionRole {
+				capability = "conversation"
+			}
+			if policy.Capabilities == nil || !policy.Capabilities.Allows(capability) || !policy.Capabilities.Capabilities[capability].Configurable {
 				return errCustomModelsDisabled
 			}
 		}
@@ -105,5 +109,5 @@ func (s *Server) refreshCapabilities(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "capability_discovery_unavailable"})
 		return
 	}
-	c.JSON(http.StatusOK, s.engine.Providers().ModelPolicy())
+	c.JSON(http.StatusOK, s.engine.ModelPolicyView())
 }

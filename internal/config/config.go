@@ -96,7 +96,7 @@ type SwarmConfig struct {
 	// a title. Off leaves the truncated first message / prompt. A name the
 	// user typed is never overwritten either way.
 	AutoTitle bool `yaml:"auto_title" json:"auto_title"`
-	// ComposerPredictions asks the conversation's own model for one next
+	// ComposerPredictions asks for one next
 	// message after a visible reply, and the PC composer shows it as the
 	// empty input's placeholder. Tab inserts it; Enter sends it. Off stops
 	// the extra call. An older file without the key stays on.
@@ -104,6 +104,10 @@ type SwarmConfig struct {
 	// Graph mounts the graph tools and the Work-record panel's graph. The
 	// older work_ledger and knowledge keys are ignored.
 	Graph bool `yaml:"graph" json:"graph"`
+	// GraphAutoRecord admits graph writes during ordinary turns.
+	GraphAutoRecord bool `yaml:"graph_auto_record" json:"graph_auto_record"`
+	// SelectionTranslation enables the on-demand translation action.
+	SelectionTranslation bool `yaml:"selection_translation" json:"selection_translation"`
 	// IncrementalExecution adds implementation-first and requirement-based
 	// verification guidance to ordinary manager turns. It is opt-in.
 	IncrementalExecution bool `yaml:"incremental_execution" json:"incremental_execution"`
@@ -483,7 +487,6 @@ func Default() *Config {
 			ProgressIntervalSeconds:    DefaultProgressIntervalSeconds,
 			DeltaCoalesceMS:            DefaultDeltaCoalesceMS,
 			AutoTitle:                  true,
-			ComposerPredictions:        true,
 			Graph:                      true,
 			ContextCharBudget:          DefaultContextCharBudget,
 			CompactKeepMessages:        DefaultCompactKeepMessages,
@@ -589,6 +592,13 @@ func Load(dataDir string) (*Config, error) {
 	raw, err := os.ReadFile(filepath.Join(abs, FileName))
 	switch {
 	case err == nil:
+		// Existing libraries historically used these behaviors when the
+		// switches were absent. Fresh files write their explicit defaults.
+		cfg.Swarm.ComposerPredictions = true
+		cfg.Swarm.GraphAutoRecord = true
+		cfg.Swarm.SelectionTranslation = true
+		cfg.Speech.Input.GatewayDisabled = false
+		cfg.Speech.Output.GatewayDisabled = false
 		if err := yaml.Unmarshal(raw, cfg); err != nil {
 			return nil, fmt.Errorf("config: parse %s: %w", filepath.Join(abs, FileName), err)
 		}

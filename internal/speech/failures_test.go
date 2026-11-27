@@ -357,6 +357,7 @@ func TestGatewaySpeechUsesFixedRolesEvenWithAnOfficialChatProfile(t *testing.T) 
 	}
 	if err := cfg.Update(func(c *config.Config) error {
 		c.Speech.Input.Enabled, c.Speech.Output.Enabled = false, false
+		c.Speech.Input.GatewayDisabled, c.Speech.Output.GatewayDisabled = false, false
 		return nil
 	}); err != nil {
 		t.Fatal(err)

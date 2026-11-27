@@ -17,19 +17,25 @@ test("legacy LOCAL voice settings save while policy fields are absent", async ({
   try {
     await page.goto("/")
     await page.getByRole("button", { name: "Settings", exact: true }).click()
-    const dialog = page.getByRole("dialog")
+    const dialog = page.getByRole("dialog", { name: "Settings" })
     await dialog.getByRole("tab", { name: "Models", exact: true }).click()
-    const input = dialog.locator("section").filter({ has: page.getByRole("heading", { name: "Voice input", exact: true }) })
-    await expect(input.getByLabel("API base URL", { exact: true })).toBeVisible()
-    const enabled = input.getByRole("switch", { name: "Enabled", exact: true })
+    await dialog.getByRole("button", { name: "Configure Voice input", exact: true }).click()
+    const input = page.getByRole("dialog", { name: "Voice input", exact: true })
+    const enabled = input.getByRole("switch", { name: "Voice input", exact: true })
+    if (original.settings.speech.input.enabled) {
+      await expect(input.getByLabel("API base URL", { exact: true })).toBeVisible()
+    }
     await enabled.setChecked(!original.settings.speech.input.enabled)
+    if (!original.settings.speech.input.enabled) {
+      await expect(input.getByLabel("API base URL", { exact: true })).toBeVisible()
+    }
     await expect.poll(async () => (await (await request.get("/api/settings")).json()).settings.speech.input.enabled)
       .toBe(!original.settings.speech.input.enabled)
     await page.reload()
     await page.getByRole("button", { name: "Settings", exact: true }).click()
     await page.getByRole("dialog").getByRole("tab", { name: "Models", exact: true }).click()
-    await expect(page.getByRole("heading", { name: "Voice input", exact: true })).toBeVisible()
-    await expect(page.getByRole("dialog").getByRole("switch", { name: "Enabled", exact: true }).first())
+    await page.getByRole("button", { name: "Configure Voice input", exact: true }).click()
+    await expect(enabled)
       .toHaveAttribute("aria-checked", String(!original.settings.speech.input.enabled))
   } finally {
     await request.put("/api/settings", { data: { speech: original.settings.speech } })

@@ -5,13 +5,23 @@ worked example. Keys and defaults are in [CONFIG](CONFIG.md), commands in
 [CLI](CLI.md), the phone app in [mobile/README](../mobile/README.md), and
 behavior boundaries in [FEATURES](FEATURES.md) and [CONTRACTS](CONTRACTS.md).
 
+## Optional AI features
+
+Open **Settings → Models → Optional AI features**. Each feature has one
+**Configure** button that opens its settings in a drawer on the right.
+
+Automatic naming starts enabled and uses the Gateway title model or the local
+default conversation model. Next-input suggestions, automatic graph recording,
+selection translation, Voice input and Read aloud start off on a new install.
+Turning off automatic graph recording keeps prior work records available.
+A disabled feature keeps its saved model choice. If a selected service is
+unavailable, the feature can be configured when that service is ready.
+
 ## Voice input and read aloud
 
-Open **Settings → Models** or **Settings → Speech** on the PC. Gateway sign-in
-enables Voice input and Read aloud independently as their models become available.
-Each PC switch remembers a manual opt-out. The speech page shows the selected
-gateway model's editable audio choices. Open **Advanced settings** to change
-recording format, timeouts or client limits.
+Open the Voice input or Read aloud drawer on the PC to enable that direction.
+Each drawer shows the model's editable audio choices. Open **Advanced settings**
+for recording format, timeouts or client limits.
 
 In LOCAL mode, choose a signed-in account role, personal service or custom
 OpenAI-compatible endpoint and turn on the direction you want. Try recording
@@ -210,8 +220,8 @@ arrives after the switch returns `tool_switched_off` and does not run.
 **Tool settings** at the bottom of that menu opens **Settings → Tools**.
 
 After a visible reply, one likely next message can appear as the placeholder.
-Tab inserts it; Enter sends it. **Settings → Swarm → Suggest a next step**
-turns the extra call off. It is on by default.
+Tab inserts it and Enter sends it. Enable **Suggest a next step** in its drawer
+under **Settings → Models → Optional AI features**.
 
 Paste a screenshot into the box. It lands as a thumbnail you can remove before
 sending. The conversation model receives the original image and caption as
@@ -1300,4 +1310,4 @@ in answers. Paired phone sessions using the PC inherit its provider
 configuration. Independent phone direct chat has its own configuration. See
 [provider cloud tools](CONFIG.md#provider-cloud-tools).
 
-语音设置入口随模型配置权限显示：LOCAL 和可配置的普通网关账号在 Settings → Models 编辑功能模型及语音参数；托管第三方账号隐藏 Models，只在 Speech 入口显示语音开关、音色和资源参数，不显示模型、Provider 或凭据配置。
+语音输入与朗读各有一个入口，位于「设置 → 模型 → 可选 AI 功能」。托管账号可以在抽屉中启用语音并调整网关允许的参数，模型与凭据由网关管理。

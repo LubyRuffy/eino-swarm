@@ -284,12 +284,27 @@ func (p *Pool) FeatureAvailable(id, role string) bool {
 	return !strings.HasPrefix(id, config.AccountSourcePrefix) && p.localExecution()
 }
 
+// AllowsPersonalFeatureModel admits an explicitly configured personal model
+// under an editable account's grant for this capability.
+func (p *Pool) AllowsPersonalFeatureModel(id, role string) bool {
+	if id == "" || strings.HasPrefix(id, config.AccountSourcePrefix) {
+		return false
+	}
+	src := p.activeAccount()
+	if src == nil || src.managed || !src.allowsRole(role) ||
+		src.negotiated && (!src.capabilities.Configurable || !src.capabilities.Capabilities[role].Configurable) {
+		return false
+	}
+	row, ok := p.cfg.Provider(id)
+	return ok && row.Listed()
+}
+
 type capabilityRoleKey struct{}
 
 // RoleModelBuilder selects the role's declared public wire adapter. Conversation
 // workers retain ModelBuilder and cannot borrow another role's endpoint grant.
 func (p *Pool) RoleModelBuilder(ctx context.Context, id, name, effort string, rec Recorder, role string) (func(string, string) model.BaseChatModel, error) {
-	if !p.mock && !p.FeatureAvailable(id, role) {
+	if !p.mock && !p.FeatureAvailable(id, role) && (role != "translation" || !p.AllowsPersonalFeatureModel(id, role)) {
 		return nil, ErrModelPolicy
 	}
 	factory, err := p.ModelBuilder(context.WithValue(ctx, capabilityRoleKey{}, role), id, name, effort, rec)

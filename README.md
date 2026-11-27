@@ -68,7 +68,9 @@ go run ./cmd/zwai desktop
 ```
 
 `OPENAI_*` only fills blank fields on first run. Settings, themes, search and
-the rest of the keys are in [docs/CONFIG.md](docs/CONFIG.md).
+the rest of the keys are in [docs/CONFIG.md](docs/CONFIG.md). Configure optional AI
+actions from **Settings → Models**, including automatic naming, graph recording,
+translation and voice.
 
 ### Linux installation without a build toolchain
 

@@ -1,7 +1,7 @@
 import { GatewayAudioSettings } from "./settings-audio-parameters"
 import { refreshCapabilities } from "@/lib/refresh-capabilities"
 import { policyAllows, policyConfigurable } from "@/lib/model-policy"
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react"
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SelectItem } from "@/components/ui/select"
@@ -20,10 +20,14 @@ import { Field, SettingsChoice, SettingsRow, SettingsSection, settingsLabelClass
 type Kind = "input" | "output"
 type Connection = SpeechInputSettings | SpeechOutputSettings
 
+export function speechFeatureEnabled(value: Connection, gatewayMode: boolean, snapshot?: { execution?: string; model?: string }) {
+  return gatewayMode && (snapshot?.execution === "gateway" || !snapshot?.model) ? !value.gateway_disabled : value.enabled
+}
+
 export const speechSettingsSearch = "speech voice microphone audio asr tts transcription read aloud 语音 麦克风 录音 识别 朗读 音色"
 
-export function SpeechSettings({ settings, onChange, onFlush, query: searchQuery = "" }: {
-  settings: Settings; onChange: (settings: Settings) => void; onFlush: () => Promise<void>; query?: string
+export function SpeechSettings({ settings, onChange, onFlush, query: searchQuery = "", kind, modelPicker }: {
+  settings: Settings; onChange: (settings: Settings) => void; onFlush: () => Promise<void>; query?: string; kind?: Kind; modelPicker?: ReactNode
 }) {
   const t = useT()
   const query = settingsMatch(searchQuery, t("speech.title"), speechSettingsSearch) ? "" : searchQuery
@@ -32,8 +36,8 @@ export function SpeechSettings({ settings, onChange, onFlush, query: searchQuery
   // Legacy LOCAL settings have no policy, but do have an explicit product
   // mode. An absent Gateway manifest still grants no voice capability.
   const legacyLocal = !settings.model_policy && mode === "local"
-  const inputAllowed = legacyLocal || policyAllows(settings.model_policy, "transcription")
-  const outputAllowed = legacyLocal || policyAllows(settings.model_policy, "speech")
+  const inputAllowed = kind ? kind === "input" : legacyLocal || policyAllows(settings.model_policy, "transcription")
+  const outputAllowed = kind ? kind === "output" : legacyLocal || policyAllows(settings.model_policy, "speech")
   const snapshot = useApp((store) => store.meta?.speech)
   const raw = defaultSpeechSettings(settings.speech)
   // The provider/custom form has no account choice. A model-policy page keeps
@@ -102,15 +106,16 @@ export function SpeechSettings({ settings, onChange, onFlush, query: searchQuery
   const gatewayMode = (settings.model_policy?.mode ?? (mode === "fofa" ? "gateway" : "local")) === "gateway"
   const gateway = (kind: Kind) => snapshot?.[kind].execution === "gateway" || !local || (gatewayMode && !snapshot?.[kind].model)
   const gatewayConfigured = (kind: Kind) => snapshot?.[kind].execution === "gateway" && Boolean(snapshot[kind].model)
-  const enabled = (kind: Kind) => gatewayMode && gateway(kind)
-    ? gatewayConfigured(kind) && !speech[kind].gateway_disabled
-    : speech[kind].enabled
+  const enabled = (target: Kind) => kind
+    ? speechFeatureEnabled(speech[target], gatewayMode, snapshot?.[target])
+    : gatewayMode && gateway(target) ? gatewayConfigured(target) && !speech[target].gateway_disabled : speech[target].enabled
   const enableSwitch = (kind: Kind) => {
     const followsGateway = gatewayMode && gateway(kind)
-    const unavailable = followsGateway && !gatewayConfigured(kind)
+    const unavailable = !modelPicker && followsGateway && !gatewayConfigured(kind)
     return <Field label={t("speech.enabled")} hint={unavailable ? t("speech.notReady") : undefined} query={query}>
-      <Switch checked={enabled(kind)} disabled={unavailable} onCheckedChange={checked => {
-        update(kind, followsGateway ? { gateway_disabled: !checked } : { enabled: checked })
+      <Switch checked={enabled(kind)} disabled={unavailable} aria-label={t(kind === "input" ? "speech.input" : "speech.output")} onCheckedChange={checked => {
+        update(kind, modelPicker ? { enabled: checked, gateway_disabled: !checked }
+          : followsGateway ? { gateway_disabled: !checked } : { enabled: checked })
       }} />
     </Field>
   }
@@ -122,27 +127,32 @@ export function SpeechSettings({ settings, onChange, onFlush, query: searchQuery
     }} labels={{ voice: t("speech.voice"), response_format: t("speech.outputFormat"), stream_format: t("speech.streamFormat"), language: t("speech.language"), speed: t("speech.speed"), instructions: t("speech.instructions"), prompt: t("speech.prompt"), follow: t("speech.audioFollow"), invalid: t("speech.audioInvalid"), unavailable: t("speech.audioUnavailable") }} />
   }
   return <>
-    {inputAllowed ? <SettingsSection title={t("speech.input")} description={t("speech.description")}>
+    {inputAllowed ? <SettingsSection title={kind ? undefined : t("speech.input")} description={kind ? undefined : t("speech.description")}>
       {enableSwitch("input")}
-      {connection("input", speech.input)}
-      {gateway("input") ? parameters("input") : <>
-      <Field label={t("speech.language")} query={query}><Input value={speech.input.language} placeholder={t("speech.autoLanguage")} onChange={(event) => update("input", { language: event.target.value })} /></Field>
-      <Field label={t("speech.prompt")} query={query} wide><Input value={speech.input.prompt} onChange={(event) => update("input", { prompt: event.target.value })} /></Field>
-      </>}
-      <MicrophoneChoice query={query} value={speech.input.device_id} onChange={(device_id) => update("input", { device_id })} />
+      {!kind || enabled("input") ? <>
+        {settings.model_policy && modelPicker ? modelPicker : connection("input", speech.input)}
+        {gateway("input") ? parameters("input") : <>
+          <Field label={t("speech.language")} query={query}><Input value={speech.input.language} placeholder={t("speech.autoLanguage")} onChange={(event) => update("input", { language: event.target.value })} /></Field>
+          <Field label={t("speech.prompt")} query={query} wide><Input value={speech.input.prompt} onChange={(event) => update("input", { prompt: event.target.value })} /></Field>
+        </>}
+        <MicrophoneChoice query={query} value={speech.input.device_id} onChange={(device_id) => update("input", { device_id })} />
+      </> : null}
     </SettingsSection> : null}
-    {outputAllowed ? <SettingsSection title={t("speech.output")}>
+    {outputAllowed ? <SettingsSection title={kind ? undefined : t("speech.output")}>
       {enableSwitch("output")}
-      {connection("output", speech.output)}
-      {gateway("output") ? parameters("output") : <>
-      <Field label={t("speech.voice")} query={query}><Input value={speech.output.voice} placeholder={t("speech.modelDefault")} onChange={(event) => update("output", { voice: event.target.value })} /></Field>
-      <Field label={t("speech.speed")} query={query}><Input type="number" step={0.1} min={0.25} max={4} value={speech.output.speed} onChange={(event) => update("output", { speed: Number(event.target.value) })} /></Field>
-      <SettingsChoice label={t("speech.outputFormat")} query={query} value={speech.output.format} onValueChange={(format) => update("output", { format: format as SpeechOutputSettings["format"] })}>
-        <SelectItem value="mp3">MP3</SelectItem><SelectItem value="wav">WAV</SelectItem><SelectItem value="pcm">{t("speech.pcmStreaming")}</SelectItem>
-      </SettingsChoice>
-      <Field label={t("speech.instructions")} query={query} wide><Input value={speech.output.instructions} onChange={(event) => update("output", { instructions: event.target.value })} /></Field>
-      </>}
+      {!kind || enabled("output") ? <>
+        {settings.model_policy && modelPicker ? modelPicker : connection("output", speech.output)}
+        {gateway("output") ? parameters("output") : <>
+          <Field label={t("speech.voice")} query={query}><Input value={speech.output.voice} placeholder={t("speech.modelDefault")} onChange={(event) => update("output", { voice: event.target.value })} /></Field>
+          <Field label={t("speech.speed")} query={query}><Input type="number" min={0.25} max={4} value={speech.output.speed} onChange={(event) => update("output", { speed: Number(event.target.value) })} /></Field>
+          <SettingsChoice label={t("speech.outputFormat")} query={query} value={speech.output.format} onValueChange={(format) => update("output", { format: format as SpeechOutputSettings["format"] })}>
+            <SelectItem value="mp3">MP3</SelectItem><SelectItem value="wav">WAV</SelectItem><SelectItem value="pcm">PCM</SelectItem>
+          </SettingsChoice>
+          <Field label={t("speech.instructions")} query={query} wide><Input value={speech.output.instructions} onChange={(event) => update("output", { instructions: event.target.value })} /></Field>
+        </>}
+      </> : null}
     </SettingsSection> : null}
+    {(!kind || enabled(kind)) ? <>
     <details open={query ? true : undefined} className="rounded-xl border border-border bg-card [&:not(:has([data-settings-row]))]:hidden">
       <summary className={`${settingsLabelClass} cursor-pointer px-4 py-3`}>{t("speech.advanced")}</summary>
       <div className="px-4 pb-4">
@@ -162,7 +172,8 @@ export function SpeechSettings({ settings, onChange, onFlush, query: searchQuery
         </SettingsSection>
       </div>
     </details>
-    {!query ? <SpeechSettingsTest speech={speech} inputEnabled={enabled("input")} outputEnabled={enabled("output")} onFlush={onFlush} /> : null}
+    {!query ? <SpeechSettingsTest kind={kind} speech={speech} inputEnabled={inputAllowed && enabled("input")} outputEnabled={outputAllowed && enabled("output")} onFlush={onFlush} /> : null}
+    </> : null}
   </>
 }
 
@@ -203,7 +214,7 @@ function MicrophoneChoice({ value, onChange, query }: { value: string; onChange:
   </SettingsChoice>
 }
 
-function SpeechSettingsTest({ speech, inputEnabled, outputEnabled, onFlush }: { speech: ReturnType<typeof defaultSpeechSettings>; inputEnabled: boolean; outputEnabled: boolean; onFlush: () => Promise<void> }) {
+function SpeechSettingsTest({ kind, speech, inputEnabled, outputEnabled, onFlush }: { kind?: Kind; speech: ReturnType<typeof defaultSpeechSettings>; inputEnabled: boolean; outputEnabled: boolean; onFlush: () => Promise<void> }) {
   const t = useT()
   const [recording, setRecording] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -255,12 +266,15 @@ function SpeechSettingsTest({ speech, inputEnabled, outputEnabled, onFlush }: { 
     }
     finally { if (controller.current === owner) setBusy(false) }
   }
-  return <SettingsSection description={t("speech.testHint")} title={t("speech.testReading")}>
+  return <SettingsSection description={t("speech.testHint")} title={t(kind === "input" ? "speech.testRecording" : "speech.testReading")}>
+    {kind !== "output" ? <>
     <SettingsRow label={t("speech.testRecording")} hint={inputHint}>
       <div className="flex gap-2"><Button type="button" variant="outline" size="sm" aria-description={inputHint} disabled={Boolean(inputHint) || busy} onClick={() => void (recording ? finish() : start())}>{recording ? t("speech.finishRecording") : t("speech.testRecording")}</Button>
         {recording || busy ? <Button type="button" variant="ghost" size="sm" onClick={cancel}>{t("speech.cancel")}</Button> : null}</div>
     </SettingsRow>
     {result ? <Field label={t("speech.testResult")}><Textarea value={result} readOnly /></Field> : null}
+    </> : null}
+    {kind !== "input" ? <>
     <Field label={t("speech.testText")}><Textarea value={text} onChange={(event) => setText(event.target.value)} /></Field>
     <SettingsRow label={t("speech.testReading")} hint={outputHint}>
       <Button type="button" variant="outline" size="sm" aria-description={outputHint} disabled={Boolean(outputHint)} onClick={() => {
@@ -274,5 +288,6 @@ function SpeechSettingsTest({ speech, inputEnabled, outputEnabled, onFlush }: { 
       }}>{playback.key === "settings:speech" ? t("speech.stopReading") : t("speech.testReading")}</Button>
       {playing ? <span role="status" aria-live="polite" className="text-xs text-muted-foreground">{t(playback.state === "loading" ? "speech.generating" : "speech.playing")}</span> : null}
     </SettingsRow>
+    </> : null}
   </SettingsSection>
 }

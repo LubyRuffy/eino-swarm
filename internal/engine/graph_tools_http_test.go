@@ -90,6 +90,7 @@ func TestManagerWritesAndReadsTheGraphThroughTheActualModelBoundary(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.cfg.Swarm.GraphAutoRecord = true
 	turn, err := e.StartTurn(thread.ID, "Keep track of what is found.")
 	if err != nil {
 		t.Fatal(err)
@@ -176,6 +177,7 @@ func TestLeadLinkedToAConfirmedSubjectIsStoredRetracted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.cfg.Swarm.GraphAutoRecord = true
 	turn, err := e.StartTurn(thread.ID, "Keep one current address.")
 	if err != nil {
 		t.Fatal(err)
@@ -314,6 +316,7 @@ func TestDelegatedWorkerWritesTheGraphUnderItsOwnIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.cfg.Swarm.GraphAutoRecord = true
 	turn, err := e.StartTurn(thread.ID, "Delegate recording one subject.")
 	if err != nil {
 		t.Fatal(err)
@@ -329,5 +332,34 @@ func TestDelegatedWorkerWritesTheGraphUnderItsOwnIdentity(t *testing.T) {
 	}
 	if s := view.Subjects[0]; s.AgentID == "manager" || s.AgentID == "" || s.Generation != 1 || s.TurnID != turn.ID {
 		t.Fatalf("worker provenance: agent=%q generation=%d turn=%q", s.AgentID, s.Generation, s.TurnID)
+	}
+}
+
+func TestTurningOffAutomaticGraphRecordingKeepsGraphReadsOn(t *testing.T) {
+	offered := make(chan [2]bool, 2)
+	e, _ := newScheduleCompletionHTTPEngine(t, func(w http.ResponseWriter, _ *http.Request, _ int, request scheduleCompletionRequest) {
+		offered <- [2]bool{requestHasTool(request, ToolReadGraph), requestHasTool(request, ToolUpdateGraph)}
+		writeContextFlowReply(w, request.Stream, map[string]any{"content": "Done."}, "stop")
+	})
+	thread, err := e.CreateThread("Browse work records", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := e.StartTurn(thread.ID, "Summarize the existing records.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := waitForTurn(t, e, turn.ID)
+	waitSettled(t, e, thread.ID)
+	select {
+	case tools := <-offered:
+		if !tools[0] || tools[1] || !got.GraphTools || !got.GraphReadOnly {
+			t.Fatalf("tools=%v graph=%v read-only=%v", tools, got.GraphTools, got.GraphReadOnly)
+		}
+	default:
+		t.Fatal("the conversation did not reach the model")
+	}
+	if _, err := e.ReadThreadGraph(t.Context(), thread.ID, store.GraphQuery{}); err != nil {
+		t.Fatalf("existing graph became unreadable: %v", err)
 	}
 }

@@ -218,3 +218,69 @@ func TestGatewayChatProtocolFollowsEachRoleAndKeepsOpenedClients(t *testing.T) {
 		t.Fatal("a refused endpoint reached the gateway")
 	}
 }
+
+func TestEditableGatewayCanUseAPersonalFeatureModelOnlyWithItsGrant(t *testing.T) {
+	cfg := config.Default()
+	personal := cfg.Models.Default
+	cfg.Models.Providers[0].BaseURL, cfg.Models.Providers[0].Model = "http://localhost:9/v1", "personal"
+	pool := New(cfg)
+	source := accountSourceFor(t, "https://gateway.invalid/v1", "private")
+	source.SetCapabilities(roleManifest("translation", config.APIModeChatCompletions, true))
+	pool.SetAccountSource(source)
+	if !pool.AllowsPersonalFeatureModel(personal, "translation") ||
+		pool.AllowsPersonalFeatureModel(personal, "conversation") ||
+		pool.AllowsPersonalFeatureModel("", "translation") ||
+		pool.AllowsPersonalFeatureModel("missing", "translation") ||
+		pool.AllowsPersonalFeatureModel(source.id, "translation") {
+		t.Fatal("personal feature routing did not honor the exact provider and capability")
+	}
+	source.SetCapabilities(roleManifest("translation", config.APIModeChatCompletions, false))
+	pool.SetAccountSource(source)
+	if pool.AllowsPersonalFeatureModel(personal, "translation") {
+		t.Fatal("non-configurable role allowed a personal model")
+	}
+	source.SetModelPolicy(false, nil)
+	source.SetCapabilities(roleManifest("translation", config.APIModeChatCompletions, true))
+	pool.SetAccountSource(source)
+	if pool.AllowsPersonalFeatureModel(personal, "translation") {
+		t.Fatal("managed role allowed a personal model")
+	}
+}
+
+func TestGatewayAutomaticTitleUsesItsPublishedModelAtHTTPBoundary(t *testing.T) {
+	requests := make(chan string, 1)
+	host := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body fixedChatRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		requests <- body.Model
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"Generated title"},"finish_reason":"stop"}]}`)
+	}))
+	defer host.Close()
+	cfg := config.Default()
+	pool := New(cfg)
+	if _, _, _, err := pool.AutomaticTitleModel(); !errors.Is(err, ErrAccountLoginRequired) {
+		t.Fatalf("unsigned Gateway naming: %v", err)
+	}
+	source := accountSourceFor(t, host.URL, "private")
+	source.SetModelPolicy(true, map[string]string{"title": "gateway-title"})
+	source.SetCapabilities(roleManifest("title", config.APIModeChatCompletions, true))
+	pool.SetAccountSource(source)
+	cfg.Models.Bindings = map[string]map[string]config.ModelRef{
+		source.bindingScope(): {"title": {ProviderID: source.id, Model: "old-override"}},
+	}
+	ref, role, fixed, err := pool.AutomaticTitleModel()
+	if err != nil || !fixed || role != "title" || ref.Model != "gateway-title" {
+		t.Fatalf("ref=%+v role=%q fixed=%v err=%v", ref, role, fixed, err)
+	}
+	name, err := pool.CompleteFixedChat(t.Context(), ref.ProviderID, role, "Name this conversation", "Topic", 40)
+	if err != nil || name != "Generated title" || <-requests != "gateway-title" {
+		t.Fatalf("Gateway title=%q err=%v", name, err)
+	}
+	source.SetCapabilities(nil)
+	pool.SetAccountSource(source)
+	if _, _, _, err := pool.AutomaticTitleModel(); !errors.Is(err, ErrModelPolicy) {
+		t.Fatalf("unavailable Gateway title capability: %v", err)
+	}
+}

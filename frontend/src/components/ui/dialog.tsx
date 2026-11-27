@@ -29,16 +29,20 @@ const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     hideClose?: boolean
+    side?: "right"
     /** Portal target; the phone sheet keeps dialogs inside its own layer. */
     container?: HTMLElement | null
   }
->(({ className, children, hideClose = false, container, ...props }, ref) => (
+>(({ className, children, hideClose = false, side, container, ...props }, ref) => (
   <DialogPortal container={container}>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-[var(--radius-dialog,0px)] border bg-[var(--dialog-bg,hsl(var(--background)))] p-6 shadow-lg data-[state=open]:animate-in data-[state=open]:ease-out data-[state=closed]:animate-out data-[state=closed]:ease-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-[var(--radius-dialog,var(--radius-lg))]",
+        "fixed z-50 w-full max-w-lg border bg-[var(--dialog-bg,hsl(var(--background)))] shadow-lg data-[state=open]:animate-in data-[state=open]:ease-out data-[state=closed]:animate-out data-[state=closed]:ease-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        side === "right"
+          ? "inset-y-0 right-0 flex flex-col overflow-hidden border-y-0 border-r-0 data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right"
+          : "left-1/2 top-1/2 grid -translate-x-1/2 -translate-y-1/2 gap-4 rounded-[var(--radius-dialog,0px)] p-6 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-[var(--radius-dialog,var(--radius-lg))]",
         className,
       )}
       {...props}

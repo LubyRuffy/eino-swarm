@@ -65,7 +65,7 @@ func (e *Engine) graphCaller(ctx context.Context, turn *store.Turn) (store.Graph
 // way other durable model writes are ordered.
 func (e *Engine) lockGraphWrite(ctx context.Context, turnID string) (func(), error) {
 	e.configUpdateMu.Lock()
-	if !e.cfg.SwarmSnapshot().Graph {
+	if settings := e.cfg.SwarmSnapshot(); !settings.Graph || !settings.GraphAutoRecord {
 		e.configUpdateMu.Unlock()
 		return nil, ErrGraphDisabled
 	}
@@ -91,7 +91,7 @@ func (e *Engine) updateGraphTool(ctx context.Context, turn *store.Turn, args str
 		return "", err
 	}
 	if turn.GraphReadOnly {
-		return "", fmt.Errorf("%w: planning is read-only", graph.ErrInvalid)
+		return "", fmt.Errorf("%w: this turn is read-only", graph.ErrInvalid)
 	}
 	var batch graph.Batch
 	if err := decodeGraphArgs(args, &batch); err != nil {

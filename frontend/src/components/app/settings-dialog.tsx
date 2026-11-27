@@ -1,5 +1,4 @@
 import { CapabilityNotice } from "./capability-notice"
-import { policyAllows } from "@/lib/model-policy"
 import { refreshCapabilities } from "@/lib/refresh-capabilities"
 import {
   Archive,
@@ -7,7 +6,6 @@ import {
   Cpu,
   Library,
   Loader2,
-  Mic,
   Palette,
   Search,
   Smartphone,
@@ -19,7 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 
 import { MemorySettings } from "@/components/app/memory-settings"
 import { ModelsTab } from "@/components/app/model-settings"
-import { SpeechSettings as SpeechTab, speechSettingsSearch } from "@/components/app/settings-speech"
+import { speechSettingsSearch } from "@/components/app/settings-speech"
 import { GeneralTab } from "@/components/app/settings-general"
 import { PersonalityTab } from "@/components/app/settings-personality"
 import { BackupTab } from "@/components/app/settings-backup"
@@ -77,13 +75,7 @@ function sections(t: Translate) {
       id: "models",
       label: t("settings.nav.models"),
       icon: Cpu,
-      keys: `provider endpoint api key base url responses cloud builtin tools discover auxiliary title compact context window timeout first byte model embedding semantic search 模型 提供商 云端 内置 工具 嵌入 语义 搜索 首字节 等待 超时 ${speechKeys}`,
-    },
-    {
-      id: "speech",
-      label: t("settings.nav.speech"),
-      icon: Mic,
-      keys: speechKeys,
+      keys: `provider endpoint api key base url responses cloud builtin tools discover auxiliary title compact context window timeout first byte model embedding semantic search 模型 提供商 云端 内置 工具 嵌入 语义 搜索 首字节 等待 超时 ${speechKeys} translation prediction suggestion graph title naming 翻译 建议 图谱 自动命名 知识库`,
     },
     {
       id: "swarm",
@@ -118,7 +110,7 @@ function sections(t: Translate) {
   ] as const
 }
 
-export type SettingsSectionId = ReturnType<typeof sections>[number]["id"]
+export type SettingsSectionId = ReturnType<typeof sections>[number]["id"] | "speech"
 
 /** Sidebar, ⌘, and ⌘K open here. Model picker / unconfigured banner pass
  *  `models` because that is the page they were already talking about. */
@@ -206,7 +198,7 @@ export function SettingsDialog({
   const toolsDraftsRef = useRef<ProviderToolsDrafts>({})
   const [catalog, setCatalog] = useState<ToolDescriptor[]>([])
   const [query, setQuery] = useState("")
-  const [section, setSection] = useState<SettingsSectionId>(initialSection)
+  const [section, setSection] = useState<Exclude<SettingsSectionId, "speech">>(initialSection === "speech" ? "models" : initialSection)
   const formRef = useRef<HTMLFormElement>(null)
   // One landing per open. Settings writes and the search box both re-render
   // this sheet; focusing again would yank the caret back to the deep link.
@@ -239,7 +231,7 @@ export function SettingsDialog({
     useToasts.getState().dismiss("settings:save")
     useToasts.getState().dismiss("settings:load")
     setQuery("")
-    setSection(initialSection)
+    setSection(initialSection === "speech" ? "models" : initialSection)
     setSettings(undefined)
     setAccountRemoteUnknown(false)
     let cancelled = false
@@ -379,11 +371,9 @@ export function SettingsDialog({
     }
   }
 
-  const productMode = useApp((s) => s.meta?.product_mode)
   const modelPolicy = useApp((s) => s.meta?.model_policy)
-  const managedModels = modelPolicy ? !modelPolicy.configurable : productMode === "fofa"
   const visibleNav = nav.filter((s) =>
-    settingsMatch(query, s.label, s.keys) && (s.id === "models" ? !managedModels : s.id === "speech" ? managedModels && (policyAllows(modelPolicy, "transcription") || policyAllows(modelPolicy, "speech")) : true),
+    settingsMatch(query, s.label, s.keys),
   )
   // Radix used to fire an empty value when the panes were not TabsContent.
   // An unknown id paints a blank sheet with no rail highlight.
@@ -575,9 +565,6 @@ export function SettingsDialog({
                       focusKey={focusKey}
                     />
                   ) : null}
-                  {page === "speech" ? <SettingsPage title={t("speech.title")}>
-                    <SpeechTab settings={{ ...settings, model_policy: modelPolicy ?? settings.model_policy }} onChange={apply} query={query} onFlush={() => persistRef.current!.flush()} />
-                  </SettingsPage> : null}
                   {page === "swarm" ? (
                     <SwarmTab
                       settings={settings}

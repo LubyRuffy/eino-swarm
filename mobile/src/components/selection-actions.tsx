@@ -66,8 +66,14 @@ export function SelectionActions({ text, threadId, link, providerID, onAdd, onDi
     }).catch((error) => { if (alive.current) setReadError(speechFailureMessage(error)) })
   }
 
+  useEffect(() => {
+    if (translationAllowed) return
+    request.current?.abort()
+    setTranslation(null)
+  }, [translationAllowed])
+
   const translate = () => {
-    if (!link?.alive() || translation?.status === "loading") return
+    if (!canTranslate || !link?.alive() || translation?.status === "loading") return
     request.current?.abort()
     const controller = new AbortController()
     request.current = controller

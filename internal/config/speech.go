@@ -76,11 +76,11 @@ type SpeechConfig struct {
 	Limits            SpeechLimits                     `yaml:"limits" json:"limits"`
 }
 
-// DefaultSpeech leaves personal speech off and follows Gateway model availability.
+// DefaultSpeech leaves both personal and Gateway speech off.
 func DefaultSpeech() SpeechConfig {
 	return SpeechConfig{
-		Input:  SpeechInputConfig{SpeechEndpoint: SpeechEndpoint{Source: SpeechSourceAccount}, RecordingFormat: "auto", MaxDurationSeconds: DefaultSpeechDurationSeconds, TimeoutSeconds: DefaultSpeechTimeoutSeconds},
-		Output: SpeechOutputConfig{SpeechEndpoint: SpeechEndpoint{Source: SpeechSourceAccount}, Speed: 1, Format: "mp3", TimeoutSeconds: DefaultSpeechTimeoutSeconds},
+		Input:  SpeechInputConfig{SpeechEndpoint: SpeechEndpoint{Source: SpeechSourceAccount}, GatewayDisabled: true, RecordingFormat: "auto", MaxDurationSeconds: DefaultSpeechDurationSeconds, TimeoutSeconds: DefaultSpeechTimeoutSeconds},
+		Output: SpeechOutputConfig{SpeechEndpoint: SpeechEndpoint{Source: SpeechSourceAccount}, GatewayDisabled: true, Speed: 1, Format: "mp3", TimeoutSeconds: DefaultSpeechTimeoutSeconds},
 		Limits: SpeechLimits{InputBytes: DefaultSpeechInputBytes, OutputBytes: DefaultSpeechOutputBytes, ChunkChars: DefaultSpeechChunkChars, StagingTTLSeconds: DefaultSpeechStagingTTLSeconds},
 	}
 }

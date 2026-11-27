@@ -1,12 +1,9 @@
 package engine
 
 import (
-	"context"
 	"strings"
 
-	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
-	"github.com/cloudwego/eino/schema"
 )
 
 func scheduleTitlePoolKey(id string) string {
@@ -27,15 +24,6 @@ func (e *Engine) kickScheduleTitle(row *store.Schedule) {
 		return
 	}
 	prompt := row.Prompt
-	providerID := strings.TrimSpace(row.ProviderID)
-	model := strings.TrimSpace(row.Model)
-	if providerID == "" {
-		providerID = e.scheduleDefaultProvider()
-	}
-	// Pin the namer endpoint before the goroutine. Tests (and PUT
-	// /settings) copy e.cfg; reading it from the namer races that write.
-	fallbackProvider, fallbackModel := e.cfg.SwarmSnapshot().ResolveTitle(providerID, model)
-	providerID, model = e.applyRoleModel(providerID, "title", fallbackProvider, fallbackModel)
 	origin := strings.TrimSpace(row.OriginThreadID)
 	if origin == "" {
 		origin = strings.TrimSpace(row.ThreadID)
@@ -47,36 +35,21 @@ func (e *Engine) kickScheduleTitle(row *store.Schedule) {
 				e.log.Error("schedule namer panicked", "schedule", id, "panic", r)
 			}
 		}()
-		e.runScheduleTitle(id, origin, prompt, providerID, model)
+		e.runScheduleTitle(id, origin, prompt)
 	}()
 }
 
-func (e *Engine) runScheduleTitle(id, origin, prompt, providerID, model string) {
-	ctx, cancel := context.WithTimeout(context.Background(), titleCallTimeout)
-	defer cancel()
-	ctx = provider.WithoutRouteRecovery(ctx)
-
+func (e *Engine) runScheduleTitle(id, origin, prompt string) {
+	if !e.cfg.SwarmSnapshot().AutoTitle {
+		return
+	}
 	turnID := ""
 	if origin != "" {
 		turnID = e.lastTurnID(origin)
 	}
-	var raw string
-	var err error
-	if accountID, _, ok := e.enabledAccountRole("title"); ok {
-		raw, err = e.pool.CompleteFixedChat(ctx, accountID, "title", scheduleTitlePrompt(), titleInput(prompt, ""), e.cfg.SwarmSnapshot().CompletionTokenLimit())
-	} else {
-		builder, buildErr := e.pool.RoleModelBuilder(ctx, providerID, model, "", e.callRecorder(origin, turnID), "title")
-		err = buildErr
-		if err == nil {
-			var out *schema.Message
-			out, err = titleGenerate(ctx, builder(TitleAgentID, TitleAgentID), []*schema.Message{
-				schema.SystemMessage(scheduleTitlePrompt()),
-				schema.UserMessage(titleInput(prompt, "")),
-			})
-			if out != nil {
-				raw = out.Content
-			}
-		}
+	raw, err := e.generateAutomaticTitle(origin, turnID, scheduleTitlePrompt(), titleInput(prompt, ""))
+	if !e.cfg.SwarmSnapshot().AutoTitle {
+		return
 	}
 	if err != nil {
 		e.log.Warn("schedule namer failed", "schedule", id, "err", err)

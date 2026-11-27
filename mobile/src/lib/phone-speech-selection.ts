@@ -9,6 +9,10 @@ export function selectPhoneSpeech(gateway: SpeechSnapshot | undefined, preferred
   const owners: Partial<Record<"input" | "output", VoiceOwner>> = {}
   for (const kind of ["input", "output"] as const) {
     const slot = preferred?.[kind]
+    if (!personal && slot?.user_disabled) {
+      Object.assign(snapshot[kind], { enabled: false, ready: false })
+      continue
+    }
     const route = preferred && speechRoute(preferred, kind)
     const custom = slot?.enabled && slot.model && (personal || route?.execution === "pc_local")
     const pcGateway = slot?.enabled && (slot.ready || slot.audio !== undefined) && slot.model && connected && route?.execution === "gateway" && gatewayAllowed(kind)

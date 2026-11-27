@@ -2,30 +2,30 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, expect, it, vi } from "vitest"
 import type { Settings } from "@/lib/types"
 import { useApp } from "@/store/app"
-import { FunctionalModels } from "./functional-models"
+import { FunctionalModelField, FunctionalModels } from "./functional-models"
 
 const settings = (): Settings => ({
-  model_policy: { mode: "local", configurable: true, ready: true, scope: "gateway:owner", defaults: { title: { provider_id: "gateway:owner", model: "server-title" } } },
-  models: { providers: [{ id: "own", label: "Personal", model: "chat", catalog: ["small"] }], bindings: { title: { provider_id: "own", model: "chosen" } } },
+  model_policy: { mode: "local", configurable: true, ready: true, scope: "gateway:owner", defaults: { translation: { provider_id: "gateway:owner", model: "server-translation" } } },
+  models: { providers: [{ id: "own", label: "Personal", model: "chat", catalog: ["small"] }], bindings: { translation: { provider_id: "own", model: "chosen" } } },
 } as Settings)
 beforeEach(() => useApp.setState({ meta: undefined, models: [] }))
 
 it("keeps explicit role choices and restores following the gateway default", () => {
   const onChange = vi.fn()
-  const { rerender } = render(<FunctionalModels settings={settings()} onChange={onChange} />)
-  const model = screen.getByLabelText("Conversation title Model")
+  const { rerender } = render(<FunctionalModelField role="translation" settings={settings()} onChange={onChange} />)
+  const model = screen.getByLabelText("Translation Model")
   fireEvent.change(model, { target: { value: " replacement " } })
   fireEvent.blur(model)
-  expect(onChange.mock.lastCall?.[0].models.bindings.title).toEqual({ provider_id: "own", model: "replacement" })
+  expect(onChange.mock.lastCall?.[0].models.bindings.translation).toEqual({ provider_id: "own", model: "replacement" })
   fireEvent.change(model, { target: { value: " " } })
   fireEvent.blur(model)
   expect(model).toHaveValue("chosen")
   fireEvent.click(screen.getByRole("button", { name: /^Use default$/ }))
   const restored = onChange.mock.lastCall![0] as Settings
   expect(restored.models.bindings).toEqual({})
-  rerender(<FunctionalModels settings={restored} onChange={onChange} />)
-  expect(screen.queryByLabelText("Conversation title Model")).toBeNull()
-  expect(screen.getByText(/server-title/)).toBeTruthy()
+  rerender(<FunctionalModelField role="translation" settings={restored} onChange={onChange} />)
+  expect(screen.queryByLabelText("Translation Model")).toBeNull()
+  expect(screen.getByText(/server-translation/)).toBeTruthy()
 })
 
 it("does not offer the background decisions role", () => {
@@ -37,7 +37,7 @@ it("does not offer the background decisions role", () => {
   render(<FunctionalModels settings={value} onChange={vi.fn()} />)
   expect(screen.queryByLabelText(/Decision assistant/)).toBeNull()
   expect(screen.queryByText("hidden-decider")).toBeNull()
-  expect(screen.getByLabelText("Conversation title Provider")).toBeTruthy()
+  expect(screen.getByLabelText("Embedding model Provider")).toBeTruthy()
 })
 
 it("has no model controls for a managed preset", () => {
@@ -50,7 +50,7 @@ it("has no model controls for a managed preset", () => {
 it("explains missing translation and image capabilities instead of hiding their rows", () => {
  const value = settings()
  value.model_policy!.mode = "gateway"
- render(<FunctionalModels settings={value} onChange={vi.fn()} />)
+ render(<><FunctionalModels settings={value} onChange={vi.fn()} /><FunctionalModelField role="translation" settings={value} onChange={vi.fn()} /></>)
  expect(screen.getByText("Translation", { exact: true })).toBeInTheDocument()
  expect(screen.getByText("Image generation", { exact: true })).toBeInTheDocument()
  expect(screen.queryByRole("combobox", { name: "Image generation" })).toBeNull()
@@ -70,7 +70,7 @@ it("lists gateway, third-party and local models in separate groups", () => {
     { id: "p", provider_id: "gateway:partner", provider_label: "Partner", label: "partner-chat", model: "partner-chat", ready: true, source: "account", catalog_group: "third_party" },
     { id: "l", provider_id: "own", provider_label: "Personal", label: "chat", model: "chat", ready: true, source: "provider" },
   ] })
-  render(<FunctionalModels settings={value} onChange={onChange} />)
+  render(<FunctionalModelField role="translation" settings={value} onChange={onChange} />)
   fireEvent.click(screen.getByLabelText("Translation Provider"))
   expect(screen.getByText("Gateway")).toBeInTheDocument()
   expect(screen.getByText("Partner")).toBeInTheDocument()
@@ -88,7 +88,7 @@ it("titles a third-party speech catalog with the gateway name", () => {
     { provider_id: "gateway:origin", label: "Origin", catalog_group: "original", speech_models: ["voxcpm2"] },
     { provider_id: "gateway:partner", label: "FOFA", catalog_group: "third_party", speech_models: ["speech"] },
   ]
-  render(<FunctionalModels settings={value} onChange={vi.fn()} />)
+  render(<FunctionalModelField role="speech" settings={value} onChange={vi.fn()} />)
   fireEvent.click(screen.getByLabelText("Spoken answers Provider"))
   expect(screen.getByText("Gateway")).toBeInTheDocument()
   expect(screen.getByText("FOFA")).toBeInTheDocument()
@@ -134,7 +134,7 @@ it("distinguishes a usable gateway-managed translation from an unavailable funct
  value.model_policy!.capabilities = { authorized: true, available: true, configurable: true, capabilities: {
   translation: { supported: true, available: true, configurable: false, endpoints: ["chat_completions"] },
  } }
- render(<FunctionalModels settings={value} onChange={vi.fn()} />)
+ render(<FunctionalModelField role="translation" settings={value} onChange={vi.fn()} />)
  expect(screen.getByText("Managed by gateway")).toBeInTheDocument()
  expect(screen.queryByLabelText("Translation Provider")).toBeNull()
 })

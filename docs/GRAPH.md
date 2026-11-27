@@ -153,6 +153,13 @@ and a link count, not every link.
 Cite tool calls instead of copying results, and do not read the graph back
 after a write that succeeded. It names no kind and no task.
 
+## Automatic recording
+
+The **Automatic graph recording** drawer in **Settings → Models → Optional AI
+features** controls graph writes in ordinary turns. When disabled, the work
+records panel and graph reads remain available. New turns freeze a read-only
+tool surface and any later automatic commit checks the live preference.
+
 ## Digest
 
 Every model request of a turn (manager and workers) carries a bounded digest as

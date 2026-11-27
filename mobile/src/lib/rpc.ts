@@ -278,6 +278,7 @@ export type EngineStartup = {
   restore?: { completed: number; total: number; failed?: number }
   data_generation?: number
   graph_available?: boolean
+  composer_predictions?: boolean
   model_policy?: ModelPolicy
   product_mode?: "fofa" | "local"
 }
@@ -300,7 +301,6 @@ export type RemoteResponse = EngineStartup & {
   host?: string
   project?: ProjectSettings
   memory_available?: boolean
-  composer_predictions?: boolean
   projects?: ProjectView[]
   threads?: ThreadView[]
   attention?: ThreadView[]

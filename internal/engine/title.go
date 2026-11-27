@@ -155,29 +155,12 @@ func (e *Engine) scheduleTitle(threadID string, turn *store.Turn, userText, fina
 }
 
 func (e *Engine) runTitle(threadID string, turn *store.Turn, userText, final string) {
-	ctx, cancel := context.WithTimeout(context.Background(), titleCallTimeout)
-	defer cancel()
-	ctx = provider.WithoutRouteRecovery(ctx)
-
-	var raw string
-	var err error
-	if id, _, ok := e.enabledAccountRole("title"); ok {
-		raw, err = e.pool.CompleteFixedChat(ctx, id, "title", titlePrompt(), titleInput(userText, final), e.cfg.SwarmSnapshot().CompletionTokenLimit())
-	} else {
-		fallbackProvider, fallbackModel := e.cfg.SwarmSnapshot().ResolveTitle(turn.ProviderID, turn.Model)
-		providerID, modelName := e.applyRoleModel(turn.ProviderID, "title", fallbackProvider, fallbackModel)
-		builder, buildErr := e.pool.RoleModelBuilder(ctx, providerID, modelName, "", e.callRecorder(threadID, turn.ID), "title")
-		err = buildErr
-		if err == nil {
-			var out *schema.Message
-			out, err = titleGenerate(ctx, builder(TitleAgentID, TitleAgentID), []*schema.Message{
-				schema.SystemMessage(titlePrompt()),
-				schema.UserMessage(titleInput(userText, final)),
-			})
-			if out != nil {
-				raw = out.Content
-			}
-		}
+	if !e.cfg.SwarmSnapshot().AutoTitle {
+		return
+	}
+	raw, err := e.generateAutomaticTitle(threadID, turn.ID, titlePrompt(), titleInput(userText, final))
+	if !e.cfg.SwarmSnapshot().AutoTitle {
+		return
 	}
 	if err != nil {
 		e.recordTitle(threadID, turn.ID, "", err.Error())
@@ -201,6 +184,31 @@ func (e *Engine) runTitle(threadID string, turn *store.Turn, userText, final str
 	}
 	e.reindex(threadID)
 	e.recordTitle(threadID, turn.ID, title, "")
+}
+
+func (e *Engine) generateAutomaticTitle(threadID, turnID, system, input string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), titleCallTimeout)
+	defer cancel()
+	ctx = provider.WithoutRouteRecovery(ctx)
+	ref, role, fixed, err := e.pool.AutomaticTitleModel()
+	if err != nil {
+		return "", err
+	}
+	if fixed {
+		return e.pool.CompleteFixedChat(ctx, ref.ProviderID, role, system, input, e.cfg.SwarmSnapshot().CompletionTokenLimit())
+	}
+	builder, err := e.pool.RoleModelBuilder(ctx, ref.ProviderID, ref.Model, "", e.callRecorder(threadID, turnID), role)
+	if err != nil {
+		return "", err
+	}
+	out, err := titleGenerate(ctx, builder(TitleAgentID, TitleAgentID), []*schema.Message{
+		schema.SystemMessage(system),
+		schema.UserMessage(input),
+	})
+	if out == nil || err != nil {
+		return "", err
+	}
+	return out.Content, nil
 }
 
 func (e *Engine) recordTitle(threadID, turnID, title, errText string) {

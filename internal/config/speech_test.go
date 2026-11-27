@@ -124,7 +124,9 @@ func TestOldConfigsGetSpeechDefaultsWithoutEnablingVoice(t *testing.T) {
 	cfg := Default()
 	cfg.Speech = SpeechConfig{}
 	cfg.normalizeSpeech()
-	if !reflect.DeepEqual(cfg.Speech, DefaultSpeech()) {
+	want := DefaultSpeech()
+	want.Input.GatewayDisabled, want.Output.GatewayDisabled = false, false
+	if !reflect.DeepEqual(cfg.Speech, want) {
 		t.Fatalf("normalized=%+v", cfg.Speech)
 	}
 	for _, source := range []string{SpeechSourceAccount, SpeechSourceProvider, SpeechSourceCustom} {

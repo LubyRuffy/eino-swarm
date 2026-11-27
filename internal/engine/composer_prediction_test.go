@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/components/model"
@@ -69,7 +70,11 @@ func TestNextStepStaysOffDuringOrdinaryTests(t *testing.T) {
 
 func TestAFinishedReplyOffersANextStep(t *testing.T) {
 	e := newTestEngine(t)
+	e.cfg.Swarm.ComposerPredictions = true
 	e.composerPredictionsInTest.Store(true)
+	e.cfg.Models.Bindings = map[string]map[string]config.ModelRef{
+		config.ProductModeLocal: {config.ComposerPredictionRole: {ProviderID: e.cfg.Models.Default, Model: "prediction-model"}},
+	}
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -100,6 +105,9 @@ func TestAFinishedReplyOffersANextStep(t *testing.T) {
 	for _, call := range calls {
 		if call.AgentID == ComposerPredictionAgentID {
 			found = true
+			if call.Model != "prediction-model" {
+				t.Fatalf("prediction used %q instead of the configured model", call.Model)
+			}
 		}
 	}
 	if !found {
@@ -109,6 +117,7 @@ func TestAFinishedReplyOffersANextStep(t *testing.T) {
 
 func TestNextStepSettingOffSkipsTheCall(t *testing.T) {
 	e := newTestEngine(t)
+	e.cfg.Swarm.ComposerPredictions = true
 	e.composerPredictionsInTest.Store(true)
 	e.Config().Swarm.ComposerPredictions = false
 	if e.composerPredictionsOn() {
@@ -135,6 +144,7 @@ func TestADeclinedNextStepClearsThePlaceholder(t *testing.T) {
 		return schema.AssistantMessage("NONE", nil), nil
 	}
 	e := newTestEngine(t)
+	e.cfg.Swarm.ComposerPredictions = true
 	e.composerPredictionsInTest.Store(true)
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
@@ -170,6 +180,7 @@ func TestNextStepModelErrorIsTraceOnly(t *testing.T) {
 		return nil, errors.New("endpoint unavailable")
 	}
 	e := newTestEngine(t)
+	e.cfg.Swarm.ComposerPredictions = true
 	e.composerPredictionsInTest.Store(true)
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
@@ -221,6 +232,7 @@ func TestNextStepPromptIsGeneric(t *testing.T) {
 		return schema.AssistantMessage("NONE", nil), nil
 	}
 	e := newTestEngine(t)
+	e.cfg.Swarm.ComposerPredictions = true
 	e.composerPredictionsInTest.Store(true)
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
@@ -273,6 +285,7 @@ func TestANewTurnDropsAnInFlightSuggestion(t *testing.T) {
 
 func TestAStaleSuggestionIsNotRecorded(t *testing.T) {
 	e := newTestEngine(t)
+	e.cfg.Swarm.ComposerPredictions = true
 	e.composerPredictionsInTest.Store(true)
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
@@ -299,6 +312,7 @@ func TestAStaleSuggestionIsNotRecorded(t *testing.T) {
 
 func TestSuggestionSkipsARunningConversation(t *testing.T) {
 	e := newTestEngine(t)
+	e.cfg.Swarm.ComposerPredictions = true
 	e.composerPredictionsInTest.Store(true)
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
@@ -332,6 +346,7 @@ func TestSuggestionSkipsARunningConversation(t *testing.T) {
 
 func TestSuggestionRecordsAMissingEndpoint(t *testing.T) {
 	e := newTestEngine(t)
+	e.cfg.Swarm.ComposerPredictions = true
 	e.composerPredictionsInTest.Store(true)
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
@@ -358,6 +373,7 @@ func TestScheduleSkipsATurnThatIsNotIdle(t *testing.T) {
 	absent.scheduleComposerPrediction("th", &store.Turn{}, store.TurnDone, false, false, "answer")
 
 	e := newTestEngine(t)
+	e.cfg.Swarm.ComposerPredictions = true
 	e.composerPredictionsInTest.Store(true)
 	turn := &store.Turn{ID: "tn", ThreadID: "th"}
 	e.scheduleComposerPrediction("th", nil, store.TurnDone, false, false, "answer")
@@ -383,6 +399,7 @@ func TestNextStepPanicStaysInsideTheSuggestion(t *testing.T) {
 		panic("suggestion failed")
 	}
 	e := newTestEngine(t)
+	e.cfg.Swarm.ComposerPredictions = true
 	e.composerPredictionsInTest.Store(true)
 	th, err := e.CreateThread("", "", "")
 	if err != nil {

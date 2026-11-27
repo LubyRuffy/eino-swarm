@@ -116,6 +116,7 @@ func runGraphScript(t *testing.T, steps []func(graphNow) string) (*Engine, strin
 	}
 	threadID = thread.ID
 	timeline := watchGraph(t, e, thread.ID)
+	e.cfg.Swarm.GraphAutoRecord = true
 	turn, err := e.StartTurn(thread.ID, "Work through the task and keep the graph current.")
 	if err != nil {
 		t.Fatal(err)

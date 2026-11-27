@@ -20,7 +20,11 @@ const audioCatalog = `{"data":[{"id":"speech","model_type":"speech","audio":{"ve
 func managedAudio(t *testing.T, endpoint string) (*config.Config, *Service, *provider.AccountSource) {
 	t.Helper()
 	cfg, svc := configuredSpeech(t, endpoint)
-	if err := cfg.Update(func(c *config.Config) error { c.Product.Mode = config.ProductModeFOFA; return nil }); err != nil {
+	if err := cfg.Update(func(c *config.Config) error {
+		c.Product.Mode = config.ProductModeFOFA
+		c.Speech.Input.GatewayDisabled, c.Speech.Output.GatewayDisabled = false, false
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	source, err := provider.NewAccountSource("gateway:voice", "Gateway", endpoint, "private", provider.Catalog{Names: []string{"speech", "transcription"}, Types: map[string]string{"speech": "speech", "transcription": "transcription"}})

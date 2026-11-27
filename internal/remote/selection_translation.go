@@ -21,6 +21,8 @@ func handleSelectionTranslation(ctx context.Context, eng *engine.Engine, req Req
 	if err != nil {
 		code := "selection_translation_unavailable"
 		switch {
+		case errors.Is(err, engine.ErrSelectionTranslationDisabled):
+			return fail(req.ID, path, sessionID, "selection_translation_disabled", "Selection translation is switched off.")
 		case errors.Is(err, engine.ErrInvalidSelectionTranslation):
 			code = "bad_request"
 		case errors.Is(err, engine.ErrSelectionTranslationTooLong):

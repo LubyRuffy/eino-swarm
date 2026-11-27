@@ -40,7 +40,7 @@ export function AuxiliaryModels({
   const t = useT()
   const choices = auxiliaryModelChoices(settings.models.providers)
   const listed = extraChoice(
-    extraChoice(choices, settings.swarm.title_provider, settings.swarm.title_model, settings.models.default),
+    choices,
     settings.swarm.compact_provider,
     settings.swarm.compact_model,
     settings.models.default,
@@ -51,23 +51,6 @@ export function AuxiliaryModels({
       title={t("settings.aux.title")}
       description={t("settings.aux.desc")}
     >
-      {settings.swarm.auto_title !== false ? (
-        <AuxiliaryPin
-          query={query}
-          title={t("settings.aux.titleGen")}
-          badge={t("settings.aux.badge")}
-          ariaLabel={t("settings.aux.titleAria")}
-          provider={settings.swarm.title_provider}
-          model={settings.swarm.title_model}
-          choices={listed}
-          onPin={(provider, model) =>
-            onChange({
-              ...settings,
-              swarm: { ...settings.swarm, title_provider: provider, title_model: model },
-            })
-          }
-        />
-      ) : null}
       <AuxiliaryPin
         query={query}
         title={t("settings.aux.compact")}

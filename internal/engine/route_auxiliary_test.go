@@ -128,6 +128,7 @@ func TestTitleFirstRouteRefusalKeepsBothNamingPathsSingleRequest(t *testing.T) {
 		t.Run(fmt.Sprintf("schedule_%v", scheduled), func(t *testing.T) {
 			e, providerID, requests, clock := newAuxiliaryRouteFixture(t)
 			e.cfg.Swarm.AutoTitle = true
+			e.cfg.Models.Default = providerID
 			th, err := e.CreateThread("", providerID, "")
 			if err != nil {
 				t.Fatal(err)
