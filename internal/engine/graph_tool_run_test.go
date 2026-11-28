@@ -317,7 +317,7 @@ func TestGraphWritesAreRefusedWithoutTrustedRuntimeProvenance(t *testing.T) {
 func TestGraphWriteLockRefusesDroppedTurnsDisabledGraphAndCancellation(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Swarm.GraphAutoRecord = true
-	unlock, err := e.lockGraphWrite(context.Background(), "tn_live")
+	unlock, err := e.lockGraphWrite(context.Background(), "tn_live", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,16 +326,16 @@ func TestGraphWriteLockRefusesDroppedTurnsDisabledGraphAndCancellation(t *testin
 	e.recordMu.Lock()
 	e.droppedTurns["tn_rewound"] = struct{}{}
 	e.recordMu.Unlock()
-	if _, err := e.lockGraphWrite(context.Background(), "tn_rewound"); !errors.Is(err, store.ErrNotFound) {
+	if _, err := e.lockGraphWrite(context.Background(), "tn_rewound", false); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("rewound turn: %v", err)
 	}
 	ctx, cancel := context.WithCancelCause(context.Background())
 	cancel(errors.New("handoff"))
-	if _, err := e.lockGraphWrite(ctx, "tn_live"); err == nil || !strings.Contains(err.Error(), "handoff") {
+	if _, err := e.lockGraphWrite(ctx, "tn_live", false); err == nil || !strings.Contains(err.Error(), "handoff") {
 		t.Errorf("cancelled: %v", err)
 	}
 	// Both locks must be free again after every refusal.
-	unlock, err = e.lockGraphWrite(context.Background(), "tn_live")
+	unlock, err = e.lockGraphWrite(context.Background(), "tn_live", false)
 	if err != nil {
 		t.Fatalf("a refusal left a lock held: %v", err)
 	}
@@ -344,7 +344,7 @@ func TestGraphWriteLockRefusesDroppedTurnsDisabledGraphAndCancellation(t *testin
 	e.configUpdateMu.Lock()
 	e.cfg.Swarm.GraphAutoRecord = false
 	e.configUpdateMu.Unlock()
-	if _, err := e.lockGraphWrite(context.Background(), "tn_live"); !errors.Is(err, ErrGraphDisabled) {
+	if _, err := e.lockGraphWrite(context.Background(), "tn_live", false); !errors.Is(err, ErrGraphDisabled) {
 		t.Errorf("automatic recording switched off: %v", err)
 	}
 
@@ -352,7 +352,7 @@ func TestGraphWriteLockRefusesDroppedTurnsDisabledGraphAndCancellation(t *testin
 	e.cfg.Swarm.GraphAutoRecord = true
 	e.cfg.Swarm.Graph = false
 	e.configUpdateMu.Unlock()
-	if _, err := e.lockGraphWrite(context.Background(), "tn_live"); !errors.Is(err, ErrGraphDisabled) {
+	if _, err := e.lockGraphWrite(context.Background(), "tn_live", false); !errors.Is(err, ErrGraphDisabled) {
 		t.Errorf("graph switched off: %v", err)
 	}
 }

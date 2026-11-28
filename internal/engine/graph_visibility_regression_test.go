@@ -31,6 +31,7 @@ func TestGraphPreviewAndEventsKeepRepositoryCredentialsPrivate(t *testing.T) {
 			writeContextFlowReply(w, request.Stream, map[string]any{"content": "Recorded."}, "stop")
 		}
 	})
+	e.cfg.Swarm.GraphAutoRecord = true
 	th, err := e.CreateThread("Audit", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -97,6 +98,7 @@ func TestGraphReplayPreservesNewUnrecordedResults(t *testing.T) {
 			writeContextFlowReply(w, request.Stream, map[string]any{"content": "Recorded."}, "stop")
 		}
 	})
+	e.cfg.Swarm.GraphAutoRecord = true
 	th, err := e.CreateThread("Replay audit", "", "")
 	if err != nil {
 		t.Fatal(err)

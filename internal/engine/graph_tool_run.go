@@ -70,9 +70,9 @@ func (e *Engine) graphCaller(ctx context.Context, turn *store.Turn) (store.Graph
 
 // lockGraphWrite orders a write against settings changes and turn removal the
 // way other durable model writes are ordered.
-func (e *Engine) lockGraphWrite(ctx context.Context, turnID string) (func(), error) {
+func (e *Engine) lockGraphWrite(ctx context.Context, turnID string, replay bool) (func(), error) {
 	e.configUpdateMu.Lock()
-	if settings := e.cfg.SwarmSnapshot(); !settings.Graph || !settings.GraphAutoRecord {
+	if settings := e.cfg.SwarmSnapshot(); !settings.Graph || (!replay && !settings.GraphAutoRecord) {
 		e.configUpdateMu.Unlock()
 		return nil, ErrGraphDisabled
 	}
@@ -112,7 +112,7 @@ func (e *Engine) updateGraphTool(ctx context.Context, turn *store.Turn, args str
 	// Ill-formed evidence would refuse the whole batch and make the model
 	// resend it. Drop it and cite the caller's own completed tool results.
 	prepareGraphEvidence(&batch)
-	unlock, err := e.lockGraphWrite(ctx, turn.ID)
+	unlock, err := e.lockGraphWrite(ctx, turn.ID, turn.GraphReplay)
 	if err != nil {
 		return "", err
 	}

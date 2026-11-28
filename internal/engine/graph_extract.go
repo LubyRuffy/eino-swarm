@@ -177,7 +177,7 @@ func (rt *runtime) replayGraph(ctx context.Context, turn *store.Turn) (string, e
 		return "", err
 	}
 	if turn.GraphClear {
-		unlock, err := e.lockGraphWrite(ctx, turn.ID)
+		unlock, err := e.lockGraphWrite(ctx, turn.ID, turn.GraphReplay)
 		if err != nil {
 			return "", err
 		}

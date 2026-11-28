@@ -188,7 +188,8 @@ after a write that succeeded. It names no kind and no task.
 The **Automatic graph recording** drawer in **Settings → Models → Optional AI
 features** controls graph writes in ordinary turns. When disabled, the work
 records panel and graph reads remain available. New turns freeze a read-only
-tool surface and any later automatic commit checks the live preference.
+tool surface and any later automatic commit checks the live preference. The
+explicit replay action can still write while automatic recording is disabled.
 
 ## Digest
 

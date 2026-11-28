@@ -37,6 +37,7 @@ func TestAFinishedAnswerRecordsUnwrittenToolResultsOnce(t *testing.T) {
 		}
 	})
 	e.cfg.Memory.Enabled, e.cfg.Memory.AutoReview = false, false
+	e.cfg.Swarm.GraphAutoRecord = true
 	thread, err := e.CreateThread("Graph record", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -71,6 +72,7 @@ func TestAnAnswerWithoutToolResultsIsNotSentBackToTheGraph(t *testing.T) {
 		writeContextFlowReply(w, request.Stream, map[string]any{"content": "Nothing to record."}, "stop")
 	})
 	e.cfg.Memory.Enabled, e.cfg.Memory.AutoReview = false, false
+	e.cfg.Swarm.GraphAutoRecord = true
 	thread, err := e.CreateThread("Graph record", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -103,6 +105,7 @@ func TestASecondAnswerStandsWhenTheRecordingPassWritesNothing(t *testing.T) {
 		}
 	})
 	e.cfg.Memory.Enabled, e.cfg.Memory.AutoReview = false, false
+	e.cfg.Swarm.GraphAutoRecord = true
 	thread, err := e.CreateThread("Graph record", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -146,6 +149,7 @@ func TestGraphRecordPublishesTheOriginalAnswerWhenItsAllowanceCannotBeSaved(t *t
 		BEGIN SELECT RAISE(ABORT, 'graph record allowance unavailable'); END`).Error; err != nil {
 		t.Fatal(err)
 	}
+	e.cfg.Swarm.GraphAutoRecord = true
 	thread, err := e.CreateThread("Graph record storage fixture", "", "")
 	if err != nil {
 		t.Fatal(err)
