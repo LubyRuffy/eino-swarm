@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -49,6 +50,103 @@ func TestLeadLinkedToConfirmedSameKindIsRetracted(t *testing.T) {
 	retractLeadsLinkedToConfirmed(&later, known)
 	if later.Subjects[0].Status != graph.StatusRetracted {
 		t.Fatalf("a lead linked to an existing confirmed subject stayed %q", later.Subjects[0].Status)
+	}
+	// The arrow points the other way. The lead is still the subject to retract.
+	reversed := graph.Batch{
+		Subjects: []graph.SubjectInput{
+			{Ref: "keep", Kind: "ip", Status: graph.StatusConfirmed, Attrs: map[string]any{"ip": "203.0.113.10"}},
+			{Ref: "old", Kind: "ip", Attrs: map[string]any{"ip": "203.0.113.11"}},
+			{Ref: "other", Kind: "domain", Attrs: map[string]any{"domain": "example.test"}},
+		},
+		Links: []graph.LinkInput{
+			{From: "keep", To: "old", Rel: "replaced"},
+			{From: "keep", To: "other", Rel: "resolved"},
+		},
+	}
+	retractLeadsLinkedToConfirmed(&reversed, nil)
+	if reversed.Subjects[1].Status != graph.StatusRetracted || reversed.Subjects[2].Status != "" {
+		t.Fatalf("reversed statuses=%+v", reversed.Subjects)
+	}
+	// A stored lead that the call only names on the link is retracted too.
+	stored := graph.Batch{Links: []graph.LinkInput{{From: "sj_keep", To: "sj_old", Rel: "replaced"}}}
+	retractLeadsLinkedToConfirmed(&stored, map[string]knownSubject{
+		"sj_keep": {Kind: "ip", Status: graph.StatusConfirmed},
+		"sj_old":  {Kind: "ip", Status: graph.StatusLead},
+	})
+	if len(stored.Subjects) != 1 || stored.Subjects[0].ID != "sj_old" || !stored.Subjects[0].HostRetract || stored.Subjects[0].Version != 0 {
+		t.Fatalf("stored lead was not a status-only retract: %+v", stored.Subjects)
+	}
+}
+
+// The model chooses which end of a link is which. A lead on either end of a
+// same-kind confirmed subject is stored retracted, including one the call only
+// names on the link, and its attributes stay.
+func TestLeadOnEitherEndIsStoredRetractedWithoutAVersion(t *testing.T) {
+	e := newTestEngine(t)
+	thread, err := e.CreateThread("versions", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn := &store.Turn{ThreadID: thread.ID, GraphTools: true}
+	if err := e.store.CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+	call := func(id, args string) graph.Result {
+		t.Helper()
+		ctx := context.WithValue(context.Background(), historyReadOwnerKey{}, historyReadOwner{ThreadID: turn.ThreadID, TurnID: turn.ID})
+		ctx = context.WithValue(ctx, graphReplayCallerKey{}, graphReplayCaller{turnID: turn.ID, callID: id})
+		out, err := e.updateGraphTool(ctx, turn, args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var reply struct {
+			Result graph.Result `json:"result"`
+		}
+		if err := json.Unmarshal([]byte(out), &reply); err != nil {
+			t.Fatal(err)
+		}
+		return reply.Result
+	}
+	call("arrow", `{
+		"evidence":[{"url":"https://records.example.test/run"}],
+		"subjects":[
+			{"ref":"keep","kind":"ip","status":"confirmed","attrs":{"ip":"203.0.113.10"}},
+			{"ref":"old","kind":"ip","attrs":{"ip":"203.0.113.11"}}
+		],
+		"links":[{"from":"keep","to":"old","rel":"replaced"}]
+	}`)
+	call("held", `{
+		"subjects":[{"ref":"held","kind":"ip","attrs":{"ip":"203.0.113.12","country":"A"}}],
+		"links":[{"from":"held","to":"old","rel":"same_network"}]
+	}`)
+	call("named-on-the-link", `{"links":[{"from":"keep","to":"held","rel":"replaced"}]}`)
+	view, err := e.store.ReadGraph(context.Background(), thread.ID, store.GraphQuery{All: true, Limit: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byIP := map[string]store.GraphSubject{}
+	for _, subject := range view.Subjects {
+		byIP[fmt.Sprint(subject.Attrs["ip"])] = subject
+	}
+	if byIP["203.0.113.10"].Status != graph.StatusConfirmed || byIP["203.0.113.11"].Status != graph.StatusRetracted {
+		t.Fatalf("arrow statuses=%v %v", byIP["203.0.113.10"].Status, byIP["203.0.113.11"].Status)
+	}
+	held := byIP["203.0.113.12"]
+	if held.Status != graph.StatusRetracted || held.Attrs["country"] != "A" {
+		t.Fatalf("a lead named only on the link stayed %+v", held)
+	}
+}
+
+func TestPreviewShowsAStoredLeadRetractedBeforeCommit(t *testing.T) {
+	frame := previewGraph(store.GraphView{Subjects: []store.GraphSubject{
+		{ID: "sj_old", Kind: "ip", Status: graph.StatusLead, Attrs: map[string]any{"ip": "203.0.113.11", "country": "A"}},
+		{ID: "sj_keep", Kind: "ip", Status: graph.StatusConfirmed, Attrs: map[string]any{"ip": "203.0.113.10"}},
+	}}, graph.Batch{Subjects: []graph.SubjectInput{
+		{ID: "sj_old", HostRetract: true},
+		{ID: "sj_keep", HostRetract: true},
+	}})
+	if frame.Subjects[0].Status != graph.StatusRetracted || frame.Subjects[0].Attrs["country"] != "A" || frame.Subjects[1].Status != graph.StatusConfirmed {
+		t.Fatalf("preview=%+v", frame.Subjects)
 	}
 }
 
@@ -134,6 +232,41 @@ func TestGraphReplyShowsACredentialOnlyInTheByIDRead(t *testing.T) {
 	}
 	if len(list.Links) != 1 || list.Links[0].Rel != "uses" || len(list.Todos) != 1 || list.Todos[0].About != "sj_1" {
 		t.Fatalf("links and to-dos were not projected: %+v", list)
+	}
+}
+
+func TestPreviewFrameIsVisibleWithoutACommitAndThenGoesAway(t *testing.T) {
+	e := newTestEngine(t)
+	thread, err := e.CreateThread("preview", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const secret = "fake-credential-for-preview"
+	frame := previewGraph(store.GraphView{OwnerID: thread.ID}, graph.Batch{
+		Todos:    []graph.TodoInput{{Ref: "t", Title: "Record the finding", Status: graph.TodoDone}},
+		Subjects: []graph.SubjectInput{{Ref: "r", Kind: "repo", Attrs: map[string]any{"path": "acme/app", "credential": secret}}},
+	})
+	e.showGraphPreview(thread.ID, frame)
+	view, err := e.ReadThreadGraph(t.Context(), thread.ID, store.GraphQuery{All: true, Limit: -1, Preview: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Revision != 0 || len(view.Todos) != 1 || view.Todos[0].Status != graph.TodoDoing {
+		t.Fatalf("preview=%+v", view)
+	}
+	if len(view.Subjects) != 1 || view.Subjects[0].Attrs["path"] != "acme/app" {
+		t.Fatalf("subjects=%+v", view.Subjects)
+	}
+	if _, leaked := view.Subjects[0].Attrs["credential"]; leaked || strings.Contains(view.Subjects[0].Name, secret) {
+		t.Fatalf("preview leaked a credential: %+v", view.Subjects[0])
+	}
+	if _, err := e.ReadThreadGraph(t.Context(), thread.ID, store.GraphQuery{ID: "r"}); !errors.Is(err, store.ErrGraphNotFound) {
+		t.Fatalf("a by-id read used the preview: %v", err)
+	}
+	e.clearGraphPreview(thread.ID)
+	after, err := e.ReadThreadGraph(t.Context(), thread.ID, store.GraphQuery{All: true, Limit: -1})
+	if err != nil || len(after.Todos) != 0 || len(after.Subjects) != 0 || after.Revision != 0 {
+		t.Fatalf("after clear=%+v err=%v", after, err)
 	}
 }
 

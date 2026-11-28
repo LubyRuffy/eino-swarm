@@ -477,6 +477,25 @@ id with a changed body, a silent merge of two subjects, confirmation without
 evidence, a rewritten identity key, a write after owner deletion, and an
 additive write that replaces another worker's attributes) and reachability
 cases for confirmation, replay, stale refusal, merge refusal and owner deletion.
+`models/graph/GraphPicture.tla` (`graph-picture-*`) is the picture, not the
+write: a phrase is not a node, and a real subject that has a stored link stays
+visible when the other end is a phrase. The seeded `DropPhraseNeighbor` case is
+the old panel filter, which dropped that subject; the panel now keeps it. A stored subject with no
+link, including the single subject of an empty graph, is reachable and is not
+drawn. `models/graph/GraphRecord.tla` (`graph-record-*`) is the one recording
+pass: a writable turn with unrecorded tool results is withheld once, the next
+answer is kept even when nothing was written. A read-only or off graph, an
+unreadable allowance or count, and a failed allowance write publish the original
+answer. Restart retains a stored allowance. `models/graph/GraphRevision.tla`
+(`graph-revision-*`) is the committed revision: a commit and a clear of an
+existing graph each advance it, a refusal and a preview do not, and the client
+keeps a newer picture. `models/graph/GraphDelivery.tla` (`graph-delivery-*`)
+checks owner changes on an open stream, including equal or lower revisions and
+an old reply that finishes late. `models/graph/GraphReplay.tla` (`graph-replay-*`)
+checks independent receipts for source rounds, immutable receipts on retry,
+refusal during a pending question or planning, and rejection of a stale clear
+confirmation. Both models check that the guarded behaviors are reachable and
+that removing the guards produces the expected counterexamples.
 The `stream-work-revision` case rejects emitting a work revision as the
 conversation's SSE cursor, and the Inspector cases cover the Work records tab's
 availability and focus. The model checks the protocol, not Go's atomicity.
@@ -490,18 +509,36 @@ availability and focus. The model checks the protocol, not Go's atomicity.
   replay, per-owner revisions, owner and project deletion, paging/search and
   credential masking. The store package is large; add `-run` with a graph test
   name for a focused run.
-- `go test -race ./internal/engine -run 'Test(ManagerWritesAndReads|GraphSwitchOff|GraphGuidance|DelegatedWorkerWritesTheGraph|Digest)'`
+- `internal/store/graph_evidence_window_test.go` fills a subject and link's
+  evidence window before citing a new event, reopens a truncated database where
+  a later turn reused the old sequence, and reads a page holding 32,800 distinct
+  event references. `internal/store/graph_clear_test.go` fails the revision
+  insert after transactional deletes and checks that the graph and previous
+  receipt survive. The same clear entry refuses a moved, planning or cancelled
+  replay turn. `internal/graph/types_test.go` covers the 32/33 evidence boundary.
+- `go test -race ./internal/engine -run 'Test(ManagerWritesAndReads|GraphSwitchOff|GraphGuidance|DelegatedWorkerWritesTheGraph|Digest|AFinishedAnswerRecords|AnAnswerWithoutToolResults|ASecondAnswerStands|GraphRecord)'`
   drives `update_graph`/`read_graph` through the real Registry, ADK and HTTP
   adapter: the schemas offered, atomic refusals returned as repairable tool
-  results, the switch frozen per turn and a late write refused after it is off,
+  results, one recording pass before a final answer that leaves tool results
+  unrecorded (`TestAFinishedAnswerRecordsUnwrittenToolResultsOnce`), the switch frozen per turn and a late write refused after it is off,
   a task-agnostic prompt, a delegated worker writing under its own identity, and a
-  digest that lists identifiers and never attribute values.
-- `go test -race ./internal/server -run 'Test(GraphRoutes|ProjectGraphRoute|GraphUpdatedFrame)'`
+  digest that lists identifiers and never attribute values. A write failure on
+  the allowance event preserves the first answer without another model request.
+- `go test -race ./internal/engine -run 'Test(GraphReplay|ExtractGraph)'` uses
+  the loopback model adapter with independent replays of completed source rounds.
+  It checks reuse of a raw tool ID across rounds, exact retry and changed-body
+  refusal within one round, the current digest, and zero replay requests when
+  clearing would consume a human answer or overwrite a read-only planning graph.
+- `go test -race ./internal/server -run 'Test(GraphRoutes|ProjectGraphRoute|GraphUpdatedFrame|ExtractGraph)'`
   covers `GET /api/threads/:id/graph`, `GET /api/projects/:id/graph`,
-  `GET /api/graph/kinds`, credential masking and the `graph_updated` SSE frame
-  after each commit on the real listener. `go test -race ./internal/remote -run 'TestPhone(Graph|ProjectGraph)'`
-  covers the sealed phone RPC: an unchanged revision returns one small frame, a
-  graph larger than a frame is refused, and a project graph reads its owner.
+  `POST /api/threads/:id/graph/extract`, `GET /api/graph/kinds`, credential masking and the `graph_updated` SSE frame
+  on the real listener. The owner-move case keeps the same connection open as
+  a conversation moves between two revision-1 graphs, then to an empty graph
+  and back. The extraction route refuses a clear confirmed for the former owner.
+  `go test -race ./internal/remote -run 'TestPhone(Graph|ProjectGraph)'`
+  covers the sealed phone RPC: an unchanged reply requires the same owner and
+  revision, a graph larger than a frame is refused, and a project graph reads
+  its owner.
 - The offline acceptance runs `TestAcceptance*` in
   `internal/engine/graph_acceptance_http_test.go` script a real manager through
   the HTTP adapter while sampling the graph the way the panel does:
@@ -514,9 +551,11 @@ availability and focus. The model checks the protocol, not Go's atomicity.
   (enterprise exposure analysis) and
   `TestAcceptanceQueryRefinementKeepsTheFailedDraftAndLinksTheCorrection`
   (the failed draft is retracted and the correction is a new linked subject)
-  require at least three observed revisions, a `doing` to-do seen while the run
-  was in flight, and no `open` or `doing` to-do left at the end. They prove the
-  progress is observable and the final graph is complete for a scripted model;
+  require the picture from before the commit and the committed revision, a
+  `doing` to-do seen while the run was in flight, and no `open` or `doing`
+  to-do left at the end. The in-progress frame is not its own revision. They
+  prove the progress is observable and the final graph is complete for a
+  scripted model;
   they do not measure a real model (see [Graph evals](#graph-evals)).
 - Front-end unit tests: `cd frontend && npx vitest run src/lib/graph src/store/graph.test.ts src/components/app/graph`
   cover the ring derivation from to-dos (`analysis.test.ts`), the canvas drawing
@@ -525,7 +564,10 @@ availability and focus. The model checks the protocol, not Go's atomicity.
   highlight and filter clicks, credential masks, failed read and retry).
 - Desktop browser: `frontend/e2e/graph-panel.spec.ts` draws the real force-graph
   canvas, reads the rings through the `__graphScene` test hook, clicks to-dos and
-  nodes, and pushes `graph_updated` over the real SSE listener. Give a
+  nodes, and reads `graph_updated` over the real SSE listener. One case holds
+  the clear request while a separate HTTP request moves the conversation,
+  verifies the server conflict, and observes the panel switching owners.
+  Give a
   concurrent run its own port, data and output directories (the launcher
   removes the data directory), and do not rebuild a served `dist`:
 
@@ -537,7 +579,8 @@ availability and focus. The model checks the protocol, not Go's atomicity.
 
 - Phone: `cd mobile && npx vitest run src/components/work-records.test.tsx`
   checks hiding after the PC setting turns off, polling with the held revision,
-  keeping the picture when a poll fails and the too-large refusal.
+  keeping the picture when a poll fails, accepting a new owner at the same
+  revision, and the too-large refusal.
   `cd mobile && ZWAI_MOBILE_E2E_PORT=4180 npx playwright test e2e/work-records.spec.ts`
   runs the MockLink cases `?mock=1&tick=0&graph=on|large|off` (graph and to-dos
   on the real canvas, the over-frame message, the setting turned off). The
@@ -1649,9 +1692,14 @@ recheck of the selected row under actual SQLite cancellation.
 `internal/engine/schedule_answer_identity_boundary_test.go` cover application
 scope and the real Registry/HTTP answer boundary (Issue #132). A recurring
 thread wake can support an assertion that does not specify a destination;
-recurrence alone must not fabricate an independent job. Specific scopes require
-an exact `scope_quote` within the claim's passage, and any extracted ID must
-occur in that passage. An exact ID resolves to its persisted object while an
+recurrence alone must not fabricate an independent job. Application scopes
+`thread` and `independent` require an exact `scope_quote` within the claim's
+passage, and an extracted app ID must occur in that passage.
+`schedule_answer_meaning_test.go` and `schedule_answer_http_test.go` exercise
+missing and misplaced external scope quotes, including a real HTTP classifier
+whose operator witness is elsewhere in the candidate or absent altogether. The HTTP regression refuses a local success claim marked external without a witness. Mixed answers
+still validate the local claim's exact quote and match its persisted schedule
+and current-turn receipt. An exact ID resolves to its persisted object while an
 explicitly incompatible scope still refuses. A concrete claim without an ID or
 scope must match exactly one eligible object: multiple matches retain
 `no_matching_schedule`, the structural `ambiguous_identity` diagnosis and the
@@ -1878,7 +1926,9 @@ phone projection, not an engine/database outage or a packaged native app.
 Packaged native projection uses Android `BackoffNoticeTest` in
 `mobile/android/app/src/androidTest/java/com/lubyruffy/zwai/BackoffNoticeTest.java`
 and `mobile/e2e/ios-backoff-notice.swift` through the isolated iOS layout
-fixture. Both inspect the four distinct notices, one row per cooldown, hidden
+fixture. Set `IOS_LAYOUT_PHONE_MODE=local` and select the `answer-backoff`
+history for the paired transcript. Both inspect distinct invalid-response and
+request-failure notices, one row per cooldown, hidden
 zero-duration probe waits, absence of classifier workers, and Back/reopen.
 Retain screenshots and accessibility observations. Android records the installed
 APK and public asset hashes; iOS release acceptance compares the simulator's
@@ -6422,12 +6472,14 @@ The graph kernel ([Work graph](GRAPH.md)) has two opt-in task evals under
 
 The `graph_count` check type (`tools/agent_eval_grade.py`) counts the rows of
 `GET /api/threads/:id/graph` that the runner fetches once after the run, only for
-tasks that declare such a check. `of` is `subjects`, `links` or `todos`; `kind`,
+tasks that declare such a check. For `subjects`, `links` or `todos`, `kind`,
 `status` (one value or a list), `rel` and `attrs` (attribute name to regex)
 narrow the rows, and `min`/`max` bound the count. A run without a fetched graph
-fails rather than passing vacuously, an unknown `of` is refused when the task
-loads, and it nests in `any_of`. Tasks assert on the structure the graph keeps,
-never on a sample's wording.
+fails, an unknown `of` is refused when the task loads, and it nests in `any_of`.
+`of: "components"` counts the weakly connected components of a complete
+snapshot, including isolated subjects. The exposure fixture requires exactly
+one component and rejects two disconnected groups even when they contain more
+than 30 links in total.
 
 ```bash
 python3 -m unittest tools.test_agent_eval_graph   # offline: the check type and both tasks' fixtures
@@ -8734,6 +8786,23 @@ rechecks the actual guest. Prior transport/login failures remain historical;
 replace the active state and login result with observations from this recovery
 before declaring a blocker. A host that locks again does not revive an old failure.
 
+### Paired phone edit and resend (F-220, C-003)
+
+`internal/remote/edit_input_test.go` uses a real encrypted loopback Pairlink
+watch. It reads full text behind a clipped preview, then checks the named
+rewind arrives before the replacement, queued follow-ups are removed, original
+image bytes decode at their original dimensions, and a stale source is refused.
+`mobile/e2e/edit-input.spec.ts` exercises cancel, refusal with the typed edit
+intact, successful resend, unchanged image references, and reopen on Chromium
+and iPhone WebKit.
+
+The packaged iOS fixture uses `IOS_LAYOUT_SCENARIO=ios-edit-input.swift`,
+`IOS_LAYOUT_PHONE_MODE=local` and
+`IOS_LAYOUT_QUERY='/?mock=1&tick=0&history=input-images'`. Select only
+`AppUITests/BindFlowTests/testEditAndResendPairedInput` in the disposable
+simulator workflow in [the phone README](../mobile/README.md#simulators).
+The test types into the original prompt and captures the resulting transcript.
+
 ### Phone live-turn Stop action (Issue #69, C-002)
 
 `mobile/src/components/thread-stop.test.tsx` checks that the composer itself can stop an empty live turn, whitespace still offers Stop, a typed follow-up and steer keep their send behavior, and asking/parked waits never become Stop. `composer.test.tsx` covers attachment-only and quote-only drafts and pending-request cancellation. The direct chat test holds a live stream, cancels it through the composer, and verifies the abort signal, retained partial text, no error, and restored Send.
@@ -9327,6 +9396,13 @@ isolated classification HTTP fixtures retain timeout coverage with no origin
 `model_backoff` observation or change to the origin failure streak.
 The opt-in `frontend/e2e/api-error.spec.ts` measures actual HTTP arrival gaps on
 502 (at least 5s then 10s), and checks the original turn, Chat, Full log and reload.
+
+`internal/engine/responses_incomplete_http_test.go` drives the Registry, ADK
+and Responses adapter over HTTP. It checks the public error, generation cause,
+and Trace request ID, and verifies a streamed write does not reach the workspace
+when the terminal status is incomplete. `internal/provider/responses_stream_test.go`
+also covers non-streaming incomplete results and cancellation after the terminal
+frame was decoded.
 
 ```bash
 go test -race ./internal/provider -count=1 -coverprofile=/tmp/provider-backoff.cover

@@ -106,6 +106,8 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req R
 		return composeStart(eng, cfg, stage, req, path, sessionID)
 	case OpSend:
 		return composeSend(eng, stage, req, path, sessionID)
+	case OpEditInput:
+		return editInput(eng, cfg, req, path, sessionID)
 	case OpDeliver:
 		return composeDelivery(eng, stage, req, path, sessionID)
 	case OpSteer:

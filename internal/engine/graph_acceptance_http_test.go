@@ -33,7 +33,7 @@ func watchGraph(t *testing.T, e *Engine, threadID string) *graphTimeline {
 				return
 			case <-time.After(10 * time.Millisecond):
 			}
-			view, err := e.ReadThreadGraph(t.Context(), threadID, store.GraphQuery{Limit: -1, All: true})
+			view, err := e.ReadThreadGraph(t.Context(), threadID, store.GraphQuery{Limit: -1, All: true, Preview: true})
 			if err != nil {
 				continue
 			}
@@ -144,7 +144,7 @@ func subjectsOf(view store.GraphView) map[string][]store.GraphSubject {
 // and nothing is left open or doing once the turn has finished.
 func requireSettledProgress(t *testing.T, e *Engine, threadID string, revisions []int64, sawDoing bool) store.GraphView {
 	t.Helper()
-	if len(revisions) < 3 { // the empty graph, then at least two later states
+	if len(revisions) < 2 { // the picture before the commit, then the committed revision
 		t.Errorf("the graph was observed at revisions %v; progress must be visible before the turn ends", revisions)
 	}
 	if !sawDoing {
@@ -181,6 +181,47 @@ func TestAcceptanceFirstFinishedTodoStaysVisibleUntilItIsSettled(t *testing.T) {
 	}
 	if len(view.Subjects) != 1 || view.Subjects[0].Kind != "domain" {
 		t.Fatalf("subjects: %+v", view.Subjects)
+	}
+	if view.Revision != 1 {
+		t.Fatalf("the in-progress frame must not be its own commit, revision %d", view.Revision)
+	}
+}
+
+// A finished to-do with nothing to cite is refused. The refusal is decided
+// before any row is committed, so the graph stays empty.
+func TestRefusedFinishedTodoLeavesTheGraphEmpty(t *testing.T) {
+	var eng *Engine
+	var threadID string
+	e, _ := newScheduleCompletionHTTPEngine(t, func(w http.ResponseWriter, _ *http.Request, step int, request scheduleCompletionRequest) {
+		if step > 1 {
+			writeContextFlowReply(w, request.Stream, map[string]any{"content": "Stopped."}, "stop")
+			return
+		}
+		graphToolCall(w, request, "graph-refused", ToolUpdateGraph, `{
+			"todos":[{"title":"Finish without evidence","status":"done"}],
+			"subjects":[{"kind":"domain","attrs":{"domain":"refused.example.test"}}]}`)
+	})
+	eng = e
+	thread, err := e.CreateThread("Refused graph", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	threadID = thread.ID
+	turn, err := e.StartTurn(thread.ID, "Record the work.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := waitForTurn(t, e, turn.ID)
+	waitSettled(t, e, thread.ID)
+	if got.Status != store.TurnDone {
+		t.Fatalf("turn ended %q", got.Status)
+	}
+	view, err := eng.ReadThreadGraph(t.Context(), threadID, store.GraphQuery{All: true, Limit: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Revision != 0 || len(view.Subjects) != 0 || len(view.Todos) != 0 {
+		t.Fatalf("a refused batch left %+v", view)
 	}
 }
 
@@ -233,7 +274,7 @@ func TestAcceptanceExposureAnalysisBuildsACompleteGraphWithVisibleProgress(t *te
 		},
 		func(g graphNow) string {
 			org, _ := g.subject("company")
-			return `{"subjects":[{"ref":"app","kind":"app","attrs":{"name":"web server"}},{"ref":"cloud","kind":"other","attrs":{"name":"cloud provider"}}],
+			return `{"subjects":[{"ref":"app","kind":"app","attrs":{"name":"web server"}},{"ref":"cloud","kind":"other","attrs":{"name":"ExampleCloud"}}],
 				"links":[{"from":"` + org + `","to":"app","rel":"runs"},{"from":"` + org + `","to":"cloud","rel":"hosted_on"}]}`
 		},
 		func(g graphNow) string {
@@ -254,8 +295,8 @@ func TestAcceptanceExposureAnalysisBuildsACompleteGraphWithVisibleProgress(t *te
 			t.Errorf("address %q has no region", ip.Name)
 		}
 	}
-	if len(byKind["app"]) != 1 || len(byKind["other"]) != 1 || len(view.Links) != 5 {
-		t.Errorf("app=%d other=%d links=%d", len(byKind["app"]), len(byKind["other"]), len(view.Links))
+	if len(byKind["app"]) != 1 || len(byKind["other"]) != 1 || byKind["other"][0].Name != "ExampleCloud" || len(view.Links) != 5 {
+		t.Errorf("apps=%+v cloud providers=%+v links=%d", byKind["app"], byKind["other"], len(view.Links))
 	}
 	for _, todo := range view.Todos {
 		if todo.Status != graph.TodoDone {

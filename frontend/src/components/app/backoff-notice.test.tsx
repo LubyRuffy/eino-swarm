@@ -101,16 +101,16 @@ it.each(invalidDetails)("explains invalid classifier detail %s without rendering
 })
 
 it.each([
-  ["unavailable", "连续核对请求失败达到上限，已暂缓。"],
-  ["invalid", "连续核对响应格式无效达到上限，已暂缓。"],
-  ["attempts", "这份候选答复的核对总尝试次数达到上限，已暂缓。"],
-])("explains deferral limit %s without promising another attempt", (detail, reason) => {
+  ["unavailable", "连续核对请求失败达到上限，已暂缓。", "核对请求失败，未发布候选已保留。"],
+  ["invalid", "连续核对响应格式无效达到上限，已暂缓。", "核对响应无效，未发布候选已保留。"],
+  ["attempts", "这份候选答复的核对总尝试次数达到上限，已暂缓。", "答复核对已暂缓，未发布候选已保留。"],
+])("explains deferral limit %s without promising another attempt", (detail, reason, notice) => {
   act(() => useApp.setState({ locale: "zh" }))
   const state = reduceEvents(emptyTranscript(), [wait(1, "schedule-answer-policy", {
     scope: "schedule_answer", code: "classification_deferred", detail, wait_ms: 0,
   })])
   render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
-  expect(screen.getByText("答复核对暂不可用，未发布候选已保留。")).toBeVisible()
+  expect(screen.getByText(notice)).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: "重试说明" }))
   expect(screen.getByText(reason)).toBeVisible()
   expect(screen.queryByText("本次等待发生在未发布答复的调度声明核对步骤，核对恢复前保留原候选答复。")).not.toBeInTheDocument()
@@ -122,6 +122,23 @@ it.each([undefined, "private-model-fragment", "attempts", { error: "private-mode
   render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
   fireEvent.click(screen.getByRole("button", { name: "重试说明" }))
   expect(screen.getByText("核对响应格式无效。")).toBeVisible()
+  expect(JSON.stringify(state.agents)).not.toContain("private-model-fragment")
+})
+
+it.each([
+  [{ code: "classification_invalid", detail: "scope_quote" }, "核对响应无效，未发布候选已保留。", "声明的范围引文缺失或没有原文依据。"],
+  [{ code: "classification_unavailable", detail: "private-model-fragment" }, "核对请求失败，未发布候选已保留。", undefined],
+  [{ code: "private-model-fragment", detail: "scope_quote" }, "答复核对已暂缓，未发布候选已保留。", undefined],
+] as const)("shows the last failure at the total-attempt limit for %j", (last_failure, notice, reason) => {
+  act(() => useApp.setState({ locale: "zh" }))
+  const state = reduceEvent(emptyTranscript(), wait(1, "schedule-answer-policy", {
+    scope: "schedule_answer", code: "classification_deferred", detail: "attempts", wait_ms: 0, last_failure,
+  }))
+  render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+  expect(screen.getByText(notice)).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "重试说明" }))
+  expect(screen.getByText("这份候选答复的核对总尝试次数达到上限，已暂缓。")).toBeVisible()
+  if (reason) expect(screen.getByText(reason)).toBeVisible()
   expect(JSON.stringify(state.agents)).not.toContain("private-model-fragment")
 })
 

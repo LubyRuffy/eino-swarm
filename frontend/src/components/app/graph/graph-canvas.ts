@@ -132,9 +132,9 @@ export function drawLabels(ctx: CanvasRenderingContext2D, zoom: number, state: D
   ctx.restore()
 }
 
-export function chooseLabels(nodes: CanvasNode[], focus: { hovered: string | null; selected: string | null; highlighted: ReadonlySet<string> }): Map<string, CanvasNode> {
+export function chooseLabels(nodes: CanvasNode[], focus: { hovered: string | null; selected: string | null; highlighted: ReadonlySet<string>; labelAll?: boolean }): Map<string, CanvasNode> {
   const placed = nodes.filter((node) => Number.isFinite(node.x))
-  const chosen = placed.length <= NAME_ALL_UP_TO
+  const chosen = focus.labelAll !== false && placed.length <= NAME_ALL_UP_TO
     ? placed
     : placed.filter((node) => node.id === focus.hovered || node.id === focus.selected || focus.highlighted.has(node.id))
   return new Map(chosen.map((node) => [node.id, node]))

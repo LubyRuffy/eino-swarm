@@ -51,8 +51,11 @@ func (m *responsesModel) Stream(ctx context.Context, in []*schema.Message, opts 
 			complete: func(response responsesResponse) { plan.remember(ctx, response) },
 		}
 		err := readResponsesStream(resp, state)
-		if ctx.Err() != nil {
-			err = ctx.Err()
+		// Once received, an incomplete terminal result keeps its upstream cause
+		// even if the caller cancels while the event is being processed.
+		var incomplete *ResponsesIncompleteError
+		if cancelErr := ctx.Err(); cancelErr != nil && !errors.As(err, &incomplete) {
+			err = cancelErr
 		}
 		if err != nil && !errors.Is(err, errResponsesReaderClosed) {
 			sw.Send(nil, err)

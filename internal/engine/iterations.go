@@ -221,6 +221,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	if collectionStateErr != nil {
 		return swarm.RunResult{}, collectionStateErr
 	}
+	graphContinued := e.graphRecordContinued(turn, snapshots...)
 	var res swarm.RunResult
 	var runErr error
 	var recoveryModel model.BaseChatModel
@@ -495,6 +496,16 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 						}
 						collectionContinued = true
 						messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()), runtimeUserMessage(workerCollectionStateCue(reg.PendingAgents())))
+						continue
+					}
+					if e.graphRecordDue(ctx, turn, graphContinued) && rt.recordGraphRecordRetry(turn) {
+						if err := rt.rejectPendingScheduleAnswer(turn, row); err != nil {
+							return answer.reject(res), err
+						}
+						res = answer.reject(res)
+						reg.SetHistory(res.Transcript)
+						graphContinued = true
+						messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()), runtimeUserMessage(graphRecordCue))
 						continue
 					}
 				}

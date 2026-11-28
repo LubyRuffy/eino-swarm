@@ -58,6 +58,13 @@ type UserInput struct {
 	// standing objective. The transcript records goal_continued, not a
 	// human user_message.
 	ContinueGoal bool
+	// ExtractGraph walks the conversation's completed rounds in order and
+	// records each round's response. It does not re-run that work.
+	ExtractGraph bool
+	// ExtractClear drops the working graph before the walk.
+	ExtractClear bool
+	// extractOwner binds a clear to the graph shown when the user confirmed it.
+	extractOwner string
 	// ContinueSchedule is an engine-started turn because a wait fired.
 	// The transcript records schedule_fired, not a human user_message.
 	// The ticker (later) is what sets this; tools still read the flag on

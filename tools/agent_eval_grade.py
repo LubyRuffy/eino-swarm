@@ -135,8 +135,12 @@ def _validate_check(task_id: str, check: dict) -> None:
         raise TaskError(f"{task_id}: {kind} needs pattern")
     if kind == "command" and not check.get("argv"):
         raise TaskError(f"{task_id}: command needs argv")
-    if kind == "graph_count" and check.get("of", "subjects") not in ("subjects", "links", "todos"):
-        raise TaskError(f"{task_id}: graph_count of must be subjects, links or todos")
+    if kind == "graph_count":
+        collection = check.get("of", "subjects")
+        if collection not in ("subjects", "links", "todos", "components"):
+            raise TaskError(f"{task_id}: graph_count of must be subjects, links, todos or components")
+        if collection == "components" and any(field in check for field in ("kind", "status", "rel", "attrs")):
+            raise TaskError(f"{task_id}: graph_count components cannot use row filters")
 
 
 # ------------------------------------------------------------- provider
@@ -594,15 +598,18 @@ def _run_check(check: dict, workspace: Path, answer: str, traces: list[dict], ba
 
 
 def _graph_count(check: dict, graph: dict | None) -> dict:
-    """Count the graph rows a filter selects: `of` is subjects, links or todos;
-    `kind`, `status` (one or a list), `rel`, and `attrs` (name -> regex that must
-    match the stringified attribute) narrow it. Tasks assert on structure the
-    graph keeps, never on a sample's wording."""
+    """Count weakly connected components or rows selected by the given filters.
+
+    Subject, link and to-do counts can filter by `kind`, `status`, `rel` and
+    `attrs`. Component counts require the complete graph and use every link.
+    """
     if graph is None:
         return _result(check, False, "no graph was fetched")
     of = check.get("of", "subjects")
+    if of == "components":
+        return _graph_component_count(check, graph)
     if of not in ("subjects", "links", "todos"):
-        raise TaskError(f"graph_count of must be subjects, links or todos, not {of!r}")
+        raise TaskError(f"graph_count of must be subjects, links, todos or components, not {of!r}")
     statuses = check.get("status")
     statuses = [statuses] if isinstance(statuses, str) else statuses
     n = 0
@@ -618,6 +625,34 @@ def _graph_count(check: dict, graph: dict | None) -> dict:
             continue
         n += 1
     return _bounded(check, n)
+
+
+def _graph_component_count(check: dict, graph: dict) -> dict:
+    if graph.get("more"):
+        return _result(check, False, "cannot count components in a partial graph")
+    neighbors: dict[str, set[str]] = {}
+    for row in graph.get("subjects") or []:
+        subject_id = row.get("id")
+        if not isinstance(subject_id, str) or not subject_id or subject_id in neighbors:
+            return _result(check, False, "missing or duplicate graph subject ID")
+        neighbors[subject_id] = set()
+    for link in graph.get("links") or []:
+        source, target = link.get("from"), link.get("to")
+        if source not in neighbors or target not in neighbors:
+            return _result(check, False, "missing graph link endpoint")
+        neighbors[source].add(target)
+        neighbors[target].add(source)
+
+    unseen = set(neighbors)
+    components = 0
+    while unseen:
+        components += 1
+        pending = [unseen.pop()]
+        while pending:
+            next_subjects = neighbors[pending.pop()] & unseen
+            unseen.difference_update(next_subjects)
+            pending.extend(next_subjects)
+    return _bounded(check, components)
 
 
 def _bounded(check: dict, n: int) -> dict:

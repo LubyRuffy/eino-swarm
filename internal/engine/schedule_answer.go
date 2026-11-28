@@ -256,6 +256,7 @@ func decodeScheduleAnswer(out *schema.Message, text []string) ([]scheduleAnswerC
 				return invalid("unspecified_scope_quote", nil)
 			}
 		} else if strings.TrimSpace(claim.ScopeQuote) == "" || !strings.Contains(claim.Quote, claim.ScopeQuote) {
+			// An external label alone cannot exempt a claim from local verification.
 			return invalid("scope_quote", nil)
 		}
 		if claim.ScheduleID != "" && (claim.Scope == "external" || !strings.Contains(claim.Quote, claim.ScheduleID)) {

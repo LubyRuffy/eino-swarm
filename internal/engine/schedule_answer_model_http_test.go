@@ -95,14 +95,33 @@ func TestScheduleAnswerDecisionErrorsUseTheExistingRetryBudget(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var retries int
+			var retries, deferrals int
 			for _, event := range events {
-				if event.Kind == KindModelBackoff && strings.Contains(event.Text, tc.code) && (tc.detail == "" || strings.Contains(event.Text, tc.detail)) {
+				if event.Kind != KindModelBackoff || event.AgentID != scheduleAnswerAgentID {
+					continue
+				}
+				var body struct {
+					Code, Detail string
+					LastFailure  *struct{ Code, Detail string } `json:"last_failure"`
+				}
+				if err := json.Unmarshal([]byte(event.Text), &body); err != nil {
+					t.Fatal(err)
+				}
+				switch body.Code {
+				case tc.code:
+					if body.Detail != tc.detail {
+						t.Fatalf("wrong retry reason: %s", event.Text)
+					}
 					retries++
+				case "classification_deferred":
+					if body.LastFailure == nil || body.LastFailure.Code != tc.code || body.LastFailure.Detail != tc.detail {
+						t.Fatalf("wrong final failure reason: %s", event.Text)
+					}
+					deferrals++
 				}
 			}
-			if decisions.Load() != 3 || extractions.Load() != 0 || retries != 2 || strings.Contains(replayDump(t, e, th.ID), timingFixtureAnswer) {
-				t.Fatalf("bad decision response changed recovery or published the answer: decisions=%d extractions=%d retries=%d", decisions.Load(), extractions.Load(), retries)
+			if decisions.Load() != 3 || extractions.Load() != 0 || retries != 2 || deferrals != 1 || strings.Contains(replayDump(t, e, th.ID), timingFixtureAnswer) {
+				t.Fatalf("bad decision response changed recovery or published the answer: decisions=%d extractions=%d retries=%d deferrals=%d", decisions.Load(), extractions.Load(), retries, deferrals)
 			}
 		})
 	}

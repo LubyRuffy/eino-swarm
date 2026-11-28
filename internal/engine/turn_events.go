@@ -7,6 +7,7 @@ import (
 	"time"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
+	"github.com/LubyRuffy/eino-swarm/internal/graph"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/LubyRuffy/eino-swarm/internal/workerstate"
 	"github.com/cloudwego/eino/adk"
@@ -111,19 +112,35 @@ func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Mes
 		if m == nil || isRuntimeMessage(m) {
 			continue
 		}
+		content := m.Content
+		if workRecordToolResult(m) {
+			content = graph.RedactToolText(content)
+		}
 		row := store.Message{
 			Role:              string(m.Role),
-			Content:           m.Content,
+			Content:           content,
 			Reasoning:         m.ReasoningContent,
 			ToolCallID:        m.ToolCallID,
 			WorkRecordPayload: workRecordToolResult(m),
 			Source:            messageSource(m),
 		}
 		if len(m.ToolCalls) > 0 {
-			for _, call := range m.ToolCalls {
+			calls := append([]schema.ToolCall(nil), m.ToolCalls...)
+			graphCall := false
+			for _, call := range calls {
+				if isWorkRecordTool(call.Function.Name) {
+					graphCall = true
+				}
 				row.WorkRecordPayload = row.WorkRecordPayload || isWorkRecordTool(call.Function.Name)
 			}
-			if raw, err := json.Marshal(m.ToolCalls); err == nil {
+			if graphCall {
+				for i := range calls {
+					if isWorkRecordTool(calls[i].Function.Name) {
+						calls[i].Function.Arguments = graph.RedactToolText(calls[i].Function.Arguments)
+					}
+				}
+			}
+			if raw, err := json.Marshal(calls); err == nil {
 				row.ToolCalls = string(raw)
 			}
 		}

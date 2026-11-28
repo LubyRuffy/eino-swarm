@@ -26,7 +26,7 @@ func TestRuntimeCueSourcesKeepHumanQuotesThroughTheRealNextTurn(t *testing.T) {
 	if err := e.store.CreateTurn(old); err != nil {
 		t.Fatal(err)
 	}
-	cues := []string{GoalContinueText(), legacyGoalContinueCue, workerCollectionCorrectionCue, workerCollectionCue([]string{"worker-a", "worker-b"}), modelRetryCue, reasoningOutputRecoveryCue, scheduleCompletionCue, scheduleAnswerCorrectionCue, legacyScheduleAnswerCorrectionCue, resumeCue, resumeWorkersCue, parkedWorkersCue}
+	cues := []string{GoalContinueText(), legacyGoalContinueCue, workerCollectionCorrectionCue, workerCollectionCue([]string{"worker-a", "worker-b"}), modelRetryCue, reasoningOutputRecoveryCue, scheduleCompletionCue, graphRecordCue, scheduleAnswerCorrectionCue, legacyScheduleAnswerCorrectionCue, resumeCue, resumeWorkersCue, parkedWorkersCue}
 	cues = append(cues, workerCollectionStateCue([]swarm.PendingAgent{{AgentID: "worker-a", Generation: 1, Running: true}, {AgentID: "worker-b", Generation: 2}}))
 	rows := []store.Message{{Role: "user", Content: old.UserText}}
 	for _, cue := range cues {
@@ -146,7 +146,7 @@ func TestRuntimeCueMarkersControlSameTurnCompaction(t *testing.T) {
 }
 
 func TestLegacyRuntimeCueMatchingRequiresTheWholeKnownCue(t *testing.T) {
-	for _, cue := range []string{GoalContinueText(), workerCollectionCorrectionCue, workerCollectionCue([]string{"worker-a"}), modelRetryCue, resumeCue, resumeWorkersCue, parkedWorkersCue, scheduleCompletionCue, scheduleAnswerCorrectionCue, legacyScheduleAnswerCorrectionCue, goalSessionWrapSteer(), "[steer] " + goalSessionWrapSteer()} {
+	for _, cue := range []string{GoalContinueText(), workerCollectionCorrectionCue, workerCollectionCue([]string{"worker-a"}), modelRetryCue, resumeCue, resumeWorkersCue, parkedWorkersCue, scheduleCompletionCue, graphRecordCue, scheduleAnswerCorrectionCue, legacyScheduleAnswerCorrectionCue, goalSessionWrapSteer(), "[steer] " + goalSessionWrapSteer()} {
 		if !legacyRuntimeCue(cue) || legacyRuntimeCue("quoted: "+cue) || legacyRuntimeCue(cue+" human suffix") {
 			t.Fatalf("legacy matching must use exact runtime structures: %q", cue)
 		}

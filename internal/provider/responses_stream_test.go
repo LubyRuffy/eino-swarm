@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/cloudwego/eino/schema"
 )
@@ -51,6 +52,51 @@ func TestResponsesStreamFailuresNeverLookLikeSuccessfulCompletion(t *testing.T) 
 				t.Fatalf("err=%v want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestResponsesIncompleteGenerateRetainsOnlySupportedReasonDetails(t *testing.T) {
+	for _, tc := range []struct {
+		name, details, wantError string
+		outputLimit              bool
+	}{
+		{"omitted", "", "upstream did not provide a reason", false},
+		{"output limit", `,"incomplete_details":{"reason":"max_output_tokens"}`, "max_output_tokens", true},
+		{"unknown", `,"incomplete_details":{"reason":"api_key=private-fixture unexpected eof"}`, "upstream provided an unrecognized reason", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintf(w, `{"status":"incomplete","output":[{"type":"message","content":[{"type":"output_text","text":"Partial answer"}]}]%s}`, tc.details)
+			}))
+			defer srv.Close()
+			m := testResponsesModel(t, config.Provider{BaseURL: srv.URL, Model: "fixture"})
+			msg, err := m.Generate(t.Context(), nil)
+			var incomplete *ResponsesIncompleteError
+			if msg != nil || !errors.As(err, &incomplete) || err.Error() != "responses did not complete: "+tc.wantError ||
+				errors.Is(err, swarm.ErrOutputBudget) != tc.outputLimit || isBackoffFailure(err) {
+				t.Fatalf("incomplete generation: msg=%+v err=%v", msg, err)
+			}
+		})
+	}
+}
+
+func TestResponsesIncompleteTerminalKeepsItsCauseWhenObserverCancels(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `data: {"type":"response.incomplete","response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"web_search_call","id":"search","status":"completed"}]}}`+"\n\n")
+	}))
+	defer srv.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	// Cancellation here occurs after the complete terminal frame was decoded.
+	ctx = WithBuiltinToolObserver(ctx, func(BuiltinToolEvent) { cancel() })
+	m := testResponsesModel(t, config.Provider{BaseURL: srv.URL, Model: "fixture"})
+	sr, err := m.Stream(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = responsesReadAll(t, sr)
+	if ctx.Err() == nil || !errors.Is(err, swarm.ErrOutputBudget) {
+		t.Fatalf("cancellation overwrote the observed terminal cause: ctx=%v err=%v", ctx.Err(), err)
 	}
 }
 

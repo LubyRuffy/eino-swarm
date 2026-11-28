@@ -2,7 +2,7 @@ import type { SwarmEvent, ThreadStatus } from "./types"
 import { publishTaskPanelEvent } from "./task-panel-events"
 import type { PanelChange, TaskPanel } from "@/task-panels/types"
 
-import { parseGraphRevision, publishGraphEvent } from "./graph/events"
+import { parseGraphFrame, publishGraphEvent } from "./graph/events"
 
 export interface StreamHandlers {
   onEvent: (ev: SwarmEvent) => void
@@ -169,8 +169,8 @@ export function subscribeEvents(
 
   source.addEventListener("graph_updated", (event) => {
     if (closed) return
-    const revision = parseGraphRevision((event as MessageEvent).data, threadId)
-    if (revision !== undefined) publishGraphEvent(threadId, { kind: "revision", revision })
+    const frame = parseGraphFrame((event as MessageEvent).data, threadId)
+    if (frame) publishGraphEvent(threadId, frame)
   })
 
   return () => {

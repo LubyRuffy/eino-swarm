@@ -15,9 +15,9 @@ func TestCompactTriggerUsesTheFixedBudgetWhenTheWindowIsUnknown(t *testing.T) {
 
 func TestCompactTriggerUsesPercentOfAConfirmedWindow(t *testing.T) {
 	s := SwarmConfig{AutoCompactTokens: 80_000, GoalAutoCompactPercent: 80, CompactOutputReserveTokens: 8_192}
-	// 80% of 256k is 204800, which is still under the output reserve.
-	if got := s.CompactTrigger(256_000); got != 204_800 {
-		t.Fatalf("256k window trigger = %d, want 204800", got)
+	// 80% of 512k leaves enough room for the default output cap.
+	if got := s.CompactTrigger(512_000); got != 409_600 {
+		t.Fatalf("512k window trigger = %d, want 409600", got)
 	}
 	if got := s.CompactTrigger(1_000_000); got != 800_000 {
 		t.Fatalf("1M window trigger = %d, want 800000", got)
@@ -30,9 +30,9 @@ func TestCompactTriggerUsesPercentOfAConfirmedWindow(t *testing.T) {
 
 func TestCompactTriggerKeepsOutputHeadroomOnASmallWindow(t *testing.T) {
 	s := SwarmConfig{AutoCompactTokens: 80_000, GoalAutoCompactPercent: 80, CompactOutputReserveTokens: 8_192}
-	// The default 16384-token completion cap needs more room than the 8192 reserve.
-	if got := s.CompactTrigger(32_000); got != 32_000-DefaultMaxCompletionTokens {
-		t.Fatalf("32k window trigger = %d, want %d", got, 32_000-DefaultMaxCompletionTokens)
+	// The default completion cap leaves half of a 128k window for input.
+	if got := s.CompactTrigger(128_000); got != 64_000 {
+		t.Fatalf("128k window trigger = %d, want 64000", got)
 	}
 	// Completion cap is smaller than the reserve, so the reserve still wins.
 	small := SwarmConfig{AutoCompactTokens: 80_000, GoalAutoCompactPercent: 80, CompactOutputReserveTokens: 8_192, MaxCompletionTokens: 4_096}

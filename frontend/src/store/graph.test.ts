@@ -68,6 +68,65 @@ describe("the graph store", () => {
     close()
   })
 
+  it.each([
+    { revision: 0, oldReadFirst: true },
+    { revision: 8, oldReadFirst: false },
+  ])("refreshes after the same conversation moves to an owner at revision $revision", async ({ revision, oldReadFirst }) => {
+    const moved = deferred<GraphView>()
+    const previous = deferred<GraphView>()
+    const api = vi.mocked(graphAPI.thread)
+    api.mockResolvedValueOnce(view(8, "before")).mockReturnValueOnce(previous.promise)
+      .mockReturnValueOnce(moved.promise).mockResolvedValueOnce(view(revision + 1, "after"))
+    const close = useGraph.getState().connect({ threadId: "moving" })
+    try {
+      await settle()
+      publishGraphEvent("moving", { kind: "revision", ownerId: "before", revision: 9 })
+      publishGraphEvent("moving", { kind: "revision", ownerId: "after", revision })
+      expect(useGraph.getState().view).toBeUndefined()
+      expect(api).toHaveBeenCalledTimes(3)
+      expect(api.mock.calls[1][1]?.aborted).toBe(true)
+      if (oldReadFirst) {
+        previous.resolve(view(9, "before"))
+        await settle()
+        expect(useGraph.getState().view).toBeUndefined()
+      }
+      moved.resolve(view(revision, "after"))
+      await settle()
+      if (!oldReadFirst) {
+        previous.resolve(view(9, "before"))
+        await settle()
+      }
+      expect(useGraph.getState().view).toEqual(view(revision, "after"))
+      publishGraphEvent("moving", { kind: "revision", ownerId: "after", revision: revision + 1 })
+      await settle()
+      expect(useGraph.getState().view).toEqual(view(revision + 1, "after"))
+      expect(api).toHaveBeenCalledTimes(4)
+    } finally {
+      close()
+    }
+  })
+
+  it("waits for the next owner announcement if a snapshot is already from a third owner", async () => {
+    const api = vi.mocked(graphAPI.thread)
+    api.mockResolvedValueOnce(view(8, "before")).mockResolvedValueOnce(view(3, "after"))
+      .mockResolvedValueOnce(view(3, "after"))
+    const close = useGraph.getState().connect({ threadId: "moving" })
+    try {
+      await settle()
+      // The conversation moved again between the second owner's SSE frame and
+      // the snapshot request. Only a frame for the third owner can admit it.
+      publishGraphEvent("moving", { kind: "revision", ownerId: "middle", revision: 0 })
+      await settle()
+      expect(useGraph.getState().view).toBeUndefined()
+      publishGraphEvent("moving", { kind: "revision", ownerId: "after", revision: 3 })
+      await settle()
+      expect(useGraph.getState().view).toEqual(view(3, "after"))
+      expect(api).toHaveBeenCalledTimes(3)
+    } finally {
+      close()
+    }
+  })
+
   it("keeps the last picture and reports a failed read", async () => {
     vi.mocked(graphAPI.thread).mockResolvedValueOnce(view(1)).mockRejectedValueOnce(new Error("offline"))
     const close = useGraph.getState().connect({ threadId: "th" })
@@ -79,6 +138,58 @@ describe("the graph store", () => {
   })
 
   // A failed first read has no picture to compare with; retrying on its own would loop forever.
+  it("stops requesting when a newer revision's snapshot keeps failing", async () => {
+    vi.mocked(graphAPI.thread).mockResolvedValueOnce(view(1)).mockRejectedValue(new Error("unavailable"))
+    const close = useGraph.getState().connect({ threadId: "th" })
+    await settle()
+    publishGraphEvent("th", { kind: "revision", revision: 2 })
+    await settle()
+    await settle()
+    expect(graphAPI.thread).toHaveBeenCalledTimes(2)
+    expect(useGraph.getState().view?.revision).toBe(1)
+    expect(useGraph.getState().error).toBe("unavailable")
+    close()
+  })
+
+  it("consumes a newer revision received during a failed fetch", async () => {
+    vi.useFakeTimers()
+    const api = vi.mocked(graphAPI.thread)
+    let rejectFetch!: (error: Error) => void
+    const failing = new Promise<GraphView>((_, reject) => { rejectFetch = reject })
+    api.mockResolvedValueOnce(view(1)).mockReturnValueOnce(failing).mockResolvedValue(view(3))
+    const close = useGraph.getState().connect({ threadId: "th" })
+    try {
+      await vi.advanceTimersByTimeAsync(1)
+      publishGraphEvent("th", { kind: "revision", revision: 2 })
+      expect(api).toHaveBeenCalledTimes(2)
+      publishGraphEvent("th", { kind: "revision", revision: 3 })
+      rejectFetch(new Error("one temporary failure"))
+      await vi.advanceTimersByTimeAsync(30000)
+      expect(useGraph.getState().view?.revision).toBe(3)
+      expect(api).toHaveBeenCalledTimes(3)
+    } finally {
+      close()
+      vi.useRealTimers()
+    }
+  })
+
+  it("retries a single unavailable snapshot once without another frame", async () => {
+    vi.useFakeTimers()
+    const api = vi.mocked(graphAPI.thread)
+    api.mockResolvedValueOnce(view(1)).mockRejectedValueOnce(new Error("unavailable")).mockResolvedValue(view(2))
+    const close = useGraph.getState().connect({ threadId: "th" })
+    try {
+      await vi.advanceTimersByTimeAsync(1)
+      publishGraphEvent("th", { kind: "revision", revision: 2 })
+      await vi.advanceTimersByTimeAsync(30000)
+      expect(useGraph.getState().view?.revision).toBe(2)
+      expect(api).toHaveBeenCalledTimes(3)
+    } finally {
+      close()
+      vi.useRealTimers()
+    }
+  })
+
   it("does not retry a failed first read by itself", async () => {
     vi.mocked(graphAPI.thread).mockRejectedValue(new Error("offline"))
     const close = useGraph.getState().connect({ threadId: "th" })

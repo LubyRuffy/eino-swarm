@@ -760,12 +760,127 @@
       ]
     },
     {
+      "id": "account",
+      "name": {
+        "en": "Account",
+        "zh": "账号"
+      },
+      "description": "A login that is not a person, such as a service or database login. The name is the login only. A host is its own subject, linked to this one.",
+      "display": [
+        "name"
+      ],
+      "attrs": [
+        {
+          "name": "name",
+          "type": "string",
+          "label": {
+            "en": "Login",
+            "zh": "登录名"
+          }
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "label": {
+            "en": "Note",
+            "zh": "说明"
+          }
+        }
+      ],
+      "keys": [
+        {
+          "name": "name",
+          "normalizer": "text",
+          "parts": [
+            "name"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "table",
+      "name": {
+        "en": "Table, column or index",
+        "zh": "表、字段或索引"
+      },
+      "description": "One table, one column or one index. The name is its qualified name.",
+      "display": [
+        "name"
+      ],
+      "attrs": [
+        {
+          "name": "name",
+          "type": "string",
+          "label": {
+            "en": "Name",
+            "zh": "名称"
+          }
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "label": {
+            "en": "Note",
+            "zh": "说明"
+          }
+        }
+      ],
+      "keys": [
+        {
+          "name": "name",
+          "normalizer": "text",
+          "parts": [
+            "name"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "file",
+      "name": {
+        "en": "File or directory",
+        "zh": "文件或目录"
+      },
+      "description": "A file or a directory, named by its path. A code repository is a repository, not a file.",
+      "display": [
+        "path"
+      ],
+      "attrs": [
+        {
+          "name": "path",
+          "type": "string",
+          "label": {
+            "en": "Path",
+            "zh": "路径"
+          },
+          "max": 2048
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "label": {
+            "en": "Note",
+            "zh": "说明"
+          }
+        }
+      ],
+      "keys": [
+        {
+          "name": "path",
+          "normalizer": "path",
+          "parts": [
+            "path"
+          ]
+        }
+      ]
+    },
+    {
       "id": "other",
       "name": {
         "en": "Other",
         "zh": "其他"
       },
-      "description": "Only when no other kind fits.",
+      "description": "Only when no other kind fits. The name is one thing, with no spaces. A phrase, a plan, an option or a sentence is a to-do, not a subject.",
       "display": [
         "name"
       ],

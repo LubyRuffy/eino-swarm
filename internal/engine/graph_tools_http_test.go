@@ -119,14 +119,29 @@ func TestManagerWritesAndReadsTheGraphThroughTheActualModelBoundary(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	tagged := 0
+	tagged, writes := 0, 0
 	for _, ev := range events {
+		if strings.Contains(ev.Text, fakeGraphCredential) {
+			t.Errorf("a stored event kept the credential: %s %s", ev.Kind, ev.Text)
+		}
 		if ev.Kind == "tool_result" && ev.WorkRecordPayload {
 			tagged++
 		}
+		if ev.GraphWrite {
+			writes++
+		}
 	}
-	if tagged != 3 {
-		t.Fatalf("%d graph tool results were tagged, want 3", tagged)
+	if tagged != 3 || writes != 1 {
+		t.Fatalf("%d graph tool results were tagged and %d committed, want 3 and 1", tagged, writes)
+	}
+	messages, err := e.store.ListMessages(thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range messages {
+		if strings.Contains(message.Content, fakeGraphCredential) || strings.Contains(message.ToolCalls, fakeGraphCredential) {
+			t.Errorf("the transcript kept the credential: %+v", message)
+		}
 	}
 }
 

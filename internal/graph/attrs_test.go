@@ -70,6 +70,9 @@ func TestIdentityKeysPerKind(t *testing.T) {
 		{"vuln", map[string]any{"number": "cve-2024-1", "title": "T"}, []KeyValue{{"number", "CVE-2024-1"}}},
 		{"vuln", map[string]any{"title": "Some Flaw"}, []KeyValue{{"title", "some flaw"}}},
 		{"fofa_query", map[string]any{"query": `app="x"   &&  y=1`}, []KeyValue{{"query", `app="x" && y=1`}}},
+		{"account", map[string]any{"name": "Batch-Job"}, []KeyValue{{"name", "batch-job"}}},
+		{"table", map[string]any{"name": "Main.Widget"}, []KeyValue{{"name", "main.widget"}}},
+		{"file", map[string]any{"path": `Docs\Notes\`}, []KeyValue{{"path", "Docs/Notes"}}},
 		{"other", map[string]any{"name": "Thing"}, []KeyValue{{"name", "thing"}}},
 	}
 	for _, c := range cases {
@@ -219,5 +222,41 @@ func TestEvidenceShapeAndBatchValidation(t *testing.T) {
 	amb := &AmbiguousError{IDs: []string{"a", "b"}}
 	if !errors.Is(amb, ErrInvalid) || !strings.Contains(amb.Error(), "a, b") {
 		t.Errorf("ambiguity: %v", amb)
+	}
+}
+
+func TestOtherNamesAThingNotAnExplanation(t *testing.T) {
+	k := kind(t, "other")
+	if _, err := k.Clean(map[string]any{"name": "widget"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"option: stop", "body=empty", "file (caller)", "标题：说明", "field notes"} {
+		if _, err := k.Clean(map[string]any{"name": name}); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%q was accepted as a subject name", name)
+		}
+	}
+}
+
+// A login that carries its host, or a phrase standing in for a table, is
+// more than one thing. The host and the phrase stay out of the subject.
+func TestAccountAndTableNameOneThing(t *testing.T) {
+	account := kind(t, "account")
+	if _, err := account.Clean(map[string]any{"name": "batch-job"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := account.Clean(map[string]any{"note": "kept"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"worker@host", "10.0.0.1", "two words", "login: extra"} {
+		if _, err := account.Clean(map[string]any{"name": name}); !errors.Is(err, ErrInvalid) {
+			t.Errorf("account %q: %v", name, err)
+		}
+	}
+	table := kind(t, "table")
+	if _, err := table.Clean(map[string]any{"name": "main.widget"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := table.Clean(map[string]any{"name": "field notes"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a phrase was stored as a table: %v", err)
 	}
 }

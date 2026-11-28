@@ -21,6 +21,7 @@ function graphAt(owner: string, revision: number): GraphView {
     links: [
       { id: "l1", from: "s-org", to: "s-ip", rel: "owns", found_by_todo: "t-find" },
       { id: "l2", from: "s-org", to: "s-host", rel: "owns", found_by_todo: "t-find" },
+      { id: "l3", from: "s-org", to: "s-old", rel: "was" },
     ],
     todos: [
       { id: "t-find", title: "Find the company's assets", about: "s-org", status: "done", position: 0, version: 1 },
@@ -49,7 +50,7 @@ async function serveGraph(page: Page, thread: string) {
       },
     })
   })
-  await page.route(`**/api/threads/${thread}/graph`, (route) => route.fulfill({ json: graphAt(thread, revision) }))
+  await page.route(`**/api/threads/${thread}/graph?preview=1`, (route) => route.fulfill({ json: graphAt(thread, revision) }))
   return async (next: number) => {
     revision = next
     await page.evaluate(([id, rev]) => (window as unknown as { emitGraphUpdated: (a: string, b: number) => void }).emitGraphUpdated(id as string, rev as number), [thread, next])
@@ -134,4 +135,57 @@ test("the work-record panel draws the graph, its rings and to-dos, and follows r
   await publish(2)
   await expect.poll(() => ringOf(stage, "s-ip")).toBe("settled")
   await expect(todos.getByText("Check the address")).toHaveClass(/line-through/)
+})
+
+test("an open work-record panel follows a project move and never clears the new owner on old confirmation", async ({ page, request }) => {
+  const projectResponse = await request.post("/api/projects", { data: { name: "Graph destination" } })
+  const threadResponse = await request.post("/api/threads", { data: { title: "Moving graph fixture" } })
+  await expect(projectResponse).toBeOK()
+  await expect(threadResponse).toBeOK()
+  const { project } = await projectResponse.json()
+  const { thread } = await threadResponse.json()
+  const threadPath = `/api/threads/${thread.id}`
+  const owners = new Map<string, number>()
+  await page.route(`**${threadPath}/graph?preview=1`, async (route) => {
+    const response = await route.fetch()
+    if (!response.ok()) {
+      await route.fulfill({ response })
+      return
+    }
+    // Keep the live server's owner and revision. A label makes the change of
+    // owner visible on two otherwise empty graphs. The SSE frames are real.
+    const graph: GraphView = await response.json()
+    owners.set(graph.owner_id, graph.revision)
+    const title = graph.owner_id === thread.id ? "Review standalone findings" : "Review project findings"
+    await route.fulfill({ response, json: {
+      ...graph, todos: [{ id: graph.owner_id, title, status: "open", position: 0, version: 1 }],
+    } })
+  })
+  await page.goto("/")
+  await page.getByTestId("dest-chats").click()
+  await page.getByRole("button", { name: "Moving graph fixture", exact: true }).click()
+  await page.getByRole("tab", { name: "Work records", exact: true }).click()
+  const panel = page.getByTestId("graph-panel")
+  await expect(panel.getByText("Review standalone findings")).toBeVisible()
+  await page.getByRole("button", { name: "Replay into the graph" }).click()
+  const dialog = page.getByRole("dialog")
+  await expect(dialog).toBeVisible()
+  await page.route(`**${threadPath}/graph/extract?*`, async (route) => {
+    // Move after the click has chosen its target and before the server admits it.
+    await expect(await request.patch(threadPath, { data: { project_id: project.id } })).toBeOK()
+    await route.continue()
+  }, { times: 1 })
+  const clearResponse = page.waitForResponse((response) =>
+    response.request().method() === "POST" && new URL(response.url()).pathname === `${threadPath}/graph/extract`)
+  await dialog.getByRole("button", { name: "Clear, then write" }).click()
+  const refusal = await clearResponse
+  const clearQuery = new URL(refusal.url()).searchParams
+  expect(clearQuery.get("clear")).toBe("1")
+  expect(clearQuery.get("owner_id")).toBe(thread.id)
+  expect(refusal.status()).toBe(409)
+  expect(await refusal.json()).toMatchObject({ code: "graph_conflict" })
+  await expect(panel.getByText("Review project findings")).toBeVisible()
+  await expect(panel.getByText("Review standalone findings")).toHaveCount(0)
+  expect(owners.get(thread.id)).toBe(0)
+  expect(owners.get(project.id)).toBe(0)
 })

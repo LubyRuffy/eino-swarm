@@ -37,6 +37,22 @@ describe("phone rewind", () => {
     expect(view.lastSeq).toBe(7)
   })
 
+  it("removes recalled turns from the navigation rail with their transcript", () => {
+    const view = opened([
+      ev(1, "user_message", "retained", { turn_id: "keep" }),
+      ev(3, "user_message", "original", { turn_id: "old" }),
+      ev(5, "user_message", "later", { turn_id: "later" }),
+    ])
+    const withPreviews = { ...view, detail: { ...view.detail!, turns: [
+      { id: "keep", status: "done", user_text: "retained" },
+      { id: "old", status: "done", user_text: "original" },
+      { id: "later", status: "done", user_text: "later" },
+    ] } }
+    const after = applyPush(withPreviews, push(ev(8, "rewound", "3")))
+    expect(after.detail?.turns?.map((turn) => turn.id)).toEqual(["keep"])
+    expect(texts(after)).toEqual(["retained"])
+  })
+
   it("still cuts when the host could not store the marker", () => {
     let view = opened([ev(1, "user_message", "kept"), ev(3, "user_message", "removed")])
     view = applyPush(view, push(ev(0, "rewound", "3")))

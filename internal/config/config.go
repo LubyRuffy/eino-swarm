@@ -159,7 +159,8 @@ type SwarmConfig struct {
 	// Zero or negative is repaired to the default. A window smaller than
 	// that headroom uses the percent alone.
 	CompactOutputReserveTokens int `yaml:"compact_output_reserve" json:"compact_output_reserve"`
-	// MaxCompletionTokens is max_tokens on every chat request. Omitting it
+	// MaxCompletionTokens is max_tokens on Chat Completions requests and
+	// max_output_tokens on Responses requests. Omitting it
 	// lets the endpoint pick a small default, and a thinking model can
 	// spend that entire default before it emits an answer or a tool call.
 	// Zero or negative is repaired to the default.
@@ -423,7 +424,7 @@ const (
 	DefaultCompactOutputReserveTokens = 8_192
 	// Room for a thinking trace and the tool call or answer after it.
 	// A 2k default is what a thinking model burns before it says anything.
-	DefaultMaxCompletionTokens = 16_384
+	DefaultMaxCompletionTokens = 64_000
 	// Enough consecutive auto-turns to finish a real objective; not enough
 	// to burn a weekend if the manager never calls complete_goal.
 	DefaultGoalMaxAutoTurns         = 12

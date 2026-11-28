@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/mcpclient"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
@@ -60,6 +61,19 @@ const publicContextOverflowPaused = publicContextOverflow + ". The scheduled che
 func publicTurnError(err error) string {
 	if err == nil {
 		return ""
+	}
+	var incomplete *provider.ResponsesIncompleteError
+	if errors.As(err, &incomplete) {
+		switch {
+		case errors.Is(incomplete, swarm.ErrOutputBudget):
+			return swarm.ErrOutputBudget.Error()
+		case incomplete.Reason == "":
+			return "the model service returned an incomplete response without giving a reason"
+		case incomplete.Reason == provider.ResponsesContentFilter:
+			return "the model service stopped the response because of content filtering"
+		default:
+			return "the model service returned an incomplete response"
+		}
 	}
 	var mcpFailure *mcpclient.ExecutionError
 	if errors.As(err, &mcpFailure) {

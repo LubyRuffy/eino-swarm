@@ -26,8 +26,9 @@ type GraphDigest struct {
 	Todos         []GraphTodo
 	OpenTodoTotal int
 	Recent        []GraphSubject
-	// Unrecorded counts this turn's tool results produced after the last graph
-	// write of the turn: results the graph has not been told about yet.
+	// Unrecorded counts this turn's tool results produced after the last
+	// committed graph write: results the graph has not been told about yet.
+	// A read or a refused write does not move the mark.
 	Unrecorded int
 }
 
@@ -98,13 +99,14 @@ func (s *Store) ReadGraphDigest(ctx context.Context, ownerID, threadID, turnID s
 	return d, err
 }
 
-// graphUnrecorded counts tool results of the turn after its last graph tool
-// result. Graph tool traffic is tagged work_record_payload, so the count does
-// not depend on parsing a tool name out of stored text.
+// graphUnrecorded counts tool results of the turn after its last committed
+// graph write. A read_graph result and a refused update_graph are work-record
+// traffic, so they stay out of the count, but they are not receipts: only
+// graph_write marks a batch that actually committed.
 func graphUnrecorded(tx *gorm.DB, threadID, turnID string) (int, error) {
 	var last int64
 	if err := tx.Model(&Event{}).
-		Where("thread_id = ? AND turn_id = ? AND kind = ? AND work_record_payload = ?", threadID, turnID, "tool_result", true).
+		Where("thread_id = ? AND turn_id = ? AND kind = ? AND graph_write = ?", threadID, turnID, "tool_result", true).
 		Select("COALESCE(MAX(seq), 0)").Scan(&last).Error; err != nil {
 		return 0, err
 	}

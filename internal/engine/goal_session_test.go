@@ -453,8 +453,8 @@ func TestGoalContextHotUsesTheConfirmedWindow(t *testing.T) {
 	if e.goalContextHot(nil) {
 		t.Fatal("a missing thread is not hot")
 	}
-	// The fixed budget is tiny on purpose. A confirmed 128k mock window
-	// must still wait for 80% of that window, not 80% of 1000.
+	// A confirmed 128k mock window uses the configured percentage and output
+	// headroom, even when the fixed fallback budget is tiny.
 	e.Config().Swarm.AutoCompactTokens = 1000
 	e.Config().Swarm.GoalAutoCompactPercent = 80
 	th, _ := e.CreateThread("", "", "")
@@ -464,24 +464,24 @@ func TestGoalContextHotUsesTheConfirmedWindow(t *testing.T) {
 	}
 	if err := e.Store().AppendLLMCall(&store.LLMCall{
 		ThreadID: th.ID, TurnID: turn.ID, AgentID: "manager",
-		PromptTokens: 90_000, TotalTokens: 90_010,
+		PromptTokens: 60_000, TotalTokens: 60_010,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := e.Store().GetThread(th.ID)
 	if e.goalContextHot(got) {
-		t.Fatal("90000 tokens must stay cold: 80% of the 128k window is 102400, not 80% of auto_compact_tokens")
+		t.Fatal("60000 input tokens fit alongside the 64000 output cap")
 	}
 
 	if err := e.Store().AppendLLMCall(&store.LLMCall{
 		ThreadID: th.ID, TurnID: turn.ID, AgentID: "manager",
-		PromptTokens: 110_000, TotalTokens: 110_010,
+		PromptTokens: 70_000, TotalTokens: 70_010,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = e.Store().GetThread(th.ID)
 	if !e.goalContextHot(got) {
-		t.Fatal("110000 tokens must be hot against 80% of the confirmed window")
+		t.Fatal("70000 input tokens leave too little room for the 64000 output cap")
 	}
 }
 

@@ -18,14 +18,15 @@ final class BindFlowTests: XCTestCase {
     XCTAssertTrue(back.waitForExistence(timeout: 20), "packaged offline conversation must use the explicitly requested locale")
     let notices = chinese ? [
       "等待 5 秒后重试模型请求。", "等待 10 秒后重试模型请求。",
-      "等待 5 秒后重试未发布答复的核对。", "答复核对暂不可用，未发布候选已保留。"
+      "等待 5 秒后重试未发布答复的核对。", "核对响应无效，未发布候选已保留。", "核对请求失败，未发布候选已保留。"
     ] : [
       "Waiting 5s before retrying the model request.", "Waiting 10s before retrying the model request.",
       "Waiting 5s before checking the unpublished answer again.",
-      "Answer verification is unavailable. The unpublished answer is retained."
+      "The verification response was invalid. The unpublished answer is retained.",
+      "The verification request failed. The unpublished answer is retained."
     ]
     for phase in ["first-open", "reopened"] {
-      XCTAssertTrue(app.staticTexts[notices[3]].waitForExistence(timeout: 10))
+      XCTAssertTrue(app.staticTexts[notices[4]].waitForExistence(timeout: 10))
       for text in notices {
         XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", text)).count, 1,
           "each cooldown/candidate notice must be shown exactly once")

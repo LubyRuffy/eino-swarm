@@ -328,11 +328,11 @@ saved limit. A paired phone shows the same prompt with **Continue** and
 controls. A refused action keeps the prompt and its error. Update both the
 phone and the PC to use these controls.
 
-A pause that says answer verification was deferred is a different stop. The
-smaller number is how many manager rounds this turn has already used. The
-larger number is still the configured limit. Continue resumes the same turn;
-it does not mean the round limit was reached, and that card does not open
-the round setting.
+When answer verification pauses, the notice identifies an invalid response
+or a failed request if the last attempt was recorded. **Retry details** shows
+the limit reached and any specific response error. The unpublished candidate
+stays private. **Continue** resumes work in the same turn. The pause card shows
+the manager rounds already used and the configured limit.
 
 ### Asking you, and side chat
 
@@ -589,6 +589,13 @@ Provider idle timeouts are separate. A context-window rejection is named and
 compacted once. If the next call still does not fit, the turn stops. A
 repeating scheduled check is paused so it cannot send the same prompt again.
 
+When a Responses provider ends generation as incomplete, copy the turn ID
+from **Trace** and run `zwai trace <turn>` (or `zwai.exe trace <turn>` on Windows).
+The **model calls** section shows the reported reason and the Gateway request
+ID when available. An explicit output limit links to **Settings → Swarm → Max
+completion tokens**. You can also ask for a shorter answer or smaller tool
+writes. If the provider omitted the reason, the error reports that directly.
+
 **Start** resumes after a block, a cap, a hold, or a stop. An ordinary PC or
 phone send while paused answers only that message. It preserves the pause and
 the auto-turn count, and does not restart goal work. The paused strip and
@@ -838,16 +845,27 @@ and [table semantics](DATA_MODEL.md#read-only-history-sql).
 
 While agents work, they can keep a graph of what the work is about and an
 ordered to-do list. Open **Work records** in the right inspector to read it. The
-graph is on top and the to-dos are below. Agents write it with their
-`update_graph` tool; the panel is read-only, so to correct something you ask in
-the conversation. The full model is in [Work graph](GRAPH.md).
+graph is on top and the to-dos are below. A node is one thing of a catalog
+kind, and it is drawn when a stored link connects it to another subject. A plan, a phrase or an explanation is not a node; a real subject linked only to one of those stays on the graph. **Full screen** opens
+the graph large enough to read. Agents write it with their
+`update_graph` tool; the panel does not edit rows. **Replay into the graph**
+starts at the first completed round and walks each later round in order,
+recording what that round's stored response established. If the graph already
+has records, it asks first: clear everything and then write, or write on top
+of what is stored. Clearing a conversation in a project clears that project's
+graph. If the conversation moves before the clear is accepted, review the
+new graph and confirm it there. Replay uses saved responses. It is available
+from an idle, writable conversation. To correct something
+yourself, ask in the conversation. The full model is in [Work graph](GRAPH.md).
 
 A conversation in a project shares the project's graph, so every conversation
 there sees the same record. A conversation outside a project has its own.
 Deleting the project or conversation deletes its graph.
 
 Each dot in the graph is a **subject**: an address, a domain, a company, a
-repository, a query, whatever the task is about. Its colour is its kind, its
+repository, an account, a table, a file, a query, whatever the task is about.
+When a turn used tools and has not recorded what they found, the answer waits
+for one graph write. If that write does not happen, the answer is still delivered. Its colour is its kind, its
 name is read from its attributes, and a line between two subjects records how
 one led to another. A subject is a **lead** until the agents show it is right,
 then **confirmed** with evidence, or **retracted** when they show it is wrong.

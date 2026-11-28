@@ -99,6 +99,7 @@ test("an output-budget error opens the completion cap", async ({ page }) => {
   const cap = dialog.getByLabel("Max completion (tokens)")
   await expect(cap).toBeVisible()
   await expect(cap).toBeFocused()
+  await expect(cap).toHaveValue("64000")
   await expect(dialog.getByRole("tab", { name: "Swarm" })).toHaveAttribute(
     "aria-selected",
     "true",

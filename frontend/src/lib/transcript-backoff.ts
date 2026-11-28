@@ -6,10 +6,18 @@ export interface ModelBackoffNotice {
 /** Classifier recovery and service cooldowns have separate owners and clocks. */
 export function modelBackoffNotice(text?: string): ModelBackoffNotice | undefined {
   try {
-    const body = JSON.parse(text ?? "") as { wait_ms?: unknown; scope?: unknown; code?: unknown; candidate_id?: unknown; cooldown_id?: unknown } | null
+    const body = JSON.parse(text ?? "") as { wait_ms?: unknown; scope?: unknown; code?: unknown; candidate_id?: unknown; cooldown_id?: unknown; detail?: unknown; last_failure?: { code?: unknown } } | null
     if (body?.scope === "schedule_answer" || typeof body?.candidate_id === "string") {
       if (body?.code === "classification_deferred") {
-        return { text: "Answer verification is unavailable. The unpublished answer is retained." }
+        const failure = classificationFailureCode(body.last_failure?.code)
+          ?? (body.detail === "invalid" ? "classification_invalid" : body.detail === "unavailable" ? "classification_unavailable" : undefined)
+        if (failure === "classification_invalid") {
+          return { text: "The verification response was invalid. The unpublished answer is retained." }
+        }
+        if (failure === "classification_unavailable") {
+          return { text: "The verification request failed. The unpublished answer is retained." }
+        }
+        return { text: "Answer verification was deferred. The unpublished answer is retained." }
       }
       if (typeof body.wait_ms === "number" && Number.isFinite(body.wait_ms) && body.wait_ms > 0) {
         return { text: `Waiting ${Math.ceil(body.wait_ms / 1000)}s before checking the unpublished answer again.` }
@@ -36,10 +44,17 @@ const deferredDetails = ["unavailable", "invalid", "attempts"] as const
 
 type InvalidDetail = typeof invalidDetails[number]
 type DeferredDetail = typeof deferredDetails[number]
+type ClassificationFailureCode = "classification_unavailable" | "classification_invalid"
+
+function classificationFailureCode(code: unknown): ClassificationFailureCode | undefined {
+  return code === "classification_unavailable" || code === "classification_invalid" ? code : undefined
+}
+
 export interface ScheduleAnswerBackoff {
-  code?: "classification_unavailable" | "classification_invalid" | "classification_deferred"
+  code?: ClassificationFailureCode | "classification_deferred"
   detail?: InvalidDetail | DeferredDetail
   attempt?: number
+  lastFailure?: { code: ClassificationFailureCode; detail?: InvalidDetail }
 }
 
 /** Retain only closed diagnostics; model output and private candidate text never enter UI state. */
@@ -51,7 +66,16 @@ export function scheduleAnswerBackoff(text?: string): ScheduleAnswerBackoff | un
     if (["classification_unavailable", "classification_invalid", "classification_deferred"].includes(body.code)) result.code = body.code
     if (Number.isSafeInteger(body.attempt) && body.attempt > 0) result.attempt = body.attempt
     if (result.code === "classification_invalid" && invalidDetails.includes(body.detail)) result.detail = body.detail
-    if (result.code === "classification_deferred" && deferredDetails.includes(body.detail)) result.detail = body.detail
+    if (result.code === "classification_deferred") {
+      if (deferredDetails.includes(body.detail)) result.detail = body.detail
+      const code = classificationFailureCode(body.last_failure?.code)
+      if (code) {
+        result.lastFailure = { code }
+        if (code === "classification_invalid" && invalidDetails.includes(body.last_failure.detail)) {
+          result.lastFailure.detail = body.last_failure.detail
+        }
+      }
+    }
     return result
   } catch { return undefined }
 }

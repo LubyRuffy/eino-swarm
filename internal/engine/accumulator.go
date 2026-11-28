@@ -6,6 +6,7 @@ import (
 	"time"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
+	"github.com/LubyRuffy/eino-swarm/internal/graph"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
@@ -62,11 +63,16 @@ func newAccumulator(e *Engine, threadID, turnID string, coalesce time.Duration) 
 }
 
 func (a *accumulator) event(n swarm.Notification, kind string) store.Event {
+	text := n.Text
+	if isWorkRecordTool(n.ToolName) {
+		text = graph.RedactToolText(text)
+	}
 	ev := store.Event{
 		ThreadID: a.threadID, TurnID: a.turnID,
 		Kind: kind, AgentID: n.AgentID, Role: n.Role,
-		Text: n.Text, ToolCallID: n.ToolCallID, MessageID: n.MessageID, ToolReceiptScope: n.ToolReceiptScope,
+		Text: text, ToolCallID: n.ToolCallID, MessageID: n.MessageID, ToolReceiptScope: n.ToolReceiptScope,
 		WorkRecordPayload: isWorkRecordTool(n.ToolName),
+		GraphWrite:        n.Kind == swarm.NotifyToolResult && n.ToolName == ToolUpdateGraph && graphWriteCommitted(n.Text),
 		ModelBinding:      n.ModelBinding,
 		WorkerGeneration:  n.WorkerGeneration, ConfigTag: n.ConfigTag,
 	}

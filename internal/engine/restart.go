@@ -12,6 +12,7 @@ import (
 	"time"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
+	"github.com/LubyRuffy/eino-swarm/internal/graph"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
@@ -389,7 +390,7 @@ func (e *Engine) writeCheckpoint(ctx context.Context, target *restartTarget) err
 	if err != nil {
 		return fmt.Errorf("marshal restart checkpoint: %w", err)
 	}
-	return e.writeRestartEvent(ctx, target, KindRestartCheckpoint, string(body))
+	return e.writeRestartEvent(ctx, target, KindRestartCheckpoint, graph.RedactToolText(string(body)))
 }
 
 func (e *Engine) writeRestartEvent(ctx context.Context, target *restartTarget, kind, text string) error {

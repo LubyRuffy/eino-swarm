@@ -529,7 +529,8 @@ export function ThreadScreen({
                 </div>
               ) : (
                 <PhoneFileLinkContext.Provider value={fileLink ? openLinkedFile : undefined}>
-                <ThreadLog blocks={selectedAgent ? selectedAgent.blocks : manager}
+                <ThreadLog key={`${panelOwnerKey}:${agentPage}`} blocks={selectedAgent ? selectedAgent.blocks : manager}
+                  allowInputEdit={agentPage === "chat"}
                   historyWork={historyWork}
                   historyAgent={selectedAgent?.id}
                   imageOwner={fileLink ? { link: fileLink, threadId: detail.id } : undefined}

@@ -99,7 +99,7 @@ func TestPartialOutputLimitKeepsTextAndNeverExecutesTruncatedToolArguments(t *te
 		if answer != "The current result is partial" || len(got) != 0 || len(rec.ofKind(NotifyGenerationInterrupted)) != 1 || len(rec.ofKind(NotifyToolCall)) != 0 {
 			t.Fatalf("partial output was lost or executed: answer=%q calls=%v events=%+v", answer, got, rec.all())
 		}
-		if len(calls) > 0 && !errors.Is(err, errOutputBudget) {
+		if len(calls) > 0 && !errors.Is(err, ErrOutputBudget) {
 			t.Fatalf("truncated call accepted: %v", err)
 		}
 	}
@@ -324,7 +324,7 @@ func TestLateHandoffCannotReplaceAnAlreadyKnownGenerationFailure(t *testing.T) {
 	for _, tc := range []struct {
 		err    error
 		reason string
-	}{{errOutputBudget, "output_limit"}, {errors.New("model rejected request"), "model_error"}, {context.DeadlineExceeded, "timeout"}} {
+	}{{ErrOutputBudget, "output_limit"}, {errors.New("model rejected request"), "model_error"}, {context.DeadlineExceeded, "timeout"}} {
 		rec := &recorder{}
 		reg := NewRegistry()
 		reg.SetHostNotify(rec.cb())
@@ -408,7 +408,7 @@ func TestGenerationGuardPreservesKnownOutputLimitOverLateSourceCancellation(t *t
 	if err != nil || msg.Content != "partial answer" {
 		t.Fatalf("partial output lost: %+v %v", msg, err)
 	}
-	if _, err := guarded.Recv(); !errors.Is(err, errOutputBudget) {
+	if _, err := guarded.Recv(); !errors.Is(err, ErrOutputBudget) {
 		t.Fatalf("late source cancellation replaced the known output cap: %v", err)
 	}
 }

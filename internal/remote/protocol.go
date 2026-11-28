@@ -23,6 +23,7 @@ const (
 	OpRead                = "read"
 	OpStart               = "start"
 	OpSend                = "send"
+	OpEditInput           = "edit_input"
 	OpDeliver             = "deliver"
 	OpSteer               = "steer"
 	OpStop                = "stop"
@@ -93,14 +94,17 @@ func plaintextBudget() int {
 // Request is the slim RPC the phone sends over a sealed pairlink frame.
 type Request struct {
 	// ProductMode is explicit install-wide debug intent, never phone credentials.
-	ProductMode  string          `json:"product_mode,omitempty"`
-	V            int             `json:"v"`
-	ID           string          `json:"id"`
-	Op           string          `json:"op"`
-	Cursor       string          `json:"cursor,omitempty"`
-	ThreadID     string          `json:"thread_id,omitempty"`
-	ProjectID    string          `json:"project_id,omitempty"`
-	Text         string          `json:"text,omitempty"`
+	ProductMode  string `json:"product_mode,omitempty"`
+	V            int    `json:"v"`
+	ID           string `json:"id"`
+	Op           string `json:"op"`
+	Cursor       string `json:"cursor,omitempty"`
+	ThreadID     string `json:"thread_id,omitempty"`
+	ProjectID    string `json:"project_id,omitempty"`
+	Text         string `json:"text,omitempty"`
+	FromEventSeq int64  `json:"from_event_seq,omitempty"`
+	// Replacement is nil when the phone is opening the editor for a saved input.
+	Replacement  *string         `json:"replacement,omitempty"`
 	DeliveryMode string          `json:"mode,omitempty"`
 	ExpectedTurn string          `json:"expected_turn_id,omitempty"`
 	CallID       string          `json:"call_id,omitempty"`
@@ -108,6 +112,10 @@ type Request struct {
 	// Continue is explicit so a missing decision cannot decline a paused turn.
 	Continue *bool `json:"continue,omitempty"`
 	Since    int64 `json:"since,omitempty"`
+	// GraphOwner is the graph owner the phone cached with since. An unchanged
+	// reply requires both, so moving a conversation onto another graph with
+	// the same revision cannot keep the old picture.
+	GraphOwner string `json:"graph_owner,omitempty"`
 	// IncludeDetail opens a conversation in the watch ready reply. Older hosts
 	// ignore it; the phone can still request open separately.
 	IncludeDetail  bool  `json:"include_detail,omitempty"`

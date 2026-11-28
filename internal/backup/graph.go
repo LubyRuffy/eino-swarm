@@ -2,7 +2,9 @@ package backup
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/LubyRuffy/eino-swarm/internal/graph"
 )
@@ -20,18 +22,34 @@ func omitGraphRows(ctx context.Context, q queryer, prefix string, ids []any) err
 	byWriter := func(thread string) string {
 		return `owner_id IN (` + marks + `) OR ` + thread + ` IN (` + marks + `)`
 	}
+	// Receipts identify every row a skipped conversation wrote. The final
+	// writer alone cannot establish provenance for a merged row.
+	touched := func(resultKey string) string {
+		return `id IN (SELECT json_extract(change.value, '$.id') FROM ` + prefix + `graph_revisions AS batch
+			JOIN json_each(batch.payload, '$.` + resultKey + `') AS change
+			WHERE batch.thread_id IN (` + marks + `))`
+	}
 	both := append(append([]any{}, ids...), ids...)
+	thrice := append(append([]any{}, both...), ids...)
+	allWriters := append(append([]any{}, thrice...), ids...)
 	steps := []struct {
 		table, query string
 		args         []any
 	}{
-		{"graph_subjects", `DELETE FROM ` + prefix + `graph_subjects WHERE ` + byWriter("thread_id"), both},
+		{"graph_subjects", `DELETE FROM ` + prefix + `graph_subjects WHERE ` + byWriter("thread_id") +
+			` OR updated_thread_id IN (` + marks + `) OR ` + touched("subjects"), allWriters},
 		{"graph_subject_keys", `DELETE FROM ` + prefix + `graph_subject_keys WHERE owner_id IN (` + marks + `) OR subject_id NOT IN (SELECT id FROM ` + prefix + `graph_subjects)`, ids},
-		{"graph_links", `DELETE FROM ` + prefix + `graph_links WHERE ` + byWriter("thread_id") +
-			` OR from_id NOT IN (SELECT id FROM ` + prefix + `graph_subjects) OR to_id NOT IN (SELECT id FROM ` + prefix + `graph_subjects)`, both},
-		{"graph_todos", `DELETE FROM ` + prefix + `graph_todos WHERE ` + byWriter("thread_id"), both},
+		{"graph_links", `DELETE FROM ` + prefix + `graph_links WHERE ` + byWriter("thread_id") + ` OR ` + touched("links") +
+			` OR from_id NOT IN (SELECT id FROM ` + prefix + `graph_subjects) OR to_id NOT IN (SELECT id FROM ` + prefix + `graph_subjects)`, thrice},
+		{"graph_todos", `DELETE FROM ` + prefix + `graph_todos WHERE ` + byWriter("thread_id") +
+			` OR updated_thread_id IN (` + marks + `) OR ` + touched("todos"), allWriters},
 		{"graph_todos", `UPDATE ` + prefix + `graph_todos SET about = '' WHERE about <> '' AND about NOT IN (SELECT id FROM ` + prefix + `graph_subjects)`, nil},
-		{"graph_revisions", `DELETE FROM ` + prefix + `graph_revisions WHERE ` + byWriter("thread_id"), both},
+		{"graph_subjects", `UPDATE ` + prefix + `graph_subjects SET found_by_todo = '' WHERE found_by_todo <> '' AND found_by_todo NOT IN (SELECT id FROM ` + prefix + `graph_todos)`, nil},
+		{"graph_links", `UPDATE ` + prefix + `graph_links SET found_by_todo = '' WHERE found_by_todo <> '' AND found_by_todo NOT IN (SELECT id FROM ` + prefix + `graph_todos)`, nil},
+		{"graph_revisions", `DELETE FROM ` + prefix + `graph_revisions WHERE ` + byWriter("thread_id") + `
+			OR EXISTS (SELECT 1 FROM json_each(payload, '$.subjects') WHERE json_extract(value, '$.id') NOT IN (SELECT id FROM ` + prefix + `graph_subjects))
+			OR EXISTS (SELECT 1 FROM json_each(payload, '$.links') WHERE json_extract(value, '$.id') NOT IN (SELECT id FROM ` + prefix + `graph_links))
+			OR EXISTS (SELECT 1 FROM json_each(payload, '$.todos') WHERE json_extract(value, '$.id') NOT IN (SELECT id FROM ` + prefix + `graph_todos))`, both},
 	}
 	for _, step := range steps {
 		if present, err := presentOrOptional(ctx, q, schema, step.table); err != nil {
@@ -68,6 +86,86 @@ func stripGraphSecrets(ctx context.Context, q queryer, schema string) error {
 			}
 			if _, err := q.ExecContext(ctx, `UPDATE `+schema+`.graph_subjects SET attrs = json_remove(attrs, '$.`+name+`') WHERE kind = ? AND json_valid(attrs)`, id); err != nil {
 				return fmt.Errorf("backup: omit graph credentials: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+// scrubGraphToolPayloads redacts credential values copied into graph tool
+// events and transcript rows. The subject table is separate: a full backup
+// may still keep those values, and a backup that omits secrets strips them.
+func scrubGraphToolPayloads(ctx context.Context, q queryer, schema string) error {
+	if !identRe.MatchString(schema) {
+		return invalidf("schema")
+	}
+	tables := []struct {
+		name, fields, filter string
+		cols                 []string
+	}{
+		{"events", "text", "work_record_payload = 1 OR kind = 'engine_restart_checkpoint'", []string{"text"}},
+		{"messages", "CASE WHEN role = 'tool' THEN content END, NULLIF(tool_calls, '')", "work_record_payload = 1", []string{"content", "tool_calls"}},
+	}
+	for _, table := range tables {
+		present, err := presentOrOptional(ctx, q, schema, table.name)
+		if err != nil || !present {
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		query := `SELECT rowid, ` + table.fields + ` FROM ` + schema + `.` + table.name + ` WHERE ` + table.filter
+		rows, err := q.QueryContext(ctx, query)
+		if err != nil {
+			if strings.Contains(err.Error(), "no such column") {
+				return nil
+			}
+			return fmt.Errorf("backup: read graph tool payload: %w", err)
+		}
+		type change struct {
+			id   int64
+			sets []string
+			args []any
+		}
+		var changes []change
+		scanErr := func() error {
+			defer rows.Close()
+			for rows.Next() {
+				vals := make([]sql.NullString, len(table.cols))
+				dest := make([]any, 0, len(table.cols)+1)
+				var id int64
+				dest = append(dest, &id)
+				for i := range vals {
+					dest = append(dest, &vals[i])
+				}
+				if err := rows.Scan(dest...); err != nil {
+					return err
+				}
+				var item change
+				item.id = id
+				for i, col := range table.cols {
+					if !vals[i].Valid {
+						continue
+					}
+					next := graph.RedactToolText(vals[i].String)
+					if next != vals[i].String {
+						item.sets = append(item.sets, col+` = ?`)
+						item.args = append(item.args, next)
+					}
+				}
+				if len(item.sets) > 0 {
+					changes = append(changes, item)
+				}
+			}
+			return rows.Err()
+		}()
+		if scanErr != nil {
+			return fmt.Errorf("backup: read graph tool payload: %w", scanErr)
+		}
+		for _, item := range changes {
+			item.args = append(item.args, item.id)
+			if _, err := q.ExecContext(ctx, `UPDATE `+schema+`.`+table.name+` SET `+strings.Join(item.sets, ", ")+` WHERE rowid = ?`, item.args...); err != nil {
+				return fmt.Errorf("backup: redact graph tool payload: %w", err)
 			}
 		}
 	}

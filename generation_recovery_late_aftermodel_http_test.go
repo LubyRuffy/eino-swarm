@@ -106,7 +106,7 @@ func TestRegistryObservedOutputCapKeepsCauseAfterLateAfterModelErrorOverHTTP(t *
 			if n.Kind == NotifyGenerationStarted {
 				startedID.Store(n.MessageID)
 			}
-			if n.Kind == NotifyGenerationInterrupted && errors.Is(n.Err, errOutputBudget) {
+			if n.Kind == NotifyGenerationInterrupted && errors.Is(n.Err, ErrOutputBudget) {
 				interrupts.Add(1)
 				observedID.Store(n.MessageID)
 				observeOnce.Do(func() { close(observed) })
@@ -139,7 +139,7 @@ func TestRegistryObservedOutputCapKeepsCauseAfterLateAfterModelErrorOverHTTP(t *
 		t.Fatal("RunWith returned before the real AfterModel hook completed")
 	}
 	var cap *ReasoningOutputLimit
-	if !errors.As(got.err, &cap) || !errors.Is(got.err, errOutputBudget) || errors.Is(got.err, lateErr) || got.err.Error() != errOutputBudget.Error() {
+	if !errors.As(got.err, &cap) || !errors.Is(got.err, ErrOutputBudget) || errors.Is(got.err, lateErr) || got.err.Error() != ErrOutputBudget.Error() {
 		t.Fatalf("late AfterModel error replaced or altered the already observed cap: %v", got.err)
 	}
 	if cap.MessageID == "" || cap.MessageID != observedID.Load().(string) || cap.MessageID != startedID.Load().(string) || interrupts.Load() != 1 {

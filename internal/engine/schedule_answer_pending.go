@@ -130,12 +130,14 @@ func (rt *runtime) verifyPendingScheduleAnswer(ctx context.Context, turn *store.
 			return nil, &scheduleAnswerError{Code: "answer_storage_failed", Cause: err}
 		}
 		code, waitMS := failure.Code, delay.Milliseconds()
+		var lastFailure *scheduleAnswerFailureReason
 		if deferred {
 			row.State, code, waitMS = "deferred", "classification_deferred", 0
+			lastFailure = scheduleAnswerBackoffFailure(failure.Code, failure.Detail)
 		} else {
 			detail = failure.Detail
 		}
-		e.recordScheduleAnswerBackoff(turn, row, code, detail, waitMS)
+		e.recordScheduleAnswerBackoff(turn, row, code, detail, waitMS, lastFailure)
 		if deferred {
 			return nil, &scheduleAnswerError{Code: code, Detail: detail, Cause: failure}
 		}

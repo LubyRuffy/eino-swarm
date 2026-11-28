@@ -98,10 +98,13 @@ Recent desktop/mobile differences are tracked in [the parity audit](../docs/MOBI
 
 In a paired conversation, **Work records** shows what the agents found as the
 same graph the desktop panel draws, with their ordered to-dos below. Tap a to-do
-to mark what it touched, or a subject to filter the list. It is read-only. The
-phone has no event stream: it polls the PC with the revision it holds, every
-3 seconds while the task runs and every 10 seconds otherwise, so an unchanged
-graph costs one small frame, and a failed poll keeps the picture on screen. A
+to mark what it touched, or a subject to filter the list. It is read-only. A
+turn that used tools and has not recorded them gets one chance to write the
+graph before its answer is kept; the phone shows that wait as a short notice. The
+phone has no event stream: it polls the PC with the revision and graph owner
+it holds, every 3 seconds while the task runs and every 10 seconds otherwise.
+The PC answers unchanged only when both still match, and a failed poll keeps
+the picture on screen. A
 graph too large for one frame is refused with a message; open it on the desktop.
 The entry is hidden when the PC has work records switched off or is too old to
 serve them. Credential values never reach the phone.
@@ -521,6 +524,12 @@ Choosing `/plan` or `/image` places it at the start and uses the existing draft
 as its argument. The command requires an argument and a separate send action.
 `/compact` stays on the PC. Android Back closes Add first. When the slash list
 is open, Back removes only the unfinished slash token.
+In a paired PC conversation, tap the pencil below a previous message to open
+its original text. **Resend** keeps its images and quotations and runs from
+that message again. It removes the conversation after the edited message and
+clears queued follow-ups. **Cancel** discards the edit. If the phone asks for a
+PC update, update the paired PC to enable the editor.
+
 While a paired PC turn is live, the send arrow queues ordinary messages,
 including attachments. Open **Send options** beside the arrow to insert the draft
 into the next model call of this turn, or to interrupt the active manager step

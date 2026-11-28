@@ -1,6 +1,5 @@
-type GraphEvent =
-  | { kind: "revision"; revision: number }
-  | { kind: "connection"; connected: boolean }
+type GraphFrame = { kind: "revision" | "preview"; revision: number; ownerId?: string }
+type GraphEvent = GraphFrame | { kind: "connection"; connected: boolean }
 
 const subscribers = new Map<string, Set<(event: GraphEvent) => void>>()
 const connected = new Set<string>()
@@ -27,11 +26,13 @@ export function subscribeGraphEvents(threadId: string, listener: (event: GraphEv
 }
 
 /** A frame is only a hint to refetch; anything malformed is ignored. */
-export function parseGraphRevision(data: string, threadId: string): number | undefined {
+export function parseGraphFrame(data: string, threadId: string): GraphFrame | undefined {
   try {
-    const body = JSON.parse(data) as { thread_id?: string; revision?: number }
-    if (body.thread_id !== threadId || !Number.isSafeInteger(body.revision) || (body.revision as number) < 0) return undefined
-    return body.revision
+    const body = JSON.parse(data) as { thread_id?: string; revision?: number; owner_id?: unknown; preview?: unknown }
+    const { revision, owner_id: ownerId } = body
+    if (body.thread_id !== threadId || typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 0) return undefined
+    if (ownerId !== undefined && (typeof ownerId !== "string" || !ownerId)) return undefined
+    return { kind: body.preview === true ? "preview" : "revision", revision, ...(ownerId ? { ownerId } : {}) }
   } catch {
     return undefined
   }

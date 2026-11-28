@@ -43,8 +43,15 @@ func TestLegacyClassifierFailureBudgetCannotBlockAgainAfterUpgrade(t *testing.T)
 			if err := e.store.SetScheduleAnswerRetry(row.ID, row.Attempts, row.RetryAt); err != nil {
 				t.Fatal(err)
 			}
+			wantLast := map[string]any{}
 			for i, code := range tc.codes {
-				body, _ := json.Marshal(map[string]any{"candidate_id": row.ID, "attempt": i + 1, "code": code})
+				detail := "private-fragment"
+				wantLast = map[string]any{"code": code}
+				if code == "classification_invalid" && i == tc.attempts-1 {
+					detail = "scope_quote"
+					wantLast["detail"] = detail
+				}
+				body, _ := json.Marshal(map[string]any{"candidate_id": row.ID, "attempt": i + 1, "code": code, "detail": detail})
 				e.record(store.Event{ThreadID: th.ID, TurnID: turn.ID, AgentID: scheduleAnswerAgentID, Kind: KindModelBackoff, Text: string(body)})
 			}
 			// Another candidate, malformed telemetry and a generic gate wait
@@ -67,6 +74,16 @@ func TestLegacyClassifierFailureBudgetCannotBlockAgainAfterUpgrade(t *testing.T)
 					deferrals++
 					if body["detail"] != tc.detail || body["wait_ms"] != float64(0) {
 						t.Fatalf("wrong deferral detail: %s", event.Text)
+					}
+					if len(tc.codes) == 0 {
+						if _, ok := body["last_failure"]; ok {
+							t.Fatalf("invented missing final attempt: %s", event.Text)
+						}
+					} else {
+						last, ok := body["last_failure"].(map[string]any)
+						if !ok || len(last) != len(wantLast) || last["code"] != wantLast["code"] || last["detail"] != wantLast["detail"] {
+							t.Fatalf("wrong restored last failure: %s", event.Text)
+						}
 					}
 				}
 			}

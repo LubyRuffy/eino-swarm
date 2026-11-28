@@ -3,6 +3,7 @@ package remote
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -11,15 +12,17 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
-func graphWrite(t *testing.T, st *store.Store, thread, project string, batch graph.Batch) {
+func graphWrite(t *testing.T, st *store.Store, thread, project string, batch graph.Batch) graph.Result {
 	t.Helper()
 	turn := &store.Turn{ThreadID: thread, ProjectID: project, GraphTools: true}
 	if err := st.CreateTurn(turn); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := st.ApplyGraph(context.Background(), store.GraphCaller{ThreadID: thread, TurnID: turn.ID, AgentID: "manager", ProjectID: project}, batch); err != nil {
+	res, _, err := st.ApplyGraph(context.Background(), store.GraphCaller{ThreadID: thread, TurnID: turn.ID, AgentID: "manager", ProjectID: project}, batch)
+	if err != nil {
 		t.Fatal(err)
 	}
+	return res
 }
 
 // The phone polls with the revision it holds. An unchanged graph costs one
@@ -31,7 +34,7 @@ func TestPhoneGraphPollReturnsOnlyChangesAndNeverACredential(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	graphWrite(t, e.Store(), th.ID, "", graph.Batch{Subjects: []graph.SubjectInput{
+	seeded := graphWrite(t, e.Store(), th.ID, "", graph.Batch{Subjects: []graph.SubjectInput{
 		{Kind: "repo", Attrs: map[string]any{"path": "acme/app", "credential": "fake-phone-credential"}}}})
 	call := func(req Request) Response {
 		req.Op = OpGraph
@@ -45,11 +48,14 @@ func TestPhoneGraphPollReturnsOnlyChangesAndNeverACredential(t *testing.T) {
 	if strings.Contains(string(raw), "fake-phone-credential") {
 		t.Fatal("a credential reached the phone")
 	}
-	same := call(Request{ID: "2", ThreadID: th.ID, Since: first.Graph.Revision})
+	same := call(Request{ID: "2", ThreadID: th.ID, Since: first.Graph.Revision, GraphOwner: first.Graph.Owner})
 	if !same.OK || !same.Graph.Unchanged || len(same.Graph.Subjects) != 0 {
 		t.Fatalf("unchanged poll=%+v", same)
 	}
-	graphWrite(t, e.Store(), th.ID, "", graph.Batch{Subjects: []graph.SubjectInput{{Kind: "ip", Attrs: map[string]any{"ip": "203.0.113.20"}}}})
+	graphWrite(t, e.Store(), th.ID, "", graph.Batch{
+		Subjects: []graph.SubjectInput{{Ref: "addr", Kind: "ip", Attrs: map[string]any{"ip": "203.0.113.20"}}},
+		Links:    []graph.LinkInput{{From: "addr", To: seeded.Subjects[0].ID, Rel: "served_from"}},
+	})
 	next := call(Request{ID: "3", ThreadID: th.ID, Since: first.Graph.Revision})
 	if next.Graph.Unchanged || next.Graph.Revision != 2 || len(next.Graph.Subjects) != 2 {
 		t.Fatalf("after a commit=%+v", next)
@@ -77,13 +83,16 @@ func TestPhoneGraphRefusesWhatDoesNotFitAFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 40; i++ {
-		var subjects []graph.SubjectInput
-		for j := 0; j < 50; j++ {
-			subjects = append(subjects, graph.SubjectInput{Kind: "other", Attrs: map[string]any{"name": strings.Repeat("x", 200) + string(rune('a'+i)) + string(rune('a'+j%26)) + string(rune('A'+j/26))}})
+	// Each result is legal and the results alone exceed the frame budget.
+	// This reaches the real encoder without depending on catalog heuristics
+	// for lengthy subject names.
+	todos := make([]graph.TodoInput, plaintextBudget()/graph.MaxResult+1)
+	for i := range todos {
+		todos[i] = graph.TodoInput{
+			Title: fmt.Sprintf("Check %d", i+1), Status: graph.TodoFailed, Result: strings.Repeat("x", graph.MaxResult),
 		}
-		graphWrite(t, e.Store(), th.ID, "", graph.Batch{Subjects: subjects})
 	}
+	graphWrite(t, e.Store(), th.ID, "", graph.Batch{Todos: todos})
 	got := Handle(e, config.RemoteConfig{}, Request{Op: OpGraph, ID: "big", ThreadID: th.ID}, "relay", "session")
 	if got.OK || got.Code != "graph_too_large" {
 		t.Fatalf("an oversized graph was not refused: ok=%v code=%q", got.OK, got.Code)
@@ -105,8 +114,43 @@ func TestPhoneProjectGraphReadsTheProjectOwner(t *testing.T) {
 	if !got.OK || len(got.Graph.Subjects) != 1 {
 		t.Fatalf("project graph=%+v", got)
 	}
-	again := Handle(e, config.RemoteConfig{}, Request{Op: OpGraph, ID: "p2", ProjectID: p.ID, Since: got.Graph.Revision}, "relay", "session")
+	again := Handle(e, config.RemoteConfig{}, Request{Op: OpGraph, ID: "p2", ProjectID: p.ID, Since: got.Graph.Revision, GraphOwner: got.Graph.Owner}, "relay", "session")
 	if !again.OK || !again.Graph.Unchanged {
 		t.Fatalf("unchanged project poll=%+v", again)
+	}
+}
+
+// Two graphs can both be at revision 1. Moving a conversation onto the other
+// one has to return that graph; the matching revision alone is not enough.
+func TestPhoneGraphChangesWhenAConversationJoinsAProjectAtTheSameRevision(t *testing.T) {
+	e := testEngine(t)
+	th, err := e.CreateThread("moving", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	graphWrite(t, e.Store(), th.ID, "", graph.Batch{Subjects: []graph.SubjectInput{{Kind: "ip", Attrs: map[string]any{"ip": "203.0.113.30"}}}})
+	project := &store.Project{Name: "destination"}
+	if err := e.Store().CreateProject(project); err != nil {
+		t.Fatal(err)
+	}
+	member := &store.Thread{Title: "member", ProjectID: project.ID}
+	if err := e.Store().CreateThread(member); err != nil {
+		t.Fatal(err)
+	}
+	graphWrite(t, e.Store(), member.ID, project.ID, graph.Batch{Subjects: []graph.SubjectInput{{Kind: "domain", Attrs: map[string]any{"domain": "moved.example.test"}}}})
+	if err := e.Store().SetThreadProject(th.ID, project.ID); err != nil {
+		t.Fatal(err)
+	}
+	got := Handle(e, config.RemoteConfig{}, Request{
+		Op: OpGraph, ID: "move", ThreadID: th.ID, Since: 1, GraphOwner: th.ID,
+	}, "relay", "session")
+	if !got.OK || got.Graph == nil || got.Graph.Unchanged || got.Graph.Owner != project.ID || len(got.Graph.Subjects) != 1 || got.Graph.Subjects[0].Kind != "domain" {
+		t.Fatalf("after the move=%+v", got.Graph)
+	}
+	held := Handle(e, config.RemoteConfig{}, Request{
+		Op: OpGraph, ID: "held", ThreadID: th.ID, Since: got.Graph.Revision, GraphOwner: got.Graph.Owner,
+	}, "relay", "session")
+	if !held.OK || !held.Graph.Unchanged {
+		t.Fatalf("the project graph the phone now holds=%+v", held.Graph)
 	}
 }

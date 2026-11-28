@@ -17,9 +17,10 @@ const translate = (key: keyof typeof graphEn, vars?: Record<string, string | num
 // Read at use, not at import: the locale can change while the screen is open.
 export const phoneGraphText: GraphTranslate = Object.defineProperty(translate, "locale", { get: getLocale }) as GraphTranslate
 
-/** The phone has no event stream, so it polls with the revision it holds; an
- *  unchanged graph costs one small frame. A running conversation is polled
- *  faster because its to-dos move. */
+/** The phone has no event stream, so it polls with the revision and graph
+ *  owner it holds. Both have to match before the PC answers unchanged: two
+ *  graphs can share a revision. A running conversation is polled faster
+ *  because its to-dos move. */
 export const GRAPH_POLL_RUNNING_MS = 3000
 export const GRAPH_POLL_IDLE_MS = 10000
 
@@ -35,6 +36,7 @@ export function PhoneWorkRecords({ link, threadId, generation, running, covered,
 }) {
   const [load, setLoad] = useState<Load>()
   const held = useRef(0)
+  const heldOwner = useRef("")
   const inFlight = useRef<AbortController | undefined>(undefined)
   const current = load?.link === link ? load : undefined
   const fatal = current?.error === "graph.tooLarge"
@@ -49,14 +51,17 @@ export function PhoneWorkRecords({ link, threadId, generation, running, covered,
     const controller = new AbortController()
     inFlight.current = controller
     try {
-      const reply = await link.rpc({ op: OpGraph, thread_id: threadId, since: held.current }, { signal: controller.signal, dropOnTimeout: false })
+      const reply = await link.rpc({
+        op: OpGraph, thread_id: threadId, since: held.current, graph_owner: heldOwner.current || undefined,
+      }, { signal: controller.signal, dropOnTimeout: false })
       if (controller.signal.aborted) return
       const graph = reply.graph
       if (reply.ok && reply.data_generation === generation && graph) {
+        if (graph.owner) heldOwner.current = graph.owner
         if (graph.unchanged) return
         held.current = graph.revision
         setLoad({ link, view: {
-          owner_id: threadId, revision: graph.revision, subjects: graph.subjects ?? [], links: graph.links ?? [],
+          owner_id: graph.owner || threadId, revision: graph.revision, subjects: graph.subjects ?? [], links: graph.links ?? [],
           todos: graph.todos ?? [], total: graph.total ?? 0, more: Boolean(graph.more),
         } })
         return
@@ -73,6 +78,7 @@ export function PhoneWorkRecords({ link, threadId, generation, running, covered,
 
   useEffect(() => {
     held.current = 0
+    heldOwner.current = ""
     setLoad(undefined)
     void read()
     return () => { inFlight.current?.abort(); inFlight.current = undefined }
@@ -88,6 +94,7 @@ export function PhoneWorkRecords({ link, threadId, generation, running, covered,
 
   const manualRefresh = () => {
     held.current = 0
+    heldOwner.current = ""
     setLoad((previous) => previous?.view ? previous : undefined)
     void read()
   }

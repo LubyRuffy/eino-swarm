@@ -36,7 +36,9 @@ export const backoffEn = {
   "backoff.classification_deferred.unavailable": "Consecutive verification request failures reached the limit. Verification was deferred.",
   "backoff.classification_deferred.invalid": "Consecutive invalid verification responses reached the limit. Verification was deferred.",
   "backoff.classification_deferred.attempts": "This candidate reached the total verification attempt limit. Verification was deferred.",
-  "notice.scheduleAnswerDeferred": "Answer verification is unavailable. The unpublished answer is retained.",
+  "notice.scheduleAnswerDeferred": "Answer verification was deferred. The unpublished answer is retained.",
+  "notice.scheduleAnswerDeferredInvalid": "The verification response was invalid. The unpublished answer is retained.",
+  "notice.scheduleAnswerDeferredUnavailable": "The verification request failed. The unpublished answer is retained.",
 } as const
 
 export const backoffZh: { [K in keyof typeof backoffEn]: string } = {
@@ -77,5 +79,7 @@ export const backoffZh: { [K in keyof typeof backoffEn]: string } = {
   "backoff.classification_deferred.unavailable": "连续核对请求失败达到上限，已暂缓。",
   "backoff.classification_deferred.invalid": "连续核对响应格式无效达到上限，已暂缓。",
   "backoff.classification_deferred.attempts": "这份候选答复的核对总尝试次数达到上限，已暂缓。",
-  "notice.scheduleAnswerDeferred": "答复核对暂不可用，未发布候选已保留。",
+  "notice.scheduleAnswerDeferred": "答复核对已暂缓，未发布候选已保留。",
+  "notice.scheduleAnswerDeferredInvalid": "核对响应无效，未发布候选已保留。",
+  "notice.scheduleAnswerDeferredUnavailable": "核对请求失败，未发布候选已保留。",
 }

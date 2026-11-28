@@ -12,13 +12,13 @@ export function mockGraphMeta(): EngineStartup {
   return value === "on" || value === "large" ? { graph_available: true, data_generation: 1 } : {}
 }
 
-export function mockGraph(thread: { id: string } | undefined, since: number): Partial<RemoteResponse> {
+export function mockGraph(thread: { id: string } | undefined, since: number, owner = ""): Partial<RemoteResponse> {
   const value = mode()
   if (value !== "on" && value !== "large") return { ok: false, code: "unknown_op" }
   if (!thread) return { ok: false, code: "not_found" }
   if (value === "large") return { ok: false, code: "graph_too_large" }
   const revision = 3
-  if (since === revision) return { data_generation: 1, graph: { revision, unchanged: true } }
+  if (since === revision && owner === thread.id) return { data_generation: 1, graph: { owner: thread.id, revision, unchanged: true } }
   const updated_at = "2026-11-24T00:00:00Z"
   const subject = (id: string, kind: string, name: string, status: GraphSubject["status"] = "confirmed"): GraphSubject =>
     ({ id, kind, name, attrs: {}, status, version: 1, updated_at })
@@ -27,9 +27,9 @@ export function mockGraph(thread: { id: string } | undefined, since: number): Pa
   return {
     data_generation: 1,
     graph: {
-      revision, total: 3,
+      owner: thread.id, revision, total: 3,
       subjects: [subject("s1", "org", "Example Org"), subject("s2", "domain", "example.test"), subject("s3", "domain", "old.example.test", "retracted")],
-      links: [{ id: "l1", from: "s1", to: "s2", rel: "owns" }],
+      links: [{ id: "l1", from: "s1", to: "s2", rel: "owns" }, { id: "l2", from: "s1", to: "s3", rel: "was" }],
       todos: [todo("t1", "Identify the organisation", "done", 1, "s1"), todo("t2", "List its domains", "open", 2, "s1")],
     },
   }

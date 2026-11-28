@@ -404,13 +404,12 @@ type streamAcc struct {
 	sourceEOF           *atomic.Bool
 }
 
-// errOutputBudget is a model call that hit its output cap before any answer
-// or tool call. Recording that as a finished turn leaves a blank success
-// the UI cannot tell from a hang.
+// ErrOutputBudget identifies an incomplete model generation that reached its
+// output cap before producing a usable answer or tool batch.
 //
 // The desktop transcript matches this sentence exactly and links to
 // Settings → Swarm. Change frontend/src/lib/output-budget.ts with it.
-var errOutputBudget = errors.New("the model used its whole output budget before it produced an answer")
+var ErrOutputBudget = errors.New("the model used its whole output budget before it produced an answer")
 
 // ReasoningOutputLimit identifies a clean manager completion capped before
 // any answer or tool attempt. The generation's original error remains intact.
@@ -422,8 +421,8 @@ type ReasoningOutputLimit struct {
 	RecoveryUnavailable string            `json:"-" yaml:"-"`
 }
 
-func (*ReasoningOutputLimit) Error() string { return errOutputBudget.Error() }
-func (*ReasoningOutputLimit) Unwrap() error { return errOutputBudget }
+func (*ReasoningOutputLimit) Error() string { return ErrOutputBudget.Error() }
+func (*ReasoningOutputLimit) Unwrap() error { return ErrOutputBudget }
 
 func outputStoppedEarly(finish string) bool {
 	switch strings.ToLower(strings.TrimSpace(finish)) {
@@ -505,7 +504,7 @@ func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []s
 	answer := s.answerText()
 	if streamErr != nil {
 		if outputStoppedEarly(finish) {
-			streamErr = errOutputBudget
+			streamErr = ErrOutputBudget
 		}
 		s.interruptGeneration(streamErr)
 		// Interrupt during generate is not a finished answer. Emitting one
@@ -513,10 +512,10 @@ func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []s
 		return answer, nil, nil
 	}
 	if outputStoppedEarly(finish) {
-		s.interruptGeneration(errOutputBudget)
+		s.interruptGeneration(ErrOutputBudget)
 		for _, tc := range calls {
 			if !json.Valid([]byte(tc.Function.Arguments)) {
-				return answer, nil, errOutputBudget
+				return answer, nil, ErrOutputBudget
 			}
 		}
 	} else {
@@ -532,7 +531,7 @@ func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []s
 		if s.agentID == DefaultManagerID && hasReasoning && !hasAnswer && len(chunks) == 0 {
 			return "", nil, &ReasoningOutputLimit{MessageID: s.messageID, RecoveryInput: s.recoveryInput, RecoveryUnavailable: s.recoveryUnavailable}
 		}
-		return "", nil, errOutputBudget
+		return "", nil, ErrOutputBudget
 	}
 	if len(calls) == 0 && strings.TrimSpace(answer) != "" {
 		s.emit(Notification{Kind: NotifyAgentMessage, Text: answer})

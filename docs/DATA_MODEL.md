@@ -364,15 +364,21 @@ on (`owner_id`, `revision`).
 - **Delete a project** removes the project's graph and the graphs owned by its
   conversations.
 - **Backup.** A full or project backup carries the graph tables. A backup that
-  omits conversations removes what they wrote (all of a graph they own; only the
-  rows and batches they wrote in a shared project graph, plus links and keys
-  that pointed at a removed subject). A credential-free backup, and every
-  project bundle, strips `secret` attributes using the catalog. Archives written
+  omits conversations checks their batch receipts as well as row ownership and
+  last writer. A subject, link or to-do that an omitted conversation touched
+  is left out even when a later writer changed it. Merged attributes share the
+  row. Dependent keys and links are removed, and receipts referring to omitted
+  rows are dropped. A credential-free backup, and every project bundle, strips
+  `secret` attributes using the catalog. Every backup also redacts credential
+  values copied into graph tool events and transcript rows. Archives written
   before the graph have none of these tables and still restore.
 - **Evidence** is validated for identity at write time, never for truth. An
   event that later disappears (a rewind, for example) reads as unavailable.
 - **Turn flags.** `turns.work_ledger` and `turns.work_ledger_read_only` are the
   frozen switches (see [`turns`](#turns--one-request-and-everything-done-to-answer-it)).
+  `turns.graph_replay` marks a turn that walks completed rounds into the graph
+  instead of starting a new investigation. `turns.graph_clear` makes that walk
+  delete the working graph first and commit a newer empty revision.
 
 ## Legacy tables and columns
 
@@ -633,6 +639,8 @@ The `id` is the handle the whole troubleshooting story hangs off: the UI shows i
 | `web_execution` | captured Web-tool preference at turn start; restoration and parked workers use it before later conversation/global settings. Old rows remain empty and use the current inherited policy |
 | `nuwa_enabled` | legacy: set only by turns the removed Nuwa mode started. Nothing writes it now; recovery reads it to end such a turn with "the Nuwa mode was removed" instead of resuming it |
 | `work_ledger`, `work_ledger_read_only` | whether this turn had the graph tools (`swarm.graph` on when it started) and whether planning or disabled automatic recording limited them to reading, frozen for recovery. The columns keep the names they had when the same flags froze the removed work tools; the Go fields are `GraphTools` / `GraphReadOnly` and the JSON is `graph_tools` / `graph_read_only`. An interrupted turn with the flag recovers with the graph tools |
+| `graph_replay` | this turn walks the conversation's completed rounds into the graph. Recovery runs that walk again instead of treating the caption as a new investigation |
+| `graph_clear` | this walk deletes the working graph first. Recovery clears again, then walks, so a partial picture is not left in place |
 | `goal_continue` | true when the runtime started this turn to keep pursuing an open `/goal`. The timeline records `goal_continued`, not `user_message` |
 | `schedule_run_id` | set when this turn is a scheduled fire; empty for every other origin. Trace joins the run through it |
 | `quiet` | true when a scheduled turn had nothing to report. The row stays for `zwai trace`; the transcript hides the bubbles |
@@ -691,7 +699,8 @@ stream still walks forward.
 | `source_thread_id`, `source_turn_id` | optional runtime-bound origin of a `task_message`; old events omit these columns |
 | `agent_id` | `manager` or a sub-agent |
 | `role` | for `spawned`, the sub-agent's role |
-| `text` | the payload. For `spawned` this is the worker's system prompt (host snapshot plus the task). Older rows stored the role name here; `role` is the reliable role field. For `tool_result` this is the tool's stdout with newlines kept (clipped at 64k runes), not a one-line summary. For `account_profile` it is JSON with the official name, alias, tool allowlist and guidance length, never the guidance text. For `mcp_catalog` it is the frozen MCP mount decision: mode, percent, window, budget, schema token count and per-server id/mode/error/remotes/skipped, never an endpoint, credential or schema body |
+| `text` | the payload. For `spawned` this is the worker's system prompt (host snapshot plus the task). Older rows stored the role name here; `role` is the reliable role field. For `tool_result` this is the tool's stdout with newlines kept (clipped at 64k runes), not a one-line summary. Graph tool calls and results stored here name a credential attribute and omit its value. For `account_profile` it is JSON with the official name, alias, tool allowlist and guidance length, never the guidance text. For `mcp_catalog` it is the frozen MCP mount decision: mode, percent, window, budget, schema token count and per-server id/mode/error/remotes/skipped, never an endpoint, credential or schema body |
+| `graph_write` | bool, default false, internal only. Set on the tool result of an `update_graph` that committed. The unrecorded-result count moves only at this mark; a `read_graph` result, a refused write, and a replay stay work-record traffic and do not count as caught up |
 | `tool_call_id` | pairs `tool_call` with `tool_result` (and live `tool_delta`); agents issue several at once and they finish out of order |
 | `message_id` | optional identity of one streamed model output. Worker checkpoints across manager turns retain it; a new model round or restored stream gets another identity. Legacy rows remain empty. It does not replace event seq or tool-call identity |
 | `err` | set on `error` and on a failed `finished` |
@@ -708,13 +717,16 @@ conversation/generation and omit zero-delay probe notices; Trace keeps each
 caller record. This event grants no retry allowance and is not an LLM request.
 
 Candidate recovery remains text JSON containing
-`{scope:"schedule_answer",attempt,wait_ms,code,candidate_id,detail?}`. Codes are
+`{scope:"schedule_answer",attempt,wait_ms,code,candidate_id,detail?,last_failure?}`. Codes are
 `classification_unavailable`, `classification_invalid` and
 `classification_deferred` (with `wait_ms:0` at any cap). Invalid retry `detail`
 is one of `missing_message`, `json`, `trailing`, `claim_list`, `claim_meaning`,
 `claim_shape`, `unspecified_scope_quote`, `scope_quote`, `schedule_id`,
-`quote_not_in_candidate` or `next_run_at`; deferred `detail` identifies its
-limit as `unavailable`, `invalid` or `attempts`. Candidate attempts are independent
+`quote_not_in_candidate`, `next_run_at` or `decision_response`. Deferred
+`detail` identifies the limit as `unavailable`, `invalid` or `attempts`.
+`last_failure` carries the final attempt's code and optional allowlisted
+invalid detail on deferral. It remains absent when older recovery records
+lack evidence for that attempt. Candidate attempts are independent
 of origin generations. Classifier calls bypass the origin gate and implicit
 HTTP reconnect entirely. These events contain identity/decision metadata, never
 raw decoder errors, model response text, quotes or the private candidate payload.

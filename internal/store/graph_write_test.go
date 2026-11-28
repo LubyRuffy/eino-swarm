@@ -90,6 +90,17 @@ func (f *graphFixture) read(q GraphQuery) GraphView {
 	return v
 }
 
+func (f *graphFixture) readSubject(id string) GraphSubject {
+	f.t.Helper()
+	for _, subject := range f.read(GraphQuery{ID: id}).Subjects {
+		if subject.ID == id {
+			return subject
+		}
+	}
+	f.t.Fatalf("subject %q is missing from its detail view", id)
+	return GraphSubject{}
+}
+
 func ip(addr string) graph.SubjectInput {
 	return graph.SubjectInput{Kind: "ip", Attrs: map[string]any{"ip": addr}}
 }
@@ -175,9 +186,44 @@ func TestOverwriteAndStatusNeedTheCurrentVersion(t *testing.T) {
 	if ok.Subjects[0].Version != res.Subjects[0].Version+1 {
 		t.Fatalf("version did not advance: %+v", ok.Subjects[0])
 	}
-	got := f.read(GraphQuery{ID: id}).Subjects[0]
+	got := f.readSubject(id)
 	if got.Attrs["country"] != "C" || got.Status != graph.StatusConfirmed {
 		t.Fatalf("overwrite lost: %+v", got)
+	}
+}
+
+// The engine retracts a lead it has just read. That must not demand a version
+// or replace the attributes the model did not resend, and it must not demote
+// a confirmed subject.
+func TestHostRetractMarksALeadWithoutAVersionAndKeepsItsAttributes(t *testing.T) {
+	f := newGraphFixture(t, false)
+	created := f.apply(graph.Batch{Subjects: []graph.SubjectInput{{Kind: "ip", Attrs: map[string]any{"ip": "203.0.113.40", "country": "A"}}}})
+	id := created.Subjects[0].ID
+	wrote := f.apply(graph.Batch{Subjects: []graph.SubjectInput{{ID: id, HostRetract: true}}})
+	if wrote.Subjects[0].Version != 2 {
+		t.Fatalf("retract did not record a new version: %+v", wrote.Subjects[0])
+	}
+	got := f.readSubject(id)
+	if got.Status != graph.StatusRetracted || got.Attrs["ip"] != "203.0.113.40" || got.Attrs["country"] != "A" {
+		t.Fatalf("lead=%+v", got)
+	}
+	f.apply(graph.Batch{
+		Evidence: []graph.Evidence{{URL: "https://records.example.test/run"}},
+		Subjects: []graph.SubjectInput{{Ref: "keep", Kind: "ip", Status: graph.StatusConfirmed, Attrs: map[string]any{"ip": "203.0.113.41"}}},
+		Links:    []graph.LinkInput{{From: "keep", To: id, Rel: "replaced"}},
+	})
+	var keep string
+	for _, subject := range f.read(GraphQuery{All: true, Limit: -1}).Subjects {
+		if subject.Attrs["ip"] == "203.0.113.41" {
+			keep = subject.ID
+		}
+	}
+	if keep == "" {
+		t.Fatal("confirmed subject was not stored")
+	}
+	f.apply(graph.Batch{Subjects: []graph.SubjectInput{{ID: keep, HostRetract: true}}})
+	if got := f.readSubject(keep); got.Status != graph.StatusConfirmed || got.Attrs["ip"] != "203.0.113.41" {
+		t.Fatalf("confirmed subject was demoted: %+v", got)
 	}
 }
 
@@ -205,8 +251,12 @@ func TestConfirmedNeedsEvidenceAndEvidenceMustBeARealEventOfTheScope(t *testing.
 	// A peer conversation of the same project is inside it.
 	peer, peerTurn := f.newTurn()
 	good := f.event(peer, peerTurn, "peer observation")
-	f.apply(graph.Batch{Subjects: []graph.SubjectInput{{Kind: "ip", Attrs: map[string]any{"ip": "1.1.1.1"}, Status: graph.StatusConfirmed}}, Evidence: []graph.Evidence{good}})
-	web := f.apply(graph.Batch{Subjects: []graph.SubjectInput{ip("1.1.1.2")}, Evidence: []graph.Evidence{{URL: "https://news.test/a", Label: "article"}}})
+	first := f.apply(graph.Batch{Subjects: []graph.SubjectInput{{Kind: "ip", Attrs: map[string]any{"ip": "1.1.1.1"}, Status: graph.StatusConfirmed}}, Evidence: []graph.Evidence{good}})
+	web := f.apply(graph.Batch{
+		Subjects: []graph.SubjectInput{{Ref: "web", Kind: "ip", Attrs: map[string]any{"ip": "1.1.1.2"}}},
+		Links:    []graph.LinkInput{{From: "web", To: first.Subjects[0].ID, Rel: "seen_with"}},
+		Evidence: []graph.Evidence{{URL: "https://news.test/a", Label: "article"}},
+	})
 	if len(web.Subjects) != 1 {
 		t.Fatal("an external address is evidence")
 	}
@@ -246,7 +296,7 @@ func TestOwnToolCallIDsResolveToTheCallersOwnResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := f.read(GraphQuery{ID: res.Subjects[0].ID}).Subjects[0]
+	got := f.readSubject(res.Subjects[0].ID)
 	if len(got.Evidence) != 1 || got.Evidence[0].Seq != result {
 		t.Fatalf("evidence=%+v want seq %d", got.Evidence, result)
 	}
@@ -261,8 +311,14 @@ func TestOwnToolCallIDsResolveToTheCallersOwnResults(t *testing.T) {
 func TestWriteMatchingTwoSubjectsIsRefusedWithBothIDs(t *testing.T) {
 	f := newGraphFixture(t, true)
 	a := f.apply(graph.Batch{Subjects: []graph.SubjectInput{{Kind: "app", Attrs: map[string]any{"name": "Alpha", "rule_id": "r1"}}}}).Subjects[0].ID
-	loose := f.apply(graph.Batch{Subjects: []graph.SubjectInput{{Kind: "app", Attrs: map[string]any{"name": "Gamma"}}}}).Subjects[0].ID
-	b := f.apply(graph.Batch{Subjects: []graph.SubjectInput{{Kind: "app", Attrs: map[string]any{"name": "Beta", "rule_id": "r2"}}}}).Subjects[0].ID
+	loose := f.apply(graph.Batch{
+		Subjects: []graph.SubjectInput{{Ref: "g", Kind: "app", Attrs: map[string]any{"name": "Gamma"}}},
+		Links:    []graph.LinkInput{{From: "g", To: a, Rel: "with"}},
+	}).Subjects[0].ID
+	b := f.apply(graph.Batch{
+		Subjects: []graph.SubjectInput{{Ref: "b", Kind: "app", Attrs: map[string]any{"name": "Beta", "rule_id": "r2"}}},
+		Links:    []graph.LinkInput{{From: "b", To: a, Rel: "with"}},
+	}).Subjects[0].ID
 	err := f.applyErr(graph.Batch{Subjects: []graph.SubjectInput{{Kind: "app", Attrs: map[string]any{"name": "Alpha", "rule_id": "r2"}}}})
 	var amb *graph.AmbiguousError
 	if !errors.As(err, &amb) || len(amb.IDs) != 2 || !strings.Contains(err.Error(), a) || !strings.Contains(err.Error(), b) {
@@ -290,7 +346,10 @@ func TestIdentityKeyCannotChangeButCanBeAdded(t *testing.T) {
 	if again.Subjects[0].ID != company.ID {
 		t.Fatalf("the new key does not identify it: %+v", again.Subjects[0])
 	}
-	domain := f.apply(graph.Batch{Subjects: []graph.SubjectInput{{Kind: "domain", Attrs: map[string]any{"domain": "a.test"}}}}).Subjects[0]
+	domain := f.apply(graph.Batch{
+		Subjects: []graph.SubjectInput{{Ref: "d", Kind: "domain", Attrs: map[string]any{"domain": "a.test"}}},
+		Links:    []graph.LinkInput{{From: "d", To: company.ID, Rel: "of"}},
+	}).Subjects[0]
 	if err := f.applyErr(graph.Batch{Subjects: []graph.SubjectInput{{ID: domain.ID, Version: domain.Version, Attrs: map[string]any{"domain": "b.test"}}}}); !errors.Is(err, graph.ErrInvalid) {
 		t.Errorf("a domain became another domain: %v", err)
 	}
@@ -305,7 +364,7 @@ func TestIdentityKeyCannotChangeButCanBeAdded(t *testing.T) {
 func TestRepositoryCredentialIsStoredButMovedOutOfTheAddress(t *testing.T) {
 	f := newGraphFixture(t, true)
 	res := f.apply(graph.Batch{Subjects: []graph.SubjectInput{{Kind: "repo", Attrs: map[string]any{"url": "https://alice:fake-token@git.test/acme/tool.git"}}}})
-	got := f.read(GraphQuery{ID: res.Subjects[0].ID}).Subjects[0]
+	got := f.readSubject(res.Subjects[0].ID)
 	if got.Attrs["url"] != "https://git.test/acme/tool.git" || got.Attrs["credential"] != "alice:fake-token" || got.Name != "acme/tool" {
 		t.Fatalf("attrs=%v name=%q", got.Attrs, got.Name)
 	}
@@ -322,14 +381,18 @@ func TestRepositoryCredentialIsStoredButMovedOutOfTheAddress(t *testing.T) {
 
 func TestAssetKeyedByIPPortProtocolAndHost(t *testing.T) {
 	f := newGraphFixture(t, true)
-	mk := func(ipAddr string, port int, host string) string {
-		return f.apply(graph.Batch{Subjects: []graph.SubjectInput{{Kind: "asset", Attrs: map[string]any{"ip": ipAddr, "port": port, "protocol": "https", "host": host}}}}).Subjects[0].ID
+	mk := func(ipAddr string, port int, host, linkTo string) string {
+		batch := graph.Batch{Subjects: []graph.SubjectInput{{Ref: "n", Kind: "asset", Attrs: map[string]any{"ip": ipAddr, "port": port, "protocol": "https", "host": host}}}}
+		if linkTo != "" {
+			batch.Links = []graph.LinkInput{{From: "n", To: linkTo, Rel: "with"}}
+		}
+		return f.apply(batch).Subjects[0].ID
 	}
-	a := mk("9.9.9.9", 443, "A.test")
-	if b := mk("9.9.9.9", 443, "a.test:443"); a != b {
+	a := mk("9.9.9.9", 443, "A.test", "")
+	if b := mk("9.9.9.9", 443, "a.test:443", ""); a != b {
 		t.Error("explicit default port is another asset")
 	}
-	if c := mk("9.9.9.8", 443, "a.test"); a == c {
+	if c := mk("9.9.9.8", 443, "a.test", a); a == c {
 		t.Error("the same host on another IP merged")
 	}
 	if err := f.applyErr(graph.Batch{Subjects: []graph.SubjectInput{{Kind: "asset", Attrs: map[string]any{"host": "a.test"}}}}); !errors.Is(err, graph.ErrInvalid) {
@@ -351,6 +414,37 @@ func TestBatchIsAtomicAndRefusalChangesNothing(t *testing.T) {
 	}
 	if v := f.read(GraphQuery{Todos: true}); len(v.Todos) != 0 {
 		t.Fatalf("a refused batch left %d to-dos", len(v.Todos))
+	}
+}
+
+func TestANewSubjectIsStoredOnlyAsAnEndOfALink(t *testing.T) {
+	f := newGraphFixture(t, false)
+	pair := graph.Batch{Subjects: []graph.SubjectInput{
+		{Ref: "a", Kind: "ip", Attrs: map[string]any{"ip": "203.0.113.1"}},
+		{Ref: "b", Kind: "ip", Attrs: map[string]any{"ip": "203.0.113.2"}},
+	}}
+	if err := f.applyErr(pair); !errors.Is(err, graph.ErrInvalid) {
+		t.Fatalf("two subjects and no link: %v", err)
+	}
+	if view := f.read(GraphQuery{}); len(view.Subjects) != 0 {
+		t.Fatalf("a refused batch left %d subjects", len(view.Subjects))
+	}
+	seed := f.apply(graph.Batch{Subjects: []graph.SubjectInput{{Ref: "a", Kind: "ip", Attrs: map[string]any{"ip": "203.0.113.1"}}}})
+	if err := f.applyErr(graph.Batch{Subjects: []graph.SubjectInput{{Ref: "b", Kind: "ip", Attrs: map[string]any{"ip": "203.0.113.2"}}}}); !errors.Is(err, graph.ErrInvalid) {
+		t.Fatalf("second subject: %v", err)
+	}
+	linked := f.apply(graph.Batch{
+		Subjects: []graph.SubjectInput{
+			{Ref: "b", Kind: "ip", Attrs: map[string]any{"ip": "203.0.113.2"}},
+			{Ref: "c", Kind: "domain", Attrs: map[string]any{"domain": "example.test"}},
+		},
+		Links: []graph.LinkInput{
+			{From: "b", To: seed.Subjects[0].ID, Rel: "seen_with"},
+			{From: "c", To: "b", Rel: "names"},
+		},
+	})
+	if len(linked.Subjects) != 2 || len(linked.Links) != 2 {
+		t.Fatalf("linked batch=%+v", linked)
 	}
 }
 
@@ -446,11 +540,12 @@ func TestTodoOrderingSettlementAndRules(t *testing.T) {
 	}
 	// Settling stamps what the same batch found.
 	settled := f.apply(graph.Batch{
-		Subjects: []graph.SubjectInput{{Kind: "domain", Attrs: map[string]any{"domain": "acme.test"}}},
+		Subjects: []graph.SubjectInput{{Ref: "d", Kind: "domain", Attrs: map[string]any{"domain": "acme.test"}}},
+		Links:    []graph.LinkInput{{From: "d", To: res.Subjects[0].ID, Rel: "of"}},
 		Todos:    []graph.TodoInput{{ID: first, Version: 1, Status: graph.TodoDone, Result: "found the domain"}},
 		Evidence: []graph.Evidence{ev},
 	})
-	found := f.read(GraphQuery{ID: settled.Subjects[0].ID}).Subjects[0]
+	found := f.readSubject(settled.Subjects[0].ID)
 	if found.FoundByTodo != first {
 		t.Fatalf("found_by_todo=%q want %q", found.FoundByTodo, first)
 	}
@@ -462,13 +557,14 @@ func TestTodoOrderingSettlementAndRules(t *testing.T) {
 	third, thirdVersion := id("third")
 	second, secondVersion = id("second")
 	two := f.apply(graph.Batch{
-		Subjects: []graph.SubjectInput{{Kind: "domain", Attrs: map[string]any{"domain": "two.test"}}},
+		Subjects: []graph.SubjectInput{{Ref: "d2", Kind: "domain", Attrs: map[string]any{"domain": "two.test"}}},
+		Links:    []graph.LinkInput{{From: "d2", To: res.Subjects[0].ID, Rel: "of"}},
 		Todos: []graph.TodoInput{
 			{ID: third, Version: thirdVersion, Status: graph.TodoDone}, {ID: second, Version: secondVersion, Status: graph.TodoFailed, Result: "tried"},
 		},
 		Evidence: []graph.Evidence{ev},
 	})
-	if f.read(GraphQuery{ID: two.Subjects[0].ID}).Subjects[0].FoundByTodo != "" {
+	if f.readSubject(two.Subjects[0].ID).FoundByTodo != "" {
 		t.Error("an ambiguous settlement was attributed")
 	}
 	if err := f.applyErr(graph.Batch{Todos: []graph.TodoInput{{Title: "x", Before: "nope"}}}); !errors.Is(err, graph.ErrInvalid) {
@@ -640,7 +736,7 @@ func TestRewoundEvidenceReadsAsUnavailable(t *testing.T) {
 	if err := f.s.TruncateFromEventSeq(f.thread.ID, drop.Seq); err != nil {
 		t.Fatal(err)
 	}
-	got := f.read(GraphQuery{ID: res.Subjects[0].ID}).Subjects[0].Evidence
+	got := f.readSubject(res.Subjects[0].ID).Evidence
 	state := map[int64]bool{}
 	for _, e := range got {
 		if e.URL == "" {
@@ -657,11 +753,17 @@ func TestRewoundEvidenceReadsAsUnavailable(t *testing.T) {
 func TestReadPagingSearchAndSingleSubject(t *testing.T) {
 	f := newGraphFixture(t, true)
 	var subjects []graph.SubjectInput
+	var links []graph.LinkInput
 	for i := 0; i < 5; i++ {
-		subjects = append(subjects, graph.SubjectInput{Kind: "domain", Attrs: map[string]any{"domain": fmt.Sprintf("host%d.test", i)}})
+		ref := fmt.Sprintf("h%d", i)
+		subjects = append(subjects, graph.SubjectInput{Ref: ref, Kind: "domain", Attrs: map[string]any{"domain": fmt.Sprintf("host%d.test", i)}})
+		if i > 0 {
+			links = append(links, graph.LinkInput{From: ref, To: fmt.Sprintf("h%d", i-1), Rel: "next"})
+		}
 	}
-	subjects = append(subjects, graph.SubjectInput{Kind: "company", Attrs: map[string]any{"name": "Zed_100% Corp", "reg_no": "ab-77"}})
-	res := f.apply(graph.Batch{Subjects: subjects})
+	subjects = append(subjects, graph.SubjectInput{Ref: "co", Kind: "company", Attrs: map[string]any{"name": "Zed_100% Corp", "reg_no": "ab-77"}})
+	links = append(links, graph.LinkInput{From: "co", To: "h0", Rel: "of"})
+	res := f.apply(graph.Batch{Subjects: subjects, Links: links})
 	page := f.read(GraphQuery{Limit: 2})
 	if len(page.Subjects) != 2 || page.Total != 6 || !page.More {
 		t.Fatalf("page=%d total=%d more=%v", len(page.Subjects), page.Total, page.More)
@@ -711,7 +813,7 @@ func TestConfirmedClaimCitesTheCallersOwnToolResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := f.read(GraphQuery{ID: res.Subjects[0].ID}).Subjects[0]
+	got := f.readSubject(res.Subjects[0].ID)
 	if len(got.Evidence) != 1 || got.Evidence[0].Seq != readSeq || got.Evidence[0].Seq == graphSeq {
 		t.Fatalf("evidence = %+v, want the file result %d", got.Evidence, readSeq)
 	}
@@ -721,6 +823,36 @@ func TestConfirmedClaimCitesTheCallersOwnToolResult(t *testing.T) {
 		Subjects:       []graph.SubjectInput{{Kind: "ip", Status: graph.StatusConfirmed, Attrs: map[string]any{"ip": "203.0.113.11"}}},
 	}); !errors.Is(err, graph.ErrInvalid) {
 		t.Fatalf("a confirmed subject with no tool result of its own: %v", err)
+	}
+}
+
+func TestProbeGraphAcceptsABatchWithoutCommittingIt(t *testing.T) {
+	f := newGraphFixture(t, false)
+	// A done to-do without evidence is the refusal the probe has to catch.
+	refused := graph.Batch{
+		Todos:    []graph.TodoInput{{Title: "finish", Status: graph.TodoDone}},
+		Subjects: []graph.SubjectInput{ip("203.0.113.41")},
+	}
+	if err := f.s.ProbeGraph(context.Background(), f.caller(f.thread, f.turn, "manager"), refused); err == nil {
+		t.Fatal("a done to-do without evidence was accepted")
+	}
+	if view := f.read(GraphQuery{All: true, Limit: -1}); view.Revision != 0 || len(view.Subjects) != 0 || len(view.Todos) != 0 {
+		t.Fatalf("a refused probe left %+v", view)
+	}
+	batch := graph.Batch{
+		Evidence: []graph.Evidence{f.event(f.thread, f.turn, "found it")},
+		Subjects: []graph.SubjectInput{ip("203.0.113.40")},
+		Todos:    []graph.TodoInput{{Title: "note it", Status: graph.TodoDone}},
+	}
+	if err := f.s.ProbeGraph(context.Background(), f.caller(f.thread, f.turn, "manager"), batch); err != nil {
+		t.Fatal(err)
+	}
+	if view := f.read(GraphQuery{All: true, Limit: -1}); view.Revision != 0 || len(view.Subjects) != 0 {
+		t.Fatalf("an accepted probe committed %+v", view)
+	}
+	res := f.apply(batch)
+	if res.Revision != 1 || len(res.Subjects) != 1 || len(res.Todos) != 1 || res.Todos[0].Status != graph.TodoDone {
+		t.Fatalf("the official write: %+v", res)
 	}
 }
 

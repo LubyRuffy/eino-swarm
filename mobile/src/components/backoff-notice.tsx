@@ -11,6 +11,7 @@ export function BackoffNotice({ block, text }: { block: CompactBlock; text: stri
   const id = useId()
   const context = block.backoff
   const reason = context && scheduleAnswerBackoffReason(context)
+  const lastReason = context?.lastFailure?.detail && scheduleAnswerBackoffReason(context.lastFailure)
   return (
     <div data-testid="backoff-notice" className="min-w-0 text-[11px] text-muted-foreground">
       <p>{text}</p>
@@ -22,6 +23,7 @@ export function BackoffNotice({ block, text }: { block: CompactBlock; text: stri
       <div id={id} hidden={!open} role="region" aria-label={t("backoff.details")} className="space-y-1 leading-relaxed">
         {context?.attempt ? <p>{t("backoff.attempt", { count: context.attempt })}</p> : null}
         {reason ? <p>{t(reason)}</p> : null}
+        {lastReason ? <p>{t(lastReason)}</p> : null}
       </div>
     </div>
   )

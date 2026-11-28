@@ -128,17 +128,15 @@ func TestLearnContextCeilingIgnoresAnEmptyRejection(t *testing.T) {
 func TestCompactThresholdFollowsTheLiveWindow(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
-	// Mock window is 128000. 80% is 102400, still above the output reserve.
-	if got := e.compactThreshold(th.ID); got != 102_400 {
-		t.Fatalf("mock window trigger = %d, want 102400", got)
+	// The 128k mock window must leave 64k for generation.
+	if got := e.compactThreshold(th.ID); got != 64_000 {
+		t.Fatalf("mock window trigger = %d, want 64000", got)
 	}
 	e.Config().Models.Providers[0].ContextWindow = 0
-	if !e.learnContextCeiling(th.ProviderID, th.Model, errors.New("maximum context length is 32000 tokens"), 40000) {
+	if !e.learnContextCeiling(th.ProviderID, th.Model, errors.New("maximum context length is 96000 tokens"), 100_000) {
 		t.Fatal("learn")
 	}
-	// 80% of 32k is 25600. The default completion cap is 16384, larger than
-	// the 8192 reserve, and the request sends that cap as max_tokens.
-	if got := e.compactThreshold(th.ID); got != 32_000-16_384 {
-		t.Fatalf("after learn trigger = %d, want %d", got, 32_000-16_384)
+	if got := e.compactThreshold(th.ID); got != 32_000 {
+		t.Fatalf("after learn trigger = %d, want 32000", got)
 	}
 }

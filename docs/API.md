@@ -317,7 +317,7 @@ Client startup metadata. During recovery, clients poll it until `startup` is `re
              "compact_provider": "", "compact_model": "",
              "context_char_budget": 80000, "compact_keep_messages": 6,
              "auto_compact_tokens": 80000, "compact_output_reserve": 8192,
-             "max_completion_tokens": 16384,
+             "max_completion_tokens": 64000,
              "goal_max_auto_turns": 12,
              "goal_session_max_iterations": 40, "goal_auto_compact_percent": 80,
              "schedule_min_interval_seconds": 30, "schedule_tick_ms": 1000,
@@ -576,7 +576,7 @@ provider carries `has_api_key` and `ready` instead.
             "compact_provider": "", "compact_model": "",
             "context_char_budget": 80000, "compact_keep_messages": 6,
             "auto_compact_tokens": 80000, "compact_output_reserve": 8192,
-            "max_completion_tokens": 16384,
+            "max_completion_tokens": 64000,
             "goal_max_auto_turns": 12,
             "goal_session_max_iterations": 40, "goal_auto_compact_percent": 80,
             "schedule_min_interval_seconds": 30, "schedule_tick_ms": 1000,
@@ -1445,6 +1445,17 @@ bodies are stripped; `tool_delta` is one line; other text is capped by
 `event_chars` (default 4000). A frame over 64KiB is dropped rather than
 tearing the link.
 
+`edit_input {thread_id, from_event_seq}` reads one stored `user_message` into
+`event` with its full `text` and `has_images`. The sequence must be positive.
+An input exceeding the sealed reply budget returns `too_large`. Add a
+`replacement` string to use the same rewind and start path as
+`POST /api/threads/:id/turns`, retaining the original images. An empty
+`replacement` is valid for an image-only prompt. A missing or already replaced
+sequence returns `not_found`, a non-user event returns `bad_request`, and a
+goal, plan, or image command returns `edit_input_command`. On success the
+normal watch delivers the stored `rewound` marker and the new turn. Older PCs
+return `unknown_op`, and the phone asks for an update.
+
 `project_get` takes `project_id` and returns one `project` with name,
 `system_prompt`, `workdir`, `resolved_workdir` and `memory_enabled`. It also
 returns the PC's `memory_available` global setting. An oversized explicit read is `too_large`;
@@ -1469,11 +1480,15 @@ Conversation detail includes `project_id` for a project conversation.
 `graph` reads the work graph ([Work graph](GRAPH.md)) of a conversation or a
 project: send exactly one of `thread_id` and `project_id`, otherwise
 `bad_request`; an unknown ID is `not_found`. `since` is the revision the phone
-already holds. When it equals the current revision the reply is only
-`graph: {revision, unchanged: true}`, so polling costs one small frame.
-Otherwise `graph` is `{revision, subjects, links, todos, total, more}` with
+already holds and `graph_owner` is the owner of that picture. The reply is
+only `graph: {owner, revision, unchanged: true}` when both still match the
+current graph, so moving a conversation onto another graph with the same
+revision cannot keep the old picture. A request that omits `graph_owner`
+always receives the current picture. Otherwise `graph` is
+`{owner, revision, subjects, links, todos, total, more}` with
 the same rows as the HTTP snapshot below, at most 2000 per list; `total` and
-`more` describe the subjects. Credential attribute values are never sent, only
+`more` describe the subjects. `owner` is the project or conversation that
+owns the graph the phone should send back next time. Credential attribute values are never sent, only
 their names in each subject's `credentials`. A graph that does not fit one
 reply frame is refused with `graph_too_large` instead of being cut, so the
 phone never draws half of one. `meta` carries `graph_available` while
@@ -1787,6 +1802,7 @@ Query parameters, all optional:
 |---|---|
 | `id` | one subject in full: the subject, up to 2000 of its links, the subjects they reach, and the to-dos about it. An unknown subject is `404`. Takes precedence over `todos` |
 | `todos=1` | the ordered to-do list instead of subjects |
+| `preview=1` | opt in to the desktop's temporary progress frame on an unfiltered, unpaged read |
 | `status` | with `todos=1`, only to-dos in this status (`open`, `doing`, `done`, `failed`) |
 | `text` | only subjects whose name or an identity key contains this text, case-insensitively |
 | `offset`, `limit` | page subjects, or to-dos with `todos=1`. A missing `limit` returns everything up to 2000 rows; `0` returns the default page of 50. A non-numeric value or a negative `offset` is `400` |
@@ -1816,13 +1832,30 @@ rows the query matched before paging (subjects, or to-dos with `todos=1`), and
 `more` is true when rows remain after this page. `status` is `lead`,
 `confirmed` or `retracted` on a subject. An `evidence` entry is
 `{thread_id, turn_id, seq}` for an event of a conversation or `{url}`, with an
-optional `label`, and `unavailable: true` when its event no longer exists (after
-a rewind, for example). Every row also carries who wrote it (`thread_id`,
+optional `label`, and `unavailable: true` when its original event no longer exists.
+If a different turn reuses its sequence after a rewind, the saved `turn_id`
+still identifies the original event. Every row also carries who wrote it (`thread_id`,
 `turn_id`, `agent_id`, `generation`) and the `updated_*` counterparts on
 subjects and to-dos. Attributes the catalog marks `secret` are left out of
 `attrs`; their names are listed in the subject's `credentials` (omitted when there are none).
 
-No HTTP route writes the graph: the model's `update_graph` and `read_graph`
+`POST /api/threads/:id/graph/extract` starts one turn that walks that
+conversation's completed rounds in order. Each round is the stored request and
+response; the model may only record what that round already established, and
+the original work is not run again. `clear=1` deletes that conversation's
+working graph (the project's graph when the conversation is in a project)
+before the walk and only after admission. The desktop sends the confirmed graph
+`owner_id` with `clear=1`. If the conversation now belongs to another graph,
+the server returns `409` `graph_conflict`. A busy conversation returns `409`
+`busy`, even if it is waiting for a human answer. A planning conversation
+returns `400` `graph_invalid` because its graph is read-only. A refusal preserves the
+graph. The clear commits a
+newer revision with no subjects, so a client holding the previous picture
+refetches the empty one. Without `clear`, the route writes no graph rows
+itself. The reply is `202` with the new `turn`. Work records switched off is
+`409` `graph_disabled`. An unknown conversation is `404`.
+
+No other HTTP route writes the graph: the model's `update_graph` and `read_graph`
 tools do. The shared error map returns `400` with `code: "graph_invalid"` for a
 refused graph request and `409` with `code: "graph_conflict"` for a stale
 version or a replayed tool call with a different body. A refusal inside a turn
@@ -1838,11 +1871,15 @@ phone and the `update_graph` tool definition share.
 ### `graph_updated` frame
 
 `GET /api/threads/:id/events?graph=1` also delivers named `graph_updated` frames
-with `{"thread_id":"th_…","revision":7}`: one after the replay, before `ready`,
-and another whenever the owner's graph revision changes (sampled roughly every
-200 ms, so intermediate revisions may be skipped). The frame has no SSE `id:` and
+with `{"thread_id":"th_…","owner_id":"pj_…","revision":7}`. One follows the
+replay before `ready`, and another follows a change of owner or revision
+(sampled roughly every 200 ms, so intermediate revisions may be skipped).
+A new owner can have the same or a lower revision. The frame has no SSE `id:` and
 never enters the replay cursor. It carries no rows: refetch
-`GET /api/threads/:id/graph`. Without `graph=1` the stream sends no such frame.
+`GET /api/threads/:id/graph?preview=1`. The same-revision frame with `preview:true`
+requests a fresh desktop picture when a temporary frame appears or clears.
+Ordinary graph reads and paired RPC return committed data. Without `graph=1`
+the stream sends no such frame.
 
 ### `DELETE /api/projects/:id` → `204`
 
@@ -2364,9 +2401,10 @@ Responds like `GET`.
 The same fold also runs **during a turn**, before a manager model call, when
 billed or estimated prompt tokens exceed the compact trigger. A confirmed
 context window triggers at `goal_auto_compact_percent` of that window (default
-80), and at least `max(compact_output_reserve, max_completion_tokens)` (defaults 8192 and 16384) under the
-ceiling. The completion cap counts: the request sends it as
-`max_tokens`, and the endpoint rejects `input + max_tokens` over the window.
+80), with `max(compact_output_reserve, max_completion_tokens)` (defaults 8192
+and 64000) reserved when the window exceeds that amount. The completion cap
+counts toward the window. Chat Completions sends it as `max_tokens` and
+Responses sends it as `max_output_tokens`.
 An unknown window (`0`) uses `swarm.auto_compact_tokens` (default
 80000). A context-length rejection lowers that model's stored window to the
 stated maximum, or to the rejected prompt size when the error has no number,
@@ -2982,6 +3020,10 @@ Generation interruption `reason` is `engine_restart`, `process_exit`,
 or `unknown`. `detail` contains the recorded cause when available. A process
 exit alone does not prove its trigger. A gateway safety refusal has empty
 `detail`, with the original HTTP failure available in Trace model calls.
+An incomplete Responses result uses `output_limit` when the upstream reason
+is `max_output_tokens`. Other incomplete results use `model_error`. The model
+call in Trace retains the recognized reason and the Gateway request ID when
+available on the stream.
 `recovery` is `pending` (recovery is arranged), `recovered` (execution resumed)
 or `none` (no recovery is arranged). Lifecycle events retain the output's
 original turn for Trace even if its worker outlives that manager check.
@@ -3254,17 +3296,23 @@ retain their prior recovery meaning. A restored candidate already at any limit
 is deferred before another model request.
 
 Candidate `model_backoff` records have `agent_id:"schedule-answer-policy"` and
-text JSON `{scope:"schedule_answer",attempt,wait_ms,code,candidate_id,detail?}`.
+text JSON `{scope:"schedule_answer",attempt,wait_ms,code,candidate_id,detail?,last_failure?}`.
 Normal retries use `classification_unavailable` or `classification_invalid`;
 the durable cap uses `classification_deferred` with `wait_ms:0`. Invalid retry
 `detail` is limited to `missing_message`, `json`, `trailing`, `claim_list`,
 `claim_meaning`, `claim_shape`, `unspecified_scope_quote`, `scope_quote`,
 `schedule_id`, `quote_not_in_candidate`, `next_run_at` or `decision_response`. The deferred receipt
 instead identifies the exhausted limit with `detail:"unavailable"`, `"invalid"`
-or `"attempts"`. No raw Cause/error string, model response, quote, scope quote
-or candidate prose enters `detail`. Markdown fences, extra fields and approximate
-quotes remain invalid. Desktop and phone localize these reasons in retry details;
-older events without `detail` keep the generic invalid-response message.
+or `"attempts"`. The same receipt carries the final attempt's
+`last_failure: {code, detail?}`. Its code is `classification_unavailable`
+or `classification_invalid`, and the latter uses the same closed detail
+values as an invalid retry. The field may be absent on older receipts or when
+recovery has no durable evidence of the final attempt. Diagnostics carry
+neither raw errors nor model response text, quotes, or candidate prose. Markdown fences, extra fields and approximate
+quotes remain invalid. Desktop and phone identify invalid responses and failed requests in the
+deferral notice and show the limit and any specific response error in Retry
+details. Legacy deferrals with neither a failure code nor a single-kind cap
+use a neutral deferral notice.
 Deferral still means the retained answer is unpublished, with no promise to
 retry it. Chat distinguishes candidate recovery from service cooldowns.
 HTTP 200 with invalid classifier JSON remains diagnosable

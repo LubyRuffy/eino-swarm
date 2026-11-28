@@ -354,7 +354,7 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 		return nil, err
 	}
 	if in.FromEventSeq == 0 {
-		if !in.HistoryReport && !in.ContinueGoal && !in.ImplementPlan && !in.ContinueSchedule && rt.awaitingAnswer() {
+		if !in.HistoryReport && !in.ContinueGoal && !in.ImplementPlan && !in.ContinueSchedule && !in.ExtractGraph && rt.awaitingAnswer() {
 			if err := e.AnswerTurnText(threadID, in.Text); err != nil {
 				return nil, err
 			}
@@ -371,6 +371,14 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 			return nil, ErrBusy
 		}
 	}
+	if in.ExtractGraph {
+		if th.PlanMode {
+			return nil, errGraphReplayReadOnly
+		}
+		if in.ExtractClear && in.extractOwner != "" && in.extractOwner != store.GraphOwnerID(th.ProjectID, th.ID) {
+			return nil, errGraphReplayOwnerChanged
+		}
+	}
 	caption := strings.TrimSpace(in.Text)
 	text, files, err := e.hydrateUserInput(threadID, in, "engine: an empty message has nothing to answer")
 	if err != nil {
@@ -384,7 +392,7 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 			return nil, err
 		}
 	}
-	if !in.ContinueGoal && !in.ImplementPlan && !in.ContinueSchedule && hasOpenGoal(th) {
+	if !in.ContinueGoal && !in.ImplementPlan && !in.ContinueSchedule && !in.ExtractGraph && hasOpenGoal(th) {
 		resetGoalBudget(e, th)
 	}
 	if err := e.rememberShownModel(th, in.ComposerModel); err != nil {
@@ -451,6 +459,8 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 		GoalContinue:     in.ContinueGoal,
 		ScheduleContinue: in.ContinueSchedule,
 		ScheduleRunID:    in.ScheduleRunID,
+		GraphReplay:      in.ExtractGraph,
+		GraphClear:       in.ExtractClear,
 	}
 	e.freezeGraph(turn, th.PlanMode)
 	if err := e.store.CreateTurn(turn); err != nil {
@@ -527,7 +537,7 @@ func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, err
 	if in.standaloneSchedule == nil {
 		_ = e.store.TouchThread(threadID)
 	}
-	if !in.ContinueGoal && !in.ImplementPlan && !in.ContinueSchedule {
+	if !in.ContinueGoal && !in.ImplementPlan && !in.ContinueSchedule && !in.ExtractGraph {
 		seed := titleFromInput(caption, modelImages, files)
 		if e.autoTitle(th, seed) {
 			e.scheduleTitle(th.ID, turn, seed, "")
@@ -768,7 +778,10 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 			e.republishWorkerSurface(reg, toolset, pc, turn)
 		}
 	}
-	if managerAdmitted {
+	if turn.GraphReplay && runErr == nil {
+		res.Final, runErr = rt.replayGraph(ctx, turn)
+		managerAdmitted = false
+	} else if managerAdmitted {
 		res, runErr = rt.runManager(ctx, turn, reg, acc, toolset, pc, messages, resumed, snapshots...)
 	}
 	stopBeat()
@@ -879,8 +892,10 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	// the composer already looks idle, and a queued follow-up must start
 	// rather than sit there looking stuck. Compact still waits on the
 	// same gate if the next Generate actually needs the briefing.
-	e.scheduleSessionAndReview(rt.threadID, turn, status, pc, res.Final)
-	pursue := allowGoalRetry && !(turn.ScheduleContinue && status == store.TurnError) && shouldPursueAfterTurn(status, runErr, rt.pursuingOpenGoal())
+	if !turn.GraphReplay {
+		e.scheduleSessionAndReview(rt.threadID, turn, status, pc, res.Final)
+	}
+	pursue := !turn.GraphReplay && allowGoalRetry && !(turn.ScheduleContinue && status == store.TurnError) && shouldPursueAfterTurn(status, runErr, rt.pursuingOpenGoal())
 	started := false
 	if pursue {
 		started = rt.runLateSteerMessages(store.TurnDone, leftover)
@@ -894,7 +909,9 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	if !started && pursue {
 		rt.continueGoal(store.TurnDone)
 	}
-	e.scheduleComposerPrediction(rt.threadID, turn, status, final.SuppressCompletion, started, res.Final)
+	if !turn.GraphReplay {
+		e.scheduleComposerPrediction(rt.threadID, turn, status, final.SuppressCompletion, started, res.Final)
+	}
 }
 
 // runLateSteers turns steering that the manager never read into a turn of its

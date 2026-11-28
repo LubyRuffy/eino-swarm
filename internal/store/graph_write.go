@@ -71,35 +71,77 @@ func (s *Store) ApplyGraph(ctx context.Context, caller GraphCaller, batch graph.
 		replayed bool
 	)
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := graphOwnerCheck(tx, caller); err != nil {
-			return err
-		}
-		if caller.ReceiptKey != "" {
-			frozen, found, err := replayGraphReceipt(tx, caller)
-			if err != nil {
-				return err
-			}
-			if found {
-				result, replayed = frozen, true
-				return nil
-			}
-		}
-		evidence, err := resolveGraphEvidence(tx, caller, batch)
-		if err != nil {
-			return err
-		}
-		w := &graphWriter{tx: tx, cat: cat, caller: caller, evidence: evidence, now: time.Now().UTC(),
-			subjectRefs: map[string]string{}, todoRefs: map[string]string{}}
-		if err := w.apply(batch); err != nil {
-			return err
-		}
-		result = w.result
-		return w.commit(&result)
+		var err error
+		result, replayed, err = applyGraph(tx, cat, caller, batch)
+		return err
 	})
 	if err != nil {
 		return graph.Result{}, false, fmt.Errorf("store: write graph: %w", err)
 	}
 	return result, replayed, nil
+}
+
+// errGraphProbe rolls a validation transaction back after the batch was accepted.
+var errGraphProbe = errors.New("graph probe")
+
+// ProbeGraph runs the write and rolls it back. A nil error means the batch would
+// commit; the database is unchanged either way. The official write is ApplyGraph.
+func (s *Store) ProbeGraph(ctx context.Context, caller GraphCaller, batch graph.Batch) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := batch.Valid(); err != nil {
+		return err
+	}
+	if (caller.ReceiptKey == "") != (caller.ReceiptHash == "") {
+		return fmt.Errorf("%w: a write receipt needs both key and hash", graph.ErrInvalid)
+	}
+	cat, err := graph.Default()
+	if err != nil {
+		return err
+	}
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if _, _, err := applyGraph(tx, cat, caller, batch); err != nil {
+			return err
+		}
+		return errGraphProbe
+	})
+	if errors.Is(err, errGraphProbe) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("store: write graph: %w", err)
+	}
+	return nil
+}
+
+func applyGraph(tx *gorm.DB, cat *graph.Catalog, caller GraphCaller, batch graph.Batch) (graph.Result, bool, error) {
+	if err := graphOwnerCheck(tx, caller); err != nil {
+		return graph.Result{}, false, err
+	}
+	if caller.ReceiptKey != "" {
+		frozen, found, err := replayGraphReceipt(tx, caller)
+		if err != nil {
+			return graph.Result{}, false, err
+		}
+		if found {
+			return frozen, true, nil
+		}
+	}
+	evidence, err := resolveGraphEvidence(tx, caller, batch)
+	if err != nil {
+		return graph.Result{}, false, err
+	}
+	w := &graphWriter{tx: tx, cat: cat, caller: caller, evidence: evidence, now: time.Now().UTC(),
+		subjectRefs: map[string]string{}, todoRefs: map[string]string{}}
+	if err := w.apply(batch); err != nil {
+		return graph.Result{}, false, err
+	}
+	result := w.result
+	if err := w.commit(&result); err != nil {
+		return graph.Result{}, false, err
+	}
+	return result, false, nil
 }
 
 // graphOwnerCheck refuses a write whose conversation or turn is gone, belongs
@@ -198,7 +240,40 @@ func (w *graphWriter) apply(batch graph.Batch) error {
 		}
 		w.result.Links = append(w.result.Links, res)
 	}
-	return nil
+	return w.newSubjectsAreLinked()
+}
+
+// newSubjectsAreLinked refuses a subject that this batch created and did not
+// attach to anything. A node is one end of a link. The single subject of an
+// empty graph is the exception, because there is nothing else to connect.
+func (w *graphWriter) newSubjectsAreLinked() error {
+	if len(w.createdSubjects) == 0 {
+		return nil
+	}
+	linked := map[string]struct{}{}
+	for _, link := range w.result.Links {
+		linked[link.From] = struct{}{}
+		linked[link.To] = struct{}{}
+	}
+	var alone []string
+	for _, id := range w.createdSubjects {
+		if _, ok := linked[id]; !ok {
+			alone = append(alone, id)
+		}
+	}
+	if len(alone) == 0 {
+		return nil
+	}
+	if len(alone) == 1 && len(w.createdSubjects) == 1 {
+		var others int64
+		if err := w.tx.Model(&GraphSubject{}).Where("owner_id = ? AND id <> ?", w.owner(), alone[0]).Count(&others).Error; err != nil {
+			return err
+		}
+		if others == 0 {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: a new subject needs a link to another subject", graph.ErrInvalid)
 }
 
 // commit stamps the settlement, saves the list order and the revision.
@@ -405,7 +480,12 @@ func (w *graphWriter) updateSubject(in graph.SubjectInput, kind *graph.Kind, cur
 		}
 	}
 	status := current.Status
-	if in.Status != "" && in.Status != current.Status {
+	// The engine sets HostRetract after reading this lead. An ordinary status
+	// change still needs the current version, and this one must not turn an
+	// additive attribute merge into an overwrite.
+	if in.HostRetract && current.Status == graph.StatusLead {
+		status = graph.StatusRetracted
+	} else if in.Status != "" && in.Status != current.Status {
 		switch {
 		case versioned:
 			status = in.Status
@@ -437,7 +517,7 @@ func (w *graphWriter) updateSubject(in graph.SubjectInput, kind *graph.Kind, cur
 	}
 	changed := !sameAttrs(stored, next) || status != current.Status
 	evidence := unionEvidence(current.Evidence, w.evidence)
-	if !changed && len(evidence) == len(current.Evidence) {
+	if !changed && slices.Equal(evidence, current.Evidence) {
 		res.Name, res.Version = current.Name, current.Version
 		w.noteSubjectRef(in.Ref, current.ID)
 		return res, nil
@@ -547,7 +627,7 @@ func (w *graphWriter) link(in graph.LinkInput) (graph.LinkResult, error) {
 			}
 		}
 		evidence := unionEvidence(row.Evidence, w.evidence)
-		if !sameAttrs(row.Attrs, merged) || len(evidence) != len(row.Evidence) {
+		if !sameAttrs(row.Attrs, merged) || !slices.Equal(evidence, row.Evidence) {
 			if err := w.tx.Model(&GraphLink{}).Where("id = ?", row.ID).
 				UpdateColumns(map[string]any{"attrs": attrsJSON(merged), "evidence": evidenceJSON(evidence)}).Error; err != nil {
 				return graph.LinkResult{}, err

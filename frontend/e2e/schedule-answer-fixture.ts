@@ -59,7 +59,7 @@ export async function startScheduleAnswerFixture({ secondPolicyDelayMS = 0, seco
           const unsupported = checks === 1 || uncorrected
           const localClaim = { quote: unsupported ? unsupportedScheduleAnswer : confirmedCheck, scope: "unspecified", new: true, every_s: 90,
             stance: "affirmed", temporal: "current", attribution: "assistant" }
-          const externalClaim = { quote: externalObservation, scope: "external", scope_quote: "The archive service", every_s: 45,
+          const externalClaim = { quote: externalObservation, scope: "external", scope_quote: "archive service", every_s: 45,
             stance: "affirmed", temporal: "current", attribution: "assistant" }
           policy(res, { claims: unsupported ? [localClaim] : [externalClaim, localClaim] })
           return

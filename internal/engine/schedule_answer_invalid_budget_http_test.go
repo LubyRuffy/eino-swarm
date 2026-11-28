@@ -114,15 +114,21 @@ func TestMalformedClassifierBudgetsPreserveCommittedSchedulingAndPrivateProse(t 
 				}
 				var body struct {
 					Code, Detail, CandidateID string
-					WaitMS                    int64 `json:"wait_ms"`
+					LastFailure               *struct{ Code, Detail string } `json:"last_failure"`
+					WaitMS                    int64                          `json:"wait_ms"`
 				}
 				if err := json.Unmarshal([]byte(event.Text), &body); err != nil {
 					t.Fatal(err)
 				}
 				if body.Code == "classification_deferred" {
 					deferred++
-					if body.Detail != tc.detail || body.WaitMS != 0 {
-						t.Fatalf("deferral omitted the exhausted budget: %+v", event)
+					code, detail := "classification_unavailable", ""
+					if tc.outcomes[len(tc.outcomes)-1] == "invalid" {
+						code, detail = "classification_invalid", "json"
+					}
+					if body.Detail != tc.detail || body.WaitMS != 0 || body.LastFailure == nil ||
+						body.LastFailure.Code != code || body.LastFailure.Detail != detail {
+						t.Fatalf("deferral omitted the exhausted budget or last failure: %+v", event)
 					}
 				}
 				if body.Code == "classification_invalid" && body.Detail != "json" {

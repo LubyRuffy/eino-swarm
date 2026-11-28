@@ -239,7 +239,7 @@ function applyLiveEvent(view: PhoneView, ev: RemoteEvent, status?: WatchStatus):
   }
 }
 
-/** Another client resent an earlier message, so the host removed every row
+/** An earlier message was resent, so the host removed every row
  *  from the cut on, along with the turn that was streaming. Rows below a cut
  *  at or before the oldest loaded one are still stored and stay pageable. */
 function applyRewind(view: PhoneView, ev: RemoteEvent, cut: number): PhoneView {
@@ -247,6 +247,12 @@ function applyRewind(view: PhoneView, ev: RemoteEvent, cut: number): PhoneView {
   const roster = pageRoster(view.roster, events).filter((row) => row.seq < cut || (ev.seq > 0 && row.seq >= ev.seq))
   const blocks = foldPage(events, roster)
   const unloaded = view.oldestSeq === 0 || view.oldestSeq >= cut
+  const removedTurns = new Set(view.events.filter((row) =>
+    row.seq >= cut && (ev.seq <= 0 || row.seq < ev.seq)).map((row) => row.turn_id))
+  const detail = view.detail && {
+    ...view.detail,
+    turns: view.detail.turns?.filter((turn) => !removedTurns.has(turn.id)),
+  }
   return {
     ...view,
     lastSeq: Math.max(view.lastSeq, ev.seq),
@@ -256,7 +262,7 @@ function applyRewind(view: PhoneView, ev: RemoteEvent, cut: number): PhoneView {
     roster,
     blocks,
     historyWork: view.historyWork.flatMap((range) => range.from >= cut ? [] : [{ ...range, through: Math.min(range.through, cut - 1) }]),
-    detail: view.detail ? askDetail(view.detail, blocks) : view.detail,
+    detail: askDetail(detail, blocks),
   }
 }
 

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -57,7 +58,51 @@ func (k *Kind) Clean(attrs map[string]any) (map[string]any, error) {
 			}
 		}
 	}
+	if err := k.rejectJoinedName(out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// rejectJoinedName keeps a login, a data object and a generic name as one
+// thing. A host glued on with @, a bare address, or a phrase is another
+// subject or a to-do.
+func (k *Kind) rejectJoinedName(attrs map[string]any) error {
+	switch k.ID {
+	case "other":
+		if name, _ := attrs["name"].(string); ExplanationName(name) {
+			return invalid("other names one thing; a phrase belongs on a to-do")
+		}
+	case "account":
+		name, _ := attrs["name"].(string)
+		if name == "" {
+			return nil
+		}
+		if strings.Contains(name, "@") {
+			return invalid("an account name is the login; a host is its own subject")
+		}
+		if _, err := NormalizeIP(name); err == nil {
+			return invalid("an account name is the login; an address is its own subject")
+		}
+		if ExplanationName(name) {
+			return invalid("an account name is the login; a phrase belongs on a to-do")
+		}
+	case "table":
+		if name, _ := attrs["name"].(string); ExplanationName(name) {
+			return invalid("a table name is one table, column or index")
+		}
+	}
+	return nil
+}
+
+// ExplanationName reports a label that explains work instead of naming a thing.
+// A colon, an equals sign, a parenthesis or a space makes it a phrase. A
+// thing's name has none of them. The same test decides what the panel draws.
+func ExplanationName(name string) bool {
+	if strings.ContainsAny(name, ":：=＝()（）") {
+		return true
+	}
+	return strings.IndexFunc(name, unicode.IsSpace) >= 0
 }
 
 func stripUserinfo(address string) (cleaned, credential string) {

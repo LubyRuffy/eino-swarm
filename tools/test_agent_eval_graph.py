@@ -54,6 +54,20 @@ class GraphCountTest(unittest.TestCase):
             {"type": "graph_count", "of": "todos", "status": "done", "min": 1}]}
         self.assertTrue(grade.run_checks([any_of], Path("."), "", [], {}, GRAPH)[0]["ok"])
 
+    def test_component_count_requires_a_complete_graph_with_known_subject_ids(self):
+        check = {"of": "components", "min": 1, "max": 1}
+        partial = {"subjects": [{"id": "a"}], "links": [], "more": True}
+        dangling = {"subjects": [{"id": "a"}], "links": [{"from": "a", "to": "missing"}]}
+        duplicate = {"subjects": [{"id": "a"}, {"id": "a"}], "links": []}
+        for graph, reason in ((partial, "partial"), (dangling, "endpoint"), (duplicate, "duplicate")):
+            with self.subTest(reason=reason):
+                result = run(check, graph)
+                self.assertFalse(result["ok"], result)
+                self.assertIn(reason, result["detail"])
+        self.assertFalse(run(check, {"subjects": [], "links": []})["ok"])
+        with self.assertRaises(grade.TaskError):
+            grade._validate_check("t", {"type": "graph_count", "kind": "company", **check})
+
 
 def load(path):
     spec = importlib.util.spec_from_file_location(path.stem + "_t", path)
@@ -79,6 +93,25 @@ class GraphTaskFixtureTest(unittest.TestCase):
                 want.setdefault(r[field], set()).add(r["ip"])
             self.assertEqual(keyed[name], {k: len(v) for k, v in want.items()})
         self.assertEqual(keyed["products"], sorted({r["product"] for r in rows}))
+
+    def test_exposure_connectivity_requires_a_bridge_between_groups(self):
+        task = grade.load_task(agent_eval.TASKS_DIR / "graph-exposure-analysis")
+        connectivity = next(c for c in task["checks"] if c["name"] == "graph is connected")
+        # The company and its 30 addresses form one component, while the four
+        # products form a separate component despite there being 33 links.
+        graph = {
+            "subjects": [{"id": "company", "kind": "company", "status": "lead"}]
+                        + [{"id": f"ip-{i}", "kind": "ip", "status": "lead"} for i in range(30)]
+                        + [{"id": f"app-{i}", "kind": "app", "status": "lead"} for i in range(4)],
+            "links": [{"from": "company", "to": f"ip-{i}"} for i in range(30)]
+                     + [{"from": f"app-{i}", "to": f"app-{i + 1}"} for i in range(3)],
+        }
+        self.assertTrue(run({"of": "links", "min": 30}, graph)["ok"])
+        disconnected = run(connectivity, graph)
+        self.assertFalse(disconnected["ok"], disconnected)
+        self.assertIn("count 2", disconnected["detail"])
+        graph["links"].append({"from": "app-0", "to": "ip-0"})
+        self.assertTrue(run(connectivity, graph)["ok"])
 
     def test_query_grader_rejects_the_draft_and_a_loose_rewrite_and_accepts_the_exact_one(self):
         task = grade.load_task(agent_eval.TASKS_DIR / "graph-fofa-query")

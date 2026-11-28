@@ -120,7 +120,7 @@ func newScheduleAnswerFixture(t *testing.T, mode string, correct bool) (*Engine,
 	manager, checks := &atomic.Int32{}, &atomic.Int32{}
 	var armAttempted, cancelAttempted atomic.Bool
 	const localClaim = `{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureScheduleClaim + `","scope":"thread","scope_quote":"on this conversation","new":true,"every_s":90}`
-	const externalClaim = `{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureExternalPolling + `","scope":"external","scope_quote":"The archive service","every_s":45}`
+	const externalClaim = `{"stance":"affirmed","temporal":"current","attribution":"assistant","quote":"` + fixtureExternalPolling + `","scope":"external","scope_quote":"archive service","every_s":45}`
 	fixtureText, extracted := fixtureScheduleClaim, localClaim
 	if mode == "mixed-unverified" || mode == "mixed-success" {
 		fixtureText = fixtureExternalPolling + " " + fixtureText

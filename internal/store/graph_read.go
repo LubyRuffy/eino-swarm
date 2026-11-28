@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/LubyRuffy/eino-swarm/internal/graph"
@@ -29,6 +30,8 @@ type GraphQuery struct {
 	// All returns subjects, their links and the to-dos in one snapshot, as the
 	// panel draws them.
 	All bool
+	// Preview opts the panel into the engine's transient, unfiltered picture.
+	Preview bool
 	// Todos returns the ordered list, optionally filtered by Status.
 	Todos  bool
 	Status string
@@ -86,28 +89,28 @@ func (s *Store) ReadGraph(ctx context.Context, ownerID string, q GraphQuery) (Gr
 		}
 		switch {
 		case q.ID != "":
-			return readGraphSubject(tx, ownerID, q.ID, &view)
+			err = readGraphSubject(tx, ownerID, q.ID, &view)
 		case q.Todos:
-			return readGraphTodos(tx, ownerID, q, &view)
+			err = readGraphTodos(tx, ownerID, q, &view)
 		case q.All:
 			if err := readGraphSubjects(tx, ownerID, q, &view); err != nil {
 				return err
 			}
-			subjects, more, total := view.Subjects, view.More, view.Total
+			more, total := view.More, view.Total
 			if err := readGraphTodos(tx, ownerID, GraphQuery{Limit: q.Limit}, &view); err != nil {
 				return err
 			}
 			// Total and More describe the subjects; the to-do page is bounded alike.
 			view.Total, view.More = total, more || view.More
-			view.Subjects = subjects
-			return nil
+		default:
+			err = readGraphSubjects(tx, ownerID, q, &view)
 		}
-		return readGraphSubjects(tx, ownerID, q, &view)
+		if err != nil {
+			return err
+		}
+		return markGraphEvidence(tx, &view)
 	})
 	if err != nil {
-		return GraphView{}, err
-	}
-	if err := s.markGraphEvidence(ctx, &view); err != nil {
 		return GraphView{}, err
 	}
 	return view, nil
@@ -180,17 +183,21 @@ func readGraphSubject(tx *gorm.DB, ownerID, id string, view *GraphView) error {
 	return tx.Where("owner_id = ? AND about = ?", ownerID, id).Order("position, created_at, id").Find(&view.Todos).Error
 }
 
-// markGraphEvidence flags evidence whose event no longer exists, for example
-// after a rewind, so readers can show it as unavailable instead of trusting it.
-func (s *Store) markGraphEvidence(ctx context.Context, view *GraphView) error {
-	wanted := map[string]map[int64]bool{}
+// markGraphEvidence checks receipts in the same snapshot as the graph. A
+// later event may reuse a removed event's sequence without its turn identity.
+func markGraphEvidence(tx *gorm.DB, view *GraphView) error {
+	type receipt struct {
+		Seq    int64
+		TurnID string
+	}
+	wanted := map[string]map[int64]*receipt{}
 	collect := func(ev []graph.Evidence) {
 		for _, e := range ev {
 			if e.URL == "" {
 				if wanted[e.ThreadID] == nil {
-					wanted[e.ThreadID] = map[int64]bool{}
+					wanted[e.ThreadID] = map[int64]*receipt{}
 				}
-				wanted[e.ThreadID][e.Seq] = false
+				wanted[e.ThreadID][e.Seq] = nil
 			}
 		}
 	}
@@ -208,18 +215,24 @@ func (s *Store) markGraphEvidence(ctx context.Context, view *GraphView) error {
 		for seq := range seqs {
 			list = append(list, seq)
 		}
-		var found []int64
-		if err := s.db.WithContext(ctx).Model(&Event{}).Where("thread_id = ? AND seq IN ?", thread, list).Pluck("seq", &found).Error; err != nil {
-			return err
-		}
-		for _, seq := range found {
-			seqs[seq] = true
+		// One page can reference more events than SQLite accepts in one query.
+		for chunk := range slices.Chunk(list, 500) {
+			var found []receipt
+			if err := tx.Model(&Event{}).Select("seq", "turn_id").
+				Where("thread_id = ? AND seq IN ?", thread, chunk).Find(&found).Error; err != nil {
+				return err
+			}
+			for i := range found {
+				seqs[found[i].Seq] = &found[i]
+			}
 		}
 	}
 	mark := func(ev []graph.Evidence) {
 		for i := range ev {
-			if ev[i].URL == "" && !wanted[ev[i].ThreadID][ev[i].Seq] {
-				ev[i].Unavailable = true
+			entry := &ev[i]
+			if entry.URL == "" {
+				actual := wanted[entry.ThreadID][entry.Seq]
+				entry.Unavailable = actual == nil || (entry.TurnID != "" && actual.TurnID != entry.TurnID)
 			}
 		}
 	}

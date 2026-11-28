@@ -72,7 +72,7 @@ func updateGraphParams() map[string]*schema.ParameterInfo {
 				"attrs":   {Type: schema.Object, Desc: "Attributes of the kind."},
 				"status":  {Type: schema.String, Enum: []string{graph.StatusLead, graph.StatusConfirmed, graph.StatusRetracted}, Desc: "confirmed needs evidence."},
 			})},
-		"links": {Type: schema.Array, Desc: "from and to are subject ids or refs of this batch.",
+		"links": {Type: schema.Array, Desc: "from and to are subject ids or refs of this batch. A new subject must be an end of one, unless it is the only subject in the graph.",
 			ElemInfo: obj(map[string]*schema.ParameterInfo{
 				"from": {Type: schema.String, Required: true}, "to": {Type: schema.String, Required: true},
 				"rel": {Type: schema.String, Required: true, Desc: "Short relation name."},

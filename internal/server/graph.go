@@ -15,6 +15,7 @@ func graphQuery(c *gin.Context) (store.GraphQuery, bool) {
 	q := store.GraphQuery{
 		ID: c.Query("id"), Status: c.Query("status"), Text: c.Query("text"),
 		Todos: c.Query("todos") == "1", Limit: -1,
+		Preview: c.Query("preview") == "1",
 	}
 	q.All = q.ID == "" && !q.Todos
 	for name, dst := range map[string]*int{"offset": &q.Offset, "limit": &q.Limit} {
@@ -30,6 +31,22 @@ func graphQuery(c *gin.Context) (store.GraphQuery, bool) {
 		*dst = n
 	}
 	return q, true
+}
+
+func (s *Server) extractThreadGraph(c *gin.Context) {
+	th, ok := s.thread(c)
+	if !ok {
+		return
+	}
+	if s.rejectSignedOut(c) {
+		return
+	}
+	turn, err := s.engine.ExtractGraph(th.ID, c.Query("clear") == "1", c.Query("owner_id"))
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"turn": turn})
 }
 
 func (s *Server) getThreadGraph(c *gin.Context) {
@@ -68,20 +85,21 @@ func (s *Server) getGraphKinds(c *gin.Context) {
 	c.Data(http.StatusOK, "application/json; charset=utf-8", frontend.GraphKinds())
 }
 
-// graphStream is the stream's graph delivery: one graph_updated frame when the
-// connection starts and another each time the graph's revision moves. Frames
-// carry the revision only; the client refetches, so a missed frame costs one
-// stale second rather than a wrong picture.
+// graphStream sends an initial graph_updated frame and another whenever the
+// owner, revision or preview changes. A preview asks for a refetch of the same
+// owner's current revision.
 type graphStream struct {
 	threadID string
-	seen     int64
+	owner    string
+	revision int64
+	preview  uint64
 }
 
 func (s *Server) startGraphDelivery(c *gin.Context, threadID string) *graphStream {
 	if c.Query("graph") != "1" {
 		return nil
 	}
-	d := &graphStream{threadID: threadID, seen: -1}
+	d := &graphStream{threadID: threadID}
 	s.pollGraphDelivery(c, d)
 	return d
 }
@@ -90,11 +108,15 @@ func (s *Server) pollGraphDelivery(c *gin.Context, d *graphStream) bool {
 	if d == nil {
 		return false
 	}
-	rev, err := s.engine.ThreadGraphRevision(c.Request.Context(), d.threadID)
-	if err != nil || rev == d.seen {
+	owner, rev, preview, err := s.engine.ThreadGraphWatch(c.Request.Context(), d.threadID)
+	if err != nil || (owner == d.owner && rev == d.revision && preview == d.preview) {
 		return false
 	}
-	d.seen = rev
-	writeSSE(c, "graph_updated", gin.H{"thread_id": d.threadID, "revision": rev}, 0)
+	body := gin.H{"thread_id": d.threadID, "owner_id": owner, "revision": rev}
+	if owner == d.owner && rev == d.revision && preview != d.preview {
+		body["preview"] = true
+	}
+	d.owner, d.revision, d.preview = owner, rev, preview
+	writeSSE(c, "graph_updated", body, 0)
 	return true
 }

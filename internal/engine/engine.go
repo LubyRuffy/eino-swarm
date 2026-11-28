@@ -86,6 +86,9 @@ type Engine struct {
 	// graphRefs remembers a ref the model used for a subject, so a later call
 	// in this process can link to that ref instead of only the stored id.
 	graphRefs map[string]map[string]string
+	// graphPreview is the uncommitted in-progress frame. It is not guarded by
+	// recordMu: a reader has to see it while the writer holds that lock.
+	graphPreview graphPreview
 	// goalWakeMu orders the three manager lifecycle tools. Store transactions
 	// also recheck human edits, which do not acquire this tool-only lock.
 	goalWakeMu sync.Mutex

@@ -13,6 +13,7 @@ func TestNormalizersCollapseSpellingsOfOneThing(t *testing.T) {
 		"identifier": {{"cve-2024 0001", "CVE-20240001"}},
 		"text":       {{"  Acme   Corp ", "acme corp"}},
 		"host":       {{"Example.COM.", "example.com"}},
+		"path":       {{`Docs\Notes\ `, "Docs/Notes"}, {"./Docs//Notes/", "Docs/Notes"}, {"/Docs/Notes/", "/Docs/Notes"}},
 	}
 	for name, pairs := range same {
 		for _, p := range pairs {
@@ -34,6 +35,7 @@ func TestNormalizersKeepDifferentThingsApart(t *testing.T) {
 		"repo_path": {"Acme/Tool", "acme/tool"},
 		"url":       {"https://a.test/x", "https://a.test/y"},
 		"text":      {"acme", "acme inc"},
+		"path":      {"Docs/Notes", "docs/notes"},
 	}
 	for name, p := range apart {
 		a, _ := Normalize(name, p[0])
@@ -41,6 +43,11 @@ func TestNormalizersKeepDifferentThingsApart(t *testing.T) {
 		if a == b {
 			t.Errorf("%s merged %q and %q", name, p[0], p[1])
 		}
+	}
+	absolute, err := Normalize("path", "/Docs/Notes")
+	relative, _ := Normalize("path", "Docs/Notes")
+	if err != nil || absolute == relative {
+		t.Errorf("absolute and relative paths merged: %q %q (%v)", absolute, relative, err)
 	}
 }
 
@@ -51,6 +58,7 @@ func TestNormalizersRefuseWhatIsNotTheirType(t *testing.T) {
 		"url":    {"not a url", "/relative", "http://"},
 		"email":  {"nobody", "a@b", "@b.test"},
 		"repo":   {"acme/tool", "https://github.com/"},
+		"path":   {"https://example.test/a", " ", ".", "/"},
 	} {
 		for _, v := range bad {
 			if got, err := Normalize(name, v); err == nil {

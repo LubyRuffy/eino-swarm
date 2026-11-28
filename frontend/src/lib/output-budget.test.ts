@@ -4,7 +4,7 @@ import { isOutputBudgetError, OUTPUT_BUDGET_ERROR } from "./output-budget"
 
 describe("isOutputBudgetError", () => {
   it("matches the stored sentence and nothing nearby", () => {
-    // signal.go errOutputBudget. A drifted constant still matches itself
+    // signal.go ErrOutputBudget. A drifted constant still matches itself
     // and the settings link never appears on a stored turn.
     expect(OUTPUT_BUDGET_ERROR).toBe(
       "the model used its whole output budget before it produced an answer",

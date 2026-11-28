@@ -19,6 +19,7 @@ import {
   type Appearance,
 } from "@/lib/appearance"
 import { ApiError, api } from "@/lib/api"
+import { graphAPI } from "@/lib/graph/api"
 import type { DeliveryOptions, InsertMode } from "@/lib/delivery-mode"
 import { parseSlashSubmit } from "@/lib/slash-core"
 import { imageGenerationErrorKey } from "@/lib/messages-image-generation"
@@ -161,6 +162,8 @@ export interface AppState extends ScheduleSlice {
   deleteThread: (id: string) => Promise<void>
   reorderThreads: (ids: string[]) => Promise<void>
   send: (text: string, images?: SendImage[], opts?: DeliveryOptions & { steer?: boolean; command?: "goal" | "plan"; files?: string[]; fromEventSeq?: number; threadId?: string; historyReport?: boolean }) => Promise<boolean>
+  /** Starts a turn that records what this conversation has already established. */
+  extractGraph: (threadId: string, clear?: boolean, ownerId?: string) => Promise<boolean>
   continueFailed: (turnId: string) => Promise<boolean>
   setGoal: (text: string, threadId?: string) => Promise<boolean>
   setPlan: (text: string, threadId?: string) => Promise<boolean>
@@ -688,6 +691,27 @@ export const useApp = create<AppState>((set, get) => ({
       return false
     } finally {
       inflightDrafts.delete(key)
+    }
+  },
+
+  extractGraph: async (threadId, clear = false, ownerId) => {
+    if (!threadId || get().meta?.startup === "restoring") return false
+    try {
+      set({ error: undefined })
+      const turn = await graphAPI.extract(threadId, clear, ownerId)
+      set((s) => {
+        if (s.activeId !== threadId) return { error: undefined }
+        return {
+          error: undefined,
+          status: withRunningClock(s.status, { turn_id: turn.id }),
+          threads: setThreadRunning(s.threads, threadId, true),
+        }
+      })
+      void get().refreshThreads()
+      return true
+    } catch (e) {
+      if (get().activeId === threadId) set({ error: message(e) })
+      return false
     }
   },
 

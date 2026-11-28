@@ -45,6 +45,8 @@ func Normalize(name, value string) (string, error) {
 		return NormalizeIdentifier(value), nil
 	case "text":
 		return NormalizeText(value), nil
+	case "path":
+		return NormalizePath(value)
 	}
 	return "", invalid("unknown normalizer %q", name)
 }
@@ -235,6 +237,37 @@ func NormalizeIdentifier(value string) string {
 // NormalizeText folds case and collapses whitespace.
 func NormalizeText(value string) string {
 	return strings.ToLower(strings.Join(strings.Fields(value), " "))
+}
+
+// NormalizePath is the identity of one file or directory. Slashes collapse
+// and a trailing separator is dropped, while case stays: two paths that
+// differ only by case are not the same file on every system. A location
+// with a scheme is an address, not a path.
+func NormalizePath(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" || strings.Contains(value, "://") {
+		return "", invalid("%q is not a file path", value)
+	}
+	value = strings.ReplaceAll(value, "\\", "/")
+	for strings.HasPrefix(value, "./") {
+		value = strings.TrimPrefix(value, "./")
+	}
+	absolute := strings.HasPrefix(value, "/")
+	var parts []string
+	for _, part := range strings.Split(value, "/") {
+		if part == "" || part == "." {
+			continue
+		}
+		parts = append(parts, part)
+	}
+	if len(parts) == 0 {
+		return "", invalid("%q is not a file path", value)
+	}
+	path := strings.Join(parts, "/")
+	if absolute {
+		path = "/" + path
+	}
+	return path, nil
 }
 
 // NormalizeAsset builds the identity of one network service from IP, port,

@@ -151,11 +151,16 @@ describe("the event stream", () => {
     source.onopen?.()
     source.deliver("graph_updated", { thread_id: "foreign", revision: 4 })
     source.deliver("graph_updated", { thread_id: "ledger", revision: -1 })
+    source.deliver("graph_updated", { thread_id: "ledger", revision: 0, owner_id: 5 })
     source.deliver("graph_updated", { thread_id: "ledger", revision: 4 })
+    source.deliver("graph_updated", { thread_id: "ledger", revision: 4, preview: true })
+    source.deliver("graph_updated", { thread_id: "ledger", revision: 0, owner_id: "moved" })
     expect(graphEvent.mock.calls).toEqual([
       [{ kind: "connection", connected: false }],
       [{ kind: "connection", connected: true }],
       [{ kind: "revision", revision: 4 }],
+      [{ kind: "preview", revision: 4 }],
+      [{ kind: "revision", revision: 0, ownerId: "moved" }],
     ])
     expect(onEvent).not.toHaveBeenCalled()
     close()

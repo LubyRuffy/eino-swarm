@@ -8,6 +8,7 @@ export const OpOpen = "open"
 export const OpRead = "read"
 export const OpStart = "start"
 export const OpSend = "send"
+export const OpEditInput = "edit_input"
 export const OpDeliver = "deliver"
 export const OpSteer = "steer"
 export const OpStop = "stop"
@@ -66,6 +67,8 @@ export type RemoteRequest = {
   thread_id?: string
   project_id?: string
   text?: string
+  from_event_seq?: number
+  replacement?: string
   mode?: import("../../../frontend/src/lib/delivery-mode").DeliveryMode
   expected_turn_id?: string
   call_id?: string
@@ -73,6 +76,7 @@ export type RemoteRequest = {
   continue?: boolean
   completed_seq?: number
   since?: number
+  graph_owner?: string
   include_detail?: boolean
   before?: number
   compact_history?: boolean
@@ -442,8 +446,9 @@ export function slimListBytes(resp: RemoteResponse): number {
   return new TextEncoder().encode(JSON.stringify(resp)).length
 }
 
-/** A phone that sends the revision it holds gets unchanged and no rows. */
+/** A phone that sends the revision and owner it holds gets unchanged and no rows. */
 export type GraphReply = {
+  owner?: string
   revision: number
   unchanged?: boolean
   subjects?: import("../../../frontend/src/lib/graph/types").GraphSubject[]

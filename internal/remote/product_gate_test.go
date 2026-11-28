@@ -37,6 +37,10 @@ func TestLinkPumpRefusesFOFAWorkAndModelChanges(t *testing.T) {
 	if got.OK || got.Code != "login_required" {
 		t.Fatalf("start = %+v", got)
 	}
+	p.Dispatch([]byte(`{"id":"edit","op":"edit_input","thread_id":"thread","from_event_seq":7,"replacement":"go again"}`))
+	if got.OK || got.Code != "login_required" {
+		t.Fatalf("edit = %+v", got)
+	}
 	p.Dispatch([]byte(`{"id":"2","op":"tune"}`))
 	if got.OK || got.Code != "custom_models_disabled" {
 		t.Fatalf("tune = %+v", got)

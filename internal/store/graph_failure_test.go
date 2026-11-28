@@ -149,6 +149,7 @@ func TestTodoCreatedSettledReopenedAndRepointed(t *testing.T) {
 	ev := f.event(f.thread, f.turn, "observed")
 	res := f.apply(graph.Batch{
 		Subjects: []graph.SubjectInput{{Ref: "a", Kind: "domain", Attrs: map[string]any{"domain": "a.example.com"}}, {Ref: "b", Kind: "domain", Attrs: map[string]any{"domain": "b.example.com"}}},
+		Links:    []graph.LinkInput{{From: "a", To: "b", Rel: "related"}},
 		Todos: []graph.TodoInput{
 			{Ref: "done", Title: "already known", Status: graph.TodoDone, About: "a"},
 			{Ref: "failed", Title: "tried", Status: graph.TodoFailed, Result: "no access"},

@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest"
 import { setLocale } from "@/lib/i18n"
 import type { RemoteLink } from "@/lib/link"
 import { OpGraph, type RemoteResponse } from "@/lib/rpc"
-import { GRAPH_POLL_RUNNING_MS } from "./work-records"
+import { GRAPH_POLL_IDLE_MS, GRAPH_POLL_RUNNING_MS } from "./work-records"
 import { ThreadScreen } from "./thread-screen"
 
 // jsdom has no canvas; the board's drawing is covered by the desktop suite.
@@ -13,7 +13,8 @@ vi.mock("../../../frontend/src/components/app/graph/graph-view", () => ({
 
 afterEach(() => { cleanup(); vi.useRealTimers() })
 
-const subject = { id: "s1", kind: "org", name: "Example Org", attrs: {}, status: "confirmed", version: 1, updated_at: "2026-11-24T00:00:00Z" }
+const subject = { id: "s1", kind: "company", name: "Example Org", attrs: {}, status: "confirmed" as const, version: 1, updated_at: "2026-11-24T00:00:00Z" }
+const domain = { ...subject, id: "s2", kind: "domain", name: "example.test" }
 const reply = (graph: NonNullable<RemoteResponse["graph"]>): RemoteResponse => ({ v: 1, id: "", ok: true, data_generation: 1, graph })
 
 function setup(rpc: ReturnType<typeof vi.fn<RemoteLink["rpc"]>>) {
@@ -53,14 +54,17 @@ it("hides work records and discards a late PC reply after the setting is turned 
 // holds so an idle graph costs one small frame, and keep the picture on a miss.
 it("polls with the held revision and keeps the picture when a poll fails", async () => {
   vi.useFakeTimers()
-  const seen: number[] = []
+  const seen: { since: number; owner?: string }[] = []
   let mode: "full" | "unchanged" | "fail" = "full"
   const rpc = vi.fn<RemoteLink["rpc"]>(async (request) => {
     if (request.op !== OpGraph) return { v: 1, id: "", ok: false, code: "unknown_op" }
-    seen.push(request.since ?? -1)
+    seen.push({ since: request.since ?? -1, owner: request.graph_owner })
     if (mode === "fail") throw new Error("offline")
-    if (mode === "unchanged") return reply({ revision: 4, unchanged: true })
-    return reply({ revision: 4, subjects: [subject] as never, total: 1 })
+    if (mode === "unchanged") return reply({ owner: "project-1", revision: 4, unchanged: true })
+    return reply({
+      owner: "project-1", revision: 4, subjects: [subject, domain],
+      links: [{ id: "l1", from: "s1", to: "s2", rel: "owns" }], total: 2,
+    })
   })
   setup(rpc)
   fireEvent.click(screen.getByRole("button", { name: "Work records" }))
@@ -72,9 +76,33 @@ it("polls with the held revision and keeps the picture when a poll fails", async
   await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
   expect(screen.getByRole("list", { name: "drawn graph" })).toHaveTextContent("Example Org")
   expect(screen.queryByRole("alert")).toBeNull()
-  expect(seen[0]).toBe(0)
-  expect(seen.slice(1).every((since) => since === 4)).toBe(true)
+  expect(seen[0]).toEqual({ since: 0, owner: undefined })
+  expect(seen.slice(1).every((item) => item.since === 4 && item.owner === "project-1")).toBe(true)
   expect(GRAPH_POLL_RUNNING_MS).toBeGreaterThan(0)
+})
+
+it("replaces a conversation's graph after it moves to a project at the same revision", async () => {
+  vi.useFakeTimers()
+  const seen: { since?: number; owner?: string }[] = []
+  let owner = "thread"
+  const revision = 4
+  const rpc = vi.fn<RemoteLink["rpc"]>(async (request) => {
+    if (request.op !== OpGraph) return { v: 1, id: "", ok: false, code: "unknown_op" }
+    seen.push({ since: request.since, owner: request.graph_owner })
+    if (request.since === revision && request.graph_owner === owner) return reply({ owner, revision, unchanged: true })
+    const title = owner === "thread" ? "Review standalone findings" : "Review project findings"
+    return reply({ owner, revision, todos: [{ id: owner, title, status: "open", position: 0, version: 1 }] })
+  })
+  setup(rpc)
+  fireEvent.click(screen.getByRole("button", { name: "Work records" }))
+  await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+  expect(screen.getByText("Review standalone findings")).toBeVisible()
+  owner = "project"
+  await act(async () => { await vi.advanceTimersByTimeAsync(GRAPH_POLL_IDLE_MS) })
+  expect(screen.queryByText("Review standalone findings")).toBeNull()
+  expect(screen.getByText("Review project findings")).toBeVisible()
+  await act(async () => { await vi.advanceTimersByTimeAsync(GRAPH_POLL_IDLE_MS) })
+  expect(seen).toEqual([{ since: 0 }, { since: revision, owner: "thread" }, { since: revision, owner: "project" }])
 })
 
 it("says so, and stops polling, when the PC refuses a graph too large for one frame", async () => {

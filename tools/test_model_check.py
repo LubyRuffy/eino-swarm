@@ -41,6 +41,19 @@ def family_cases(model: mc.Model) -> list[mc.Case]:
 
 
 class CaseTable(unittest.TestCase):
+    def test_graph_protocol_models_remain_in_the_full_suite(self):
+        # Case coverage within a module cannot detect deletion of that module
+        # and all its cases together.
+        for name, filename in (("graph-store", "GraphStore.tla"),
+                               ("graph-picture", "GraphPicture.tla"),
+                               ("graph-record", "GraphRecord.tla"),
+                               ("graph-revision", "GraphRevision.tla"),
+                               ("graph-delivery", "GraphDelivery.tla"),
+                               ("graph-replay", "GraphReplay.tla")):
+            with self.subTest(model=name):
+                self.assertIn(name, mc.MODELS)
+                self.assertEqual(mc.MODELS[name].spec.name, filename)
+
     def test_panel_protocol_models_remain_in_the_full_suite(self):
         # Removing a whole family would evade checks which only iterate MODELS.
         for name, filename in (("panel-mcp-admission", "PanelMCPAdmission.tla"),

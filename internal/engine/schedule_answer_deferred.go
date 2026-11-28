@@ -10,6 +10,28 @@ import (
 	"github.com/cloudwego/eino/adk"
 )
 
+type scheduleAnswerFailureReason struct {
+	Code   string `json:"code"`
+	Detail string `json:"detail,omitempty"`
+}
+
+func scheduleAnswerBackoffFailure(code, detail string) *scheduleAnswerFailureReason {
+	switch code {
+	case "classification_unavailable":
+		return &scheduleAnswerFailureReason{Code: code}
+	case "classification_invalid":
+		switch detail {
+		case "missing_message", "json", "trailing", "claim_list", "claim_meaning", "claim_shape",
+			"unspecified_scope_quote", "scope_quote", "schedule_id", "quote_not_in_candidate", "next_run_at", "decision_response":
+			return &scheduleAnswerFailureReason{Code: code, Detail: detail}
+		default:
+			return &scheduleAnswerFailureReason{Code: code}
+		}
+	default:
+		return nil
+	}
+}
+
 // Upgrade only a contiguous durable suffix for this candidate. Generic origin
 // waits or missing attempts cannot establish either consecutive failure budget.
 func (e *Engine) restoreScheduleAnswerFailureBudget(turn *store.Turn, row *store.PendingScheduleAnswer) *scheduleAnswerError {
@@ -20,36 +42,43 @@ func (e *Engine) restoreScheduleAnswerFailureBudget(turn *store.Turn, row *store
 		return nil
 	}
 	failures, invalids := row.ClassificationFailures, row.ClassificationInvalids
-	if failures == 0 && invalids == 0 {
-		events, err := e.store.ListTurnEvents(turn.ID)
-		if err != nil {
-			return &scheduleAnswerError{Code: "answer_storage_failed", Cause: err}
+	recoverCounts := failures == 0 && invalids == 0
+	var lastFailure *scheduleAnswerFailureReason
+	events, err := e.store.ListTurnEvents(turn.ID)
+	if err != nil {
+		return &scheduleAnswerError{Code: "answer_storage_failed", Cause: err}
+	}
+	expected, lastCode := row.Attempts, ""
+	for i := len(events) - 1; i >= 0; i-- {
+		ev := events[i]
+		if ev.Kind != KindModelBackoff || ev.AgentID != scheduleAnswerAgentID {
+			continue
 		}
-		expected, lastCode := row.Attempts, ""
-		for i := len(events) - 1; i >= 0; i-- {
-			ev := events[i]
-			if ev.Kind != KindModelBackoff || ev.AgentID != scheduleAnswerAgentID {
-				continue
-			}
-			var body struct {
-				CandidateID string `json:"candidate_id"`
-				Code        string `json:"code"`
-				Attempt     int    `json:"attempt"`
-			}
-			if json.Unmarshal([]byte(ev.Text), &body) != nil || body.CandidateID != row.ID {
-				continue
-			}
-			if body.Attempt != expected || (body.Code != "classification_unavailable" && body.Code != "classification_invalid") || (lastCode != "" && body.Code != lastCode) {
-				break
-			}
-			lastCode = body.Code
-			if body.Code == "classification_unavailable" {
-				failures++
-			} else {
-				invalids++
-			}
-			expected--
+		var body struct {
+			CandidateID string `json:"candidate_id"`
+			Attempt     int    `json:"attempt"`
+			scheduleAnswerFailureReason
 		}
+		if json.Unmarshal([]byte(ev.Text), &body) != nil || body.CandidateID != row.ID {
+			continue
+		}
+		reason := scheduleAnswerBackoffFailure(body.Code, body.Detail)
+		if body.Attempt != expected || reason == nil || (lastCode != "" && body.Code != lastCode) {
+			break
+		}
+		if lastFailure == nil {
+			lastFailure = reason
+		}
+		if !recoverCounts {
+			break
+		}
+		lastCode = body.Code
+		if body.Code == "classification_unavailable" {
+			failures++
+		} else {
+			invalids++
+		}
+		expected--
 	}
 	restored := *row
 	restored.ClassificationFailures, restored.ClassificationInvalids = failures, invalids
@@ -64,7 +93,7 @@ func (e *Engine) restoreScheduleAnswerFailureBudget(turn *store.Turn, row *store
 	row.ClassificationFailures, row.ClassificationInvalids = failures, invalids
 	if deferred {
 		row.State = "deferred"
-		e.recordScheduleAnswerBackoff(turn, row, "classification_deferred", detail, 0)
+		e.recordScheduleAnswerBackoff(turn, row, "classification_deferred", detail, 0, lastFailure)
 	}
 	return nil
 }
@@ -82,10 +111,13 @@ func scheduleAnswerDeferralDetail(row *store.PendingScheduleAnswer) string {
 	}
 }
 
-func (e *Engine) recordScheduleAnswerBackoff(turn *store.Turn, row *store.PendingScheduleAnswer, code, detail string, waitMS int64) {
+func (e *Engine) recordScheduleAnswerBackoff(turn *store.Turn, row *store.PendingScheduleAnswer, code, detail string, waitMS int64, lastFailure *scheduleAnswerFailureReason) {
 	body := map[string]any{"scope": "schedule_answer", "attempt": row.Attempts, "wait_ms": waitMS, "code": code, "candidate_id": row.ID}
 	if detail != "" {
 		body["detail"] = detail
+	}
+	if lastFailure != nil {
+		body["last_failure"] = lastFailure
 	}
 	text, _ := json.Marshal(body)
 	e.record(store.Event{ThreadID: turn.ThreadID, TurnID: turn.ID, AgentID: scheduleAnswerAgentID, Kind: KindModelBackoff, Text: string(text)})

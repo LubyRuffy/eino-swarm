@@ -2,7 +2,7 @@ import { BackoffNotice } from "./backoff-notice"
 import { GenerationNotice, ModelRequestBlockedNotice } from "./generation-notice"
 import { IterationLimitCard } from "./iteration-limit-card"
 import { useCallback, useEffect, useState } from "react"
-import { ChevronRight, Loader2 } from "lucide-react"
+import { ChevronRight, Loader2, Pencil } from "lucide-react"
 
 import { PhoneMarkdown } from "@/components/markdown"
 import { PhoneThought } from "@/components/thought"
@@ -28,6 +28,7 @@ import { cn } from "@/lib/cn"
 import { SpeechActions } from "./speech-actions"
 import { GeneratedImageResult } from "./generated-image-result"
 import { TranscriptImage, type TranscriptImageOwner } from "./transcript-image"
+import { HistoryInputEditor } from "./history-input-editor"
 import { readGeneratedImage } from "@/lib/remote-files"
 import type { RemoteLink } from "@/lib/link"
 import type { HistoryWork } from "@/lib/rpc"
@@ -225,8 +226,12 @@ function localizeNotice(text: string): string {
       return t("notice.modelBackoffUnknown")
     case "Waiting to check the unpublished answer again.":
       return t("notice.scheduleAnswerBackoffUnknown")
-    case "Answer verification is unavailable. The unpublished answer is retained.":
+    case "Answer verification was deferred. The unpublished answer is retained.":
       return t("notice.scheduleAnswerDeferred")
+    case "The verification response was invalid. The unpublished answer is retained.":
+      return t("notice.scheduleAnswerDeferredInvalid")
+    case "The verification request failed. The unpublished answer is retained.":
+      return t("notice.scheduleAnswerDeferredUnavailable")
     case "A wait is armed.":
       return t("notice.scheduleArmed")
     case "A wait was cancelled.":
@@ -301,6 +306,7 @@ export function ThreadLog({
   imageOwner,
   historyWork = [],
   historyAgent = "manager",
+  allowInputEdit,
 }: {
   blocks: CompactBlock[]
   running?: boolean
@@ -310,7 +316,11 @@ export function ThreadLog({
   imageOwner?: TranscriptImageOwner
   historyWork?: HistoryWork[]
   historyAgent?: string
+  allowInputEdit?: boolean
 }) {
+  const [editSeq, setEditSeq] = useState(0)
+  const closeEditor = useCallback((seq: number) => setEditSeq((current) => current === seq ? 0 : current), [])
+  const editing = allowInputEdit && blocks.some((block) => block.kind === "user" && block.sourceSeq === editSeq)
   const deferred = historyWork.filter((range) => !range.agent_ids || range.agent_ids.includes(historyAgent))
   const visible = visibleModelRequestNotices(blocks)
   const items = foldPhoneItems(deferred.length ? visible.filter((block) => {
@@ -353,14 +363,27 @@ export function ThreadLog({
         }
         const pause = item.block.confirm
         const actionable = running && pause?.pending && (!activeTurnId || !item.block.turnId || item.block.turnId === activeTurnId)
-        const node = item.block.imageGeneration
+        const seq = item.block.sourceSeq ?? 0
+        const canEdit = allowInputEdit && imageOwner && item.block.kind === "user" && seq > 0
+        const node = canEdit && editing && seq === editSeq
+          ? <HistoryInputEditor owner={imageOwner} seq={seq} disabled={continueDisabled} onClose={closeEditor} />
+          : item.block.imageGeneration
           ? <PairedImageResult data={item.block.imageGeneration} link={imageOwner?.link} threadId={imageOwner?.threadId} />
           : pause ? <IterationLimitCard pause={pause}
               onContinue={actionable ? onContinue : undefined} disabled={continueDisabled} /> : renderBlock(item.block, imageOwner)
         return [...(lazy ?? []), ...(node ? [
           <div key={item.block.id} className="min-w-0 max-w-full"
             data-phone-turn={item.block.turnId} data-phone-prompt={item.block.kind === "user" ? "" : undefined}
-            data-phone-event-seq={item.block.sourceSeq}>{node}</div>,
+            data-phone-event-seq={item.block.sourceSeq}>
+            {node}
+            {canEdit && !editing ? (
+              <button type="button" aria-label={t("editInput.title")} disabled={continueDisabled}
+                className="ml-auto flex size-11 items-center justify-center rounded-md text-muted-foreground active:bg-accent disabled:opacity-50"
+                onClick={() => setEditSeq(seq)}>
+                <Pencil className="size-4" aria-hidden />
+              </button>
+            ) : null}
+          </div>,
         ] : [])]
       })}
       {renderWorkBefore(Infinity)}

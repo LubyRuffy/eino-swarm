@@ -105,11 +105,11 @@ describe("model request backoff", () => {
     const notices = state.agents[MANAGER_ID].blocks.map((block) => block.text)
     expect(notices).toEqual([
       "Waiting 5s before checking the unpublished answer again.",
-      "Answer verification is unavailable. The unpublished answer is retained.",
+      "Answer verification was deferred. The unpublished answer is retained.",
     ])
     expect(notices.map((notice) => localizeNotice(notice, "zh"))).toEqual([
       "等待 5 秒后重试未发布答复的核对。",
-      "答复核对暂不可用，未发布候选已保留。",
+      "答复核对已暂缓，未发布候选已保留。",
     ])
     expect(JSON.stringify(state.agents)).not.toContain("answer-a")
     expect(state.agentOrder).toEqual([MANAGER_ID])

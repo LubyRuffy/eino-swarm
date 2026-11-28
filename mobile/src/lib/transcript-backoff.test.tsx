@@ -44,14 +44,14 @@ it("describes private answer recovery separately and never adds a classifier wor
   const blocks = events.reduce(applyEvent, [])
   expect(blocks.map((block) => block.text)).toEqual([
     "Waiting 5s before checking the unpublished answer again.",
-    "Answer verification is unavailable. The unpublished answer is retained.",
+    "Answer verification was deferred. The unpublished answer is retained.",
   ])
   expect(phoneAgents(blocks)).toEqual([])
   expect(JSON.stringify(blocks)).not.toContain("private-answer")
   setLocale("zh")
   render(<>{blocks.map((block) => <div key={block.id}>{renderBlock(block)}</div>)}</>)
   expect(screen.getByText("等待 5 秒后重试未发布答复的核对。")).toBeVisible()
-  expect(screen.getByText("答复核对暂不可用，未发布候选已保留。")).toBeVisible()
+  expect(screen.getByText("答复核对已暂缓，未发布候选已保留。")).toBeVisible()
 })
 
 it.each([

@@ -106,6 +106,10 @@ type SubjectInput struct {
 	Kind    string         `json:"kind,omitempty"`
 	Attrs   map[string]any `json:"attrs,omitempty"`
 	Status  string         `json:"status,omitempty"`
+	// HostRetract marks a lead the engine is storing retracted because this
+	// call links it to a confirmed subject of the same kind. The model cannot
+	// set it. It is not a versioned attribute overwrite.
+	HostRetract bool `json:"-"`
 }
 
 // TodoInput is one piece of work. About is a subject id or a ref of this
@@ -150,6 +154,9 @@ func (b Batch) Empty() bool { return len(b.Todos)+len(b.Subjects)+len(b.Links) =
 func (b Batch) Valid() error {
 	if b.Empty() {
 		return invalid("provide at least one to-do, subject or link")
+	}
+	if len(b.Evidence) > MaxEvidence {
+		return invalid("evidence lists at most %d entries", MaxEvidence)
 	}
 	for i := range b.Evidence {
 		if err := b.Evidence[i].ValidateShape(); err != nil {

@@ -57,7 +57,7 @@ func inputMessageSource(in UserInput) string {
 func legacyRuntimeCue(text string) bool {
 	switch text {
 	case GoalContinueText(), legacyGoalContinueCue, workerCollectionCorrectionCue, modelRetryCue, reasoningOutputRecoveryCue,
-		resumeCue, resumeWorkersCue, parkedWorkersCue, scheduleCompletionCue,
+		resumeCue, resumeWorkersCue, parkedWorkersCue, scheduleCompletionCue, graphRecordCue,
 		scheduleAnswerCorrectionCue, legacyScheduleAnswerCorrectionCue, goalSessionWrapSteer(), "[steer] " + goalSessionWrapSteer():
 		return true
 	}

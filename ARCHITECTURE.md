@@ -85,6 +85,12 @@ the active manager step under one lock.
 The next manager input keeps the turn identity and workers. The durable
 steer and selected queue claim commit together.
 
+The paired phone's historical message editor opens the full saved input by
+conversation and event sequence over Pairlink, since the watch and history log
+are clipped. The explicit replacement uses the same engine rewind and start
+entry as the PC editor. The existing watch carries the stored rewind and the
+replacement turn back to the phone.
+
 Explicitly queued human follow-ups start in FIFO order after a turn completes
 or fails, independently of automatic goal continuation. A failed scheduled check
 keeps its failed turn/run and future wake; no queue means no new error-triggered
@@ -280,11 +286,14 @@ invalid classification fields retry the original candidate as malformed output.
 After that structural validation, an item without any schedule ID, delay,
 interval, cron or next-run time does not enter matching and cannot reject the
 answer by itself. Concrete claims still require persisted evidence.
-Scope has three values: `thread`, `independent` and `unspecified`. The classifier
-must use `unspecified` when the prose does not identify a destination; cron or
-recurrence alone does not identify one. A specific scope needs an exact
-`scope_quote` from the claim's passage, and a claimed schedule ID must occur in
-that passage. The policy request remains limited to candidate `messages` and
+Scope can be `thread`, `independent`, `unspecified` or `external`. For an
+application claim with no stated destination, the classifier uses
+`unspecified`. Cadence alone does not identify a destination. A `thread` or `independent` scope
+needs an exact `scope_quote` from the claim's passage, and a claimed schedule
+ID must occur in that passage. External observations keep their exact
+candidate `quote` and carry no app schedule ID. The host ignores their
+`scope_quote` and verifies any separate application claims in the same
+candidate. The policy request remains limited to candidate `messages` and
 `now`, without injecting a schedule inventory. Code checks an explicit ID against
 the persisted object together with any explicitly stated scope. Without an
 ID or explicit scope, a concrete claim must have exactly one object satisfying all
@@ -2593,7 +2602,7 @@ this is the module and data flow.
 | `internal/engine/graph_*.go` | the `update_graph` / `read_graph` tools, the per-request digest middleware, the task-agnostic guidance block, and freezing the turn's switch |
 | `internal/server/graph.go`, `internal/remote/graph.go` | HTTP reads and the `graph_updated` SSE frame; the phone's `graph` RPC |
 | `frontend/src/components/app/graph`, `mobile/src/components/work-records.tsx` | the read-only Work records panel; one `GraphBoard` drawn from one snapshot, fetched differently on desktop and phone |
-| `models/graph/GraphStore.tla` | the write protocol (merge, versions, receipts, identity keys, deletion) |
+| `models/graph` | graph writes, drawing, recording, revisions, owner changes and extraction admission |
 
 A graph belongs to an owner: the project when the conversation is in one,
 otherwise the conversation. The turn freezes the owner and the `swarm.graph`
@@ -2619,7 +2628,7 @@ HTTP, phone, logs and Trace carry the attribute name, never its value, and
 backups can strip them. The digest lists identifiers, versions and counts,
 never attribute values. The desktop panel reads
 `GET /api/threads/:id/graph` or `/api/projects/:id/graph` and refetches when
-a `graph_updated` frame (revision only, on the thread's `events` stream with
+a `graph_updated` frame (owner and revision, on the thread's `events` stream with
 `graph=1`) arrives. The phone has no event stream and polls the `graph` RPC with
 the revision it holds, so an unchanged graph costs one small frame; a graph
 that does not fit one frame is refused with `graph_too_large`. A subject's

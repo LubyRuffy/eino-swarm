@@ -29,6 +29,9 @@ func TestLoadCreatesDefaultsOnFirstRun(t *testing.T) {
 	if cfg.Server.Addr != DefaultAddr {
 		t.Fatalf("addr=%q", cfg.Server.Addr)
 	}
+	if got := cfg.Swarm.CompletionTokenLimit(); got != 64_000 {
+		t.Fatalf("first-run completion cap=%d, want 64000", got)
+	}
 	if cfg.Configured() {
 		t.Fatal("a blank provider must not count as configured")
 	}
@@ -52,6 +55,29 @@ func TestLoadCreatesDefaultsOnFirstRun(t *testing.T) {
 	}
 	if _, err := os.Stat(cfg.ProjectsDir()); err != nil {
 		t.Fatalf("first run must create the projects dir: %v", err)
+	}
+}
+
+func TestLoadPreservesAnExistingCompletionTokenLimit(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	const existing = "swarm:\n  max_completion_tokens: 16384\n"
+	if err := os.WriteFile(path, []byte(existing), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Swarm.CompletionTokenLimit(); got != 16_384 {
+		t.Fatalf("saved completion cap=%d, want 16384", got)
+	}
+	saved, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(saved) != existing {
+		t.Fatalf("loading the existing cap rewrote %s", FileName)
 	}
 }
 

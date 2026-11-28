@@ -186,6 +186,7 @@ func New(opts Options) (*Server, error) {
 		api.DELETE("/threads/:id", s.deleteThread)
 
 		api.GET("/threads/:id/graph", s.getThreadGraph)
+		api.POST("/threads/:id/graph/extract", s.extractThreadGraph)
 		api.GET("/graph/kinds", s.getGraphKinds)
 		api.GET("/threads/:id/events", s.streamEvents)
 		api.GET("/threads/:id/log", s.listLog)
@@ -367,6 +368,8 @@ func (s *Server) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "image_generation_text_only"})
 	case errors.Is(err, engine.ErrImageReadOnly):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "image_generation_read_only"})
+	case errors.Is(err, engine.ErrGraphDisabled):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "graph_disabled"})
 	case errors.Is(err, engine.ErrBusy):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "busy"})
 	case errors.Is(err, update.ErrBusy):

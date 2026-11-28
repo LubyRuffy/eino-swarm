@@ -81,6 +81,8 @@ export function modelRetryNotice(text?: string): string {
         return "The previous answer contained an unverified schedule claim. One correction was requested."
       case "workers_uncollected":
         return "Collecting delegated work before completing this turn."
+      case "graph_unrecorded":
+        return "Recording this turn's results on the working graph."
       case "context_overflow":
         return "The prompt exceeds the model window. Compressing and trying once."
       case "invalid_tool_json":

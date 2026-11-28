@@ -31,9 +31,15 @@ func (e *Engine) readGraphOwner(ctx context.Context, owner string, q store.Graph
 	if err != nil {
 		return store.GraphView{}, err
 	}
+	e.overlayGraphPreview(owner, &view, q)
 	catalog := graph.MustDefault()
 	for i := range view.Subjects {
-		view.Subjects[i].Attrs, view.Subjects[i].Credentials = catalog.Redact(view.Subjects[i].Kind, view.Subjects[i].Attrs)
+		subject := &view.Subjects[i]
+		attrs, credentials := catalog.PublicAttrs(subject.Kind, subject.Attrs)
+		subject.Attrs = attrs
+		if len(credentials) > 0 {
+			subject.Credentials = credentials
+		}
 	}
 	return view, nil
 }
@@ -46,4 +52,18 @@ func (e *Engine) ThreadGraphRevision(ctx context.Context, threadID string) (int6
 		return 0, err
 	}
 	return e.store.GraphRevisionOf(ctx, owner)
+}
+
+// ThreadGraphWatch reports the current owner, that owner's revision and the
+// preview token. Two owners can have the same revision.
+func (e *Engine) ThreadGraphWatch(ctx context.Context, threadID string) (string, int64, uint64, error) {
+	owner, err := e.store.ThreadGraphOwner(ctx, threadID)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	rev, err := e.store.GraphRevisionOf(ctx, owner)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	return owner, rev, e.graphPreviewToken(owner), nil
 }

@@ -60,10 +60,15 @@ func (s *streamReadTrace) observeRead(ctx context.Context, n int, err error) err
 	return err
 }
 
-// traceError adds transport evidence only to the call record. The error sent
+// traceError adds HTTP evidence only to the call record. The error sent
 // to the consumer keeps its original classification and contains no receipt.
 func (s *streamCompletion) traceError(ctx context.Context, err error) error {
-	if !s.http.Load() || ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if !s.http.Load() {
+		return err
+	}
+	var incomplete *ResponsesIncompleteError
+	terminal := errors.As(err, &incomplete)
+	if !terminal && (ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
 		return err
 	}
 	s.mu.Lock()
@@ -72,6 +77,8 @@ func (s *streamCompletion) traceError(ctx context.Context, err error) error {
 	var timeout *StreamReadTimeoutError
 	var idle IdleTimeoutError
 	switch {
+	case terminal:
+		label = incomplete.Error()
 	case errors.As(err, &timeout):
 		label = timeout.Error()
 	case errors.As(err, &idle):

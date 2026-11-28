@@ -1079,8 +1079,8 @@ func TestHostNotifyKeepsWorkerEventsAfterRunReturns(t *testing.T) {
 // Rewording it drops the link on every conversation that already stored it.
 func TestOutputBudgetSentenceStaysTheSettingsLink(t *testing.T) {
 	const want = "the model used its whole output budget before it produced an answer"
-	if errOutputBudget.Error() != want {
-		t.Fatalf("settings link matches this sentence, got %q", errOutputBudget.Error())
+	if ErrOutputBudget.Error() != want {
+		t.Fatalf("settings link matches this sentence, got %q", ErrOutputBudget.Error())
 	}
 }
 
@@ -1098,11 +1098,11 @@ func TestLengthStopWithNoAnswerIsAnError(t *testing.T) {
 	}()
 	acc := &streamAcc{reg: &Registry{}, agentID: DefaultManagerID, role: DefaultManagerID}
 	answer, calls, err := acc.drain(sr)
-	if !errors.Is(err, errOutputBudget) {
+	if !errors.Is(err, ErrOutputBudget) {
 		t.Fatalf("empty length stop: answer %q calls %d err %v", answer, len(calls), err)
 	}
 	var capped *ReasoningOutputLimit
-	if !errors.As(err, &capped) || capped.MessageID == "" || capped.MessageID != acc.messageID || err.Error() != errOutputBudget.Error() {
+	if !errors.As(err, &capped) || capped.MessageID == "" || capped.MessageID != acc.messageID || err.Error() != ErrOutputBudget.Error() {
 		t.Fatalf("reasoning-only cap lost its generation identity or original error: %v", err)
 	}
 }

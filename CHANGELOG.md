@@ -6,6 +6,80 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## Unreleased
 
+### Added
+
+- The work-graph picture has its own model check, separate from the write
+  protocol. A phrase is not a node, and a real subject linked only to a phrase
+  stays visible. The one recording pass and the committed revision each have
+  their own model check too: one withhold then the answer is kept, and a
+  commit or a clear is the only way the revision moves.
+- Added model checks for graph owner changes, delayed panel reads, and
+  admission and receipt scoping during conversation replay.
+- Paired phones can edit and resend a previous user message. Resending keeps
+  its original images and quotations, replaces the following conversation,
+  and starts a new response from that point.
+- The work graph records an account, a table (one table, column or index) and
+  a file or directory as their own kinds. An account is the login; a host
+  glued to that login is refused, so the host stays a separate subject.
+- The work-record panel can replay a conversation into the graph, walking
+  each completed round in order and recording what that round's stored
+  response established. The panel shows while that walk is running. A new
+  subject from the walk is a lead, so a missing confirmation does not refuse
+  the whole round. When the graph already has records, the button asks whether
+  to clear it first. Clearing deletes that working graph only after the turn
+  is admitted, and commits a newer empty revision so the panel drops the old
+  picture. It does not run the original work again, and the panel
+  still does not edit the graph itself.
+
+### Fixed
+
+- Work records refresh when a conversation moves to a different graph owner,
+  including a graph at the same revision. A clear confirmation applies only
+  to the owner shown when it was confirmed.
+- Graph replay preserves pending questions and planning graphs, and records
+  each completed source round with its own tool receipts. If a turn's graph
+  recording allowance cannot be saved, the original answer is published.
+- Capped evidence histories retain fresh citations. Graph reads handle large
+  sets of citations and keep an old citation unavailable when a later turn
+  reuses the event sequence. The exposure eval checks actual connectivity.
+- A same-kind lead linked to a confirmed subject stayed current when the link
+  was written the other way, or when that lead was only named on the link. The
+  host now retracts it without a version and without replacing its attributes.
+- A stored subject whose only link ended at a phrase disappeared with that
+  phrase. The phrase stays off the graph and the subject stays on it.
+- Pointing at a work-record node showed its name twice: once on the canvas
+  and again in the graph library's hover tooltip. The canvas name is the
+  only one.
+- The work-record graph in the side panel keeps a minimum height, so a long
+  to-do list scrolls instead of squeezing the picture away.
+- A turn that used tools and then answered without writing the graph now waits
+  once, in that same turn, for one `update_graph`. The answer is kept if that
+  call writes nothing. The host still does not invent the subjects.
+- Replaying a conversation into the graph gave each round only four model
+  calls, so the round stopped with "exceeds max iterations" while it was still
+  recording. A round now uses the manager's iteration cap.
+- The work graph no longer draws a plan, a phrase or an explanation as a node,
+  and it refuses to store one under `other`. A name with a space is a phrase. A new subject is stored only as an end of
+  a link, apart from the single subject of an empty graph, and a subject with
+  no link is not drawn. The panel can open the graph full screen;
+  the side panel names a node when it is pointed at.
+- Graph tool calls and results no longer keep credential values in stored
+  events, the transcript or backups. The model still receives a value from its
+  by-id read. Redaction covers repository URL userinfo, edits that supply only a
+  subject ID, and recovery checkpoints. A backup that skips a conversation drops
+  shared rows it touched, including rows another conversation later changed.
+- A refused `update_graph` no longer leaves the first part of the batch behind.
+  The in-progress to-do is a temporary picture; the official write is one
+  transaction, and a refusal writes nothing.
+- The phone compares the graph owner as well as the revision, so moving a
+  conversation onto another graph at the same revision replaces the picture.
+  Desktop keeps newer invalidations received during a failed fetch and retries a
+  missing revision once. Filtered reads and phone snapshots exclude transient
+  desktop previews. Replaying an `update_graph` receipt leaves the unrecorded
+  result count unchanged.
+- An external schedule observation needs a verbatim operator witness in its
+  own quote before it can bypass verification against local scheduling state.
+
 ### Changed
 
 - Grouped six optional AI functions under Models with one configuration drawer
@@ -14,6 +88,8 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
   Gateway title model or LOCAL default conversation model. Graph history stays
   readable with automatic recording off.
 
+- The default single-request output cap is 64,000 tokens. Saved positive
+  values still apply after an upgrade.
 - A successful graph write returns the subject ids and a link count instead of
   every link, and the kind list on the tool no longer repeats each kind's
   prose, so each later model call carries less.
@@ -42,10 +118,9 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 - The exposure and query acceptance tasks allow 20 minutes. A finished graph was
   being cut off at 15 minutes while the model was still checking the deliverable.
 - A graph write with no usable evidence cites the caller's own completed tool
-  results instead of refusing the batch. The first newly finished to-do stays
-  in progress until a later call settles it, including a call that repeats its
-  title. The query-extraction task asks for one current statement and retracted
-  earlier ones.
+  results instead of refusing the batch. A later call that repeats the title of
+  a to-do still in progress settles that to-do. The query-extraction task asks
+  for one current statement and retracted earlier ones.
 - The working-graph guidance records to-dos first and the findings in one later
   call, and a corrected identity is a new subject linked to the retracted one.
   The digest no longer asks for a graph write per tool result. Eval checks for
@@ -73,6 +148,13 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 - Under FOFA, the context-usage hover card uses the ordinary dark tooltip instead of a bordered solid panel, its ring icon has no hover slab, and a card waiting on your answer keeps a neutral border with the orange heading.
 
 ### Fixed
+
+- External scheduling observations can be published despite an incorrect scope
+  quote. Application schedule claims still require exact quotations and
+  current persisted evidence. Desktop/Web and phone now distinguish invalid
+  verification responses from failed requests when deferring an answer, and
+  Trace retains the final attempt's structured failure reason.
+  (`F-150`, `C-009`)
 
 - Force-graph nodes in the Work records panel were not clickable because the
   graph library's hit-testing needs an explicit `nodePointerAreaPaint`; the

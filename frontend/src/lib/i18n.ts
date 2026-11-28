@@ -40,7 +40,9 @@ const NOTICE_EXACT: Record<string, MessageKey> = {
   "Continuing from the failed step.": "notice.failureContinued",
   "Waiting before retrying the model request.": "notice.modelBackoffUnknown",
   "Waiting to check the unpublished answer again.": "notice.scheduleAnswerBackoffUnknown",
-  "Answer verification is unavailable. The unpublished answer is retained.": "notice.scheduleAnswerDeferred",
+  "Answer verification was deferred. The unpublished answer is retained.": "notice.scheduleAnswerDeferred",
+  "The verification response was invalid. The unpublished answer is retained.": "notice.scheduleAnswerDeferredInvalid",
+  "The verification request failed. The unpublished answer is retained.": "notice.scheduleAnswerDeferredUnavailable",
   "The model returned a tool call that was not valid JSON. Retrying.":
     "notice.modelRetryToolJSON",
   "The model service is rate limiting requests. Retrying.":

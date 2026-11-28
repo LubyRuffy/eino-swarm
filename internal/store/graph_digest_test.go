@@ -7,9 +7,9 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/graph"
 )
 
-func (f *graphFixture) toolResult(graphPayload bool) {
+func (f *graphFixture) toolResult(payload, write bool) {
 	f.t.Helper()
-	ev := &Event{ThreadID: f.thread.ID, TurnID: f.turn.ID, Kind: "tool_result", AgentID: "manager", WorkRecordPayload: graphPayload, Text: "r"}
+	ev := &Event{ThreadID: f.thread.ID, TurnID: f.turn.ID, Kind: "tool_result", AgentID: "manager", WorkRecordPayload: payload, GraphWrite: write, Text: "r"}
 	if err := f.s.AppendEvent(ev); err != nil {
 		f.t.Fatal(err)
 	}
@@ -26,22 +26,26 @@ func TestUnrecordedCountsToolResultsSinceTheLastGraphWrite(t *testing.T) {
 		}
 		return d.Unrecorded
 	}
-	f.toolResult(false)
-	f.toolResult(false)
+	f.toolResult(false, false)
+	f.toolResult(false, false)
 	if got := count(); got != 2 {
 		t.Fatalf("two results before any write: %d", got)
 	}
-	f.toolResult(true)
+	f.toolResult(true, false) // a read is graph traffic, not a committed write
+	if got := count(); got != 2 {
+		t.Fatalf("a read must not settle earlier results: %d", got)
+	}
+	f.toolResult(true, true)
 	if got := count(); got != 0 {
-		t.Fatalf("a graph write must settle what came before it: %d", got)
+		t.Fatalf("a committed graph write must settle what came before it: %d", got)
 	}
-	f.toolResult(false)
-	f.toolResult(true) // a read, still graph traffic: not itself unrecorded
-	f.toolResult(false)
-	if got := count(); got != 1 {
-		t.Fatalf("after the last graph traffic: %d", got)
+	f.toolResult(false, false)
+	f.toolResult(true, false)
+	f.toolResult(false, false)
+	if got := count(); got != 2 {
+		t.Fatalf("after the last committed write: %d", got)
 	}
-	if n, err := f.s.GraphUnrecorded(context.Background(), f.thread.ID, f.turn.ID); err != nil || n != 1 {
+	if n, err := f.s.GraphUnrecorded(context.Background(), f.thread.ID, f.turn.ID); err != nil || n != 2 {
 		t.Fatalf("GraphUnrecorded=%d %v", n, err)
 	}
 }
@@ -49,12 +53,19 @@ func TestUnrecordedCountsToolResultsSinceTheLastGraphWrite(t *testing.T) {
 func TestDigestIsABoundedWindowOnTheGraph(t *testing.T) {
 	f := newGraphFixture(t, true)
 	var subjects []graph.SubjectInput
+	var links []graph.LinkInput
 	var todos []graph.TodoInput
 	for i := 0; i < DigestSubjects+5; i++ {
-		subjects = append(subjects, ip("203.0.113."+itoa(i+1)))
+		ref := "n" + itoa(i)
+		item := ip("203.0.113." + itoa(i+1))
+		item.Ref = ref
+		subjects = append(subjects, item)
+		if i > 0 {
+			links = append(links, graph.LinkInput{From: ref, To: "n" + itoa(i-1), Rel: "next"})
+		}
 		todos = append(todos, graph.TodoInput{Title: "step " + itoa(i)})
 	}
-	f.apply(graph.Batch{Subjects: subjects, Todos: todos})
+	f.apply(graph.Batch{Subjects: subjects, Links: links, Todos: todos})
 	d, err := f.s.ReadGraphDigest(context.Background(), f.owner, f.thread.ID, f.turn.ID)
 	if err != nil {
 		t.Fatal(err)

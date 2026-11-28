@@ -5,9 +5,9 @@ export function backoffHistory(): Step[] {
   const origin = (agentID: string, cooldown_id: string, wait_ms: number): Step => ({
     kind: "model_backoff", agentID, text: JSON.stringify({ scope: "origin", cooldown_id, wait_ms }),
   })
-  const candidate = (code: string, wait_ms: number, detail?: string): Step => ({
+  const candidate = (code: string, wait_ms: number, detail?: string, last_failure?: { code: string; detail?: string }): Step => ({
     kind: "model_backoff", agentID: "schedule-answer-policy",
-    text: JSON.stringify({ scope: "schedule_answer", candidate_id: "private-answer", code, wait_ms, detail }),
+    text: JSON.stringify({ scope: "schedule_answer", candidate_id: detail === "unavailable" ? "private-answer-previous" : "private-answer", code, wait_ms, detail, last_failure }),
   })
   return [
     { kind: "user_message", text: "Continue the assigned work." },
@@ -17,6 +17,7 @@ export function backoffHistory(): Step[] {
     origin("manager", "service:2", 10000),
     candidate("classification_unavailable", 5000),
     candidate("classification_invalid", 10000, "json"),
-    candidate("classification_deferred", 0, "attempts"),
+    candidate("classification_deferred", 0, "attempts", { code: "classification_invalid", detail: "scope_quote" }),
+    candidate("classification_deferred", 0, "unavailable", { code: "classification_unavailable" }),
   ]
 }

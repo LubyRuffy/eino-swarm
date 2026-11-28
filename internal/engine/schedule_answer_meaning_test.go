@@ -60,7 +60,7 @@ func TestScheduleAnswerMeaningExcludesNonCurrentOrReportedAssertions(t *testing.
 func TestNonClaimMeaningPublishesThroughRegistryAndHTTPWithoutGoalBlock(t *testing.T) {
 	for _, tc := range []struct {
 		name, text, stance, temporal, attribution string
-		externalActor                             string
+		externalScopeQuote                        string
 		mixed                                     bool
 	}{
 		{name: "denial", text: "No automatic check was arranged.", stance: "negated", temporal: "current", attribution: "assistant"},
@@ -68,8 +68,8 @@ func TestNonClaimMeaningPublishesThroughRegistryAndHTTPWithoutGoalBlock(t *testi
 		{name: "human-policy", text: "The human forbids parking the conversation for an automatic check.", stance: "affirmed", temporal: "current", attribution: "reported"},
 		{name: "ended", text: "The earlier automatic check finished.", stance: "affirmed", temporal: "historical", attribution: "assistant"},
 		{name: "cancelled", text: "The earlier automatic check was cancelled.", stance: "affirmed", temporal: "historical", attribution: "assistant"},
-		{name: "external-process", text: "观察到备份服务每 45 秒检查一次队列。", stance: "affirmed", temporal: "current", attribution: "assistant", externalActor: "备份服务"},
-		{name: "external-and-local", text: "The backup service checks its queue every 45 seconds.", stance: "affirmed", temporal: "current", attribution: "assistant", externalActor: "The backup service", mixed: true},
+		{name: "external-process", text: "观察到备份服务每 45 秒检查一次队列。", stance: "affirmed", temporal: "current", attribution: "assistant", externalScopeQuote: "备份服务"},
+		{name: "external-and-local", text: "The backup service checks its queue every 45 seconds.", stance: "affirmed", temporal: "current", attribution: "assistant", externalScopeQuote: "backup service", mixed: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var managers, policies atomic.Int32
@@ -102,8 +102,8 @@ func TestNonClaimMeaningPublishesThroughRegistryAndHTTPWithoutGoalBlock(t *testi
 					if tc.stance != "" {
 						claim := map[string]any{"quote": tc.text, "scope": "unspecified", "new": true,
 							"stance": tc.stance, "temporal": tc.temporal, "attribution": tc.attribution}
-						if tc.externalActor != "" {
-							claim["scope"], claim["scope_quote"], claim["every_s"] = "external", tc.externalActor, 45
+						if tc.externalScopeQuote != "" {
+							claim["scope"], claim["scope_quote"], claim["every_s"] = "external", tc.externalScopeQuote, 45
 							delete(claim, "new")
 						}
 						claims = append(claims, claim)
@@ -134,6 +134,7 @@ func TestNonClaimMeaningPublishesThroughRegistryAndHTTPWithoutGoalBlock(t *testi
 			e.cfg.Models.Providers[0].BaseURL = endpoint.URL
 			e.cfg.Models.Providers[0].Model = "offline-claim-meaning"
 			e.pool = provider.New(e.cfg)
+			useEngineBackoffClock(t, e)
 			th, err := e.CreateThread("nonclaim admission", "", "")
 			if err != nil {
 				t.Fatal(err)
@@ -149,6 +150,15 @@ func TestNonClaimMeaningPublishesThroughRegistryAndHTTPWithoutGoalBlock(t *testi
 			turn, err := e.StartTurnInput(th.ID, UserInput{Text: "Inspect current state.", ContinueGoal: true})
 			if err != nil {
 				t.Fatal(err)
+			}
+			defer func() { _ = e.Interrupt(th.ID) }()
+			if tc.externalScopeQuote != "" {
+				waitRestartState(t, func() bool {
+					return !e.Status(th.ID).Running || policies.Load() > 2
+				})
+				if policies.Load() > 2 {
+					t.Fatal("the classifier retried an external scope quote")
+				}
 			}
 			got := waitForTurn(t, e, turn.ID)
 			waitSettled(t, e, th.ID)
@@ -166,7 +176,7 @@ func TestNonClaimMeaningPublishesThroughRegistryAndHTTPWithoutGoalBlock(t *testi
 			if scheduleAnswerRetryCount(t, e, turn.ID) != int(want-1) {
 				t.Fatal("correction was not limited to the unsupported local claim")
 			}
-			if tc.externalActor != "" {
+			if tc.externalScopeQuote != "" {
 				if replay := replayDump(t, e, th.ID); !strings.Contains(replay, tc.text) || strings.Contains(replay, fixtureScheduleClaim) {
 					t.Fatal("replay lost the external finding or admitted an unverified local claim")
 				}
@@ -185,7 +195,7 @@ func TestNonClaimMeaningPublishesThroughRegistryAndHTTPWithoutGoalBlock(t *testi
 	}
 }
 
-func TestExternalObservationDoesNotRequireAnAppArmingFlag(t *testing.T) {
+func TestExternalObservationDoesNotRelaxLocalClaimValidation(t *testing.T) {
 	const external = "The archive service polls its queue every 45 seconds."
 	const local = "The scheduled check runs every 60 seconds."
 	externalItem := `{"quote":"` + external + `","scope":"external","scope_quote":"The archive service","stance":"affirmed","temporal":"current","attribution":"assistant","every_s":45}`
@@ -194,16 +204,19 @@ func TestExternalObservationDoesNotRequireAnAppArmingFlag(t *testing.T) {
 	for _, tc := range []struct {
 		name, items string
 		want        int
+		detail      string
 	}{
-		{"external-only", externalItem, 0},
-		{"mixed", externalItem + "," + localItem + `,"new":true}`, 1},
-		{"local-still-requires-new", externalItem + "," + localItem + "}", -1},
+		{"external-only", externalItem, 0, ""},
+		{"mixed", externalItem + "," + localItem + `,"new":true}`, 1, ""},
+		{"local-still-requires-new", externalItem + "," + localItem + "}", 0, "claim_shape"},
+		{"local-still-requires-scope-quote", externalItem + "," + strings.Replace(localItem, `"unspecified"`, `"thread"`, 1) + `,"new":true,"scope_quote":"The archive service"}`, 0, "scope_quote"},
+		{"local-still-requires-exact-quote", externalItem + "," + strings.Replace(localItem, local, "A paraphrased local check", 1) + `,"new":true}`, 0, "quote_not_in_candidate"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			claims, err := decodeScheduleAnswer(schema.AssistantMessage(`{"claims":[`+tc.items+`]}`, nil), body)
-			if tc.want < 0 {
-				if failure, ok := err.(*scheduleAnswerError); !ok || failure.Detail != "claim_shape" {
-					t.Fatalf("local claim with missing new became valid: claims=%+v err=%v", claims, err)
+			if tc.detail != "" {
+				if failure, ok := err.(*scheduleAnswerError); !ok || failure.Detail != tc.detail || len(claims) != 0 {
+					t.Fatalf("invalid local claim passed validation: claims=%+v err=%v", claims, err)
 				}
 				return
 			}
@@ -217,11 +230,14 @@ func TestExternalObservationDoesNotRequireAnAppArmingFlag(t *testing.T) {
 	}
 }
 
-func TestExternalScheduleClaimNeedsExactOwnerAndCannotCarryAppScheduleID(t *testing.T) {
+func TestExternalScheduleClaimRequiresAnOperatorInItsQuoteAndNoAppID(t *testing.T) {
 	const text = "The backup service checks its queue every 45 seconds. An app check is armed as sch_local."
 	for _, tc := range []struct{ name, quote, witness, scheduleID, wantDetail string }{
-		{"missing", text, "", "", "scope_quote"},
-		{"out-of-quote", "An app check is armed as sch_local.", "backup service", "", "scope_quote"},
+		{"grounded", "The backup service checks its queue every 45 seconds.", "backup service", "", ""},
+		{"missing", "The backup service checks its queue every 45 seconds.", "", "", "scope_quote"},
+		{"out-of-quote", "The backup service checks its queue every 45 seconds.", "An app check", "", "scope_quote"},
+		{"absent-from-candidate", "The backup service checks its queue every 45 seconds.", "invented operator", "", "scope_quote"},
+		{"quote-not-grounded", "Another service checks its queue every 45 seconds.", "Another service", "", "quote_not_in_candidate"},
 		{"app-id", text, "backup service", "sch_local", "schedule_id"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -229,10 +245,64 @@ func TestExternalScheduleClaimNeedsExactOwnerAndCannotCarryAppScheduleID(t *test
 				"stance": "affirmed", "temporal": "current", "attribution": "assistant"}
 			body, _ := json.Marshal(map[string]any{"claims": []any{claim}})
 			claims, err := decodeScheduleAnswer(schema.AssistantMessage(string(body), nil), []string{text})
+			if tc.wantDetail == "" {
+				if err != nil || len(claims) != 0 {
+					t.Fatalf("external observation affected admission: claims=%+v err=%v", claims, err)
+				}
+				return
+			}
 			failure, ok := err.(*scheduleAnswerError)
 			if !ok || failure.Detail != tc.wantDetail || len(claims) != 0 {
 				t.Fatalf("invalid external evidence reached admission: claims=%+v diagnostic=%#v", claims, failure)
 			}
 		})
+	}
+}
+
+func TestExternalScopeWithoutAWitnessCannotPublishALocalClaim(t *testing.T) {
+	const claim = "I have armed this conversation to check again every 90 seconds."
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req scheduleCompletionRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Error(err)
+			return
+		}
+		if len(req.Messages) > 0 && req.Messages[0].Content == scheduleAnswerPrompt {
+			writeContextFlowReply(w, false, map[string]any{"content": `{"claims":[{"quote":"` + claim + `","scope":"external","scope_quote":"","stance":"affirmed","temporal":"current","attribution":"assistant","every_s":90}]}`}, "stop")
+			return
+		}
+		writeContextFlowReply(w, req.Stream, map[string]any{"content": claim}, "stop")
+	}))
+	defer endpoint.Close()
+	e := newTestEngine(t)
+	e.cfg.Swarm.AutoTitle = false
+	e.cfg.Models.Providers[0].BaseURL = endpoint.URL
+	e.cfg.Models.Providers[0].Model = "offline-audit-external"
+	e.pool = provider.New(e.cfg)
+	useEngineBackoffClock(t, e)
+	th, err := e.CreateThread("Schedule audit", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := e.StartTurn(th.ID, "Report current state.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitRestartState(t, func() bool { return !e.Status(th.ID).Running || e.Status(th.ID).AwaitingContinue })
+	events, err := e.store.ListTurnEvents(turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidWitness := false
+	for _, ev := range events {
+		if ev.Kind == KindModelBackoff && strings.Contains(ev.Text, `"detail":"scope_quote"`) {
+			invalidWitness = true
+		}
+		if ev.Kind == "agent_message" && strings.Contains(ev.Text, claim) {
+			t.Fatal("unarmed local success claim reached the public timeline")
+		}
+	}
+	if !e.Status(th.ID).AwaitingContinue || !invalidWitness {
+		t.Fatal("the ungrounded external classification did not exhaust its validation budget and pause")
 	}
 }

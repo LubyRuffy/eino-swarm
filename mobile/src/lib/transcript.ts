@@ -588,6 +588,8 @@ function modelRetryNotice(text: string): string {
         return "Checking the schedule before reporting it as arranged."
       case "workers_uncollected":
         return "Collecting delegated work before completing this turn."
+      case "graph_unrecorded":
+        return "Recording this turn's results on the working graph."
       case "context_overflow":
         return "The prompt exceeds the model window. Compressing and trying once."
       case "invalid_tool_json":

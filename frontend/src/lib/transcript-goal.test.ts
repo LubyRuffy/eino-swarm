@@ -236,6 +236,8 @@ describe("standing objective and compact notices", () => {
     expect(manager(stalled).blocks[0].text).toBe("The model service stopped sending data. Retrying.")
     const scheduled = fold([ev({ kind: "model_retry", text: '{"reason":"scheduled_no_activity"}' })])
     expect(manager(scheduled).blocks[0].text).toBe("Continuing the scheduled check.")
+    const graph = fold([ev({ kind: "model_retry", text: '{"reason":"graph_unrecorded"}' })])
+    expect(manager(graph).blocks[0].text).toBe("Recording this turn's results on the working graph.")
     const overflow = fold([ev({ kind: "model_retry", text: '{"attempt":1,"cap":1,"reason":"context_overflow"}' })])
     expect(manager(overflow).blocks[0].text).toBe(
       "The prompt exceeds the model window. Compressing and trying once.",

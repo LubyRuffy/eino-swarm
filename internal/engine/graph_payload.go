@@ -1,11 +1,25 @@
 package engine
 
-import "github.com/cloudwego/eino/schema"
+import (
+	"encoding/json"
+
+	"github.com/cloudwego/eino/schema"
+)
 
 // Graph tool traffic is a stored copy of the graph, not conversation content.
 // Compaction, memory review and distillation skip it by this marker. The old
 // tool names stay recognised so conversations saved before the graph keep
 // their payload boundary.
+// graphWriteCommitted identifies a fresh commit in the update_graph receipt.
+// A replay returns success while leaving the graph revision unchanged.
+func graphWriteCommitted(text string) bool {
+	var head struct {
+		OK       bool `json:"ok"`
+		Replayed bool `json:"replayed"`
+	}
+	return json.Unmarshal([]byte(text), &head) == nil && head.OK && !head.Replayed
+}
+
 func isWorkRecordTool(name string) bool {
 	switch name {
 	case ToolUpdateGraph, ToolReadGraph, "read_work", "record_work":

@@ -1,4 +1,4 @@
-/** Wire text of swarm.errOutputBudget. The desktop transcript matches it
+/** Wire text of swarm.ErrOutputBudget. The desktop transcript matches it
  *  exactly so a stored event still grows a settings link after replay.
  *  Change signal.go and this string together. */
 export const OUTPUT_BUDGET_ERROR =

@@ -1,5 +1,5 @@
 import ForceGraph from "force-graph"
-import { Maximize, Minus, Plus } from "lucide-react"
+import { Maximize, Maximize2, Minus, Plus } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { Ring } from "../../../lib/graph/analysis"
 import { cn } from "../../../lib/cn"
@@ -51,15 +51,20 @@ export interface GraphStageElement extends HTMLDivElement {
 
 const toolButton = "grid size-7 place-items-center rounded-md border bg-card/95 text-muted-foreground shadow-sm hover:border-primary hover:text-primary"
 
-export function GraphView({ nodes, links, highlighted, selected, active = true, height = 280, text, onSelect }: {
+export function GraphView({ nodes, links, highlighted, selected, active = true, height = 280, fill = false, labelAll = true, text, onSelect, onExpand }: {
   nodes: readonly ViewNode[]
   links: readonly ViewLink[]
   highlighted: ReadonlySet<string>
   selected: string | null
   active?: boolean
   height?: number
-  text: { graph: string; empty: string; fit: string; zoomIn: string; zoomOut: string }
+  /** Fill the parent instead of using a fixed height. The enlarged dialog uses this. */
+  fill?: boolean
+  /** The side panel names a node when it is pointed at. The enlarged graph names every node. */
+  labelAll?: boolean
+  text: { graph: string; empty: string; fit: string; zoomIn: string; zoomOut: string; expand?: string }
   onSelect: (id: string | null) => void
+  onExpand?: () => void
 }) {
   const reducedMotion = usePrefersReducedMotion()
   const stageRef = useRef<HTMLDivElement>(null)
@@ -76,6 +81,8 @@ export function GraphView({ nodes, links, highlighted, selected, active = true, 
   activeRef.current = active
   const onSelectRef = useRef(onSelect)
   onSelectRef.current = onSelect
+  const labelAllRef = useRef(labelAll)
+  labelAllRef.current = labelAll
   const flowing = !reducedMotion && nodes.some((node) => node.ring === "doing")
 
   const repaint = useCallback(() => {
@@ -86,6 +93,7 @@ export function GraphView({ nodes, links, highlighted, selected, active = true, 
   const updateLabels = useCallback(() => {
     drawState.current.labels = chooseLabels(nodesRef.current, {
       hovered: hovered.current, selected: drawState.current.selected, highlighted: drawState.current.highlighted,
+      labelAll: labelAllRef.current,
     })
     repaint()
   }, [repaint])
@@ -112,6 +120,7 @@ export function GraphView({ nodes, links, highlighted, selected, active = true, 
       .width(stage.clientWidth).height(stage.clientHeight)
       .minZoom(MIN_ZOOM).maxZoom(MAX_ZOOM).cooldownTime(8000)
       .nodeId("id").nodeVal((n) => n.radius * 2.5)
+      // The canvas already draws the name. The library tooltip would add a second one under the pointer.
       .nodeLabel(() => "").linkLabel(() => "")
       .nodeCanvasObject((n, ctx, zoom) => drawNode(n, ctx, zoom, drawState.current, palette()))
       .linkCanvasObject((l, ctx, zoom) => drawLink(l, ctx, zoom, drawState.current, palette()))
@@ -236,7 +245,10 @@ export function GraphView({ nodes, links, highlighted, selected, active = true, 
   }
 
   return (
-    <div className="relative overflow-hidden rounded-xl border bg-card" style={{ height }}>
+    // The side panel is a column. This box hides overflow, so a flex parent
+    // will shrink it to nothing and give the room to the to-do list. The
+    // chosen height is also the minimum; the list scrolls instead.
+    <div className={cn("relative overflow-hidden rounded-xl border bg-card", fill ? "h-full min-h-0" : "shrink-0")} style={fill ? undefined : { height, minHeight: height }}>
       <div ref={stageRef} role="group" aria-label={text.graph} data-testid="graph-stage"
         data-flowing={flowing ? "true" : "false"} className="absolute inset-0 overflow-hidden">
         <div ref={mountRef} className="absolute inset-0" />
@@ -246,6 +258,7 @@ export function GraphView({ nodes, links, highlighted, selected, active = true, 
         <button type="button" className={toolButton} aria-label={text.zoomIn} title={text.zoomIn} onClick={() => zoomBy(0.3)}><Plus className="size-4" aria-hidden /></button>
         <button type="button" className={toolButton} aria-label={text.zoomOut} title={text.zoomOut} onClick={() => zoomBy(-0.3)}><Minus className="size-4" aria-hidden /></button>
         <button type="button" className={toolButton} aria-label={text.fit} title={text.fit} onClick={() => { userMoved.current = false; fit() }}><Maximize className="size-4" aria-hidden /></button>
+        {onExpand && text.expand ? <button type="button" className={toolButton} aria-label={text.expand} title={text.expand} onClick={onExpand}><Maximize2 className="size-4" aria-hidden /></button> : null}
       </div>
     </div>
   )

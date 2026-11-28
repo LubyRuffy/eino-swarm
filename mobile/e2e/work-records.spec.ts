@@ -7,7 +7,7 @@ test("paired phones open the work graph and honor the PC setting", async ({ page
   const entry = page.getByRole("button", { name: "Work records", exact: true })
   await entry.click()
   const panel = page.getByTestId("graph-panel")
-  await expect(panel).toContainText("3 subjects · 1 links")
+  await expect(panel).toContainText("3 subjects · 2 links")
   // The real force-graph draws on a canvas; a blank one means the shared view broke on the phone.
   const canvas = panel.locator("canvas").first()
   await expect(canvas).toBeVisible()

@@ -32,7 +32,7 @@ func (s *streamAcc) interruptGeneration(err error) {
 	s.mu.Unlock()
 	cause := GenerationInterruption{Reason: "model_error", Detail: "The model request did not complete.", Recovery: "none"}
 	switch {
-	case errors.Is(err, errOutputBudget):
+	case errors.Is(err, ErrOutputBudget):
 		cause.Reason, cause.Detail = "output_limit", "The model reached its output limit before generation completed."
 	case errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) && ctx != nil && errors.Is(ctx.Err(), context.DeadlineExceeded):
 		cause.Reason, cause.Detail = "timeout", "The generation deadline expired."
@@ -92,14 +92,14 @@ func (m *generationModel) Generate(ctx context.Context, in []*schema.Message, op
 	if err != nil {
 		attempt.interruptGeneration(err)
 	} else if out != nil && out.ResponseMeta != nil && outputStoppedEarly(out.ResponseMeta.FinishReason) {
-		attempt.interruptGeneration(errOutputBudget)
+		attempt.interruptGeneration(ErrOutputBudget)
 		for _, tc := range out.ToolCalls {
 			if !json.Valid([]byte(tc.Function.Arguments)) {
-				return out, errOutputBudget
+				return out, ErrOutputBudget
 			}
 		}
 		if len(out.ToolCalls) == 0 && strings.TrimSpace(out.Content) == "" {
-			return out, errOutputBudget
+			return out, ErrOutputBudget
 		}
 	} else {
 		attempt.completeGeneration()
@@ -181,12 +181,12 @@ func guardGenerationTools(source *schema.StreamReader[*schema.Message]) *schema.
 		return msg, nil
 	}, schema.WithOnEOF(func() (any, error) {
 		if rejected {
-			return nil, errOutputBudget
+			return nil, ErrOutputBudget
 		}
 		return nil, io.EOF
 	}), schema.WithErrWrapper(func(err error) error {
 		if capped {
-			return errOutputBudget
+			return ErrOutputBudget
 		}
 		return err
 	}))

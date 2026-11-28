@@ -6,9 +6,11 @@ package store
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"time"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
+	"github.com/LubyRuffy/eino-swarm/internal/graph"
 )
 
 // Turn status values.
@@ -202,6 +204,12 @@ type Turn struct {
 	// tools, so an interrupted turn recovers with the graph tools.
 	GraphTools    bool `gorm:"column:work_ledger;not null;default:false" json:"graph_tools"`
 	GraphReadOnly bool `gorm:"column:work_ledger_read_only;not null;default:false" json:"graph_read_only"`
+	// GraphReplay walks completed rounds into the graph. Recovery runs that
+	// walk again instead of treating the caption as a new investigation.
+	GraphReplay bool `gorm:"not null;default:false" json:"graph_replay,omitempty"`
+	// GraphClear drops the working graph before that walk. Recovery clears
+	// again, then walks, so a partial picture is not left in place.
+	GraphClear bool `gorm:"not null;default:false" json:"graph_clear,omitempty"`
 	// ImageCommand belongs to an explicit /image turn and never resumes as a chat-model turn.
 	ImageCommand bool `gorm:"not null;default:false" json:"image_command,omitempty"`
 	// GoalContinue is true when the engine started this turn to keep pursuing
@@ -231,6 +239,10 @@ type Turn struct {
 type Event struct {
 	// WorkRecordPayload carries host-tagged work tool arguments or results.
 	WorkRecordPayload bool `gorm:"not null;default:false" json:"-"`
+	// GraphWrite is set on the tool result of an update_graph that committed.
+	// A read or a refused write is still work-record traffic, but it is not a
+	// receipt the unrecorded-result count can treat as caught up.
+	GraphWrite bool `gorm:"not null;default:false" json:"-"`
 	// Completion is persisted so quiet/rewind cannot revive pre-upgrade
 	// history. SuppressCompletion is a runtime decision, never wire data.
 	Completion         bool                `gorm:"not null;default:false" json:"-"`
@@ -254,6 +266,16 @@ type Event struct {
 	Err                string              `json:"err,omitempty"`
 	Images             []ImageRef          `gorm:"serializer:json" json:"images,omitempty"`
 	CreatedAt          time.Time           `json:"created_at"`
+}
+
+// MarshalJSON also protects events stored before graph tool text was scrubbed
+// at the producer. The stored event remains available to internal recovery.
+func (e Event) MarshalJSON() ([]byte, error) {
+	type eventWire Event
+	if e.WorkRecordPayload || e.Kind == "engine_restart_checkpoint" {
+		e.Text = graph.RedactToolText(e.Text)
+	}
+	return json.Marshal(eventWire(e))
 }
 
 // LLMCall records one model request. It carries sizes, token counts and

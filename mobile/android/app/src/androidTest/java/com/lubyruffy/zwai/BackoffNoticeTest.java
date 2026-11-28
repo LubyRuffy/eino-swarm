@@ -12,6 +12,8 @@ import android.os.Bundle;
 import android.os.SystemClock;
 import android.system.Os;
 import android.system.OsConstants;
+import android.view.InputDevice;
+import android.view.MotionEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.webkit.WebView;
 import android.util.Base64;
@@ -46,11 +48,12 @@ public class BackoffNoticeTest {
         boolean chinese = "zh".equals(locale);
         String[] notices = chinese ? new String[] {
             "等待 5 秒后重试模型请求。", "等待 10 秒后重试模型请求。",
-            "等待 5 秒后重试未发布答复的核对。", "答复核对暂不可用，未发布候选已保留。"
+            "等待 5 秒后重试未发布答复的核对。", "核对响应无效，未发布候选已保留。", "核对请求失败，未发布候选已保留。"
         } : new String[] {
             "Waiting 5s before retrying the model request.", "Waiting 10s before retrying the model request.",
             "Waiting 5s before checking the unpublished answer again.",
-            "Answer verification is unavailable. The unpublished answer is retained."
+            "The verification response was invalid. The unpublished answer is retained.",
+            "The verification request failed. The unpublished answer is retained."
         };
         Intent intent = instrumentation.getTargetContext().getPackageManager()
             .getLaunchIntentForPackage(instrumentation.getTargetContext().getPackageName());
@@ -61,7 +64,7 @@ public class BackoffNoticeTest {
         try {
             selectOfflineInput((MainActivity) activity, locale, "answer-backoff");
             for (String phase : new String[] { "first-open", "reopened" }) {
-                waitFor(notices[3], false);
+                waitFor(notices[4], false);
                 List<AccessibilityNodeInfo> visible = nodes(ui.getRootInActiveWindow());
                 for (String notice : notices) {
                     int count = 0;
@@ -145,7 +148,8 @@ public class BackoffNoticeTest {
         CountDownLatch selected = new CountDownLatch(1);
         instrumentation.runOnMainSync(() -> ready[0].evaluateJavascript(
             "localStorage.setItem('zwai.phone.locale'," + JSONObject.quote(locale)
-                + ");location.assign(" + JSONObject.quote("/?mock=1&tick=0&history=" + history) + ");true",
+                + ");localStorage.setItem('zwai.phone.mode','local');location.assign("
+                + JSONObject.quote("/?mock=1&tick=0&history=" + history) + ");true",
             result -> selected.countDown()));
         assertTrue("Select offline input once; never repeat an unacknowledged navigation", selected.await(5, TimeUnit.SECONDS));
     }
@@ -164,7 +168,21 @@ public class BackoffNoticeTest {
 
     private void click(AccessibilityNodeInfo node) {
         assertTrue("A native control must be enabled", node.isEnabled());
-        assertTrue("A native click must reach the packaged handler", node.performAction(AccessibilityNodeInfo.ACTION_CLICK));
+        Rect bounds = new Rect();
+        node.getBoundsInScreen(bounds);
+        assertFalse("A native control must have a tappable area", bounds.isEmpty());
+        long time = SystemClock.uptimeMillis();
+        MotionEvent down = MotionEvent.obtain(time, time, MotionEvent.ACTION_DOWN, bounds.centerX(), bounds.centerY(), 0);
+        MotionEvent up = MotionEvent.obtain(time, time + 50, MotionEvent.ACTION_UP, bounds.centerX(), bounds.centerY(), 0);
+        down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        try {
+            assertTrue("The tap must start on the packaged control", ui.injectInputEvent(down, true));
+            assertTrue("The tap must finish on the packaged control", ui.injectInputEvent(up, true));
+        } finally {
+            down.recycle();
+            up.recycle();
+        }
     }
 
     private boolean named(AccessibilityNodeInfo node, String label) {

@@ -240,8 +240,9 @@ def drive_conversation(base: str, thread_id: str, task: dict, now: Callable[[], 
     deadline = start + task["timeout_s"]
     wait_deadline = None
     outcome = {"state": "done", "asked": False, "iteration_cap": False, "waited": False}
-    # A graph task is watched while it runs, so a later check can see that the
-    # picture moved more than once and that a to-do was doing before the end.
+    # A graph task is watched while it runs. A finished to-do is drawn in
+    # progress before its one commit, so a later check can see that frame and
+    # then a higher revision.
     watch_graph = any(c.get("type") == "graph_count" for c in task.get("checks") or [])
     timeline: list[dict] = []
 
@@ -249,7 +250,7 @@ def drive_conversation(base: str, thread_id: str, task: dict, now: Callable[[], 
         if not watch_graph:
             return
         try:
-            view = http_json(base, "GET", f"/api/threads/{thread_id}/graph?todos=1") or {}
+            view = http_json(base, "GET", f"/api/threads/{thread_id}/graph?todos=1&preview=1") or {}
         except Exception:
             return
         doing = any((t.get("status") == "doing") for t in (view.get("todos") or []))
@@ -485,17 +486,20 @@ def run_once(task: dict, run_idx: int, args: argparse.Namespace, provider: dict 
                                   baseline_hashes, final_graph)
         if record.get("graph") is True:
             samples = outcome.get("graph_timeline") or []
-            revisions = []
+            # A finished to-do is drawn in progress before its commit. That
+            # frame keeps the current revision; the commit is a later sample
+            # with a higher one. Two committed revisions are not required.
+            doing_at = None
+            settled = False
             for sample in samples:
                 rev = sample.get("revision") or 0
-                if rev and rev not in revisions:
-                    revisions.append(rev)
-            doing = any(sample.get("doing") for sample in samples)
-            # The picture has to move at least twice while the turn is running,
-            # and one of those frames has to show a to-do being done.
-            ok = len(revisions) >= 2 and doing
+                if sample.get("doing") and doing_at is None:
+                    doing_at = rev
+                if doing_at is not None and rev > doing_at:
+                    settled = True
+            ok = settled
             checks = [*checks, {"name": "progress was visible", "type": "graph_progress", "ok": ok,
-                                "detail": "" if ok else f"revisions {revisions}, doing {doing}"}]
+                                "detail": "" if ok else f"doing at {doing_at}, later higher revision {settled}"}]
         record.update({
             "outcome": outcome,
             "checks": checks,

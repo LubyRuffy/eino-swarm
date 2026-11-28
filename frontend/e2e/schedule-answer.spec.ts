@@ -294,7 +294,7 @@ test("invalid answer checks explain their format error and defer without retryin
     const invalid = transcript.getByTestId("backoff-notice").filter({ hasText: "Waiting 5s before checking the unpublished answer again." })
     await invalid.getByRole("button", { name: "Retry details", exact: true }).click()
     await expect(invalid.getByText("The verification response is not valid JSON in the required format.", { exact: true })).toBeVisible()
-    const deferred = transcript.getByTestId("backoff-notice").filter({ hasText: "Answer verification is unavailable. The unpublished answer is retained." })
+    const deferred = transcript.getByTestId("backoff-notice").filter({ hasText: "The verification response was invalid. The unpublished answer is retained." })
     await expect(deferred).toBeVisible({ timeout: 25_000 })
     await deferred.getByRole("button", { name: "Retry details", exact: true }).click()
     await expect(deferred.getByText("Consecutive invalid verification responses reached the limit. Verification was deferred.", { exact: true })).toBeVisible()
@@ -304,6 +304,14 @@ test("invalid answer checks explain their format error and defer without retryin
     const continueDeferred = page.getByRole("button", { name: "Continue after deferred answer verification", exact: true })
     await expect(continueDeferred).toBeVisible()
     expect(fixture.state()).toEqual({ managerRequests: 1, checks: 3 })
+    const { turns } = await (await request.get(`/api/threads/${threadID}/turns`)).json()
+    const trace: Trace = await (await request.get(`/api/trace/${turns[0].id}`)).json()
+    const waits = trace.events.filter((event) => event.kind === "model_backoff")
+    expect(JSON.parse(waits.at(-1)?.text ?? "{}")).toMatchObject({
+      code: "classification_deferred", detail: "invalid", attempt: 3, wait_ms: 0,
+      last_failure: { code: "classification_invalid", detail: "json" },
+    })
+    await expect(deferred.getByText("The verification response is not valid JSON in the required format.", { exact: true })).toBeVisible()
     await writeFile(info.outputPath("invalid-verification-deferred.png"), await page.screenshot({ animations: "disabled" }), { mode: 0o600 })
     await reloadOpenConversation(page)
     await expect(deferred).toBeVisible()

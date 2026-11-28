@@ -2,6 +2,7 @@ import { mockGeneratedImageTurn } from "./mock-generated-image"
 import { mockTranscriptImageHistory } from "./mock-transcript-images"
 import { compactHistoryFixture, compactHistoryRunning, compactHistorySteps, compactTurnSummaries, mockCompactPage } from "./mock-compact-history"
 import { MockProjects } from "./mock-projects"
+import { mockEditInput } from "./mock-edit-input"
 import { mockTurnID, olderThreadSeed, threadSeed, transcriptFileLinksSeed, type MockThread } from "./mock-threads"
 import { MockProductMode } from "./mock-product-mode"
 import { MockSpeech } from "./mock-speech"
@@ -47,6 +48,7 @@ import {
   OpResumeGoal,
   OpRunNow,
   OpSend,
+  OpEditInput,
   OpDeliver,
   OpStart,
   OpSteer,
@@ -533,11 +535,12 @@ export class MockHost {
 
   /** Play a turn one frame at a time so the live tail, the work fold and the
    *  answer are all exercised the way a real turn drives them. */
-  run(th: MockThread, prompt: string) {
+  run(th: MockThread, prompt: string, imageIDs?: string[]) {
     th.running = true
     th.waiting = false
     th.minutesAgo = 0
     const steps = mockGeneratedImageTurn(prompt) ?? scriptedTurn(prompt)
+    if (imageIDs?.length && steps[0].kind === "user_message") steps[0].imageIDs = imageIDs
     const turnId = `${th.id}-${this.seq + 1}`
     const script = th.script = (th.script ?? 0) + 1
     if (th.goal && new URLSearchParams(location.search).get("history") === "goal-complete") {
@@ -774,7 +777,7 @@ export class MockLink {
         return this.ok({ id, ...mockGraphMeta(), startup: search.get("startup") === "restoring" ? "restoring" : "ready", restore: { completed, total }, web_execution_supported: true, web_execution_status: { preference: "auto", execution: "local", cloud_account: "sign_in_required" } })
       }
       case OpGraph:
-        return this.ok({ id, ...mockGraph(thread(), req.since ?? 0) })
+        return this.ok({ id, ...mockGraph(thread(), req.since ?? 0, req.graph_owner) })
       case OpHello:
         return this.ok({ id })
       case OpUnwatch:
@@ -916,6 +919,7 @@ export class MockLink {
         const steerSeq = this.host.insertMockSteer(th, item?.text ?? req.text ?? "", turnId, preempted)
         return this.ok({ id, delivery: { turn_id: turnId, steer_seq: steerSeq, preempted }, followups: th.followups ?? [] })
       }
+      case OpEditInput: return mockEditInput(thread(), req, id, this.host)
       case OpSend:
       case OpAnswer:
       case OpRunNow:

@@ -48,10 +48,17 @@ func (e *Engine) graphCaller(ctx context.Context, turn *store.Turn) (store.Graph
 		return store.GraphCaller{}, "", fmt.Errorf("graph call has no matching trusted turn owner")
 	}
 	identity, ok := swarm.ToolCaller(ctx)
-	if !ok || identity.AgentID == "" {
-		return store.GraphCaller{}, "", fmt.Errorf("graph calls require an actual agent invocation")
-	}
 	callID := compose.GetToolCallID(ctx)
+	if !ok || identity.AgentID == "" {
+		// A graph replay is a host-driven pass over one stored round. The
+		// middleware below stamps the turn; the model cannot supply it.
+		replay, replayed := ctx.Value(graphReplayCallerKey{}).(graphReplayCaller)
+		if !replayed || replay.turnID != turn.ID || replay.callID == "" {
+			return store.GraphCaller{}, "", fmt.Errorf("graph calls require an actual agent invocation")
+		}
+		identity = swarm.AgentIdentity{AgentID: swarm.DefaultManagerID, Role: "manager"}
+		callID = replay.callID
+	}
 	if callID == "" {
 		return store.GraphCaller{}, "", fmt.Errorf("graph calls require a real tool call identity")
 	}
@@ -97,6 +104,11 @@ func (e *Engine) updateGraphTool(ctx context.Context, turn *store.Turn, args str
 	if err := decodeGraphArgs(args, &batch); err != nil {
 		return "", err
 	}
+	// A replay has no tool results of its own. Confirming or closing a to-do
+	// would refuse the whole batch, and the round would leave the graph unchanged.
+	if turn.GraphReplay {
+		softenReplayBatch(&batch)
+	}
 	// Ill-formed evidence would refuse the whole batch and make the model
 	// resend it. Drop it and cite the caller's own completed tool results.
 	prepareGraphEvidence(&batch)
@@ -113,13 +125,18 @@ func (e *Engine) updateGraphTool(ctx context.Context, turn *store.Turn, args str
 	if err != nil {
 		return "", err
 	}
-	identity, err := json.Marshal([]any{turn.ThreadID, turn.ID, caller.AgentID, caller.Generation, callID})
+	callerIdentity := []any{turn.ThreadID, turn.ID, caller.AgentID, caller.Generation, callID}
+	if replay, ok := ctx.Value(graphReplayCallerKey{}).(graphReplayCaller); turn.GraphReplay && ok {
+		// Each source round has its own model conversation and may reuse a call ID.
+		callerIdentity = append(callerIdentity, replay.sourceTurnID)
+	}
+	identity, err := json.Marshal(callerIdentity)
 	if err != nil {
 		return "", err
 	}
 	caller.ReceiptKey, caller.ReceiptHash = fmt.Sprintf("%x", sha256.Sum256(identity)), hash
-	// The receipt hash is the batch before this adjustment, so a retry of the
-	// same call replays instead of conflicting with the adjusted body.
+	// The receipt hash is the batch before a repair, so a retry of the same
+	// call replays instead of conflicting with the repaired body.
 	held, err := alignGraphTodos(ctx, e.store, caller.OwnerID(), &batch)
 	if err != nil {
 		return "", err
@@ -129,6 +146,31 @@ func (e *Engine) updateGraphTool(ctx context.Context, turn *store.Turn, args str
 		return "", err
 	}
 	retractLeadsLinkedToConfirmed(&batch, known)
+	if held {
+		// Validate the final batch before showing progress. A refusal must not
+		// leave the in-progress frame, or the rows behind it, in the database.
+		if err := e.store.ProbeGraph(ctx, caller, batch); err != nil {
+			if errors.Is(err, store.ErrOwnToolReceiptUnavailable) && batch.OwnToolCallIDs != nil {
+				batch.OwnToolCallIDs, batch.CiteOwnResults = nil, true
+				err = e.store.ProbeGraph(ctx, caller, batch)
+			}
+			if err != nil {
+				return "", err
+			}
+		}
+		base, err := e.store.ReadGraph(ctx, caller.OwnerID(), store.GraphQuery{All: true, Limit: -1})
+		if err != nil {
+			return "", err
+		}
+		e.showGraphPreview(caller.OwnerID(), previewGraph(base, batch))
+		defer e.clearGraphPreview(caller.OwnerID())
+		if err := waitGraphFrame(ctx); err != nil {
+			return "", err
+		}
+		// Drop the frame before the commit. A refetch of the new revision then
+		// sees the settled to-do, not the in-progress picture.
+		e.clearGraphPreview(caller.OwnerID())
+	}
 	result, replayed, err := e.store.ApplyGraph(ctx, caller, batch)
 	if errors.Is(err, store.ErrOwnToolReceiptUnavailable) && batch.OwnToolCallIDs != nil {
 		// A call id the model made up is not evidence. Cite its real results.
@@ -137,14 +179,6 @@ func (e *Engine) updateGraphTool(ctx context.Context, turn *store.Turn, args str
 	}
 	if err != nil {
 		return "", err
-	}
-	if held {
-		// The commit above is the in-progress frame. Finish it here so the
-		// model does not spend another call on a status the host already chose.
-		result, err = e.finishHeldTodo(ctx, caller, batch, result)
-		if err != nil {
-			return "", err
-		}
 	}
 	e.rememberGraphRefs(caller.OwnerID(), result)
 	// The stored result still has every link. The model already sent them, and
@@ -450,10 +484,11 @@ func (e *Engine) knownGraphSubjects(ctx context.Context, owner string, batch *gr
 }
 
 // retractLeadsLinkedToConfirmed stores a lead as retracted when this call links
-// it to a confirmed subject of the same kind. A lead is still current, so
-// leaving it beside the confirmed subject shows two current things. Two leads,
-// or two confirmed subjects, stay as written: a peer relationship is not a
-// version.
+// it to a confirmed subject of the same kind, whichever end of the link the
+// lead is. A lead is still current, so leaving it beside the confirmed subject
+// shows two current things. A stored lead named only as a link end is included.
+// Two leads, or two confirmed subjects, stay as written: a peer relationship
+// is not a version.
 func retractLeadsLinkedToConfirmed(batch *graph.Batch, known map[string]knownSubject) {
 	type end struct {
 		kind, status string
@@ -492,88 +527,56 @@ func retractLeadsLinkedToConfirmed(batch *graph.Batch, known map[string]knownSub
 	for _, link := range batch.Links {
 		from, okFrom := ends[link.From]
 		to, okTo := ends[link.To]
-		if !okFrom || !okTo || from.index < 0 || from.kind == "" || from.kind != to.kind {
+		if !okFrom || !okTo || from.kind == "" || from.kind != to.kind {
 			continue
 		}
-		if from.status != graph.StatusLead || to.status != graph.StatusConfirmed {
+		lead, leadKey := from, link.From
+		otherConfirmed := to.status == graph.StatusConfirmed && from.status == graph.StatusLead
+		if to.status == graph.StatusLead && from.status == graph.StatusConfirmed {
+			lead, leadKey = to, link.To
+			otherConfirmed = true
+		}
+		if !otherConfirmed {
 			continue
 		}
-		batch.Subjects[from.index].Status = graph.StatusRetracted
-		from.status = graph.StatusRetracted
-		subject := batch.Subjects[from.index]
+		if lead.index < 0 {
+			lead.index = len(batch.Subjects)
+			batch.Subjects = append(batch.Subjects, graph.SubjectInput{ID: leadKey, HostRetract: true})
+		} else {
+			batch.Subjects[lead.index].Status = graph.StatusRetracted
+			batch.Subjects[lead.index].HostRetract = true
+		}
+		lead.status = graph.StatusRetracted
+		subject := batch.Subjects[lead.index]
 		if subject.Ref != "" {
-			ends[subject.Ref] = from
+			ends[subject.Ref] = lead
 		}
 		if subject.ID != "" {
-			ends[subject.ID] = from
+			ends[subject.ID] = lead
 		}
+		ends[leadKey] = lead
 	}
 }
 
-// graphDoingFrame is how long a newly finished to-do stays in progress before
-// the host marks it done. The panel samples the graph on a short tick, and the
-// acceptance watch does too; the model is not asked to spend a call on that flip.
+// graphDoingFrame is how long a newly finished to-do is shown in progress
+// before the one commit that marks it done. The frame is not itself a commit.
 const graphDoingFrame = 500 * time.Millisecond
 
-// finishHeldTodo publishes the in-progress frame, then marks that to-do done
-// with the evidence the model already supplied. A repeated tool call replays
-// the second write instead of leaving the to-do in progress.
-func (e *Engine) finishHeldTodo(ctx context.Context, caller store.GraphCaller, batch graph.Batch, result graph.Result) (graph.Result, error) {
-	var held *graph.TodoResult
-	for i := range result.Todos {
-		if result.Todos[i].Status == graph.TodoDoing {
-			held = &result.Todos[i]
-			break
-		}
-	}
-	if held == nil {
-		return result, nil
-	}
+func waitGraphFrame(ctx context.Context) error {
 	timer := time.NewTimer(graphDoingFrame)
 	select {
 	case <-ctx.Done():
 		timer.Stop()
-		return result, context.Cause(ctx)
+		return context.Cause(ctx)
 	case <-timer.C:
+		return nil
 	}
-	settle := graph.Batch{CiteOwnResults: batch.CiteOwnResults, Evidence: batch.Evidence, OwnToolCallIDs: batch.OwnToolCallIDs}
-	todo := graph.TodoInput{ID: held.ID, Version: held.Version, Status: graph.TodoDone}
-	for _, in := range batch.Todos {
-		if in.Status == graph.TodoDoing && in.Result != "" {
-			todo.Result = in.Result
-			break
-		}
-	}
-	settle.Todos = []graph.TodoInput{todo}
-	hash, err := store.HashGraphBatch(settle)
-	if err != nil {
-		return result, err
-	}
-	caller.ReceiptKey += ":settle"
-	caller.ReceiptHash = hash
-	settled, _, err := e.store.ApplyGraph(ctx, caller, settle)
-	if err != nil {
-		return result, err
-	}
-	result.Revision = settled.Revision
-	if len(settled.Todos) > 0 {
-		done := map[string]graph.TodoResult{}
-		for _, item := range settled.Todos {
-			done[item.ID] = item
-		}
-		for i := range result.Todos {
-			if item, ok := done[result.Todos[i].ID]; ok {
-				result.Todos[i] = item
-			}
-		}
-	}
-	return result, nil
 }
 
-// alignGraphTodos makes progress visible and a repeated settlement land.
-// A new done to-do whose title matches one that is already doing updates that
-// to-do. Otherwise, when nothing is doing, the first new done to-do is stored
-// as doing. The host then shows that frame and marks it done in the same call.
+// alignGraphTodos makes a repeated settlement land on the to-do already in
+// progress. It also reports when the first new done to-do should be shown in
+// progress before the batch commits. That frame is not stored: the commit
+// writes the done status, or nothing if the batch is refused.
 func alignGraphTodos(ctx context.Context, s *store.Store, owner string, batch *graph.Batch) (bool, error) {
 	view, err := s.ReadGraph(ctx, owner, store.GraphQuery{Todos: true, Status: graph.TodoDoing, Limit: -1})
 	if err != nil {
@@ -605,7 +608,6 @@ func alignGraphTodos(ctx context.Context, s *store.Store, owner string, batch *g
 	}
 	for i := range batch.Todos {
 		if batch.Todos[i].ID == "" && batch.Todos[i].Status == graph.TodoDone {
-			batch.Todos[i].Status = graph.TodoDoing
 			return true, nil
 		}
 	}

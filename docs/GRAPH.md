@@ -10,7 +10,11 @@ Code: `internal/graph` (catalog, normalizers, request validation),
 `internal/store/graph_*.go` (storage, merge, revisions), `internal/engine/graph_*.go`
 (tools, digest, prompt), `internal/server/graph.go`, `internal/remote/graph.go`,
 `frontend/src/components/app/graph` and `mobile/src/components/work-records.tsx`
-(panels). The write protocol is model-checked in `models/graph/GraphStore.tla`.
+(panels). The write protocol is model-checked in `models/graph/GraphStore.tla`,
+the picture in `models/graph/GraphPicture.tla`, the recording pass in
+`models/graph/GraphRecord.tla`, committed revisions in
+`models/graph/GraphRevision.tla`, owner changes in `models/graph/GraphDelivery.tla`,
+and extraction admission and receipts in `models/graph/GraphReplay.tla`.
 
 ## Owner
 
@@ -42,7 +46,9 @@ changes: a different value is a different subject, written separately and
 linked to the first. A revised FOFA query is therefore a new `fofa_query`
 subject linked to its draft, and the failed draft is marked `retracted`.
 A lead is still current. When one call links a lead to a confirmed subject of
-the same kind, the host stores that lead as retracted; two leads, or two
+the same kind, either end of the link, the host stores that lead as retracted.
+A stored lead that the call only names as a link end is retracted the same way:
+no version is required and its attributes are not replaced. Two leads, or two
 confirmed subjects, stay as the call wrote them.
 
 **Merge.** Without an id a write merges additively: new attributes are added and
@@ -61,21 +67,34 @@ refuse.
 
 **Credentials.** A kind may mark an attribute `secret`. Its value is stored and
 returned only to the model's by-id `read_graph`. The digest, HTTP, phone, panel,
-logs and Trace show the attribute's name, never its value.
+logs and Trace show the attribute's name, never its value. The same redaction
+applies to repository URL userinfo, by-ID edits that omit the kind, stored tool
+events, transcript and recovery copies, and every backup of those rows. A full backup that keeps subject
+credentials still redacts the tool-payload copies.
 
 ## Kinds
 
 The catalog is `frontend/src/graph/kinds.json`, shared by Go, desktop and phone.
 Built-in kinds: `ip`, `domain`, `url`, `asset`, `app`, `cert`, `company`, `icp`,
-`person`, `address`, `vuln`, `repo`, `fofa_query`, and a generic `other`. The
-kind list appears only in the `update_graph` tool definition, never in the
-prompt.
+`person`, `address`, `vuln`, `repo`, `fofa_query`, `account`, `table`, `file`,
+and a generic `other`.
+`account` is a login that is not a person. The name is the login only; a host
+glued on with `@`, or a bare address, is refused so that host stays its own
+subject. `table` is one table, column or index, named by its qualified name; a
+phrase is refused. `file` is a file or directory, named by its path. A code
+repository stays a `repo`.
+`other` names one thing that has no kind. A name that explains the work, marked
+by a space, a colon, an equals sign or a parenthesis, is refused: that text is a
+to-do, not a node. The panel also leaves an already stored name of that shape
+out of the drawing. A real subject whose only link ends at that name stays
+drawn. The kind list appears only in the `update_graph` tool definition,
+never in the prompt.
 
 An entry declares: `id`, localized `name` and `description`, `attrs` (name, type,
 localized label, optional `max` and `secret`), `keys` (name, normalizer, the
 attributes it combines) and `display` (the attributes that make the subject's
 name). Normalizers are in `internal/graph/normalize.go`: `ip`, `domain`, `url`,
-`host`, `repo`, `repo_path`, `query`, `email`, `identifier`, `text`.
+`host`, `repo`, `repo_path`, `query`, `email`, `identifier`, `text`, `path`.
 
 **To add a kind**, add an entry to `kinds.json` and, if it needs a normalizer
 that does not exist, add it to `normalize.go` with a test. The panel colours a
@@ -87,7 +106,13 @@ front-end copies agree.
 
 A link records how one subject led to another: `from`, `to`, a short `rel`, and
 optional attributes. Both ends are subject ids, or refs to subjects written in
-the same batch. Links are unique per `(from, to, rel)`; repeating one merges.
+the same batch. A subject this batch creates must be one end of a link in that
+batch. The single subject of an empty graph is the exception, because there is
+nothing else to connect; the panel still does not draw it until a link exists.
+A link to a stored phrase counts: the phrase stays off the drawing and the
+other end stays on it.
+Links are unique per `(from, to, rel)`; repeating one merges. A batch that
+leaves a new subject unconnected is refused and writes nothing.
 
 ## To-dos
 
@@ -109,8 +134,10 @@ completed, never what it means. A batch that carries no well-formed evidence
 and no `own_tool_call_ids` is cited to the caller's own completed tool results
 from this turn, excluding graph-tool traffic, at most 16. Ill-formed evidence
 is dropped and that citation is used instead. Evidence whose event later
-disappears (after a rewind, for example) reads as unavailable instead of being
-trusted.
+disappears (after a rewind, for example) reads as unavailable. A later turn that
+reuses the sequence does not make the old citation available. Each row retains
+up to 32 distinct citations, including new citations that replace older entries
+once the row is full.
 
 A subject's analysis state is not stored. It is derived in the front end from
 its to-dos: no to-do → unanalysed (dashed ring), open or doing but not running
@@ -138,15 +165,18 @@ thing is its own subject; a count, a range or one label for the set is not a
 substitute. A new id that only repeats the ref is dropped, a `ref:` prefix on
 a link end is removed, and an attribute the kind does not declare is omitted
 and named in the receipt instead of refusing the batch. A ref used earlier in
-this process still denotes that subject. The tool keeps the first newly finished to-do as doing when nothing
-is already in progress, leaves that frame visible briefly, then marks it done
-in the same call. The model is not asked to spend a call on that flip. A later
-call that repeats the title of a to-do still in progress settles that to-do.
+this process still denotes that subject. When nothing is already in progress, the host draws the first newly finished
+to-do as doing for a short moment, then commits the batch once with that to-do
+done. The in-progress picture is not a revision and not a row: a refused batch
+never shows it and writes nothing. The model is not asked to spend a call on
+that flip. A later call that repeats the title of a to-do still in progress
+settles that to-do.
 Confirm only
 with evidence. An identity value that turned out wrong is a new subject linked
 to the old one, and the old one is retracted, so one current subject remains.
 A lead linked in that call to a confirmed subject of the same kind is stored
-retracted. The guidance also says not to hand the same check to a worker, and
+retracted, whichever end it is on, including a stored lead named only by the
+link. The guidance also says not to hand the same check to a worker, and
 to stop when no to-do is open or doing. The kind list on the tool names
 attributes and identity fields. A successful receipt returns the subject ids
 and a link count, not every link.
@@ -166,23 +196,54 @@ Every model request of a turn (manager and workers) carries a bounded digest as
 a system message: the revision, counts by kind and status, the current counts
 with retracted subjects left out, up to 12 open to-dos,
 up to 12 latest subjects, and how many tool results this turn have not been
-recorded since the last accepted `update_graph`. It replaces the previous
+recorded since the last `update_graph` that actually committed. A read and a
+refused write do not move that mark. It replaces the previous
 digest instead of stacking. It is a record to check work against, not
-instruction. The turn is never blocked at its end for an incomplete graph; the
-unrecorded count is the only pressure, and it appears in Trace.
+instruction. When the manager offers a final answer while this turn still has
+unrecorded tool results, that answer waits. The host asks once, in the same
+turn, for one `update_graph` covering those results, and does not run the
+tools again or invent the subjects. The answer is then kept even if that call
+writes nothing. The allowance is one `model_retry` with reason
+`graph_unrecorded`; a restart does not grant another. A planning turn, a turn
+with the graph off, or a failed read or write of the recording allowance keeps
+the original answer. A failed count read does the same. What is still
+unrecorded appears in Trace.
 
 ## Surfaces
 
 - **HTTP** — see [API.md](API.md): `GET /api/threads/:id/graph`,
-  `GET /api/projects/:id/graph`, `GET /api/graph/kinds`, and the `graph_updated`
-  SSE frame on a thread's `events` stream with `graph=1`.
-- **Phone** — encrypted RPC `graph` with the revision the phone holds; an
-  unchanged revision returns one small frame. A graph larger than one frame is
+  `GET /api/projects/:id/graph`, `POST /api/threads/:id/graph/extract`,
+  `GET /api/graph/kinds`, and the `graph_updated`
+  SSE frame on a thread's `events` stream with `graph=1`. The frame identifies
+  the current owner and revision. Moving a conversation refreshes the panel
+  even when the destination has the same or a lower revision. Desktop uses
+  `preview=1` on unfiltered reads to show temporary progress without changing
+  the committed revision. Paged and filtered reads keep their requested scope.
+- **Phone** — encrypted RPC `graph` with the revision and graph owner the phone
+  holds. The reply is unchanged only when both still match, so two graphs at
+  the same revision are not treated as one. A graph larger than one frame is
   refused with `graph_too_large`. See [mobile/README.md](../mobile/README.md).
 - **Panel** — the 工作记录 / Work records tab: the graph on top (the EASM graph
   components, generalized), the ordered to-dos below. Clicking a to-do
   highlights its subject and the batch that settled it; clicking a subject
-  filters the list to its to-dos. Read-only.
+  filters the list to its to-dos. The panel does not edit rows. On a
+  conversation, **Replay into the graph** walks each completed round in order
+  and records what that round's stored response established. Each round sees
+  the current graph digest and has its own tool-call receipts. Each round may use
+as many model rounds as the manager (`swarm.manager_max_iterations`, default
+200), so repairing a refused write does not end the round after a handful of
+calls. When the graph
+  already has records, the panel asks whether to clear it first. Clearing
+  removes the whole working graph, which is the project's graph when the
+  conversation belongs to a project. The confirmation is bound to the graph
+  shown in the panel. A move before admission returns a conflict. A busy or
+  planning conversation refuses the request, leaving its graph and any pending
+  human question intact. An empty graph starts the walk without asking. The panel says
+  when that walk is running. A new subject from this pass is a lead, because
+  the pass has no tool result of its own to cite; a confirmation or a closed
+  to-do in the same batch would otherwise refuse the whole write. It does not
+  run the work again, and it is absent on the project-only view because that
+  view has no single conversation to read.
 - **Trace** — `update_graph` and `read_graph` are ordinary tool events in the
   turn's timeline; `GET /api/trace/:turn` adds `graph_unrecorded` when the turn
   had the graph on.
@@ -212,4 +273,4 @@ own tool calls. Attribute `max` values are in the catalog.
   (vitest, `e2e/work-records.spec.ts`).
 - Evals: tasks `graph-exposure-analysis` and `graph-fofa-query` with the
   `graph_count` check; see [TESTING.md](TESTING.md#graph-evals).
-- `make model-check`: `models/graph/GraphStore.tla`.
+- `make model-check` runs the models under `models/graph`.

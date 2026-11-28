@@ -18,7 +18,7 @@ import (
 
 // Normalizers is the fixed set a catalog entry may name. Adding a subject kind
 // needs no Go change unless it needs a rule that is not here.
-var Normalizers = []string{"ip", "domain", "url", "host", "repo", "repo_path", "query", "email", "identifier", "text", "asset"}
+var Normalizers = []string{"ip", "domain", "url", "host", "repo", "repo_path", "query", "email", "identifier", "text", "path", "asset"}
 
 // Attribute value types a catalog entry may declare.
 const (

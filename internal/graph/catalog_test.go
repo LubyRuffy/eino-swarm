@@ -12,7 +12,7 @@ func TestEmbeddedCatalogLoadsWithEveryBuiltInKind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"ip", "domain", "url", "asset", "app", "cert", "company", "icp", "person", "address", "vuln", "repo", "fofa_query", "other"}
+	want := []string{"ip", "domain", "url", "asset", "app", "cert", "company", "icp", "person", "address", "vuln", "repo", "fofa_query", "account", "table", "file", "other"}
 	if got := c.IDs(); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("kinds=%v want %v", got, want)
 	}

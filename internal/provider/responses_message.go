@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 
+	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/cloudwego/eino/schema"
 	openai "github.com/meguminnnnnnnnn/go-openai"
 )
@@ -233,12 +234,43 @@ type responsesResponse struct {
 	} `json:"usage"`
 }
 
+const responsesOutputLimit = "max_output_tokens"
+
+// ResponsesContentFilter is the incomplete reason for upstream content filtering.
+const ResponsesContentFilter = "content_filter"
+
+// ResponsesIncompleteError represents an upstream terminal result, even if
+// the provider omitted its reason. Incomplete output cannot become tool input.
+type ResponsesIncompleteError struct{ Reason string }
+
+func (e *ResponsesIncompleteError) Error() string {
+	const prefix = "responses did not complete: "
+	switch e.Reason {
+	case responsesOutputLimit, ResponsesContentFilter, "max_messages", "steered":
+		return prefix + e.Reason
+	case "":
+		return prefix + "upstream did not provide a reason"
+	default:
+		return prefix + "upstream provided an unrecognized reason"
+	}
+}
+
+func (e *ResponsesIncompleteError) Unwrap() error {
+	if e.Reason == responsesOutputLimit {
+		return swarm.ErrOutputBudget
+	}
+	return nil
+}
+
 func (r *responsesResponse) failure() error {
 	if r.Error != nil {
 		return r.Error
 	}
 	if r.Status == "completed" {
 		return nil
+	}
+	if r.Status == "incomplete" {
+		return &ResponsesIncompleteError{Reason: strings.TrimSpace(r.IncompleteDetails.Reason)}
 	}
 	reason := r.IncompleteDetails.Reason
 	if reason == "" {

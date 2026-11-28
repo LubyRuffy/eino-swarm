@@ -29,6 +29,7 @@ export function BackoffNotice({ block }: { block: Block }) {
   const context = block.backoff
   if (block.quiet || !context) return null
   const reason = scheduleAnswerBackoffReason(context)
+  const lastReason = context.lastFailure?.detail && scheduleAnswerBackoffReason(context.lastFailure)
   return (
     <div data-testid="backoff-notice" className="my-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-(length:--chrome-font-size) text-muted-foreground">
       <div className="flex items-start gap-2">
@@ -49,6 +50,7 @@ export function BackoffNotice({ block }: { block: Block }) {
           </div>
           {context.attempt && context.scope !== "unknown" ? <p>{t(context.scope === "origin" ? "backoff.failures" : "backoff.attempt", { count: context.attempt })}</p> : null}
           {reason ? <p>{t(reason)}</p> : null}
+          {lastReason ? <p>{t(lastReason)}</p> : null}
         </div>
       </div>
     </div>

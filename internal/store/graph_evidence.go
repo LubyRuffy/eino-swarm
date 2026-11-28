@@ -222,17 +222,26 @@ func citeCallerToolResults(tx *gorm.DB, caller GraphCaller) ([]graph.Evidence, e
 	return out, nil
 }
 
-// unionEvidence appends additions that are not already present, keeping the
-// newest MaxEvidence entries so a row cannot grow without bound.
+// unionEvidence appends new receipts, keeping the newest MaxEvidence entries.
+// A different turn at a reused event sequence is a distinct receipt.
 func unionEvidence(current, additions []graph.Evidence) []graph.Evidence {
-	seen := make(map[string]bool, len(current))
+	type identity struct{ locator, turnID string }
+	key := func(ev graph.Evidence) identity {
+		k := identity{locator: ev.Key()}
+		if ev.URL == "" {
+			k.turnID = ev.TurnID
+		}
+		return k
+	}
+	seen := make(map[identity]bool, len(current))
 	out := append([]graph.Evidence(nil), current...)
 	for _, ev := range current {
-		seen[ev.Key()] = true
+		seen[key(ev)] = true
 	}
 	for _, ev := range additions {
-		if !seen[ev.Key()] {
-			seen[ev.Key()] = true
+		k := key(ev)
+		if !seen[k] {
+			seen[k] = true
 			out = append(out, ev)
 		}
 	}

@@ -97,6 +97,11 @@ func buildFull(ctx context.Context, conn *sql.Conn, dataDir string, omit bool, s
 			return Manifest{}, nil, nil, err
 		}
 	}
+	if err := scrubGraphToolPayloads(ctx, conn, "snap"); err != nil {
+		detach(context.Background(), conn, "snap")
+		cleanup()
+		return Manifest{}, nil, nil, err
+	}
 	if err := stripWikiScanCache(ctx, conn, "snap"); err != nil {
 		detach(context.Background(), conn, "snap")
 		cleanup()
@@ -175,6 +180,9 @@ func buildProject(ctx context.Context, conn *sql.Conn, dataDir, projectID string
 		return fail(err)
 	}
 	if err := stripGraphSecrets(ctx, conn, "dst"); err != nil {
+		return fail(err)
+	}
+	if err := scrubGraphToolPayloads(ctx, conn, "dst"); err != nil {
 		return fail(err)
 	}
 	if err := stripWikiScanCache(ctx, conn, "dst"); err != nil {
