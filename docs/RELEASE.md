@@ -131,7 +131,7 @@ The 25–35 minute healthy-environment target remains unmeasured for this entry.
 required platforms in macOS → Android → Windows → Linux → iOS order. Windows is required only when the workset lists
 it; older ledger rows without a windows field do not gain one. The Windows
 build cross-compiles both architectures with CGO disabled and does not run a
-Windows desktop session. The in-app updater still installs only the Mac zip.
+Windows desktop session. Windows releases are installed manually.
 The machine that runs `zwai.exe` needs the WebView2 runtime for the desktop
 window.
 
@@ -582,17 +582,74 @@ Previous frozen batches retain their original source and pending deliveries.
 
 A batch that explicitly lists `linux` publishes through
 `python3 tools/release.py --version x.y.z --platform linux`. Old issue rows
-without `linux` gain no delivery obligation. The in-app updater does not
-install this archive. Cross-compilation and ELF validation prove packaging;
+without `linux` gain no delivery obligation. Cross-compilation and ELF validation prove packaging;
 record execution and offline Web behavior separately for each architecture,
 identifying native execution versus emulation. Failed
 builds leave an existing archive untouched; publication never overwrites
 different bytes under an existing asset name.
 
+### Unattended Linux host updates
+
+The official Linux bundle can run a stable boot owner on a systemd host. Set
+it up once with local administrative access. Stop the old installation and
+keep a backup of its data. Put the extracted executable at a permanent path
+owned by the service user, with mode 0755. Leave that binary in place across
+ordinary phone updates. Use the existing data directory to retain the host's
+pairing. The data directory and its parent must be privately owned by the
+service user. Use a local ext4 or Btrfs volume with Linux `openat2` support, an
+ordinary directory on that volume and space for an independent data snapshot.
+
+For example, install and enable a system unit named `zwai-host.service` after
+adjusting the executable, service user, data directory and listen address.
+
+```ini
+[Unit]
+Description=ZWAI Linux host
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=exec
+User=zwai
+ExecStart=/opt/zwai/zwai host-supervise --unit zwai-host.service --data-dir /var/lib/zwai/data --addr 127.0.0.1:8787
+Restart=always
+RestartSec=2s
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Run these commands after placing the unit under `/etc/systemd/system/`.
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now zwai-host.service
+systemctl is-enabled zwai-host.service
+systemctl is-active zwai-host.service
+```
+
+Confirm the existing phone connects before relying on unattended operation.
+A plain `zwai web` launch cannot accept remote installation. Install a phone
+build that can answer the paired trial challenge. The host rolls back a trial
+if that round trip fails or the system restarts before promotion. After durable
+promotion, a restart runs the accepted version and its current data. The prior
+copy remains available for controlled recovery. The supervisor records who
+owns the private snapshot before copying starts. If copying is interrupted,
+the previous engine can serve first and the supervisor removes only the
+recorded, verified snapshot. A cleanup it cannot verify or finish pauses new
+attempts while the previous engine remains available. Phone access depends on a
+working network and Hub. The boot service cannot repair a failed disk, an
+unavailable OS or a port already occupied at boot.
+
 Before publishing a new Linux batch, build and runtime-test both archives.
 `release_linux_validation` binds top-level `status: passed`, `version` and
 `source_sha`, with an `assets` object keyed by `amd64` and `arm64`. Each entry
 requires `status: passed`, matching `arch`, `asset_name` and `asset_sha256`.
+Its `host_recovery` object must record `passed` for `preparation_power_loss`, `trial_power_loss`,
+`committed_power_loss`, `supervisor_failure`, `pairing_refusal` and
+`listener_ownership`. Record these scenarios against the exact archive on
+a booting Linux VM or equivalent target machine for that architecture.
 Publication requires this receipt for each new upload and never rebuilds the
 accepted archives. Missing/mismatched receipts, files or ELF identity fail before
 upload. An already public asset is instead verified against its remote digest;

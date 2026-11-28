@@ -10,6 +10,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	"github.com/LubyRuffy/eino-swarm/internal/update"
 	"github.com/LubyRuffy/pairlink/client"
 	"github.com/LubyRuffy/pairlink/crypto"
 )
@@ -51,6 +52,13 @@ type LinkPump struct {
 	// models is false when that install cannot change providers.
 	allow func() (work bool, models bool)
 
+	hostUpdateContext context.Context
+	hostUpdateAccess  func() (*update.HostService, string, bool)
+	hostUpdateTrial   func() HostUpdateTrial
+	hostCheckCancel   context.CancelFunc
+	hostCheckClosed   bool
+	hostCheckWG       sync.WaitGroup
+
 	translationMu     sync.Mutex
 	translationID     string
 	translationCancel context.CancelFunc
@@ -91,6 +99,7 @@ func newLinkPump(eng *engine.Engine, cfg config.RemoteConfig, l *client.Link) *L
 }
 
 func (p *LinkPump) Close() {
+	p.stopHostUpdateCheck()
 	p.stopTaskPanels()
 	p.stopSelectionTranslation()
 	p.stopAudio()
@@ -120,10 +129,22 @@ func (p *LinkPump) Dispatch(msg []byte) {
 		p.reply(fail("", p.path, p.sessionID, "bad_request", "not json"))
 		return
 	}
+	if p.hostUpdateTrial != nil && p.hostUpdateTrial() != nil {
+		switch strings.TrimSpace(req.Op) {
+		case OpHello, OpMeta, OpHostUpdateStatus:
+		default:
+			p.reply(fail(req.ID, p.path, p.sessionID, "restoring", "host update verification is in progress"))
+			return
+		}
+	}
 	if !p.permit(req) {
 		return
 	}
 	switch strings.TrimSpace(req.Op) {
+	case OpMeta:
+		p.reply(p.withHostUpdateMeta(HandleWith(p.eng, p.cfg, p.stage, req, p.path, p.sessionID)))
+	case OpHostUpdateCheck, OpHostUpdateStart, OpHostUpdateStatus:
+		p.dispatchHostUpdate(req)
 	case OpTaskPanels, OpTaskPanelRead, OpTaskPanelCancel, OpTaskPanelClose:
 		p.dispatchTaskPanels(req)
 	case OpWatch:
@@ -166,7 +187,7 @@ func (p *LinkPump) permit(req Request) bool {
 			p.reply(fail(req.ID, p.path, p.sessionID, "custom_models_disabled", "Model settings cannot be changed in this mode."))
 			return false
 		}
-	case OpTranslateSelection, OpStart, OpSend, OpEditInput, OpDeliver, OpSteer, OpContinue, OpRunNow, OpResumeGoal, OpPreempt, OpFollowupSteer:
+	case OpTranslateSelection, OpStart, OpSend, OpEditInput, OpDeliver, OpSteer, OpContinue, OpRunNow, OpResumeGoal, OpPreempt, OpFollowupSteer, OpHostUpdateStart:
 		if !work {
 			p.reply(fail(req.ID, p.path, p.sessionID, "login_required", "Sign in before using this install."))
 			return false

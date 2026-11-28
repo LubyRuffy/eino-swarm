@@ -137,6 +137,16 @@ func (e *Engine) GetRestartStatus() RestartStatus {
 // retryable from the retained snapshots, without granting another summary grace.
 func (e *Engine) PrepareRestart(ctx context.Context) (RestartStatus, error) {
 	e.mu.Lock()
+	// A phone-confirmed download can finish after a data transfer has
+	// acquired the engine. Decide who owns the data before freezing work.
+	if e.startupRestoring {
+		e.mu.Unlock()
+		return RestartStatus{}, ErrRestoring
+	}
+	if e.backupRunning || e.sourceSwitching {
+		e.mu.Unlock()
+		return RestartStatus{}, ErrBackupBusy
+	}
 	if e.restart.done == nil || e.restart.err != nil {
 		retry := e.restart.targets != nil
 		e.restart.freezing = true

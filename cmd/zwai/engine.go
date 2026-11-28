@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -33,6 +34,10 @@ var launchEngine = spawnEngineContext
 var loadEngineFrontend = frontend.Load
 
 func runEngine(args []string) error {
+	return runEngineWithSupervisor(args, nil)
+}
+
+func runEngineWithSupervisor(args []string, supervised *engineSupervisor) error {
 	fs := flag.NewFlagSet("engine", flag.ExitOnError)
 	dataDir := fs.String("data-dir", "", "data directory")
 	addr := fs.String("addr", "", "listen address")
@@ -43,26 +48,42 @@ func runEngine(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return serveEngine(ctx, engineOpts{
-		DataDir: *dataDir,
-		Addr:    *addr,
-		Mock:    *mock,
+		DataDir:    *dataDir,
+		Addr:       *addr,
+		Mock:       *mock,
+		Supervised: supervised,
 	})
 }
 
 type engineOpts struct {
-	DataDir   string
-	Addr      string
-	Mock      bool
-	Watch     lease.Watcher
-	Ready     func(url string)
-	Restore   func(context.Context, *app.App) error
-	Recovered func(url string)
+	DataDir    string
+	Addr       string
+	Mock       bool
+	Watch      lease.Watcher
+	Ready      func(url string)
+	Restore    func(context.Context, *app.App) error
+	Recovered  func(url string)
+	Supervised *engineSupervisor
+}
+
+type engineSupervisor struct {
+	trial         bool
+	listener      net.Listener
+	configure     func(context.Context, *app.App, lease.Record, context.CancelFunc) error
+	waitPromotion func(context.Context) error
 }
 
 // serveEngine is the long-lived process. It holds the data-dir lock, serves
 // the same App the window used to own, and returns when the idle rule says
 // nobody is left or when ctx is cancelled.
 func serveEngine(ctx context.Context, opts engineOpts) error {
+	if opts.Supervised == nil {
+		release, err := holdStandaloneEngineAdmission(opts.DataDir)
+		if err != nil {
+			return err
+		}
+		defer release()
+	}
 	cfg, err := config.Load(opts.DataDir)
 	if err != nil {
 		return err
@@ -78,13 +99,22 @@ func serveEngine(ctx context.Context, opts engineOpts) error {
 	if addr == "" {
 		addr = "127.0.0.1:0"
 	}
+	var hostListener net.Listener
+	if opts.Supervised != nil {
+		hostListener = opts.Supervised.listener
+		if hostListener == nil || hostListener.Addr().String() != addr {
+			return errors.New("the inherited host listener does not match its startup address")
+		}
+	}
 	a, err := assembleApp(app.Options{
-		DataDir:      dir,
-		Addr:         addr,
-		Mock:         opts.Mock,
-		Mode:         server.ModeEngine,
-		Version:      version,
-		DeferRestore: true,
+		DataDir:         dir,
+		Addr:            addr,
+		Mock:            opts.Mock,
+		Mode:            server.ModeEngine,
+		Version:         version,
+		DeferRestore:    true,
+		HostUpdateTrial: opts.Supervised != nil && opts.Supervised.trial,
+		HostListener:    hostListener,
 	})
 	if err != nil {
 		return err
@@ -99,12 +129,21 @@ func serveEngine(ctx context.Context, opts engineOpts) error {
 		PID: os.Getpid(), URL: url, Mock: opts.Mock, StartedAt: time.Now().UTC(),
 		Version: build.Version, Dev: build.Dev, Ino: build.Ino, Startup: "restoring",
 	}
+	if opts.Supervised != nil && opts.Supervised.trial {
+		record.Startup = "trial"
+	}
 	if err := lease.Publish(dir, record); err != nil {
 		shut(a)
 		return err
 	}
 	runCtx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
+	if opts.Supervised != nil {
+		if err := opts.Supervised.configure(runCtx, a, record, cancelRun); err != nil {
+			shut(a)
+			return err
+		}
+	}
 	errCh := make(chan error, 1)
 	go func() { errCh <- a.Serve(); cancelRun() }()
 
@@ -125,7 +164,7 @@ func serveEngine(ctx context.Context, opts engineOpts) error {
 		defer close(watchDone)
 		watch.Run(runCtx, started, func() (int, bool, int) {
 			phone := a.Remote != nil && a.Remote.Status().Online
-			return len(a.Server.Clients()), phone, a.Engine.ActiveWork()
+			return len(a.Server.Clients()), phone || opts.Supervised != nil, a.Server.ActiveWork()
 		})
 		cancelRun()
 	}()
@@ -133,8 +172,20 @@ func serveEngine(ctx context.Context, opts engineOpts) error {
 	if restore == nil {
 		restore = func(ctx context.Context, a *app.App) error { return a.Restore(ctx) }
 	}
-	restoreErr := restore(runCtx, a)
+	var restoreErr error
+	if opts.Supervised != nil && opts.Supervised.trial {
+		restoreErr = opts.Supervised.waitPromotion(runCtx)
+		if restoreErr == nil {
+			a.StartPromotedHostAccounts()
+		}
+	}
 	if restoreErr == nil {
+		restoreErr = restore(runCtx, a)
+	}
+	if restoreErr == nil {
+		if opts.Supervised != nil && opts.Supervised.trial {
+			a.EndHostUpdateTrial()
+		}
 		record.Startup = "ready"
 		restoreErr = lease.Publish(dir, record)
 		if restoreErr == nil && opts.Recovered != nil {
@@ -175,6 +226,14 @@ func ensureEngine(dataDir, addr string, mock bool) (string, error) {
 }
 
 func ensureEngineRecord(dataDir, addr string, mock bool) (lease.Record, error) {
+	if rec, managed, err := discoverSupervisedEngine(dataDir, mock); managed || err != nil {
+		return rec, err
+	}
+	release, err := holdStandaloneEngineAdmission(dataDir)
+	if err != nil {
+		return lease.Record{}, err
+	}
+	defer release()
 	cfg, err := config.Load(dataDir)
 	if err != nil {
 		return lease.Record{}, err

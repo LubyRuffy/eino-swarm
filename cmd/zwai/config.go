@@ -27,6 +27,11 @@ func runConfig(args []string) error {
 
 	// Load writes a default file when there is none, so `config init` is just
 	// a load with a friendlier message.
+	release, err := holdStandaloneEngineAdmission(*dataDir)
+	if err != nil {
+		return err
+	}
+	defer release()
 	cfg, err := config.Load(*dataDir)
 	if err != nil {
 		return err

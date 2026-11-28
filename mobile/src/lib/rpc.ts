@@ -25,6 +25,9 @@ export const OpCancelWait = "cancel_wait"
 export const OpResumeGoal = "resume_goal"
 export const OpHello = "hello"
 export const OpMeta = "meta"
+export const OpHostUpdateCheck = "host_update_check"
+export const OpHostUpdateStart = "host_update_start"
+export const OpHostUpdateStatus = "host_update_status"
 export const OpSetProductMode = "set_product_mode"
 export const OpProjectGet = "project_get"
 export const OpProjectCreate = "project_create"
@@ -111,6 +114,11 @@ export type RemoteRequest = {
   directory?: string
   project_patch?: ProjectPatch
   timeout_settings?: TimeoutSettingsPatch
+  fresh?: boolean
+  version?: string
+  operation_id?: string
+  host_update_verify?: boolean
+  host_update_challenge?: string
 }
 
 export type TimeoutSettings = {
@@ -285,6 +293,24 @@ export type EngineStartup = {
   composer_predictions?: boolean
   model_policy?: ModelPolicy
   product_mode?: "fofa" | "local"
+  host_update_supported?: boolean
+  host_version?: string
+}
+
+export type HostUpdateOffer = {
+  status: "available" | "current" | "unsupported" | "error"
+  current?: string
+  offer?: { version: string }
+  message?: string
+}
+
+export type HostUpdateProgress = {
+  operation_id: string
+  version: string
+  stage: "checking" | "downloading" | "installing" | "saving" | "restarting" | "restoring" | "completed" | "failed" | "pending"
+  downloaded_bytes?: number
+  total_bytes?: number
+  error?: string
 }
 
 export type PcWebExecutionStatus = {
@@ -336,6 +362,9 @@ export type RemoteResponse = EngineStartup & {
   clients?: ClientCatalog
   client_view?: ClientView
   timeout_settings?: TimeoutSettings
+  host_update_offer?: HostUpdateOffer
+  host_update?: HostUpdateProgress
+  host_update_challenge?: string
   files?: WorkspaceFile[]
   file_view?: import("../../../frontend/src/lib/types").FileView
   file_chunk?: FileChunk

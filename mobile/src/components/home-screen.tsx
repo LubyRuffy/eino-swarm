@@ -95,6 +95,7 @@ export function HomeScreen({
   onSelectChat,
   onModels,
   onOpenAccount,
+  onCheckHostUpdate,
   pcLink,
   path,
   connected = true,
@@ -125,6 +126,7 @@ export function HomeScreen({
   onSelectChat?: () => void
   onModels?: () => void
   onOpenAccount?: () => void
+  onCheckHostUpdate?: () => void
   pcLink?: RemoteLink | null
   path: string
   connected?: boolean
@@ -217,6 +219,7 @@ export function HomeScreen({
         showChat={showChat}
         onSelectChat={onSelectChat}
         onModels={onModels}
+        onCheckHostUpdate={onCheckHostUpdate}
         onProjects={pcLink?.alive() ? () => setManaging(true) : undefined}
         pcLink={pcLink}
       />

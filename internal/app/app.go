@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/frontend"
@@ -51,6 +52,12 @@ type Options struct {
 	NoAssets bool
 	// DeferRestore lets the engine publish its listener before recovery.
 	DeferRestore bool
+	// HostUpdateTrial permits only the existing Pairlink identity and the
+	// local metadata probe until the boot supervisor authorizes work.
+	HostUpdateTrial bool
+	// HostListener is a duplicate owned by this child. The boot supervisor
+	// keeps the original listening socket across child replacement.
+	HostListener net.Listener
 }
 
 // App is an assembled, not-yet-listening process.
@@ -64,6 +71,9 @@ type App struct {
 	Search *search.Service
 	Logger *slog.Logger
 
+	hostUpdate *update.HostService
+	hostTrial  atomic.Bool
+
 	addr      string
 	restoreMu sync.Mutex
 	restored  bool
@@ -73,9 +83,10 @@ type App struct {
 
 	// Serve can bind lazily while another goroutine asks for the URL or shuts
 	// the process down, so the listener and the server are behind a lock.
-	mu       sync.Mutex
-	listener net.Listener
-	http     *http.Server
+	mu           sync.Mutex
+	listener     net.Listener
+	hostListener net.Listener
+	http         *http.Server
 	// httpStop cancels every in-flight request, including the event stream.
 	// Without it, Shutdown waits out the whole deadline for a connection that
 	// is designed never to end — Cmd+Q freezes the window, then Wails warns
@@ -140,7 +151,9 @@ func New(opts Options) (*App, error) {
 
 	host := remote.New(eng, cfg, logger)
 	host.SetVersion(opts.Version)
-	host.StartBackground()
+	if !opts.HostUpdateTrial {
+		host.StartBackground()
+	}
 	srv.SetRemote(host)
 	srv.SetSearch(idx)
 	logger.Info("engine startup", "phase", "local_handlers_ready", "duration_ms", time.Since(phaseStarted).Milliseconds())
@@ -148,8 +161,9 @@ func New(opts Options) (*App, error) {
 	a := &App{
 		Config: cfg, Store: st, Pool: pool, Engine: eng, Server: srv,
 		Remote: host, Search: idx, Logger: logger, addr: addr,
-		startupCtx: startupCtx, startupStop: startupStop,
+		startupCtx: startupCtx, startupStop: startupStop, hostListener: opts.HostListener,
 	}
+	a.hostTrial.Store(opts.HostUpdateTrial)
 	if !opts.DeferRestore {
 		if err := a.Restore(context.Background()); err != nil {
 			a.Shutdown(context.Background())
@@ -180,15 +194,21 @@ func (a *App) Listen() (string, error) {
 
 // listen is Listen with the lock already held.
 func (a *App) listen() (string, error) {
-	ln, err := net.Listen("tcp", a.addr)
-	if err != nil {
-		return "", fmt.Errorf("app: listen on %s: %w", a.addr, err)
+	ln := a.hostListener
+	if ln != nil {
+		a.hostListener = nil
+	} else {
+		var err error
+		ln, err = net.Listen("tcp", a.addr)
+		if err != nil {
+			return "", fmt.Errorf("app: listen on %s: %w", a.addr, err)
+		}
 	}
 	a.listener = ln
 	reqCtx, stop := context.WithCancel(context.Background())
 	a.httpStop = stop
 	a.http = &http.Server{
-		Handler: a.Server.Handler(),
+		Handler: http.HandlerFunc(a.serveRequest),
 		// No write timeout: the event stream is a response that lasts as long
 		// as the tab is open.
 		ReadHeaderTimeout: 10 * time.Second,
@@ -257,6 +277,9 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 	if a.Remote != nil {
 		a.Remote.Stop()
+	}
+	if a.hostUpdate != nil {
+		a.hostUpdate.Close()
 	}
 	if a.Search != nil {
 		a.Search.Stop()

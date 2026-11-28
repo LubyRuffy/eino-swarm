@@ -9,6 +9,8 @@
 (* freeze and checkpoint the old engine, acknowledge, let it exit, spawn   *)
 (* the replacement, which publishes its lease and restores the checkpoint. *)
 (* Either engine may leave on idle (C-001) when nothing keeps it alive.    *)
+(* LinuxHostRecovery checks the persistent supervisor and trial storage   *)
+(* outside this C-027 handoff, including crash/boot and paired approval.   *)
 (*                                                                         *)
 (* Each Boolean constant puts back one earlier or plausible behaviour so   *)
 (* the checker can show which invariant it breaks. All FALSE is the        *)
@@ -35,6 +37,8 @@ CONSTANTS
     FinishUngated,          \* handoff does not wait for an in-progress finalization
     SummaryUsesWriteBudget, \* a blocked tool consumes the time needed to save the final checkpoint
     ParkedNotCheckpointed,  \* handoff checkpoints running managers only
+    HandoffIgnoresTransfer, \* a restart freezes an engine during backup or source replacement
+    IgnoreHostUpdateHold,   \* idle exit ignores an admitted host-owned update
     IdleCountsOnlyManagers, \* idle load ignores parked workers, restoration and handoff
     ParkedAdmissionNonAtomic, \* choose/take drops the parked runtime before successor occupancy
     ParkedOwnerCheckedLate, \* attach retained workers before validating their project
@@ -69,10 +73,12 @@ VARIABLES
     stopAcked,    \* the human was told the Stop succeeded
     gate,         \* normal finalization holds the finish gate (lockFinish)
     turns,        \* turns started through the window, bounded by MaxTurns
-    successor     \* last parked admission: none, refused, admitted, or privately detached
+    successor,    \* last parked admission: none, refused, admitted, or privately detached
+    updateHold,   \* a phone-confirmed update owns the old engine until exit or failure
+    transfer      \* backup or source replacement owns the old engine
 
 vars == <<eng, lease, stopping, sampled, hold, launcher, target, deadline, handoffPhase, work,
-          owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+          owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 Alive(e) == eng[e] \in Live
 
@@ -83,7 +89,9 @@ ActiveWork(e) ==
     \/ ~IdleCountsOnlyManagers /\ owner = e /\ work = "parked"
     \/ ~IdleCountsOnlyManagers /\ eng[e] \in {"restoring", "frozen"}
 
-Idle(e) == ~ActiveWork(e) /\ ~(hold /\ target = e)
+Idle(e) ==
+    /\ ~ActiveWork(e) /\ ~(hold /\ target = e)
+    /\ IgnoreHostUpdateHold \/ e # "old" \/ ~updateHold
 
 Init ==
     /\ eng = [e \in Engines |-> IF e = "old" THEN "serving" ELSE "absent"]
@@ -105,6 +113,8 @@ Init ==
     /\ gate = FALSE
     /\ turns = 0
     /\ successor = "none"
+    /\ updateHold = FALSE
+    /\ transfer = FALSE
 
 -----------------------------------------------------------------------------
 (* Work on its owner. *)
@@ -116,7 +126,7 @@ StartTurn ==
     /\ work' = "running" /\ owner' = target
     /\ stopped' = FALSE /\ stopAcked' = FALSE /\ turns' = turns + 1
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
-                   checkpoint, restorePhase, snapshot, gate, successor>>
+                   checkpoint, restorePhase, snapshot, gate, successor, updateHold, transfer>>
 
 (* A retained Registry changes manager turns without losing its runtime.  *)
 (* The host holds rt.mu across choosing it, recording its real owner edge, *)
@@ -138,7 +148,7 @@ StartParkedSuccessor(ownerMatches) ==
     /\ stopped' = FALSE /\ stopAcked' = FALSE /\ turns' = turns + 1
     /\ successor' = IF ownerMatches THEN "admitted" ELSE "foreign_claimed"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
-                   checkpoint, restorePhase, snapshot, gate>>
+                   checkpoint, restorePhase, snapshot, gate, updateHold, transfer>>
 
 (* A foreign owner or failed lineage write leaves the original work intact. *)
 RefuseParkedSuccessor(ownerMatches) ==
@@ -146,7 +156,7 @@ RefuseParkedSuccessor(ownerMatches) ==
     /\ successor' = IF ownerMatches THEN "refused" ELSE "owner_refused"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
                    work, owner, checkpoint, restorePhase, snapshot, stopped,
-                   stopAcked, gate, turns>>
+                   stopAcked, gate, turns, updateHold, transfer>>
 
 (* Seed the split choose/take -> occupy design. The Registry still contains *)
 (* owned workers, but ActiveWork can no longer see them in the runtime.    *)
@@ -155,7 +165,7 @@ DetachParkedSuccessor ==
     /\ work' = "none" /\ successor' = "detached"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
                    owner, checkpoint, restorePhase, snapshot, stopped,
-                   stopAcked, gate, turns>>
+                   stopAcked, gate, turns, updateHold, transfer>>
 
 (* Finalization releases the runtime, then persists the terminal receipt or *)
 (* parks the workers. lockFinish holds the gate across both steps.          *)
@@ -164,19 +174,19 @@ BeginFinish ==
     /\ FinishUngated \/ ~gate
     /\ work' = "finishing" /\ gate' = ~FinishUngated
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
-                   owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, turns, successor>>
+                   owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, turns, successor, updateHold, transfer>>
 
 EndFinish ==
     /\ work = "finishing" /\ Alive(owner)
     /\ work' \in {"none", "parked"} /\ gate' = FALSE
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
-                   owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, turns, successor>>
+                   owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, turns, successor, updateHold, transfer>>
 
 WorkerDone ==
     /\ work = "parked" /\ eng[owner] = "serving"
     /\ work' = "none"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
-                   owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 (* interruptThread on a live runtime: a running manager or parked workers. *)
 (* StopLive abstracts normal terminalization. The concrete engine pairs any *)
@@ -187,7 +197,7 @@ StopLive ==
     /\ work \in {"running", "parked"} /\ ~stopped
     /\ work' = "none" /\ stopped' = TRUE /\ stopAcked' = TRUE
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
-                   owner, checkpoint, restorePhase, snapshot, gate, turns, successor>>
+                   owner, checkpoint, restorePhase, snapshot, gate, turns, successor, updateHold, transfer>>
 
 (* stopBeforeRestore: no runtime yet, the Stop is recorded durably. restoreMu *)
 (* keeps it out of the window between reading and occupying a checkpoint.   *)
@@ -197,7 +207,7 @@ StopBeforeRestore ==
     /\ restorePhase = "pending" \/ (StopRacesRestore /\ restorePhase = "read")
     /\ stopped' = TRUE /\ stopAcked' = TRUE
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
-                   work, owner, checkpoint, restorePhase, snapshot, gate, turns, successor>>
+                   work, owner, checkpoint, restorePhase, snapshot, gate, turns, successor, updateHold, transfer>>
 
 -----------------------------------------------------------------------------
 (* C-027 handoff, driven by the shell of the new build. *)
@@ -206,7 +216,7 @@ BeginHandoff ==
     /\ launcher = "start" /\ target = "new" /\ lease = "old"
     /\ launcher' = "handoff"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 (* PrepareRestart: lockRestartFinishes under the shared deadline, then a    *)
 (* baseline checkpoint covering active and parked registries, then cancel.  *)
@@ -215,13 +225,14 @@ Freeze ==
                     (work = "running" \/ (work = "parked" /\ ~ParkedNotCheckpointed))
     IN
     /\ launcher = "handoff" /\ eng["old"] = "serving" /\ ~deadline
+    /\ ~transfer \/ HandoffIgnoresTransfer
     /\ FinishUngated \/ ~gate
     /\ eng' = [eng EXCEPT !["old"] = "frozen"]
     /\ checkpoint' = IF captured THEN work ELSE checkpoint
     /\ handoffPhase' = IF captured THEN "summarizing" ELSE "checkpointing"
     /\ work' = IF captured THEN "none" ELSE work
     /\ UNCHANGED <<lease, stopping, sampled, hold, launcher, target, deadline, owner,
-                   restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 (* The shared summary window either settles normally or expires with an    *)
 (* unknown tool. The current cutoff leaves a separate opportunity to save. *)
@@ -234,55 +245,56 @@ EndSummary(expired) ==
                        ELSE IF SummaryUsesWriteBudget THEN "summary_exhausted"
                        ELSE "checkpointing_unknown"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline, work,
-                   owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 SaveFinalCheckpoint ==
     /\ launcher = "handoff" /\ eng["old"] = "frozen" /\ ~deadline
     /\ handoffPhase \in {"checkpointing", "checkpointing_unknown"}
     /\ handoffPhase' = IF handoffPhase = "checkpointing" THEN "saved" ELSE "saved_unknown"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline, work,
-                   owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   owner, checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 Ack ==
     /\ launcher = "handoff" /\ eng["old"] = "frozen" /\ ~deadline
     /\ handoffPhase \in {"saved", "saved_unknown"}
     /\ launcher' = "acked"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 (* replaceEngine failed but discovery finds no holder: continue to launch. *)
 OldAlreadyGone ==
     /\ launcher = "handoff" /\ eng["old"] = "exited"
     /\ launcher' = "acked"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 (* Before ACK an expired budget is an error that leaves the old engine as is. *)
 HandoffTimesOut ==
     /\ launcher = "handoff" /\ (deadline \/ handoffPhase = "summary_exhausted")
     /\ launcher' = "failed"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 OldExits ==
     /\ launcher = "acked" /\ eng["old"] = "frozen"
     /\ eng' = [eng EXCEPT !["old"] = "exited"]
     /\ lease' = IF lease = "old" THEN "none" ELSE lease
+    /\ updateHold' = FALSE
     /\ UNCHANGED <<stopping, sampled, hold, launcher, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, transfer>>
 
 Spawn ==
     /\ launcher = "acked" /\ eng["old"] = "exited" /\ eng["new"] = "absent"
     /\ eng' = [eng EXCEPT !["new"] = "booting"]
     /\ launcher' = "spawned"
     /\ UNCHANGED <<lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 DeadlineExpires ==
     /\ launcher \in {"handoff", "acked", "spawned"} /\ ~deadline
     /\ deadline' = TRUE
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 (* spawnEngineContext killing its child when the launch context expires. *)
 DeadlineKillsReplacement ==
@@ -291,7 +303,7 @@ DeadlineKillsReplacement ==
     /\ eng' = [eng EXCEPT !["new"] = "exited"]
     /\ launcher' = "failed"
     /\ UNCHANGED <<lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 (* An explicit human cancellation may always reap the launcher's own child. *)
 HumanCancelsLaunch ==
@@ -299,7 +311,7 @@ HumanCancelsLaunch ==
     /\ eng' = [eng EXCEPT !["new"] = "exited"]
     /\ launcher' = "cancelled"
     /\ UNCHANGED <<lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 -----------------------------------------------------------------------------
 (* The replacement publishes and restores (serveEngine, Engine.Restore).
@@ -316,7 +328,7 @@ Publish ==
     /\ eng' = [eng EXCEPT !["new"] = IF RestoreBeforeListen THEN "serving" ELSE "restoring"]
     /\ lease' = "new"
     /\ UNCHANGED <<stopping, sampled, hold, launcher, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 ReadCheckpoint ==
     /\ eng["new"] = RestoringHere /\ restorePhase = "pending"
@@ -325,7 +337,7 @@ ReadCheckpoint ==
        ELSE snapshot' \in (IF checkpoint = "none" THEN {"none"} ELSE {checkpoint, "foreign"})
     /\ restorePhase' = "read"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
-                   work, owner, checkpoint, stopped, stopAcked, gate, turns, successor>>
+                   work, owner, checkpoint, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 (* Startup can publish ready directly only with no outstanding indexed work.
    The fault models an index that clears a parked worker with its manager. *)
@@ -335,7 +347,7 @@ SkipSettledRecovery ==
     /\ restorePhase' = "done"
     /\ eng' = IF RestoreBeforeListen THEN eng ELSE [eng EXCEPT !["new"] = "serving"]
     /\ UNCHANGED <<lease, stopping, sampled, hold, launcher, target, deadline,
-                   work, owner, checkpoint, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   work, owner, checkpoint, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 (* Engine.Restore first settles this conversation's orphaned panel sources
    under restoreMu. A storage/identity failure refuses this conversation before
@@ -346,7 +358,7 @@ RefusePanelRecovery ==
     /\ checkpoint' = "none" /\ snapshot' = "none" /\ restorePhase' = "panel_refused"
     /\ eng' = IF RestoreBeforeListen THEN eng ELSE [eng EXCEPT !["new"] = "serving"]
     /\ UNCHANGED <<lease, stopping, sampled, hold, launcher, target, deadline,
-                   work, owner, stopped, stopAcked, gate, turns, successor>>
+                   work, owner, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 OccupyRuntime ==
     /\ eng["new"] = RestoringHere /\ restorePhase = "read"
@@ -357,7 +369,7 @@ OccupyRuntime ==
     /\ restorePhase' = IF snapshot = "foreign" THEN "foreign_claimed" ELSE "done"
     /\ eng' = IF RestoreBeforeListen THEN eng ELSE [eng EXCEPT !["new"] = "serving"]
     /\ UNCHANGED <<lease, stopping, sampled, hold, launcher, target, deadline,
-                   stopped, stopAcked, gate, turns, successor>>
+                   stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 (* Complete this handoff attempt without occupying the runtime. The handoff
    obligation is cleared here; the database retains the recovery input. *)
@@ -366,7 +378,7 @@ RefuseForeignRuntime ==
     /\ checkpoint' = "none" /\ snapshot' = "none" /\ restorePhase' = "owner_refused"
     /\ eng' = IF RestoreBeforeListen THEN eng ELSE [eng EXCEPT !["new"] = "serving"]
     /\ UNCHANGED <<lease, stopping, sampled, hold, launcher, target, deadline,
-                   work, owner, stopped, stopAcked, gate, turns, successor>>
+                   work, owner, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 -----------------------------------------------------------------------------
 (* Shell presence: desktop window or headless web waiter ready. *)
@@ -377,7 +389,7 @@ UnheldWebReady ==
     /\ lease = target /\ Alive(target) /\ ~stopping[target]
     /\ launcher' = "opened"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 Reserve ==
     /\ \/ launcher = "start" /\ target = "old"
@@ -387,7 +399,7 @@ Reserve ==
                    ELSE IF stopping[target] THEN "relaunch"
                    ELSE "reserved"
     /\ UNCHANGED <<eng, lease, stopping, sampled, hold, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 (* presence.attach: refused once idle exit committed or the engine left. *)
 Attach ==
@@ -396,37 +408,71 @@ Attach ==
        THEN hold' = TRUE /\ launcher' = "opened"
        ELSE hold' = hold /\ launcher' = "relaunch"
     /\ UNCHANGED <<eng, lease, stopping, sampled, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 FrontendAttaches ==
     /\ PresenceAfterWindow /\ launcher = "opened" /\ ~hold
     /\ Alive(target) /\ ~stopping[target]
     /\ hold' = TRUE
     /\ UNCHANGED <<eng, lease, stopping, sampled, launcher, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 WindowCloses ==
     /\ launcher = "opened" /\ hold
     /\ hold' = FALSE /\ launcher' = "closed"
     /\ UNCHANGED <<eng, lease, stopping, sampled, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 -----------------------------------------------------------------------------
 (* Idle exit (lease.Watcher with Server.TryIdleShutdown). *)
+
+(* A confirmed host update reserves a private hold under the idle admission
+   lock. A link dropping has no transition on this hold. On handoff it releases
+   with the old engine, and pre-handoff failures release it explicitly. *)
+BeginHostUpdate ==
+    /\ eng["old"] = "serving" /\ ~stopping["old"] /\ ~updateHold
+    /\ updateHold' = TRUE
+    /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
+                   work, owner, checkpoint, restorePhase, snapshot, stopped,
+                   stopAcked, gate, turns, successor, transfer>>
+
+ReleaseHostUpdate ==
+    /\ updateHold
+    /\ updateHold' = FALSE
+    /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
+                   work, owner, checkpoint, restorePhase, snapshot, stopped,
+                   stopAcked, gate, turns, successor, transfer>>
+
+
+(* A backup or provider source switch can begin while the package is still
+   downloading. It and Freeze must arbitrate under the same engine lock. *)
+BeginTransfer ==
+    /\ updateHold /\ eng["old"] = "serving" /\ ~transfer
+    /\ transfer' = TRUE
+    /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
+                   work, owner, checkpoint, restorePhase, snapshot, stopped,
+                   stopAcked, gate, turns, successor, updateHold>>
+
+EndTransfer ==
+    /\ transfer
+    /\ transfer' = FALSE
+    /\ UNCHANGED <<eng, lease, stopping, sampled, hold, launcher, target, deadline,
+                   work, owner, checkpoint, restorePhase, snapshot, stopped,
+                   stopAcked, gate, turns, successor, updateHold>>
 
 IdleCommit(e) ==
     /\ ~IdleCommitNonAtomic
     /\ eng[e] \in Watched /\ ~stopping[e] /\ Idle(e)
     /\ stopping' = [stopping EXCEPT ![e] = TRUE]
     /\ UNCHANGED <<eng, lease, sampled, hold, launcher, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 IdleSample(e) ==
     /\ IdleCommitNonAtomic
     /\ eng[e] \in Watched
     /\ sampled' = [sampled EXCEPT ![e] = Idle(e)]
     /\ UNCHANGED <<eng, lease, stopping, hold, launcher, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 IdleExit(e) ==
     /\ eng[e] \in Watched
@@ -434,7 +480,7 @@ IdleExit(e) ==
     /\ eng' = [eng EXCEPT ![e] = "exited"]
     /\ lease' = IF lease = e THEN "none" ELSE lease
     /\ UNCHANGED <<stopping, sampled, hold, launcher, target, deadline, work, owner,
-                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor>>
+                   checkpoint, restorePhase, snapshot, stopped, stopAcked, gate, turns, successor, updateHold, transfer>>
 
 -----------------------------------------------------------------------------
 
@@ -448,6 +494,7 @@ LifecycleStep ==
     \/ HumanCancelsLaunch
     \/ Publish \/ SkipSettledRecovery \/ ReadCheckpoint \/ OccupyRuntime \/ RefuseForeignRuntime \/ RefusePanelRecovery
     \/ UnheldWebReady \/ Reserve \/ Attach \/ FrontendAttaches \/ WindowCloses
+    \/ BeginHostUpdate \/ ReleaseHostUpdate \/ BeginTransfer \/ EndTransfer
     \/ \E e \in Engines : IdleCommit(e) \/ IdleSample(e) \/ IdleExit(e)
 
 Next ==
@@ -480,6 +527,8 @@ TypeOK ==
     /\ gate \in BOOLEAN
     /\ turns \in 0..MaxTurns
     /\ successor \in {"none", "refused", "admitted", "detached", "owner_refused", "foreign_claimed"}
+    /\ updateHold \in BOOLEAN
+    /\ transfer \in BOOLEAN
 
 (* A manager, a finalization or a parked worker never outlives its process. *)
 WorkHasLiveOwner == work # "none" => Alive(owner)
@@ -505,11 +554,17 @@ ParkedSuccessorOwnsProject == successor # "foreign_claimed"
 (* A ready window or headless waiter has an engine until its owner closes. *)
 WindowHasEngine == launcher = "opened" => Alive(target)
 
+HandoffRespectsTransfer == transfer => eng["old"] # "frozen"
+
+HostUpdateKeepsEngine == updateHold => (Alive("old") /\ ~stopping["old"])
+
 SummaryLeavesWriteBudget == handoffPhase # "summary_exhausted"
 
 -----------------------------------------------------------------------------
 (* Reachability witnesses: each must be violated by the current design, or   *)
 (* the invariants above would hold only because the scenario never happens. *)
+
+NeverAdmittedHostUpdate == ~updateHold
 
 NeverRestoredIntoWindow ==
     ~(launcher = "opened" /\ target = "new" /\ owner = "new" /\ work # "none")

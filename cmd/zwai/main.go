@@ -54,6 +54,10 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		err = runTUI(args[1:])
 	case "engine":
 		err = runEngine(args[1:])
+	case "host-supervise":
+		err = runLinuxHostSupervisor(args[1:])
+	case "_linux-supervised-engine":
+		err = runLinuxSupervisedEngine(args[1:])
 	case "trace":
 		err = runTrace(args[1:])
 	case "config":
@@ -181,6 +185,7 @@ common flags:
 `)
 	if defaultShell == "web" {
 		text = strings.Replace(text, "zwai [desktop] [--data-dir DIR] [--mock]\n        open the app in a native window", "zwai [web] [--data-dir DIR] [--mock]\n        serve the app in your browser (server build; no native window)", 1)
+		text = strings.Replace(text, "  zwai tui", "  zwai host-supervise --data-dir DIR --addr HOST:PORT --unit NAME.service\n        run the Linux host under its stable recovery supervisor\n\n  zwai tui", 1)
 	}
 	fmt.Fprintln(w, text)
 }

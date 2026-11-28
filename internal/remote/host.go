@@ -12,6 +12,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	"github.com/LubyRuffy/eino-swarm/internal/update"
 	"github.com/LubyRuffy/eino-swarm/internal/wakeup"
 	"github.com/LubyRuffy/pairlink/client"
 	"github.com/LubyRuffy/pairlink/crypto"
@@ -40,6 +41,8 @@ type Host struct {
 	keepAlive time.Duration
 	// version is this PC build. The hub stores it; this package does not invent one.
 	version      string
+	hostUpdater  *update.HostService
+	updateTrial  HostUpdateTrial
 	loginActive  *loginAttempt
 	logoutActive *logoutAttempt
 	lifecycle    uint64

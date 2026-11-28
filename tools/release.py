@@ -318,6 +318,12 @@ def prepare_linux_publication(root, version, source_sha, files, remote_assets):
                     or receipt.get('arch') != arch or receipt.get('asset_name') != asset.name
                     or not asset.is_file() or sha256(asset) != receipt.get('asset_sha256')):
                 raise ValueError('The accepted Linux archive is missing or differs from architecture/runtime evidence')
+            recovery = receipt.get('host_recovery')
+            if (not isinstance(recovery, dict)
+                    or any(recovery.get(scenario) != 'passed' for scenario in (
+                        'preparation_power_loss', 'trial_power_loss', 'committed_power_loss', 'supervisor_failure',
+                        'pairing_refusal', 'listener_ownership'))):
+                raise ValueError('The accepted Linux archive lacks verified NAS recovery scenarios')
         validate_archive(asset)
 
 

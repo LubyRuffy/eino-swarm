@@ -34,7 +34,7 @@ func runBackup(args []string) error {
 	if strings.TrimSpace(*output) == "" {
 		return usageError{"usage: zwai backup --output FILE [--project ID] [--omit-secrets] [--skip-active] [--data-dir DIR]"}
 	}
-	cfg, err := config.Load(*dataDir)
+	dir, err := backupDataPath(*dataDir)
 	if err != nil {
 		return err
 	}
@@ -47,7 +47,7 @@ func runBackup(args []string) error {
 		kind = backup.KindProject
 	}
 	body := map[string]any{"kind": string(kind), "project_id": *projectID, "omit_secrets": *omit, "skip_active": *skipActive, "output": out}
-	return attachOrRun(cfg.DataDir(), func(url string) error {
+	return attachOrRun(dir, func(url string) error {
 		written, err := postEngine(url, "/api/backup", body)
 		if err != nil {
 			return err
@@ -56,13 +56,13 @@ func runBackup(args []string) error {
 		fmt.Println(out)
 		return nil
 	}, func() error {
-		db, closeDB, err := openLocalDB(cfg.DataDir())
+		db, closeDB, err := openLocalDB(dir)
 		if err != nil {
 			return err
 		}
 		defer closeDB()
 		manifest, err := backup.Create(context.Background(), backup.Options{
-			DataDir: cfg.DataDir(), DB: db, Kind: kind, ProjectID: *projectID, OmitSecrets: *omit, Output: out,
+			DataDir: dir, DB: db, Kind: kind, ProjectID: *projectID, OmitSecrets: *omit, Output: out,
 		})
 		if err != nil {
 			return err
@@ -85,7 +85,7 @@ func runRestore(args []string) error {
 	if fs.NArg() != 1 {
 		return usageError{"usage: zwai restore FILE [--replace | --replace-project] [--data-dir DIR]"}
 	}
-	cfg, err := config.Load(*dataDir)
+	dir, err := backupDataPath(*dataDir)
 	if err != nil {
 		return err
 	}
@@ -93,11 +93,18 @@ func runRestore(args []string) error {
 	if err != nil {
 		return err
 	}
-	return attachOrRun(cfg.DataDir(), func(url string) error {
+	return attachOrRun(dir, func(url string) error {
 		return restoreThroughEngine(url, file, *replace, *replaceProject)
 	}, func() error {
-		return restoreLocal(cfg.DataDir(), file, *replace, *replaceProject)
+		return restoreLocal(dir, file, *replace, *replaceProject)
 	})
+}
+
+func backupDataPath(dataDir string) (string, error) {
+	if strings.TrimSpace(dataDir) == "" {
+		dataDir = config.DefaultDataDir()
+	}
+	return filepath.Abs(dataDir)
 }
 
 func restoreThroughEngine(url, file string, replace, replaceProject bool) error {
@@ -181,6 +188,11 @@ func attachOrRun(dataDir string, remote func(string) error, local func() error) 
 	if !errors.Is(err, lease.ErrNotRunning) {
 		return err
 	}
+	release, err := holdStandaloneEngineAdmission(dataDir)
+	if err != nil {
+		return err
+	}
+	defer release()
 	hold, err := lease.Acquire(dataDir)
 	if errors.Is(err, lease.ErrHeld) {
 		rec, err = discoverEngine(dataDir)
@@ -193,6 +205,9 @@ func attachOrRun(dataDir string, remote func(string) error, local func() error) 
 		return err
 	}
 	defer hold.Release()
+	if _, err := config.Load(dataDir); err != nil {
+		return err
+	}
 	return local()
 }
 

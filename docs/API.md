@@ -288,6 +288,30 @@ A POST failure leaves its confirmed version
 available for direct installation retry. A process without a progress reporter
 returns `200` with `stage: "idle"` and zero byte counts; it does not start a check.
 
+### Paired Linux host updates
+
+These are encrypted Pairlink operations for the current relay binding. Paired
+metadata advertises `host_version` and `host_update_supported`. Installation
+requires a verified Linux boot supervisor.
+
+| Operation | Request fields | Response |
+|---|---|---|
+| `host_update_check` | Optional `fresh` to bypass the host cache | `host_update_offer` with `status`, current version and candidate version if available |
+| `host_update_start` | Confirmed `version`, a UUID `operation_id`, and `host_update_verify: true` | A durable `host_update` receipt or an actionable refusal |
+| `host_update_status` | `operation_id`, optionally echo `host_update_challenge` | The attempt's receipt, version and startup state. A quarantined trial challenges the initiating phone |
+
+The receipt includes the operation ID, version, stage and measured download
+bytes. Stages are `checking`, `downloading`, `installing`, `saving`,
+`restarting`, `restoring`, `completed`, `failed` and `pending`.
+The same operation ID and version replay the original attempt. A competing
+installation can return `update_busy`. `not_found` means no receipt exists
+for that ID. The initiating phone echoes the challenge only for its confirmed
+operation and target version. The supervisor uses that round trip to decide
+whether to promote the trial. Losing the phone or missing the deadline
+leaves the previous version active. Reconnecting never schedules another install.
+Success requires `completed`, the target `host_version` and `startup: "ready"`
+on the same binding. The host obtains the official URL and digest itself.
+
 ## Meta
 
 ### `GET /api/meta`

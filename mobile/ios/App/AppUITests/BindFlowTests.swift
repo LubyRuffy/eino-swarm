@@ -10,6 +10,8 @@ final class BindFlowTests: XCTestCase {
 
     let menu = app.buttons["Menu"]
     if !menu.waitForExistence(timeout: 3) {
+      let otherWays = app.buttons["Other ways"]
+      if otherWays.exists { otherWays.tap() }
       let connect = app.buttons["Connect a model"]
       XCTAssertTrue(connect.waitForExistence(timeout: 12), "fresh iOS install did not reach the scan screen")
       connect.tap()
@@ -36,6 +38,41 @@ final class BindFlowTests: XCTestCase {
     menuScreenshot.name = "iOS menu without Android update check"
     menuScreenshot.lifetime = .keepAlways
     add(menuScreenshot)
+  }
+
+  func testPairedLinuxHostUpdateSurvivesReconnect() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launch()
+    let back = app.buttons["Back"]
+    if back.waitForExistence(timeout: 5) { back.tap() }
+    let notice = app.staticTexts["Update available on Walkthrough PC · 1.2.3 → 1.2.4"]
+    XCTAssertTrue(notice.waitForExistence(timeout: 12), "the packaged app must show the selected host's version offer")
+    app.buttons["Menu"].tap()
+    XCTAssertTrue(app.descendants(matching: .any)["Check this host for updates"].firstMatch.waitForExistence(timeout: 5))
+    XCTAssertFalse(app.descendants(matching: .any)["Check for updates"].firstMatch.exists)
+    app.buttons["Close"].tap()
+
+    app.buttons["Update this host"].tap()
+    XCTAssertTrue(app.staticTexts["Update Walkthrough PC?"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["1.2.3 → 1.2.4"].exists)
+    addHostUpdateScreenshot(app, "Confirmed host and version")
+    app.buttons["Confirm update"].tap()
+
+    let restoring = app.staticTexts["Waiting for the host to finish restoring…"]
+    let completed = app.staticTexts["Host update complete"]
+    XCTAssertTrue(restoring.waitForExistence(timeout: 12), "the replacement must be observed before reporting completion")
+    XCTAssertFalse(completed.exists)
+    addHostUpdateScreenshot(app, "Host restoring after reconnect")
+    XCTAssertTrue(completed.waitForExistence(timeout: 12))
+    addHostUpdateScreenshot(app, "Host update complete")
+  }
+
+  private func addHostUpdateScreenshot(_ app: XCUIApplication, _ title: String) {
+    let attachment = XCTAttachment(screenshot: app.screenshot())
+    attachment.name = title
+    attachment.lifetime = .keepAlways
+    add(attachment)
   }
 
   func testPasteBindListsTheSeedConversation() throws {

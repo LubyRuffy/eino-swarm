@@ -15,6 +15,7 @@ import { NewChatScreen } from "@/components/new-chat-screen"
 import { ScanScreen } from "@/components/scan-screen"
 import { ThreadScreen } from "@/components/thread-screen"
 import { UpdateNotice } from "@/components/update-notice"
+import { HostUpdateNotice } from "@/components/host-update-notice"
 import {
   bindFromURI,
   bindError,
@@ -69,6 +70,7 @@ import {
   loadLastThreadId,
   loadSavedLink,
   loadSavedLinks,
+  linkLabel,
   removeLink,
   saveActiveFingerprint,
   saveHostLabel,
@@ -86,6 +88,7 @@ import { phonePrediction } from "@/lib/composer-prediction"
 import { useModelCatalog } from "@/lib/use-model-catalog"
 import { usePhoneSpeechSync } from "@/lib/phone-speech"
 import { usePcModeSwitch } from "@/lib/use-pc-mode-switch"
+import { useHostUpdate } from "@/lib/use-host-update"
 import { orderSavedPCs } from "@/lib/phone-pcs"
 
 export function PhoneApp() {
@@ -144,6 +147,9 @@ export function PhoneApp() {
   const olderBusy = useRef(false)
   const loadGen = useRef(0)
   const authorityRef = useRef<SavedLink | null>(null)
+  const updateHost = surface === "hosts" ? hosts.find(host => host.fingerprint === activeFp) : undefined
+  const hostUpdate = useHostUpdate(updateHost, sameLinkAuthority(updateHost, authorityRef.current) ? link : null, startup,
+    (host, target) => target === linkRef.current && sameLinkAuthority(host, authorityRef.current) && sameLinkAuthority(host, loadSavedLink()))
   const unlinkingRef = useRef(false)
   const bindGen = useRef(0)
   const activeFpRef = useRef(activeFp)
@@ -725,9 +731,14 @@ export function PhoneApp() {
   ) : null}
   </>
 
-  const gate = (children: ReactNode) => <PcConnectionGate hosts={hosts} activeFingerprint={activeFp} connecting={busy || reconnecting}
-    connected={Boolean(link?.alive())} ready={startup?.startup === "ready"} error={error} onRetry={() => void recover(true)}
-    onSelectHost={selectHost} onOpenChat={openChat}>{children}</PcConnectionGate>
+  const gate = (children: ReactNode) => <div className="flex h-full min-h-0 flex-col">
+    {updateHost ? <HostUpdateNotice host={linkLabel(updateHost, hosts)} control={hostUpdate} /> : null}
+    <div className="min-h-0 flex-1">
+      <PcConnectionGate hosts={hosts} activeFingerprint={activeFp} connecting={busy || reconnecting}
+        connected={Boolean(link?.alive())} ready={startup?.startup === "ready"} error={error} onRetry={() => void recover(true)}
+        onSelectHost={selectHost} onOpenChat={openChat}>{children}</PcConnectionGate>
+    </div>
+  </div>
 
   if (account.mode !== "account" && phoneShell(hosts.length, providers.length) === "scan" && !(surface === "chat" && account.gatewaySourceID)) {
     if (account.empty) return <>{account.empty}{sheet}{modelSheet}</>
@@ -907,6 +918,7 @@ export function PhoneApp() {
       <div className="min-h-0 flex-1">
         <HomeScreen
           pcLink={link}
+          onCheckHostUpdate={updateHost && link?.alive() ? hostUpdate.checkNow : undefined}
           key={locale}
           hosts={hosts}
           activeFingerprint={activeFp}

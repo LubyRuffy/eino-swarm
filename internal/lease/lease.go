@@ -283,6 +283,11 @@ type metaView struct {
 // caller's already-known child during startup, but the record must not be used
 // to attach, accept its mode/build identity or stop an unrelated process.
 func Discover(dataDir string, mock bool) (Record, error) {
+	return DiscoverContext(context.Background(), dataDir, mock)
+}
+
+// DiscoverContext applies the caller's cancellation to the metadata probe.
+func DiscoverContext(ctx context.Context, dataDir string, mock bool) (Record, error) {
 	body, err := readRecordFile(filepath.Join(dataDir, fileName))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -299,7 +304,11 @@ func Discover(dataDir string, mock bool) (Record, error) {
 	}
 	client := &http.Client{Timeout: 500 * time.Millisecond}
 	started := time.Now()
-	resp, err := client.Get(rec.URL + "/api/meta")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rec.URL+"/api/meta", nil)
+	if err != nil {
+		return rec, newUnreachableError("transport", 0, started, err)
+	}
+	resp, err := client.Do(req)
 	status := 0
 	if resp != nil {
 		status = resp.StatusCode

@@ -44,9 +44,10 @@ type presenceSlot struct {
 // GET holds it until the socket drops. A reserve that never connects does not
 // count, or a crashed launcher would pin the process forever.
 type presence struct {
-	mu       sync.Mutex
-	slots    map[string]*presenceSlot
-	stopping bool
+	mu         sync.Mutex
+	slots      map[string]*presenceSlot
+	stopping   bool
+	hostUpdate bool
 }
 
 func newPresence() *presence {
@@ -105,7 +106,7 @@ func (s *Server) TryIdleShutdown() bool {
 	p := s.presence
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if s.engine.ActiveWork() > 0 || (s.remote != nil && s.remote.Status().Online) {
+	if s.activeWorkLocked() > 0 || (s.remote != nil && s.remote.Status().Online) {
 		return false
 	}
 	for _, slot := range p.slots {

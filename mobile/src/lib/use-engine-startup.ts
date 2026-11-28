@@ -28,6 +28,8 @@ export function useEngineStartup(link: RemoteLink | null): EngineStartup | undef
             data_generation: typeof r.data_generation === "number" ? r.data_generation : undefined,
             graph_available: r.graph_available === true || undefined,
             composer_predictions: r.composer_predictions,
+            host_update_supported: r.host_update_supported === true || undefined,
+            host_version: typeof r.host_version === "string" ? r.host_version : undefined,
           }
           if (r.product_mode === "fofa" || r.product_mode === "local") value.product_mode = r.product_mode
           setSnapshot(previous => previous?.link === link && JSON.stringify(previous.value) === JSON.stringify(value) ? previous : { link, value })

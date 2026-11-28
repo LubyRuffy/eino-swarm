@@ -48,7 +48,8 @@ def build(root, version, output, arch="arm64"):
         stage = Path(directory)
         exe = stage / 'zwai'
         subprocess.run(['go', 'build', '-tags', 'server', '-ldflags',
-                        f'-X main.version={version}', '-o', str(exe.resolve()), './cmd/zwai'],
+                        f'-X main.version={version} -X main.linuxArchiveBuild=1',
+                        '-o', str(exe.resolve()), './cmd/zwai'],
                        cwd=root, env=dict(os.environ, GOOS='linux', GOARCH=arch, CGO_ENABLED='0'),
                        check=True)
         exe.chmod(0o755)

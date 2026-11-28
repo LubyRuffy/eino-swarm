@@ -9852,6 +9852,44 @@ network/upload success is assumed. This finite equality model does not prove
 ELF parsing, Go/Python filesystem atomicity, real execution or GitHub behavior;
 real package/runtime and publisher regression evidence remains required.
 
+### Linux NAS recovery during a paired update
+
+Use a disposable Linux VM with a durable disk and an enabled systemd service
+as documented in [Unattended Linux host updates](RELEASE.md#unattended-linux-host-updates).
+Build the exact candidate archive and compare both its outside and inside VM
+SHA-256. Use a persistent local Pairlink relay and a saved phone binding.
+Freeze an original data witness and record the old and target version, data
+identity and service PID. Keep a private hypervisor console receipt. Remove
+the guest's management port-forward before starting each update.
+
+- Cut power during a substantial data copy after the preparation record is
+  durable and before a trial record exists. Verify the original binding and
+  data return. Wait for the exact owned sibling to disappear and confirm space
+  is reclaimed. An unrelated similar-looking path must survive recovery.
+- Interrupt actual VM power while the candidate awaits the initiating phone's
+  challenge echo. Boot the same disk and use the original saved binding to
+  observe the old version, original data and failed operation. Reboot after
+  a confirmed promotion and observe the new version and post-promotion work.
+- Kill the exact stable supervisor during the trial and require the enabled
+  service to relaunch and restore. Remove relay availability while retaining
+  local metadata readiness, then restore relay access to verify the original
+  binding and bounded rollback. Check that another paired phone cannot accept.
+- Exercise the real TCP listener across normal, trial and failed child lifetimes.
+  A competing bind must fail before the original socket is released. Verify
+  no tools or scheduler effects were enabled during the isolated trial.
+
+`internal/hostrecovery` exercises isolated storage, filesystem boundaries,
+the durable journal and shared/exclusive admission. `cmd/zwai/linux_supervisor_linux_test.go`
+covers boot reconciliation, listener passing, activation and owned-child exit.
+`LinuxHostRecovery.tla` checks the independent boot owner, ownership recorded
+before copying, prior data preservation, paired proof, durable activation,
+forward-only recovery, single writer and listener ownership. TLC reproduces
+omitted guards and reaches a boot with snapshot cleanup still pending. The
+progress property assumes boot can run and the trial watchdog can access
+durable storage. Real VM runs check kernel and storage crash behavior
+for the filesystems exercised in those runs. Mobile browser
+coverage is in `mobile/e2e/host-update.spec.ts`.
+
 ### Native access inventory and test configuration ownership
 
 `test_native_macos_access_guest.py` crosses `current_peers` with a historical

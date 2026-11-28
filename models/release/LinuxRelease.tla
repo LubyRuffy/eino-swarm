@@ -2,7 +2,8 @@
 EXTENDS TLC
 
 (* Two architecture artifacts. Public bytes are immutable. Every new upload
-   needs a runtime receipt for the same name/architecture/source/bytes. *)
+   needs a runtime receipt for the same name/architecture/source/bytes,
+   including the managed host's crash/reboot and paired recovery checks. *)
 CONSTANTS
     ArmOnly,
     IgnoreMachine,
@@ -15,7 +16,7 @@ vars == <<phase, arch, machine, receipt, public, bytes, uploaded, accepted>>
 Init ==
     /\ phase = "idle" /\ arch \in {"arm64", "amd64"}
     /\ machine \in {"arm64", "amd64"}
-    /\ receipt \in {"matching", "missing", "wrong-arch", "wrong-source", "wrong-bytes"}
+    /\ receipt \in {"matching", "missing", "wrong-arch", "wrong-source", "wrong-bytes", "missing-recovery"}
     /\ public \in BOOLEAN /\ bytes = "original"
     /\ uploaded = FALSE /\ accepted = FALSE
 
@@ -41,7 +42,7 @@ Spec == Init /\ [][Next]_vars
 TypeOK ==
     /\ phase \in {"idle", "unsupported", "prepared", "validated", "done"}
     /\ arch \in {"arm64", "amd64"} /\ machine \in {"arm64", "amd64"}
-    /\ receipt \in {"matching", "missing", "wrong-arch", "wrong-source", "wrong-bytes"}
+    /\ receipt \in {"matching", "missing", "wrong-arch", "wrong-source", "wrong-bytes", "missing-recovery"}
     /\ public \in BOOLEAN /\ bytes \in {"original", "rebuilt"}
     /\ uploaded \in BOOLEAN /\ accepted \in BOOLEAN
 BothArchitecturesSupported == phase # "unsupported"

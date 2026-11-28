@@ -12,9 +12,11 @@ import (
 // here would let a rewritten file point the installer at another repo.
 const ReleaseRepo = "LubyRuffy/eino-swarm"
 
+const releasesURL = "https://api.github.com/repos/" + ReleaseRepo + "/releases"
+
 // LatestURL is the public feed. Drafts are not "latest".
 func LatestURL() string {
-	return "https://api.github.com/repos/" + ReleaseRepo + "/releases/latest"
+	return releasesURL + "/latest"
 }
 
 // DarwinAssetName is the zip attached to a release for one Mac arch.

@@ -21,7 +21,10 @@ class LinuxPublicationTests(unittest.TestCase):
             archive(path, body=elf(machine))
             files[arch] = path
             receipts[arch] = {'status': 'passed', 'arch': arch, 'asset_name': path.name,
-                              'asset_sha256': release.sha256(path)}
+                              'asset_sha256': release.sha256(path),
+                              'host_recovery': dict.fromkeys((
+                                  'preparation_power_loss', 'trial_power_loss', 'committed_power_loss', 'supervisor_failure',
+                                  'pairing_refusal', 'listener_ownership'), 'passed')}
         accepted = {'status': 'passed', 'version': '1.2.3', 'source_sha': 'sha', 'assets': receipts}
         batch = {'version': '1.2.3', 'source_sha': 'sha', 'linux': 'ready_for_publication',
                  'release_linux_validation': accepted}
@@ -64,7 +67,8 @@ class LinuxPublicationTests(unittest.TestCase):
 
     def test_new_upload_refuses_missing_or_mismatched_evidence_before_publisher(self):
         for fault in ('missing-receipt', 'legacy-single-receipt', 'missing-arch', 'arch', 'name',
-                      'source', 'version', 'status', 'asset-status', 'hash', 'file', 'machine'):
+                      'source', 'version', 'status', 'asset-status', 'hash', 'file', 'machine',
+                      'missing-host-recovery', 'failed-recovery-case', 'missing-recovery-case'):
             with self.subTest(fault=fault), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 files, batch = self.fixture(root)
@@ -85,6 +89,12 @@ class LinuxPublicationTests(unittest.TestCase):
                 elif fault == 'machine':
                     archive(files['amd64'], body=elf(183))
                     item['asset_sha256'] = release.sha256(files['amd64'])
+                elif fault == 'missing-host-recovery':
+                    del item['host_recovery']
+                elif fault == 'failed-recovery-case':
+                    item['host_recovery']['supervisor_failure'] = 'failed'
+                elif fault == 'missing-recovery-case':
+                    del item['host_recovery']['preparation_power_loss']
                 with self.assertRaises(ValueError):
                     self.publish(root, batch)
 

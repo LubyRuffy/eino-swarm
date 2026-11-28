@@ -464,6 +464,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 更新安装以应用包为互斥范围，跨不同数据目录的引擎/进程返回 busy；启动失败保留并恢复旧包，延迟清理仅处理该次安装独有的备份。证据：`internal/update`, `internal/update/bundle_lock_test.go`；契约：`C-024`。
 - 下载显示已接收字节；总量已知时显示百分比，未知时不伪造百分比，随后显示安装与重启阶段。检查和安装错误使用红色警示；安装失败保留已确认版本，重试直接安装该版本，检查失败重试检查。进度读取暂时失败不结束进行中的安装。入口：更新横幅、`GET /api/update/progress`；实现证据：`internal/update`, `internal/server/update.go`, `frontend/src/lib/desktop-update.ts`, `frontend/src/components/app/desktop-update.tsx`, `frontend/e2e/desktop-update.spec.ts`；契约：`C-024`。
+- Linux 主机先配置独立的 systemd 开机服务，随后由所选主机的已配对手机确认升级。守护进程保留端口和旧版数据，候选版由原手机验证后正式启用。中断未确认的试运行会恢复旧版，已确认版本重新启动后保留现有工作。关联 `C-006`、`C-010`、`C-024`、`C-027`。证据见 `cmd/zwai/linux_supervisor_linux_test.go`、`internal/hostrecovery/data_linux_test.go` 和 `mobile/e2e/host-update.spec.ts`。
 
 ### F-210 Pair a phone with a PC
 

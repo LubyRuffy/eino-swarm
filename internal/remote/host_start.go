@@ -8,6 +8,7 @@ import (
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/pairlink/client"
+	"github.com/LubyRuffy/pairlink/crypto"
 )
 
 // Registration and the initial socket share the same bounded attempt. The
@@ -43,6 +44,14 @@ type hostReconnect struct {
 // A failed attempt schedules its own replacement and does not block startup.
 func (h *Host) StartBackground() {
 	h.accounts.Start()
+	h.startPairedBackground()
+}
+
+// StartTrialBackground connects the existing identity without starting
+// account refreshes while the candidate is still on probation.
+func (h *Host) StartTrialBackground() { h.startPairedBackground() }
+
+func (h *Host) startPairedBackground() {
 	h.mu.Lock()
 	attempt, launch := h.prepareStartLocked(context.Background())
 	h.applyWakeLocked()
@@ -77,7 +86,19 @@ func (h *Host) prepareStartLocked(parent context.Context) (*hostStart, bool) {
 		h.err = "remote: gateway account login and approval are required"
 		return nil, false
 	}
-	token, err := cfg.EnsureHostToken()
+	var token string
+	var err error
+	if h.updateTrial == nil {
+		token, err = cfg.EnsureHostToken()
+	} else {
+		token, err = cfg.HostToken()
+		if err == nil && token == "" {
+			err = errors.New("remote: update trial requires the existing host token")
+		}
+		if raw, identityErr := cfg.RemoteIdentity(); identityErr != nil || len(raw) != crypto.KeySize {
+			err = errors.New("remote: update trial requires the existing host identity")
+		}
+	}
 	if err != nil {
 		h.err = err.Error()
 		return nil, false

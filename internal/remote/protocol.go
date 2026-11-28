@@ -10,6 +10,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/speech"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/LubyRuffy/eino-swarm/internal/tools"
+	"github.com/LubyRuffy/eino-swarm/internal/update"
 )
 
 const (
@@ -17,6 +18,9 @@ const (
 	ProtocolV        = 1
 
 	OpMeta                = "meta"
+	OpHostUpdateCheck     = "host_update_check"
+	OpHostUpdateStart     = "host_update_start"
+	OpHostUpdateStatus    = "host_update_status"
 	OpList                = "list"
 	OpMore                = "more"
 	OpOpen                = "open"
@@ -93,6 +97,11 @@ func plaintextBudget() int {
 
 // Request is the slim RPC the phone sends over a sealed pairlink frame.
 type Request struct {
+	OperationID         string `json:"operation_id,omitempty"`
+	Version             string `json:"version,omitempty"`
+	Fresh               bool   `json:"fresh,omitempty"`
+	HostUpdateVerify    bool   `json:"host_update_verify,omitempty"`
+	HostUpdateChallenge string `json:"host_update_challenge,omitempty"`
 	// ProductMode is explicit install-wide debug intent, never phone credentials.
 	ProductMode  string `json:"product_mode,omitempty"`
 	V            int    `json:"v"`
@@ -176,6 +185,12 @@ type Request struct {
 // Response is what the PC replies. Path and SessionID are pairlink
 // metadata so zwai trace can join the remote hop.
 type Response struct {
+	HostVersion         string             `json:"host_version,omitempty"`
+	HostUpdateSupported bool               `json:"host_update_supported,omitempty"`
+	HostUpdateOffer     *hostUpdateOffer   `json:"host_update_offer,omitempty"`
+	HostUpdate          *update.HostUpdate `json:"host_update,omitempty"`
+	HostUpdateChallenge string             `json:"host_update_challenge,omitempty"`
+
 	Translation     string                  `json:"translation,omitempty"`
 	ModelPolicy     *provider.ModelPolicy   `json:"model_policy,omitempty"`
 	Speech          *speech.SnapshotView    `json:"speech,omitempty"`

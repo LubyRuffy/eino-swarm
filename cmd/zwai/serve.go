@@ -118,13 +118,27 @@ func serveWeb(args []string, stop <-chan os.Signal, ready func(url string)) erro
 		return err
 	}
 
-	cfg, err := config.Load(*dataDir)
+	record, managed, err := discoverSupervisedEngine(*dataDir, *mock)
 	if err != nil {
 		return err
 	}
-	listen, err := ensureEngine(*dataDir, *addr, *mock)
-	if err != nil {
-		return err
+	listen, openBrowser := record.URL, config.Default().Server.OpenBrowser
+	if !managed {
+		var err error
+		listen, err = ensureEngine(*dataDir, *addr, *mock)
+		if err != nil {
+			return err
+		}
+		release, err := holdStandaloneEngineAdmission(*dataDir)
+		if err != nil {
+			return err
+		}
+		cfg, err := config.Load(*dataDir)
+		release()
+		if err != nil {
+			return err
+		}
+		openBrowser = cfg.Server.OpenBrowser
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -136,7 +150,7 @@ func serveWeb(args []string, stop <-chan os.Signal, ready func(url string)) erro
 		}
 	}()
 	var fatal <-chan error
-	if *noOpen || !cfg.Server.OpenBrowser {
+	if *noOpen || !openBrowser {
 		held, err := holdShellPresence(ctx, listen, "web")
 		if err != nil {
 			if ctx.Err() != nil {
@@ -152,7 +166,7 @@ func serveWeb(args []string, stop <-chan os.Signal, ready func(url string)) erro
 		}()
 	}
 	fmt.Println("zwai is running at", listen)
-	if !*noOpen && cfg.Server.OpenBrowser {
+	if !*noOpen && openBrowser {
 		if err := app.OpenURL(listen); err != nil {
 			fmt.Fprintln(os.Stderr, "zwai: could not open a browser:", err)
 		}

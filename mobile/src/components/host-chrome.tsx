@@ -30,6 +30,7 @@ export function HostChrome({
   onSelectChat,
   onModels,
   onOpenAccount,
+  onCheckHostUpdate,
   pcLink,
   onProjects,
 }: {
@@ -48,6 +49,7 @@ export function HostChrome({
   onSelectChat?: () => void
   onModels?: () => void
   onOpenAccount?: () => void
+  onCheckHostUpdate?: () => void
   onProjects?: () => void
   pcLink?: RemoteLink | null
 }) {
@@ -105,6 +107,7 @@ export function HostChrome({
             </MenuRow> : null}
             {pcLink && activeHost && !chatSelected ? <MenuRow onClick={() => { setMenu(false); setTimeoutsOpen(true) }}>{t("pcTimeouts.title")}</MenuRow> : null}
             {onProjects && !chatSelected ? <MenuRow onClick={() => { setMenu(false); onProjects() }}>{t("projects.manage")}</MenuRow> : null}
+            {onCheckHostUpdate && activeHost && !chatSelected ? <MenuRow onClick={() => { setMenu(false); onCheckHostUpdate() }}>{t("hostUpdate.check")}</MenuRow> : null}
             {onModels && account.mode !== "account" ? (
               <MenuRow
                 onClick={() => {

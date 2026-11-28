@@ -8,6 +8,10 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ### Added
 
+- Paired Android and iOS phones can check and confirm updates for an official
+  Linux archive installed with its systemd boot service. The host verifies
+  the matching release, saves unfinished tasks, and reverts to the previous
+  version if the initiating phone cannot confirm the isolated trial.
 - The work-graph picture has its own model check, separate from the write
   protocol. A phrase is not a node, and a real subject linked only to a phrase
   stays visible. The one recording pass and the committed revision each have

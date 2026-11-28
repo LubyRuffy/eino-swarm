@@ -83,7 +83,8 @@ class LinuxReleaseTests(unittest.TestCase):
             self.assertEqual(kwargs['env']['GOARCH'], 'arm64')
             self.assertEqual(kwargs['env']['CGO_ENABLED'], '0')
             self.assertIn('server', args)
-            self.assertIn('-X main.version=1.2.3', args)
+            self.assertEqual(args[args.index('-ldflags') + 1],
+                             '-X main.version=1.2.3 -X main.linuxArchiveBuild=1')
             previous = path.read_bytes()
             with patch.object(release_linux.subprocess, 'run', side_effect=RuntimeError('compile')):
                 with self.assertRaises(RuntimeError):

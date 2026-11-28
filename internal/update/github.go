@@ -24,7 +24,7 @@ var updateTransport = func() *http.Transport {
 	return transport
 }()
 
-// Offer is one newer Mac build on the public release.
+// Offer is one newer build on the public release.
 type Offer struct {
 	Version   string `json:"version"`
 	PageURL   string `json:"page_url"`
@@ -137,7 +137,7 @@ func (s *Service) Check(ctx context.Context, fresh bool) Result {
 func (s *Service) checkMacReleases(ctx context.Context, current string) Result {
 	best := Result{Status: "current", Current: current}
 	for page := 1; page <= 10; page++ {
-		body, err := s.getJSON(ctx, fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=100&page=%d", ReleaseRepo, page))
+		body, err := s.getJSON(ctx, fmt.Sprintf("%s?per_page=100&page=%d", releasesURL, page))
 		if err != nil {
 			return Result{Status: "error", Current: current, Message: err.Error()}
 		}
@@ -187,7 +187,11 @@ func (s *Service) store(current string, result Result) {
 }
 
 func (s *Service) getJSON(ctx context.Context, rawURL string) ([]byte, error) {
-	res, err := s.fetch(ctx, rawURL)
+	return getReleaseJSON(ctx, rawURL, s.Fetch)
+}
+
+func getReleaseJSON(ctx context.Context, rawURL string, fetch func(context.Context, string) (*http.Response, error)) ([]byte, error) {
+	res, err := fetchRelease(ctx, rawURL, fetch)
 	if err != nil {
 		return nil, err
 	}
@@ -207,8 +211,12 @@ func (s *Service) getJSON(ctx context.Context, rawURL string) ([]byte, error) {
 }
 
 func (s *Service) fetch(ctx context.Context, rawURL string) (*http.Response, error) {
-	if s.Fetch != nil {
-		return s.Fetch(ctx, rawURL)
+	return fetchRelease(ctx, rawURL, s.Fetch)
+}
+
+func fetchRelease(ctx context.Context, rawURL string, fetch func(context.Context, string) (*http.Response, error)) (*http.Response, error) {
+	if fetch != nil {
+		return fetch(ctx, rawURL)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -230,7 +238,8 @@ func defaultHTTPClient(download bool) *http.Client {
 		Timeout:   timeout,
 		Transport: updateTransport,
 		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
-			if !AllowedHost(req.URL.Hostname()) {
+			port := req.URL.Port()
+			if req.URL.Scheme != "https" || req.URL.User != nil || (port != "" && port != "443") || !AllowedHost(req.URL.Hostname()) {
 				return errors.New("update download left GitHub")
 			}
 			return nil
@@ -275,15 +284,18 @@ func classify(current, arch string, body []byte) Result {
 }
 
 type releaseDoc struct {
-	TagName    string `json:"tag_name"`
-	HTMLURL    string `json:"html_url"`
-	Draft      bool   `json:"draft"`
-	Prerelease bool   `json:"prerelease"`
-	Message    string `json:"message"`
-	Assets     []struct {
-		Name string `json:"name"`
-		URL  string `json:"browser_download_url"`
-	} `json:"assets"`
+	TagName    string         `json:"tag_name"`
+	HTMLURL    string         `json:"html_url"`
+	Draft      bool           `json:"draft"`
+	Prerelease bool           `json:"prerelease"`
+	Message    string         `json:"message"`
+	Assets     []releaseAsset `json:"assets"`
+}
+
+type releaseAsset struct {
+	Name   string `json:"name"`
+	URL    string `json:"browser_download_url"`
+	Digest string `json:"digest"`
 }
 
 func pickAsset(version, arch string, row releaseDoc) *Offer {

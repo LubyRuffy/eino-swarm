@@ -29,6 +29,11 @@ func runTrace(args []string) error {
 		return errors.New("trace needs a turn id or a conversation id")
 	}
 
+	release, err := holdStandaloneEngineAdmission(*dataDir)
+	if err != nil {
+		return err
+	}
+	defer release()
 	cfg, err := config.Load(*dataDir)
 	if err != nil {
 		return err

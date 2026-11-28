@@ -5,7 +5,9 @@ import (
 	"sync"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"github.com/LubyRuffy/eino-swarm/internal/update"
 	"github.com/LubyRuffy/pairlink/client"
+	"github.com/LubyRuffy/pairlink/protocol"
 )
 
 // The dependency replaces its peer→Link entry without closing the old inbox.
@@ -103,6 +105,21 @@ func (h *Host) serveLink(owner *hostLinkGroup, peer string, active *hostLink, l 
 	h.log.Info("remote device linked", "path", l.Path(), "session", l.SessionID())
 	pump := newLinkPump(h.eng, cfg, l)
 	pump.allow = h.phoneAllows
+	pump.hostUpdateContext = active.ctx
+	pump.hostUpdateTrial = func() HostUpdateTrial {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		return h.updateTrial
+	}
+	pump.hostUpdateAccess = func() (*update.HostService, string, bool) {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		// The phone uses the hub relay, where each frame is checked against
+		// its binding. A cached direct path has no such revocation guarantee.
+		current := h.links == owner && owner.current[peer] == active &&
+			active.ctx.Err() == nil && l.Path() == protocol.PathRelay
+		return h.hostUpdater, h.version, current
+	}
 	// A watch may already be waiting for sendMu when cancellation wins. Check
 	// after that lock too, before entering the old Link's transport. A write
 	// already in the dependency remains governed by its own write deadline.

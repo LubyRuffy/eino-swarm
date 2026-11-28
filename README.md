@@ -82,6 +82,11 @@ Web UI and needs neither Go nor Node on the target. The printed URL is local;
 remote access still requires the existing authenticated server configuration.
 See [Linux packaging and acceptance](docs/RELEASE.md#linux-amd64arm64-webcli-packages).
 
+For unattended updates, [set up the Linux boot service once](docs/RELEASE.md#unattended-linux-host-updates).
+Then choose **Check this host for updates** from the paired phone's menu.
+The host stages the package for its architecture and keeps the previous data
+and executable available until the initiating phone verifies the trial.
+
 ### Try it without a model
 
 ```bash

@@ -718,7 +718,7 @@ the app itself only asks for the camera. User center does not edit that Gateway 
 
 ## Updates
 
-The installed app checks [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases)
+The installed Android app checks [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases)
 itself (`https://api.github.com/repos/LubyRuffy/eino-swarm/releases/latest`).
 If the newest Release has no matching Android APK, it searches the release
 list for the newest version with an installable APK; a desktop-only version
@@ -743,6 +743,17 @@ release: `zwai-<version>-darwin-<arch>.zip` (a `zwai.app`), built with
 qualified batch. A desktop-only batch uploads only the Mac zip; a mobile
 batch publishes Android and iOS under one version. See
 [release setup](../docs/RELEASE.md).
+
+### Linux host updates
+
+On Android or iOS, select a paired Linux host with the [boot service enabled](../docs/RELEASE.md#unattended-linux-host-updates).
+A newer compatible release
+appears with the host name, running version and target version. **Menu → Check
+this host for updates** refreshes that host's offer. Confirm **Update this host**
+to have the host download the package, save its running tasks and restart.
+Keep the initiating phone connected or let it reconnect during the trial.
+It verifies that exact candidate through the saved binding. If the trial
+cannot be verified, the boot service restores the previous version and data.
 
 ## Simulators
 

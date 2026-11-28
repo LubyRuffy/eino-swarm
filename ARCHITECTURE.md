@@ -788,6 +788,19 @@ Pairlink encrypted RPC and PC-side model execution remain unchanged.
 
 The PC stays the system of record. A phone never hits gin `/api`. Anonymous
 binding uses a QR; an approved account can select an owned PC without a QR.
+
+For an eligible Linux boot service, Pairlink `meta` advertises protected
+updates. The engine verifies the official package and checkpoints via C-027.
+The stable `host-supervise` process retains the listening socket and an
+exclusive guard beside the logical data directory. It journals the old image
+and data identity before activating an isolated trial. The candidate permits
+metadata and the initiating phone's sealed challenge round trip while model
+work and HTTP mutations remain closed. The supervisor syncs promotion before
+opening the private activation pipe. Boot restores the prior slot for an
+unconfirmed trial and loads the committed image after promotion. Once work
+can run on the committed data, the supervisor restarts that version and keeps
+the prior snapshot for controlled recovery.
+
 `gateway-link-upgrade.ts` also reconciles already saved anonymous PCs after
 account refresh: exact owner ID, full host public key and canonical complete
 Hub base path must match. It shares issuance with explicit selection, replaces

@@ -4,6 +4,7 @@
 zwai [desktop] [--data-dir DIR] [--mock]
 zwai web  [--addr HOST:PORT] [--no-open] [--data-dir DIR] [--mock]
 zwai engine [--addr HOST:PORT] [--data-dir DIR] [--mock]
+zwai host-supervise --data-dir DIR --addr HOST:PORT --unit NAME.service
 zwai tui  [--task "..."] [--goal "..."] [--plan "..."] [--model NAME] [--reasoning LEVEL] [--workspace DIR] [--data-dir DIR] [--mock]
 zwai trace <turn-id|conversation-id> [--full] [--data-dir DIR]
 zwai config [path|init|show] [--data-dir DIR]
@@ -270,6 +271,10 @@ returns an error for a supervisor to detect. `SIGTERM`/`Ctrl-C` release that
 presence. An otherwise idle engine then exits after its existing idle grace;
 active turns and other clients continue. The engine child has its own session:
 this wrapper does not forward a stop signal or cancel work.
+
+Unattended updates use [`zwai host-supervise`](RELEASE.md#unattended-linux-host-updates)
+under an enabled Linux system service. That supervisor starts the engine and
+keeps the listening socket through replacement. Use the service URL for Web.
 
 The URL is printed on startup. `Ctrl-C` stops this waiter. It does not stop
 the engine while another shell, the phone, or a turn is still using it.

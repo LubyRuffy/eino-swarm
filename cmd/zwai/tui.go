@@ -131,6 +131,11 @@ func assembleTUI(ctx context.Context, args []string) (*tuiSetup, error) {
 		text = strings.TrimSpace(*plan)
 	}
 
+	release, err := holdStandaloneEngineAdmission(*dataDir)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	cfg, err := config.Load(*dataDir)
 	if err != nil {
 		return nil, err
